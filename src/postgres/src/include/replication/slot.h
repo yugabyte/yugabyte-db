@@ -17,7 +17,7 @@
 #include "storage/spin.h"
 #include "replication/walreceiver.h"
 
-/* YB includes. */
+/* YB includes */
 #include "replication/walsender.h"
 #include "utils/uuid.h"
 
@@ -102,13 +102,13 @@ typedef struct ReplicationSlotPersistentData
 	NameData	plugin;
 
 	/* The CDC stream_id (32 bytes + 1 for null terminator) */
-	char yb_stream_id[33];
+	char		yb_stream_id[33];
 
 	/*
 	 * Stores the replica identity value of the tables as they existed during
 	 * the creation of the replication slot.
 	 */
-	HTAB *yb_replica_identities;
+	HTAB	   *yb_replica_identities;
 
 	/*
 	 * The record_commit_time of the replication slot as received at the time
@@ -116,10 +116,10 @@ typedef struct ReplicationSlotPersistentData
 	 * is not kept up to date, it should only be used at the start of streaming
 	 * right after fetching the replication slot information.
 	 */
-	uint64_t yb_initial_record_commit_time_ht;
+	uint64_t	yb_initial_record_commit_time_ht;
 
 	/* The last time at which a publication's table list was refreshed */
-	uint64_t yb_last_pub_refresh_time;
+	uint64_t	yb_last_pub_refresh_time;
 } ReplicationSlotPersistentData;
 
 /*
@@ -221,6 +221,9 @@ extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
 extern PGDLLIMPORT const char *LSN_TYPE_SEQUENCE;
 extern PGDLLIMPORT const char *LSN_TYPE_HYBRID_TIME;
 
+extern PGDLLIMPORT const char *ORDERING_MODE_ROW;
+extern PGDLLIMPORT const char *ORDERING_MODE_TRANSACTION;
+
 /* shmem initialization functions */
 extern Size ReplicationSlotsShmemSize(void);
 extern void ReplicationSlotsShmemInit(void);
@@ -231,7 +234,8 @@ extern void ReplicationSlotCreate(const char *name, bool db_specific,
 								  char *yb_plugin_name,
 								  CRSSnapshotAction yb_snapshot_action,
 								  uint64_t *yb_consistent_snapshot_time,
-								  CRSLsnType lsn_type);
+								  YbCRSLsnType lsn_type,
+								  YbCRSOrderingMode yb_ordering_mode);
 extern void ReplicationSlotPersist(void);
 extern void ReplicationSlotDrop(const char *name, bool nowait);
 

@@ -2,7 +2,6 @@
 title: Reference for YugabyteDB Voyager
 headerTitle: Reference
 linkTitle: Reference
-image: /images/section_icons/develop/learn.png
 headcontent: Command line interfaces (CLIs), data modeling strategies, and data type mapping reference.
 description: Learn about the CLI Reference, data modeling strategies, and data type mapping reference using YugabyteDB Voyager.
 type: indexpage
@@ -32,12 +31,12 @@ menu:
     title="Tune performance"
     body="Optimize migration job performance using tuneable parameters with yb-voyager."
     href="performance/"
-    icon="fa-light fa-chart-line-up">}}
+    icon="fa-thin fa-chart-line-up">}}
 
    {{<index/item
     title="Diagnostics reporting"
     body="Monitor migration diagnostics securely with yb-voyager commands."
     href="diagnostics-report/"
-    icon="fa-sharp fa-light fa-stethoscope">}}
+    icon="fa-sharp fa-thin fa-stethoscope">}}
 
 {{</index/block>}}

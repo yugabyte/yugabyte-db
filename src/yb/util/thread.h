@@ -55,6 +55,8 @@ class MetricEntity;
 class Thread;
 class WebCallbackRegistry;
 
+struct ThreadDescriptor;
+
 const char* TEST_GetThreadLogPrefix();
 std::string TEST_GetThreadUnformattedLogPrefix();
 
@@ -232,6 +234,10 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // This callback is guaranteed to be called except in the case of a process crash.
   void CallAtExit(const Closure& cb);
 
+  // Abandons the thread. We will no longer join it on destruction. This is needed if you fork(),
+  // since threads are not copied on fork(), but the Thread object is.
+  void Abandon();
+
   // The thread ID assigned to this thread by the operating system. If the OS does not
   // support retrieving the tid, returns Thread::INVALID_TID.
   int64_t tid() const { return tid_; }
@@ -256,6 +262,8 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // The current thread of execution, or NULL if the current thread isn't a yb::Thread.
   // This call is signal-safe.
   static Thread* current_thread() { return tls_; }
+
+  static Status SendSignal(ThreadIdForStack tid, int signal);
 
   // Returns a unique, stable identifier for this thread. Note that this is a static
   // method and thus can be used on any thread, including the main thread of the
@@ -334,9 +342,11 @@ class Thread : public RefCountedThreadSafe<Thread> {
   Thread(std::string category, std::string name, ThreadFunctor functor);
 
   // Library-specific thread ID.
+  ThreadDescriptor* descriptor_ = nullptr;
   pthread_t thread_;
 
   // Name and category for this thread.
+
   const std::string category_;
   const std::string name_;
   const std::string TEST_log_prefix_;
@@ -421,5 +431,6 @@ class CDSAttacher {
 
 void RenderAllThreadStacks(std::ostream& output);
 size_t CountManagedThreads();
+size_t CountStartedThreads();
 
 } // namespace yb

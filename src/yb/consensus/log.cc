@@ -239,14 +239,14 @@ DEFINE_validator(log_min_segments_to_retain, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(max_disk_throughput_mbps, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
 
-DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 4 * 3600 * 1000,
+DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 8 * 3600 * 1000,
     "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
     "If we haven't received an updated checkpoint from CDC consumer within the interval "
     "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
     "consumer while determining which op IDs to delete from the intent.");
 TAG_FLAG(cdc_intent_retention_ms, advanced);
 
-DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 4 * 3600,
+DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 8 * 3600,
     "WAL retention time in seconds to be used for tables which have a xCluster, "
     "or CDCSDK outbound stream.");
 
@@ -267,6 +267,10 @@ DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
 DEFINE_RUNTIME_AUTO_bool(store_min_start_ht_running_txns, kLocalPersisted, false, true,
                          "If enabled, minimum start hybrid time among running txns will be "
                          "persisted in the segment footer during closing of the segment.");
+
+DEFINE_RUNTIME_AUTO_bool(store_last_wal_op_log_ht, kLocalPersisted, false, true,
+                         "If enabled, minimum between the last appended WAL OP's ht and callback "
+                         "value will be persisted in the footer field min_start_ht_running_txns");
 
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
@@ -484,7 +488,7 @@ Log::Appender::Appender(Log* log, ThreadPool* append_thread_pool)
       wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   if (wait_state_) {
     wait_state_->set_root_request_id(yb::Uuid::Generate());
-    wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogAppender));
+    wait_state_->set_query_id(std::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogAppender));
     wait_state_->UpdateAuxInfo({.tablet_id = log_->tablet_id(), .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(wait_state_, Idle);
     yb::ash::RaftLogWaitStatesTracker().Track(wait_state_);
@@ -712,7 +716,7 @@ Log::Log(
   if (background_synchronizer_wait_state_) {
     background_synchronizer_wait_state_->set_root_request_id(yb::Uuid::Generate());
     background_synchronizer_wait_state_->set_query_id(
-        yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogBackgroundSync));
+        std::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogBackgroundSync));
     background_synchronizer_wait_state_->UpdateAuxInfo(
         {.tablet_id = tablet_id_, .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(background_synchronizer_wait_state_, Idle);
@@ -2003,6 +2007,10 @@ Status Log::SwitchToAllocatedSegment() {
     footer_builder_.set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
   }
 
+  if (GetAtomicFlag(&FLAGS_store_last_wal_op_log_ht)) {
+    footer_builder_.set_last_wal_op_log_ht(HybridTime::kInvalid.ToUint64());
+  }
+
   // Set the new segment's schema.
   {
     SharedLock<decltype(schema_lock_)> l(schema_lock_);
@@ -2260,10 +2268,15 @@ void Log::WriteLatestMinStartTimeRunningTxnsInFooterBuilder() {
     return;
   }
   HybridTime min_start_ht_running_txns = HybridTime::kInitial;
-  if (min_start_ht_running_txns_callback_) {
+  if (min_start_ht_running_txns_callback_ && GetAtomicFlag(&FLAGS_store_last_wal_op_log_ht)) {
     min_start_ht_running_txns = min_start_ht_running_txns_callback_();
     VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from callback: " << min_start_ht_running_txns;
     DCHECK_NE(min_start_ht_running_txns, HybridTime::kInvalid);
+    if (footer_builder_.has_last_wal_op_log_ht()) {
+      auto last_wal_op_ht = HybridTime(footer_builder_.last_wal_op_log_ht());
+      VLOG_WITH_PREFIX(2) << "last WAL OP's log HT: " << last_wal_op_ht;
+      min_start_ht_running_txns = std::min(min_start_ht_running_txns, last_wal_op_ht);
+    }
   }
 
   // If callback is not specified, we want to set min_start_time_running_txns to a valid value

@@ -6,10 +6,13 @@ package keyinfo
 
 import (
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	ybaclient "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -34,6 +37,20 @@ var listKeyInfoCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
+		scopeType, err := cmd.Flags().GetString("type")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(scopeType) > 0 {
+			rList := make([]ybaclient.ConfKeyInfo, 0)
+			for _, keyInfo := range r {
+				if strings.EqualFold(keyInfo.GetScope(), scopeType) {
+					rList = append(rList, keyInfo)
+				}
+			}
+			r = rList
+		}
+
 		keyinfoCtx := formatter.Context{
 			Command: "list",
 			Output:  os.Stdout,
@@ -49,4 +66,10 @@ var listKeyInfoCmd = &cobra.Command{
 		}
 		keyinfo.Write(keyinfoCtx, r)
 	},
+}
+
+func init() {
+	listKeyInfoCmd.Flags().SortFlags = false
+	listKeyInfoCmd.Flags().
+		String("type", "", "[Optional] Scope type. Allowed values: universe, customer, provider, global.")
 }

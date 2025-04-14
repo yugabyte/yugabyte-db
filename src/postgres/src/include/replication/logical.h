@@ -111,6 +111,12 @@ typedef struct LogicalDecodingContext
 	bool		end_xact;
 
 	/*
+	 * True if the logical decoding context being used for the creation
+	 * of a logical replication slot.
+	 */
+	bool		in_create;
+
+	/*
 	 * Don't replay commits from an LSN < this LSN. This is the YB equivalent of
 	 * start_decoding_at of SnapBuild struct. We have this field here because we
 	 * do not use the snapbuild mechanism.
@@ -126,7 +132,7 @@ typedef struct LogicalDecodingContext
 	 *
 	 * The entry (value) remains unused i.e. this is used like a set.
 	 */
-	HTAB		*yb_needs_relcache_invalidation;
+	HTAB	   *yb_needs_relcache_invalidation;
 } LogicalDecodingContext;
 
 
@@ -165,6 +171,9 @@ extern void UpdateDecodingStats(LogicalDecodingContext *ctx);
 extern void YBValidateOutputPlugin(char *plugin);
 
 extern void YBValidateLsnType(char *lsn_type);
-extern CRSLsnType YBParseLsnType(char *lsn_type);
+extern YbCRSLsnType YBParseLsnType(char *lsn_type);
+
+extern void YBValidateOrderingMode(char *ordering_mode);
+extern YbCRSOrderingMode YBParseOrderingMode(char *ordering_mode);
 
 #endif

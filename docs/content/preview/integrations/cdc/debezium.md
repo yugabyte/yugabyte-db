@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Debezium is an open-source distributed platform used to capture the changes in a database. The [YugabyteDB gRPC Connector](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/) is based on the Debezium Connector, and captures row-level changes in a YugabyteDB database's schemas.
+Debezium is an open-source distributed platform used to capture the changes in a database. The [YugabyteDB gRPC Connector](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/) is based on the Debezium Connector, and captures row-level changes in a YugabyteDB database's schemas.
 
 ## Get the YugabyteDB gRPC Connector
 
@@ -55,7 +55,7 @@ Use the following steps to run change data capture (CDC) with Debezium on a loca
 1. Start a cluster using yugabyted. Note that you need to run yugabyted with the IP of your machine; otherwise, it would consider localhost (which would be mapped to the docker host instead of your machine).
 
     ```sh
-    ./bin/yugabyted start --listen $IP
+    ./bin/yugabyted start --advertise_address $IP
     ```
 
 1. Connect using ysqlsh and create a table:
@@ -155,7 +155,7 @@ Do the following:
     }'
     ```
 
-For a list of all the configuration options provided with the YugabyteDB gRPC Connector, see [Connector configuration properties](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#connector-configuration-properties).
+For a list of all the configuration options provided with the YugabyteDB gRPC Connector, see [Connector configuration properties](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#connector-configuration-properties).
 
 {{< tip title="TRUNCATE tables when CDC is enabled" >}}
 

@@ -19,43 +19,31 @@
  *
  *--------------------------------------------------------------------------------------------------
  */
-#ifndef YBPGINHERITSCACHE_H
-#define YBPGINHERITSCACHE_H
+
+#pragma once
 
 #include "postgres.h"
+
 #include "access/htup.h"
 #include "nodes/pg_list.h"
 
 typedef struct YbPgInheritsCacheEntryData
 {
-	Oid	parentOid;
-	List *childTuples;
-	int refcount;
+	Oid			oid;
+	List	   *tuples;
+	int			refcount;
 } YbPgInheritsCacheEntryData;
 
 typedef YbPgInheritsCacheEntryData *YbPgInheritsCacheEntry;
-
-typedef struct YbPgInheritsCacheChildEntryData
-{
-	Oid childrelid;
-	HeapTuple childTuple;
-	YbPgInheritsCacheEntry cacheEntry;
-} YbPgInheritsCacheChildEntryData;
-
-typedef YbPgInheritsCacheChildEntryData *YbPgInheritsCacheChildEntry;
 
 extern void YbInitPgInheritsCache();
 
 extern void YbPreloadPgInheritsCache();
 
-extern YbPgInheritsCacheEntry GetYbPgInheritsCacheEntry(Oid parentOid);
+extern YbPgInheritsCacheEntry GetYbPgInheritsCacheEntryByParent(Oid parentOid);
 
-extern YbPgInheritsCacheChildEntry GetYbPgInheritsChildCacheEntry(Oid relid);
+extern YbPgInheritsCacheEntry GetYbPgInheritsCacheEntryByChild(Oid relid);
 
 extern void ReleaseYbPgInheritsCacheEntry(YbPgInheritsCacheEntry entry);
 
-extern void ReleaseYbPgInheritsChildEntry(YbPgInheritsCacheChildEntry entry);
-
 extern void YbPgInheritsCacheInvalidate(Oid relid);
-
-#endif

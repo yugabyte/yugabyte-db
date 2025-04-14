@@ -25,6 +25,7 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
@@ -36,13 +37,9 @@ namespace client {
 
 // This must match TableType in common.proto.
 // We have static_assert's in tablet-test.cc to verify this.
-enum class YBTableType {
-  YQL_TABLE_TYPE = 2,
-  REDIS_TABLE_TYPE = 3,
-  PGSQL_TABLE_TYPE = 4,
-  TRANSACTION_STATUS_TABLE_TYPE = 5,
-  UNKNOWN_TABLE_TYPE = -1
-};
+YB_DEFINE_ENUM(YBTableType,
+               ((YQL_TABLE_TYPE, 2))((REDIS_TABLE_TYPE, 3))((PGSQL_TABLE_TYPE, 4))
+               ((TRANSACTION_STATUS_TABLE_TYPE, 5))((UNKNOWN_TABLE_TYPE, -1)));
 
 struct VersionedTablePartitionList {
   TablePartitionList keys;
@@ -115,7 +112,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   bool colocated() const;
 
   // Returns the replication info for the table.
-  const boost::optional<master::ReplicationInfoPB>& replication_info() const;
+  const boost::optional<ReplicationInfoPB>& replication_info() const;
 
   std::string ToString() const;
   //------------------------------------------------------------------------------------------------

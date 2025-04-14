@@ -72,11 +72,12 @@
 #include "port/pg_bitutils.h"
 #include "portability/instr_time.h"
 
+/* YB includes */
+#include "yb/yql/pggate/ysql_bench_metrics_handler/ybc_ysql_bench_metrics_handler.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
-#include "yb/yql/pggate/ysql_bench_metrics_handler/ysql_bench_metrics_handler.h"
 
 #define ERRCODE_IN_FAILED_SQL_TRANSACTION  "25P02"
 #define ERRCODE_T_R_SERIALIZATION_FAILURE  "40001"
@@ -201,7 +202,7 @@ int			scale = 1;
  * space during inserts and leave 10 percent free.
  */
 int			fillfactor = 100;
-bool			set_fillfactor = false;
+bool		set_fillfactor = false;
 
 /*
  * use unlogged tables?
@@ -315,11 +316,13 @@ const char *pgport = NULL;
 const char *username = NULL;
 const char *dbName = NULL;
 uint32		batch_size = 1024;	/* Batch size used for a transaction */
-int     yb_metrics_bind_port = 8080; /* Port used by the metrics webserver */
-char    *yb_metrics_bind_address = "localhost"; /* Bind address used by the metrics webserver */
-bool    yb_metrics_arg_set = false; /* Is any metrics server arg set? */
-struct  WebserverWrapper *yb_metrics_webserver = NULL;
-char    *yb_connection_init_sql; /* Connection init sql */
+int			yb_metrics_bind_port = 8080;	/* Port used by the metrics
+											 * webserver */
+char	   *yb_metrics_bind_address = "localhost";	/* Bind address used by
+													 * the metrics webserver */
+bool		yb_metrics_arg_set = false; /* Is any metrics server arg set? */
+struct WebserverWrapper *yb_metrics_webserver = NULL;
+char	   *yb_connection_init_sql; /* Connection init sql */
 
 /*
  * There're different types of restrictions for deciding that the current failed
@@ -332,8 +335,8 @@ char    *yb_connection_init_sql; /* Connection init sql */
  * retried at all.
  */
 uint32		max_tries = 0;		/* we cannot retry a failed transaction if its
-								 * number of tries reaches this maximum; if its
-								 * value is zero, it is not used */
+								 * number of tries reaches this maximum; if
+								 * its value is zero, it is not used */
 char	   *logfile_prefix = NULL;
 const char *progname;
 
@@ -476,12 +479,12 @@ typedef struct StatsData
 	int64		deadlock_failures;	/* number of transactions that were not
 									 * successfully retried after a deadlock
 									 * error */
-	int64		errors;			/* number of transactions that were not retried
-								 * after a serialization or a deadlock
-								 * failure or had another error (including meta
-								 * commands errors) */
-	int64		errors_in_failed_tx;	/* number of transactions that failed in
-										 * a error
+	int64		errors;			/* number of transactions that were not
+								 * retried after a serialization or a deadlock
+								 * failure or had another error (including
+								 * meta commands errors) */
+	int64		errors_in_failed_tx;	/* number of transactions that failed
+										 * in a error
 										 * ERRCODE_IN_FAILED_SQL_TRANSACTION */
 	SimpleStats latency;
 	SimpleStats lag;
@@ -496,22 +499,23 @@ pg_time_usec_t epoch_shift;
 /*
  * Prometheus metrics
  */
-YsqlBenchMetricEntry *ysql_bench_metric_entry = NULL;
+YbcYsqlBenchMetricEntry *ysql_bench_metric_entry = NULL;
 
 /*
  * Struct to keep random state.
  */
-typedef struct RandomState
+typedef struct YbRandomState
 {
 	unsigned short xseed[3];
 
-	/* YB_TODO(neil@yugabyte)
+	/*
+	 * YB_TODO(neil@yugabyte)
 	 * Yugabyte name this attribute "data" in place of "xseed".
 	 * - Need to replace "data" with "xseed" in YB code.
 	 * - Remove this attribute from the structure.
 	 */
 	unsigned short data[3];
-} RandomState;
+} YbRandomState;
 
 /*
  * Error status for errors during script execution.
@@ -561,16 +565,16 @@ typedef struct Variables
  * Data structure for repeating a transaction from the beginnning with the same
  * parameters.
  */
-typedef struct RetryState
+typedef struct YbRetryState
 {
-	RandomState random_state;	/* random seed */
-	Variables   variables;		/* client variables */
-} RetryState;
+	YbRandomState random_state; /* random seed */
+	Variables	variables;		/* client variables */
+} YbRetryState;
 
 /*
  * For the failures during script execution.
  */
-typedef enum FailureStatus
+typedef enum YbFailureStatus
 {
 	NO_FAILURE = 0,
 	ANOTHER_FAILURE,			/* other failures that are not listed by
@@ -578,14 +582,14 @@ typedef enum FailureStatus
 	SERIALIZATION_FAILURE,
 	DEADLOCK_FAILURE,
 	IN_FAILED_SQL_TRANSACTION
-} FailureStatus;
+} YbFailureStatus;
 
-typedef struct Failure
+typedef struct YbFailure
 {
-	FailureStatus status;		/* type of the failure */
+	YbFailureStatus status;		/* type of the failure */
 	int			command;		/* command number in script where the failure
 								 * occurred */
-} Failure;
+} YbFailure;
 
 /*
  * Connection state machine states.
@@ -714,7 +718,7 @@ typedef struct
 	 */
 #ifdef YB_TODO
 	/* Need to replace this with Postgres's implementation. */
-	RandomState random_state;	/* separate randomness for each client */
+	YbRandomState random_state; /* separate randomness for each client */
 #endif
 	pg_prng_state cs_func_rs;
 
@@ -730,7 +734,8 @@ typedef struct
 	pg_time_usec_t txn_begin;	/* used for measuring schedule lag times */
 	pg_time_usec_t stmt_begin;	/* used for measuring statement latencies */
 
-	bool		prepared[MAX_SCRIPTS];	/* whether client prepared the script */
+	/* whether client prepared each command of each script */
+	bool	  **prepared;
 
 	/*
 	 * For processing failures and repeating transactions with serialization
@@ -752,12 +757,12 @@ typedef struct
 	 * For processing errors and repeating transactions with serialization or
 	 * deadlock failures:
 	 */
-	Failure		first_failure;	/* status and command number of the first
-								 * failure in the current transaction execution;
-								 * status NO_FAILURE if there were no failures
-								 * or errors */
-	RetryState  retry_state;
-	uint32			retries;	/* how many times have we already retried the
+	YbFailure	first_failure;	/* status and command number of the first
+								 * failure in the current transaction
+								 * execution; status NO_FAILURE if there were
+								 * no failures or errors */
+	YbRetryState retry_state;
+	uint32		retries;		/* how many times have we already retried the
 								 * current transaction? */
 } CState;
 
@@ -778,10 +783,10 @@ typedef struct
 	 */
 #ifdef YB_TODO
 	/* Need to replace this with Postgres's implementation. */
-	RandomState ts_choose_rs;	/* random state for selecting a script */
-	RandomState ts_throttle_rs; /* random state for transaction throttling */
-	RandomState ts_sample_rs;	/* random state for log sampling */
-	RandomState random_state; 	/* separate randomness for each thread */
+	YbRandomState ts_choose_rs; /* random state for selecting a script */
+	YbRandomState ts_throttle_rs;	/* random state for transaction throttling */
+	YbRandomState ts_sample_rs; /* random state for log sampling */
+	YbRandomState random_state; /* separate randomness for each thread */
 #endif
 	pg_prng_state ts_choose_rs; /* random state for selecting a script */
 	pg_prng_state ts_throttle_rs;	/* random state for transaction throttling */
@@ -855,7 +860,8 @@ static const char *QUERYMODE[] = {"simple", "extended", "prepared"};
  * argv			Command arguments, the first of which is the command or SQL
  *				string itself.  For SQL commands, after post-processing
  *				argv[0] is the same as 'lines' with variables substituted.
- * varprefix 	SQL commands terminated with \gset or \aset have this set
+ * prepname		The name that this command is prepared under, in prepare mode
+ * varprefix	SQL commands terminated with \gset or \aset have this set
  *				to a non NULL value.  If nonempty, it's used to prefix the
  *				variable name that receives the value.
  * aset			do gset on all possible queries of a combined query (\;).
@@ -873,6 +879,7 @@ typedef struct Command
 	MetaCommand meta;
 	int			argc;
 	char	   *argv[MAX_ARGS];
+	char	   *prepname;
 	char	   *varprefix;
 	PgBenchExpr *expr;
 	SimpleStats stats;
@@ -895,7 +902,7 @@ static ParsedScript sql_script[MAX_SCRIPTS];	/* SQL script files */
 static int	num_scripts;		/* number of scripts in sql_script[] */
 static int64 total_weight = 0;
 
-typedef enum DebugLevel
+typedef enum YbDebugLevel
 {
 	NO_DEBUG = 0,				/* no debugging output (except PGBENCH_DEBUG) */
 	DEBUG_FAILS,				/* print only failure messages, errors and
@@ -903,9 +910,9 @@ typedef enum DebugLevel
 	DEBUG_ALL,					/* print all debugging output (throttling,
 								 * executed/sent/received commands etc.) */
 	NUM_DEBUGLEVEL
-} DebugLevel;
+} YbDebugLevel;
 
-static DebugLevel debug_level = NO_DEBUG;	/* debug flag */
+static YbDebugLevel debug_level = NO_DEBUG; /* debug flag */
 static const char *DEBUGLEVEL[] = {"no", "fails", "all"};
 
 static bool verbose_errors = false; /* print verbose messages of all errors */
@@ -956,7 +963,7 @@ static const BuiltinScript builtin_script[] =
 	}
 };
 
-typedef enum ErrorLevel
+typedef enum YbErrorLevel
 {
 	/*
 	 * To report throttling, executed/sent/received commands etc.
@@ -985,28 +992,28 @@ typedef enum ErrorLevel
 	 * To report the error messages of the main program and to exit immediately.
 	 */
 	ELEVEL_FATAL
-} ErrorLevel;
+} YbErrorLevel;
 
-typedef struct ErrorData
+typedef struct YbErrorData
 {
-	ErrorLevel	elevel;
+	YbErrorLevel elevel;
 	PQExpBufferData message;
-} ErrorData;
+} YbErrorData;
 
-typedef ErrorData *Error;
+typedef YbErrorData *YbError;
 
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-/* use the local ErrorData in ereport */
-#define LOCAL_ERROR_DATA()	ErrorData edata;
+/* use the local YbErrorData in ereport */
+#define LOCAL_ERROR_DATA()	YbErrorData edata;
 
 #define errstart(elevel)	errstartImpl(&edata, elevel)
 #define errmsg(...)			errmsgImpl(&edata, __VA_ARGS__)
 #define errfinish(...)		errfinishImpl(&edata, __VA_ARGS__)
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
-/* use the global ErrorData in ereport... */
+/* use the global YbErrorData in ereport... */
 #define LOCAL_ERROR_DATA()
-static ErrorData edata;
-static Error error = &edata;
+static YbErrorData edata;
+static YbError error = &edata;
 
 /* ...and protect it with a mutex if necessary */
 #ifdef ENABLE_THREAD_SAFETY
@@ -1069,7 +1076,7 @@ static void setDoubleValue(PgBenchValue *pv, double dval);
 static bool evaluateExpr(CState *st, PgBenchExpr *expr,
 						 PgBenchValue *retval);
 static ConnectionStateEnum executeMetaCommand(CState *st, pg_time_usec_t *now,
-											  FailureStatus *failure_status);
+											  YbFailureStatus *failure_status);
 static void doLog(TState *thread, CState *st,
 				  StatsData *agg, bool skipped, double latency, double lag);
 static void processXactStats(TState *thread, CState *st, pg_time_usec_t *now,
@@ -1086,13 +1093,13 @@ static int	wait_on_socket_set(socket_set *sa, int64 usecs);
 static bool socket_has_input(socket_set *sa, int fd, int idx);
 
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-static bool errstartImpl(Error error, ErrorLevel elevel);
-static int  errmsgImpl(Error error,
+static bool errstartImpl(YbError error, YbErrorLevel elevel);
+static int	errmsgImpl(YbError error,
 					   const char *fmt,...) pg_attribute_printf(2, 3);
-static void errfinishImpl(Error error, int dummy,...);
+static void errfinishImpl(YbError error, int dummy,...);
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
-static bool errstartImpl(ErrorLevel elevel);
-static int  errmsgImpl(const char *fmt,...) pg_attribute_printf(1, 2);
+static bool errstartImpl(YbErrorLevel elevel);
+static int	errmsgImpl(const char *fmt,...) pg_attribute_printf(1, 2);
 static void errfinishImpl(int dummy,...);
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
 
@@ -1340,14 +1347,14 @@ strtodouble(const char *str, bool errorOK, double *dv)
  */
 #ifdef YB_TODO
 static void
-initRandomState(RandomState *random_state)
+initRandomState(YbRandomState *random_state)
 {
 	random_state->data[0] = (unsigned short)
-                (pg_jrand48(base_random_sequence.data) & 0xFFFF);
-	random_state->data[1] =(unsigned short)
-                (pg_jrand48(base_random_sequence.data) & 0xFFFF);
+		(pg_jrand48(base_random_sequence.data) & 0xFFFF);
+	random_state->data[1] = (unsigned short)
+		(pg_jrand48(base_random_sequence.data) & 0xFFFF);
 	random_state->data[2] = (unsigned short)
-                (pg_jrand48(base_random_sequence.data) & 0xFFFF);
+		(pg_jrand48(base_random_sequence.data) & 0xFFFF);
 
 	random_state->xseed[0] = (unsigned short)
 		(pg_jrand48(base_random_sequence.xseed) & 0xFFFF);
@@ -1744,7 +1751,7 @@ initStats(StatsData *sd, pg_time_usec_t start)
 static void
 accumStats(StatsData *stats, bool skipped, double lat, double lag,
 		   EStatus estatus, int64 tries,
-		   FailureStatus first_error, int64 retries)
+		   YbFailureStatus first_error, int64 retries)
 {
 	/*
 	 * Record the number of retries regardless of whether the transaction was
@@ -1972,7 +1979,7 @@ YbLookupVariable(Variables *variables, char *name)
 {
 #ifdef YB_TODO
 	/* Need to replace this with Postgres's implementation. */
- 	Variable	key;
+	Variable	key;
 
 	/* On some versions of Solaris, bsearch of zero items dumps core */
 	if (variables->nvariables <= 0)
@@ -2269,7 +2276,8 @@ YbLookupCreateVariable(Variables *variables, const char *context, char *name,
 		/* Create variable at the end of the array */
 		if (variables->array)
 			newvars = (Variable *) pg_realloc(variables->array,
-								(variables->nvariables + 1) * sizeof(Variable));
+											  ((variables->nvariables + 1) *
+											   sizeof(Variable)));
 		else
 			newvars = (Variable *) pg_malloc(sizeof(Variable));
 
@@ -2397,7 +2405,7 @@ putVariableInt(Variables *variables, const char *context, char *name,
  */
 static bool
 YbPutVariableInt(Variables *variables, const char *context, char *name,
-			   int64 value, bool client)
+				 int64 value, bool client)
 {
 	PgBenchValue val;
 
@@ -2544,7 +2552,7 @@ getQueryParams(Variables *variables, const Command *command,
 
 static void
 YbGetQueryParams(Variables *variables, const Command *command,
-			   const char **params)
+				 const char **params)
 {
 	int			i;
 
@@ -2850,7 +2858,7 @@ evalStandardFunc(CState *st,
 		pg_log_error("too many function arguments, maximum is %d", MAX_FARGS);
 		ereport(ELEVEL_LOG_CLIENT_FAIL,
 				(errmsg("too many function arguments, maximum is %d\n",
-					   MAX_FARGS)));
+						MAX_FARGS)));
 		return false;
 	}
 
@@ -3003,9 +3011,8 @@ evalStandardFunc(CState *st,
 									if (li == PG_INT64_MIN)
 									{
 										pg_log_error("bigint div out of range");
-										ereport(
-											ELEVEL_LOG_CLIENT_FAIL,
-											(errmsg("bigint out of range\n")));
+										ereport(ELEVEL_LOG_CLIENT_FAIL,
+												(errmsg("bigint out of range\n")));
 										return false;
 									}
 									else
@@ -3769,19 +3776,12 @@ YbRunShellCommand(Variables *variables, char *variable, char **argv, int argc)
 	return true;
 }
 
-#define MAX_PREPARE_NAME		32
-static void
-preparedStatementName(char *buffer, int file, int state)
-{
-	sprintf(buffer, "P%d_%d", file, state);
-}
-
 /*
  * Report the abortion of the client when processing SQL commands.
  */
 static void
 commandFailed(CState *st, const char *cmd, const char *message,
-			  ErrorLevel elevel)
+			  YbErrorLevel elevel)
 {
 	pg_log_error("client %d aborted in command %d (%s) of script %d; %s",
 				 st->id, st->command, cmd, st->use_file, message);
@@ -3861,6 +3861,99 @@ chooseScript(TState *thread)
 	return 0;
 }
 
+/*
+ * Allocate space for CState->prepared: we need one boolean for each command
+ * of each script.
+ */
+static void
+allocCStatePrepared(CState *st)
+{
+	Assert(st->prepared == NULL);
+
+	st->prepared = pg_malloc(sizeof(bool *) * num_scripts);
+	for (int i = 0; i < num_scripts; i++)
+	{
+		ParsedScript *script = &sql_script[i];
+		int			numcmds;
+
+		for (numcmds = 0; script->commands[numcmds] != NULL; numcmds++)
+			;
+		st->prepared[i] = pg_malloc0(sizeof(bool) * numcmds);
+	}
+}
+
+/*
+ * Prepare the SQL command from st->use_file at command_num.
+ */
+static void
+prepareCommand(CState *st, int command_num)
+{
+	Command    *command = sql_script[st->use_file].commands[command_num];
+
+	/* No prepare for non-SQL commands */
+	if (command->type != SQL_COMMAND)
+		return;
+
+	if (!st->prepared)
+		allocCStatePrepared(st);
+
+	if (!st->prepared[st->use_file][command_num])
+	{
+		PGresult   *res;
+
+		pg_log_debug("client %d preparing %s", st->id, command->prepname);
+		ereport(ELEVEL_DEBUG, (errmsg("client %d preparing %s", st->id, command->prepname)));
+		res = PQprepare(st->con, command->prepname,
+						command->argv[0], command->argc - 1, NULL);
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		{
+			pg_log_error("%s", PQerrorMessage(st->con));
+			ereport(ELEVEL_LOG_MAIN, (errmsg("%s", PQerrorMessage(st->con))));
+		}
+		PQclear(res);
+		st->prepared[st->use_file][command_num] = true;
+	}
+}
+
+/*
+ * Prepare all the commands in the script that come after the \startpipeline
+ * that's at position st->command, and the first \endpipeline we find.
+ *
+ * This sets the ->prepared flag for each relevant command as well as the
+ * \startpipeline itself, but doesn't move the st->command counter.
+ */
+static void
+prepareCommandsInPipeline(CState *st)
+{
+	int			j;
+	Command   **commands = sql_script[st->use_file].commands;
+
+	Assert(commands[st->command]->type == META_COMMAND &&
+		   commands[st->command]->meta == META_STARTPIPELINE);
+
+	if (!st->prepared)
+		allocCStatePrepared(st);
+
+	/*
+	 * We set the 'prepared' flag on the \startpipeline itself to flag that we
+	 * don't need to do this next time without calling prepareCommand(), even
+	 * though we don't actually prepare this command.
+	 */
+	if (st->prepared[st->use_file][st->command])
+		return;
+
+	for (j = st->command + 1; commands[j] != NULL; j++)
+	{
+		if (commands[j]->type == META_COMMAND &&
+			commands[j]->meta == META_ENDPIPELINE)
+			break;
+
+		prepareCommand(st, j);
+	}
+
+	st->prepared[st->use_file][st->command] = true;
+}
+
 /* Send a SQL command, using the chosen querymode */
 static bool
 sendCommand(CState *st, Command *command)
@@ -3893,60 +3986,14 @@ sendCommand(CState *st, Command *command)
 	}
 	else if (querymode == QUERY_PREPARED)
 	{
-		char		name[MAX_PREPARE_NAME];
 		const char *params[MAX_ARGS];
 
-		if (!st->prepared[st->use_file])
-		{
-			int			j;
-			Command   **commands = sql_script[st->use_file].commands;
-
-			for (j = 0; commands[j] != NULL; j++)
-			{
-				PGresult   *res;
-				char		name[MAX_PREPARE_NAME];
-
-				if (commands[j]->type != SQL_COMMAND)
-					continue;
-				preparedStatementName(name, st->use_file, j);
-				if (PQpipelineStatus(st->con) == PQ_PIPELINE_OFF)
-				{
-					res = PQprepare(st->con, name,
-									commands[j]->argv[0], commands[j]->argc - 1, NULL);
-					if (PQresultStatus(res) != PGRES_COMMAND_OK)
-					{
-						pg_log_error("%s", PQerrorMessage(st->con));
-						ereport(ELEVEL_LOG_MAIN,
-								(errmsg("%s", PQerrorMessage(st->con))));
-
-					}
-					PQclear(res);
-				}
-				else
-				{
-					/*
-					 * In pipeline mode, we use asynchronous functions. If a
-					 * server-side error occurs, it will be processed later
-					 * among the other results.
-					 */
-					if (!PQsendPrepare(st->con, name,
-									   commands[j]->argv[0], commands[j]->argc - 1, NULL))
-					{
-						pg_log_error("%s", PQerrorMessage(st->con));
-						ereport(ELEVEL_LOG_MAIN,
-								(errmsg("%s", PQerrorMessage(st->con))));
-					}
-				}
-			}
-			st->prepared[st->use_file] = true;
-		}
-
+		prepareCommand(st, st->command);
 		getQueryParams(&st->variables, command, params);
-		preparedStatementName(name, st->use_file, st->command);
 
-		pg_log_debug("client %d sending %s", st->id, name);
-		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, name)));
-		r = PQsendQueryPrepared(st->con, name, command->argc - 1,
+		pg_log_debug("client %d sending %s", st->id, command->prepname);
+		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, command->prepname)));
+		r = PQsendQueryPrepared(st->con, command->prepname, command->argc - 1,
 								params, NULL, NULL, 0);
 	}
 	else						/* unknown sql mode */
@@ -3958,7 +4005,9 @@ sendCommand(CState *st, Command *command)
 		ereport(ELEVEL_DEBUG,
 				(errmsg("client %d could not send %s\n",
 						st->id, command->argv[0])));
-		/* YB_TODO(neil@yugabyte) ecnt is no longer used in PG13
+
+		/*
+		 * YB_TODO(neil@yugabyte) ecnt is no longer used in PG13
 		 * Removed code: st->ecnt++;
 		 */
 		return false;
@@ -3997,7 +4046,7 @@ canRetryError(EStatus estatus)
 /*
  * Get the failure status from the error code.
  */
-static FailureStatus
+static YbFailureStatus
 getFailureStatus(char *sqlState)
 {
 	if (sqlState)
@@ -4024,14 +4073,14 @@ getFailureStatus(char *sqlState)
  */
 static bool
 readCommandResponse(CState *st, MetaCommand meta, char *varprefix,
-					FailureStatus *failure_status)
+					YbFailureStatus *failure_status)
 {
 #ifdef YB_TODO
 	/* Need to replace Yugabyte'code with Postgres's implementation. */
 	PGresult   *res;
 	PGresult   *next_res;
 	int			qrynum = 0;
-	char	*sqlState;
+	char	   *sqlState;
 
 	/*
 	 * varprefix should be set only with \gset or \aset, and \endpipeline and
@@ -4275,7 +4324,8 @@ YbEvaluateSleep(Variables *variables, int argc, char **argv, int *usecs)
 static int64
 getTotalCnt(const CState *st)
 {
-	/* YB_TODO(neil@yugabyte) ecnt is no longer used in PG13
+	/*
+	 * YB_TODO(neil@yugabyte) ecnt is no longer used in PG13
 	 * Removed code: return st->cnt + st->ecnt;
 	 */
 	return st->cnt;
@@ -4285,7 +4335,7 @@ getTotalCnt(const CState *st)
  * Copy an array of random state.
  */
 static void
-copyRandomState(RandomState *destination, const RandomState *source)
+copyRandomState(YbRandomState *destination, const YbRandomState *source)
 {
 	memcpy(destination->data, source->data, sizeof(unsigned short) * 3);
 }
@@ -4300,7 +4350,7 @@ static void
 YbCopyVariables(Variables *destination_vars, const Variables *source_vars)
 {
 #ifdef YB_TODO
-    /* Need to replace Yugabyte's code with Postgres's implementation. */
+	/* Need to replace Yugabyte's code with Postgres's implementation. */
 	Variable   *destination;
 	Variable   *current_destination;
 	const Variable *source;
@@ -4347,7 +4397,7 @@ YbCopyVariables(Variables *destination_vars, const Variables *source_vars)
  * Returns true if this type of failure can be retried.
  */
 static bool
-canRetryFailure(FailureStatus failure_status)
+canRetryFailure(YbFailureStatus failure_status)
 {
 	return (failure_status == SERIALIZATION_FAILURE ||
 			failure_status == DEADLOCK_FAILURE);
@@ -4370,7 +4420,7 @@ canRetry(CState *st, pg_time_usec_t *now)
 static bool
 canRetry(CState *st, instr_time *now)
 {
-	FailureStatus failure_status = st->first_failure.status;
+	YbFailureStatus failure_status = st->first_failure.status;
 
 	Assert(failure_status != NO_FAILURE);
 
@@ -4633,7 +4683,7 @@ printVerboseErrorMessages(CState *st, pg_time_usec_t *now, bool is_retry)
 static void
 advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 {
-	FailureStatus failure_status = NO_FAILURE;
+	YbFailureStatus failure_status = NO_FAILURE;
 
 	/*
 	 * gettimeofday() isn't free, so we get the current timestamp lazily the
@@ -4706,13 +4756,14 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						st->state = CSTATE_ABORTED;
 						break;
 					}
-					else                                                             
-					{                                                                
-						// Connection init sql                                   
-						if (yb_connection_init_sql != NULL) {                       
+					else
+					{
+						/* Connection init sql */
+						if (yb_connection_init_sql != NULL)
+						{
 							executeStatement(st->con,
-									 yb_connection_init_sql);  
-						}                                                        
+											 yb_connection_init_sql);
+						}
 					}
 
 					/* reset now after connection */
@@ -4721,7 +4772,8 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 					thread->conn_duration += now - start;
 
 					/* Reset session-local state */
-					memset(st->prepared, 0, sizeof(st->prepared));
+					pg_free(st->prepared);
+					st->prepared = NULL;
 				}
 
 #ifdef YB_TODO
@@ -4846,9 +4898,13 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 			case CSTATE_START_COMMAND:
 				command = sql_script[st->use_file].commands[st->command];
 
-				/* Transition to script end processing if done */
+				/*
+				 * Transition to script end processing if done, but close up
+				 * shop if a pipeline is open at this point.
+				 */
 				if (command == NULL)
 				{
+#ifdef YB_TODO
 					if (st->first_failure.status == NO_FAILURE)
 					{
 						st->state = CSTATE_END_TX;
@@ -4858,6 +4914,16 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						/* check if we can retry the failure */
 						st->state = CSTATE_RETRY;
 					}
+#endif
+					if (PQpipelineStatus(st->con) == PQ_PIPELINE_OFF)
+						st->state = CSTATE_END_TX;
+					else
+					{
+						pg_log_error("client %d aborted: end of script reached with pipeline open",
+									 st->id);
+						st->state = CSTATE_ABORTED;
+					}
+
 					break;
 				}
 
@@ -4957,8 +5023,14 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						switch (conditional_stack_peek(st->cstack))
 						{
 							case IFSTATE_FALSE:
-								if (command->meta == META_IF ||
-									command->meta == META_ELIF)
+								if (command->meta == META_IF)
+								{
+									/* nested if in skipped branch - ignore */
+									conditional_stack_push(st->cstack,
+														   IFSTATE_IGNORED);
+									st->command++;
+								}
+								else if (command->meta == META_ELIF)
 								{
 									/* we must evaluate the condition */
 									st->state = CSTATE_START_COMMAND;
@@ -4977,11 +5049,7 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 									conditional_stack_pop(st->cstack);
 									if (conditional_active(st->cstack))
 										st->state = CSTATE_START_COMMAND;
-
-									/*
-									 * else state remains in
-									 * CSTATE_SKIP_COMMAND
-									 */
+									/* else state remains CSTATE_SKIP_COMMAND */
 									st->command++;
 								}
 								break;
@@ -5138,9 +5206,9 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 					CSTATE_START_COMMAND : CSTATE_SKIP_COMMAND;
 				break;
 
-			/*
-			 * Retry the failed transaction if possible.
-			 */
+				/*
+				 * Retry the failed transaction if possible.
+				 */
 			case CSTATE_RETRY:
 				{
 					PQExpBufferData errmsg_buf;
@@ -5184,8 +5252,9 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						copyRandomState(&st->random_state,
 										&st->retry_state.random_state);
 
-						/* YB_TODO(neil@yugabyte)
-						 * CopyVariable need to be updated to use PG13 structure.
+						/*
+						 * YB_TODO(neil@yugabyte) CopyVariable need to be
+						 * updated to use PG13 structure.
 						 */
 						YbCopyVariables(&st->variables, &st->retry_state.variables);
 
@@ -5243,8 +5312,10 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 						 * beginning of the transaction except for a random
 						 * state.
 						 */
-						/* YB_TODO(neil@yugabyte)
-						 * CopyVariable need to be updated to use PG13 structure.
+
+						/*
+						 * YB_TODO(neil@yugabyte) CopyVariable need to be
+						 * updated to use PG13 structure.
 						 */
 						YbCopyVariables(&st->variables, &st->retry_state.variables);
 
@@ -5506,7 +5577,7 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
  * take no time to execute.
  */
 static ConnectionStateEnum
-executeMetaCommand(CState *st, pg_time_usec_t *now, FailureStatus *failure_status)
+executeMetaCommand(CState *st, pg_time_usec_t *now, YbFailureStatus *failure_status)
 {
 #ifdef YB_TODO
 /* Need to replace Yugabyte's code with Postgres's implementation. */
@@ -5685,6 +5756,16 @@ executeMetaCommand(CState *st, pg_time_usec_t *now, FailureStatus *failure_statu
 			*failure_status = ANOTHER_FAILURE;
 			return CSTATE_FAILURE;
 		}
+
+		/*
+		 * If we're in prepared-query mode, we need to prepare all the
+		 * commands that are inside the pipeline before we actually start the
+		 * pipeline itself.  This solves the problem that running BEGIN
+		 * ISOLATION LEVEL SERIALIZABLE in a pipeline would fail due to a
+		 * snapshot having been acquired by the prepare within the pipeline.
+		 */
+		if (querymode == QUERY_PREPARED)
+			prepareCommandsInPipeline(st);
 
 		if (PQpipelineStatus(st->con) != PQ_PIPELINE_OFF)
 		{
@@ -6077,7 +6158,7 @@ initCreateTables(PGconn *con, bool use_primary_key)
 		const char *table;		/* table name */
 		const char *smcols;		/* column decls if accountIDs are 32 bits */
 		const char *bigcols;	/* column decls if accountIDs are 64 bits */
-		const char *pkey;     /* optional use primary key for the table */
+		const char *pkey;		/* optional use primary key for the table */
 		int			declare_fillfactor;
 	};
 	static const struct ddlinfo DDLs[] = {
@@ -6092,30 +6173,33 @@ initCreateTables(PGconn *con, bool use_primary_key)
 			"ysql_bench_tellers",
 			"tid int not null,bid int,tbalance int,filler char(84)",
 			"tid int not null,bid int,tbalance int,filler char(84)",
-      ",PRIMARY KEY(tid)",
+			",PRIMARY KEY(tid)",
 			1
 		},
 		{
 			"ysql_bench_accounts",
 			"aid    int not null,bid int,abalance int,filler char(84)",
 			"aid bigint not null,bid int,abalance int,filler char(84)",
-      ",PRIMARY KEY(aid)",
+			",PRIMARY KEY(aid)",
 			1
 		},
 		{
 			"ysql_bench_branches",
 			"bid int not null,bbalance int,filler char(88)",
 			"bid int not null,bbalance int,filler char(88)",
-      ",PRIMARY KEY(bid)",
+			",PRIMARY KEY(bid)",
 			1
 		}
 	};
 	int			i;
 	PQExpBufferData query;
 
-	if (use_primary_key) {
+	if (use_primary_key)
+	{
 		ereport(ELEVEL_LOG_MAIN, (errmsg("creating tables (with primary keys)...\n")));
-	} else {
+	}
+	else
+	{
 		ereport(ELEVEL_LOG_MAIN, (errmsg("creating tables...\n")));
 	}
 
@@ -6190,6 +6274,8 @@ initGenerateDataClientSide(PGconn *con)
 	PGresult   *res;
 	int			i;
 	int64		k;
+	int			chars = 0;
+	int			prev_chars = 0;
 	char	   *copy_statement;
 
 	/* used to track elapsed time and estimate of the remaining time */
@@ -6280,19 +6366,29 @@ initGenerateDataClientSide(PGconn *con)
 			double		elapsed_sec = PG_TIME_GET_DOUBLE(pg_time_now() - start);
 			double		remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
 
-			fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c",
-					j, (int64) naccounts * scale,
-					(int) (((int64) j * 100) / (naccounts * (int64) scale)),
-					elapsed_sec, remaining_sec, eol);
+			chars = fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)",
+							j, (int64) naccounts * scale,
+							(int) (((int64) j * 100) / (naccounts * (int64) scale)),
+							elapsed_sec, remaining_sec);
 
-			/* YB_TODO(neil@yugabyte)
-			 * ereport is no longer used in Pg13
+			/*
+			 * YB_TODO(neil@yugabyte) ereport is no longer used in Pg13
 			 */
 			ereport(ELEVEL_LOG_MAIN,
-					(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c\n",
-					j, (int64) naccounts * scale,
-					(int) (((int64) j * 100) / (naccounts * (int64) scale)),
-							elapsed_sec, remaining_sec, eol)));
+					(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)\n",
+							j, (int64) naccounts * scale,
+							(int) (((int64) j * 100) / (naccounts * (int64) scale)),
+							elapsed_sec, remaining_sec)));
+
+			/*
+			 * If the previous progress message is longer than the current
+			 * one, add spaces to the current line to fully overwrite any
+			 * remaining characters from the previous message.
+			 */
+			if (prev_chars > chars)
+				fprintf(stderr, "%*c", prev_chars - chars, ' ');
+			fputc(eol, stderr);
+			prev_chars = chars;
 		}
 		/* let's not call the timing for each row, but only each 100 rows */
 		else if (use_quiet && (j % 100 == 0))
@@ -6303,16 +6399,26 @@ initGenerateDataClientSide(PGconn *con)
 			/* have we reached the next interval (or end)? */
 			if ((j == scale * naccounts) || (elapsed_sec >= log_interval * LOG_STEP_SECONDS))
 			{
-				fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c",
-						j, (int64) naccounts * scale,
-						(int) (((int64) j * 100) / (naccounts * (int64) scale)), elapsed_sec, remaining_sec, eol);
+				chars = fprintf(stderr, INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)",
+								j, (int64) naccounts * scale,
+								(int) (((int64) j * 100) / (naccounts * (int64) scale)), elapsed_sec, remaining_sec);
 
-				/* YB_TODO(neil@yugabyte)
-				 * ereport is no longer used in Pg13
+				/*
+				 * If the previous progress message is longer than the current
+				 * one, add spaces to the current line to fully overwrite any
+				 * remaining characters from the previous message.
+				 */
+				if (prev_chars > chars)
+					fprintf(stderr, "%*c", prev_chars - chars, ' ');
+				fputc(eol, stderr);
+				prev_chars = chars;
+
+				/*
+				 * YB_TODO(neil@yugabyte) ereport is no longer used in Pg13
 				 */
 				ereport(ELEVEL_LOG_MAIN,
 						(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c\n",
-						j, (int64) naccounts * scale,
+								j, (int64) naccounts * scale,
 								(int) (((int64) j * 100) / (naccounts * (int64) scale)), elapsed_sec, remaining_sec, eol)));
 
 				/* skip to the next interval */
@@ -6337,8 +6443,9 @@ initGenerateDataClientSide(PGconn *con)
 	/* Need to reintro these code into Pg13. */
 	if (j != (int64) naccounts * scale)
 	{
-		/* We would need to begin a new transaction if we have more
-		 * records to be pushed to the database.
+		/*
+		 * We would need to begin a new transaction if we have more records to
+		 * be pushed to the database.
 		 */
 		executeStatement(con, "begin");
 		res = PQexec(con, "copy ysql_bench_accounts from stdin");
@@ -6515,7 +6622,8 @@ runInitSteps(const char *initialize_steps)
 	setup_cancel_handler(NULL);
 	SetCancelConn(con);
 
-	bool use_primary_key = false;
+	bool		use_primary_key = false;
+
 	for (step = initialize_steps; *step != '\0'; step++)
 	{
 		use_primary_key |= (*step == 'p');
@@ -6550,7 +6658,7 @@ runInitSteps(const char *initialize_steps)
 				break;
 			case 'p':
 				op = "primary keys";
-				// handled via 'use_primary_key' in conjunction with 't'
+				/* handled via 'use_primary_key' in conjunction with 't' */
 				break;
 			case 'f':
 				op = "foreign keys";
@@ -6856,6 +6964,7 @@ create_sql_command(PQExpBuffer buf, const char *source)
 	my_command->varprefix = NULL;	/* allocated later, if needed */
 	my_command->expr = NULL;
 	initSimpleStats(&my_command->stats);
+	my_command->prepname = NULL;	/* set later, if needed */
 
 	return my_command;
 }
@@ -6887,6 +6996,7 @@ static void
 postprocess_sql_command(Command *my_command)
 {
 	char		buffer[128];
+	static int	prepnum = 0;
 
 	Assert(my_command->type == SQL_COMMAND);
 
@@ -6895,15 +7005,18 @@ postprocess_sql_command(Command *my_command)
 	buffer[strcspn(buffer, "\n\r")] = '\0';
 	my_command->first_line = pg_strdup(buffer);
 
-	/* parse query if necessary */
+	/* Parse query and generate prepared statement name, if necessary */
 	switch (querymode)
 	{
 		case QUERY_SIMPLE:
 			my_command->argv[0] = my_command->lines.data;
 			my_command->argc++;
 			break;
-		case QUERY_EXTENDED:
 		case QUERY_PREPARED:
+			my_command->prepname = psprintf("P_%d", prepnum++);
+			/* fall through */
+			yb_switch_fallthrough();
+		case QUERY_EXTENDED:
 			if (!parseQuery(my_command))
 				exit(1);
 			break;
@@ -7585,10 +7698,10 @@ printProgressReport(TState *threads, int64 test_start, pg_time_usec_t now,
 	{
 		ysql_bench_metric_entry->failure_count = errors;
 		ysql_bench_metric_entry->success_count = tps;
-		ysql_bench_metric_entry->average_latency = latency*1000;
+		ysql_bench_metric_entry->average_latency = latency * 1000;
 		ysql_bench_metric_entry->failure_count_sum += errors;
 		ysql_bench_metric_entry->success_count_sum += tps;
-		ysql_bench_metric_entry->latency_sum += latency*1000;
+		ysql_bench_metric_entry->latency_sum += latency * 1000;
 	}
 
 	if (throttle_delay)
@@ -8301,6 +8414,7 @@ main(int argc, char **argv)
 			case 10:			/* list */
 				{
 					const BuiltinScript *s = findBuiltin(optarg);
+
 					ereport(ELEVEL_LOG_MAIN,
 							(errmsg("-- %s: %s\n%s\n", s->name, s->desc, s->script)));
 					exit(0);
@@ -8341,7 +8455,7 @@ main(int argc, char **argv)
 				benchmarking_option_set = true;
 				verbose_errors = true;
 				break;
-			case 16:				/* yb-metrics-bind-address */
+			case 16:			/* yb-metrics-bind-address */
 				yb_metrics_bind_address = pg_strdup(optarg);
 				yb_metrics_arg_set = true;
 				break;
@@ -8359,8 +8473,8 @@ main(int argc, char **argv)
 				}
 				yb_metrics_arg_set = true;
 				break;
-			case 18:                                /* yb-connection-init-sql */                
-				yb_connection_init_sql = pg_strdup(optarg);                                 
+			case 18:			/* yb-connection-init-sql */
+				yb_connection_init_sql = pg_strdup(optarg);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -8612,8 +8726,8 @@ main(int argc, char **argv)
 		((uint64) pg_jrand48(base_random_sequence.xseed) & 0xFFFFFFFF) |
 		(((uint64) pg_jrand48(base_random_sequence.xseed) & 0xFFFFFFFF) << 32);
 
-		/* Yugabyte's code use "data" instead of "xseed".
-		 * - Need to fix this.
+		/*
+		 * Yugabyte's code use "data" instead of "xseed". - Need to fix this.
 		 */
 		seed = ((uint64) pg_jrand48(base_random_sequence.data) & 0xFFFFFFFF) |
 			(((uint64) pg_jrand48(base_random_sequence.data) & 0xFFFFFFFF) << 32);
@@ -8747,7 +8861,7 @@ main(int argc, char **argv)
 	initStats(&stats, 0);
 
 	/* Start metrics webserver if any metrics args are set */
-	if(yb_metrics_arg_set)
+	if (yb_metrics_arg_set)
 	{
 		YbInitMetricsWebserver(argv[0]);
 	}
@@ -8866,11 +8980,12 @@ threadRun(void *arg)
 				pg_fatal("could not create connection for client %d",
 						 state[i].id);
 			}
-			else                                                                             
-			{                                                                                
-				if (yb_connection_init_sql != NULL) {                                       
-					executeStatement(state[i].con, yb_connection_init_sql);             
-				}                                                                        
+			else
+			{
+				if (yb_connection_init_sql != NULL)
+				{
+					executeStatement(state[i].con, yb_connection_init_sql);
+				}
 			}
 		}
 	}
@@ -9281,14 +9396,23 @@ clear_socket_set(socket_set *sa)
 static void
 add_socket_to_set(socket_set *sa, int fd, int idx)
 {
+	/* See connect_slot() for background on this code. */
+#ifdef WIN32
+	if (sa->fds.fd_count + 1 >= FD_SETSIZE)
+	{
+		pg_log_error("too many concurrent database clients for this platform: %d",
+					 sa->fds.fd_count + 1);
+		exit(1);
+	}
+#else
 	if (fd < 0 || fd >= FD_SETSIZE)
 	{
-		/*
-		 * Doing a hard exit here is a bit grotty, but it doesn't seem worth
-		 * complicating the API to make it less grotty.
-		 */
-		pg_fatal("too many client connections for select()");
+		pg_log_error("socket file descriptor out of range for select(): %d",
+					 fd);
+		pg_log_error_hint("Try fewer concurrent database clients.");
+		exit(1);
 	}
+#endif
 	FD_SET(fd, &sa->fds);
 	if (fd > sa->maxfd)
 		sa->maxfd = fd;
@@ -9334,9 +9458,9 @@ socket_has_input(socket_set *sa, int fd, int idx)
  */
 static bool
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-errstartImpl(Error error, ErrorLevel elevel)
+errstartImpl(YbError error, YbErrorLevel elevel)
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
-errstartImpl(ErrorLevel elevel)
+errstartImpl(YbErrorLevel elevel)
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
 {
 	bool		start_error_reporting;
@@ -9395,7 +9519,7 @@ errstartImpl(ErrorLevel elevel)
  */
 static int
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-errmsgImpl(Error error, const char *fmt,...)
+errmsgImpl(YbError error, const char *fmt,...)
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
 errmsgImpl(const char *fmt,...)
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
@@ -9430,20 +9554,20 @@ errmsgImpl(const char *fmt,...)
  * Print the appropriate error report to stderr.
  *
  * If elevel is ELEVEL_FATAL or worse, control does not return to the caller.
- * See ErrorLevel enumeration for the error level definitions.
+ * See YbErrorLevel enumeration for the error level definitions.
  *
  * If the error message buffer is empty or broken, prints a corresponding error
  * message and exits the program.
  */
 static void
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
-errfinishImpl(Error error, int dummy,...)
+errfinishImpl(YbError error, int dummy,...)
 #else							/* !(ENABLE_THREAD_SAFETY && HAVE__VA_ARGS) */
 errfinishImpl(int dummy,...)
 #endif							/* ENABLE_THREAD_SAFETY && HAVE__VA_ARGS */
 {
 	bool		error_during_reporting = false;
-	ErrorLevel  elevel;
+	YbErrorLevel elevel;
 
 	Assert(error);
 	elevel = error->elevel;
@@ -9487,7 +9611,7 @@ static void
 YbInitMetricsWebserver(char *prog_name)
 {
 	InitGoogleLogging(prog_name);
-	ysql_bench_metric_entry = (YsqlBenchMetricEntry *) pg_malloc(sizeof(YsqlBenchMetricEntry));
+	ysql_bench_metric_entry = (YbcYsqlBenchMetricEntry *) pg_malloc(sizeof(YbcYsqlBenchMetricEntry));
 	ysql_bench_metric_entry->failure_count = 0;
 	ysql_bench_metric_entry->success_count = 0;
 	ysql_bench_metric_entry->average_latency = 0;
@@ -9496,7 +9620,8 @@ YbInitMetricsWebserver(char *prog_name)
 	ysql_bench_metric_entry->latency_sum = 0;
 	RegisterMetrics(ysql_bench_metric_entry, yb_metrics_bind_address);
 	yb_metrics_webserver = CreateWebserver(yb_metrics_bind_address, yb_metrics_bind_port);
-	int status = StartWebserver(yb_metrics_webserver);
+	int			status = StartWebserver(yb_metrics_webserver);
+
 	if (status)
 	{
 		pg_free(ysql_bench_metric_entry);

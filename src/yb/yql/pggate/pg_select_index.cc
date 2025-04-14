@@ -17,6 +17,7 @@
 
 #include "yb/util/status_format.h"
 
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 
@@ -40,18 +41,20 @@ Status PgSelectIndex::PrepareSubquery(
   return Status::OK();
 }
 
-Result<const std::vector<Slice>*> PgSelectIndex::FetchYbctidBatch() {
+Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
   // Keep reading until we get one batch of ybctids or EOF.
   while (!VERIFY_RESULT(GetNextYbctidBatch())) {
     if (!VERIFY_RESULT(FetchDataFromServer())) {
       // Server returns no more rows.
-      return nullptr;
+      return std::nullopt;
     }
   }
 
   // Got the next batch of ybctids.
   DCHECK(!rowsets_.empty());
-  return &rowsets_.front().ybctids();
+
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
+  return YbctidBatch{rowsets_.front().ybctids(), read_req_->has_is_forward_scan()};
 }
 
 Result<bool> PgSelectIndex::GetNextYbctidBatch() {
@@ -66,10 +69,6 @@ Result<bool> PgSelectIndex::GetNextYbctidBatch() {
   }
 
   return false;
-}
-
-bool PgSelectIndex::KeepOrder() const {
-  return read_req_->has_is_forward_scan();
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(

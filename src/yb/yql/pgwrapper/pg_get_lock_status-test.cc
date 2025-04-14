@@ -668,7 +668,7 @@ TEST_F(PgGetLockStatusTest, TestColocatedWaiterWriteLock) {
 TEST_F(PgGetLockStatusTest, ReceivesWaiterSubtransactionId) {
   const auto table = "foo";
   const auto locked_key = "1";
-  constexpr int kMinTxnAgeSeconds = 1;
+  constexpr int kMinTxnAgeSeconds = 2;
 
   auto blocker_session = ASSERT_RESULT(Init(table, locked_key));
 

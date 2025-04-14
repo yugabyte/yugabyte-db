@@ -46,12 +46,13 @@
 #include "yb/master/sys_catalog-test_base.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 
 using namespace std::literals;
 
@@ -62,11 +63,17 @@ using std::unique_ptr;
 using std::vector;
 
 DECLARE_string(cluster_uuid);
+DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);
 
 namespace yb {
 namespace master {
 
 TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
+  // Multiple masters are created in one process, so there is a chance of the initially suggested
+  // address segment being unavailable (conflicting with another master's segment). Do not DFATAL in
+  // this case as it is expected.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_address_segment_negotiator_dfatal_map_failure) = false;
+
   // Verify that a cluster cannot be created with an invalid uuid.
   ExternalMiniClusterOptions opts;
   opts.num_masters = 1;
@@ -172,7 +179,6 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   // This leaves all three in StartMutation.
   TabletInfoPtr tablet1(CreateUncommittedTablet(table.get(), "123", "a", "b"));
   TabletInfoPtr tablet2(CreateUncommittedTablet(table.get(), "456", "b", "c"));
-  TabletInfoPtr tablet3(CreateUncommittedTablet(table.get(), "789", "c", "d"));
 
   unique_ptr<TestTabletLoader> loader(new TestTabletLoader());
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
@@ -214,11 +220,11 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   }
 
   // Add tablet3 and Update tablet1 and tablet2
+  TabletInfoPtr tablet3;
   {
     std::vector<TabletInfo *> to_add;
     std::vector<TabletInfo *> to_update;
 
-    to_add.push_back(tablet3.get());
     to_update.push_back(tablet1.get());
     to_update.push_back(tablet2.get());
 
@@ -226,6 +232,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     l1.mutable_data()->pb.set_state(SysTabletsEntryPB::REPLACED);
     auto l2 = tablet2->LockForWrite();
     l2.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+
+    tablet3 = CreateUncommittedTablet(table.get(), "789", "c", "d");
+    to_add.push_back(tablet3.get());
 
     loader->Reset();
     ASSERT_OK(sys_catalog_->Upsert(epoch, to_add, to_update));
@@ -842,7 +851,7 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), 0);
 
   // Cleanup tasks.
-  table->AbortTasksAndClose();
+  table->AbortTasksAndClose(/* call_task_finisher */ true);
 }
 
 // Test migration of the TableInfo namespace_name field.

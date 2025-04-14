@@ -1,24 +1,28 @@
 ---
 title: YugabyteDB Anywhere on-premises node provisioning
-headerTitle: Provisioning on-premises nodes
-linkTitle: Provision nodes
+headerTitle: Legacy provisioning
+linkTitle: Legacy provisioning
 description: Software requirements for on-premises provider nodes.
-headContent: How to meet the software prerequisites with fully manual provisioning
+headContent: How to meet the software prerequisites for database nodes
 aliases:
     - /preview/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
   preview_yugabyte-platform:
-    identifier: software-on-prem-3-manual
+    identifier: software-on-prem-4-manual
     parent: software-on-prem
     weight: 10
 type: docs
 ---
 
-{{<tip title="v2.20 and earlier">}}
-For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
-{{</tip>}}
+Legacy provisioning of on-premises nodes is deprecated. Provision your nodes using the [node agent script](../software-on-prem/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../software-on-prem-legacy/" class="nav-link">
+      How to Choose
+    </a>
+  </li>
+
   <li>
     <a href="../software-on-prem-auto/" class="nav-link">
       <i class="fa-regular fa-wand-magic-sparkles"></i>
@@ -71,12 +75,12 @@ For each node VM, perform the following:
 After you have provisioned the nodes, you can proceed to [Add instances to the on-prem provider](../../../configure-yugabyte-platform/on-premises-nodes/#add-instances).
 
 {{<note title="Root-level systemd or cron">}}
-The following instructions use user-level systemd to provide the necessary access to system resources. Versions prior to v2.20 use root-level systemd or cron. If you have previously provisioned nodes for this provider using either root-level systemd or cron, you should use the same steps, as all nodes in a provider need to be provisioned in the same way. For instructions on provisioning using root-level systemd or cron, see the [instructions for v2.18](/v2.18/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
+The following instructions use user-level systemd to provide the necessary access to system resources. Versions prior to v2.20 use root-level systemd or cron. If you have previously provisioned nodes for this provider using either root-level systemd or cron, you should use the same steps, as all nodes in a provider need to be provisioned in the same way. For instructions on provisioning using root-level systemd or cron, see the [instructions for v2.18](https://docs-archive.yugabyte.com/v2.18/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 {{</note>}}
 
 ## Verify the python version installed on the node
 
-Verify that Python 3.5-3.8 is installed on the node. v3.6 is recommended.
+Verify that Python 3.5-3.9 is installed on the node. v3.6 is recommended.
 
 In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
 

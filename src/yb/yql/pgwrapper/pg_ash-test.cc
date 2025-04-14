@@ -57,9 +57,6 @@ class PgAshTest : public LibPqTestBase {
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
-    options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ash_enable_infra,ysql_yb_enable_ash");
-    options->extra_tserver_flags.push_back("--ysql_yb_ash_enable_infra=true");
     options->extra_tserver_flags.push_back("--ysql_yb_enable_ash=true");
     options->extra_tserver_flags.push_back(Format("--ysql_yb_ash_sampling_interval_ms=$0",
         kSamplingIntervalMs));
@@ -74,6 +71,11 @@ class PgAshTest : public LibPqTestBase {
 
 class PgAshSingleNode : public PgAshTest {
  public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back("--replication_factor=1");
+    PgAshTest::UpdateMiniClusterOptions(options);
+  }
+
   int GetNumMasters() const override {
     return 1;
   }
@@ -89,14 +91,13 @@ class PgWaitEventAuxTest : public PgAshSingleNode {
       : rpc_list_(rpc_list) {}
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back("--replication_factor=1");
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
         4 * kTimeMultiplier * kSamplingIntervalMs));
 
     options->extra_tserver_flags.push_back(Format(
         "--TEST_yb_test_wait_event_aux_to_sleep_at_csv=$0", ConvertToCSV(rpc_list_)));
 
-    PgAshTest::UpdateMiniClusterOptions(options);
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
   }
 
  protected:
@@ -115,6 +116,24 @@ class PgWaitEventAuxTest : public PgAshSingleNode {
 
  private:
   const RPCs& rpc_list_;
+};
+
+class PgBgWorkersTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back("--enable_pg_cron=true");
+    options->extra_tserver_flags.push_back("--enable_pg_cron=true");
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=1");
+    options->extra_tserver_flags.push_back(
+    "--allowed_preview_flags_csv=ysql_yb_enable_query_diagnostics");
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_query_diagnostics=true");
+    options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
+        std::to_underlying(ash::WaitStateCode::kCatalogRead)));
+    options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
+        2 * kSamplingIntervalMs));
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+  }
 };
 
 struct Configuration {
@@ -230,6 +249,19 @@ const Configuration kTabletSplitRPCs{
     "--tablet_split_low_phase_shard_count_per_node=2",
     "--tablet_split_low_phase_size_threshold_bytes=0"}};
 
+// Test for RPCs which are related to PG Cron
+const Configuration kPgCronRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kCronGetLastMinute,
+    ash::PggateRPC::kCronSetLastMinute},
+  .tserver_flags = {
+    "--enable_pg_cron=true",
+    "--pg_cron_leadership_refresh_sec=1",
+    "--pg_cron_leader_lease_sec=2",
+    "--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=1"},
+  .master_flags = {
+    "--enable_pg_cron=true"}};
+
 template <const Configuration& Config>
 class ConfigurableTest : public PgWaitEventAuxTest {
  public:
@@ -259,6 +291,7 @@ using PgTransactionWaitEventAux = ConfigurableTest<kTransactionRPCs>;
 using PgMiscWaitEventAux = ConfigurableTest<kMiscRPCs>;
 using PgParallelWaitEventAux = ConfigurableTest<kParallelRPCs>;
 using PgTabletSplitWaitEventAux = ConfigurableTest<kTabletSplitRPCs>;
+using PgCronWaitEventAux = ConfigurableTest<kPgCronRPCs>;
 
 }  // namespace
 
@@ -290,6 +323,28 @@ TEST_F(PgAshTest, NoMemoryLeaks) {
       SleepFor(10ms);
     }
   }
+}
+
+TEST_F(PgAshTest, UniqueRpcRequestId) {
+  const int NumKeys = 100;
+  ASSERT_OK(conn_->Execute("CREATE TABLE bankaccounts (id INT PRIMARY KEY, balance INT)"));
+  ASSERT_OK(conn_->Execute("CREATE INDEX bankaccountsidx ON bankaccounts (id, balance)"));
+  for (size_t i = 0; i < NumKeys; ++i) {
+    ASSERT_OK(conn_->Execute(Format(
+        "INSERT INTO bankaccounts VALUES ($0, $1)", i, i)));
+  }
+  for (size_t i = 0; i < NumKeys; ++i) {
+    ASSERT_OK(conn_->Execute(Format("DELETE FROM bankaccounts WHERE id = $0", i)));
+  }
+  const std::string query =
+      "SELECT count(*) "
+      "FROM yb_active_session_history "
+      "WHERE rpc_request_id IS NOT NULL "
+      "GROUP BY sample_time, rpc_request_id "
+      "ORDER BY count DESC "
+      "LIMIT 1";
+  auto count = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(query));
+  ASSERT_EQ(count, 1);
 }
 
 TEST_F_EX(PgWaitEventAuxTest, NewDatabaseRPCs, PgNewDatabaseWaitEventAux) {
@@ -457,7 +512,6 @@ TEST_F_EX(PgWaitEventAuxTest, ParallelRPCs, PgParallelWaitEventAux) {
   ASSERT_OK(CheckWaitEventAux());
 }
 
-
 TEST_F_EX(PgWaitEventAuxTest, YB_DISABLE_TEST_IN_TSAN(TabletSplitRPCs), PgTabletSplitWaitEventAux) {
   static const std::string kTableName = "test";
   static const std::string kIsGetTablePartitionListRPCFound = Format(
@@ -485,11 +539,28 @@ TEST_F_EX(PgWaitEventAuxTest, YB_DISABLE_TEST_IN_TSAN(TabletSplitRPCs), PgTablet
   ASSERT_OK(CheckWaitEventAux());
 }
 
+TEST_F_EX(PgWaitEventAuxTest, PgCronRPCs, PgCronWaitEventAux) {
+  static constexpr auto kTableName = "test";
+  static constexpr auto kCreatePgCronQuery = "CREATE EXTENSION pg_cron";
+  const auto kInsertQuery = Format("INSERT INTO $0 VALUES (1)", kTableName);
+
+  ASSERT_OK(conn_->Execute(kCreatePgCronQuery));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->FetchFormat("SELECT cron.schedule('job', '1 second', '$0')", kInsertQuery));
+
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_OK(conn_->Execute("DROP EXTENSION pg_cron"));
+  ASSERT_OK(conn_->Execute(kCreatePgCronQuery));
+  SleepFor(65s * kTimeMultiplier);
+
+  ASSERT_OK(CheckWaitEventAux());
+}
+
 TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
   const std::string kPgEventsDesc = "Inherited from PostgreSQL.";
 
   std::unordered_set<std::string> pg_events = {
-      "QueryProcessing",
+      "OnCpu_Active",
       "QueryDiagnosticsMain",
       "YbAshMain",
       "YBParallelScanEmpty",
@@ -499,7 +570,8 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
       "YbAshCircularBuffer",
       "YbAshMetadata",
       "YbQueryDiagnostics",
-      "YbQueryDiagnosticsCircularBuffer"};
+      "YbQueryDiagnosticsCircularBuffer",
+      "YbTerminatedQueries"};
 
   std::unordered_set<std::string> yb_events;
   for (const auto& code : ash::WaitStateCodeList()) {
@@ -528,6 +600,160 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
 
   ASSERT_TRUE(pg_events.empty());
   ASSERT_TRUE(yb_events.empty());
+}
+
+TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
+  static constexpr auto kColocatedDB = "cdb";
+  static constexpr auto kTableName = "test";
+  static const auto kInsertQuery =
+      Format("INSERT INTO $0 VALUES (generate_series(1, 10))", kTableName);
+  std::unordered_set<std::string> bg_workers = {
+      "pg_cron",
+      "pg_cron launcher",
+      "parallel worker",
+      "yb_query_diagnostics database connection bgworker"};
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = TRUE", kColocatedDB));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()]() {
+    auto conn = ASSERT_RESULT(ConnectToDB(kColocatedDB));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+    ASSERT_OK(conn.Execute(kInsertQuery));
+    // Encourage use of parallel plans
+    ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 1"));
+    ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
+    ASSERT_OK(conn.Execute("SET parallel_setup_cost = 0"));
+    ASSERT_OK(conn.Execute("SET parallel_tuple_cost = 0"));
+
+    while (!stop) {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
+      SleepFor(100ms * kTimeMultiplier);
+    }
+  });
+
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION pg_cron"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->FetchFormat("SELECT cron.schedule('job', '1 second', '$0')",
+      "SELECT pg_sleep(1000)"));
+
+  // start query diagnostics
+  ASSERT_OK(conn_->Execute(kInsertQuery));
+  const auto cur_dbid = ASSERT_RESULT(conn_->FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto insert_query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO $0%' "
+      "AND dbid = $1", kTableName, cur_dbid)));
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT yb_query_diagnostics(query_id => $0, diagnostics_interval_sec => 10)",
+      insert_query_id));
+
+  for (int iterations = 0; iterations < 100; ++iterations) {
+    ASSERT_OK(conn_->Execute(kInsertQuery));
+  }
+
+  std::set<std::pair<int32_t, std::string>> pid_with_backend_type;
+
+  ASSERT_OK(WaitFor([this, &pid_with_backend_type, &bg_workers]() -> Result<bool> {
+    auto rows = VERIFY_RESULT((conn_->FetchRows<int32_t, std::string>(
+        "SELECT pid, backend_type FROM pg_stat_activity")));
+    for (const auto& [pid, backend_type] : rows) {
+      if (bg_workers.contains(backend_type)) {
+        pid_with_backend_type.insert(std::make_pair(pid, backend_type));
+        bg_workers.erase(backend_type);
+      }
+    }
+    return bg_workers.empty();
+  }, 30s, "Wait for pg bg workers",
+      MonoDelta::FromMilliseconds(kSamplingIntervalMs), 1,
+      MonoDelta::FromMilliseconds(kSamplingIntervalMs)));
+
+  for (const auto& [pid, backend_type] : pid_with_backend_type) {
+    auto pid_count = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history WHERE pid = $0", pid)));
+    ASSERT_GE(pid_count, 1);
+  }
+}
+
+TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
+  std::unordered_set<std::string> pg_idle_wait_events = {
+      "Extension",
+      "QueryDiagnosticsMain"};
+
+  // start pg cron launcher process
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION pg_cron"));
+
+  // Let the ASH collector collect some wait events
+  SleepFor(1min);
+
+  const auto wait_events = ASSERT_RESULT(conn_->FetchRows<std::string>(
+      "SELECT DISTINCT(wait_event) FROM yb_active_session_history"));
+
+  for (const auto& wait_event : wait_events) {
+    ASSERT_EQ(pg_idle_wait_events.contains(wait_event), false);
+  }
+}
+
+TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
+  constexpr auto kDefaultQueryId = 5;
+  constexpr auto kBgWorkerQueryId = 7;
+  constexpr auto kTableName = "test_table";
+  const auto insert_query = Format(
+      "INSERT INTO $0 VALUES (1)", kTableName);
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->Execute(insert_query));
+
+  const auto queryid = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT%'"));
+
+  // start the query diagnostics worker for a random query id
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT yb_query_diagnostics(query_id => $0, "
+      "diagnostics_interval_sec => 10)", queryid));
+
+  // keep executing insert query
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &insert_query]() {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop) {
+      ASSERT_OK(conn.Execute(insert_query));
+      SleepFor(30ms);
+    }
+  });
+
+  int pid = 0;
+
+  ASSERT_OK(WaitFor([this, &pid]() -> Result<bool> {
+    auto rows = VERIFY_RESULT((conn_->FetchRows<int32_t>(
+        "SELECT pid FROM pg_stat_activity WHERE backend_type = "
+        "'yb_query_diagnostics database connection bgworker'")));
+    if (!rows.empty()) {
+      pid = rows[0];
+      return true;
+    }
+    return false;
+  }, 30s, "Wait for query diagnostics bg worker"));
+
+  ASSERT_NE(pid, 0);
+
+  // wait for ASH samples
+  SleepFor(10s);
+
+  constexpr auto kQueryString =
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE "
+      "pid = $0 AND query_id = $1";
+
+  const auto default_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kDefaultQueryId)));
+
+  ASSERT_EQ(default_query_id_cnt, 0);
+
+  const auto bgworker_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kBgWorkerQueryId)));
+
+  ASSERT_GE(bgworker_query_id_cnt, 1);
 }
 
 }  // namespace yb::pgwrapper

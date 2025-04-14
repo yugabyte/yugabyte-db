@@ -126,23 +126,44 @@ bool PerTableLoadState::LeaderLoadComparator::operator()(
   return a_load < b_load;
 }
 
-bool PerTableLoadState::CompareByUuid(const TabletServerId& a, const TabletServerId& b) {
+bool PerTableLoadState::CompareLoad(
+    const TabletServerId& a, const TabletServerId& b, optional_ref<const TabletId> tablet_id) {
   auto load_a = GetLoad(a);
   auto load_b = GetLoad(b);
-  if (load_a == load_b) {
-    // Use global load as a heuristic to help break ties.
-    load_a = global_state_->GetGlobalLoad(a);
-    load_b = global_state_->GetGlobalLoad(b);
-    if (load_a == load_b) {
-      return a < b;
+  if (load_a != load_b) {
+    return load_a < load_b;
+  }
+  if (tablet_id) {
+    load_a = GetTabletDriveLoad(a, *tablet_id);
+    load_b = GetTabletDriveLoad(b, *tablet_id);
+    if (load_a != load_b) {
+      return load_a < load_b;
     }
   }
-  return load_a < load_b;
+  // Use global load as a heuristic to help break ties.
+  load_a = global_state_->GetGlobalLoad(a);
+  load_b = global_state_->GetGlobalLoad(b);
+  if (load_a != load_b) {
+    return load_a < load_b;
+  }
+  return a < b;
 }
 
 size_t PerTableLoadState::GetLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_meta_.at(ts_uuid);
   return ts_meta.starting_tablets.size() + ts_meta.running_tablets.size();
+}
+
+size_t PerTableLoadState::GetTabletDriveLoad(
+    const TabletServerId& ts_uuid, const TabletId& tablet_id) const {
+  const auto& ts_meta = per_ts_meta_.at(ts_uuid);
+  for (const auto& [_, tablets] : ts_meta.path_to_tablets) {
+    if (tablets.contains(tablet_id)) {
+      return tablets.size();
+    }
+  }
+  LOG(DFATAL) << "Did not find tablet " << tablet_id << " on tserver " << ts_uuid;
+  return 0;
 }
 
 size_t PerTableLoadState::GetLeaderLoad(const TabletServerId& ts_uuid) const {
@@ -189,11 +210,6 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   const auto& tablet_id = tablet->id();
   // Set the per-tablet entry to empty default and get the reference for filling up information.
   auto& tablet_meta = per_tablet_meta_[tablet_id];
-
-  // Get the placement for this tablet.
-  const auto& placement = placement_by_table_[tablet->table()->id()];
-  VLOG(3) << "Placement policy for tablet " << tablet->tablet_id()
-          << ": " << placement.ShortDebugString();
 
   // Get replicas for this tablet.
   auto replica_map = tablet->GetReplicaLocations();
@@ -297,8 +313,8 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   }
 
   // Only set the over-replication section if we need to.
-  size_t placement_num_replicas = placement.num_replicas() > 0 ?
-      placement.num_replicas() : FLAGS_replication_factor;
+  size_t placement_num_replicas = placement_.num_replicas() > 0 ?
+      placement_.num_replicas() : FLAGS_replication_factor;
   tablet_meta.is_over_replicated = placement_num_replicas < replica_size;
   tablet_meta.is_under_replicated = placement_num_replicas > replica_size;
   if (VLOG_IS_ON(3)) {
@@ -314,7 +330,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   // use that as a marker that we are in this situation.
   //
   // For over-replication, we just add all the ts_uuids as candidates.
-  if (placement.placement_blocks().empty()) {
+  if (placement_.placement_blocks().empty()) {
     VLOG(3) << "Tablet " << tablet->tablet_id() << " does not have custom placement";
     if (tablet_meta.is_over_replicated) {
       for (auto& replica_entry : *replica_map) {
@@ -334,7 +350,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
         placement_to_replicas;
     std::unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
     // Preset the min_replicas, so we know if we're missing replicas somewhere as well.
-    for (const auto& pb : placement.placement_blocks()) {
+    for (const auto& pb : placement_.placement_blocks()) {
       // Default empty vector.
       placement_to_replicas[pb.cloud_info()];
       placement_to_min_replicas[pb.cloud_info()] = pb.min_num_replicas();
@@ -345,7 +361,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
         continue;
       }
 
-      auto ci = GetValidPlacement(ts_uuid, &placement);
+      auto ci = GetValidPlacement(ts_uuid);
       if (ci.has_value()) {
         placement_to_replicas[*ci].emplace_back(ts_uuid, &replica);
       } else {
@@ -496,7 +512,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
 }
 
 Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
-    const TabletId& tablet_id, const TabletServerId& to_ts, const PlacementInfoPB* placement_info) {
+    const TabletId& tablet_id, const TabletServerId& to_ts) {
   const auto& ts_meta = per_ts_meta_[to_ts];
 
   // If this server is deemed DEAD then don't add it.
@@ -525,7 +541,7 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
 
   // If we ask to use placement information, check against it.
-  if (placement_info && !GetValidPlacement(to_ts, placement_info).has_value()) {
+  if (placement_.placement_blocks_size() > 0 && !GetValidPlacement(to_ts).has_value()) {
     YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 4) << "tablet server " << to_ts << " has placement info "
         << "incompatible with tablet " << tablet_id << ". Not allowing it to host this tablet.";
     return false;
@@ -550,10 +566,9 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   return true;
 }
 
-boost::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(
-    const TabletServerId& ts_uuid, const PlacementInfoPB* placement_info) {
-  if (!placement_info->placement_blocks().empty()) {
-    for (const auto& pb : placement_info->placement_blocks()) {
+std::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(const TabletServerId& ts_uuid) {
+  if (!placement_.placement_blocks().empty()) {
+    for (const auto& pb : placement_.placement_blocks()) {
       if (per_ts_meta_[ts_uuid].descriptor->MatchesCloudInfo(pb.cloud_info())) {
         VLOG(4) << "Found matching placement for ts " << ts_uuid
                 << ", placement: " << pb.cloud_info().ShortDebugString();
@@ -561,7 +576,7 @@ boost::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(
       }
     }
     VLOG(4) << "Found no matching placement for ts " << ts_uuid;
-    return boost::none;
+    return std::nullopt;
   }
   // Return the cloudInfoPB of TS if no placement policy is specified
   VLOG(4) << "No placement policy is specified so returning default cloud info of ts"
@@ -571,8 +586,7 @@ boost::optional<CloudInfoPB> PerTableLoadState::GetValidPlacement(
 }
 
 Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
-    const TabletId& tablet_id, const PlacementInfoPB& placement_info, TabletServerId* out_from_ts,
-    TabletServerId* out_to_ts) {
+    const TabletId& tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   // We consider both invalid placements (potentially due to config or schema changes) and
   // blacklisted servers as wrong placement.
   const auto& tablet_meta = per_tablet_meta_[tablet_id];
@@ -593,12 +607,12 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       // just try to move the load to the same placement. However, if the from_uuid was
       // previously invalidly placed, then we should ignore its placement.
       if (invalid_placement &&
-          VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info))) {
+          VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
         VLOG(3) << "Found destination " << to_uuid << " where replica can be added"
                 << ". Blacklisted tserver is also in an invalid placement";
         found_match = true;
       } else {
-        if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info))) {
+        if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
           // If we have placement information, we want to only pick the tablet if it's moving
           // to the same placement, so we guarantee we're keeping the same type of distribution.
           // Since we allow prefixes as well, we can still respect the placement of this tablet
@@ -609,8 +623,8 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
           // Note that we've assumed that for every TS there is a unique placement block
           // to which it can be mapped (see the validation rules in yb_admin-client).
           // If there is no unique placement block then it is simply the C.R.Z of the TS itself.
-          auto ci_from_ts = GetValidPlacement(from_uuid, &placement_info);
-          auto ci_to_ts = GetValidPlacement(to_uuid, &placement_info);
+          auto ci_from_ts = GetValidPlacement(from_uuid);
+          auto ci_to_ts = GetValidPlacement(to_uuid);
           if (ci_to_ts.has_value() && ci_from_ts.has_value() &&
               TSDescriptor::generate_placement_id(*ci_from_ts) ==
                   TSDescriptor::generate_placement_id(*ci_to_ts)) {
@@ -661,7 +675,7 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       VLOG(3) << out.str();
     }
     for (const auto& to_uuid : sorted_load_) {
-      if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info))) {
+      if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
         *out_from_ts = *tablet_meta.wrong_placement_tablet_servers.begin();
         *out_to_ts = to_uuid;
         VLOG(3) << "Found " << to_uuid << " for tablet " << tablet_id << " source "
@@ -709,8 +723,7 @@ Status PerTableLoadState::RemoveReplica(const TabletId& tablet_id, const TabletS
 }
 
 void PerTableLoadState::SortLoad() {
-  auto comparator = Comparator(this);
-  sort(sorted_load_.begin(), sorted_load_.end(), comparator);
+  sort(sorted_load_.begin(), sorted_load_.end(), LoadComparator(this, std::nullopt));
 
   if (global_state_->drive_aware_) {
     SortDriveLoad();
@@ -917,7 +930,7 @@ Status PerTableLoadState::AddStartingTablet(
     ++global_state_->total_starting_tablets_;
     ++per_tablet_meta_[tablet_id].starting;
     // If we are initializing, tablets_missing_replicas_ is not initialized yet, but
-    // UpdateTabletInfo will add the tablet to the over-replicated map if required.
+    // state_->UpdateTablet will add the tablet to the over-replicated map if required.
     // If we have already initialized and the tablet wasn't over replicated before the
     // add, it's over replicated now.
     if (initialized_ && tablets_missing_replicas_.count(tablet_id) == 0) {

@@ -20,7 +20,7 @@ Automatically generated certificates are named using the following convention:
 yb-environment-universe_name
 ```
 
-where *environment* is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and *universe_name* is the provided universe name.
+where _environment_ is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and _universe_name_ is the provided universe name.
 
 YugabyteDB Anywhere generates the root CA certificate, root private key, and node-level certificates (assuming node-to-node or client-to-node encryption is enabled), and then provisions those artifacts to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node:
 
@@ -31,6 +31,8 @@ YugabyteDB Anywhere generates the root CA certificate, root private key, and nod
 YugabyteDB Anywhere retains the root certificate and the root private key for all interactions with the cluster.
 
 To view the certificate details, navigate to **Integrations > Security > Encryption in Transit** and click **Show details**.
+
+Note that automatically generated certificates must be [manually rotated](../rotate-certificates/).
 
 ## Customize the organization name in self-signed certificates
 

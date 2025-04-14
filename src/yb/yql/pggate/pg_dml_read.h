@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -57,6 +58,12 @@ namespace yb::pggate {
 
 class PgDmlRead : public PgDml {
  public:
+  Status AppendColumnRef(PgColumnRef* colref, bool is_for_secondary_index) override;
+
+  // Append a filter condition.
+  // Supported expression kind is serialized Postgres expression.
+  Status AppendQual(PgExpr* qual, bool is_for_secondary_index);
+
   // Allocate binds.
   virtual void PrepareBinds();
 
@@ -91,21 +98,22 @@ class PgDmlRead : public PgDml {
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.
   Status AddRowLowerBound(
-      YBCPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
+      YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
 
   // Add an upper bound to the scan. If an upper bound has already been added
   // this call will set the upper bound to the stricter of the two bounds.
   Status AddRowUpperBound(
-      YBCPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
+      YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
 
   // Execute.
-  virtual Status Exec(const PgExecParameters* exec_params);
-  Status SetRequestedYbctids(const std::vector<Slice>* ybctids);
-  Status RetrieveYbctidsFromSecondaryIndex(
-      const PgExecParameters* exec_params, std::vector<Slice>* ybctids, bool* exceeded_work_mem);
+  Status Exec(const YbcPgExecParameters* exec_params);
+  void SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids);
+  void SetHoldingRequestedYbctids(const std::vector<Slice>& ybctids);
 
-  Status ANNBindVector(int vec_att_no, PgExpr* vector);
+  Status ANNBindVector(PgExpr* vector);
   Status ANNSetPrefetchSize(int32_t prefetch_size);
+
+  Status HnswSetReadOptions(int ef_search);
 
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) override {
     DoSetCatalogCacheVersion(read_req_.get(), db_oid, version);
@@ -119,6 +127,8 @@ class PgDmlRead : public PgDml {
 
   [[nodiscard]] bool IsIndexOrderedScan() const;
 
+  [[nodiscard]] virtual bool IsPgSelectIndex() const { return false; }
+
  protected:
   explicit PgDmlRead(const PgSession::ScopedRefPtr& pg_session);
 
@@ -130,15 +140,6 @@ class PgDmlRead : public PgDml {
   // Allocate protobuf for target.
   LWPgsqlExpressionPB* AllocTargetPB() override;
 
-  // Allocate protobuf for a qual in the read request's where_clauses list.
-  LWPgsqlExpressionPB* AllocQualPB() override;
-
-  // Allocate protobuf for a column reference in the read request's col_refs list.
-  LWPgsqlColRefPB* AllocColRefPB() override;
-
-  // Clear the read request's col_refs list.
-  void ClearColRefPBs() override;
-
   // Allocate column expression.
   LWPgsqlExpressionPB* AllocColumnAssignPB(PgColumn* col) override;
 
@@ -149,18 +150,22 @@ class PgDmlRead : public PgDml {
   std::shared_ptr<LWPgsqlReadRequestPB> read_req_;
 
  private:
+  [[nodiscard]] bool ActualValueForIsForSecondaryIndexArg(
+      bool is_for_secondary_index) const;
+
+  [[nodiscard]] ArenaList<LWPgsqlColRefPB>& ColRefPBs() override;
+
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   [[nodiscard]] bool IsConcreteRowRead() const;
   Status ProcessEmptyPrimaryBinds();
   [[nodiscard]] bool IsAllPrimaryKeysBound() const;
-  Result<std::vector<Slice>> BuildYbctidsFromPrimaryBinds();
+  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromPrimaryBinds();
 
-  Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params,
-                                           const std::vector<Slice>& ybctids);
+  Status SubstitutePrimaryBindsWithYbctids();
   Result<dockv::DocKey> EncodeRowKeyForBound(
-      YBCPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
+      YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
 
-  Status InitDocOp();
+  Status InitDocOp(const YbcPgExecParameters* params);
 
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.

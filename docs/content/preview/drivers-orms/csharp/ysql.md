@@ -81,14 +81,14 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| Host      | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
-| Port      |  Listen port for YSQL | 5433
-| Database  | Database name | yugabyte
-| Username  | User connecting to the database | yugabyte
-| Password  | Password for the user | yugabyte
-| Load Balance Hosts | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | False |
+| Host      | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost |
+| Port      |  Listen port for YSQL | 5433 |
+| Database  | Database name | yugabyte |
+| Username  | User connecting to the database | yugabyte |
+| Password  | Password for the user | yugabyte |
+| Load Balance Hosts | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | False |
 | YB Servers Refresh Interval | If Load Balance Hosts is true, the interval in seconds to refresh the servers list | 300 |
-| Topology Keys | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | Null |
+| Topology Keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | Null |
 
 {{< note title ="Note" >}}
 The behaviour of `Load Balance Hosts` is different in YugabyteDB Npgsql Smart Driver as compared to the upstream driver. The upstream driver balances connections on the list of hosts provided in the `Host` property, whereas the smart driver balances the connections on the list of servers returned by the `yb_servers()` function.
@@ -134,7 +134,7 @@ The YugabyteDB Npgsql smart driver support for SSL is the same as for the upstre
 
 ### Step 3 : Write your application
 
-Copy the following code to the `Program.cs` file to set up YugbyteDB tables and query the table contents from the C# client. Replace the connection string `connStringBuilder` with the credentials of your cluster, and SSL certificates if required.
+Copy the following code to the `Program.cs` file to set up YugabyteDB tables and query the table contents from the C# client. Replace the connection string `connStringBuilder` with the credentials of your cluster, and SSL certificates if required.
 
 ```csharp
 using System;

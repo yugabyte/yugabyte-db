@@ -23,7 +23,7 @@ YRPC_GENERATE(
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
-        DEPS protobuf yb_common_proto
+        DEPS protobuf yb_common_proto dockv_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
@@ -38,35 +38,39 @@ set(DOCDB_SRCS
         deadline_info.cc
         deadlock_detector.cc
         doc_boundary_values_extractor.cc
-        docdb.cc
-        docdb_debug.cc
-        docdb_filter_policy.cc
-        docdb_pgapi.cc
-        docdb_statistics.cc
-        docdb_util.cc
-        docdb_compaction_context.cc
-        docdb_compaction_filter_intents.cc
-        docdb-internal.cc
-        doc_reader.cc
-        doc_reader_redis.cc
-        docdb_rocksdb_util.cc
         doc_expr.cc
         doc_pg_expr.cc
         doc_pgsql_scanspec.cc
+        doc_ql_filefilter.cc
         doc_ql_scanspec.cc
         doc_read_context.cc
+        doc_reader.cc
+        doc_reader_redis.cc
         doc_rowwise_iterator_base.cc
         doc_rowwise_iterator.cc
+        doc_vector_index.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
-        doc_ql_filefilter.cc
+        docdb.cc
+        docdb_compaction_context.cc
+        docdb_compaction_filter_intents.cc
+        docdb_debug.cc
+        docdb_filter_policy.cc
+        docdb_pgapi.cc
+        docdb_rocksdb_util.cc
+        docdb_statistics.cc
+        docdb_util.cc
+        docdb-internal.cc
         compaction_file_filter.cc
         intent_aware_iterator.cc
         intent_iterator.cc
         iter_util.cc
         key_bounds.cc
         kv_debug.cc
+        local_waiting_txn_registry.cc
         lock_batch.cc
+        lock_util.cc
+        object_lock_manager.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc
@@ -76,8 +80,6 @@ set(DOCDB_SRCS
         shared_lock_manager.cc
         transaction_dump.cc
         transaction_status_cache.cc
-        local_waiting_txn_registry.cc
-        vector_index.cc
         wait_queue.cc
         )
 
@@ -136,7 +138,7 @@ ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docdb-ttl-test)
 ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
-ADD_YB_TEST(external_intents_batch_writer-test)
+ADD_YB_TEST(non_transactional_batch_writer-test)
 ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)
@@ -144,6 +146,7 @@ ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
 ADD_YB_TEST(usearch_vector_index-test)
+ADD_YB_TEST(advisory_lock_doc_operation-test)
 
 if(YB_BUILD_FUZZ_TARGETS)
   # A library with common code shared between DocDB fuzz tests.

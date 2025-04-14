@@ -41,7 +41,6 @@
 #include "commands/progress.h"
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
-#include "commands/ybccmds.h"
 #include "miscadmin.h"
 #include "optimizer/optimizer.h"
 #include "pgstat.h"
@@ -59,8 +58,9 @@
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_constraint.h"
+#include "commands/yb_cmds.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/planner.h"
 
@@ -661,7 +661,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 							   accessMethod,
 							   relpersistence,
 							   AccessExclusiveLock,
-							   true /* yb_copy_split_options */);
+							   true /* yb_copy_split_options */ );
 
 	/* Copy the heap data into the new table in the desired order */
 	copy_table_data(OIDNewHeap, tableOid, indexOid, verbose,
@@ -675,7 +675,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 					 swap_toast_by_content, false, true,
 					 frozenXid, cutoffMulti,
 					 relpersistence,
-					 true /* yb_copy_split_options */);
+					 true /* yb_copy_split_options */ );
 }
 
 
@@ -748,7 +748,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	OIDNewHeap = heap_create_with_catalog(NewHeapName,
 										  namespaceid,
 										  NewTableSpace,
-										  InvalidOid, /* reltablegroup */
+										  InvalidOid,	/* reltablegroup */
 										  InvalidOid,
 										  InvalidOid,
 										  InvalidOid,
@@ -773,7 +773,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
 		YbRelationSetNewRelfileNode(OldHeap, OIDNewHeap,
 									yb_copy_split_options,
-									false /* is_truncate */);
+									false /* is_truncate */ );
 
 	ReleaseSysCache(tuple);
 
@@ -1081,6 +1081,8 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 				relfilenode2;
 	Oid			swaptemp;
 	char		swptmpchr;
+	Oid			relam1,
+				relam2;
 
 	/* We need writable copies of both pg_class tuples. */
 	relRelation = table_open(RelationRelationId, RowExclusiveLock);
@@ -1097,6 +1099,8 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 
 	relfilenode1 = relform1->relfilenode;
 	relfilenode2 = relform2->relfilenode;
+	relam1 = relform1->relam;
+	relam2 = relform2->relam;
 
 	if (OidIsValid(relfilenode1) && OidIsValid(relfilenode2))
 	{
@@ -1277,6 +1281,31 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 		/* no update ... but we do still need relcache inval */
 		CacheInvalidateRelcacheByTuple(reltup1);
 		CacheInvalidateRelcacheByTuple(reltup2);
+	}
+
+	/*
+	 * Now that pg_class has been updated with its relevant information for
+	 * the swap, update the dependency of the relations to point to their new
+	 * table AM, if it has changed.
+	 */
+	if (relam1 != relam2)
+	{
+		if (changeDependencyFor(RelationRelationId,
+								r1,
+								AccessMethodRelationId,
+								relam1,
+								relam2) != 1)
+			elog(ERROR, "failed to change access method dependency for relation \"%s.%s\"",
+				 get_namespace_name(get_rel_namespace(r1)),
+				 get_rel_name(r1));
+		if (changeDependencyFor(RelationRelationId,
+								r2,
+								AccessMethodRelationId,
+								relam2,
+								relam1) != 1)
+			elog(ERROR, "failed to change access method dependency for relation \"%s.%s\"",
+				 get_namespace_name(get_rel_namespace(r2)),
+				 get_rel_name(r2));
 	}
 
 	/*
@@ -1515,7 +1544,7 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 								 PROGRESS_CLUSTER_PHASE_REBUILD_INDEX);
 
 	reindex_relation(OIDOldHeap, reindex_flags, &reindex_params,
-					 true /* is_yb_table_rewrite */,
+					 true /* is_yb_table_rewrite */ ,
 					 yb_copy_split_options);
 
 	/* Report that we are now doing clean up */

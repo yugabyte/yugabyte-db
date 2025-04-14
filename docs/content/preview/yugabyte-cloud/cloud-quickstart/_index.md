@@ -4,7 +4,6 @@ headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Sign up for YugabyteDB Aeon and create a free Sandbox cluster
 description: Get started using YugabyteDB Aeon in less than five minutes.
-image: /images/section_icons/index/quick_start.png
 layout: single
 type: docs
 menu:
@@ -27,7 +26,7 @@ The first time you log in, YugabyteDB Aeon provides a welcome experience with a 
 - Load sample data and run queries
 - Explore a sample application
 
-<!-- Following sections are duplicated in quick-start-yugabytdb-managed -->
+<!-- Following sections are duplicated in quick-start-yugabytedb-managed -->
 
 ### What's next
 
@@ -98,7 +97,7 @@ To connect to your cluster, do the following:
     The shell prompt appears and is ready to use.
 
     ```output
-    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
     SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
     Type "help" for help.
 
@@ -129,4 +128,4 @@ Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
-{{< readfile "../../quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+{{< readfile "/preview/tutorials/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}

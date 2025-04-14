@@ -33,8 +33,10 @@
 #include "utils/resowner_private.h"
 #include "utils/snapmgr.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
+
 
 /*
  * All resource IDs managed by this code are required to fit into a Datum,
@@ -592,8 +594,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		/* Ditto for ybinheritsrefarr */
 		while (ResourceArrayGetAny(&owner->ybinheritsrefarr, &foundres))
 		{
-			YbPgInheritsCacheEntry entry =
-				(YbPgInheritsCacheEntry) DatumGetPointer(foundres);
+			YbPgInheritsCacheEntry entry = (YbPgInheritsCacheEntry) DatumGetPointer(foundres);
 
 			if (isCommit)
 				PrintYbPgInheritsCacheLeakWarning(entry);
@@ -1172,6 +1173,7 @@ ResourceOwnerRememberYbPgInheritsRef(ResourceOwner owner,
 	ResourceArrayAdd(&owner->ybinheritsrefarr, PointerGetDatum(entry));
 }
 
+
 /*
  * Forget that a YbPgInherits cache reference is owned by a ResourceOwner
  */
@@ -1181,8 +1183,9 @@ ResourceOwnerForgetYbPgInheritsRef(ResourceOwner owner,
 {
 	if (!ResourceArrayRemove(&owner->ybinheritsrefarr, PointerGetDatum(entry)))
 		elog(ERROR, "YbPgInheritsCache entry %d is not owned by resource owner %s",
-			 entry->parentOid, owner->name);
+			 entry->oid, owner->name);
 }
+
 
 /*
  * Debugging subroutine
@@ -1197,8 +1200,9 @@ PrintRelCacheLeakWarning(Relation rel)
 static void
 PrintYbPgInheritsCacheLeakWarning(YbPgInheritsCacheEntry entry)
 {
-	elog(WARNING, "YbPgInheritsCache reference leak: Entry for oid \"%d\" not "
- 				  "released", entry->parentOid);
+	elog(WARNING,
+		 "YbPgInheritsCache reference leak: Entry for oid \"%d\" not released",
+		 entry->oid);
 }
 
 /*

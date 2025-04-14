@@ -24,18 +24,15 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
-
 #include "access/genam.h"
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
-#include "c.h"
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_type.h"
 #include "catalog/yb_type.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "pg_yb_utils.h"
@@ -43,6 +40,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "ybvector.h"
 
 typedef struct {
 	/* Settings */
@@ -66,26 +64,27 @@ typedef struct {
  * Binds vector index option during creation.
  */
 void
-bindVectorIndexOptions(YBCPgStatement handle,
+bindVectorIndexOptions(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   YbPgVectorIdxType ybpg_idx_type)
+					   YbcPgVectorIdxType ybpg_idx_type,
+					   YbcPgVectorDistType dist_type)
 {
-	YbPgVectorIdxOptions options;
+	YbcPgVectorIdxOptions options;
 	options.idx_type = ybpg_idx_type;
-
-	/*
-	 * Hardcoded for now.
-	 * TODO(tanuj): Pass down distance info from the used distance opclass.
-	 */
-	options.dist_type = YB_VEC_DIST_L2;
+	options.dist_type = dist_type;
 
 	/* We only support indexes with one vector attribute for now. */
 	Assert(indexTupleDesc->natts == 1);
 
 	/* Assuming vector is the first att */;
-	options.dimensions = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
-	Assert(options.dimensions > 0);
+	int dims = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
+	if (dims < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("column does not have dimensions")));
+
+	options.dimensions = dims;
 	options.attnum = indexInfo->ii_IndexAttrNumbers[0];
 
 	YBCPgCreateIndexSetVectorOptions(handle, &options);
@@ -96,7 +95,7 @@ bindVectorIndexOptions(YBCPgStatement handle,
  * Copied from ybginwrite.c.
  */
 static void
-doBindsForIdx(YBCPgStatement stmt,
+doBindsForIdx(YbcPgStatement stmt,
 			  void *indexstate,
 			  Relation index,
 			  Datum *values,
@@ -144,7 +143,7 @@ doBindsForIdx(YBCPgStatement stmt,
  * ybginwrite.c.
  */
 static void
-doBindsForIdxWrite(YBCPgStatement stmt,
+doBindsForIdxWrite(YbcPgStatement stmt,
 				   void *indexstate,
 				   Relation index,
 				   Datum *values,
@@ -162,7 +161,7 @@ doBindsForIdxWrite(YBCPgStatement stmt,
  * ybginwrite.c.
  */
 static void
-doBindsForIdxDelete(YBCPgStatement stmt,
+doBindsForIdxDelete(YbcPgStatement stmt,
 				   void *indexstate,
 				   Relation index,
 				   Datum *values,
@@ -267,7 +266,9 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	/* Require column to have dimensions to be indexed */
 	if (buildstate->dimensions < 0)
-		elog(ERROR, "column does not have dimensions");
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("column does not have dimensions")));
 
 	buildstate->reltuples = 0;
 	buildstate->indtuples = 0;
@@ -278,7 +279,7 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	buildstate->collation = index->rd_indcollation[0];
 
-	buildstate->tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	buildstate->tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
 											   "ann build temporary context",
 											   ALLOCSET_DEFAULT_SIZES);
 }
@@ -352,7 +353,7 @@ ybvectorWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 		MemoryContextSwitchTo(oldCtx);
 	}
 
-	writeCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	writeCtx = AllocSetContextCreate(CurrentMemoryContext,
 									 "Ybvector write temporary context",
 									 ALLOCSET_DEFAULT_SIZES);
 
@@ -426,4 +427,39 @@ ybvectorbackfill(Relation heap, Relation index, struct IndexInfo *indexInfo,
 			  struct YbBackfillInfo *bfinfo, struct YbPgExecOutParam *bfresult)
 {
 	return ybvectorBuildCommon(heap, index, indexInfo, bfinfo, bfresult);
+}
+
+bool
+ybvectorcopartitionedinsert(Relation index, Datum *values, bool *isnull,
+							Datum ybctid, Relation heap,
+							IndexUniqueCheck checkUnique,
+							struct IndexInfo *indexInfo,
+							bool shared_insert)
+{
+	return false;
+}
+
+void
+ybvectorcopartitioneddelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
+			Relation heap, struct IndexInfo *indexInfo)
+{
+}
+
+IndexBuildResult *
+ybvectorcopartitionedbackfill(Relation heap, Relation index, struct IndexInfo *indexInfo,
+			  struct YbBackfillInfo *bfinfo, struct YbPgExecOutParam *bfresult)
+{
+	/* No backfill supported for copartitioned vector indexes yet. */
+	return NULL;
+}
+
+IndexBuildResult *
+ybvectorcopartitionedbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
+{
+	HandleYBStatus(YBCPgWaitVectorIndexReady(
+		YBCGetDatabaseOid(index), index->rd_id));
+
+	IndexBuildResult *result = palloc0(sizeof(IndexBuildResult));
+
+	return result;
 }

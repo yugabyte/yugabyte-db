@@ -173,6 +173,10 @@ class HybridTime {
     return value ? HybridTime(value) : HybridTime();
   }
 
+  uint64_t ToPB() const {
+    return *this ? v : 0;
+  }
+
   HybridTimeRepr value() const { return v; }
 
   // Returns this HybridTime if valid, otherwise returns the one provided.
@@ -217,8 +221,9 @@ class HybridTime {
 
   MicrosTime CeilPhysicalValueMicros() const;
 
-  inline int64_t PhysicalDiff(const HybridTime& other) const {
-    return static_cast<int64_t>(GetPhysicalValueMicros() - other.GetPhysicalValueMicros());
+  inline MonoDelta PhysicalDiff(const HybridTime& other) const {
+    return MonoDelta::FromMicroseconds(
+        static_cast<int64_t>(GetPhysicalValueMicros() - other.GetPhysicalValueMicros()));
   }
 
   inline LogicalTimeComponent GetLogicalValue() const {

@@ -29,6 +29,7 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/advisory_locks_error.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
@@ -176,25 +177,13 @@ bool CanAbortTransaction(const Status& status,
                          const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
-  // 2. When running a transaction with READ COMMITTED isolation where the current subtransaction
-  //    id is not at the default value, and we face a kConflict/kReadRestart error. This is because
-  //    YB PG backend retries kConflict and kReadRestart errors for READ COMMITTED isolation by
-  //    restarting statements instead of the whole transaction if the statment is in a transactional
-  //    block. Else it restarts the whole transaction, in which case we can abort the current one.
-  //
-  //    See 'IsInTransactionBlock' function in src/postgres/src/backend/tcop/postgres.c for details.
+  // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
   const TransactionError txn_err(status);
-  if (txn_err.value() == TransactionErrorCode::kSkipLocking) {
+  if (txn_err.value() == TransactionErrorCode::kSkipLocking ||
+      txn_err.value() == TransactionErrorCode::kLockNotFound) {
     return false;
   }
-  if (txn_metadata.isolation == IsolationLevel::READ_COMMITTED &&
-      subtransaction_pb && subtransaction_pb->subtransaction_id() > kMinSubTransactionId) {
-    return txn_err.value() != TransactionErrorCode::kReadRestartRequired &&
-           txn_err.value() != TransactionErrorCode::kConflict;
-  }
-  // For other situations, we can safely abort the transaction. Even if the error is retriable, it
-  // will be retried by starting a new transaction (done by the query layer).
-  return true;
+  return !subtransaction_pb || subtransaction_pb->subtransaction_id() == kMinSubTransactionId;
 }
 
 YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
@@ -301,14 +290,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if ((trace_ && trace_->must_print())
            || (threshold > 0 && ToMilliseconds(time_spent) > threshold)
            || (FLAGS_txn_print_trace_on_error && !status_.ok())) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent)
-                << "us. Trace: " << (trace_ ? "" : "Not collected");
+      LOG(INFO) << ToString() << " took " << MonoDelta(time_spent).ToPrettyString()
+                << ". Trace: " << (trace_ ? "" : "Not collected");
       if (trace_)
         trace_->DumpToLogInfo(true);
     } else if (trace_) {
       bool was_printed = false;
       YB_LOG_IF_EVERY_N(INFO, print_trace_every_n > 0, print_trace_every_n)
-          << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
+          << ToString() << " took " << MonoDelta(time_spent).ToPrettyString() << ". Trace: \n"
           << Trace::SetTrue(&was_printed);
       if (was_printed)
         trace_->DumpToLogInfo(true);
@@ -463,6 +452,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // Populate the transaction's metadata alone for the passed 'ops_info'.
     // 'ops_info->metadata.subtransaction_pb' has already been set upsteam in Batcher::FlushAsync.
     ops_info->metadata.transaction = metadata_;
+    // For resolving session advisory lock requests involved in a deadlock, the underlying tablet's
+    // wait queue requires this field.
+    if (pg_session_req_version_) {
+      ops_info->metadata.pg_session_req_version = pg_session_req_version_;
+    }
     return true;
   }
 
@@ -533,7 +527,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
         }
       } else {
-        if (CanAbortTransaction(status, metadata_, subtransaction_pb)) {
+        // Do not abort pg session level transaction despite failure on flush path, i.e attempt to
+        // obtain advisory locks. If it was indeed aborted at the coordinator, the heartbeat would
+        // realize it and set the status accordingly, failing subsequent Prepare(s).
+        if (CanAbortTransaction(status, metadata_, subtransaction_pb) &&
+            !pg_session_req_version_) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
@@ -714,9 +712,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return true;
   }
 
-  Status PromoteToGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
+  Status EnsureGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
     {
       UniqueLock lock(mutex_);
+      if (metadata_.locality == TransactionLocality::GLOBAL) {
+        return Status::OK();
+      }
       RETURN_NOT_OK(StartPromotionToGlobal());
     }
     DoPromoteToGlobal(deadline);
@@ -1079,20 +1080,21 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     subtxn_table_mutation_counter_map_[subtxn_id].insert({table_id, mutation_count});
   }
 
-  std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const {
+  std::vector<std::pair<TableId, uint64_t>> GetTableMutationCounts() const {
     std::lock_guard lock(mutation_count_mutex_);
     auto& aborted_sub_txn_set = subtransaction_.get().aborted;
-    std::unordered_map<TableId, uint64_t> table_mutation_counts;
+    std::vector<std::pair<TableId, uint64_t>> result;
     for (const auto& [sub_txn_id, table_mutation_cnt_map] : subtxn_table_mutation_counter_map_) {
       if (aborted_sub_txn_set.Test(sub_txn_id)) {
         continue;
       }
 
+      result.reserve(result.size() + table_mutation_cnt_map.size());
       for (const auto& [table_id, mutation_count] : table_mutation_cnt_map) {
-        table_mutation_counts[table_id] += mutation_count;
+        result.emplace_back(table_id, mutation_count);
       }
     }
-    return table_mutation_counts;
+    return result;
   }
 
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
@@ -1103,6 +1105,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   bool OldTransactionAborted() const {
     auto state = old_status_tablet_state_.load(std::memory_order_acquire);
     return state == OldTransactionState::kAborted;
+  }
+
+  void InitPgSessionRequestVersion() {
+    pg_session_req_version_ = 1;
+  }
+
+  void SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+    background_transaction_ = background_transaction;
   }
 
  private:
@@ -1195,7 +1205,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       CoarseTimePoint deadline, const internal::RemoteTabletPtr& status_tablet,
       TransactionStatus status, UpdateTransactionCallback callback,
       std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat = std::nullopt,
-      const TabletStates& tablets_with_locks = {}) {
+      const TabletStates& tablets_with_locks = {},
+      const boost::optional<TransactionMetadata>& background_transaction = boost::none) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
@@ -1224,6 +1235,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                           << aborted_set_for_rollback_heartbeat.value().ToString();
 
       aborted_set_for_rollback_heartbeat.value().ToPB(state.mutable_aborted()->mutable_set());
+    }
+
+    if (pg_session_req_version_) {
+      state.set_pg_session_req_version(pg_session_req_version_);
+    }
+
+    if (background_transaction) {
+      background_transaction->ToPB(state.mutable_background_transaction_meta());
     }
 
     return UpdateTransaction(
@@ -1580,7 +1599,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
-        master::IncludeInactive::kFalse,
+        master::IncludeHidden::kFalse,
         master::IncludeDeleted::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction, promoting),
@@ -1815,11 +1834,23 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       } else {
         status_tablet = status_tablet_;
       }
+      boost::optional<TransactionMetadata> background_transaction = boost::none;
+      if (auto shared_bg_txn = background_transaction_.lock(); shared_bg_txn) {
+        LOG_IF_WITH_PREFIX(DFATAL, !pg_session_req_version_)
+            << "Expected this path to be triggered only for PgSessionTransactions "
+            << "for which pg_session_req_version_ should be >= 1";
+        auto meta_future = shared_bg_txn->GetMetadata(CoarseMonoClock::now() + 1ms);
+        if (meta_future.wait_for(0ms) == std::future_status::ready) {
+          if (auto res = meta_future.get(); res.ok()) {
+            background_transaction = *res;
+          }
+        }
+      }
       rpc = PrepareHeartbeatRPC(
           CoarseMonoClock::now() + timeout, status_tablet, status,
           std::bind(
               &Impl::HeartbeatDone, this, _1, _2, _3, status, transaction, send_to_new_tablet),
-          std::nullopt, tablets_);
+          std::nullopt, tablets_, background_transaction);
     }
 
     auto& handle = send_to_new_tablet ? new_heartbeat_handle_ : heartbeat_handle_;
@@ -1964,8 +1995,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       auto state = state_.load(std::memory_order_acquire);
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", txn state: " << state;
 
-      if (status.IsAborted() || status.IsExpired()) {
-        // IsAborted - Service is shutting down, no reason to retry.
+      if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress()) {
+        // IsAborted/IsShutdownInProgress - Service is shutting down, no reason to retry.
         // IsExpired - Transaction expired.
         if (transaction_status == TransactionStatus::CREATED ||
             transaction_status == TransactionStatus::PROMOTED) {
@@ -1978,6 +2009,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           DoAbortCleanup(transaction, CleanupType::kImmediate);
         }
         return;
+      }
+      if (status.IsTryAgain() && status.ErrorData(AdvisoryLocksErrorTag::kCategory)) {
+        auto new_pg_session_req_version = AdvisoryLocksError(status).value();
+        LOG_WITH_PREFIX(INFO)
+            << "PgSessionRequestVersion changed from " << pg_session_req_version_
+            << " to " << new_pg_session_req_version;
+        pg_session_req_version_ = new_pg_session_req_version;
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
@@ -2084,7 +2122,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
-        master::IncludeInactive::kFalse,
+        master::IncludeHidden::kFalse,
         master::IncludeDeleted::kFalse,
         TransactionRpcDeadline(),
         [this, transaction = std::move(transaction), id, request_template, tablet_id](
@@ -2375,6 +2413,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   bool commit_replicated_ GUARDED_BY(mutex_) = false;
 
   scoped_refptr<Counter> transaction_promotions_;
+
+  // Session level advisory lock requests launch a docdb distributed txn that lives for the lifetime
+  // of the pg session. The below field keeps track of the active request version as seen on the
+  // the txn's status tablet. The same is embedded into session advisory lock requests and is used
+  // by the wait-queue to resume deadlocked requests.
+  std::atomic<PgSessionRequestVersion> pg_session_req_version_{0};
+
+  // The below is populated only for pg session level transactions (created on session advisory lock
+  // requests). When a regular docdb transaction is created in the ysql session, the field is set to
+  // that transaction and is passed on to the session level txn's status tablet, which creates a
+  // wait-on-dependency from session level transaction -> regular transaction. This is necessary to
+  // detect deadlocks involving advisory locks and row-level locks (and object locks in future).
+  std::weak_ptr<YBTransaction> background_transaction_;
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2462,8 +2513,8 @@ void YBTransaction::Abort(CoarseTimePoint deadline) {
   impl_->Abort(AdjustDeadline(deadline));
 }
 
-Status YBTransaction::PromoteToGlobal(CoarseTimePoint deadline) {
-  return impl_->PromoteToGlobal(AdjustDeadline(deadline));
+Status YBTransaction::EnsureGlobal(CoarseTimePoint deadline) {
+  return impl_->EnsureGlobal(AdjustDeadline(deadline));
 }
 
 bool YBTransaction::IsRestartRequired() const {
@@ -2548,7 +2599,7 @@ void YBTransaction::IncreaseMutationCounts(
   return impl_->IncreaseMutationCounts(subtxn_id, table_id, mutation_count);
 }
 
-std::unordered_map<TableId, uint64_t> YBTransaction::GetTableMutationCounts() const {
+std::vector<std::pair<TableId, uint64_t>> YBTransaction::GetTableMutationCounts() const {
   return impl_->GetTableMutationCounts();
 }
 
@@ -2558,6 +2609,14 @@ void YBTransaction::SetLogPrefixTag(const LogPrefixName& name, uint64_t value) {
 
 bool YBTransaction::OldTransactionAborted() const {
   return impl_->OldTransactionAborted();
+}
+
+void YBTransaction::InitPgSessionRequestVersion() {
+  return impl_->InitPgSessionRequestVersion();
+}
+
+void YBTransaction::SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+  return impl_->SetBackgroundTransaction(background_transaction);
 }
 
 } // namespace client

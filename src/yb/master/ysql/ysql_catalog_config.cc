@@ -13,33 +13,17 @@
 
 #include "yb/master/ysql/ysql_catalog_config.h"
 
-#include "yb/master/master_admin.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/util/shared_lock.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/util/version_info.pb.h"
-#include "yb/util/version_info.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/common/version_info.h"
 
 DECLARE_bool(log_ysql_catalog_versions);
 
-DEFINE_test_flag(
-    string, fail_ysql_catalog_upgrade_state_transition_from, "",
-    "When set fail the transition to the provided state");
-
 namespace yb::master {
-
-namespace {
-
-uint32 GetMajorVersionOfCurrentBuild() {
-  VersionInfoPB version_info;
-  VersionInfo::GetVersionInfoPB(&version_info);
-  return version_info.ysql_major_version();
-}
-
-}  // namespace
 
 YsqlCatalogConfig::YsqlCatalogConfig(SysCatalogTable& sys_catalog) : sys_catalog_(sys_catalog) {}
 
@@ -52,7 +36,7 @@ Status YsqlCatalogConfig::PrepareDefaultIfNeeded(const LeaderEpoch& epoch) {
   SysYSQLCatalogConfigEntryPB ysql_catalog_config;
   ysql_catalog_config.set_version(0);
   ysql_catalog_config.mutable_ysql_major_catalog_upgrade_info()->set_catalog_version(
-      GetMajorVersionOfCurrentBuild());
+      VersionInfo::YsqlMajorVersion());
 
   config_ = new SysConfigInfo(kYsqlCatalogConfigType);
   auto l = config_->LockForWrite();
@@ -65,20 +49,6 @@ Status YsqlCatalogConfig::PrepareDefaultIfNeeded(const LeaderEpoch& epoch) {
 }
 
 void YsqlCatalogConfig::SetConfig(scoped_refptr<SysConfigInfo> config) {
-  {
-    auto l = config->LockForRead();
-    if (l->pb.ysql_catalog_config().has_ysql_major_catalog_upgrade_info()) {
-      const auto persisted_version =
-          l->pb.ysql_catalog_config().ysql_major_catalog_upgrade_info().catalog_version();
-      if (persisted_version > GetMajorVersionOfCurrentBuild()) {
-        LOG(FATAL) << "Persisted major version in YSQL catalog config is not supported. Restart "
-                      "the process in the correct version. Min required major version: "
-                   << persisted_version
-                   << ", Current version: " << VersionInfo::GetShortVersionString();
-      }
-    }
-  }
-
   std::lock_guard m_lock(mutex_);
   LOG_IF(WARNING, config_ != nullptr) << "Multiple Ysql Catalog configs found";
   config_ = std::move(config);
@@ -98,11 +68,10 @@ YsqlCatalogConfig::LockForRead() const {
   return {std::move(l), pb};
 }
 
-std::pair<CowWriteLock<PersistentSysConfigInfo>, SysYSQLCatalogConfigEntryPB&>
-YsqlCatalogConfig::LockForWrite() {
-  CHECK_NOTNULL(config_.get());
-  auto l = config_->LockForWrite();
-  auto& pb = *l.mutable_data()->pb.mutable_ysql_catalog_config();
+std::pair<YsqlCatalogConfig::Updater, SysYSQLCatalogConfigEntryPB&> YsqlCatalogConfig::LockForWrite(
+    const LeaderEpoch& epoch) {
+  auto l = YsqlCatalogConfig::Updater(*this, epoch);
+  auto& pb = l.pb();
   return {std::move(l), pb};
 }
 
@@ -112,15 +81,12 @@ uint64 YsqlCatalogConfig::GetVersion() const {
 }
 
 Result<uint64> YsqlCatalogConfig::IncrementVersion(const LeaderEpoch& epoch) {
-  SharedLock m_lock(mutex_);
-  auto [l, pb] = LockForWrite();
+  auto [l, pb] = LockForWrite(epoch);
 
   uint64_t new_version = pb.version() + 1;
   pb.set_version(new_version);
 
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
-  l.Commit();
+  RETURN_NOT_OK(l.UpsertAndCommit());
 
   if (FLAGS_log_ysql_catalog_versions) {
     LOG_WITH_FUNC(WARNING) << "set catalog version: " << new_version
@@ -148,8 +114,7 @@ Status YsqlCatalogConfig::SetInitDbDone(const Status& initdb_status, const Leade
     LOG(ERROR) << "Global initdb failed: " << initdb_status;
   }
 
-  SharedLock m_lock(mutex_);
-  auto [l, pb] = LockForWrite();
+  auto [l, pb] = LockForWrite(epoch);
 
   pb.set_initdb_done(true);
   if (initdb_status.ok()) {
@@ -158,8 +123,7 @@ Status YsqlCatalogConfig::SetInitDbDone(const Status& initdb_status, const Leade
     pb.set_initdb_error(initdb_status.ToString());
   }
 
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
-  l.Commit();
+  RETURN_NOT_OK(l.UpsertAndCommit());
   return Status::OK();
 }
 
@@ -171,126 +135,64 @@ bool YsqlCatalogConfig::IsTransactionalSysCatalogEnabled() const {
 Status YsqlCatalogConfig::SetTransactionalSysCatalogEnabled(const LeaderEpoch& epoch) {
   LOG(INFO) << "Marking YSQL system catalog as transactional in YSQL catalog config";
 
-  SharedLock m_lock(mutex_);
-  auto [l, pb] = LockForWrite();
-
+  auto [l, pb] = LockForWrite(epoch);
   pb.set_transactional_sys_catalog_enabled(true);
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
-  l.Commit();
-
-  return Status::OK();
-}
-
-IsOperationDoneResult YsqlCatalogConfig::IsYsqlMajorCatalogUpgradeDone() const {
-  auto [l, pb] = LockForRead();
-  if (!pb.has_ysql_major_catalog_upgrade_info()) {
-    return IsOperationDoneResult::Done();
-  }
-
-  const auto state = pb.ysql_major_catalog_upgrade_info().state();
-  if (state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE ||
-      state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB ||
-      state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK) {
-    return IsOperationDoneResult::NotDone();
-  }
-
-  Status status;
-  if (pb.ysql_major_catalog_upgrade_info().has_previous_error()) {
-    status = StatusFromPB(pb.ysql_major_catalog_upgrade_info().previous_error());
-  }
-
-  return IsOperationDoneResult::Done(status);
+  return l.UpsertAndCommit();
 }
 
 YsqlMajorCatalogUpgradeInfoPB::State YsqlCatalogConfig::GetMajorCatalogUpgradeState() const {
   auto [l, pb] = LockForRead();
+  if (!pb.has_ysql_major_catalog_upgrade_info()) {
+    return YsqlMajorCatalogUpgradeInfoPB::DONE;
+  }
+
   return pb.ysql_major_catalog_upgrade_info().state();
 }
 
-const std::unordered_map<
-    YsqlMajorCatalogUpgradeInfoPB::State, std::unordered_set<YsqlMajorCatalogUpgradeInfoPB::State>>
-    kAllowedTransitions = {
-        {YsqlMajorCatalogUpgradeInfoPB::INVALID, {}},
-
-        {YsqlMajorCatalogUpgradeInfoPB::DONE, {YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB}},
-
-        {YsqlMajorCatalogUpgradeInfoPB::FAILED,
-         {YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK}},
-
-        {YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB,
-         {YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE,
-          YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK,
-          YsqlMajorCatalogUpgradeInfoPB::FAILED}},
-
-        {YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE,
-         {YsqlMajorCatalogUpgradeInfoPB::MONITORING,
-          YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK,
-          YsqlMajorCatalogUpgradeInfoPB::FAILED}},
-
-        {YsqlMajorCatalogUpgradeInfoPB::MONITORING,
-         {YsqlMajorCatalogUpgradeInfoPB::DONE, YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK,
-          YsqlMajorCatalogUpgradeInfoPB::FAILED}},
-
-        {YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK,
-         {YsqlMajorCatalogUpgradeInfoPB::DONE, YsqlMajorCatalogUpgradeInfoPB::FAILED}},
-};
-
-Status YsqlCatalogConfig::TransitionMajorCatalogUpgradeState(
-    const YsqlMajorCatalogUpgradeInfoPB::State new_state, const LeaderEpoch& epoch,
-    const Status& failed_status) {
-  DCHECK_EQ(kAllowedTransitions.size(), YsqlMajorCatalogUpgradeInfoPB::State_ARRAYSIZE);
-
-  const auto new_state_str = YsqlMajorCatalogUpgradeInfoPB::State_Name(new_state);
-
-  RSTATUS_DCHECK_EQ(
-      failed_status.ok(), new_state != YsqlMajorCatalogUpgradeInfoPB::FAILED, IllegalState,
-      Format("Bad status must be set if and only if transitioning to FAILED state", failed_status));
-
-  SharedLock m_lock(mutex_);
-  auto [l, pb] = LockForWrite();
-
-  auto* ysql_major_catalog_upgrade_info = pb.mutable_ysql_major_catalog_upgrade_info();
-  const auto current_state = ysql_major_catalog_upgrade_info->state();
-  SCHECK_NE(
-      current_state, new_state, IllegalState,
-      Format("Major upgrade state already set to $0", new_state_str));
-
-  const auto current_state_str = YsqlMajorCatalogUpgradeInfoPB::State_Name(current_state);
-
-  SCHECK_NE(
-      current_state_str, FLAGS_TEST_fail_ysql_catalog_upgrade_state_transition_from, IllegalState,
-      "Failed due to FLAGS_TEST_fail_ysql_catalog_upgrade_state_transition_from");
-
-  auto allowed_states_it = FindOrNull(kAllowedTransitions, current_state);
-  RSTATUS_DCHECK(allowed_states_it, IllegalState, Format("Invalid state $0", current_state_str));
-
-  SCHECK(
-      allowed_states_it->contains(new_state), IllegalState,
-      Format("Invalid state transition from $0 to $1", current_state_str, new_state_str));
-
-  if (current_state == YsqlMajorCatalogUpgradeInfoPB::MONITORING &&
-      new_state == YsqlMajorCatalogUpgradeInfoPB::DONE) {
-    ysql_major_catalog_upgrade_info->set_catalog_version(GetMajorVersionOfCurrentBuild());
-  } else if (current_state == YsqlMajorCatalogUpgradeInfoPB::DONE) {
-    const auto major_version = GetMajorVersionOfCurrentBuild();
-    SCHECK_GT(
-        major_version, ysql_major_catalog_upgrade_info->catalog_version(), IllegalState,
-        "Ysql Catalog is already on the current major version");
+Status YsqlCatalogConfig::GetMajorCatalogUpgradePreviousError() const {
+  auto [l, pb] = LockForRead();
+  Status status;
+  if (pb.has_ysql_major_catalog_upgrade_info() &&
+      pb.ysql_major_catalog_upgrade_info().has_previous_error()) {
+    status = StatusFromPB(pb.ysql_major_catalog_upgrade_info().previous_error());
   }
+  return status;
+}
 
-  ysql_major_catalog_upgrade_info->set_state(new_state);
+bool YsqlCatalogConfig::IsPreviousVersionCatalogCleanupRequired() const {
+  auto [l, pb] = LockForRead();
+  return pb.has_ysql_major_catalog_upgrade_info() &&
+         pb.ysql_major_catalog_upgrade_info().previous_version_catalog_cleanup_required();
+}
 
-  if (!failed_status.ok()) {
-    StatusToPB(failed_status, ysql_major_catalog_upgrade_info->mutable_previous_error());
-  } else {
-    ysql_major_catalog_upgrade_info->clear_previous_error();
-  }
+YsqlCatalogConfig::Updater::Updater(
+    YsqlCatalogConfig& ysql_catalog_config, const LeaderEpoch& epoch)
+    : ysql_catalog_config_(ysql_catalog_config), epoch_(epoch) {
+  SharedLock m_lock(ysql_catalog_config_.mutex_);
+  CHECK_NOTNULL(ysql_catalog_config_.config_.get());
+  cow_lock_ = ysql_catalog_config_.config_->LockForWrite();
+}
 
-  LOG(INFO) << "Transitioned major upgrade state from " << current_state_str << " to "
-            << new_state_str;
+YsqlCatalogConfig::Updater::Updater(YsqlCatalogConfig::Updater&& rhs) noexcept
+    : ysql_catalog_config_(rhs.ysql_catalog_config_),
+      cow_lock_(std::move(rhs.cow_lock_)),
+      epoch_(rhs.epoch_) {}
 
-  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, config_));
-  l.Commit();
+SysYSQLCatalogConfigEntryPB& YsqlCatalogConfig::Updater::pb() {
+  CHECK(cow_lock_.locked());
+  return *cow_lock_.mutable_data()->pb.mutable_ysql_catalog_config();
+}
+
+Status YsqlCatalogConfig::Updater::UpsertAndCommit() {
+  RSTATUS_DCHECK(
+      cow_lock_.locked(), InternalError, "Invalid attempt to YsqlCatalogConfig without a lock");
+
+  SharedLock m_lock(ysql_catalog_config_.mutex_);
+  // Although we have released and reacquired the mutex_, the epoch ensures that config_ pointer
+  // remains unchanged.
+  RETURN_NOT_OK(ysql_catalog_config_.sys_catalog_.Upsert(epoch_, ysql_catalog_config_.config_));
+  cow_lock_.Commit();
+
   return Status::OK();
 }
 

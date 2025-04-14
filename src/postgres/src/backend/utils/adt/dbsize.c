@@ -32,7 +32,7 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 
 /* Divide by two and round away from zero */
@@ -419,24 +419,25 @@ calculate_table_size(Relation rel)
 
 	if (IsYBRelation(rel))
 	{
-		/* Covered index relations don't have a dedicated table in DocDB */
-		if (rel->rd_index && YBIsCoveredByMainTable(rel))
+		/* Primary index relation doesn't have dedicated table in DocDB */
+		if (rel->rd_index && rel->rd_index->indisprimary)
 			return -1;
 
 		/* Colcoated tables do not have size info */
 		if (YbGetTableProperties(rel)->is_colocated)
 			return -1;
 
-		int32 num_missing_tablets = 0;
+		int32		num_missing_tablets = 0;
 
 		HandleYBStatus(YBCPgGetTableDiskSize(YbGetRelfileNodeId(rel),
-			YBCGetDatabaseOid(rel), (int64_t *)&size, &num_missing_tablets));
+											 YBCGetDatabaseOid(rel), (int64_t *) & size, &num_missing_tablets));
 		if (num_missing_tablets > 0)
 		{
-			elog(NOTICE, "%d tablets of relation %s did not provide disk size "
-					"estimates, and were not added to the displayed totals.",
-					num_missing_tablets,
-					RelationGetRelationName(rel));
+			elog(NOTICE,
+				 "%d tablets of relation %s did not provide disk size "
+				 "estimates, and were not added to the displayed totals.",
+				 num_missing_tablets,
+				 RelationGetRelationName(rel));
 		}
 
 		return size;
@@ -512,7 +513,7 @@ pg_table_size(PG_FUNCTION_ARGS)
 
 	size = calculate_table_size(rel);
 
-	bool is_yb_relation = IsYBRelation(rel);
+	bool		is_yb_relation = IsYBRelation(rel);
 
 	relation_close(rel, AccessShareLock);
 
@@ -583,11 +584,12 @@ pg_total_relation_size(PG_FUNCTION_ARGS)
 
 	size = calculate_total_relation_size(rel);
 
-	bool is_yb_relation = IsYBRelation(rel);
+	bool		is_yb_relation = IsYBRelation(rel);
 
 	relation_close(rel, AccessShareLock);
 
-	if (is_yb_relation && size < 0) {
+	if (is_yb_relation && size < 0)
+	{
 		PG_RETURN_NULL();
 	}
 
@@ -607,9 +609,13 @@ pg_size_pretty(PG_FUNCTION_ARGS)
 	for (unit = size_pretty_units; unit->name != NULL; unit++)
 	{
 		uint8		bits;
+		uint64		abs_size = size < 0 ? 0 - (uint64) size : (uint64) size;
 
-		/* use this unit if there are no more units or we're below the limit */
-		if (unit[1].name == NULL || Abs(size) < unit->limit)
+		/*
+		 * Use this unit if there are no more units or the absolute size is
+		 * below the limit for the current unit.
+		 */
+		if (unit[1].name == NULL || abs_size < unit->limit)
 		{
 			if (unit->round)
 				size = half_rounded(size);

@@ -21,12 +21,6 @@ type: indexpage
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
   {{<index/item
-    title="Inspect logs"
-    body="Diagnose issues by inspecting the YugabyteDB logs."
-    href="check-logs/"
-    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
-
-  {{<index/item
     title="Get system statistics"
     body="Get state information and metrics for YugabyteDB processes."
     href="check-stats/"
@@ -46,7 +40,7 @@ type: indexpage
 
   {{<index/item
     title="Review common error messages"
-    body="Familiarize yourself with error messages that are common to all YugabytDB components."
+    body="Familiarize yourself with error messages that are common to all YugabyteDB components."
     href="trouble-common/"
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 

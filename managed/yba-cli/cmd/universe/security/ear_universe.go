@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -38,13 +38,13 @@ var encryptionAtRestCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
-		// Validations before gflags upgrade operation
+		// Validations before EAR upgrade operation
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, _, err := upgrade.Validations(cmd, util.SecurityOperation)
+			_, _, err := universeutil.Validations(cmd, util.SecurityOperation)
 			if err != nil {
 				logrus.Fatalf(
 					formatter.Colorize(err.Error()+"\n", formatter.RedColor),
@@ -53,15 +53,19 @@ var encryptionAtRestCmd = &cobra.Command{
 
 		}
 		err = util.ConfirmCommand(
-			fmt.Sprintf("Are you sure you want to change encryption at rest configuration for %s: %s",
-				util.UniverseType, universeName),
-			viper.GetBool("force"))
+			fmt.Sprintf(
+				"Are you sure you want to change encryption at rest configuration for %s: %s",
+				util.UniverseType,
+				universeName,
+			),
+			viper.GetBool("force"),
+		)
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, universe, err := upgrade.Validations(cmd, util.UpgradeOperation)
+		authAPI, universe, err := universeutil.Validations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(
 				formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -82,8 +86,8 @@ var encryptionAtRestCmd = &cobra.Command{
 		}
 
 		operation = strings.ToUpper(operation)
-		if strings.Compare(operation, util.EnableKMSOpType) != 0 &&
-			strings.Compare(operation, util.DisableKMSOpType) != 0 &&
+		if strings.Compare(operation, util.EnableOpType) != 0 &&
+			strings.Compare(operation, util.DisableOpType) != 0 &&
 			strings.Compare(operation, util.RotateKMSConfigKMSOpType) != 0 &&
 			strings.Compare(operation, util.RotateUniverseKeyKMSOpType) != 0 {
 			logrus.Fatalf(
@@ -94,13 +98,13 @@ var encryptionAtRestCmd = &cobra.Command{
 		}
 		var requestBody ybaclient.EncryptionAtRestConfig
 		switch operation {
-		case util.EnableKMSOpType, util.RotateKMSConfigKMSOpType:
+		case util.EnableOpType, util.RotateKMSConfigKMSOpType:
 			requestBody, err = earEnableRequest(authAPI, earConfig, configName, operation)
 			if err != nil {
 				logrus.Fatalf(
 					formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-		case util.DisableKMSOpType:
+		case util.DisableOpType:
 			requestBody, err = earDisableRequest(earConfig)
 			if err != nil {
 				logrus.Fatalf(
@@ -108,10 +112,10 @@ var encryptionAtRestCmd = &cobra.Command{
 			}
 		case util.RotateUniverseKeyKMSOpType:
 			if earConfig.GetEncryptionAtRestEnabled() ||
-				strings.Compare(earConfig.GetOpType(), util.EnableKMSOpType) == 0 {
+				strings.Compare(earConfig.GetOpType(), util.EnableOpType) == 0 {
 				requestBody = ybaclient.EncryptionAtRestConfig{
 					KmsConfigUUID: util.GetStringPointer(earConfig.GetKmsConfigUUID()),
-					OpType:        util.GetStringPointer(util.EnableKMSOpType),
+					OpType:        util.GetStringPointer(util.EnableOpType),
 				}
 			} else {
 				logrus.Fatal(
@@ -149,8 +153,8 @@ func earEnableRequest(
 	error,
 ) {
 	if earConfig.GetEncryptionAtRestEnabled() ||
-		strings.Compare(earConfig.GetOpType(), util.EnableKMSOpType) == 0 {
-		if strings.Compare(operation, util.EnableKMSOpType) == 0 {
+		strings.Compare(earConfig.GetOpType(), util.EnableOpType) == 0 {
+		if strings.Compare(operation, util.EnableOpType) == 0 {
 			logrus.Fatalf(
 				formatter.Colorize("Encryption at rest is already enabled\n",
 					formatter.RedColor))
@@ -192,7 +196,7 @@ func earEnableRequest(
 
 	return ybaclient.EncryptionAtRestConfig{
 		KmsConfigUUID: util.GetStringPointer(configUUID),
-		OpType:        util.GetStringPointer(util.EnableKMSOpType),
+		OpType:        util.GetStringPointer(util.EnableOpType),
 	}, nil
 
 }
@@ -203,14 +207,14 @@ func earDisableRequest(
 	error,
 ) {
 	if !earConfig.GetEncryptionAtRestEnabled() ||
-		strings.Compare(earConfig.GetOpType(), util.DisableKMSOpType) == 0 {
+		strings.Compare(earConfig.GetOpType(), util.DisableOpType) == 0 {
 		logrus.Fatalf(
 			formatter.Colorize("Encryption at rest is already disabled\n",
 				formatter.RedColor))
 	}
 
 	return ybaclient.EncryptionAtRestConfig{
-		OpType: util.GetStringPointer(util.DisableKMSOpType),
+		OpType: util.GetStringPointer(util.DisableOpType),
 	}, nil
 }
 
@@ -254,7 +258,7 @@ func earAPICall(
 			universeUUID,
 		))
 
-	upgrade.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
+	universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
 		TaskUUID:     util.GetStringPointer(r.GetTaskUUID()),
 		ResourceUUID: util.GetStringPointer(universeUUID),
 	})

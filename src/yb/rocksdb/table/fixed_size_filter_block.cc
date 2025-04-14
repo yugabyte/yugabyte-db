@@ -125,7 +125,7 @@ FixedSizeFilterBlockReader::FixedSizeFilterBlockReader(
   reader_.reset(policy_->GetFilterBitsReader(contents_.data));
 }
 
-bool FixedSizeFilterBlockReader::KeyMayMatch(const Slice& key, uint64_t block_offset) {
+bool FixedSizeFilterBlockReader::KeyMayMatch(Slice key, uint64_t block_offset) {
   return whole_key_filtering_ ? MayMatch(key) : true;
 }
 
@@ -133,7 +133,7 @@ bool FixedSizeFilterBlockReader::PrefixMayMatch(const Slice& prefix, uint64_t bl
   return prefix_extractor_ ? MayMatch(prefix) : true;
 }
 
-bool FixedSizeFilterBlockReader::MayMatch(const Slice& entry) {
+bool FixedSizeFilterBlockReader::MayMatch(Slice entry) {
   if (reader_->MayMatch(entry)) {
     PERF_COUNTER_ADD(bloom_sst_hit_count, 1);
     return true;

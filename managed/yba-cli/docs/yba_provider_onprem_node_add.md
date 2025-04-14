@@ -21,7 +21,7 @@ yba provider onprem add --name <provider-name> \
 ### Options
 
 ```
-      --instance-type string       [Required] Instance type of the node as describe in the provider.
+      --instance-type string       [Required] Instance type of the node as described in the provider. Run "yba provider onprem instance-type list --name <provider-name>" for a list of instance types associated with the provider.
       --ip string                  [Required] IP address of the node instance.
       --region string              [Required] Region name of the node.
       --zone string                [Required] Zone name of the node.
@@ -35,12 +35,15 @@ yba provider onprem add --name <provider-name> \
 
 ```
   -a, --apiToken string    YugabyteDB Anywhere api token.
-      --config string      Config file, defaults to $HOME/.yba-cli.yaml
+      --ca-cert string     CA certificate file path for secure connection to YugabyteDB Anywhere. Required when the endpoint is https and --insecure is not set.
+      --config string      Full path to a specific configuration file for YBA CLI. If provided, this takes precedence over the directory specified via --directory, and the generated files are added to the same path. If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.
       --debug              Use debug mode, same as --logLevel debug.
+      --directory string   Directory containing YBA CLI configuration and generated files. If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. Defaults to '$HOME/.yba-cli/'.
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
+      --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, instance-type and node.
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, update, instance-type and node.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)

@@ -572,7 +572,7 @@ ginbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	BlockNumber rootOfPostingTree[BLCKSZ / (sizeof(IndexTupleData) + sizeof(ItemId))];
 	uint32		nRoot;
 
-	gvs.tmpCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	gvs.tmpCxt = AllocSetContextCreate(CurrentMemoryContext,
 									   "Gin vacuum temporary context",
 									   ALLOCSET_DEFAULT_SIZES);
 	gvs.index = index;

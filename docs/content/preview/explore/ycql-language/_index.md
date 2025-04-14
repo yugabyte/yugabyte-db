@@ -25,7 +25,7 @@ The following table lists the most important YCQL features which you would find 
 
 | YCQL Feature | Description |
 | :----------- | :---------- |
-| [Data definition](../../api/ycql/#ddl-statements) | YCQL shell with `ycqlsh`, keysapces, tables, indexes, and types |
+| [Data definition](../../api/ycql/#ddl-statements) | YCQL shell with ycqlsh, keysapces, tables, indexes, and types |
 | [Data Types](../../api/ycql/#data-types) | String, numeric, frozen types, UUID, JSONB ... |
 | [Data Manipulation](../../api/ycql/#dml-statements) | `SELECT`, `INSERT`, `UPDATE`, `DELETE` ... |
 | [Expressions](../../api/ycql/#expressions) | Simple Values, Function calls, Subscript ... |
@@ -46,6 +46,6 @@ YCQL has a number of features that are not present in Cassandra, as summarized i
 
 ## Learn more
 
-- [Comparison with Apache Cassandra](../../faq/comparisons/cassandra/)
+- [Comparison with Apache Cassandra](/preview/faq/comparisons/cassandra/)
 - [YCQL command reference](../../api/ycql/)
 - [Cassandra 3.4 Feature parity](cassandra-feature-support/)

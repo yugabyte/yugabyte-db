@@ -38,7 +38,7 @@
 #include "utils/rel.h"
 #include "utils/sampling.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -734,7 +734,7 @@ fileIterateForeignScan(ForeignScanState *node)
 	ExecClearTuple(slot);
 	found = NextCopyFrom(festate->cstate, NULL,
 						 slot->tts_values, slot->tts_isnull,
-						 false /* skip_row */);
+						 false /* skip_row */ );
 	if (found)
 		ExecStoreVirtualTuple(slot);
 
@@ -1115,7 +1115,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 	List	   *options;
 	CopyFromState cstate;
 	ErrorContextCallback errcallback;
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	MemoryContext tupcontext;
 
 	Assert(onerel);
@@ -1138,7 +1138,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 	 * Use per-tuple memory context to prevent leak of memory used to read
 	 * rows from the file with Copy routines.
 	 */
-	tupcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	tupcontext = AllocSetContextCreate(CurrentMemoryContext,
 									   "file_fdw temporary context",
 									   ALLOCSET_DEFAULT_SIZES);
 
@@ -1162,7 +1162,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 		MemoryContextReset(tupcontext);
 		MemoryContextSwitchTo(tupcontext);
 
-		found = NextCopyFrom(cstate, NULL, values, nulls, false /* skip_row */);
+		found = NextCopyFrom(cstate, NULL, values, nulls, false /* skip_row */ );
 
 		MemoryContextSwitchTo(oldcontext);
 

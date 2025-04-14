@@ -361,8 +361,7 @@ void WriteToRocksDB(
   set_op_id(op_id, &frontiers);
   set_hybrid_time(write_time, &frontiers);
 
-  tablet->WriteToRocksDB(
-      &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
+  tablet->WriteToRocksDB(frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
 }
 
 Result<std::optional<int64_t>> GetInt64ColumnValue(

@@ -17,15 +17,15 @@
 namespace yb {
 namespace pggate {
 
-PgTypeInfo::PgTypeInfo(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
+PgTypeInfo::PgTypeInfo(const YbcPgTypeEntity *YBCDataTypeTable, int count) {
   // Setup type mapping.
   for (int idx = 0; idx < count; idx++) {
-    const YBCPgTypeEntity *type_entity = &YBCDataTypeTable[idx];
+    const YbcPgTypeEntity *type_entity = &YBCDataTypeTable[idx];
     type_map_[type_entity->type_oid] = type_entity;
   }
 }
 
-const YBCPgTypeEntity* PgTypeInfo::GetTypeEntity(int32_t type_oid) {
+const YbcPgTypeEntity* PgTypeInfo::GetTypeEntity(int32_t type_oid) {
   const auto iter = type_map_.find(type_oid);
   if (iter != type_map_.end()) {
     return iter->second;

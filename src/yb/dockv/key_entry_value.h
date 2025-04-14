@@ -149,13 +149,13 @@ class KeyEntryValue {
   static KeyEntryValue UInt32(uint32_t v, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue Int64(int64_t v, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue UInt64(uint64_t v, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue VectorVertexId(uint64_t v);
   static KeyEntryValue MakeTimestamp(
       const Timestamp& timestamp, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue MakeInetAddress(
       const InetAddress& value, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue MakeUuid(const Uuid& value, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue GinNull(uint8_t v);
+  static KeyEntryValue MakeBson(const Slice& str, SortOrder sort_order = SortOrder::kAscending);
 
   static KeyEntryValue Create(int64_t value) {
     return KeyEntryValue::Int64(value);

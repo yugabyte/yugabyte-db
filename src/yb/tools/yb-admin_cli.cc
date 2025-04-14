@@ -38,20 +38,24 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
-#include "yb/common/xcluster_util.h"
+#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/tools/yb-admin_util.h"
+
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -260,13 +264,13 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
             auto meta =
                 VERIFY_RESULT(pb_util::ParseFromSlice<master::SysNamespaceEntryPB>(entry.data()));
             meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           case master::SysRowEntryType::UDTYPE: {
             auto meta =
                 VERIFY_RESULT(pb_util::ParseFromSlice<master::SysUDTypeEntryPB>(entry.data()));
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           case master::SysRowEntryType::TABLE: {
@@ -277,7 +281,7 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
             meta.clear_index_info();
             meta.clear_indexes();
             meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
             break;
           }
           default:
@@ -288,8 +292,8 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
           entry.set_data("DATA");
           std::cout << kColumnSep
                     << StringReplace(
-                           JsonWriter::ToJson(entry, JsonWriter::COMPACT), "\"DATA\"", decoded_data,
-                           false)
+                           JsonWriter::ToJson(entry, JsonWriter::COMPACT_ESCAPE_STR), "\"DATA\"",
+                           decoded_data, false)
                     << std::endl;
         }
       }
@@ -1206,8 +1210,8 @@ Status upgrade_ysql_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 }
 
 // Takes a long time to run. Set `timeout_ms` to at least 5 minutes when calling.
-const auto ysql_major_version_catalog_upgrade_args = "";
-Status ysql_major_version_catalog_upgrade_action(
+const auto upgrade_ysql_major_version_catalog_args = "";
+Status upgrade_ysql_major_version_catalog_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
   RETURN_NOT_OK_PREPEND(
@@ -1216,8 +1220,8 @@ Status ysql_major_version_catalog_upgrade_action(
   return Status::OK();
 }
 
-const auto finalize_ysql_major_version_catalog_upgrade_args = "";
-Status finalize_ysql_major_version_catalog_upgrade_action(
+const auto finalize_ysql_major_version_catalog_args = "";
+Status finalize_ysql_major_version_catalog_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
   RETURN_NOT_OK_PREPEND(
@@ -1226,12 +1230,41 @@ Status finalize_ysql_major_version_catalog_upgrade_action(
 }
 
 // May take a while to run. Set `timeout_ms` to at least 5 minutes when calling.
-const auto rollback_ysql_major_version_upgrade_args = "";
-Status rollback_ysql_major_version_upgrade_action(const ClusterAdminCli::CLIArguments& args,
-                                                  ClusterAdminClient* client) {
+const auto rollback_ysql_major_version_catalog_args = "";
+Status rollback_ysql_major_version_catalog_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
   RETURN_NOT_OK_PREPEND(
       client->RollbackYsqlMajorCatalogVersion(), "Unable to roll back ysql major catalog upgrade");
+  return Status::OK();
+}
+
+const auto get_ysql_major_version_catalog_state_args = "";
+Status get_ysql_major_version_catalog_state_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
+  RETURN_NOT_OK_PREPEND(
+      client->GetYsqlMajorCatalogUpgradeState(),
+      "Unable to determine ysql major catalog upgrade state");
+  return Status::OK();
+}
+
+const auto finalize_upgrade_args = "[use_single_connection]";
+Status finalize_upgrade_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  // Use just one simultaneous connection for YSQL upgrade.
+  // This is much slower but does not incur overhead for each database.
+  bool use_single_connection = args.size() > 0;
+  if (args.size() > 0 && !IsEqCaseInsensitive(args[0], "use_single_connection")) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->FinalizeUpgrade(use_single_connection), "Unable to finalize upgrade");
   return Status::OK();
 }
 
@@ -1283,16 +1316,14 @@ Status get_auto_flags_config_action(
   return Status::OK();
 }
 
-const auto promote_auto_flags_args =
-    "[<max_flags_class> (default kExternal) [<promote_non_runtime_flags> (default true) [force]]]";
+const auto promote_auto_flags_args = "[<max_flags_class> (default kExternal) [force]]";
 Status promote_auto_flags_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() > 3) {
+  if (args.size() > 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
   AutoFlagClass max_flag_class = AutoFlagClass::kExternal;
-  bool promote_non_runtime_flags = true;
   bool force = false;
 
   if (args.size() > 0) {
@@ -1301,15 +1332,7 @@ Status promote_auto_flags_action(
   }
 
   if (args.size() > 1) {
-    if (IsEqCaseInsensitive(args[1], "false")) {
-      promote_non_runtime_flags = false;
-    } else if (!IsEqCaseInsensitive(args[1], "true")) {
-      return STATUS(InvalidArgument, "Invalid value provided for promote_non_runtime_flags");
-    }
-  }
-
-  if (args.size() > 2) {
-    if (IsEqCaseInsensitive(args[2], "force")) {
+    if (IsEqCaseInsensitive(args[1], "force")) {
       force = true;
     } else {
       return ClusterAdminCli::kInvalidArguments;
@@ -1317,8 +1340,7 @@ Status promote_auto_flags_action(
   }
 
   RETURN_NOT_OK_PREPEND(
-      client->PromoteAutoFlags(ToString(max_flag_class), promote_non_runtime_flags, force),
-      "Unable to promote AutoFlags");
+      client->PromoteAutoFlags(ToString(max_flag_class), force), "Unable to promote AutoFlags");
   return Status::OK();
 }
 
@@ -1877,7 +1899,8 @@ Status create_change_data_stream_action(
   if (args.size() > 3) {
     ToUpperCase(args[3], &uppercase_consistent_snapshot_option);
     if (uppercase_consistent_snapshot_option != "USE_SNAPSHOT" &&
-        uppercase_consistent_snapshot_option != "NOEXPORT_SNAPSHOT") {
+        uppercase_consistent_snapshot_option != "NOEXPORT_SNAPSHOT" &&
+        uppercase_consistent_snapshot_option != "EXPORT_SNAPSHOT") {
       return ClusterAdminCli::kInvalidArguments;
     }
     consistent_snapshot_option = uppercase_consistent_snapshot_option;
@@ -2290,10 +2313,11 @@ Status get_xcluster_safe_time_action(
   return PrintJsonResult(client->GetXClusterSafeTime(include_lag_and_skew));
 }
 
-const auto create_xcluster_checkpoint_args = "<replication_group_id> <namespace_names>";
+const auto create_xcluster_checkpoint_args =
+    "<replication_group_id> <namespace_names> [automatic_ddl_mode]";
 Status create_xcluster_checkpoint_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 2) {
+  if (args.size() != 2 && args.size() != 3) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
@@ -2308,8 +2332,13 @@ Status create_xcluster_checkpoint_action(
     namespace_ids.push_back(namespace_info.id());
   }
 
-  RETURN_NOT_OK(
-      client->XClusterClient().CreateOutboundReplicationGroup(replication_group_id, namespace_ids));
+  if (args.size() == 3 && !IsEqCaseInsensitive(args[2], "automatic_ddl_mode")) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  bool automatic_ddl_mode = args.size() == 3;
+
+  RETURN_NOT_OK(client->XClusterClient().CreateOutboundReplicationGroup(
+      replication_group_id, namespace_ids, automatic_ddl_mode));
 
   std::cout << "Waiting for checkpointing of database(s) to complete" << std::endl << std::endl;
 
@@ -2823,14 +2852,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(add_transaction_tablet);
   REGISTER_COMMAND(ysql_catalog_version);
   REGISTER_COMMAND(ddl_log);
-  REGISTER_COMMAND(upgrade_ysql);
   REGISTER_COMMAND(set_wal_retention_secs);
   REGISTER_COMMAND(get_wal_retention_secs);
-  REGISTER_COMMAND(get_auto_flags_config);
-  REGISTER_COMMAND(promote_auto_flags);
-  REGISTER_COMMAND(rollback_auto_flags);
-  REGISTER_COMMAND(promote_single_auto_flag);
-  REGISTER_COMMAND(demote_single_auto_flag);
   REGISTER_COMMAND(list_snapshots);
   REGISTER_COMMAND(create_snapshot);
   REGISTER_COMMAND(list_snapshot_restorations);
@@ -2899,10 +2922,22 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
 
+  /* Upgrade related commands */
+  // AutoFlags
+  REGISTER_COMMAND(get_auto_flags_config);
+  REGISTER_COMMAND(promote_auto_flags);
+  REGISTER_COMMAND(rollback_auto_flags);
+  REGISTER_COMMAND(promote_single_auto_flag);
+  REGISTER_COMMAND(demote_single_auto_flag);
   // PG11 -> PG15 upgrade commands
-  REGISTER_COMMAND(ysql_major_version_catalog_upgrade);
-  REGISTER_COMMAND(finalize_ysql_major_version_catalog_upgrade);
-  REGISTER_COMMAND(rollback_ysql_major_version_upgrade);
+  REGISTER_COMMAND(upgrade_ysql_major_version_catalog);
+  REGISTER_COMMAND(finalize_ysql_major_version_catalog);
+  REGISTER_COMMAND(rollback_ysql_major_version_catalog);
+  REGISTER_COMMAND(get_ysql_major_version_catalog_state);
+  // YSQL upgrade
+  REGISTER_COMMAND(upgrade_ysql);
+  // Unified finalize upgrade command
+  REGISTER_COMMAND(finalize_upgrade);
 
   // SysCatalog util commands
   REGISTER_COMMAND(dump_sys_catalog_entries);

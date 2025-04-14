@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.algorithms.SmartKeyAlgorithm;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import java.util.Base64;
@@ -67,7 +68,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
   }
 
   @Override
-  protected byte[] createKeyWithService(
+  protected EncryptionKey createKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
     final String algorithm = "AES";
     final int keySize = 256;
@@ -99,11 +100,11 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     final JsonNode errors = response.get("error");
     if (errors != null) throw new RuntimeException(errors.toString());
     final String kId = response.get("kid").asText();
-    return kId.getBytes();
+    return new EncryptionKey(kId.getBytes());
   }
 
   @Override
-  protected byte[] rotateKeyWithService(
+  protected EncryptionKey rotateKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
     final byte[] currentKey = retrieveKey(universeUUID, configUUID, config);
     if (currentKey == null || currentKey.length == 0) {
@@ -133,11 +134,12 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     final JsonNode errors = response.get("error");
     if (errors != null) throw new RuntimeException(errors.toString());
     final String kId = response.get("kid").asText();
-    return kId.getBytes();
+    return new EncryptionKey(kId.getBytes());
   }
 
   @Override
-  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
+  public byte[] retrieveKeyWithService(
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
     byte[] keyVal = null;
     final ObjectNode authConfig = getAuthConfig(configUUID);
     final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
@@ -154,7 +156,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
 
   @Override
   public byte[] validateRetrieveKeyWithService(
-      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext, ObjectNode authConfig) {
     byte[] keyVal = null;
     final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
     final String sessionToken = retrieveSessionAuthorization(authConfig);
@@ -183,7 +185,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     return keyMetadata;
   }
 
-  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+  public EncryptionKey encryptKeyWithService(UUID configUUID, byte[] universeKey) {
     // KMS is deprecated. No more new functionality.
     return null;
   }

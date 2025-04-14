@@ -29,15 +29,6 @@ def main() -> None:
                 output_file.write(
                     '-- Automatically created by %s (new test?)\n' % os.path.basename(__file__))
 
-    lines = []
-    with open(file_path) as input_file:
-        lines = input_file.readlines()
-
-    # 1) Remove trailing whitespace. We will also do that to expected output files so that diff does
-    #    not find any differences in the normal case.
-    # 2) Also mask any uuids since they are randomly generated and will vary across runs.
-    lines = [line.rstrip() for line in lines]
-
     def mask_uuid4s(unmasked_line: str) -> str:
         uuid_start_indices = []
         line_copy_with_uuid4s_masked = ""
@@ -55,7 +46,9 @@ def main() -> None:
         line_copy_with_uuid4s_masked += unmasked_line[prev_index:]
         return line_copy_with_uuid4s_masked
 
-    lines = [mask_uuid4s(line) for line in lines]
+    # Mask any uuids since they are randomly generated and will vary across runs.
+    with open(file_path, newline='\n') as input_file:
+        lines = [mask_uuid4s(line.rstrip('\n')) for line in input_file.readlines()]
 
     result_lines = []
     i = 0
@@ -88,13 +81,6 @@ def main() -> None:
             skipping = False
             just_stopped_skipping = True
         i += 1
-
-    # Remove empty lines from the end of the file.
-    new_len = len(result_lines)
-    while new_len > 0 and result_lines[new_len - 1].strip() == '':
-        new_len -= 1
-    if new_len < len(result_lines):
-        result_lines = result_lines[:new_len]
 
     with open(file_path, 'w') as output_file:
         output_file.write("\n".join(result_lines) + "\n")

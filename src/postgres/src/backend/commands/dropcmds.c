@@ -31,6 +31,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 
 
@@ -60,9 +61,10 @@ RemoveObjects(DropStmt *stmt)
 {
 	ObjectAddresses *objects;
 	ListCell   *cell1;
-	bool is_yb_db_admin_droppable_object =
-		stmt->removeType == OBJECT_FUNCTION
-		&& IsYbDbAdminUser(GetUserId());
+	bool		is_yb_db_admin_droppable_object;
+
+	is_yb_db_admin_droppable_object = (stmt->removeType == OBJECT_FUNCTION &&
+									   IsYbDbAdminUser(GetUserId()));
 
 	objects = new_object_addresses();
 

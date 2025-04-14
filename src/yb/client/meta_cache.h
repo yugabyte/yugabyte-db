@@ -46,7 +46,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/dockv/partition.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -60,16 +60,14 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 
-#include "yb/tablet/metadata.pb.h"
-
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/lockfree.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena.h"
@@ -78,6 +76,7 @@
 namespace yb {
 
 class EventStats;
+class JsonWriter;
 
 namespace client {
 
@@ -117,6 +116,8 @@ class RemoteTabletServer {
   // This will involve a DNS lookup if there is not already an active proxy.
   // If there is an active proxy, does nothing.
   Status InitProxy(YBClient* client);
+
+  Result<std::shared_ptr<tserver::TabletServerServiceProxy>> ObtainProxy(YBClient& client);
 
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
@@ -582,7 +583,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // partitions are stale and returns ClientErrorCode::kTablePartitionListIsStale in that case.
   void LookupTabletById(const TabletId& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
-                        master::IncludeInactive include_inactive,
+                        master::IncludeHidden include_hidden,
                         master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
@@ -673,7 +674,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupByIdFailed(
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
-      master::IncludeInactive include_inactive,
+      master::IncludeHidden include_hidden,
       master::IncludeDeleted include_deleted,
       const boost::optional<PartitionListVersion>& response_partition_list_version,
       int64_t request_no,
@@ -718,7 +719,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   bool DoLookupTabletById(
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
-      master::IncludeInactive include_inactive,
+      master::IncludeHidden include_hidden,
       master::IncludeDeleted include_deleted,
       CoarseTimePoint deadline,
       UseCache use_cache,

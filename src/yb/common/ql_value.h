@@ -40,7 +40,9 @@
   case DataType::UINT16: FALLTHROUGH_INTENDED;    \
   case DataType::UINT32: FALLTHROUGH_INTENDED;    \
   case DataType::UINT64: FALLTHROUGH_INTENDED;    \
-  case DataType::GIN_NULL
+  case DataType::GIN_NULL: FALLTHROUGH_INTENDED;  \
+  case DataType::VECTOR: FALLTHROUGH_INTENDED;  \
+  case DataType::BSON
 
 namespace yb {
 
@@ -133,6 +135,7 @@ class QLValue {
   QLVALUE_PRIMITIVE_GETTER(frozen);
   QLVALUE_PRIMITIVE_GETTER(gin_null);
   QLVALUE_PRIMITIVE_GETTER(tuple);
+  QLVALUE_PRIMITIVE_GETTER(bson);
   #undef QLVALUE_PRIMITIVE_GETTER
 
   static Timestamp timestamp_value(const QLValuePB& pb);

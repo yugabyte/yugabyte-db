@@ -172,13 +172,13 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       GetSplitKeyResponsePB* resp,
       rpc::RpcContext context) override;
 
-  void GetSharedData(const GetSharedDataRequestPB* req,
-                     GetSharedDataResponsePB* resp,
-                     rpc::RpcContext context) override;
-
   void GetTserverCatalogVersionInfo(const GetTserverCatalogVersionInfoRequestPB* req,
                                     GetTserverCatalogVersionInfoResponsePB* resp,
                                     rpc::RpcContext context) override;
+
+  void GetTserverCatalogMessageLists(const GetTserverCatalogMessageListsRequestPB* req,
+                                     GetTserverCatalogMessageListsResponsePB* resp,
+                                     rpc::RpcContext context) override;
 
   void ListMasterServers(const ListMasterServersRequestPB* req,
                          ListMasterServersResponsePB* resp,
@@ -231,9 +231,19 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
       rpc::RpcContext context) override;
 
+  Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo(
+      const GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) override;
+
   void AdminExecutePgsql(
       const AdminExecutePgsqlRequestPB* req, AdminExecutePgsqlResponsePB* resp,
       rpc::RpcContext context) override;
+
+  void GetLocalPgTxnSnapshot(
+      const GetLocalPgTxnSnapshotRequestPB* req, GetLocalPgTxnSnapshotResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  Result<VerifyVectorIndexesResponsePB> VerifyVectorIndexes(
+      const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) override;
 
   void Shutdown() override;
 
@@ -348,6 +358,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
+
+  void GetPgSocketDir(
+      const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp,
+      rpc::RpcContext context) override;
 
  private:
   TabletServer* const server_;

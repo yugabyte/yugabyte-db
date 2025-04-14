@@ -21,13 +21,15 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/appendinfo.h"
 #include "optimizer/pathnode.h"
+#include "optimizer/planmain.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 typedef struct
 {
@@ -444,6 +446,12 @@ adjust_appendrel_attrs_mutator(Node *node,
 		newinfo->right_relids = adjust_child_relids(oldinfo->right_relids,
 													context->nappinfos,
 													context->appinfos);
+
+		/* YB: Also adjust rinfos within yb_batched_rinfo. */
+		newinfo->yb_batched_rinfo = (List *)
+			expression_tree_mutator((Node *) oldinfo->yb_batched_rinfo,
+									adjust_appendrel_attrs_mutator,
+									context);
 
 		/*
 		 * Reset cached derivative fields, since these might need to have
@@ -869,12 +877,9 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 	if (IsYBRelation(target_relation))
 	{
 		/*
-		 * If there are secondary indices on the target table, or if we have a
-		 * row-level trigger corresponding to the operations, then also return
-		 * the whole row.
+		 * Emit wholerow if required.
 		 */
-		if (YbUseWholeRowJunkAttribute(target_relation, target_rte->updatedCols,
-									   commandType, root->parse->returningList))
+		if (YbWholeRowAttrRequired(target_relation, commandType))
 		{
 			var = makeVar(rtindex, InvalidAttrNumber, RECORDOID, -1, InvalidOid,
 						  0);
@@ -890,9 +895,9 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 		add_row_identity_var(root, var, rtindex, "ybctid");
 	}
 	else if (commandType == CMD_MERGE ||
-		relkind == RELKIND_RELATION ||
-		relkind == RELKIND_MATVIEW ||
-		relkind == RELKIND_PARTITIONED_TABLE)
+			 relkind == RELKIND_RELATION ||
+			 relkind == RELKIND_MATVIEW ||
+			 relkind == RELKIND_PARTITIONED_TABLE)
 	{
 		/*
 		 * Emit CTID so that executor can find the row to merge, update or
@@ -993,9 +998,10 @@ distribute_row_identity_vars(PlannerInfo *root)
 	 * certainly process no rows.  Handle this edge case by re-opening the top
 	 * result relation and adding the row identity columns it would have used,
 	 * as preprocess_targetlist() would have done if it weren't marked "inh".
-	 * (This is a bit ugly, but it seems better to confine the ugliness and
-	 * extra cycles to this unusual corner case.)  We needn't worry about
-	 * fixing the rel's reltarget, as that won't affect the finished plan.
+	 * Then re-run build_base_rel_tlists() to ensure that the added columns
+	 * get propagated to the relation's reltarget.  (This is a bit ugly, but
+	 * it seems better to confine the ugliness and extra cycles to this
+	 * unusual corner case.)
 	 */
 	if (root->row_identity_vars == NIL)
 	{
@@ -1005,6 +1011,8 @@ distribute_row_identity_vars(PlannerInfo *root)
 		add_row_identity_columns(root, result_relation,
 								 target_rte, target_relation);
 		table_close(target_relation, NoLock);
+		build_base_rel_tlists(root, root->processed_tlist);
+		/* There are no ROWID_VAR Vars in this case, so we're done. */
 		return;
 	}
 

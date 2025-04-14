@@ -40,6 +40,7 @@
 
 #include "yb/gutil/strings/util.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
 #include "yb/util/result.h"
@@ -202,7 +203,7 @@ TEST_F(FsManagerTestBase, TestDuplicatePaths) {
 }
 
 TEST_F(FsManagerTestBase, TestListTablets) {
-  auto tablet_ids = ASSERT_RESULT(fs_manager()->ListTabletIds());
+  auto tablet_ids = ASSERT_RESULT(fs_manager()->ListTabletIds(CleanupTemporaryFiles::kTrue));
   ASSERT_EQ(0, tablet_ids.size());
 
   string path = fs_manager()->GetRaftGroupMetadataDirs()[0];
@@ -216,7 +217,7 @@ TEST_F(FsManagerTestBase, TestListTablets) {
   ASSERT_OK(env_->NewWritableFile(
       JoinPathSegments(path, "a_tablet_sort_of"), &writer));
 
-  tablet_ids = ASSERT_RESULT(fs_manager()->ListTabletIds());
+  tablet_ids = ASSERT_RESULT(fs_manager()->ListTabletIds(CleanupTemporaryFiles::kTrue));
   ASSERT_EQ(1, tablet_ids.size()) << tablet_ids;
 }
 
@@ -309,7 +310,7 @@ TEST_F(FsManagerTestBase, MultiDriveWithoutMeta) {
 
   // Deleted tablet-meta should be created
   ASSERT_OK(fs_manager()->CheckAndOpenFileSystemRoots());
-  ASSERT_OK(fs_manager()->ListTabletIds());
+  ASSERT_OK(fs_manager()->ListTabletIds(CleanupTemporaryFiles::kTrue));
 }
 
 TEST_F(FsManagerTestBase, AutoFlagsTest) {

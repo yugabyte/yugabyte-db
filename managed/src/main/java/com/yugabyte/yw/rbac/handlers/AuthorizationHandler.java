@@ -30,7 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.pac4j.play.store.PlaySessionStore;
+import org.pac4j.core.context.session.SessionStore;
 import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -48,7 +48,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
 
   private final Config config;
   private final RuntimeConfigCache runtimeConfigCache;
-  private final PlaySessionStore sessionStore;
+  private final SessionStore sessionStore;
   private final JWTVerifier jwtVerifier;
   private final TokenAuthenticator tokenAuthenticator;
 
@@ -58,7 +58,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
   @Inject
   public AuthorizationHandler(
       Config config,
-      PlaySessionStore sessionStore,
+      SessionStore sessionStore,
       RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier,
       TokenAuthenticator tokenAuthenticator) {
@@ -75,15 +75,6 @@ public class AuthorizationHandler extends Action<AuthzPath> {
     if (!useNewAuthz) {
       return delegate.call(request);
     }
-    Users user = tokenAuthenticator.getCurrentAuthenticatedUser(request);
-    if (user == null) {
-      log.debug("User not present in the system");
-      return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
-    }
-    UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
-    Customer customer = Customer.get(user.getCustomerUUID());
-    RequestContext.put(TokenAuthenticator.CUSTOMER, customer);
-    RequestContext.put(TokenAuthenticator.USER, userWithFeatures);
 
     String endpoint = request.uri();
     UUID customerUUID = null;
@@ -93,9 +84,29 @@ public class AuthorizationHandler extends Action<AuthzPath> {
       customerUUID = UUID.fromString(custMatcher.group(1));
     }
 
+    // Allow for disabling authentication on proxy endpoint so that
+    // Prometheus can scrape database nodes.
+    if (Pattern.matches(
+            String.format(
+                "^.*/universes/%s/proxy/%s/(.*)$", Util.PATTERN_FOR_UUID, Util.PATTERN_FOR_HOST),
+            endpoint)
+        && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
+      return delegate.call(request);
+    }
+
+    Users user = tokenAuthenticator.getCurrentAuthenticatedUser(request);
+    if (user == null) {
+      log.debug("User not present in the system");
+      return CompletableFuture.completedFuture(Results.unauthorized("Unable To Authenticate User"));
+    }
+    UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
+    Customer customer = Customer.get(user.getCustomerUUID());
+    RequestContext.put(TokenAuthenticator.CUSTOMER, customer);
+    RequestContext.put(TokenAuthenticator.USER, userWithFeatures);
+
     if (customerUUID != null && !user.getCustomerUUID().equals(customerUUID)) {
       log.debug("User {} does not belong to the customer {}", user.getUuid(), customerUUID);
-      return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
+      return CompletableFuture.completedFuture(Results.unauthorized("Unable To Authenticate User"));
     }
 
     RequiredPermissionOnResource[] permissionPathList = configuration.value();
@@ -206,8 +217,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
                 find.query().where().eq(resource.columnName(), resourceUUID).findList();
             ObjectMapper mapper = new ObjectMapper();
             if (modelEntityList == null || modelEntityList.isEmpty()) {
-              return CompletableFuture.completedFuture(
-                  Results.unauthorized("Unable to authorize user"));
+              return CompletableFuture.completedFuture(Results.notFound("Entity does not exist."));
             }
             Model modelEntity = modelEntityList.get(0);
             JsonNode requestBody = mapper.convertValue(modelEntity, JsonNode.class);

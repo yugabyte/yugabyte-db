@@ -23,6 +23,7 @@
 #define YBTIDBITMAP_H
 
 #include "postgres.h"
+
 #include "nodes/nodes.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -44,27 +45,26 @@ typedef enum
 typedef struct YbTIDBitmap
 {
 	NodeTag		type;			/* to make it a valid Node */
-	SliceSet	ybctid_set;		/* C++ set that contains my ybctids */
+	YbcSliceSet ybctid_set;		/* C++ set that contains my ybctids */
 	int			nentries;		/* number of entries in the bitmap */
-	YbTBMIteratingState iterating;
-								/* yb_tbm_begin_iterate called? */
-	size_t		bytes_consumed;	/* sum of the size of the ybctids */
+	YbTBMIteratingState iterating;	/* yb_tbm_begin_iterate called? */
+	size_t		bytes_consumed; /* sum of the size of the ybctids */
 	bool		work_mem_exceeded;	/* if bytes_consumed exceeds work_mem */
 } YbTIDBitmap;
 
 /* Result structure for tbm_iterate */
 typedef struct
 {
-	ConstSliceVector	ybctid_vector;
-	size_t				index;
-	size_t				prefetched_index;
+	YbcConstSliceVector ybctid_vector;
+	size_t		index;
+	size_t		prefetched_index;
 } YbTBMIterateResult;
 
 /* function prototypes in nodes/tidbitmap.c */
 
 extern YbTIDBitmap *yb_tbm_create(long maxbytes);
 
-extern bool yb_tbm_add_tuples(YbTIDBitmap *ybtbm, ConstSliceVector ybctids);
+extern bool yb_tbm_add_tuples(YbTIDBitmap *ybtbm, YbcConstSliceVector ybctids);
 
 extern void yb_tbm_union_and_free(YbTIDBitmap *a, YbTIDBitmap *b);
 extern void yb_tbm_intersect_and_free(YbTIDBitmap *a, YbTIDBitmap *b);

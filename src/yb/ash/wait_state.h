@@ -83,7 +83,7 @@ namespace yb::ash {
 #define YB_ASH_COMPONENT_BITS      4U
 
 #define YB_ASH_MAKE_EVENT(class) \
-    (static_cast<uint32_t>(yb::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
+    (static_cast<uint32_t>(std::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
      YB_ASH_CLASS_POSITION)
 
 // YB ASH Wait Components (4 bits)
@@ -200,8 +200,9 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForFlush, 2))
   ((kQueryIdForCompaction, 3))
   ((kQueryIdForRaftUpdateConsensus, 4))
-  ((kQueryIdForCatalogRequests, 5))
+  ((kQueryIdForUncomputedQueryId, 5))
   ((kQueryIdForLogBackgroundSync, 6))
+  ((kQueryIdForYSQLBackgroundWorker, 7))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -209,6 +210,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kDiskIO)
   (kNetwork)
   (kWaitOnCondition)
+  (kLock)
 );
 
 // List of pggate sync RPCs instrumented (in pg_client.cc)
@@ -250,6 +252,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kCheckIfPitrActive)
   (kIsObjectPartOfXRepl)
   (kGetTserverCatalogVersionInfo)
+  (kGetTserverCatalogMessageLists)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)
@@ -258,6 +261,15 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kYCQLStatementStats)
   (kServersMetrics)
   (kListClones)
+  (kCronGetLastMinute)
+  (kCronSetLastMinute)
+  (kAcquireAdvisoryLock)
+  (kReleaseAdvisoryLock)
+  (kAcquireObjectLock)
+  (kExportTxnSnapshot)
+  (kImportTxnSnapshot)
+  (kClearExportedTxnSnapshots)
+  (kPollVectorIndexReady)
 );
 
 struct WaitStatesDescription {
@@ -454,7 +466,7 @@ class WaitStateInfo {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = this->code();
-    pb->set_wait_state_code(yb::to_underlying(code));
+    pb->set_wait_state_code(std::to_underlying(code));
     if (export_wait_state_names) {
       pb->set_wait_state_code_as_string(yb::ToString(code));
     }
@@ -486,6 +498,9 @@ class WaitStateInfo {
 
   static std::vector<WaitStatesDescription> GetWaitStatesDescription();
   static int GetCircularBufferSizeInKiBs();
+
+  static uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code);
+  static uint32_t AshRemoveComponentFromWaitStateCode(uint32_t code);
 
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);

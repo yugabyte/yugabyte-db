@@ -52,13 +52,14 @@ export default class MetricsPanel extends Component {
   plotGraph = (metricOperation = null) => {
     const {
       metricKey,
-      currentUser,
+      isMetricsTimezoneEnabled,
       shouldAbbreviateTraceName = true,
       metricMeasure,
       operations = [],
       metricType,
       isMetricLoading = false,
-      printMode = false
+      printMode = false,
+      metricsTimezone
     } = this.props;
     const newMetricKey = printMode ? `${metricKey}-printMode` : metricKey;
     const metric =
@@ -129,12 +130,14 @@ export default class MetricsPanel extends Component {
           metric.layout.yaxis.ticksuffix = '&nbsp;ms';
         }
       }
-      metric.data = timeFormatXAxis(metric.data, currentUser.data.timezone);
+      metric.data = timeFormatXAxis(metric.data, metricsTimezone);
 
-      metric.layout.xaxis.hoverformat = currentUser.data.timezone
-        ? '%H:%M:%S, %b %d, %Y ' + moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
+      metric.layout.xaxis.hoverformat = metricsTimezone
+        ? '%H:%M:%S, %b %d, %Y ' + moment.tz(metricsTimezone).format('[UTC]ZZ')
         : '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
-
+      if (isMetricsTimezoneEnabled) {
+        metric.layout.xaxis.autorange = true;
+      }
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
@@ -250,7 +253,12 @@ export default class MetricsPanel extends Component {
       // to avoid re-plotting graph if equal
       const prevData = prevProps.metric.data;
       const currData = this.props.metric.data;
-      if (prevData && currData && !_.isEqual(prevData, currData)) {
+      const prevTimezone = prevProps.metricsTimezone;
+      const currTimezone = this.props.metricsTimezone;
+      if (
+        (prevData && currData && !_.isEqual(prevData, currData)) ||
+        prevTimezone !== currTimezone
+      ) {
         // When user is on a specific tab and when they switch from Overall
         // to Outlier, we need to ensure offsetWidth is maintained
         if (!this.state.outlierButtonsWidth) {

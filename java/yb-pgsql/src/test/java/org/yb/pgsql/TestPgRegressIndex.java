@@ -31,13 +31,6 @@ public class TestPgRegressIndex extends BasePgRegressTest {
   }
 
   @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("TEST_ysql_suppress_ybctid_corruption_details", "true");
-    return flagMap;
-  }
-
-  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     // TODO (#19975): Enable read committed isolation

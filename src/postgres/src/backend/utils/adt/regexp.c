@@ -38,7 +38,7 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -118,21 +118,23 @@ typedef struct cached_re_str
  */
 typedef struct YbReCacheInfo
 {
-	int *num;
+	int		   *num;
 	cached_re_str *array;
 } YbReCacheInfo;
 
-static void YbFreeRe(cached_re_str *re)
+static void
+YbFreeRe(cached_re_str *re)
 {
 	pg_regfree(&re->cre_re);
 	free(re->cre_pat);
 }
 
 static void
-YbFreeReCache(YBCPgThreadLocalRegexpCache *cache)
+YbFreeReCache(YbcPgThreadLocalRegexpCache *cache)
 {
 	Assert(cache && cache->array);
 	cached_re_str *re = cache->array;
+
 	for (cached_re_str *re_end = re + cache->num; re != re_end; ++re)
 		YbFreeRe(re);
 }
@@ -142,24 +144,31 @@ YbGetReCacheInfo()
 {
 	if (IsMultiThreadedMode())
 	{
-		YBCPgThreadLocalRegexpCache* cache = YBCPgGetThreadLocalRegexpCache();
+		YbcPgThreadLocalRegexpCache *cache = YBCPgGetThreadLocalRegexpCache();
+
 		if (!cache)
 		{
-			cache = YBCPgInitThreadLocalRegexpCache(
-				sizeof(cached_re_str) * MAX_CACHED_RES,
-				&YbFreeReCache);
+			cache = YBCPgInitThreadLocalRegexpCache((sizeof(cached_re_str) *
+													 MAX_CACHED_RES),
+													&YbFreeReCache);
 			Assert(cache && cache->array);
 		}
 
-		return (YbReCacheInfo){
+		return (YbReCacheInfo)
+		{
 			.num = &cache->num,
-			.array = (cached_re_str *) cache->array};
+				.array = (cached_re_str *) cache->array,
+		};
 	}
 
-	static int	num_res = 0;		/* # of cached re's */
+	static int	num_res = 0;	/* # of cached re's */
 	static cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
 
-	return (YbReCacheInfo) {.num = &num_res, .array = re_array};
+	return (YbReCacheInfo)
+	{
+		.num = &num_res,
+			.array = re_array,
+	};
 }
 
 /* Local functions */
@@ -199,7 +208,7 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	char		errMsg[100];
 
 	YbReCacheInfo yb_re_cache_info = YbGetReCacheInfo();
-	int *num_res = yb_re_cache_info.num;
+	int		   *num_res = yb_re_cache_info.num;
 	cached_re_str *re_array = yb_re_cache_info.array;
 
 	/*
@@ -1808,11 +1817,11 @@ regexp_split_to_array(PG_FUNCTION_ARGS)
 								  build_regexp_split_result(splitctx),
 								  false,
 								  TEXTOID,
-								  GetCurrentMemoryContext());
+								  CurrentMemoryContext);
 		splitctx->next_match++;
 	}
 
-	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, GetCurrentMemoryContext()));
+	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, CurrentMemoryContext));
 }
 
 /* This is separate to keep the opr_sanity regression test from complaining */

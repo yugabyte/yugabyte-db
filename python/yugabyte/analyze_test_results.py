@@ -34,6 +34,11 @@ def parse_args() -> argparse.Namespace:
              'Usually named test_results.json.',
         required=True)
     parser.add_argument(
+        '--planned-tests',
+        help='Spark planned test list produced by run_tests_on_spark.py. Usually named '
+             'planned_tests.json.',
+        required=True)
+    parser.add_argument(
         '--run-tests-on-spark-report',
         help='Full build report produced by run_tests_on_spark.py. Usually named '
              'full_build_report.json.gz.',
@@ -52,6 +57,9 @@ def parse_args() -> argparse.Namespace:
         '--test-list-out-path',
         help='Write the list of test descriptors from both types of reports to this file.')
     parser.add_argument(
+        '--analysis-out-path',
+        help='Write the analysis to this file as well as stdout.')
+    parser.add_argument(
         '--verbose',
         action='store_true',
         help='Verbose output')
@@ -66,8 +74,10 @@ SparkTaskReport = Dict[str, Union[str, int, float, List[str]]]
 
 @dataclass
 class AnalysisResult:
+    num_tests_planned: int = 0
     num_tests_in_junit_xml: int = 0
     num_tests_in_spark: int = 0
+    num_tests_did_not_run: int = 0
 
     num_failed_tests_in_junit_xml: int = 0
     num_failed_tests_in_spark: int = 0
@@ -86,7 +96,7 @@ class AnalysisResult:
     num_tests_without_spark_report: int = 0
 
     # Total number of unique test descriptors found across any types of reports (union).
-    num_total_unique_tests: int = 0
+    num_unique_test_results: int = 0
 
     # Total number of unique test descriptors found across both types of reports (intersection).
     num_unique_tests_present_in_both_report_types: int = 0
@@ -108,6 +118,7 @@ class SingleBuildAnalyzer:
 
     def __init__(self,
                  aggregated_test_results_path: str,
+                 planned_tests_path: str,
                  run_tests_on_spark_report_path: str,
                  archive_dir: Optional[str],
                  successful_tests_out_path: Optional[str] = None,
@@ -117,16 +128,20 @@ class SingleBuildAnalyzer:
             results. Look at aggregate_test_reports.py for the format of this dictionary, and at
             python/yugabyte/test_data/clang16_debug_centos7_test_report_from_junit_xml.json.gz for
             an example.
+        :param planned_tests_path: Path to the JSON file containing list of tests to be run.
+            Example: python/yugabyte/test_data/planned_tests.json
         :param run_tests_on_spark_report_path: Path to the JSON file containing the full build
             report produced by run_tests_on_spark.py. As an example, look at the following file:
             python/yugabyte/test_data/clang16_debug_centos7_run_tests_on_spark_full_report.json.gz
         """
         logging.info("Reading aggregated JUnit XML test results from %s",
                      aggregated_test_results_path)
-        logging.info("Reading full Spark build report from %s", run_tests_on_spark_report_path)
         self.test_reports_from_junit_xml = cast(
             List[Dict[str, Any]],
             json_util.read_json_file(aggregated_test_results_path)['tests'])
+        logging.info("Reading planned Spark test list from %s", planned_tests_path)
+        self.planned_tests_list = json_util.read_json_file(planned_tests_path)
+        logging.info("Reading full Spark build report from %s", run_tests_on_spark_report_path)
         self.run_tests_on_spark_report = cast(
             Dict[str, SparkTaskReport],
             json_util.read_json_file(run_tests_on_spark_report_path)['tests'])
@@ -234,6 +249,10 @@ class SingleBuildAnalyzer:
 
         desc_to_spark_task_report: Dict[SimpleTestDescriptor, SparkTaskReport] = {}
 
+        # TODO: This script does not support multiple test repotitions. Test descriptors are
+        #       assumed to be SimpleTestDescriptors with no :::attempt_X suffixes, and
+        #       assertions ensure that the name is not unique in the input report.
+        #       Even if it is not supported, it should gracefully ignore such tests.
         failed_tests_in_spark: Set[SimpleTestDescriptor] = set()
         for test_desc_str, spark_test_report in self.run_tests_on_spark_report.items():
             test_desc = SimpleTestDescriptor.parse(test_desc_str)
@@ -336,19 +355,24 @@ class SingleBuildAnalyzer:
                         junit_xml_report.get('num_failures', 0) > 0):
                     failed_tests_in_junit_xml.add(test_desc)
 
-        # Compare the set of tests (both successes and failures) for two types of reports.
-        for test_desc in sorted(
-                desc_to_spark_task_report.keys() | deduped_junit_reports_dict.keys()):
-            reports_from_junit_xml = deduped_junit_reports_dict.get(test_desc)
+        # Compare the spark planned tests to spark & junit results.
+        result.num_tests_planned = len(self.planned_tests_list)
+        planned_desc_list = [SimpleTestDescriptor.parse(td_str)
+                             for td_str in self.planned_tests_list]
+        for test_desc in planned_desc_list:
             spark_task_report = desc_to_spark_task_report.get(test_desc)
-            if reports_from_junit_xml is None:
+            reports_from_junit_xml = deduped_junit_reports_dict.get(test_desc)
+            if spark_task_report is None and reports_from_junit_xml is None:
+                logging.info("Test descriptor %s has no results", test_desc)
+                result.num_tests_did_not_run += 1
+                result.num_tests_without_junit_xml_report += 1
+                result.num_tests_without_spark_report += 1
+            elif reports_from_junit_xml is None:
                 logging.info("Test descriptor %s has no reports from JUnit XML files", test_desc)
                 result.num_tests_without_junit_xml_report += 1
-                continue
-            if spark_task_report is None:
+            elif spark_task_report is None:
                 logging.info("Test descriptor %s has no report from Spark", test_desc)
-                result.num_tests_without_spark_report = 1
-                continue
+                result.num_tests_without_spark_report += 1
 
         for test_desc in sorted(failed_tests_in_spark):
             if test_desc not in failed_tests_in_junit_xml:
@@ -380,8 +404,8 @@ class SingleBuildAnalyzer:
 
         all_test_descs = (set(desc_to_spark_task_report.keys()) |
                           set(desc_to_test_reports_from_junit_xml.keys()))
-        result.num_total_unique_tests = len(all_test_descs)
-        logging.info("Found %d unique tests total" % result.num_total_unique_tests)
+        result.num_unique_test_results = len(all_test_descs)
+        logging.info("Found %d unique tests total" % result.num_unique_test_results)
 
         tests_present_in_both = (set(desc_to_spark_task_report.keys()) &
                                  set(desc_to_test_reports_from_junit_xml.keys()))
@@ -395,7 +419,7 @@ class SingleBuildAnalyzer:
         test_descriptor.write_test_descriptors_to_file(
             self.successful_tests_out_path, successful_tests, 'successful tests')
         test_descriptor.write_test_descriptors_to_file(
-            self.test_list_out_path, all_test_descs, 'all tests')
+            self.test_list_out_path, planned_desc_list, 'all tests')
 
         return result
 
@@ -405,14 +429,21 @@ def main() -> None:
     common_util.init_logging(verbose=args.verbose)
     result = SingleBuildAnalyzer(
         args.aggregated_json_test_results,
+        args.planned_tests,
         args.run_tests_on_spark_report,
         args.archive_dir,
         args.successful_tests_out_path,
         args.test_list_out_path
     ).analyze()
 
+    stats = ''
     for field in dataclasses.fields(result):
         logging.info("%s: %s", field.name, getattr(result, field.name))
+        stats += f"{field.name}: {getattr(result, field.name)}\n"
+
+    if args.analysis_out_path:
+        logging.info("Writing the analysis stats to %s", args.analysis_out_path)
+        file_util.write_file(stats, args.analysis_out_path)
 
 
 if __name__ == '__main__':

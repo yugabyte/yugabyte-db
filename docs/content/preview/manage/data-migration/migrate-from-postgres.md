@@ -31,8 +31,8 @@ While YugabyteDB is a distributed database, it leverages PostgreSQL's query laye
 
 Implementing all PostgreSQL features in a distributed system can be challenging, and some features are still under development. To ensure that the features your applications depend on are supported in the version of YugabyteDB you are using, double-check that the feature is included in the list of supported features.
 
-{{<lead link="../../../explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features">}}
-Review the [list of unsupported features](../../../explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features) to make sure that the PostgreSQL features used by your application are supported by YugabyteDB.
+{{<lead link="../../../develop/postgresql-compatibility/#unsupported-postgresql-features">}}
+Review the [list of unsupported features](../../../develop/postgresql-compatibility/#unsupported-postgresql-features) to make sure that the PostgreSQL features used by your application are supported by YugabyteDB.
 {{</lead>}}
 
 ### Extension support
@@ -87,7 +87,7 @@ Refer to [Designing optimal primary keys](../../../develop/data-modeling/primary
 
 For improved performance of alternate query patterns that don't involve the primary key, you might have to create secondary indexes. For example, if the primary key of your table is based on the `id` of the user , but you have query lookups based on the name of the user, you would have to create an index on the `name` column for optimal performance of your name-based queries.
 
-In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The distribution of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. It is important to note that indexes are not colocated with the base table.
+In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. Unless the index is colocated or copartitioned, the sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed.
 
 {{<lead link="../../../develop/data-modeling/secondary-indexes-ysql/">}}
 Refer to [Designing secondary indexes](../../../develop/data-modeling/secondary-indexes-ysql/) for details on how to design secondary indexes to speed up alternate query patterns.

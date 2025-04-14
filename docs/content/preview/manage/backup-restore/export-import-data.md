@@ -91,7 +91,7 @@ The following are two of the script's common command-line options:
 
 You can import schemas and objects into YugabyteDB from a SQL script. To create this script, follow instructions provided in [Export a single database](#export-a-single-database) or [Export all databases](#export-all-databases). Alternatively, you can obtain the script from an external database that supports PostgreSQL syntax.
 
-To import the script, use the `ysqlsh` command line tool, as follows:
+To import the script, use the ysqlsh command line tool, as follows:
 
 ```sh
 ./bin/ysqlsh -f <sql_script>
@@ -99,7 +99,7 @@ To import the script, use the `ysqlsh` command line tool, as follows:
 
 *sql_script* is the path to the SQL script to be imported.
 
-You can also use the `\i` meta-command in the `ysqlsh` shell to import a SQL script, as follows:
+You can also use the `\i` meta-command in the ysqlsh shell to import a SQL script, as follows:
 
 ```sql
 yugabyte=# \i <sql_script>

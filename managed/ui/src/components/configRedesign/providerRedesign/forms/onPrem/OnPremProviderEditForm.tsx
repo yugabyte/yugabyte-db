@@ -637,6 +637,7 @@ const constructProviderPayload = async (
     sshUser,
     ...unexposedProviderDetailFields
   } = providerConfig.details;
+  const { ybHomeDir, ...unexposedProviderCloudInfoFields } = cloudInfo.onprem;
   return {
     code: ProviderCode.ON_PREM,
     name: formValues.providerName,
@@ -646,6 +647,7 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
+          ...unexposedProviderCloudInfoFields,
           ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir })
         }
       },

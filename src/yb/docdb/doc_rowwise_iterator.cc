@@ -83,8 +83,7 @@ DocRowwiseIterator::DocRowwiseIterator(
 DocRowwiseIterator::~DocRowwiseIterator() = default;
 
 void DocRowwiseIterator::InitIterator(
-    BloomFilterMode bloom_filter_mode,
-    const boost::optional<const Slice>& user_key_for_filter,
+    const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
   if (table_type_ == TableType::PGSQL_TABLE_TYPE) {
@@ -93,7 +92,7 @@ void DocRowwiseIterator::InitIterator(
 
   // Configure usage of fast backward scan. This must be done before creating of the intent
   // aware iterator and when doc_mode_ is already set.
-  // TODO(#22371): Fast backward scan is supported for flat doc reader only.
+  // TODO(#22371) fast-backward-scan is supported for flat doc reader only.
   if (FLAGS_use_fast_backward_scan && !is_forward_scan_ && doc_mode_ == DocMode::kFlat) {
     use_fast_backward_scan_ = true;
     VLOG_WITH_FUNC(1) << "Using FAST BACKWARD scan";
@@ -103,8 +102,7 @@ void DocRowwiseIterator::InitIterator(
 
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
-      bloom_filter_mode,
-      user_key_for_filter,
+      bloom_filter,
       query_id,
       txn_op_context_,
       read_operation_data_,
@@ -127,7 +125,7 @@ void DocRowwiseIterator::InitIterator(
 
   if (use_fast_backward_scan_) {
     auto lower_bound = shared_key_prefix();
-    // TODO(#22373): Do we need to consider bound_key_ here?
+    // TODO(fast-backward-scan): do we need to consider bound_key_ here?
     if (lower_bound.empty()) {
       static const auto kMinByte = dockv::KeyEntryTypeAsChar::kLowest;
       lower_bound = Slice(&kMinByte, 1);
@@ -158,7 +156,11 @@ void DocRowwiseIterator::Refresh(SeekFilter seek_filter) {
   seek_filter_ = seek_filter;
 }
 
-inline void DocRowwiseIterator::Seek(Slice key) {
+void DocRowwiseIterator::UpdateFilterKey(Slice user_key_for_filter) {
+  db_iter_->UpdateFilterKey(user_key_for_filter);
+}
+
+void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
 
   DCHECK(!done_);
@@ -185,9 +187,16 @@ inline void DocRowwiseIterator::Seek(Slice key) {
   db_iter_->Seek(Slice(&null_low, 1), seek_filter_, Full::kFalse);
 }
 
+inline void DocRowwiseIterator::SeekToDocKeyPrefix(Slice doc_key_prefix) {
+  VLOG_WITH_FUNC(3) << "Seeking to " << doc_key_prefix.ToDebugHexString();
+  prev_doc_found_ = DocReaderResult::kNotFound;
+  db_iter_->Seek(doc_key_prefix, SeekFilter::kAll, Full::kFalse);
+  row_key_.Clear();
+}
+
 inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
   // TODO consider adding an operator bool to DocKey to use instead of empty() here.
-  // TODO(#22373): Do we need to play with prev_doc_found_?
+  // TODO(fast-backward-scan) do we need to play with prev_doc_found_?
   if (!key.empty()) {
     db_iter_->SeekPrevDocKey(key);
   } else {
@@ -320,10 +329,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_info_, &projection_, table_type_,
           schema_packing_storage(), schema(), use_fast_backward_scan_);
-      if (!skip_table_tombstone_check()) {
-        RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
-            VERIFY_RESULT(GetTableTombstoneTime(row_key))));
-      }
+      RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
+          VERIFY_RESULT(GetTableTombstoneTime(row_key))));
       if (!ignore_ttl_) {
         doc_reader_->SetTableTtl(schema());
       }
@@ -439,6 +446,13 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   CHECK_NE(doc_mode_, DocMode::kFlat) << "Flat doc mode not supported yet";
   const auto* subdoc = row_->GetChild(dockv::KeyEntryValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
+}
+
+Result<Slice> DocRowwiseIterator::FetchDirect(Slice key) {
+  db_iter_->UpdateFilterKey(key);
+  db_iter_->Seek(key, SeekFilter::kAll, Full::kTrue);
+  auto fetch_result = VERIFY_RESULT_REF(db_iter_->Fetch());
+  return fetch_result.key == key ? fetch_result.value : Slice();
 }
 
 }  // namespace yb::docdb

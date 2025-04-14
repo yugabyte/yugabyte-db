@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -56,7 +57,7 @@ public abstract class AbstractTaskBase implements ITask {
   private static final String SLEEP_DISABLED_PATH = "yb.tasks.disabled_timeouts";
 
   // The threadpool on which the subtasks are executed.
-  private ExecutorService executor;
+  private ExecutorService subTaskExecutor;
 
   // The params for this task.
   protected ITaskParams taskParams;
@@ -155,23 +156,27 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public synchronized void terminate() {
     if (getUserTaskUUID().equals(getTaskUUID())) {
-      if (executor != null && !executor.isShutdown()) {
+      if (subTaskExecutor != null && !subTaskExecutor.isShutdown()) {
         log.info("Shutting down executor with name: {}", getExecutorPoolName());
         MoreExecutors.shutdownAndAwaitTermination(
-            executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-        executor = null;
+            subTaskExecutor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+        subTaskExecutor = null;
       }
     }
   }
 
-  protected synchronized ExecutorService getOrCreateExecutorService() {
-    if (executor == null) {
-      log.info("Creating executor with name: {}", getExecutorPoolName());
-      ThreadFactory namedThreadFactory =
-          new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-      executor = platformExecutorFactory.createExecutor(getExecutorPoolName(), namedThreadFactory);
+  /** Override this if a custom task executor is needed. */
+  protected ExecutorService createSubTaskExecutorService() {
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
+    return platformExecutorFactory.createExecutor(getExecutorPoolName(), namedThreadFactory);
+  }
+
+  protected synchronized ExecutorService getOrCreateSubTaskExecutorService() {
+    if (subTaskExecutor == null) {
+      subTaskExecutor = createSubTaskExecutorService();
     }
-    return executor;
+    return subTaskExecutor;
   }
 
   protected String getExecutorPoolName() {
@@ -195,6 +200,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public void validateParams(boolean isFirstTry) {}
+
+  @Override
+  public Duration getQueueWaitTime(TaskType taskType, ITaskParams taskParams) {
+    return null;
+  }
 
   /**
    * We would try to parse the shell response message as JSON and return JsonNode
@@ -248,24 +258,34 @@ public abstract class AbstractTaskBase implements ITask {
     getRunnableTask().runSubTasks();
   }
 
+  /**
+   * @deprecated Use {@link #createSubTaskGroup(String, SubTaskGroupType)} instead to set a default
+   *     SubTaskGroupType. This will be removed.
+   */
+  @Deprecated
   protected SubTaskGroup createSubTaskGroup(String name) {
-    return createSubTaskGroup(name, SubTaskGroupType.Invalid);
+    return createSubTaskGroup(name, SubTaskGroupType.Configuring);
   }
 
+  /**
+   * @deprecated Use {@link #createSubTaskGroup(String, SubTaskGroupType, boolean)} instead to set a
+   *     default SubTaskGroupType. This will be removed.
+   */
+  @Deprecated
   protected SubTaskGroup createSubTaskGroup(String name, boolean ignoreErrors) {
-    return createSubTaskGroup(name, SubTaskGroupType.Invalid, ignoreErrors);
+    return createSubTaskGroup(name, SubTaskGroupType.Configuring, ignoreErrors);
   }
 
-  protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType subTaskGroupType) {
-    return createSubTaskGroup(name, subTaskGroupType, false);
+  protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType defaultSubTaskGroupType) {
+    return createSubTaskGroup(name, defaultSubTaskGroupType, false);
   }
 
   // Returns a SubTaskGroup to which subtasks can be added.
   protected SubTaskGroup createSubTaskGroup(
-      String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
+      String name, SubTaskGroupType defaultSubTaskGroupType, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup(name, subTaskGroupType, ignoreErrors);
-    subTaskGroup.setSubTaskExecutor(getOrCreateExecutorService());
+        getTaskExecutor().createSubTaskGroup(name, defaultSubTaskGroupType, ignoreErrors);
+    subTaskGroup.setSubTaskExecutor(getOrCreateSubTaskExecutorService());
     return subTaskGroup;
   }
 

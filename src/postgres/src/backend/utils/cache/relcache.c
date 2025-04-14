@@ -47,23 +47,18 @@
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
-#include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
-#include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
-#include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
-#include "catalog/pg_range_d.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_shseclabel.h"
-#include "catalog/pg_statistic_d.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_tablespace.h"
@@ -85,36 +80,42 @@
 #include "storage/smgr.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
-#include "utils/catcache.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/relcache.h"
 #include "utils/relmapper.h"
 #include "utils/resowner_private.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/yb_scan.h"
 #include "catalog/index.h"
+#include "catalog/pg_amop.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_db_role_setting.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_policy.h"
+#include "catalog/pg_range_d.h"
+#include "catalog/pg_statistic_d.h"
+#include "catalog/pg_statistic_ext_data.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
-#include "commands/ybccmds.h"
+#include "commands/yb_cmds.h"
 #include "partitioning/partdesc.h"
-#include "utils/partcache.h"
 #include "pg_yb_utils.h"
+#include "utils/catcache.h"
+#include "utils/partcache.h"
+#include "utils/relcache.h"
 #include "utils/yb_inheritscache.h"
+#include "utils/yb_tuplecache.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -332,19 +333,19 @@ do { \
 	if (shared) \
 	{ \
 		snprintf(filename, sizeof(filename), "global/%s.%d", \
-		         RELCACHE_INIT_FILENAME, MyProcPid); \
+				 RELCACHE_INIT_FILENAME, MyProcPid); \
 	} \
 	else \
 	{ \
 		if (IsYugaByteEnabled()) \
 		{ \
 			snprintf(filename, sizeof(filename), "%d_%s.%d", \
-			         MyDatabaseId, RELCACHE_INIT_FILENAME, MyProcPid); \
+					 MyDatabaseId, RELCACHE_INIT_FILENAME, MyProcPid); \
 		} \
 		else \
 		{ \
 			snprintf(filename, sizeof(filename), "%s/%s.%d", \
-			         DatabasePath, RELCACHE_INIT_FILENAME, MyProcPid); \
+					 DatabasePath, RELCACHE_INIT_FILENAME, MyProcPid); \
 		} \
 	} \
 } while (0)
@@ -736,8 +737,8 @@ RelationBuildTupleDesc(Relation relation)
 				 attp->attnum, RelationGetRelationName(relation));
 
 		memcpy(TupleDescAttr(RelationGetDescr(relation), attp->attnum - 1),
-		       attp,
-		       ATTRIBUTE_FIXED_PART_SIZE);
+			   attp,
+			   ATTRIBUTE_FIXED_PART_SIZE);
 
 		/* Update constraint/default info */
 		if (attp->attnotnull)
@@ -922,17 +923,17 @@ YBRelationBuildRuleLock(Relation relation)
 	rewrite_desc = table_open(RewriteRelationId, AccessShareLock);
 	rewrite_tupdesc = RelationGetDescr(rewrite_desc);
 
-	CatCList* rewrite_list = SearchSysCacheList1(RULERELNAME,
-												 ObjectIdGetDatum(RelationGetRelid(relation)));
+	CatCList   *rewrite_list = SearchSysCacheList1(RULERELNAME,
+												   ObjectIdGetDatum(RelationGetRelid(relation)));
 
 	for (int i = 0; i < rewrite_list->n_members; i++)
 	{
-		HeapTuple       rewrite_tuple = &rewrite_list->members[i]->tuple;
-		Form_pg_rewrite rewrite_form  = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
+		HeapTuple	rewrite_tuple = &rewrite_list->members[i]->tuple;
+		Form_pg_rewrite rewrite_form = (Form_pg_rewrite) GETSTRUCT(rewrite_tuple);
 
 		bool		isnull;
 		Datum		rule_datum;
-		char		*rule_str;
+		char	   *rule_str;
 		RewriteRule *rule;
 
 		rule = (RewriteRule *) MemoryContextAlloc(rulescxt,
@@ -1346,80 +1347,16 @@ YbIsNonAlterableRelation(Relation rel)
 	return IsSystemRelation(rel) && rel->rd_rel->relkind != RELKIND_VIEW;
 }
 
-/*
- * Group all tuples under the same relation into a list for partial key
- * searches.
- */
-typedef struct YbTupleCacheEntry
+typedef struct YbUpdateRelationCacheState
 {
-	/* Key must be the first */
-	Oid	key;
-	List *tuples;
-} YbTupleCacheEntry;
-
-typedef struct YbTupleCache
-{
-	Relation rel;
-	HTAB *data;
-} YbTupleCache;
-
-typedef Oid (*YbTupleCacheKeyExtractor)(HeapTuple);
-
-static void
-YbLoadTupleCache(YbTupleCache *cache, Oid relid,
-				 YbTupleCacheKeyExtractor key_extractor, const char *cache_name)
-{
-	Assert(!(cache->rel || cache->data));
-	cache->rel = table_open(relid, AccessShareLock);
-	HASHCTL ctl = {0};
-	ctl.keysize = sizeof(Oid);
-	ctl.entrysize = sizeof(YbTupleCacheEntry);
-	cache->data = hash_create(cache_name, 32, &ctl, HASH_ELEM | HASH_BLOBS);
-
-	SysScanDesc scandesc = systable_beginscan(
-		cache->rel, InvalidOid, false /* indexOk */, NULL, 0, NULL);
-
-	YbTupleCacheEntry *entry = NULL;
-	HeapTuple htup;
-	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
-	{
-		Oid key = key_extractor(htup);
-		if (!entry || entry->key != key)
-		{
-			bool found = false;
-			entry = hash_search(cache->data, &key, HASH_ENTER, &found);
-
-			if (!found)
-				entry->tuples = NULL;
-		}
-		entry->tuples = lappend(entry->tuples, htup);
-	}
-	systable_endscan(scandesc);
-}
-
-static void
-YbCleanupTupleCache(YbTupleCache *cache)
-{
-	if (!cache->rel)
-		return;
-
-	if (cache->data)
-	{
-		hash_destroy(cache->data);
-		cache->data = NULL;
-	}
-
-	table_close(cache->rel, AccessShareLock);
-	cache->rel = NULL;
-}
-
-typedef struct YbUpdateRelationCacheState {
-	bool sys_relations_update_required;
-	bool has_partitioned_tables;
-	bool has_relations_with_trigger;
-	bool has_relations_with_row_security;
+	bool		sys_relations_update_required;
+	bool		has_partitioned_tables;
+	bool		has_relations_with_trigger;
+	bool		has_relations_with_row_security;
 	YbTupleCache pg_attrdef_cache;
 	YbTupleCache pg_constraint_cache;
+	YbTupleCache pg_trigger_cache;
+	YbTupleCache pg_policy_cache;
 } YbUpdateRelationCacheState;
 
 static void
@@ -1427,6 +1364,8 @@ YbCleanupUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 {
 	YbCleanupTupleCache(&state->pg_attrdef_cache);
 	YbCleanupTupleCache(&state->pg_constraint_cache);
+	YbCleanupTupleCache(&state->pg_trigger_cache);
+	YbCleanupTupleCache(&state->pg_policy_cache);
 }
 
 /*
@@ -1451,17 +1390,22 @@ YbCleanupUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 static void
 YBLoadRelations(YbUpdateRelationCacheState *state)
 {
-	Relation pg_class_desc = table_open(RelationRelationId, AccessShareLock);
-	SysScanDesc scandesc = systable_beginscan(
-	    pg_class_desc, RelationRelationId, false /* indexOk */, NULL, 0, NULL);
+	Relation	pg_class_desc = table_open(RelationRelationId, AccessShareLock);
+	SysScanDesc scandesc = systable_beginscan(pg_class_desc,
+											  RelationRelationId,
+											  false /* indexOk */ ,
+											  NULL,
+											  0,
+											  NULL);
 
-	HeapTuple pg_class_tuple;
-	int num_tuples = 0;
+	HeapTuple	pg_class_tuple;
+	int			num_tuples = 0;
+
 	while (HeapTupleIsValid(pg_class_tuple = systable_getnext(scandesc)))
 	{
 		/* get information from the pg_class_tuple */
 		Form_pg_class relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
-		Oid			  relid = relp->oid;
+		Oid			relid = relp->oid;
 
 		++num_tuples;
 
@@ -1473,7 +1417,8 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		 * c. If it's a system view it could still be changed, either via YSQL
 		 *    upgrade or manually.
 		 */
-		Relation existing_rel;
+		Relation	existing_rel;
+
 		RelationIdCacheLookup(relid, existing_rel);
 
 		if (existing_rel)
@@ -1488,7 +1433,7 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		 * allocate storage for the relation descriptor, and copy pg_class_tuple
 		 * to relation->rd_rel.
 		 */
-		Relation relation = AllocateRelationDesc(relp);
+		Relation	relation = AllocateRelationDesc(relp);
 
 		/* initialize the relation's relation id (relation->rd_id) */
 		RelationGetRelid(relation) = relid;
@@ -1498,21 +1443,21 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		 * relation be new.  It could be temp though.  (Actually, it could be new
 		 * too, but it's okay to forget that fact if forced to flush the entry.)
 		 */
-		relation->rd_refcnt              = 0;
-		relation->rd_isnailed            = false;
-		relation->rd_createSubid         = InvalidSubTransactionId;
+		relation->rd_refcnt = 0;
+		relation->rd_isnailed = false;
+		relation->rd_createSubid = InvalidSubTransactionId;
 		relation->rd_newRelfilenodeSubid = InvalidSubTransactionId;
 		switch (relation->rd_rel->relpersistence)
 		{
 			case RELPERSISTENCE_UNLOGGED:
 			case RELPERSISTENCE_PERMANENT:
-				relation->rd_backend     = InvalidBackendId;
+				relation->rd_backend = InvalidBackendId;
 				relation->rd_islocaltemp = false;
 				break;
 			case RELPERSISTENCE_TEMP:
 				if (isTempOrTempToastNamespace(relation->rd_rel->relnamespace))
 				{
-					relation->rd_backend     = BackendIdForTempRelations();
+					relation->rd_backend = BackendIdForTempRelations();
 					relation->rd_islocaltemp = true;
 				}
 				else
@@ -1531,7 +1476,7 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		}
 
 		/* foreign key data is not loaded till asked for */
-		relation->rd_fkeylist  = NIL;
+		relation->rd_fkeylist = NIL;
 		relation->rd_fkeyvalid = false;
 
 		/*
@@ -1539,9 +1484,9 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		 * be populated later for partitioned tables
 		 */
 		relation->rd_partkeycxt = NULL;
-		relation->rd_partkey    = NULL;
-		relation->rd_partdesc   = NULL;
-		relation->rd_pdcxt      = NULL;
+		relation->rd_partkey = NULL;
+		relation->rd_partdesc = NULL;
+		relation->rd_pdcxt = NULL;
 
 		/*
 		 * initialize access method information
@@ -1585,7 +1530,11 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 
 		/* It's fully valid */
 		relation->rd_isvalid = true;
-		/* Sys relation update is required in case at least one new sys relation has been loaded. */
+
+		/*
+		 * Sys relation update is required in case at least one new sys
+		 * relation has been loaded.
+		 */
 		state->sys_relations_update_required |= IsSystemRelation(relation);
 
 		state->has_relations_with_trigger |= relation->rd_rel->relhastriggers;
@@ -1593,8 +1542,8 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		state->has_relations_with_row_security |=
 			relation->rd_rel->relrowsecurity;
 
-		state->has_partitioned_tables |= relation->rd_rel->relkind ==
-										 RELKIND_PARTITIONED_TABLE;
+		state->has_partitioned_tables |= (relation->rd_rel->relkind ==
+										  RELKIND_PARTITIONED_TABLE);
 	}
 
 	systable_endscan(scandesc);
@@ -1612,23 +1561,25 @@ static void
 YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
 {
 	AttrDefault *attrdef = relation->rd_att->constr->defval;
-	uint16 ndef = relation->rd_att->constr->num_defval;
-	Relation adrel = pg_attrdef_cache->rel;
+	uint16		ndef = relation->rd_att->constr->num_defval;
+	Relation	adrel = pg_attrdef_cache->rel;
 
-	Oid	relid = RelationGetRelid(relation);
-	const YbTupleCacheEntry *entry =
-		hash_search(pg_attrdef_cache->data, &relid, HASH_FIND, NULL);
+	Oid			relid = RelationGetRelid(relation);
+	const YbTupleCacheEntry *entry = hash_search(pg_attrdef_cache->data,
+												 &relid, HASH_FIND, NULL);
 
-	ListCell *cell;
-	foreach (cell, entry ? entry->tuples : NULL)
+	ListCell   *cell;
+
+	foreach(cell, entry ? entry->tuples : NULL)
 	{
-		HeapTuple htup = lfirst(cell);
+		HeapTuple	htup = lfirst(cell);
 
-		Form_pg_attrdef	adform = (Form_pg_attrdef) GETSTRUCT(htup);
-		Form_pg_attribute attr =
-			TupleDescAttr(relation->rd_att, adform->adnum - 1);
+		Form_pg_attrdef adform = (Form_pg_attrdef) GETSTRUCT(htup);
+		Form_pg_attribute attr = TupleDescAttr(relation->rd_att,
+											   adform->adnum - 1);
 
-		uint16 i = 0;
+		uint16		i = 0;
+
 		for (; i < ndef; ++i)
 		{
 			if (adform->adnum != attrdef[i].adnum)
@@ -1638,16 +1589,17 @@ YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
 					 "multiple attrdef records found for attr %s of rel %s",
 					 NameStr(attr->attname), RelationGetRelationName(relation));
 
-			bool isnull = false;
-			Datum val = fastgetattr(htup, Anum_pg_attrdef_adbin, adrel->rd_att,
-									&isnull);
+			bool		isnull = false;
+			Datum		val = fastgetattr(htup, Anum_pg_attrdef_adbin,
+										  adrel->rd_att, &isnull);
+
 			if (isnull)
 				elog(WARNING, "null adbin for attr %s of rel %s",
 					 NameStr(attr->attname), RelationGetRelationName(relation));
 			else
 			{
 				/* detoast and convert to cstring in caller's context */
-				char *s = TextDatumGetCString(val);
+				char	   *s = TextDatumGetCString(val);
 
 				attrdef[i].adbin = MemoryContextStrdup(CacheMemoryContext, s);
 				pfree(s);
@@ -1668,21 +1620,22 @@ YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
  * Most code is borrowed from PG's CheckConstraintFetch.
  */
 static void
-YbCheckConstraintFetch(Relation	relation, const YbTupleCache *pg_constraint_cache)
+YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cache)
 {
 	ConstrCheck *check = relation->rd_att->constr->check;
-	uint16 ncheck = relation->rd_att->constr->num_check;
-	Relation conrel = pg_constraint_cache->rel;
-	uint16 found = 0;
+	uint16		ncheck = relation->rd_att->constr->num_check;
+	Relation	conrel = pg_constraint_cache->rel;
+	uint16		found = 0;
 
-	Oid	relid = RelationGetRelid(relation);
-	const YbTupleCacheEntry *entry =
-		hash_search(pg_constraint_cache->data, &relid, HASH_FIND, NULL);
+	Oid			relid = RelationGetRelid(relation);
+	const YbTupleCacheEntry *entry = hash_search(pg_constraint_cache->data,
+												 &relid, HASH_FIND, NULL);
 
-	ListCell *cell;
-	foreach (cell, entry ? entry->tuples : NULL)
+	ListCell   *cell;
+
+	foreach(cell, entry ? entry->tuples : NULL)
 	{
-		HeapTuple htup = (HeapTuple) lfirst(cell);
+		HeapTuple	htup = (HeapTuple) lfirst(cell);
 		Form_pg_constraint conform = (Form_pg_constraint) GETSTRUCT(htup);
 
 		/* We want check constraints only */
@@ -1698,16 +1651,19 @@ YbCheckConstraintFetch(Relation	relation, const YbTupleCache *pg_constraint_cach
 		check[found].ccname =
 			MemoryContextStrdup(CacheMemoryContext, NameStr(conform->conname));
 
-		bool isnull = false;
+		bool		isnull = false;
+
 		/* Grab and test conbin is actually set */
-		Datum val = fastgetattr(htup, Anum_pg_constraint_conbin,
-								RelationGetDescr(conrel), &isnull);
+		Datum		val = fastgetattr(htup, Anum_pg_constraint_conbin,
+									  RelationGetDescr(conrel), &isnull);
+
 		if (isnull)
 			elog(ERROR, "null conbin for rel %s",
 				 RelationGetRelationName(relation));
 
 		/* detoast and convert to cstring in caller's context */
-		char *s = TextDatumGetCString(val);
+		char	   *s = TextDatumGetCString(val);
+
 		check[found].ccbin = MemoryContextStrdup(CacheMemoryContext, s);
 		pfree(s);
 
@@ -1723,11 +1679,12 @@ YbCheckConstraintFetch(Relation	relation, const YbTupleCache *pg_constraint_cach
 		qsort(check, ncheck, sizeof(ConstrCheck), CheckConstraintCmp);
 }
 
-typedef struct YbRelationAttrsProcessingState {
-	Oid relid;
-	Relation relation;
-	int need;
-	int ndef;
+typedef struct YbRelationAttrsProcessingState
+{
+	Oid			relid;
+	Relation	relation;
+	int			need;
+	int			ndef;
 	TupleConstr *constr;
 	AttrDefault *attrdef;
 	AttrMissing *attrmiss;
@@ -1736,8 +1693,10 @@ typedef struct YbRelationAttrsProcessingState {
 typedef struct YbAttrProcessorState
 {
 	YbRelationAttrsProcessingState processing;
-	const YbTupleCache* pg_attrdef_cache;
-	const YbTupleCache* pg_constraint_cache;
+	const YbTupleCache *pg_attrdef_cache;
+	const YbTupleCache *pg_constraint_cache;
+	const YbTupleCache *pg_trigger_cache;
+	const YbTupleCache *pg_policy_cache;
 } YbAttrProcessorState;
 
 static inline bool
@@ -1757,6 +1716,7 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 {
 	YbRelationAttrsProcessingState *processing = &state->processing;
 	Form_pg_attribute attp = (Form_pg_attribute) GETSTRUCT(htup);
+
 	if (!YbIsAttrProcessingStarted(state) || processing->relid != attp->attrelid)
 		return false;
 	if (!YbIsAttrProcessingRequired(state))
@@ -1765,12 +1725,13 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 	if (attp->attnum <= 0)
 		return true;
 
-	Relation relation = processing->relation;
+	Relation	relation = processing->relation;
+
 	if (attp->attnum > relation->rd_rel->relnatts)
 		elog(ERROR,
-		     "invalid attribute number %d for %s",
-		     attp->attnum,
-		     RelationGetRelationName(relation));
+			 "invalid attribute number %d for %s",
+			 attp->attnum,
+			 RelationGetRelationName(relation));
 
 	memcpy(TupleDescAttr(relation->rd_att, attp->attnum - 1), attp, ATTRIBUTE_FIXED_PART_SIZE);
 
@@ -1783,10 +1744,13 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 	if (attp->atthasdef)
 	{
 		if (processing->attrdef == NULL)
-			processing->attrdef = (AttrDefault*) MemoryContextAllocZero(
-			    CacheMemoryContext, relation->rd_rel->relnatts * sizeof(AttrDefault));
+			processing->attrdef = (AttrDefault *)
+				MemoryContextAllocZero(CacheMemoryContext,
+									   (relation->rd_rel->relnatts *
+										sizeof(AttrDefault)));
 
 		AttrDefault *attrdef = processing->attrdef;
+
 		attrdef[processing->ndef].adnum = attp->attnum;
 		attrdef[processing->ndef].adbin = NULL;
 		++processing->ndef;
@@ -1795,26 +1759,32 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 	/* Likewise for a missing value */
 	if (attp->atthasmissing)
 	{
-		bool missingNull;
+		bool		missingNull;
 
 		/* Do we have a missing value? */
-		Datum missingval = heap_getattr(htup,
-		                                Anum_pg_attribute_attmissingval,
-		                                attrel->rd_att,
-		                                &missingNull);
+		Datum		missingval = heap_getattr(htup,
+											  Anum_pg_attribute_attmissingval,
+											  attrel->rd_att,
+											  &missingNull);
+
 		if (!missingNull)
 		{
 			/* Yes, fetch from the array */
 			if (processing->attrmiss == NULL)
-				processing->attrmiss = (AttrMissing *)MemoryContextAllocZero(
-				    CacheMemoryContext, relation->rd_rel->relnatts * sizeof(AttrMissing));
-			bool is_null;
-			int one = 1;
-			Datum missval = array_get_element(
-			    missingval, 1, &one, -1, attp->attlen, attp->attbyval, attp->attalign, &is_null);
+				processing->attrmiss = (AttrMissing *)
+					MemoryContextAllocZero(CacheMemoryContext,
+										   (relation->rd_rel->relnatts *
+											sizeof(AttrMissing)));
+			bool		is_null;
+			int			one = 1;
+			Datum		missval = array_get_element(missingval, 1, &one, -1,
+													attp->attlen, attp->attbyval,
+													attp->attalign, &is_null);
+
 			Assert(!is_null);
 
 			AttrMissing *attrmiss = processing->attrmiss;
+
 			if (attp->attbyval)
 			{
 				/* for copy by val just copy the datum direct */
@@ -1824,8 +1794,10 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 			{
 				/* otherwise copy in the correct context */
 				MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-				attrmiss[attp->attnum - 1].am_value = datumCopy(
-				    missval, attp->attbyval, attp->attlen);
+
+				attrmiss[attp->attnum - 1].am_value = datumCopy(missval,
+																attp->attbyval,
+																attp->attlen);
 				MemoryContextSwitchTo(oldcxt);
 			}
 			attrmiss[attp->attnum - 1].am_present = true;
@@ -1836,26 +1808,29 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 }
 
 static void
-YbStartNewAttrProcessing(YbAttrProcessorState* state,
-                         bool sys_rel_update_required,
-                         Relation attrel,
-                         HeapTuple htup)
+YbStartNewAttrProcessing(YbAttrProcessorState *state,
+						 bool sys_rel_update_required,
+						 Relation attrel,
+						 HeapTuple htup)
 {
 	Assert(!YbIsAttrProcessingStarted(state));
 	YbRelationAttrsProcessingState *processing = &state->processing;
 	Form_pg_attribute attp = (Form_pg_attribute) GETSTRUCT(htup);
+
 	Assert(OidIsValid(attp->attrelid));
 	processing->relid = attp->attrelid;
-	Relation relation;
+	Relation	relation;
+
 	RelationIdCacheLookup(processing->relid, relation);
 	if (!relation || (!sys_rel_update_required && IsSystemRelation(relation)))
 		return;
 
 	processing->relation = relation;
 	processing->need = processing->relation->rd_rel->relnatts;
-	processing->constr = (TupleConstr*) MemoryContextAllocZero(
-		CacheMemoryContext, sizeof(TupleConstr));
-	bool applied = YbApplyAttr(state, attrel, htup);
+	processing->constr = (TupleConstr *)
+		MemoryContextAllocZero(CacheMemoryContext, sizeof(TupleConstr));
+	bool		applied = YbApplyAttr(state, attrel, htup);
+
 	Assert(applied);
 	(void) applied;
 }
@@ -1864,19 +1839,20 @@ static void
 YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 {
 	const YbRelationAttrsProcessingState *processing = &state->processing;
+
 	if (processing->need != 0)
 		elog(ERROR, "catalog is missing %d attribute(s) for relid %u",
 			 processing->need, processing->relid);
 
-	Relation relation = processing->relation;
+	Relation	relation = processing->relation;
 	TupleConstr *constr = processing->constr;
 	AttrDefault *attrdef = processing->attrdef;
 	AttrMissing *attrmiss = processing->attrmiss;
-	int	ndef = processing->ndef;
+	int			ndef = processing->ndef;
 
 	/* copy some fields from pg_class row to rd_att */
 	relation->rd_att->tdtypeid = relation->rd_rel->reltype;
-	relation->rd_att->tdtypmod = -1; /* unnecessary, but... */
+	relation->rd_att->tdtypmod = -1;	/* unnecessary, but... */
 
 	/*
 	 * However, we can easily set the attcacheoff value for the first
@@ -1893,7 +1869,7 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 			pfree(relation->rd_att->constr);
 		relation->rd_att->constr = constr;
 
-		if (ndef > 0)            /* DEFAULTs */
+		if (ndef > 0)			/* DEFAULTs */
 		{
 			if (ndef < RelationGetNumberOfAttributes(relation))
 				constr->defval = (AttrDefault *) repalloc(attrdef, ndef * sizeof(AttrDefault));
@@ -1907,11 +1883,12 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 
 		constr->missing = attrmiss;
 
-		if (relation->rd_rel->relchecks > 0)    /* CHECKs */
+		if (relation->rd_rel->relchecks > 0)	/* CHECKs */
 		{
 			constr->num_check = relation->rd_rel->relchecks;
-			constr->check = (ConstrCheck *) MemoryContextAllocZero(
-			    CacheMemoryContext, constr->num_check * sizeof(ConstrCheck));
+			constr->check = (ConstrCheck *)
+				MemoryContextAllocZero(CacheMemoryContext,
+									   constr->num_check * sizeof(ConstrCheck));
 			YbCheckConstraintFetch(relation, state->pg_constraint_cache);
 		}
 		else
@@ -1921,24 +1898,24 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	{
 		pfree(constr);
 		relation->rd_att->constr = NULL;
-	}	
+	}
 
 	/* Fetch rules and triggers that affect this relation */
 	if (relation->rd_rel->relhasrules)
 		YBRelationBuildRuleLock(relation);
 	else
 	{
-		relation->rd_rules    = NULL;
+		relation->rd_rules = NULL;
 		relation->rd_rulescxt = NULL;
 	}
 
 	if (relation->rd_rel->relhastriggers)
-		RelationBuildTriggers(relation);
+		RelationBuildTriggers(relation, state->pg_trigger_cache);
 	else
 		relation->trigdesc = NULL;
 
 	if (relation->rd_rel->relrowsecurity)
-		RelationBuildRowSecurity(relation);
+		RelationBuildRowSecurity(relation, state->pg_policy_cache);
 	else
 		relation->rd_rsdesc = NULL;
 }
@@ -1951,7 +1928,10 @@ YbCompleteAttrProcessing(YbAttrProcessorState *state)
 
 	if (YbIsAttrProcessingRequired(state))
 		YbCompleteAttrProcessingImpl(state);
-	state->processing = (struct YbRelationAttrsProcessingState){0};
+	state->processing = (struct YbRelationAttrsProcessingState)
+	{
+		0
+	};
 }
 
 static void
@@ -1968,25 +1948,28 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 	 * info into the Relation entry, which among other things, sets up then constraint and default
 	 * info.
 	 */
-	Relation attrel = table_open(AttributeRelationId, AccessShareLock);
-	SysScanDesc scandesc = systable_beginscan(
-		attrel, InvalidOid, false /* indexOk */, NULL, 0, NULL);
+	Relation	attrel = table_open(AttributeRelationId, AccessShareLock);
+	SysScanDesc scandesc = systable_beginscan(attrel, InvalidOid,
+											  false /* indexOk */ , NULL, 0,
+											  NULL);
 
 	YbAttrProcessorState state = {0};
+
 	state.pg_attrdef_cache = &cache_update_state->pg_attrdef_cache;
 	state.pg_constraint_cache = &cache_update_state->pg_constraint_cache;
+	state.pg_trigger_cache = &cache_update_state->pg_trigger_cache;
 
-	const bool sys_rel_update_required =
-		cache_update_state->sys_relations_update_required;
+	const bool	sys_rel_update_required = cache_update_state->sys_relations_update_required;
 
-	HeapTuple htup;
+	HeapTuple	htup;
+
 	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
 	{
 		if (!YbApplyAttr(&state, attrel, htup))
 		{
 			YbCompleteAttrProcessing(&state);
-			YbStartNewAttrProcessing(
-			    &state, sys_rel_update_required, attrel, htup);
+			YbStartNewAttrProcessing(&state, sys_rel_update_required, attrel,
+									 htup);
 		}
 	}
 	YbCompleteAttrProcessing(&state);
@@ -1997,16 +1980,18 @@ YBUpdateRelationsAttributes(const YbUpdateRelationCacheState *cache_update_state
 static void
 YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 {
-	Relation partrel = table_open(PartitionedRelationId, AccessShareLock);
-	SysScanDesc scandesc = systable_beginscan(
-	    partrel, PartitionedRelationId, false /* indexOk */, NULL, 0, NULL);
+	Relation	partrel = table_open(PartitionedRelationId, AccessShareLock);
+	SysScanDesc scandesc = systable_beginscan(partrel, PartitionedRelationId,
+											  false /* indexOk */ , NULL, 0,
+											  NULL);
 
-	HeapTuple htup;
+	HeapTuple	htup;
+
 	while (HeapTupleIsValid(htup = systable_getnext(scandesc)))
 	{
-		Form_pg_partitioned_table part_table_form =
-		    (Form_pg_partitioned_table) GETSTRUCT(htup);
-		Relation relation;
+		Form_pg_partitioned_table part_table_form = (Form_pg_partitioned_table) GETSTRUCT(htup);
+		Relation	relation;
+
 		RelationIdCacheLookup(part_table_form->partrelid, relation);
 
 		if (relation &&
@@ -2016,7 +2001,7 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 		{
 			/* Initialize key and partition descriptor info */
 			RelationBuildPartitionKey(relation);
-			RelationBuildPartitionDesc(relation, true /* omit_detached */);
+			RelationBuildPartitionDesc(relation, true /* omit_detached */ );
 		}
 	}
 
@@ -2026,11 +2011,11 @@ YBUpdateRelationsPartitioning(const YbUpdateRelationCacheState *state)
 
 typedef struct YbIndexProcessorState
 {
-	Oid relid;
-	Relation relation;
-	List *result;
-	Oid	pkeyIndex;
-	Oid	candidateIndex;
+	Oid			relid;
+	Relation	relation;
+	List	   *result;
+	Oid			pkeyIndex;
+	Oid			candidateIndex;
 } YbIndexProcessorState;
 
 static inline bool
@@ -2085,17 +2070,18 @@ static void
 YbCompleteIndexProcessingImpl(const YbIndexProcessorState *state)
 {
 	Assert(YbIsIndexProcessingRequired(state));
-	Relation relation = state->relation;
-	Oid pkeyIndex = state->pkeyIndex;
-	Oid candidateIndex = state->candidateIndex;
-	List *result = state->result;
-	char replident = relation->rd_rel->relreplident;
+	Relation	relation = state->relation;
+	Oid			pkeyIndex = state->pkeyIndex;
+	Oid			candidateIndex = state->candidateIndex;
+	List	   *result = state->result;
+	char		replident = relation->rd_rel->relreplident;
 
 	/* Further code is copy-paste from the RelationGetIndexList function */
 
 	/* Now save a copy of the completed list in the relcache entry. */
 	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-	List *oldlist = relation->rd_indexlist;
+	List	   *oldlist = relation->rd_indexlist;
+
 	relation->rd_indexlist = list_copy(result);
 	relation->rd_pkindex = pkeyIndex;
 	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex))
@@ -2120,24 +2106,30 @@ YbCompleteIndexProcessing(YbIndexProcessorState *state)
 		YbCompleteIndexProcessingImpl(state);
 
 	list_free(state->result);
-	*state = (struct YbIndexProcessorState){0};
+	*state = (struct YbIndexProcessorState)
+	{
+		0
+	};
 }
 
 static void
 YbStartNewIndexProcessing(YbIndexProcessorState *state,
-                          bool sys_rel_update_required,
-                          HeapTuple htup)
+						  bool sys_rel_update_required,
+						  HeapTuple htup)
 {
 	Assert(!YbIsIndexProcessingStarted(state));
 	Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
+
 	Assert(OidIsValid(index->indrelid));
 	state->relid = index->indrelid;
-	Relation relation;
+	Relation	relation;
+
 	RelationIdCacheLookup(state->relid, relation);
 	if (!relation || (!sys_rel_update_required && IsSystemRelation(relation)))
 		return;
 	state->relation = relation;
-	bool applied = YbApplyIndex(state, htup);
+	bool		applied = YbApplyIndex(state, htup);
+
 	Assert(applied);
 	(void) applied;
 }
@@ -2162,11 +2154,13 @@ YbStartNewIndexProcessing(YbIndexProcessorState *state,
 static void
 YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 {
-	Relation indrel = table_open(IndexRelationId, AccessShareLock);
-	SysScanDesc indscan = systable_beginscan(
-		indrel, IndexIndrelidIndexId, true /* indexOk */, NULL, 0, NULL);
-	HeapTuple htup;
+	Relation	indrel = table_open(IndexRelationId, AccessShareLock);
+	SysScanDesc indscan = systable_beginscan(indrel, IndexIndrelidIndexId,
+											 true /* indexOk */ , NULL, 0,
+											 NULL);
+	HeapTuple	htup;
 	YbIndexProcessorState state = {0};
+
 	while (HeapTupleIsValid(htup = systable_getnext(indscan)))
 	{
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
@@ -2183,8 +2177,9 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 		if (!YbApplyIndex(&state, htup))
 		{
 			YbCompleteIndexProcessing(&state);
-			YbStartNewIndexProcessing(
-				&state, cache_update_state->sys_relations_update_required, htup);
+			YbStartNewIndexProcessing(&state,
+									  cache_update_state->sys_relations_update_required,
+									  htup);
 		}
 	}
 	YbCompleteIndexProcessing(&state);
@@ -2197,8 +2192,8 @@ YbRaiseInvalidDBConnectionError()
 {
 	ereport(FATAL,
 			(errcode(ERRCODE_CONNECTION_FAILURE),
-				errmsg("Could not reconnect to database"),
-				errhint("Database might have been dropped by another user")));
+			 errmsg("could not reconnect to database"),
+			 errhint("Database might have been dropped by another user.")));
 }
 
 typedef enum YbPFetchTable
@@ -2229,6 +2224,8 @@ typedef enum YbPFetchTable
 	YB_PFETCH_TABLE_PG_RANGE,
 	YB_PFETCH_TABLE_PG_REWRITE,
 	YB_PFETCH_TABLE_PG_STATISTIC,
+	YB_PFETCH_TABLE_PG_STATISTIC_EXT,
+	YB_PFETCH_TABLE_PG_STATISTIC_EXT_DATA,
 	YB_PFETCH_TABLE_PG_TABLESPACE,
 	YB_PFETCH_TABLE_PG_TRIGGER,
 	YB_PFETCH_TABLE_PG_TYPE,
@@ -2245,7 +2242,7 @@ enum YbPFetchTablesCount
 
 typedef struct YbCatalogNameToPfTableId
 {
-	const char* name;
+	const char *name;
 	YbPFetchTable pfetchTable;
 } YbCatNamePfId;
 
@@ -2291,6 +2288,8 @@ static const YbCatNamePfId YbCatalogNamesPfIds[] = {
 	{"pg_range", YB_PFETCH_TABLE_PG_RANGE},
 	{"pg_rewrite", YB_PFETCH_TABLE_PG_REWRITE},
 	{"pg_statistic", YB_PFETCH_TABLE_PG_STATISTIC},
+	{"pg_statistic_ext", YB_PFETCH_TABLE_PG_STATISTIC_EXT},
+	{"pg_statistic_ext_data", YB_PFETCH_TABLE_PG_STATISTIC_EXT_DATA},
 	{"pg_tablespace", YB_PFETCH_TABLE_PG_TABLESPACE},
 	{"pg_trigger", YB_PFETCH_TABLE_PG_TRIGGER},
 	{"pg_type", YB_PFETCH_TABLE_PG_TYPE},
@@ -2316,11 +2315,11 @@ typedef enum YbTableCacheType
 
 typedef struct YbCatCacheInfo
 {
-	int id;
-	int index_id;
+	int			id;
+	int			index_id;
 } YbCatCacheInfo;
 
-typedef void(*YbCustomCache)();
+typedef void (*YbCustomCache) ();
 
 typedef struct YbTableCacheInfo
 {
@@ -2334,7 +2333,7 @@ typedef struct YbTableCacheInfo
 
 typedef struct YbPFetchTableInfo
 {
-	Oid relation_oid;
+	Oid			relation_oid;
 	YbTableCacheInfo cache;
 } YbPFetchTableInfo;
 
@@ -2344,101 +2343,107 @@ typedef struct YbTablePrefetcherState
 	YbPFetchTableState tables_end;
 } YbTablePrefetcherState;
 
-static const YbPFetchTableInfo*
+static const YbPFetchTableInfo *
 YbGetPrefetchableTableInfo(YbPFetchTable table)
 {
 	static YbPFetchTableInfo tables[YB_PFETCH_TABLES_COUNT] = {
 		[YB_PFETCH_TABLE_PG_AM] =
-			(YbPFetchTableInfo){AccessMethodRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {AMOID, AMNAME}}},
+		(YbPFetchTableInfo) {AccessMethodRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AMOID, AMNAME}}},
 		[YB_PFETCH_TABLE_PG_AMOP] =
-			(YbPFetchTableInfo){AccessMethodOperatorRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {AMOPOPID, AMOPSTRATEGY}}},
+		(YbPFetchTableInfo) {AccessMethodOperatorRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AMOPOPID, AMOPSTRATEGY}}},
 		[YB_PFETCH_TABLE_PG_AMPROC] =
-			(YbPFetchTableInfo){AccessMethodProcedureRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {AMPROCNUM}}},
+		(YbPFetchTableInfo) {AccessMethodProcedureRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {AMPROCNUM}}},
 		[YB_PFETCH_TABLE_PG_ATTRDEF] =
-			(YbPFetchTableInfo){AttrDefaultRelationId},
+		(YbPFetchTableInfo) {AttrDefaultRelationId},
 		[YB_PFETCH_TABLE_PG_ATTRIBUTE] =
-			(YbPFetchTableInfo){AttributeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {ATTNAME, ATTNUM}}},
+		(YbPFetchTableInfo) {AttributeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {ATTNAME, ATTNUM}}},
 		[YB_PFETCH_TABLE_PG_AUTH_MEMBERS] =
-			(YbPFetchTableInfo){AuthMemRelationId},
+		(YbPFetchTableInfo) {AuthMemRelationId},
 		[YB_PFETCH_TABLE_PG_AUTHID] =
-			(YbPFetchTableInfo){AuthIdRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {AUTHOID, AUTHNAME}}},
+		(YbPFetchTableInfo) {AuthIdRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AUTHOID, AUTHNAME}}},
 		[YB_PFETCH_TABLE_PG_CAST] =
-			(YbPFetchTableInfo){ CastRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {CASTSOURCETARGET}}},
+		(YbPFetchTableInfo) {CastRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {CASTSOURCETARGET}}},
 		[YB_PFETCH_TABLE_PG_CLASS] =
-			(YbPFetchTableInfo){ RelationRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {RELOID, RELNAMENSP}}},
+		(YbPFetchTableInfo) {RelationRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {RELOID, RELNAMENSP}}},
 		[YB_PFETCH_TABLE_PG_COLLATION] =
-			(YbPFetchTableInfo){ CollationRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {COLLOID, COLLNAMEENCNSP}}},
+		(YbPFetchTableInfo) {CollationRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {COLLOID, COLLNAMEENCNSP}}},
 		[YB_PFETCH_TABLE_PG_CONSTRAINT] =
-			(YbPFetchTableInfo){ ConstraintRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {CONSTROID, YBCONSTRAINTRELIDTYPIDNAME}}},
+		(YbPFetchTableInfo) {ConstraintRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {CONSTROID, YBCONSTRAINTRELIDTYPIDNAME}}},
 		[YB_PFETCH_TABLE_PG_DATABASE] =
-			(YbPFetchTableInfo){ DatabaseRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {DATABASEOID}}},
+		(YbPFetchTableInfo) {DatabaseRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {DATABASEOID}}},
 		[YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS] =
-			(YbPFetchTableInfo){ DbRoleSettingRelationId},
+		(YbPFetchTableInfo) {DbRoleSettingRelationId},
 		[YB_PFETCH_TABLE_PG_INDEX] =
-			(YbPFetchTableInfo){ IndexRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {INDEXRELID}}},
+		(YbPFetchTableInfo) {IndexRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {INDEXRELID}}},
 		[YB_PFETCH_TABLE_PG_INHERITS] =
-			(YbPFetchTableInfo){ InheritsRelationId, {YB_TABLE_CACHE_TYPE_CUSTOM_CACHE, .custom_loader = &YbPreloadPgInheritsCache}},
+		(YbPFetchTableInfo) {InheritsRelationId, {YB_TABLE_CACHE_TYPE_CUSTOM_CACHE,.custom_loader = &YbPreloadPgInheritsCache}},
 		[YB_PFETCH_TABLE_PG_NAMESPACE] =
-			(YbPFetchTableInfo){ NamespaceRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {NAMESPACEOID, NAMESPACENAME}}},
+		(YbPFetchTableInfo) {NamespaceRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {NAMESPACEOID, NAMESPACENAME}}},
 		[YB_PFETCH_TABLE_PG_OPCLASS] =
-			(YbPFetchTableInfo){ OperatorClassRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {CLAOID, CLAAMNAMENSP}}},
+		(YbPFetchTableInfo) {OperatorClassRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {CLAOID, CLAAMNAMENSP}}},
 		[YB_PFETCH_TABLE_PG_OPERATOR] =
-			(YbPFetchTableInfo){ OperatorRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {OPEROID, OPERNAMENSP}}},
+		(YbPFetchTableInfo) {OperatorRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {OPEROID, OPERNAMENSP}}},
 		[YB_PFETCH_TABLE_PG_PARTITIONED_TABLE] =
-			(YbPFetchTableInfo){ PartitionedRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {PARTRELID}}},
+		(YbPFetchTableInfo) {PartitionedRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {PARTRELID}}},
 		[YB_PFETCH_TABLE_PG_POLICY] =
-			(YbPFetchTableInfo){ PolicyRelationId},
+		(YbPFetchTableInfo) {PolicyRelationId},
 		[YB_PFETCH_TABLE_PG_PROC] =
-			(YbPFetchTableInfo){ ProcedureRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {PROCOID, PROCNAMEARGSNSP}}},
+		(YbPFetchTableInfo) {ProcedureRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {PROCOID, PROCNAMEARGSNSP}}},
 		[YB_PFETCH_TABLE_PG_RANGE] =
-			(YbPFetchTableInfo){ RangeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {RANGETYPE}}},
+		(YbPFetchTableInfo) {RangeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {RANGETYPE}}},
 		[YB_PFETCH_TABLE_PG_REWRITE] =
-			(YbPFetchTableInfo){ RewriteRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {RULERELNAME}}},
+		(YbPFetchTableInfo) {RewriteRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {RULERELNAME}}},
 		[YB_PFETCH_TABLE_PG_STATISTIC] =
-			(YbPFetchTableInfo){ StatisticRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {STATRELATTINH}}},
+		(YbPFetchTableInfo) {StatisticRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {STATRELATTINH}}},
+		[YB_PFETCH_TABLE_PG_STATISTIC_EXT] =
+		(YbPFetchTableInfo) {StatisticExtRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {STATEXTOID, STATEXTNAMENSP}}},
+		[YB_PFETCH_TABLE_PG_STATISTIC_EXT_DATA] =
+		(YbPFetchTableInfo) {StatisticExtDataRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {STATEXTDATASTXOID}}},
 		[YB_PFETCH_TABLE_PG_TABLESPACE] =
-			(YbPFetchTableInfo){ TableSpaceRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX, .cat_cache = {TABLESPACEOID}}},
+		(YbPFetchTableInfo) {TableSpaceRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {TABLESPACEOID}}},
 		[YB_PFETCH_TABLE_PG_TRIGGER] =
-			(YbPFetchTableInfo){ TriggerRelationId},
+		(YbPFetchTableInfo) {TriggerRelationId},
 		[YB_PFETCH_TABLE_PG_TYPE] =
-			(YbPFetchTableInfo){ TypeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX, .cat_cache = {TYPEOID, TYPENAMENSP}}},
+		(YbPFetchTableInfo) {TypeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {TYPEOID, TYPENAMENSP}}},
 		[YB_PFETCH_TABLE_YB_PG_PROFILE] =
-			(YbPFetchTableInfo){ YbProfileRelationId},
+		(YbPFetchTableInfo) {YbProfileRelationId},
 		[YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE] =
-			(YbPFetchTableInfo){ YbRoleProfileRelationId},
+		(YbPFetchTableInfo) {YbRoleProfileRelationId},
 	};
+
 	return tables + table;
 }
 
 static void
-YbRegisterTable(YbTablePrefetcherState* prefetcher, YbPFetchTable table)
+YbRegisterTable(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 {
-	YbPFetchTableState* ts = prefetcher->tables + table;
+	YbPFetchTableState *ts = prefetcher->tables + table;
+
 	if (*ts == YB_PFETCH_STATE_EMPTY)
 	{
-		YbRegisterSysTableForPrefetching(
-			YbGetPrefetchableTableInfo(table)->relation_oid);
+		YbRegisterSysTableForPrefetching(YbGetPrefetchableTableInfo(table)->relation_oid);
 		*ts = YB_PFETCH_STATE_REGISTERED;
 	}
 }
 
 static void
-YbRegisterTables(YbTablePrefetcherState* prefetcher,
-				 const YbPFetchTable* table,
+YbRegisterTables(YbTablePrefetcherState *prefetcher,
+				 const YbPFetchTable *table,
 				 size_t count)
 {
-	for (const YbPFetchTable* end = table + count; table != end; ++table)
+	for (const YbPFetchTable *end = table + count; table != end; ++table)
 	{
 		if (*table != YB_PFETCH_TABLE_LAST)
 			YbRegisterTable(prefetcher, *table);
 	}
 }
 
-static YBCStatus
-YbPrefetch(YbTablePrefetcherState* prefetcher)
+static YbcStatus
+YbPrefetch(YbTablePrefetcherState *prefetcher)
 {
-	bool prefetched = false;
-	for (YbPFetchTableState* ts = prefetcher->tables;
+	bool		prefetched = false;
+
+	for (YbPFetchTableState *ts = prefetcher->tables;
 		 ts != &prefetcher->tables_end;
 		 ++ts)
 	{
@@ -2446,7 +2451,8 @@ YbPrefetch(YbTablePrefetcherState* prefetcher)
 		{
 			if (!prefetched)
 			{
-				YBCStatus status = YBCPrefetchRegisteredSysTables();
+				YbcStatus	status = YBCPrefetchRegisteredSysTables();
+
 				if (status)
 					return status;
 				prefetched = true;
@@ -2458,28 +2464,29 @@ YbPrefetch(YbTablePrefetcherState* prefetcher)
 }
 
 static void
-YbFillCache(YbTablePrefetcherState* prefetcher, YbPFetchTable table)
+YbFillCache(YbTablePrefetcherState *prefetcher, YbPFetchTable table)
 {
-	const YbPFetchTableInfo* info = YbGetPrefetchableTableInfo(table);
-	YbPFetchTableState* ts = prefetcher->tables + table;
+	const YbPFetchTableInfo *info = YbGetPrefetchableTableInfo(table);
+	YbPFetchTableState *ts = prefetcher->tables + table;
+
 	if (*ts == YB_PFETCH_STATE_CACHE_FILLED)
 		return;
 	Assert(*ts == YB_PFETCH_STATE_LOADED);
 	switch (info->cache.type)
 	{
-	case YB_TABLE_CACHE_TYPE_NO_CACHE:
-		Assert(false);
-		break;
-	case YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX:
-		YbPreloadCatalogCache(info->cache.cat_cache.id, -1);
-		break;
-	case YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX:
-		YbPreloadCatalogCache(
-			info->cache.cat_cache.id, info->cache.cat_cache.index_id);
-		break;
-	case YB_TABLE_CACHE_TYPE_CUSTOM_CACHE:
-		info->cache.custom_loader();
-		break;
+		case YB_TABLE_CACHE_TYPE_NO_CACHE:
+			Assert(false);
+			break;
+		case YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX:
+			YbPreloadCatalogCache(info->cache.cat_cache.id, -1);
+			break;
+		case YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX:
+			YbPreloadCatalogCache(info->cache.cat_cache.id,
+								  info->cache.cat_cache.index_id);
+			break;
+		case YB_TABLE_CACHE_TYPE_CUSTOM_CACHE:
+			info->cache.custom_loader();
+			break;
 	}
 	*ts = YB_PFETCH_STATE_CACHE_FILLED;
 }
@@ -2491,13 +2498,14 @@ YbHasAssociatedCache(YbPFetchTable table)
 }
 
 static void
-YbFillCaches(YbTablePrefetcherState* prefetcher)
+YbFillCaches(YbTablePrefetcherState *prefetcher)
 {
-	for (const YbPFetchTableState* ts = prefetcher->tables;
+	for (const YbPFetchTableState *ts = prefetcher->tables;
 		 ts != &prefetcher->tables_end;
 		 ++ts)
 	{
 		const YbPFetchTable table = ts - prefetcher->tables;
+
 		if (*ts != YB_PFETCH_STATE_EMPTY && YbHasAssociatedCache(table))
 			YbFillCache(prefetcher, table);
 	}
@@ -2506,26 +2514,26 @@ YbFillCaches(YbTablePrefetcherState* prefetcher)
 typedef struct YbRunWithPrefetcherContext
 {
 	YbTablePrefetcherState prefetcher;
-	bool is_using_response_cache;
+	bool		is_using_response_cache;
 } YbRunWithPrefetcherContext;
 
 typedef struct YbPrefetcherStarterFunctor
 {
-   bool (*call)(struct YbPrefetcherStarterFunctor* );
+	bool		(*call) (struct YbPrefetcherStarterFunctor *);
 } YbPrefetcherStarterFunctor;
 
-static YBCStatus
-YbRunWithPrefetcherImpl(
-	YbPrefetcherStarterFunctor *prefetcher_starter,
-	YBCStatus (*func)(YbRunWithPrefetcherContext *ctx),
-	bool keep_prefetcher)
+static YbcStatus
+YbRunWithPrefetcherImpl(YbPrefetcherStarterFunctor *prefetcher_starter,
+						YbcStatus (*func) (YbRunWithPrefetcherContext *ctx),
+						bool keep_prefetcher)
 {
-	const bool is_using_response_cache =
-		prefetcher_starter->call(prefetcher_starter);
-	YBCStatus result = NULL;
+	const bool	is_using_response_cache = prefetcher_starter->call(prefetcher_starter);
+	YbcStatus	result = NULL;
+
 	PG_TRY();
 	{
 		YbRunWithPrefetcherContext ctx = {};
+
 		ctx.is_using_response_cache = is_using_response_cache;
 		result = func(&ctx);
 	}
@@ -2547,29 +2555,35 @@ YbRunWithPrefetcherImpl(
 	return result;
 }
 
-typedef struct YbPrefetcherStarterWithCache {
+typedef struct YbPrefetcherStarterWithCache
+{
 	/* YbPrefetcherStarterFunctor have to be the first field due to cast */
 	YbPrefetcherStarterFunctor functor;
-	const YBCPgLastKnownCatalogVersionInfo *version;
-	YBCPgSysTablePrefetcherCacheMode mode;
+	const YbcPgLastKnownCatalogVersionInfo *version;
+	YbcPgSysTablePrefetcherCacheMode mode;
 } YbPrefetcherStarterWithCache;
 
 static bool
-YbPrefetcherStarterWithCacheCall(YbPrefetcherStarterFunctor *functor) {
-	const YbPrefetcherStarterWithCache *this =
-		(const YbPrefetcherStarterWithCache *)functor;
+YbPrefetcherStarterWithCacheCall(YbPrefetcherStarterFunctor *functor)
+{
+	const YbPrefetcherStarterWithCache *this = (const YbPrefetcherStarterWithCache *) functor;
+
 	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode);
 	return true;
 }
 
 static YbPrefetcherStarterWithCache
-MakeStarterWithCache(YBCPgSysTablePrefetcherCacheMode mode,
-					 const YBCPgLastKnownCatalogVersionInfo *version)
+MakeStarterWithCache(YbcPgSysTablePrefetcherCacheMode mode,
+					 const YbcPgLastKnownCatalogVersionInfo *version)
 {
-	return (YbPrefetcherStarterWithCache){
-		.functor = {.call = &YbPrefetcherStarterWithCacheCall},
-		.version = version,
-		.mode = mode
+	return (YbPrefetcherStarterWithCache)
+	{
+		.functor =
+		{
+			.call = &YbPrefetcherStarterWithCacheCall
+		},
+			.version = version,
+			.mode = mode,
 	};
 }
 
@@ -2581,18 +2595,19 @@ YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
 }
 
 static void
-YbRunWithPrefetcher(
-	YBCStatus (*func)(YbRunWithPrefetcherContext *), bool keep_prefetcher)
+YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
+					bool keep_prefetcher)
 {
-	YBCPgLastKnownCatalogVersionInfo catalog_version = {};
-	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(
-		YB_YQL_PREFETCHER_TRUST_CACHE, &catalog_version);
-	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(
-		YB_YQL_PREFETCHER_RENEW_CACHE_SOFT, &catalog_version);
-	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(
-		YB_YQL_PREFETCHER_RENEW_CACHE_HARD, &catalog_version);
-	YbPrefetcherStarterFunctor no_cache =
-		{.call = &YbPrefetcherStarterNoCacheCall};
+	YbcPgLastKnownCatalogVersionInfo catalog_version = {};
+	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(YB_YQL_PREFETCHER_TRUST_CACHE,
+																	&catalog_version);
+	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
+																   &catalog_version);
+	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+																   &catalog_version);
+	YbPrefetcherStarterFunctor no_cache = {
+		.call = &YbPrefetcherStarterNoCacheCall,
+	};
 
 	YbPrefetcherStarterFunctor *prefetcher_starters[] = {
 		&trust_cache.functor,
@@ -2603,7 +2618,8 @@ YbRunWithPrefetcher(
 
 	static const size_t kStartersCount = lengthof(prefetcher_starters);
 
-	size_t starter_idx = kStartersCount - 1;
+	size_t		starter_idx = kStartersCount - 1;
+
 	/*
 	 * YB_TODO: Decide whether skipping this block during IsBinaryUpgrade is the
 	 * right solution to avoid catalog refreshes during pg_upgrade, which can
@@ -2618,8 +2634,9 @@ YbRunWithPrefetcher(
 	}
 	for (;;)
 	{
-		YBCStatus status = YbRunWithPrefetcherImpl(
-			prefetcher_starters[starter_idx], func, keep_prefetcher);
+		YbcStatus	status = YbRunWithPrefetcherImpl(prefetcher_starters[starter_idx],
+													 func, keep_prefetcher);
+
 		if (!status)
 			break;
 		if (++starter_idx == kStartersCount ||
@@ -2629,7 +2646,7 @@ YbRunWithPrefetcher(
 			return;
 		}
 		YBCFreeStatus(status);
-		// Reset catalog caches before next attempt
+		/* Reset catalog caches before next attempt */
 		ResetCatalogCaches();
 	}
 }
@@ -2646,6 +2663,18 @@ YbExtractConstraintTupleCacheKey(HeapTuple htup)
 	return ((Form_pg_constraint) GETSTRUCT(htup))->conrelid;
 }
 
+static Oid
+YbExtractTriggerTupleCacheKey(HeapTuple htup)
+{
+	return ((Form_pg_trigger) GETSTRUCT(htup))->tgrelid;
+}
+
+static Oid
+YbExtractPolicyTupleCacheKey(HeapTuple htup)
+{
+	return ((Form_pg_policy) GETSTRUCT(htup))->polrelid;
+}
+
 static void
 YbInitUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 {
@@ -2654,9 +2683,13 @@ YbInitUpdateRelationCacheState(YbUpdateRelationCacheState *state)
 	YbLoadTupleCache(&state->pg_constraint_cache, ConstraintRelationId,
 					 &YbExtractConstraintTupleCacheKey,
 					 "pg_constraint local cache");
+	YbLoadTupleCache(&state->pg_trigger_cache, TriggerRelationId,
+					 &YbExtractTriggerTupleCacheKey, "pg_trigger local cache");
+	YbLoadTupleCache(&state->pg_policy_cache, PolicyRelationId,
+					 &YbExtractPolicyTupleCacheKey, "pg_policy local cache");
 }
 
-static YBCStatus
+static YbcStatus
 YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 						  YbRunWithPrefetcherContext *ctx)
 {
@@ -2682,11 +2715,14 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 	{
 		static const YbPFetchTable tables[] = {
 			YB_PFETCH_TABLE_PG_CAST,
-			YB_PFETCH_TABLE_PG_PROC};
+			YB_PFETCH_TABLE_PG_PROC,
+		};
+
 		YbRegisterTables(prefetcher, tables, lengthof(tables));
 	}
 
-	YBCStatus status = YbPrefetch(prefetcher);
+	YbcStatus	status = YbPrefetch(prefetcher);
+
 	if (status)
 		return status;
 
@@ -2700,17 +2736,19 @@ YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 	return NULL;
 }
 
-static YBCStatus
+static YbcStatus
 YbUpdateRelationCache(YbRunWithPrefetcherContext *ctx)
 {
-	MemoryContext own_mem_ctx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext own_mem_ctx = AllocSetContextCreate(CurrentMemoryContext,
 													  "UpdateRelationCacheContext",
 													  ALLOCSET_DEFAULT_SIZES);
 	MemoryContext old_mem_ctx = MemoryContextSwitchTo(own_mem_ctx);
 
 	YbUpdateRelationCacheState state = {0};
+
 	YbInitUpdateRelationCacheState(&state);
-	YBCStatus status = YbUpdateRelationCacheImpl(&state, ctx);
+	YbcStatus	status = YbUpdateRelationCacheImpl(&state, ctx);
+
 	YbCleanupUpdateRelationCacheState(&state);
 
 	MemoryContextSwitchTo(old_mem_ctx);
@@ -2726,12 +2764,9 @@ static void
 YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 							 int *prefetch_count)
 {
-	const char *preload_cat_flag =
-		YBCGetGFlags()->ysql_catalog_preload_additional_table_list;
-	const bool preload_additional_tables =
-		*YBCGetGFlags()->ysql_catalog_preload_additional_tables;
-	const char *default_additional_tables =
-		"pg_am,pg_amproc,pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger";
+	const char *preload_cat_flag = YBCGetGFlags()->ysql_catalog_preload_additional_table_list;
+	const bool	preload_additional_tables = *YBCGetGFlags()->ysql_catalog_preload_additional_tables;
+	const char *default_additional_tables = "pg_am,pg_amproc,pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger";
 	const char *extra_tables = NULL;
 
 	if (!IS_NON_EMPTY_STR_FLAG(preload_cat_flag))
@@ -2749,16 +2784,21 @@ YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 	}
 
 	/* strtok only takes non-const char* and will modify it. So make a copy. */
-	Size length = strlen(preload_cat_flag) + 1;
+	Size		length = strlen(preload_cat_flag) + 1;
+
 	if (extra_tables)
 		length += strlen(extra_tables) + 1;
-	char *preload_catstr = (char *) palloc(length);
+	char	   *preload_catstr = (char *) palloc(length);
+
 	/*
 	 * Excluded empty string case. There must be at least one token in
 	 * preload_cat_flag.
 	 */
-	int d = 0, s = 0, cnt = 1;
-	char c;
+	int			d = 0,
+				s = 0,
+				cnt = 1;
+	char		c;
+
 	while ((c = preload_cat_flag[s++]) != '\0')
 	{
 		preload_catstr[d++] = c;
@@ -2790,14 +2830,17 @@ YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 
 	*prefetch_tables = (YbPFetchTable *) palloc0(sizeof(YbPFetchTable) * cnt);
 
-	int filled = 0;
+	int			filled = 0;
+
 	for (char *cattoken = strtok(preload_catstr, ","); cattoken != NULL;
 		 cattoken = strtok(NULL, ","))
 	{
 		YbCatNamePfId entry = {cattoken, YB_PFETCH_TABLE_LAST};
-		const YbCatNamePfId *found =
-			bsearch(&entry, YbCatalogNamesPfIds, YB_PFETCH_TABLE_LAST,
-					sizeof(YbCatNamePfId), YbBinSearchCatNamesComp);
+		const YbCatNamePfId *found = bsearch(&entry, YbCatalogNamesPfIds,
+											 YB_PFETCH_TABLE_LAST,
+											 sizeof(YbCatNamePfId),
+											 YbBinSearchCatNamesComp);
+
 		if (found)
 		{
 			(*prefetch_tables)[filled++] = found->pfetchTable;
@@ -2826,7 +2869,7 @@ static void
 YbRegisterAdditionalCatalogs(YbTablePrefetcherState *prefetcher)
 {
 	YbPFetchTable *additional_tables = NULL;
-	int count = 0;
+	int			count = 0;
 
 	YbParseAdditionalCatalogList(&additional_tables, &count);
 	if (count > 0)
@@ -2840,7 +2883,7 @@ YbRegisterAdditionalCatalogs(YbTablePrefetcherState *prefetcher)
 		pfree(additional_tables);
 }
 
-static YBCStatus
+static YbcStatus
 YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 {
 	/*
@@ -2862,7 +2905,9 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 		YB_PFETCH_TABLE_PG_NAMESPACE,
 		YB_PFETCH_TABLE_PG_OPCLASS,
 		YB_PFETCH_TABLE_PG_PARTITIONED_TABLE,
+		YB_PFETCH_TABLE_PG_POLICY,
 		YB_PFETCH_TABLE_PG_REWRITE,
+		YB_PFETCH_TABLE_PG_TRIGGER,
 		YB_PFETCH_TABLE_PG_TYPE
 	};
 	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
@@ -2879,10 +2924,12 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 			YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE,
 			YB_PFETCH_TABLE_PG_CAST
 		};
+
 		YbRegisterTables(prefetcher, tables, lengthof(tables));
 	}
 
-	YBCStatus status = YbPrefetch(prefetcher);
+	YbcStatus	status = YbPrefetch(prefetcher);
+
 	if (status)
 		return status;
 
@@ -2924,6 +2971,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	 *       ObjectNotFound error and this line of code will not be reached.
 	 */
 	const char *dbname = get_database_name(MyDatabaseId);
+
 	if (dbname == NULL || get_database_oid(dbname, true) != MyDatabaseId)
 		YbRaiseInvalidDBConnectionError();
 
@@ -2947,17 +2995,17 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 void
 YBPreloadRelCache()
 {
-	YbRunWithPrefetcher(&YbPreloadRelCacheImpl, false /* keep_prefetcher */);
+	YbRunWithPrefetcher(&YbPreloadRelCacheImpl, false /* keep_prefetcher */ );
 }
 
-static YBCStatus
-YbPrefetchRequiredDataImpl(
-	YbRunWithPrefetcherContext* ctx,
-	bool preload_rel_cache)
+static YbcStatus
+YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext *ctx,
+						   bool preload_rel_cache)
 {
 	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
 
-	YBCStatus status = NULL;
+	YbcStatus	status = NULL;
+
 	if (preload_rel_cache)
 	{
 		status = YbPreloadRelCacheImpl(ctx);
@@ -2973,6 +3021,7 @@ YbPrefetchRequiredDataImpl(
 		YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_PROC);
 	}
 
+	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_AUTHID);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_AUTH_MEMBERS);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DATABASE);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS);
@@ -2983,26 +3032,25 @@ YbPrefetchRequiredDataImpl(
 	return NULL;
 }
 
-static YBCStatus
+static YbcStatus
 YbPrefetchRequiredDataWithoutRelCache(YbRunWithPrefetcherContext *ctx)
 {
-	return YbPrefetchRequiredDataImpl(ctx, false /* preload_rel_cache */);
+	return YbPrefetchRequiredDataImpl(ctx, false /* preload_rel_cache */ );
 }
 
-static YBCStatus
+static YbcStatus
 YbPrefetchRequiredDataWithRelCache(YbRunWithPrefetcherContext *ctx)
 {
-	return YbPrefetchRequiredDataImpl(ctx, true /* preload_rel_cache */);
+	return YbPrefetchRequiredDataImpl(ctx, true /* preload_rel_cache */ );
 }
 
 void
 YbPrefetchRequiredData(bool preload_rel_cache)
 {
-	YbRunWithPrefetcher(
-		preload_rel_cache
-			? &YbPrefetchRequiredDataWithRelCache
-			: &YbPrefetchRequiredDataWithoutRelCache,
-		true /* keep_prefetcher */);
+	YbRunWithPrefetcher((preload_rel_cache ?
+						 &YbPrefetchRequiredDataWithRelCache :
+						 &YbPrefetchRequiredDataWithoutRelCache),
+						true /* keep_prefetcher */ );
 }
 
 /*
@@ -3028,7 +3076,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 
 	/*
 	 * This function and its subroutines can allocate a good deal of transient
-	 * data in GetCurrentMemoryContext().  Traditionally we've just leaked that
+	 * data in CurrentMemoryContext.  Traditionally we've just leaked that
 	 * data, reasoning that the caller's context is at worst of transaction
 	 * scope, and relcache loads shouldn't happen so often that it's essential
 	 * to recover transient data before end of statement/transaction.  However
@@ -3047,7 +3095,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 
 	if (RECOVER_RELATION_BUILD_MEMORY || debug_discard_caches > 0)
 	{
-		tmpcxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+		tmpcxt = AllocSetContextCreate(CurrentMemoryContext,
 									   "RelationBuildDesc workspace",
 									   ALLOCSET_DEFAULT_SIZES);
 		oldcxt = MemoryContextSwitchTo(tmpcxt);
@@ -3211,12 +3259,12 @@ retry:
 	}
 
 	if (relation->rd_rel->relhastriggers)
-		RelationBuildTriggers(relation);
+		RelationBuildTriggers(relation, NULL);
 	else
 		relation->trigdesc = NULL;
 
 	if (relation->rd_rel->relrowsecurity)
-		RelationBuildRowSecurity(relation);
+		RelationBuildRowSecurity(relation, NULL);
 	else
 		relation->rd_rsdesc = NULL;
 
@@ -3309,7 +3357,7 @@ RelationInitPhysicalAddr(Relation relation)
 		relation->rd_node.dbNode = MyDatabaseId;
 
 	if (IsYBRelation(relation))
-	  return;
+		return;
 
 	if (relation->rd_rel->relfilenode)
 	{
@@ -4304,6 +4352,7 @@ RelationReloadIndexInfo(Relation relation)
 		relation->rd_index->indcheckxmin = index->indcheckxmin;
 		relation->rd_index->indisready = index->indisready;
 		relation->rd_index->indislive = index->indislive;
+		relation->rd_index->indisreplident = index->indisreplident;
 
 		/* Copy xmin too, as that is needed to make sense of indcheckxmin */
 		HeapTupleHeaderSetXmin(relation->rd_indextuple->t_data,
@@ -5062,7 +5111,7 @@ YbRelationCacheInvalidate()
 
 	while ((idhentry = (RelIdCacheEnt *) hash_seq_search(&status)) != NULL)
 	{
-		Relation relation = idhentry->reldesc;
+		Relation	relation = idhentry->reldesc;
 
 		if (YbIsNonAlterableRelation(relation))
 			continue;
@@ -5679,8 +5728,9 @@ RelationBuildLocalRelation(const char *relname,
 		 */
 		if (IsYugaByteEnabled() && relid >= FirstNormalObjectId)
 		{
-			const char* replica_identity_name = yb_default_replica_identity;
-			char replica_identity = YB_REPLICA_IDENTITY_CHANGE;
+			const char *replica_identity_name = yb_default_replica_identity;
+			char		replica_identity = YB_REPLICA_IDENTITY_CHANGE;
+
 			if (strcmp(replica_identity_name, "FULL") == 0)
 			{
 				replica_identity = REPLICA_IDENTITY_FULL;
@@ -5805,6 +5855,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 {
 	Oid			newrelfilenode;
 	Relation	pg_class;
+	ItemPointerData otid;
 	HeapTuple	tuple;
 	Form_pg_class classform;
 	MultiXactId minmulti = InvalidMultiXactId;
@@ -5847,11 +5898,12 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 	 */
 	pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
-	tuple = SearchSysCacheCopy1(RELOID,
-								ObjectIdGetDatum(RelationGetRelid(relation)));
+	tuple = SearchSysCacheLockedCopy1(RELOID,
+									  ObjectIdGetDatum(RelationGetRelid(relation)));
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for relation %u",
 			 RelationGetRelid(relation));
+	otid = tuple->t_self;
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 
 	if (IsYBRelation(relation))
@@ -5860,10 +5912,13 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 		 * Currently, this function is only used during reindex/truncate in YB.
 		 */
 		Assert(relation->rd_rel->relkind == RELKIND_INDEX ||
-			   relation->rd_rel->relkind == RELKIND_RELATION);
+			   relation->rd_rel->relkind == RELKIND_RELATION ||
+			   relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX ||
+			   relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
 
-		if (relation->rd_rel->relkind == RELKIND_INDEX &&
-			!YBIsCoveredByMainTable(relation))
+		if ((relation->rd_rel->relkind == RELKIND_INDEX ||
+			 relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
+			!relation->rd_index->indisprimary)
 			/*
 			 * Note: caller is responsible for dropping the old DocDB table
 			 * associated with the index, if required.
@@ -5873,7 +5928,8 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			 */
 			YbIndexSetNewRelfileNode(relation, newrelfilenode,
 									 yb_copy_split_options);
-		else if (relation->rd_rel->relkind == RELKIND_RELATION)
+		else if (relation->rd_rel->relkind == RELKIND_RELATION ||
+				 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 		{
 			/*
 			 * Drop the old DocDB table associated with this relation.
@@ -5884,7 +5940,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			/* Create a new DocDB table for the relation. */
 			YbRelationSetNewRelfileNode(relation, newrelfilenode,
 										yb_copy_split_options,
-										true /* is_truncate */);
+										true /* is_truncate */ );
 		}
 	}
 	else
@@ -5927,7 +5983,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 		 */
 		if (IsBinaryUpgrade)
 		{
-			SMgrRelation	srel;
+			SMgrRelation srel;
 
 			/*
 			 * During a binary upgrade, we use this code path to ensure that
@@ -6007,9 +6063,10 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 		classform->relminmxid = minmulti;
 		classform->relpersistence = persistence;
 
-		CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+		CatalogTupleUpdate(pg_class, &otid, tuple);
 	}
 
+	UnlockTuple(pg_class, &otid, InplaceUpdateTupleLock);
 	heap_freetuple(tuple);
 
 	table_close(pg_class, RowExclusiveLock);
@@ -6193,10 +6250,10 @@ RelationCacheInitializePhase3(void)
 	/* We do not use a relation map file in YugaByte mode yet */
 	if (!IsYugaByteEnabled())
 	{
-	  /*
-	   * relation mapper needs initialized too
-	   */
-	  RelationMapInitializePhase3();
+		/*
+		 * relation mapper needs initialized too
+		 */
+		RelationMapInitializePhase3();
 	}
 
 	/*
@@ -6260,16 +6317,16 @@ RelationCacheInitializePhase3(void)
 	{
 		Assert(!YBCIsSysTablePrefetchingStarted());
 
-		bool preload_rel_cache =
-			needNewCacheFile ||
-			YBCIsInitDbModeEnvVarSet() ||
-			YbNeedAdditionalCatalogTables() ||
-			!*YBCGetGFlags()->ysql_use_relcache_file;
+		bool		preload_rel_cache = (needNewCacheFile ||
+										 YBCIsInitDbModeEnvVarSet() ||
+										 YbNeedAdditionalCatalogTables() ||
+										 !*YBCGetGFlags()->ysql_use_relcache_file);
 
 		YbPrefetchRequiredData(preload_rel_cache);
 
 		Assert(YBCIsSysTablePrefetchingStarted());
 		Assert(YbCheckCatalogCacheIndexNameTable());
+		Assert(YbCheckSysCacheNames());
 	}
 
 	/*
@@ -6441,7 +6498,7 @@ RelationCacheInitializePhase3(void)
 		}
 		if (relation->rd_rel->relhastriggers && relation->trigdesc == NULL)
 		{
-			RelationBuildTriggers(relation);
+			RelationBuildTriggers(relation, NULL);
 			if (relation->trigdesc == NULL)
 				relation->rd_rel->relhastriggers = false;
 			restart = true;
@@ -6456,7 +6513,7 @@ RelationCacheInitializePhase3(void)
 		 */
 		if (relation->rd_rel->relrowsecurity && relation->rd_rsdesc == NULL)
 		{
-			RelationBuildRowSecurity(relation);
+			RelationBuildRowSecurity(relation, NULL);
 
 			Assert(relation->rd_rsdesc != NULL);
 			restart = true;
@@ -6513,6 +6570,7 @@ static void
 load_critical_index(Oid indexoid, Oid heapoid)
 {
 	Relation	ird;
+
 	/*
 	 * We must lock the underlying catalog before locking the index to avoid
 	 * deadlock, since RelationBuildDesc might well need to read the catalog,
@@ -6525,7 +6583,8 @@ load_critical_index(Oid indexoid, Oid heapoid)
 	if (IsYugaByteEnabled())
 	{
 		RelationIdCacheLookup(indexoid, ird);
-	} else
+	}
+	else
 		ird = RelationBuildDesc(indexoid, true);
 	if (ird == NULL)
 		elog(PANIC, "could not open critical system index %u", indexoid);
@@ -6833,7 +6892,7 @@ RelationGetFKeyList(Relation relation)
 	List	   *oldlist;
 	MemoryContext oldcxt;
 	YbCatCListIterator iterator;
-	bool use_catcache;
+	bool		use_catcache;
 
 	/* Quick exit if we already computed the list. */
 	if (relation->rd_fkeyvalid)
@@ -6860,14 +6919,17 @@ RelationGetFKeyList(Relation relation)
 	}
 	else
 	{
-		/* Prepare to scan pg_constraint for entries having conrelid = this rel. */
+		/*
+		 * Prepare to scan pg_constraint for entries having conrelid = this
+		 * rel.
+		 */
 		ScanKeyInit(&skey,
-				Anum_pg_constraint_conrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(relation)));
+					Anum_pg_constraint_conrelid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(RelationGetRelid(relation)));
 		conrel = table_open(ConstraintRelationId, AccessShareLock);
 		conscan = systable_beginscan(conrel, ConstraintRelidTypidNameIndexId, true,
-								 NULL, 1, &skey);
+									 NULL, 1, &skey);
 	}
 	while (HeapTupleIsValid(htup = use_catcache ? YbCatCListIteratorGetNext(&iterator) : systable_getnext(conscan)))
 	{
@@ -6882,6 +6944,7 @@ RelationGetFKeyList(Relation relation)
 		info->conoid = constraint->oid;
 		info->conrelid = constraint->conrelid;
 		info->confrelid = constraint->confrelid;
+		info->ybconindid = constraint->conindid;
 
 		DeconstructFkConstraintRow(htup, &info->nkeys,
 								   info->conkey,
@@ -6925,7 +6988,7 @@ RelationGetFKeyList(Relation relation)
 List *
 YbRelationGetFKeyReferencedByList(Relation relation)
 {
-	List *result = NIL;
+	List	   *result = NIL;
 	TriggerDesc *trigdesc = relation->trigdesc;
 
 	if (!trigdesc)
@@ -6933,8 +6996,8 @@ YbRelationGetFKeyReferencedByList(Relation relation)
 
 	for (int16 i = 0; i < trigdesc->numtriggers; i++)
 	{
-		Trigger trigger = trigdesc->triggers[i];
-		HeapTuple htup;
+		Trigger		trigger = trigdesc->triggers[i];
+		HeapTuple	htup;
 		ForeignKeyCacheInfo *info;
 
 		/*
@@ -6964,6 +7027,7 @@ YbRelationGetFKeyReferencedByList(Relation relation)
 		info->conoid = constraint->oid;
 		info->conrelid = constraint->conrelid;
 		info->confrelid = constraint->confrelid;
+		info->ybconindid = constraint->conindid;
 
 		DeconstructFkConstraintRow(htup, &info->nkeys, info->conkey,
 								   info->confkey, info->conpfeqop, NULL, NULL,
@@ -7438,27 +7502,29 @@ YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
 								   AttrNumber attr_offset)
 {
 	bool		isnull = false;
-	Datum		datum = heap_getattr(
-		indexDesc->rd_indextuple, Anum_pg_index, GetPgIndexDescriptor(),
-		&isnull);
+	Datum		datum = heap_getattr(indexDesc->rd_indextuple, Anum_pg_index,
+									 GetPgIndexDescriptor(), &isnull);
 
 	if (isnull)
 		return;
 
-	Node *indexNode = stringToNode(TextDatumGetCString(datum));
+	Node	   *indexNode = stringToNode(TextDatumGetCString(datum));
+
 	pull_varattnos_min_attr(indexNode, 1, indexattrs, attr_offset + 1);
 }
 
 bool
 CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
-                      Relation indexDesc,
-                      const int Anum_pg_index,
-                      AttrNumber attr_offset)
+					  Relation indexDesc,
+					  const int Anum_pg_index,
+					  AttrNumber attr_offset)
 {
-	Bitmapset *indexattrs = NULL;
-	YbComputeIndexExprOrPredicateAttrs(
-		&indexattrs, indexDesc, Anum_pg_index, attr_offset);
-	bool need_update = bms_overlap(updated_attrs, indexattrs);
+	Bitmapset  *indexattrs = NULL;
+
+	YbComputeIndexExprOrPredicateAttrs(&indexattrs, indexDesc, Anum_pg_index,
+									   attr_offset);
+	bool		need_update = bms_overlap(updated_attrs, indexattrs);
+
 	bms_free(indexattrs);
 	return need_update;
 }
@@ -7472,32 +7538,38 @@ CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
 bool
 CheckIndexForUpdate(Oid indexOid, const Bitmapset *updated_attrs, AttrNumber attr_offset)
 {
-  Relation  indexDesc          = index_open(indexOid, AccessShareLock);
-  Bitmapset *indexattrs        = NULL;
-  bool need_update = false;
+	Relation	indexDesc = index_open(indexOid, AccessShareLock);
+	Bitmapset  *indexattrs = NULL;
+	bool		need_update = false;
 
-  /*
-   * We first check updates affect the current index by iterating over the
-   * columns associated with an index to see if the updated attributes affects
-   * the index. If it does, we return true.
-   */
-  for (int i = 0; i < indexDesc->rd_index->indnatts; ++i)
-  {
-    const int attrnum = indexDesc->rd_index->indkey.values[i];
-    if (attrnum != 0 && bms_is_member(attrnum - attr_offset, updated_attrs))
-    {
-      need_update = true;
-      break;
-    }
-  }
-  /* If none of the columns are affected, we check for IndexExpressions and IndexPredicates */
-  need_update = need_update
-                || CheckUpdateExprOrPred(updated_attrs, indexDesc, Anum_pg_index_indexprs, attr_offset)
-                || CheckUpdateExprOrPred(updated_attrs, indexDesc, Anum_pg_index_indpred, attr_offset);
+	/*
+	 * We first check updates affect the current index by iterating over the
+	 * columns associated with an index to see if the updated attributes affects
+	 * the index. If it does, we return true.
+	 */
+	for (int i = 0; i < indexDesc->rd_index->indnatts; ++i)
+	{
+		const int	attrnum = indexDesc->rd_index->indkey.values[i];
 
-  bms_free(indexattrs);
-  index_close(indexDesc, AccessShareLock);
-  return need_update;
+		if (attrnum != 0 && bms_is_member(attrnum - attr_offset, updated_attrs))
+		{
+			need_update = true;
+			break;
+		}
+	}
+	/*
+	 * If none of the columns are affected, we check for IndexExpressions and
+	 * IndexPredicates
+	 */
+	need_update = (need_update ||
+				   CheckUpdateExprOrPred(updated_attrs, indexDesc,
+										 Anum_pg_index_indexprs, attr_offset) ||
+				   CheckUpdateExprOrPred(updated_attrs, indexDesc,
+										 Anum_pg_index_indpred, attr_offset));
+
+	bms_free(indexattrs);
+	index_close(indexDesc, AccessShareLock);
+	return need_update;
 }
 
 /*
@@ -7537,7 +7609,7 @@ RelationGetIndexAttrBitmap(Relation relation, IndexAttrBitmapKind attrKind)
 	Oid			relreplindex;
 	ListCell   *l;
 	MemoryContext oldcxt;
-	AttrNumber attr_offset;
+	AttrNumber	attr_offset;
 
 	/* Quick exit if we already computed the result. */
 	if (relation->rd_indexattr != NULL)
@@ -8371,7 +8443,7 @@ load_relcache_init_file(bool shared)
 				nailed_indexes,
 				magic;
 	int			i;
-	uint64      ybc_stored_cache_version = 0;
+	uint64		ybc_stored_cache_version = 0;
 
 	/*
 	 * Disable shared init file in per database catalog version mode when
@@ -8402,7 +8474,7 @@ load_relcache_init_file(bool shared)
 	 */
 	if (IsYugaByteEnabled() &&
 		(YbNeedAdditionalCatalogTables() ||
-			!*YBCGetGFlags()->ysql_use_relcache_file))
+		 !*YBCGetGFlags()->ysql_use_relcache_file))
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);
@@ -8431,9 +8503,9 @@ load_relcache_init_file(bool shared)
 	{
 		/* Read the stored catalog version number */
 		if (fread(&ybc_stored_cache_version,
-		          1,
-		          sizeof(ybc_stored_cache_version),
-		          fp) != sizeof(ybc_stored_cache_version))
+				  1,
+				  sizeof(ybc_stored_cache_version),
+				  fp) != sizeof(ybc_stored_cache_version))
 		{
 			goto read_failed;
 		}
@@ -8765,8 +8837,8 @@ load_relcache_init_file(bool shared)
 	 * values of NUM_CRITICAL_SHARED_RELS/NUM_CRITICAL_SHARED_INDEXES, we put
 	 * an Assert(false) there.
 	 */
-	int num_critical_shared_indexes = NUM_CRITICAL_SHARED_INDEXES;
-	int num_critical_local_indexes = NUM_CRITICAL_LOCAL_INDEXES;
+	int			num_critical_shared_indexes = NUM_CRITICAL_SHARED_INDEXES;
+	int			num_critical_local_indexes = NUM_CRITICAL_LOCAL_INDEXES;
 
 	if (shared)
 	{
@@ -8902,10 +8974,11 @@ write_relcache_init_file(bool shared)
 	{
 		/* Write the ysql_catalog_version */
 		const uint64_t catalog_cache_version = YbGetCatalogCacheVersion();
+
 		if (fwrite(&catalog_cache_version,
-		           1,
-		           sizeof(catalog_cache_version),
-		           fp) != sizeof(catalog_cache_version))
+				   1,
+				   sizeof(catalog_cache_version),
+				   fp) != sizeof(catalog_cache_version))
 		{
 			elog(FATAL, "could not write init file");
 		}

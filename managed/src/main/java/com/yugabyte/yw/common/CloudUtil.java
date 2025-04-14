@@ -11,7 +11,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
-import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -112,20 +111,6 @@ public interface CloudUtil extends StorageUtil {
     return UUID.randomUUID();
   }
 
-  public default boolean uploadYbaBackup(
-      CustomerConfigData configData, File backup, String backupDir) {
-    return false;
-  }
-
-  public default boolean cleanupUploadedBackups(CustomerConfigData configData, String backupDir) {
-    return false;
-  }
-
-  public default File downloadYbaBackup(
-      CustomerConfigData configData, String backupDir, Path localDir) {
-    return null;
-  }
-
   public default RestorePreflightResponse
       generateYBBackupRestorePreflightResponseWithoutBackupObject(
           AdvancedRestorePreflightParams preflightParams, CustomerConfigData configData) {
@@ -143,7 +128,7 @@ public interface CloudUtil extends StorageUtil {
     if (checkFileExists(
         configData,
         /* Go to parent directory for backup_keys.json file. */
-        preflightParams.getBackupLocations().parallelStream()
+        preflightParams.getBackupLocations().stream()
             .map(bL -> bL.substring(0, bL.lastIndexOf('/')))
             .collect(Collectors.toSet()),
         BackupUtil.BACKUP_KEYS_JSON,
@@ -173,7 +158,7 @@ public interface CloudUtil extends StorageUtil {
     boolean useHttpsProxy = shouldUseHttpsProxy(configData);
     Map<NodeDetails, ProxyConfig> nodeProxyMap = universe.getNodeProxyConfigMap();
     Map<String, ProxySpec> pSpecMap =
-        nodeProxyMap.entrySet().parallelStream()
+        nodeProxyMap.entrySet().stream()
             .filter(e -> (e.getKey().cloudInfo.private_ip != null))
             .filter(
                 e ->

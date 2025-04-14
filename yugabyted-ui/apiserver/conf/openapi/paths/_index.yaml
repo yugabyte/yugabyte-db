@@ -32,30 +32,6 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
-'/migration_assesment':
-  get:
-    summary: Get Voyager data migration metrics
-    description: Get Voyager data migration metrics
-    operationId: GetVoyagerMigrationAssesmentDetails
-    tags:
-      - voyager-info
-    parameters:
-      - name: uuid
-        in: query
-        description: uuid of the voyager migration task
-        required: true
-        style: form
-        explode: false
-        schema:
-          type: string
-          format: uuid
-    responses:
-      '200':
-        $ref: '../responses/_index.yaml#/VoyagerAssesmentResponse'
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
 '/migrate_schema':
   get:
     summary: Get Voyager data migration metrics
@@ -172,6 +148,48 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/AssessmentTargetRecommendationResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/cluster':
+  get:
+    summary: Get a cluster
+    description: Get a Yugabyte Cluster
+    operationId: getCluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+  delete:
+    summary: Submit task to delete a cluster
+    description: Submit task to delete a Yugabyte Cluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        description: Successfully submitted delete cluster request
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+    operationId: deleteCluster
+  put:
+    summary: Submit task to edit a cluster
+    description: Submit task to edit a Yugabyte Cluster
+    operationId: editCluster
+    tags:
+      - cluster
+    requestBody:
+      $ref: '../request_bodies/_index.yaml#/ClusterSpec'
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
@@ -543,48 +561,6 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/NodeAddressResponse'
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
-'/cluster':
-  get:
-    summary: Get a cluster
-    description: Get a Yugabyte Cluster
-    operationId: getCluster
-    tags:
-      - cluster
-    responses:
-      '200':
-        $ref: '../responses/_index.yaml#/ClusterResponse'
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
-  delete:
-    summary: Submit task to delete a cluster
-    description: Submit task to delete a Yugabyte Cluster
-    tags:
-      - cluster
-    responses:
-      '200':
-        description: Successfully submitted delete cluster request
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
-    operationId: deleteCluster
-  put:
-    summary: Submit task to edit a cluster
-    description: Submit task to edit a Yugabyte Cluster
-    operationId: editCluster
-    tags:
-      - cluster
-    requestBody:
-      $ref: '../request_bodies/_index.yaml#/ClusterSpec'
-    responses:
-      '200':
-        $ref: '../responses/_index.yaml#/ClusterResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':

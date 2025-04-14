@@ -30,16 +30,17 @@ Voyager then generates a report that includes:
 - **Performance metrics:** Analyzes workload characteristics to recommend optimizations in YugabyteDB.
 - **Migration time estimate:** Provides an estimated time for data import into YugabyteDB based on experimental data.
 - **Unsupported query constructs:** Identifies SQL features and constructs not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, and provides a list of queries containing these constructs.
+- **Unsupported PL/pgSQL objects:** Identifies SQL features and constructs that are not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, within PL/pgSQL objects in the source schema. It reports the individual queries within these objects that are not supported, such as queries in the PL/pgSQL block for functions and procedures, or the select statements in views and materialized views that contain unsupported constructs.
 
-{{< warning title="Note" >}}
+When running migration assessment, keep in mind the following:
 
 - The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 
-- For unsupported query construct detection, ensure the [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
+- To detect unsupported query constructs, ensure the [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
 
-- To disable this feature, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
+- To disable unsupported query construct detection, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
 
-{{< /warning >}}
+- To disable unsupported PL/pgSQL object detection, set the environment variable `REPORT_UNSUPPORTED_PLPGSQL_OBJECTS=false`.
 
 The following table describes the type of data that is collected during a migration assessment.
 
@@ -58,7 +59,7 @@ To get started with migration assessment, do the following:
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
-    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/).
+    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/tutorials/quick-start/macos/).
     1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
 
         ```sh
@@ -66,7 +67,12 @@ To get started with migration assessment, do the following:
         export YUGABYTED_DB_CONN_STRING=<ysql-connection-parameters>
         ```
 
-        Provide the standard PostgreSQL connection parameters, including database, user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+        Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+
+        {{< note title="Note" >}}
+
+Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
+        {{< /note >}}
 
 1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
@@ -127,9 +133,9 @@ For the most accurate migration assessment, the source database must be actively
 
 1. Create a target YugabyteDB cluster as follows:
 
-    1. Create a cluster in [Enhanced PostgreSQL Compatibility Mode](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode), based on the sizing recommendations in the assessment report.
+    1. Create a cluster in [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/), based on the sizing recommendations in the assessment report.
 
-        For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../explore/ysql-language-features/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
+        For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
 
     1. Create a database with colocation set to TRUE.
 
@@ -172,11 +178,11 @@ Bulk assessment is managed using a fleet configuration file, which specifies the
 
 The following table outlines the fields that can be included in the fleet configuration file.
 
-| Field | Description |
+| <div style="width:180px">Field</div> | Description |
 | :--- | :--- |
 | source-db-type | Required. The type of source database. Currently, only Oracle is supported. |
 | source-db-user | Required. The username used to connect to the source database. |
-| source&#8209;db&#8209;password | Optional. The password for the source database user. If not provided, you will be prompted for the password during assessment of that schema. |
+| source-db-password | Optional. The password for the source database user. If not provided, you will be prompted for the password during assessment of that schema. |
 | source-db-schema | Required. The specific schema in the source database to be assessed. |
 | source-db-host | Optional. The hostname or IP address of the source database server. |
 | source-db-port | Optional. The port number on which the source database is running. This is required if `oracle-tns-alias` is not used. |

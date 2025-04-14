@@ -243,6 +243,9 @@ public class CustomerTask extends Model {
     @EnumValue("CreatePitrConfig")
     CreatePitrConfig,
 
+    @EnumValue("UpdatePitrConfig")
+    UpdatePitrConfig,
+
     @EnumValue("DeletePitrConfig")
     DeletePitrConfig,
 
@@ -310,6 +313,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("Switchover")
     Switchover,
+
+    @EnumValue("SwitchoverRollback")
+    SwitchoverRollback,
 
     @EnumValue("PrecheckNode")
     PrecheckNode,
@@ -387,7 +393,13 @@ public class CustomerTask extends Model {
     RestoreContinuousBackup,
 
     @EnumValue("EnableNodeAgent")
-    EnableNodeAgent;
+    EnableNodeAgent,
+
+    @EnumValue("Decommission")
+    Decommission,
+
+    @EnumValue("CloneNamespace")
+    CloneNamespace;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -404,6 +416,8 @@ public class CustomerTask extends Model {
           return completed ? "Rebooted" : "Rebooting";
         case Remove:
           return completed ? "Removed" : "Removing";
+        case Decommission:
+          return completed ? "Decommissioned" : "Decommissioning";
         case ResizeNode:
           return completed ? "Resized Node" : "Resizing Node";
         case Replace:
@@ -465,6 +479,8 @@ public class CustomerTask extends Model {
           return completed ? "Restored" : "Restoring";
         case CreatePitrConfig:
           return completed ? "Created PITR Config" : "Creating PITR Config";
+        case UpdatePitrConfig:
+          return completed ? "Updated PITR Config" : "Updating PITR Config";
         case DeletePitrConfig:
           return completed ? "Deleted PITR Config" : "Deleting PITR Config";
         case RestoreSnapshotSchedule:
@@ -503,6 +519,10 @@ public class CustomerTask extends Model {
           return completed ? "Failed over dr config" : "Failing over dr config";
         case Switchover:
           return completed ? "Switched over dr config" : "Switching over dr config";
+        case SwitchoverRollback:
+          return completed
+              ? "Rolled back the latest switchover dr config task"
+              : "Rolling back the latest switchover dr config task";
         case PrecheckNode:
           return completed ? "Performed preflight check on" : "Performing preflight check on";
         case Abort:
@@ -562,6 +582,8 @@ public class CustomerTask extends Model {
           return completed ? "Restored continuous YBA backup" : "Restoring continuous YBA backup";
         case EnableNodeAgent:
           return completed ? "Enabled node agent on" : "Enabling node agent on";
+        case CloneNamespace:
+          return completed ? "Cloned Namespace" : "Cloning Namespace";
         default:
           return null;
       }
@@ -820,6 +842,7 @@ public class CustomerTask extends Model {
     return this;
   }
 
+  @JsonIgnore
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
     sb.append(type.toString(completionTime != null).trim());
@@ -966,6 +989,7 @@ public class CustomerTask extends Model {
         .orElse("Unknown");
   }
 
+  @JsonIgnore
   public boolean isDeletable() {
     if (targetType.isUniverseTarget()) {
       Optional<Universe> optional = Universe.maybeGet(targetUUID);

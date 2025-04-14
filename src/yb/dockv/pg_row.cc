@@ -18,8 +18,10 @@
 #include "yb/common/schema.h"
 #include "yb/common/types.h"
 
+#include "yb/dockv/doc_bson.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_packing.h"
@@ -63,6 +65,8 @@ size_t FixedSize(DataType data_type) {
       return 8;
 
     case DataType::STRING: FALLTHROUGH_INTENDED;
+    case DataType::VECTOR: FALLTHROUGH_INTENDED;
+    case DataType::BSON: FALLTHROUGH_INTENDED;
     case DataType::BINARY: FALLTHROUGH_INTENDED;
     case DataType::DECIMAL: FALLTHROUGH_INTENDED;
     case DataType::VARINT:
@@ -92,19 +96,48 @@ bool StoreAsValue(DataType data_type) {
   return FixedSize(data_type) != 0;
 }
 
-// Return appended string offset in the buffer.
-size_t AppendString(Slice slice, ValueBuffer* buffer, bool append_zero) {
-  auto result = buffer->size();
-  int64_t length = slice.size();
-  char* out = buffer->GrowByAtLeast(sizeof(uint64_t) + length + append_zero);
-  BigEndian::Store64(out, length + append_zero);
-  out += sizeof(uint64_t);
-  memcpy(out, slice.cdata(), length);
-  if (append_zero) {
-    out[length] = 0;
+struct BinaryAppender {
+  static constexpr auto kLengthSize = sizeof(uint64_t);
+
+  // Grows the buffer up to sizeof(uint64_t) + remaining_size and then writes the length value to
+  // the buffer. Returns the position after the written length.
+  template <class Buffer>
+  static char* AppendLength(Buffer* buffer, size_t length, size_t remaining_size = 0) {
+    char* out = buffer->GrowByAtLeast(kLengthSize + remaining_size);
+    BigEndian::Store64(out, length);
+    return out + kLengthSize;
   }
-  return result;
-}
+
+  // Return appended string offset in the buffer.
+  template <class Buffer>
+  static size_t Append(Slice slice, Buffer* buffer, bool append_zero) {
+    const auto result = buffer->size();
+    const auto length = slice.size() + append_zero;
+    auto* out = AppendLength(buffer, length, length);
+    memcpy(out, slice.cdata(), slice.size());
+    if (append_zero) {
+      out[slice.size()] = 0;
+    }
+    return result;
+  }
+
+  template <class Buffer>
+  static size_t Append(Slice slice, Buffer* buffer) {
+    return Append(slice, buffer, false);
+  }
+
+  template <class Buffer>
+  static size_t AppendString(Slice slice, Buffer* buffer) {
+    return Append(slice, buffer, true);
+  }
+
+  // Returns encoded binary value without encoded length prefix.
+  // Assumes it does not have zero at the end.
+  static inline Slice SanitizeBinary(Slice value) {
+    CHECK_GE(value.size(), kLengthSize);
+    return value.WithoutPrefix(kLengthSize);
+  }
+};
 
 bool IsNull(char value_type) {
   return value_type == ValueEntryTypeAsChar::kNullLow ||
@@ -119,7 +152,7 @@ struct VisitDoDecodeValueV2 {
   ValueBuffer* buffer;
 
   Status Binary() const {
-    *value = AppendString(*input, buffer, false);
+    *value = BinaryAppender::Append(*input, buffer);
     return Status::OK();
   }
 
@@ -128,8 +161,12 @@ struct VisitDoDecodeValueV2 {
   }
 
   Status String() const {
-    *value = AppendString(*input, buffer, true);
+    *value = BinaryAppender::AppendString(*input, buffer);
     return Status::OK();
+  }
+
+  Status Vector() const {
+    return Binary();
   }
 
   template <class T>
@@ -207,10 +244,12 @@ Status DoDecodeValue(
       return Status::OK();
     case DataType::DECIMAL: [[fallthrough]];
     case DataType::STRING:
-      *value = AppendString(slice, buffer, true);
+      *value = BinaryAppender::AppendString(slice, buffer);
       return Status::OK();
+    case DataType::VECTOR: [[fallthrough]];
+    case DataType::BSON: [[fallthrough]];
     case DataType::BINARY:
-      *value = AppendString(slice, buffer, false);
+      *value =  BinaryAppender::Append(slice, buffer);
       return Status::OK();
     default:
       break;
@@ -275,6 +314,28 @@ void EncodeBinary(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncode
 }
 
 template <bool kLast>
+void EncodeVector(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  auto index = chain->data;
+  if (PREDICT_FALSE(row.IsNull(index))) {
+    buffer->PushBack(1);
+    CallNextEncoder<kLast>(row, buffer, chain);
+    return;
+  }
+
+  auto slice = row.GetVarlenSlice(index);
+  // Vector's value contains VectorId at the end, but it is docdb internal field. Hence the value
+  // should be repacked without VectorId.
+  auto encoded_value = DocVectorValue::SanitizeValue(BinaryAppender::SanitizeBinary(slice));
+
+  ByteBuffer<BinaryAppender::kLengthSize> encoded_value_size;
+  BinaryAppender::AppendLength(&encoded_value_size, encoded_value.size());
+
+  buffer->AppendValues(char{0}, encoded_value_size.AsSlice(), encoded_value);
+
+  CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+template <bool kLast>
 struct EncoderProvider {
   template <class T>
   PgWireEncoder Primitive() const {
@@ -291,6 +352,10 @@ struct EncoderProvider {
 
   PgWireEncoder Decimal() const {
     return Binary();
+  }
+
+  PgWireEncoder Vector() const {
+    return EncodeVector<kLast>;
   }
 };
 
@@ -524,6 +589,10 @@ struct GetPackedColumnDecoderVisitorV2 {
     return Apply<BinaryValueDecoder<true, ValueEntryTypeAsChar::kDecimal>>();
   }
 
+  PackedColumnDecoderV2 Vector() const {
+    return Binary();
+  }
+
  private:
   template<class Decoder>
   PackedColumnDecoderV2 Apply() const {
@@ -548,6 +617,10 @@ struct GetPackedColumnDecoderVisitorV1 {
 
   PackedColumnDecoderV1 Decimal() const {
     return Apply<BinaryValueDecoder<true, ValueEntryTypeAsChar::kDecimal>>();
+  }
+
+  PackedColumnDecoderV1 Vector() const {
+    return Binary();
   }
 
  private:
@@ -663,9 +736,15 @@ Slice PgValue::VardataWithLen() const {
 QLValuePB PgValue::ToQLValuePB(DataType data_type) const {
   QLValuePB result;
   switch (data_type) {
+    case DataType::VECTOR: FALLTHROUGH_INTENDED;
     case DataType::BINARY: {
       auto data = binary_value();
       result.set_binary_value(data.cdata(), data.size());
+      return result;
+    }
+    case DataType::BSON: {
+      auto data = binary_value();
+      result.set_bson_value(data.cdata(), data.size());
       return result;
     }
     case DataType::BOOL:
@@ -879,10 +958,26 @@ Result<const char*> PgTableRow::DecodeComparableString(
   return result;
 }
 
+Result<const char*> PgTableRow::DecodeComparableBson(
+    size_t column_idx, const char* input, const char* end, SortOrder sort_order) {
+  auto old_size = buffer_.size();
+  buffer_.GrowByAtLeast(sizeof(uint64_t));
+  const auto* result = VERIFY_RESULT(
+      sort_order == SortOrder::kAscending
+          ? BsonKeyFromComparableBinary(input, end, &buffer_)
+          : BsonKeyFromComparableBinaryDescending(input, end, &buffer_));
+
+  BigEndian::Store64(
+      buffer_.mutable_data() + old_size, buffer_.size() - old_size - sizeof(uint64_t));
+  is_null_[column_idx] = false;
+  values_[column_idx] = old_size;
+  return result;
+}
+
 void PgTableRow::SetBinary(size_t column_idx, Slice value, bool append_zero) {
   is_null_[column_idx] = false;
   values_[column_idx] = buffer_.size();
-  AppendString(value, &buffer_, append_zero);
+  BinaryAppender::Append(value, &buffer_, append_zero);
 }
 
 PackedColumnDecoderEntry PgTableRow::GetPackedColumnDecoderV1(

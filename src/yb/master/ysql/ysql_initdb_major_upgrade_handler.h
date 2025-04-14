@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/master/master_admin.pb.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/master/master_fwd.h"
@@ -22,6 +23,7 @@ namespace yb {
 
 class IsOperationDoneResult;
 class ThreadPool;
+class VersionInfoPB;
 
 namespace master {
 struct LeaderEpoch;
@@ -36,6 +38,8 @@ class YsqlInitDBAndMajorUpgradeHandler {
       SysCatalogTable& sys_catalog, yb::ThreadPool& thread_pool);
 
   ~YsqlInitDBAndMajorUpgradeHandler() = default;
+
+  void Load(scoped_refptr<SysConfigInfo> config);
 
   void SysCatalogLoaded(const LeaderEpoch& epoch);
 
@@ -55,10 +59,31 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // to a clean state.
   Status RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch);
 
-  bool IsYsqlMajorCatalogUpgradeInProgress() const;
+  // Are we in a ysql major upgrade?
+  // The upgrade is considered to have started when the yb-master leader has upgraded to a new major
+  // catalog version.
+  // The upgrade is completed after it has been finalized.
+  bool IsMajorUpgradeInProgress() const { return ysql_major_upgrade_in_progress_; }
+
+  Result<YsqlMajorCatalogUpgradeState> GetYsqlMajorCatalogUpgradeState() const;
+
+  // Are we allowed to perform updates to the ysql catalog?
+  // True for the current version if the ysql major upgrade completed.
+  // The upgrade is considered to have started when the yb-master leader has upgraded to a new major
+  // catalog version.
+  // The upgrade is completed after it has been finalized.
+  // During the upgrade only is_forced_update operations are allowed.
+  bool IsWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
+
+  // Delete the previous ysql major version catalog after the upgrade to the new version has
+  // completed.
+  Status CleanupPreviousYsqlMajorCatalog(const LeaderEpoch& epoch);
+  void ScheduleCleanupPreviousYsqlMajorCatalog(const LeaderEpoch& epoch);
+
+  Status ValidateTServerVersion(const VersionInfoPB& version) const;
 
  private:
-  using DbNameToOidList = std::vector<std::pair<std::string, YBCPgOid>>;
+  using DbNameToOidList = std::vector<std::pair<std::string, YbcPgOid>>;
 
   // Executes the given function asynchronously. Ensures that only one function is running at a
   // time.
@@ -96,6 +121,13 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // Get the address to a live tserver process that is closest to the master.
   Result<std::string> GetClosestLiveTserverAddress();
 
+  // Transition the ysql major catalog upgrade to a new state if allowed.
+  // failed_status must be set to a NonOk status if and only if transitioning to FAILED state.
+  // Check kAllowedTransitions for list of allowed transitions.
+  Status TransitionMajorCatalogUpgradeState(
+      const YsqlMajorCatalogUpgradeInfoPB::State new_state, const LeaderEpoch& epoch,
+      const Status& failed_status = Status::OK());
+
   Master& master_;
   YsqlCatalogConfig& ysql_catalog_config_;
   CatalogManager& catalog_manager_;
@@ -105,6 +137,9 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // Indicates a global initdb, ysql major catalog upgrade, or ysql major catalog rollback is in
   // progress.
   std::atomic<bool> is_running_{false};
+
+  std::atomic<bool> restarted_during_major_upgrade_ = false;
+  std::atomic<bool> ysql_major_upgrade_in_progress_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(YsqlInitDBAndMajorUpgradeHandler);
 };

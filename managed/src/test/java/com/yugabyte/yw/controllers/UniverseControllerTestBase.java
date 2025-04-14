@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -72,9 +73,10 @@ import org.junit.Rule;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
+import org.pac4j.play.LogoutController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -105,6 +107,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  protected LogoutController mockLogoutController;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
   protected Config mockRuntimeConfig;
   protected QueryHelper mockQueryHelper;
@@ -117,6 +120,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected CloudUtilFactory mockCloudUtilFactory;
   protected ReleasesUtils mockReleasesUtils;
   protected GFlagsValidation mockGFlagsValidation;
+  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
 
   protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
     return applicationBuilder;
@@ -136,6 +140,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     mockShellProcessHandler = mock(ShellProcessHandler.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockLogoutController = mock(LogoutController.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     mockRuntimeConfig = mock(Config.class);
     mockReleaseManager = mock(ReleaseManager.class);
@@ -145,6 +150,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
     mockReleasesUtils = mock(ReleasesUtils.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
+    mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
 
     when(mockRuntimeConfig.getString("yb.metrics.scrape_interval")).thenReturn("10s");
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
@@ -175,7 +181,8 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(LogoutController.class).toInstance(mockLogoutController))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(
             bind(RuntimeConfigFactory.class)
@@ -184,6 +191,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .overrides(bind(QueryHelper.class).toInstance(mockQueryHelper))
         .overrides(bind(KubernetesManagerFactory.class).toInstance(kubernetesManagerFactory))
+        .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))

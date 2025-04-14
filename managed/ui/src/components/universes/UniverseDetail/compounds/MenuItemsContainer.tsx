@@ -1,11 +1,13 @@
-import React, { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react';
+import { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import './MenuItemsContainer.scss';
 
 interface MenuItemsContainerProps {
   mainMenu: (setActiveSubmenu: Dispatch<SetStateAction<null | string>>) => ReactNode;
   parentDropdownOpen: Boolean;
-  subMenus: { [activeSubmenu: string]: (backToMainMenu: () => void) => ReactNode };
+  subMenus: {
+    [activeSubmenu: string]: (setActiveSubmenu: (subMenu: string | null) => void) => ReactNode;
+  };
 }
 export const MenuItemsContainer = ({
   mainMenu,
@@ -19,8 +21,6 @@ export const MenuItemsContainer = ({
     if (!parentDropdownOpen && activeSubmenu !== null) setActiveSubmenu(null);
   }, [parentDropdownOpen, activeSubmenu]);
 
-  const backToMainMenu = () => setActiveSubmenu(null);
-
   return (
     <div className="menu-items-container">
       <div
@@ -32,7 +32,7 @@ export const MenuItemsContainer = ({
         {mainMenu(setActiveSubmenu)}
       </div>
       <div className="menu-items-container__submenu-frame">
-        {activeSubmenu && subMenus[activeSubmenu](backToMainMenu)}
+        {activeSubmenu && subMenus[activeSubmenu](setActiveSubmenu)}
       </div>
     </div>
   );

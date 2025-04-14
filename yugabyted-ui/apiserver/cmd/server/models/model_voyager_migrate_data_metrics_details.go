@@ -13,9 +13,9 @@ type VoyagerMigrateDataMetricsDetails struct {
 
     Status int32 `json:"status"`
 
-    CountLiveRows int32 `json:"count_live_rows"`
+    CountLiveRows int64 `json:"count_live_rows"`
 
-    CountTotalRows int32 `json:"count_total_rows"`
+    CountTotalRows int64 `json:"count_total_rows"`
 
     InvocationTimestamp string `json:"invocation_timestamp"`
 }

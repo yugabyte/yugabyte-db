@@ -15,6 +15,8 @@
 #define PATHS_H
 
 #include "nodes/pathnodes.h"
+
+/* YB includes */
 #include "pg_yb_utils.h"
 
 
@@ -60,12 +62,23 @@ extern void generate_useful_gather_paths(PlannerInfo *root, RelOptInfo *rel,
 										 bool override_rows);
 extern int	compute_parallel_worker(RelOptInfo *rel, double heap_pages,
 									double index_pages, int max_workers);
-extern int yb_compute_parallel_worker(RelOptInfo *rel,
-						   YbTableDistribution yb_dist, int max_workers);
+extern int	yb_compute_parallel_worker(RelOptInfo *rel,
+									   YbTableDistribution yb_dist, int max_workers);
 extern void create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 										Path *bitmapqual);
 extern void generate_partitionwise_join_paths(PlannerInfo *root,
 											  RelOptInfo *rel);
+
+extern void ybTraceRelOptInfo(PlannerInfo *root, RelOptInfo *relOptInfo, char *msg);
+extern void ybTraceRelOptInfoList(PlannerInfo *root, List *relOptInfoList, char *msg);
+extern void ybTraceRelds(PlannerInfo *root, Relids relids, char *msg);
+extern void ybTracePath(PlannerInfo *root, Path *path, char *msg);
+extern void ybTracePathList(PlannerInfo *root, List *pathList, char *msg);
+extern bool ybFindHintedJoin(PlannerInfo *root, Relids relIds1, Relids relIds2, bool trySwapped);
+extern bool ybFindProhibitedJoin(PlannerInfo *root, NodeTag joinTag, Relids joinRelids);
+extern void ybBuildRelOptInfoString(PlannerInfo *root, RelOptInfo *relOptInfo, StringInfoData *buf);
+extern void ybBuildRelidsString(PlannerInfo *root, Relids relids, StringInfoData *buf);
+extern void ybTraceCheapestPaths(RelOptInfo *rel, char *msg);
 
 #ifdef OPTIMIZER_DEBUG
 extern void debug_print_rel(PlannerInfo *root, RelOptInfo *rel);
@@ -268,9 +281,9 @@ extern void add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 									List *live_childrels);
 extern bool yb_reject_distinct_pushdown(Node *expr);
 extern List *yb_get_uniqkeys(IndexOptInfo *index, int prefixlen);
-extern int yb_calculate_distinct_prefixlen(PlannerInfo *root,
-										   IndexOptInfo *index,
-										   List *index_clauses);
+extern int	yb_calculate_distinct_prefixlen(PlannerInfo *root,
+											IndexOptInfo *index,
+											List *index_clauses);
 extern bool yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode);
 extern List *yb_get_ecs_for_query_uniqkeys(PlannerInfo *root);
 

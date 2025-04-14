@@ -544,7 +544,7 @@ void PlainTableReader::Prepare(const Slice& target) {
   }
 }
 
-Status PlainTableReader::Get(const ReadOptions& ro, const Slice& target,
+Status PlainTableReader::Get(const ReadOptions&, const Slice& target,
                              GetContext* get_context, bool skip_filters) {
   // Check bloom filter first.
   Slice prefix_slice;
@@ -616,6 +616,12 @@ uint64_t PlainTableReader::ApproximateOffsetOf(const Slice& key) {
 InternalIterator* PlainTableReader::NewIndexIterator(const ReadOptions& read_options) {
   return NewErrorInternalIterator(
       STATUS(NotSupported, "NewIndexIterator() is not supported for PlainTableBuilder"));
+}
+
+DataBlockAwareIndexInternalIterator* PlainTableReader::NewDataBlockAwareIndexIterator(
+    const ReadOptions& read_options) {
+  return NewErrorIterator<DataBlockAwareIndexInternalIterator>(STATUS(
+      NotSupported, "NewDataBlockAwareIndexIterator() is not supported for PlainTableBuilder"));
 }
 
 PlainTableIterator::PlainTableIterator(PlainTableReader* table,

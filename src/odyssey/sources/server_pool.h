@@ -16,12 +16,15 @@ struct od_server_pool {
 	od_list_t idle;
 	int count_active;
 	int count_idle;
+	/* count of sticky connections in pool */
+	int yb_count_sticky;
 };
 
 static inline void od_server_pool_init(od_server_pool_t *pool)
 {
 	pool->count_active = 0;
 	pool->count_idle = 0;
+	pool->yb_count_sticky = 0;
 	od_list_init(&pool->idle);
 	od_list_init(&pool->active);
 }
@@ -72,6 +75,9 @@ OD_SERVER_POOL_FREE_DECLARE(ldap, od_ldap_server_t, od_ldap_server_free)
 		od_list_t *target = NULL;                                      \
 		switch (state) {                                               \
 		case OD_SERVER_UNDEF:                                          \
+			if (server->yb_sticky_connection) {                     \
+				pool->yb_count_sticky--;                       \
+			}													  \
 			break;                                                 \
 		case OD_SERVER_IDLE:                                           \
 			target = &pool->idle;                                  \
@@ -161,6 +167,27 @@ static inline od_server_t *yb_od_server_pool_idle_random (od_server_pool_t *pool
 	}
 
 	return server;
+}
+
+static inline od_server_t *
+yb_od_server_pool_idle_version_matching(od_server_pool_t *pool,
+					int64_t logical_client_version,
+					bool version_matching_connect_higher_version)
+{
+	od_list_t *target = &pool->idle;
+	od_server_t *server;
+	od_list_t *i, *n;
+	od_list_foreach_safe(target, i, n)
+	{
+		server = od_container_of(i, od_server_t, link);
+		if (!server->marked_for_close &&
+		    (server->logical_client_version == logical_client_version ||
+		     (version_matching_connect_higher_version &&
+		      server->logical_client_version >= logical_client_version)))
+			return server;
+	}
+
+	return NULL;
 }
 
 static inline od_server_t *od_server_pool_foreach(od_server_pool_t *pool,

@@ -30,6 +30,8 @@ namespace yb::pgwrapper {
 
 class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
  protected:
+  constexpr static size_t kPgTsIndex = 0;
+
   // This allows modifying flags before we start the postgres process in SetUp.
   virtual void BeforePgProcessStart() {
   }
@@ -51,11 +53,6 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   // This allows changing mini cluster options before the mini cluster is started.
   virtual void OverrideMiniClusterOptions(MiniClusterOptions* options);
 
-  // This allows modifying the logic to decide which tablet server to run postgres on -
-  // by default, randomly picked out of all the tablet servers.
-  virtual const std::shared_ptr<tserver::MiniTabletServer> PickPgTabletServer(
-     const MiniCluster::MiniTabletServers& servers);
-
   // This allows passing extra tserver options to the underlying mini cluster.
   virtual std::vector<tserver::TabletServerOptions> ExtraTServerOptions();
 
@@ -71,6 +68,12 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   Status RestartMaster();
 
+  void StopPostgres();
+
+  Status StartPostgres();
+
+  Status RestartPostgres();
+
   const HostPort& pg_host_port() const {
     return pg_host_port_;
   }
@@ -78,6 +81,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   Result<TableId> GetTableIDFromTableName(const std::string& table_name);
 
   Result<master::CatalogManagerIf*> catalog_manager() const;
+  Result<master::CatalogManager*> catalog_manager_impl() const;
 
   void FlushAndCompactTablets();
 
@@ -91,6 +95,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port, size_t ts_idx);
+  Status RecreatePgSupervisor();
 
   HostPort pg_host_port_;
 };

@@ -56,6 +56,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
+    if(isTestRunningWithConnectionManager()) {
+       flags.put("allowed_preview_flags_csv",
+                "ysql_conn_mgr_version_matching,"
+                + "ysql_conn_mgr_version_matching_connect_higher_version");
+      flags.put("enable_ysql_conn_mgr", "true");
+      flags.put("ysql_conn_mgr_version_matching", "true");
+      flags.put("ysql_conn_mgr_version_matching_connect_higher_version", "true");
+    }
     return flags;
   }
 
@@ -359,7 +367,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
     // (DB-10760) Role OID-based pool design is needed in addition to waiting
     // for connection count-related statistics for this test to pass when
     // Connection Manager is enabled. Skipping this test temporarily.
-    assumeFalse(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED,
+        isTestRunningWithConnectionManager());
 
     // NOTE: The INHERIT attribute is tested separately in testMembershipInheritance.
     try (Statement statement = connection.createStatement()) {
@@ -1084,13 +1093,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testAlterRoleConfiguration() throws Exception {
-
-    // The test fails with Connection Manager as it is expected that a new
-    // session would latch onto a new physical connection. Instead, two logical
-    // connections use the same physical connection, leading to unexpected
-    // results as per the expectations of the test.
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
-
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE test_role LOGIN");
 
@@ -2712,9 +2714,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   @Test
   public void testRevokeLoginMidSession() throws Exception {
-    // (DB-12741) Skip this test if running with connection manager.
-    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -2856,7 +2855,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
   @Test
   public void testConnectionLimitDecreasedMidSession() throws Exception {
     // (DB-12741) Skip this test if running with connection manager.
-    assumeFalse(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR,
+        isTestRunningWithConnectionManager());
 
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
@@ -2932,7 +2932,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
     // requires that the role GUC variable is not changed even after revoking
     // membership from a role group in order to succeed, which would not be the
     // case when Connection Manager is enabled.
-    assumeFalse(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE,
+        isTestRunningWithConnectionManager());
 
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
@@ -3236,7 +3237,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
     // This test will further need the support of role OID-based pooling
     // to help support recreate role operations (DROP ROLE followed by
     // CREATE ROLE).
-    assumeFalse(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED,
+        isTestRunningWithConnectionManager());
 
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
@@ -3372,6 +3374,25 @@ public class TestPgAuthorization extends BasePgSQLTest {
          Statement statement = connection.createStatement()) {
       // yb_db_admin_member should be able to query pg_locks without superuser access.
       statement.executeQuery("SELECT * FROM pg_locks");
+    }
+  }
+
+  @Test
+  public void testPgPublicSchemaCreateAuthorization() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // In java tests using BasePsqSQLTest, we provide CREATE privilege on public schema to PUBLIC,
+      // which is not the default PG15 behaviour (which is only USAGE privilege). The below two
+      // queries reset this to PG15 behaviour. This test ensures that yb_db_admin has CREATE
+      // privilege on public schema.
+      statement.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC");
+      statement.execute("CREATE ROLE yb_public_schema_user LOGIN");
+      statement.execute("GRANT yb_db_admin TO yb_public_schema_user");
+    }
+
+    try (Connection connection = getConnectionBuilder().withUser("yb_public_schema_user").connect();
+        Statement statement = connection.createStatement()) {
+      // yb_db_admin user should have create privilege in public schema.
+      statement.execute("CREATE TABLE public.t1(col INT)");
     }
   }
 }

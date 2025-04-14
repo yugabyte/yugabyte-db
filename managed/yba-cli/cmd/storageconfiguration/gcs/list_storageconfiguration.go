@@ -17,7 +17,11 @@ var listGCSStorageConfigurationCmd = &cobra.Command{
 	Long:    "List GCS YugabyteDB Anywhere storage-configurations",
 	Example: `yba storage-config gcs list`,
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.ListStorageConfigurationUtil(cmd, util.GCSStorageConfigType, util.GCSStorageConfigType)
+		storageconfigurationutil.ListStorageConfigurationUtil(
+			cmd,
+			util.GCSStorageConfigType,
+			util.GCSStorageConfigType,
+		)
 
 	},
 }

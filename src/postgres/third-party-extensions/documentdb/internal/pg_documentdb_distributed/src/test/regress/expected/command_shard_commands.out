@@ -1,0 +1,220 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 756000;
+SET documentdb.next_collection_id TO 7560;
+SET documentdb.next_collection_index_id TO 7560;
+ALTER SEQUENCE pg_dist_colocationid_seq RESTART WITH 7560;
+set documentdb.recreate_retry_table_on_shard to on;
+CREATE FUNCTION command_sharding_get_collectionInfo(dbname text DEFAULT 'comm_sh_coll', filterValue text DEFAULT '')
+RETURNS SETOF documentdb_core.bson
+AS $$
+BEGIN
+	RETURN QUERY WITH base AS (SELECT bson_dollar_project(bson_dollar_unwind(cursorpage, '$cursor.firstBatch'), '{ "cursor.firstBatch.idIndex": 0, "cursor.firstBatch.info.uuid": 0, "cursor.firstBatch.options": 0 }')::documentdb_core.bson AS doc FROM list_collections_cursor_first_page(dbname,
+        FORMAT('{ "listCollections": 1, "filter": { %s }, "addDistributedMetadata": true }', filterValue)::documentdb_core.bson))
+    SELECT doc FROM base ORDER BY bson_orderby(doc, '{ "cursor.firstBatch.name": 1 }');
+END;
+$$ LANGUAGE plpgsql;
+SELECT documentdb_api.insert_one('comm_sh_coll', 'single_shard', '{ "_id": 1, "a": 1, "b": 2, "c": 3, "d": 4 }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comm_sh_coll', 'comp_shard', '{ "_id": 1, "a": 1, "b": 2, "c": 3, "d": 4 }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- test new shard collection API - invalid inputs
+SELECT documentdb_api.shard_collection('{ }');
+ERROR:  shardCollection is a required field.
+SELECT documentdb_api.shard_collection('{ "key": { "_id": "hashed" } }');
+ERROR:  shardCollection is a required field.
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.single_shard", "key": { "_id": 1 } }');
+ERROR:  only shard keys that use hashed are supported
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "unique": 1 }');
+ERROR:  hashed shard keys cannot be declared unique.
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "numInitialChunks": -1 }');
+ERROR:  numInitialChunks must be a positive number
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "numInitialChunks": 5678 }');
+ERROR:  numInitialChunks must be less than 128.
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "collation": { "a": "b" } }');
+ERROR:  Collation on shard collection is not supported yet
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "timeseries": { "a": "b" } }');
+ERROR:  timeseries on shard collection is not supported yet
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.", "key": { "_id": "hashed" } }');
+ERROR:  name needs to be fully qualified <db>.<collection>
+SELECT documentdb_api.shard_collection('{ "shardCollection": ".single_shard", "key": { "_id": "hashed" } }');
+ERROR:  name needs to be fully qualified <db>.<collection>
+SELECT documentdb_api.shard_collection('{ "shardCollection": ".", "key": { "_id": "hashed" } }');
+ERROR:  name needs to be fully qualified <db>.<collection>
+SELECT documentdb_api.shard_collection('{ "shardCollection": "admin.system.collections", "key": { "_id": "hashed" } }');
+ERROR:  Invalid system namespace: admin.system.collections
+-- valid shard collection
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "unique": false }');
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- cannot shard a sharded collection
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.single_shard", "key": { "a": "hashed" }, "unique": false }');
+ERROR:  Sharding already enabled for collection comm_sh_coll.single_shard with options { "_id": "comm_sh_coll.single_shard", "dropped" : false, "key" : { "a" : "hashed" }, "unique": false }.
+-- shard collection creates a new collection.
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.new_coll", "key": { "_id": "hashed" }, "unique": false }');
+NOTICE:  creating collection
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- call listCollections and validate state.
+SELECT command_sharding_get_collectionInfo();
+                                                                                                                                                             command_sharding_get_collectioninfo                                                                                                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7560" }, "shardCount" : { "$numberInt" : "1" }, "name" : "comp_shard", "type" : "collection", "info" : { "readOnly" : false } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7562" }, "shardCount" : { "$numberInt" : "8" }, "name" : "new_coll", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7561" }, "shardCount" : { "$numberInt" : "8" }, "name" : "single_shard", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(3 rows)
+
+SELECT * FROM public.citus_tables tbls JOIN
+    (SELECT 'documentdb_data.documents_' || collection_id AS mongo_table_name FROM documentdb_api_catalog.collections WHERE database_name = 'comm_sh_coll'
+    UNION ALL SELECT 'documentdb_data.retry_' || collection_id AS mongo_table_name FROM documentdb_api_catalog.collections WHERE database_name = 'comm_sh_coll') colls ON tbls.table_name::text = colls.mongo_table_name
+    ORDER BY colocation_id ASC;
+           table_name           | citus_table_type | distribution_column | colocation_id | table_size | shard_count |      table_owner      | access_method |        mongo_table_name        
+---------------------------------------------------------------------
+ documentdb_data.documents_7560 | distributed      | <none>              |          7560 | 16 kB      |           1 | documentdb_admin_role | heap          | documentdb_data.documents_7560
+ documentdb_data.documents_7562 | distributed      | <none>              |          7560 | 32 kB      |           1 | documentdb_admin_role | heap          | documentdb_data.documents_7562
+ documentdb_data.retry_7560     | distributed      | <none>              |          7560 | 24 kB      |           1 | documentdb_admin_role | heap          | documentdb_data.retry_7560
+ documentdb_data.retry_7562     | distributed      | <none>              |          7560 | 24 kB      |           1 | documentdb_admin_role | heap          | documentdb_data.retry_7562
+ documentdb_data.documents_7561 | distributed      | shard_key_value     |          7561 | 272 kB     |           8 | documentdb_admin_role | heap          | documentdb_data.documents_7561
+ documentdb_data.retry_7561     | distributed      | shard_key_value     |          7561 | 192 kB     |           8 | documentdb_admin_role | heap          | documentdb_data.retry_7561
+ documentdb_data.retry_7563     | distributed      | shard_key_value     |          7562 | 192 kB     |           8 | documentdb_admin_role | heap          | documentdb_data.retry_7563
+ documentdb_data.documents_7563 | distributed      | shard_key_value     |          7562 | 256 kB     |           8 | documentdb_admin_role | heap          | documentdb_data.documents_7563
+(8 rows)
+
+-- shard with different shard count
+SELECT documentdb_api.shard_collection('{ "shardCollection": "comm_sh_coll.comp_shard", "key": { "_id": "hashed" }, "unique": false, "numInitialChunks": 3 }');
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT command_sharding_get_collectionInfo();
+                                                                                                                                                             command_sharding_get_collectioninfo                                                                                                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7563" }, "shardCount" : { "$numberInt" : "3" }, "name" : "comp_shard", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7562" }, "shardCount" : { "$numberInt" : "8" }, "name" : "new_coll", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7561" }, "shardCount" : { "$numberInt" : "8" }, "name" : "single_shard", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(3 rows)
+
+-- unshard - should return to the original colocationGroup.
+SELECT documentdb_api.unshard_collection('{ "unshardCollection": "comm_sh_coll.comp_shard" }');
+ unshard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- unsupported option
+SELECT documentdb_api.unshard_collection('{ "unshardCollection": "comm_sh_coll.new_coll", "toShard": "shard2" }');
+ERROR:  unshardCollection with toShard not supported yet
+SELECT command_sharding_get_collectionInfo();
+                                                                                                                                                             command_sharding_get_collectioninfo                                                                                                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7560" }, "shardCount" : { "$numberInt" : "1" }, "name" : "comp_shard", "type" : "collection", "info" : { "readOnly" : false } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7562" }, "shardCount" : { "$numberInt" : "8" }, "name" : "new_coll", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7561" }, "shardCount" : { "$numberInt" : "8" }, "name" : "single_shard", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(3 rows)
+
+-- cannot unshard an unsharded collection.
+SELECT documentdb_api.unshard_collection('{ "unshardCollection": "comm_sh_coll.comp_shard" }');
+ERROR:  Collection comm_sh_coll.comp_shard is not sharded
+-- reshardCollection invalid apis
+SELECT documentdb_api.reshard_collection('{ }');
+ERROR:  reshardCollection is a required field.
+SELECT documentdb_api.reshard_collection('{ "key": { "_id": "hashed" } }');
+ERROR:  reshardCollection is a required field.
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "_id": 1 } }');
+ERROR:  only shard keys that use hashed are supported
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "unique": 1 }');
+ERROR:  hashed shard keys cannot be declared unique.
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "numInitialChunks": 5678 }');
+ERROR:  numInitialChunks must be less than 128.
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "collation": { "a": "b" } }');
+ERROR:  Collation on shard collection is not supported yet
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "numInitialChunks": -1 }');
+ERROR:  numInitialChunks must be a positive number
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.", "key": { "_id": "hashed" } }');
+ERROR:  name needs to be fully qualified <db>.<collection>
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": ".single_shard", "key": { "_id": "hashed" } }');
+ERROR:  name needs to be fully qualified <db>.<collection>
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": ".", "key": { "_id": "hashed" } }');
+ERROR:  name needs to be fully qualified <db>.<collection>
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "admin.system.collections", "key": { "_id": "hashed" } }');
+ERROR:  Invalid system namespace: admin.system.collections
+-- cannot reshard unsharded collection
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.comp_shard", "key": { "_id": "hashed" }, "unique": false }');
+ERROR:  Collection comm_sh_coll.comp_shard is not sharded
+-- should noop since options are the same
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "unique": false }');
+NOTICE:  Skipping Sharding for collection comm_sh_coll.single_shard as the same options were passed in.
+ reshard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT command_sharding_get_collectionInfo();
+                                                                                                                                                             command_sharding_get_collectioninfo                                                                                                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7560" }, "shardCount" : { "$numberInt" : "1" }, "name" : "comp_shard", "type" : "collection", "info" : { "readOnly" : false } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7562" }, "shardCount" : { "$numberInt" : "8" }, "name" : "new_coll", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7561" }, "shardCount" : { "$numberInt" : "8" }, "name" : "single_shard", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(3 rows)
+
+-- with force, should redo
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "_id": "hashed" }, "unique": false, "forceRedistribution": true }');
+ reshard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT command_sharding_get_collectionInfo();
+                                                                                                                                                             command_sharding_get_collectioninfo                                                                                                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7560" }, "shardCount" : { "$numberInt" : "1" }, "name" : "comp_shard", "type" : "collection", "info" : { "readOnly" : false } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7562" }, "shardCount" : { "$numberInt" : "8" }, "name" : "new_coll", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7564" }, "shardCount" : { "$numberInt" : "8" }, "name" : "single_shard", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(3 rows)
+
+-- reshard with new key allowed
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "a": "hashed" }, "unique": false, "numInitialChunks": 5 }');
+ reshard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT command_sharding_get_collectionInfo();
+                                                                                                                                                            command_sharding_get_collectioninfo                                                                                                                                                            
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7560" }, "shardCount" : { "$numberInt" : "1" }, "name" : "comp_shard", "type" : "collection", "info" : { "readOnly" : false } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7562" }, "shardCount" : { "$numberInt" : "8" }, "name" : "new_coll", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7565" }, "shardCount" : { "$numberInt" : "5" }, "name" : "single_shard", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "a" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(3 rows)
+
+-- reshard with same key and change chunks allowed
+SELECT documentdb_api.reshard_collection('{ "reshardCollection": "comm_sh_coll.single_shard", "key": { "a": "hashed" }, "unique": false, "numInitialChunks": 2, "forceRedistribution": true }');
+ reshard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT command_sharding_get_collectionInfo();
+                                                                                                                                                            command_sharding_get_collectioninfo                                                                                                                                                            
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7560" }, "shardCount" : { "$numberInt" : "1" }, "name" : "comp_shard", "type" : "collection", "info" : { "readOnly" : false } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7562" }, "shardCount" : { "$numberInt" : "8" }, "name" : "new_coll", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "comm_sh_coll.$cmd.ListCollections", "firstBatch" : { "colocationId" : { "$numberInt" : "7566" }, "shardCount" : { "$numberInt" : "2" }, "name" : "single_shard", "type" : "collection", "info" : { "readOnly" : false, "shardKey" : { "a" : "hashed" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(3 rows)
+

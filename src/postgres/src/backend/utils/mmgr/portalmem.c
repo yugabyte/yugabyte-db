@@ -28,6 +28,8 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
+
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*
@@ -580,13 +582,6 @@ PortalDrop(Portal portal, bool isTopCommit)
 		ResourceOwnerDelete(portal->resowner);
 	}
 	portal->resowner = NULL;
-
-	/*
-	 * If the portal is WITH HOLD, decrease the count of database
-	 * objects that need stickiness.
-	 */
-	if (YbIsClientYsqlConnMgr()	&& (portal->cursorOptions & CURSOR_OPT_HOLD))
-		decrement_sticky_object_count();
 
 	/*
 	 * Delete tuplestore if present.  We should do this even under error
@@ -1165,6 +1160,9 @@ pg_cursor(PG_FUNCTION_ARGS)
 
 		/* report only "visible" entries */
 		if (!portal->visible)
+			continue;
+		/* also ignore it if PortalDefineQuery hasn't been called yet */
+		if (!portal->sourceText)
 			continue;
 
 		MemSet(nulls, 0, sizeof(nulls));

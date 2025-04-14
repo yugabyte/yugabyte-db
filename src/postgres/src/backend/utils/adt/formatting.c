@@ -653,7 +653,7 @@ typedef enum
 	DCH_Day,
 	DCH_Dy,
 	DCH_D,
-	DCH_FF1,
+	DCH_FF1,					/* FFn codes must be consecutive */
 	DCH_FF2,
 	DCH_FF3,
 	DCH_FF4,
@@ -819,12 +819,12 @@ static const KeyWord DCH_keywords[] = {
 	{"Day", 3, DCH_Day, false, FROM_CHAR_DATE_NONE},
 	{"Dy", 2, DCH_Dy, false, FROM_CHAR_DATE_NONE},
 	{"D", 1, DCH_D, true, FROM_CHAR_DATE_GREGORIAN},
-	{"FF1", 3, DCH_FF1, false, FROM_CHAR_DATE_NONE},	/* F */
-	{"FF2", 3, DCH_FF2, false, FROM_CHAR_DATE_NONE},
-	{"FF3", 3, DCH_FF3, false, FROM_CHAR_DATE_NONE},
-	{"FF4", 3, DCH_FF4, false, FROM_CHAR_DATE_NONE},
-	{"FF5", 3, DCH_FF5, false, FROM_CHAR_DATE_NONE},
-	{"FF6", 3, DCH_FF6, false, FROM_CHAR_DATE_NONE},
+	{"FF1", 3, DCH_FF1, true, FROM_CHAR_DATE_NONE}, /* F */
+	{"FF2", 3, DCH_FF2, true, FROM_CHAR_DATE_NONE},
+	{"FF3", 3, DCH_FF3, true, FROM_CHAR_DATE_NONE},
+	{"FF4", 3, DCH_FF4, true, FROM_CHAR_DATE_NONE},
+	{"FF5", 3, DCH_FF5, true, FROM_CHAR_DATE_NONE},
+	{"FF6", 3, DCH_FF6, true, FROM_CHAR_DATE_NONE},
 	{"FX", 2, DCH_FX, false, FROM_CHAR_DATE_NONE},
 	{"HH24", 4, DCH_HH24, true, FROM_CHAR_DATE_NONE},	/* H */
 	{"HH12", 4, DCH_HH12, true, FROM_CHAR_DATE_NONE},
@@ -875,12 +875,12 @@ static const KeyWord DCH_keywords[] = {
 	{"dd", 2, DCH_DD, true, FROM_CHAR_DATE_GREGORIAN},
 	{"dy", 2, DCH_dy, false, FROM_CHAR_DATE_NONE},
 	{"d", 1, DCH_D, true, FROM_CHAR_DATE_GREGORIAN},
-	{"ff1", 3, DCH_FF1, false, FROM_CHAR_DATE_NONE},	/* f */
-	{"ff2", 3, DCH_FF2, false, FROM_CHAR_DATE_NONE},
-	{"ff3", 3, DCH_FF3, false, FROM_CHAR_DATE_NONE},
-	{"ff4", 3, DCH_FF4, false, FROM_CHAR_DATE_NONE},
-	{"ff5", 3, DCH_FF5, false, FROM_CHAR_DATE_NONE},
-	{"ff6", 3, DCH_FF6, false, FROM_CHAR_DATE_NONE},
+	{"ff1", 3, DCH_FF1, true, FROM_CHAR_DATE_NONE}, /* f */
+	{"ff2", 3, DCH_FF2, true, FROM_CHAR_DATE_NONE},
+	{"ff3", 3, DCH_FF3, true, FROM_CHAR_DATE_NONE},
+	{"ff4", 3, DCH_FF4, true, FROM_CHAR_DATE_NONE},
+	{"ff5", 3, DCH_FF5, true, FROM_CHAR_DATE_NONE},
+	{"ff6", 3, DCH_FF6, true, FROM_CHAR_DATE_NONE},
 	{"fx", 2, DCH_FX, false, FROM_CHAR_DATE_NONE},
 	{"hh24", 4, DCH_HH24, true, FROM_CHAR_DATE_NONE},	/* h */
 	{"hh12", 4, DCH_HH12, true, FROM_CHAR_DATE_NONE},
@@ -1235,7 +1235,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 		case NUM_D:
 			num->flag |= NUM_F_LDECIMAL;
 			num->need_locale = true;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case NUM_DEC:
 			if (IS_DECIMAL(num))
 				ereport(ERROR,
@@ -3238,7 +3238,7 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				s += strlen(s);
 				break;
 			case DCH_RM:
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DCH_rm:
 
 				/*
@@ -3512,7 +3512,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_FF5:
 			case DCH_FF6:
 				out->ff = n->key->id - DCH_FF1 + 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DCH_US:		/* microsecond */
 				len = from_char_parse_int_len(&out->us, &s,
 											  n->key->id == DCH_US ? 6 :
@@ -5731,13 +5731,20 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 
 			/*
 			 * If any '0' specifiers are present, make sure we don't strip
-			 * those digits.
+			 * those digits.  But don't advance last_relevant beyond the last
+			 * character of the Np->number string, which is a hazard if the
+			 * number got shortened due to precision limitations.
 			 */
 			if (Np->last_relevant && Np->Num->zero_end > Np->out_pre_spaces)
 			{
+				int			last_zero_pos;
 				char	   *last_zero;
 
-				last_zero = Np->number + (Np->Num->zero_end - Np->out_pre_spaces);
+				/* note that Np->number cannot be zero-length here */
+				last_zero_pos = strlen(Np->number) - 1;
+				last_zero_pos = Min(last_zero_pos,
+									Np->Num->zero_end - Np->out_pre_spaces);
+				last_zero = Np->number + last_zero_pos;
 				if (Np->last_relevant < last_zero)
 					Np->last_relevant = last_zero;
 			}

@@ -10,27 +10,32 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/master/xcluster/xcluster_safe_time_service.h"
+
 #include <chrono>
+
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
+
+#include "yb/rpc/messenger.h"
 
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/callsite_profiling.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
@@ -66,82 +71,48 @@ XClusterSafeTimeService::XClusterSafeTimeService(
     Master* master, CatalogManager* catalog_manager, MetricRegistry* metric_registry)
     : master_(master),
       catalog_manager_(catalog_manager),
-      shutdown_(false),
-      shutdown_cond_(&shutdown_cond_lock_),
-      task_enqueued_(false),
-      safe_time_table_ready_(false),
-      cluster_config_version_(kInvalidClusterConfigVersion),
-      metric_registry_(metric_registry) {}
+      poller_("XClusterSafeTimeService: ", [this] {
+        WARN_NOT_OK(
+          master_->messenger()->ThreadPool().Submit(
+              poll_strand_->wrap([this] { ProcessTaskPeriodically(); })),
+          "Failed to submit periodic task");
+      }),
+      metric_registry_(metric_registry) {
+  poller_.Pause();
+  if (master_) {
+    poll_strand_.emplace(master->messenger()->io_service());
+    poller_.Start(
+        master->messenger()->scheduler(),
+        GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs) * 1s);
+  }
+}
 
-XClusterSafeTimeService::~XClusterSafeTimeService() { Shutdown(); }
-
-Status XClusterSafeTimeService::Init() {
-  auto thread_pool_builder = ThreadPoolBuilder("XClusterSafeTimeServiceTasks");
-  thread_pool_builder.set_max_threads(1);
-
-  RETURN_NOT_OK(thread_pool_builder.Build(&thread_pool_));
-  thread_pool_token_ = thread_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
-
-  return OK();
+XClusterSafeTimeService::~XClusterSafeTimeService() {
+  Shutdown();
 }
 
 void XClusterSafeTimeService::Shutdown() {
-  shutdown_ = true;
-  YB_PROFILE(shutdown_cond_.Broadcast());
-
-  if (thread_pool_token_) {
-    thread_pool_token_->Shutdown();
-  }
-
-  if (thread_pool_) {
-    thread_pool_->Shutdown();
-  }
+  poller_.Shutdown();
 }
 
 void XClusterSafeTimeService::ScheduleTaskIfNeeded() {
-  if (shutdown_) {
-    return;
-  }
-
-  std::lock_guard lock(task_enqueue_lock_);
-  if (task_enqueued_) {
-    return;
-  }
-
-  // It is ok to scheduled a new task even when we have a running task. The thread pool token uses
-  // serial execution and the task will sleep before returning. So it is always guaranteed that we
-  // only run one task and that it will wait the required amount before running again.
-  task_enqueued_ = true;
-  Status s = thread_pool_token_->SubmitFunc(
-      std::bind(&XClusterSafeTimeService::ProcessTaskPeriodically, this));
-  if (!s.IsOk()) {
-    task_enqueued_ = false;
-    LOG(ERROR) << "Failed to schedule XClusterSafeTime Task :" << s;
-  }
+  poll_strand_->dispatch([this] {
+    poller_.Resume();
+  });
 }
 
 void XClusterSafeTimeService::ProcessTaskPeriodically() {
-  {
-    std::lock_guard lock(task_enqueue_lock_);
-    task_enqueued_ = false;
-  }
-
-  if (shutdown_) {
-    return;
-  }
-
-  auto wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
-  if (wait_time <= 0) {
-    // Can only happen in tests
-    VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_safe_time_update_interval_secs flag";
-    EnterIdleMode("xcluster_safe_time_update_interval_secs flag");
-    return;
-  }
-
   auto leader_term_result = GetLeaderTermFromCatalogManager();
   if (!leader_term_result.ok()) {
-    VLOG_WITH_FUNC(1) << "Going into idle mode due to master leader change";
-    EnterIdleMode("master leader change");
+    auto leader_status = catalog_manager_->CheckIsLeaderAndReady();
+    if (!leader_status.ok()) {
+      LOG_WITH_FUNC(INFO) << "Going into idle mode due to master leader change: " << leader_status;
+      poller_.Pause();
+    } else {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 60, 1)
+          << "Skip xCluster safe time computation since this is not a healthy master leader: "
+          << leader_term_result.status();
+    }
     return;
   }
   int64_t leader_term = leader_term_result.get();
@@ -157,24 +128,16 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
 
   if (!further_computation_needed) {
     VLOG_WITH_FUNC(1) << "Going into idle mode due to lack of work";
-    EnterIdleMode("no more work left");
+    poller_.Pause();
     return;
   }
-
-  // Delay before before running the task again.
-  {
-    MutexLock lock(shutdown_cond_lock_);
-    shutdown_cond_.TimedWait(wait_time * 1s);
-  }
-
-  ScheduleTaskIfNeeded();
 }
 
 Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
     const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp) {
   // Recompute safe times again before fetching maps.
   RETURN_NOT_OK(ComputeSafeTime(epoch.leader_term));
-  const auto& current_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
+  const auto& current_safe_time_map = GetXClusterNamespaceToSafeTimeMap();
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
@@ -206,7 +169,7 @@ Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
       // Very rare case that could happen since clocks are not synced.
       entry->set_safe_time_skew(0);
     } else {
-      entry->set_safe_time_skew(max_safe_time.PhysicalDiff(safe_time));
+      entry->set_safe_time_skew(max_safe_time.PhysicalDiff(safe_time).ToMicroseconds());
     }
   }
 
@@ -230,7 +193,6 @@ Result<HybridTime> XClusterSafeTimeService::GetXClusterSafeTimeForNamespace(
     const XClusterSafeTimeFilter& filter) {
   SharedLock lock(mutex_);
   SCHECK(safe_time_table_ready_, IllegalState, "Safe time table is not ready yet.");
-  SCHECK_EQ(leader_term_, leader_term, IllegalState, "Received unexpected leader term");
 
   const XClusterNamespaceToSafeTimeMap& safe_time_map =
       VERIFY_RESULT(GetFilteredXClusterSafeTimeMap(filter));
@@ -245,7 +207,7 @@ Result<std::unordered_map<NamespaceId, uint64_t>>
 XClusterSafeTimeService::GetEstimatedDataLossMicroSec(const LeaderEpoch& epoch) {
   // Recompute safe times again before fetching maps.
   RETURN_NOT_OK(ComputeSafeTime(epoch.leader_term));
-  const auto& current_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
+  auto current_safe_time_map = GetXClusterNamespaceToSafeTimeMap();
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
@@ -267,7 +229,7 @@ XClusterSafeTimeService::GetEstimatedDataLossMicroSec(const LeaderEpoch& epoch) 
       // Very rare case that could happen since clocks are not synced.
       safe_time_diff_map[namespace_id] = 0;
     } else {
-      safe_time_diff_map[namespace_id] = max_safe_time.PhysicalDiff(safe_time);
+      safe_time_diff_map[namespace_id] = max_safe_time.PhysicalDiff(safe_time).ToMicroseconds();
     }
   }
 
@@ -456,13 +418,12 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
     for (const auto& [namespace_id, tablet_ids] : slow_tablets_map) {
       LOG(WARNING) << "xcluster safe time for namespace " << namespace_id << " is held up by "
                    << namespace_max_safe_time[namespace_id].PhysicalDiff(
-                          namespace_min_safe_time[namespace_id]) /
-                          MonoTime::kMicrosecondsPerSecond
-                   << "s due to producer tablet(s) " << JoinStringsLimitCount(tablet_ids, ",", 20);
+                          namespace_min_safe_time[namespace_id]).ToPrettyString()
+                   << " due to producer tablet(s) " << JoinStringsLimitCount(tablet_ids, ",", 20);
     }
   }
 
-  const auto previous_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
+  const auto previous_safe_time_map = GetXClusterNamespaceToSafeTimeMap();
   MakeAtLeastPrevious(previous_safe_time_map, namespace_safe_time_map);
 
   // Update any namespace safe times where the filter removed all tables.
@@ -478,7 +439,6 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   // and setting the new config. Its important to make sure that the config we persist is accurate
   // as only that protects the safe time from going backwards.
   RETURN_NOT_OK(SetXClusterSafeTime(leader_term, namespace_safe_time_map));
-  leader_term_ = leader_term;
 
   if (update_metrics) {
     // Update the metrics using the newly computed maps.
@@ -643,8 +603,7 @@ Result<bool> XClusterSafeTimeService::CreateTableRequired() {
   return !producer_tablet_namespace_map_.empty();
 }
 
-Result<XClusterNamespaceToSafeTimeMap>
-XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
+XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
   return master_->xcluster_manager()->GetXClusterNamespaceToSafeTimeMap();
 }
 
@@ -714,7 +673,7 @@ void XClusterSafeTimeService::UpdateMetrics(
     const ProducerTabletToSafeTimeMap& safe_time_map,
     const XClusterNamespaceToSafeTimeMap& current_safe_time_map) {
   const auto max_safe_time_map = GetMaxNamespaceSafeTimeFromMap(safe_time_map);
-  const auto cur_time_micros = GetCurrentTimeMicros();
+  const auto cur_time_micros = (uint64_t)GetCurrentTimeMicros();
 
   // current_safe_time_map is the source of truth, so loop over it to construct the final mapping.
   for (const auto& [namespace_id, safe_time] : current_safe_time_map) {
@@ -747,12 +706,39 @@ void XClusterSafeTimeService::UpdateMetrics(
         const auto& max_safe_time = std::max(it->second, safe_time);
 
         // Compute the metrics, note conversion to milliseconds.
-        consumer_safe_time_skew_ms = max_safe_time.PhysicalDiff(safe_time) /
-            MonoTime::kMicrosecondsPerMillisecond;
-        consumer_safe_time_lag_ms = (cur_time_micros - safe_time.GetPhysicalValueMicros()) /
-            MonoTime::kMicrosecondsPerMillisecond;
+        consumer_safe_time_skew_ms = max_safe_time.PhysicalDiff(safe_time).ToMilliseconds();
+        DCHECK_GE(consumer_safe_time_skew_ms, 0);
+
+        const auto log_every_n =
+            static_cast<int>(FLAGS_xcluster_safe_time_log_outliers_interval_secs) * 3 /* 30 mins */;
+        if (cur_time_micros < safe_time.GetPhysicalValueMicros()) {
+          // Source's clock is ahead of the target's clock.
+          consumer_safe_time_lag_ms = 0;
+          YB_LOG_IF_EVERY_N(
+              WARNING,
+              (safe_time.GetPhysicalValueMicros() - cur_time_micros) >
+                  (1000 * MonoTime::kMicrosecondsPerMillisecond) /* 1s */,
+              log_every_n)
+              << "Source's clock is ahead of target's clock."
+              << " Source xCluster safe time: " << safe_time.GetPhysicalValueMicros()
+              << " Target current time: " << cur_time_micros;
+        } else {
+          consumer_safe_time_lag_ms = (cur_time_micros - safe_time.GetPhysicalValueMicros()) /
+                                      MonoTime::kMicrosecondsPerMillisecond;
+          YB_LOG_IF_EVERY_N(
+              WARNING, consumer_safe_time_lag_ms > 30 * 60 * 1000 /* 30 mins */, log_every_n)
+              << "High xCluster Safe time lag detected. xCluster safe time: "
+              << safe_time.GetPhysicalValueMicros()
+              << ", xCluster safe time lag(ms): " << consumer_safe_time_lag_ms
+              << ", xCluster safe time skew(ms): " << consumer_safe_time_skew_ms;
+        }
       }
     }
+
+    VLOG(4) << "XClusterSafeTimeService::UpdateMetrics for namespace " << namespace_id
+            << ", safe_time " << safe_time << ", cur_time_micros " << cur_time_micros
+            << ", consumer_safe_time_skew_ms " << consumer_safe_time_skew_ms
+            << ", consumer_safe_time_lag_ms " << consumer_safe_time_lag_ms;
 
     // Set the metric values.
     metrics_it->second->consumer_safe_time_skew->set_value(consumer_safe_time_skew_ms);

@@ -9,14 +9,14 @@
 # is small, another schedule can contain only one test if the test is large.
 # The tests in these schedules are not ported from PostgreSQL original tests.
 ####################################################################################################
-test: yb_pg_expressions
-test: yb_compound_key
-test: yb_schema
-test: yb_select
-test: yb_guc
-test: yb_depend
-test: yb_query_consistent_snapshot
-test: yb_obj_properties_functions
-test: yb_dependency
-test: yb_create_language
-test: yb_view
+test: yb.port.expressions
+test: yb.orig.compound_key
+test: yb.orig.schema
+test: yb.orig.select
+test: yb.orig.guc
+test: yb.orig.depend
+test: yb.orig.query_consistent_snapshot
+test: yb.orig.obj_properties_functions
+test: yb.orig.dependency
+test: yb.orig.create_language
+test: yb.orig.view

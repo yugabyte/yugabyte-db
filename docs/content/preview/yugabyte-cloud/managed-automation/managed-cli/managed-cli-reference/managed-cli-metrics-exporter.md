@@ -13,7 +13,7 @@ type: docs
 ---
 
 {{< warning >}}
-`metrics-exporter` is deprecated. Use `integration` instead.
+`metrics-exporter` is deprecated. Use [integration](../managed-cli-integration/) instead.
 {{< /warning >}}
 
 Use the `metrics-exporter` resource to create metrics export configurations for third-party tools, and assign them to clusters.
@@ -56,6 +56,10 @@ Assign an export configuration to the specified cluster.
 
 ### create
 
+{{< warning >}}
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration create](../managed-cli-integration/#create) instead.
+{{< /warning >}}
+
 Create an export configuration.
 
 | Flag | Description |
@@ -68,6 +72,10 @@ Create an export configuration.
 
 ### delete
 
+{{< warning >}}
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration delete](../managed-cli-integration/#delete) instead.
+{{< /warning >}}
+
 Delete a specified export configuration. You can't delete configurations that are in use by a cluster.
 
 | Flag | Description |
@@ -76,6 +84,10 @@ Delete a specified export configuration. You can't delete configurations that ar
 
 ### describe
 
+{{< warning >}}
+Deprecated 2024-11-30 and will be supported until 2025-2-28.
+{{< /warning >}}
+
 Describe a specified export configuration.
 
 | Flag | Description |
@@ -83,6 +95,10 @@ Describe a specified export configuration.
 | --config-name | Required. Name of the export configuration. |
 
 ### list
+
+{{< warning >}}
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration list](../managed-cli-integration/#list) instead.
+{{< /warning >}}
 
 List the export configurations.
 
@@ -104,9 +120,13 @@ Remove the export configuration from the specified cluster.
 
 ### update
 
+{{< warning >}}
+Deprecated 2024-11-30 and will be supported until 2025-2-28. Use [integration](../managed-cli-integration/) instead.
+{{< /warning >}}
+
 Update an export configuration.
 
-| Flag | Description |
+| <div style="width:150px">Flag</div> | Description |
 | :--- | :--- |
 | --config-name | Required. Name of the export configuration. |
 | --new-config-name | New name for the export configuration. |

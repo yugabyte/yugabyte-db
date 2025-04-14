@@ -18,7 +18,7 @@ A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../
 - YugabyteDB supports both x86 and ARM (aarch64) CPU architectures.
 - YugabyteDB is supported on a variety of [operating systems](../../reference/configuration/operating-systems/). For production workloads, the recommended operating systems are AlmaLinux 8 and RHEL 8.
 - The appropriate system limits should be set using [`ulimit`](../manual-deployment/system-config/#set-ulimits) on each node running a YugabyteDB server.
-- [chrony](../manual-deployment/system-config/#set-up-time-synchronization) should be used to synchronize time among the machines.
+- [chrony](../manual-deployment/system-config#set-up-time-synchronization) should be used to synchronize time among the machines.
 
 ## Replication
 
@@ -26,7 +26,7 @@ YugabyteDB internally replicates data in a consistent manner using the Raft cons
 
 The replication factor (RF) corresponds to the number of copies of the data. You need at least as many nodes as the RF, which means one node for RF 1, three nodes for RF 3, and so on. With a RF of 3, your cluster can tolerate one node failure. With a RF of 5, it can tolerate two node failures. More generally, if RF is n, YugabyteDB can survive floor((n - 1) / 2) failures without compromising correctness or availability of data.
 
-See [Fault tolerance](./docdb-replication/replication/#fault-tolerance) for more information.
+See [Fault tolerance](../../architecture/docdb-replication/replication/#fault-tolerance) for more information.
 
 When deploying a cluster, keep in mind the following:
 
@@ -102,7 +102,7 @@ cat /proc/cpuinfo | grep sse4.2
   - NFS is not currently supported.
 
 YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup.
-YugabyteDB can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
+YugabyteDB can also leverage multiple disks per node and has been tested beyond 20 TB of storage per node.
 
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), therefore in this case the total IOPS that a disk can support matters. On the read side, if the data does not fit into the cache and data needs to be read from the disk in order to satisfy queries, the disk performance (latency and IOPS) will start to matter.
 
@@ -136,7 +136,7 @@ YugabyteDB Anywhere has its own port requirements. Refer to [Networking](../../y
 
 ## Clock synchronization
 
-For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running clock synchronization software, such as [NTP](http://www.ntp.org/) or [chrony](https://chrony.tuxfamily.org/). The following are some recommendations on how to configure clock synchronization.
+For YugabyteDB to maintain strict data consistency, clock drift and clock skew across all nodes _must_ be tightly controlled and kept within defined bounds. Any deviation can impact node availability, as YugabyteDB prioritizes consistency over availability and will shut down servers if necessary to maintain integrity. Clock synchronization software, such as [NTP](http://www.ntp.org/) or [chrony](https://chrony.tuxfamily.org/), allows you to reduce clock skew and drift by continuously synchronizing system clocks across nodes in a distributed system like YugabyteDB. The following are some recommendations on how to configure clock synchronization.
 
 ### Clock skew
 

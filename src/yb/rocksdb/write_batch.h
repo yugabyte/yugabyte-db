@@ -73,7 +73,7 @@ class DirectWriteHandler {
 // entries directly to the memtable.
 class DirectWriter {
  public:
-  virtual Status Apply(DirectWriteHandler* handler) = 0;
+  virtual Status Apply(DirectWriteHandler& handler) = 0;
 
   virtual ~DirectWriter() = default;
 };

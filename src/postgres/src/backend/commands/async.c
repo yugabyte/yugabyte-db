@@ -154,7 +154,7 @@
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 
@@ -593,8 +593,8 @@ AsyncShmemInit(void)
 Datum
 pg_notify(PG_FUNCTION_ARGS)
 {
-	// Note: Async_Notify is replaced by NOOP
-	YBRaiseNotSupportedSignal("NOTIFY not supported yet and will be ignored", 1872 /* issue_no */, WARNING);
+	/* Note: Async_Notify is replaced by NOOP */
+	YBRaiseNotSupportedSignal("NOTIFY not supported yet and will be ignored", 1872 /* issue_no */ , WARNING);
 
 	const char *channel;
 	const char *payload;
@@ -630,8 +630,10 @@ pg_notify(PG_FUNCTION_ARGS)
 void
 Async_Notify(const char *channel, const char *payload)
 {
-	// (YB) Note: This function is replaced by NOOP, but we don't raise warning here to avoid
-	// double warning message when using "NOTIFY channel".
+	/*
+	 * (YB) Note: This function is replaced by NOOP, but we don't raise warning
+	 * here to avoid double warning message when using "NOTIFY channel".
+	 */
 	return;
 
 	int			my_level = GetCurrentTransactionNestLevel();
@@ -781,8 +783,10 @@ queue_listen(ListenActionKind action, const char *channel)
 void
 Async_Listen(const char *channel)
 {
-	// (YB) Note: This function is replaced by NOOP, but we don't raise warning here to avoid
-	// double warning message when using "LISTEN channel".
+	/*
+	 * (YB) Note: This function is replaced by NOOP, but we don't raise warning
+	 * here to avoid double warning message when using "LISTEN channel".
+	 */
 	return;
 
 	if (Trace_notify)
@@ -799,8 +803,10 @@ Async_Listen(const char *channel)
 void
 Async_Unlisten(const char *channel)
 {
-	// (YB) Note: This function is replaced by NOOP, but we don't raise warning here to avoid
-	// double warning message when using "UNLISTEN channel".
+	/*
+	 * (YB) Note: This function is replaced by NOOP, but we don't raise warning
+	 * here to avoid double warning message when using "UNLISTEN channel".
+	 */
 	return;
 
 	if (Trace_notify)
@@ -821,8 +827,10 @@ Async_Unlisten(const char *channel)
 void
 Async_UnlistenAll(void)
 {
-	// (YB) Note: This function is replaced by NOOP, but we don't raise warning here to avoid
-	// double warning message when using "UNLISTEN *".
+	/*
+	 * (YB) Note: This function is replaced by NOOP, but we don't raise warning
+	 * here to avoid double warning message when using "UNLISTEN *".
+	 */
 	return;
 
 	if (Trace_notify)
@@ -2258,6 +2266,8 @@ asyncQueueAdvanceTail(void)
 static void
 ProcessIncomingNotify(bool flush)
 {
+	MemoryContext oldcontext;
+
 	/* We *must* reset the flag */
 	notifyInterruptPending = false;
 
@@ -2272,13 +2282,20 @@ ProcessIncomingNotify(bool flush)
 
 	/*
 	 * We must run asyncQueueReadAllNotifications inside a transaction, else
-	 * bad things happen if it gets an error.
+	 * bad things happen if it gets an error.  However, we need to preserve
+	 * the caller's memory context (typically MessageContext).
 	 */
+	oldcontext = CurrentMemoryContext;
+
 	StartTransactionCommand();
 
 	asyncQueueReadAllNotifications();
 
 	CommitTransactionCommand();
+
+	/* Caller's context had better not have been transaction-local */
+	Assert(MemoryContextIsValid(oldcontext));
+	MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * If this isn't an end-of-command case, we must flush the notify messages
@@ -2359,7 +2376,7 @@ AsyncExistsPendingNotify(Notification *n)
  * Add a notification event to a pre-existing pendingNotifies list.
  *
  * Because pendingNotifies->events is already nonempty, this works
- * correctly no matter what GetCurrentMemoryContext() is.
+ * correctly no matter what CurrentMemoryContext is.
  */
 static void
 AddEventToPendingNotifies(Notification *n)

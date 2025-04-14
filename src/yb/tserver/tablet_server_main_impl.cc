@@ -37,48 +37,48 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "yb/common/termination_monitor.h"
 #include "yb/common/llvm_profile_dumper.h"
+#include "yb/common/termination_monitor.h"
 
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/log_util.h"
 
 #include "yb/docdb/docdb_pgapi.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
+#include "yb/rpc/io_thread_pool.h"
+#include "yb/rpc/scheduler.h"
+#include "yb/rpc/secure.h"
+#include "yb/rpc/secure_stream.h"
+
+#include "yb/server/skewed_clock.h"
+
+#include "yb/tserver/factory.h"
+#include "yb/tserver/metrics_snapshotter.h"
+#include "yb/tserver/server_main_util.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_call_home.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/main_util.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/port_picker.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
+#include "yb/util/ulimit_util.h"
+#include "yb/util/debug/trace_event.h"
+#include "yb/util/net/net_util.h"
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
-
-#include "yb/gutil/strings/substitute.h"
-#include "yb/tserver/tserver_call_home.h"
-#include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
-#include "yb/rpc/secure_stream.h"
-#include "yb/server/skewed_clock.h"
-#include "yb/rpc/secure.h"
-#include "yb/tserver/factory.h"
-#include "yb/tserver/metrics_snapshotter.h"
-#include "yb/tserver/tablet_server.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/init.h"
-#include "yb/util/logging.h"
-#include "yb/util/main_util.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/result.h"
-#include "yb/util/ulimit_util.h"
-#include "yb/util/size_literals.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status_log.h"
-#include "yb/util/debug/trace_event.h"
-#include "yb/util/thread.h"
-#include "yb/util/port_picker.h"
-
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
-
-#include "yb/tserver/server_main_util.h"
 
 using std::string;
 using namespace std::placeholders;
@@ -95,7 +95,7 @@ using yb::pgwrapper::PgSupervisor;
 using namespace yb::size_literals;  // NOLINT
 using namespace std::chrono_literals;
 
-DEFINE_NON_RUNTIME_bool(start_redis_proxy, true,
+DEFINE_NON_RUNTIME_bool(start_redis_proxy, false,
     "Starts a redis proxy along with the tablet server");
 
 DEFINE_NON_RUNTIME_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet server");
@@ -137,8 +137,17 @@ void SetProxyAddress(std::string* flag, const std::string& name,
   uint16_t port, bool override_port = false) {
   if (flag->empty() || override_port) {
     std::vector<HostPort> bind_addresses;
-    Status status = HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &bind_addresses);
-    LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_rpc_bind_addresses << ": " << status;
+    Status status;
+    if (flag->empty()) {
+      // If the flag is empty, we set ip address to the default rpc bind address.
+      status = HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &bind_addresses);
+      LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_rpc_bind_addresses << ": "
+             << status;
+    } else {
+      // If override_port is true, we keep the existing ip addresses and just change the port.
+      status = HostPort::ParseStrings(*flag, 0, &bind_addresses);
+      LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << *flag << ": " << status;
+    }
     if (!bind_addresses.empty()) {
       for (auto& addr : bind_addresses) {
         addr.set_port(port);
@@ -168,8 +177,11 @@ void SetProxyAddresses() {
     LOG_IF(DFATAL, !status.ok())
     << "Bad pgsql_proxy_bind_address " << FLAGS_pgsql_proxy_bind_address << ": " << status;
     for (const auto& addr : bind_addresses) {
-      if (addr.port() == PgProcessConf::kDefaultPort && addr.port() == FLAGS_ysql_conn_mgr_port) {
-        uint16_t preferred_port = 6433;
+      // Flag validator PostgresAndYsqlConnMgrPortValidator ensures that the pg port and conn mgr
+      // port are either both PgProcessConf::kDefaultPort, or are different.
+      // Fixup the pg port so that the ports do not conflict.
+      if (addr.port() == FLAGS_ysql_conn_mgr_port) {
+        const auto preferred_port = PgProcessConf::kDefaultPortWithConnMgr;
         if (addr.port() != preferred_port) {
           LOG(INFO) << "The connection manager and backend db ports are conflicting on "
                 << addr.port() << ". Trying port " << preferred_port << " for backend db.";
@@ -256,7 +268,12 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
-  server->SharedObject().SetPid(getpid());
+  server->SharedObject()->SetPid(getpid());
+
+  // Set the locale to match the YB PG defaults. This should be kept in line with
+  // the locale set in the initdb process (setlocales)
+  setlocale(LC_ALL, "en_US.UTF-8");
+  setlocale(LC_COLLATE, "C");
 
   std::unique_ptr<TserverCallHome> call_home;
   call_home = std::make_unique<TserverCallHome>(server.get());
@@ -266,8 +283,7 @@ int TabletServerMain(int argc, char** argv) {
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
         FLAGS_pgsql_proxy_bind_address,
-        tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
-        server->GetSharedMemoryFd());
+        tablet_server_options->fs_opts.data_paths.front() + "/pg_data");
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
     auto& pg_process_conf = *pg_process_conf_result;

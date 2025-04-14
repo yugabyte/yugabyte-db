@@ -64,6 +64,16 @@ run_as_super_user() {
   else
     sudo "$@"
   fi
+  return $?
+}
+
+check_run_as_super_user() {
+  run_as_super_user "$@"
+  exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "Command failed with exit code $exit_code - $@"
+    exit $exit_code
+  fi
 }
 
 # Function to run systemd commands as the target user
@@ -204,9 +214,14 @@ extract_package() {
     #./<version>/*
     pushd "$NODE_AGENT_RELEASE_PATH"
     set +o pipefail
-    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | awk -F '/' '$2{print $2; exit}')
+    # Look for the folder containing the version file.
+    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | grep "version_metadata.json" | awk -F '/' \
+    '$2{print $2;exit}')
     set -o pipefail
-
+    if [ -z "$VERSION" ]; then
+      echo "Node agent version cannot be determined"
+      exit 1
+    fi
     echo "* Downloaded Version - $VERSION"
     #Untar the package.
     echo "* Extracting the build package"
@@ -277,17 +292,17 @@ modify_selinux() {
   if command -v semanage >/dev/null 2>&1; then
     run_as_super_user semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      run_as_super_user semanage port -a -t http_port_t -p tcp "$NODE_PORT"
+      check_run_as_super_user semanage port -a -t http_port_t -p tcp "$NODE_PORT"
     fi
     run_as_super_user semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+      check_run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
     fi
-    run_as_super_user restorecon -ir "$NODE_AGENT_HOME"
+    check_run_as_super_user restorecon -ir "$NODE_AGENT_HOME"
   else
     # Let it proceed as there can be policies to allow.
     echo "Command semanage does not exist. Defaulting to using chcon"
-    run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
+    check_run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
   fi
   set -e
 }
@@ -308,11 +323,11 @@ stop_systemd_service() {
   fi
   if [ -n "$UNIT_FILE_PRESENT" ]; then
     if [ "$USER_SCOPED_UNIT" = "false" ] && [ "$SUDO_ACCESS" = "true" ]; then
-      run_as_super_user systemctl stop yb-node-agent
-      run_as_super_user systemctl disable yb-node-agent
+      run_as_super_user systemctl stop yb-node-agent >/dev/null 2>&1
+      run_as_super_user systemctl disable yb-node-agent >/dev/null 2>&1
     elif [ "$USER_SCOPED_UNIT" = "true" ]; then
-      systemctl --user stop yb-node-agent
-      systemctl --user disable yb-node-agent
+      systemctl --user stop yb-node-agent >/dev/null 2>&1
+      systemctl --user disable yb-node-agent >/dev/null 2>&1
     fi
   fi
   set -e
@@ -354,7 +369,7 @@ install_systemd_service() {
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
 
   [Install]
-  WantedBy=multi-user.target
+  WantedBy=default.target
 EOF
   else
     tee "$SERVICE_FILE_PATH" <<-EOF
@@ -372,7 +387,7 @@ EOF
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
 
   [Install]
-  WantedBy=multi-user.target
+  WantedBy=default.target
 EOF
   # Set the permissions after file creation. This is needed so that the service file
   # is executable during restart of systemd unit.
@@ -503,6 +518,8 @@ main() {
           exit 1
         fi
       fi
+      # Disable existing node-agent if it exists and is running.
+      stop_systemd_service
       download_package
       NODE_AGENT_CONFIG_ARGS+=(--api_token "$API_TOKEN" --url "$PLATFORM_URL" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
@@ -541,7 +558,7 @@ main() {
         echo "$NODE_AGENT_CERT_PATH is not found."
         exit 1
       fi
-      # Disable existing node-agent if sudo access is available.
+      # Disable existing node-agent if it exists and is running.
       stop_systemd_service
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \

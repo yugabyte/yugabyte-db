@@ -160,6 +160,10 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
   void TestDropTableOnConsumerThenProducer(bool restart_master);
   void TestDropTableOnProducerThenConsumer(bool restart_master);
 
+  MonoDelta MaxAsyncTaskWaitDuration() {
+    return 3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
+  }
+
  private:
 };
 
@@ -258,8 +262,8 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
       auto now = CoarseMonoClock::Now();
       while (CoarseMonoClock::Now() < now + duration) {
         ASSERT_OK(producer_conn.ExecuteFormat(
-            "insert into $0 values(generate_series($1, $2))", GetCompleteTableName(producer_table),
-            key, key + transaction_size - 1));
+            "BEGIN; insert into $0 values(generate_series($1, $2)); COMMIT;",
+            GetCompleteTableName(producer_table), key, key + transaction_size - 1));
         key += transaction_size;
       }
       // Assert at least 100 transactions were written.
@@ -273,7 +277,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
       auto query = Format("SELECT COUNT(*) FROM $0", GetCompleteTableName(consumer_table));
       while (CoarseMonoClock::Now() < now + duration) {
         auto count = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGUint64>(query));
-        ASSERT_EQ(count % transaction_size, 0);
+        ASSERT_EQ(count % transaction_size, 0) << count;
       }
     });
   }
@@ -591,7 +595,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBa
 
   ASSERT_OK(conn.ExecuteFormat("delete from $0", table_name_str));
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
   ASSERT_OK(DeleteUniverseReplication());
 }
 
@@ -754,7 +758,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
   // Sleep for half the duration of the workload (30s) to ensure that the workload is running before
   // adding a server.
   SleepFor(MonoDelta::FromSeconds(15));
-  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  {
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    ASSERT_OK(consumer_cluster()->AddTabletServer());
+  }
   ASSERT_OK(
       consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
 
@@ -921,25 +928,32 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensus
   }
 
   test_thread_holder.JoinAll();
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
   ASSERT_OK(DeleteUniverseReplication());
 }
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, ReplicationPause) {
   ASSERT_OK(CreateTableAndSetupReplication());
 
-  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  const auto run_duration = 10s;
+  const auto run_count = 12;  // Run for 2min.
   auto test_thread_holder = TestThreadHolder();
   AsyncTransactionConsistencyTest(
-      producer_table_->name(), consumer_table_->name(), &test_thread_holder, duration);
-  SleepFor(duration / 2);
-  // Pause replication here for half the duration of the workload.
-  ASSERT_OK(
-      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  SleepFor(duration / 2);
-  // Resume replication.
-  ASSERT_OK(
-      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
+      producer_table_->name(), consumer_table_->name(), &test_thread_holder,
+      run_duration * (run_count + 1));
+
+  for (int i = 0; i < run_count; i++) {
+    LOG(INFO) << "Run count: " << i;
+    SleepFor(run_duration / 2);
+    // Pause replication here for half the duration of the workload.
+    ASSERT_OK(ToggleUniverseReplication(
+        consumer_cluster(), consumer_client(), kReplicationGroupId, false));
+    SleepFor(run_duration / 2);
+    // Resume replication.
+    ASSERT_OK(ToggleUniverseReplication(
+        consumer_cluster(), consumer_client(), kReplicationGroupId, true));
+  }
+
   test_thread_holder.JoinAll();
   ASSERT_OK(VerifyWrittenRecords());
   ASSERT_OK(DeleteUniverseReplication());
@@ -1558,7 +1572,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  cdc::CDCStateTable cdc_state_table(producer_client());
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
   Status s;
   auto table_range = ASSERT_RESULT(
       cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -2648,7 +2662,8 @@ TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XCluste
 TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
   constexpr auto kColumnName = "c1";
-  const auto errstr = "cannot rewrite a table that is a part of CDC or XCluster replication";
+  const auto errstr =
+      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
   for (int i = 0; i <= 1; ++i) {
     auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name))
@@ -2746,7 +2761,7 @@ TEST_F(XClusterYsqlTest, InsertUpdateDeleteTransactionsWithUnevenTabletPartition
     ASSERT_OK(p_conn.Execute("COMMIT"));
     }
 
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
 }
 
 Status XClusterYSqlTestConsistentTransactionsTest::RunInsertUpdateDeleteTransactionWithSplitTest(
@@ -2947,7 +2962,6 @@ void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = restart_master;
-  const auto kMaxAsyncTaskWait = 2s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs;
 
   // Create replication with 2 tables.
   const std::vector<uint32_t> kNumTablets = {1, 1};
@@ -2989,7 +3003,7 @@ void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) 
   }
 
   // Table should exist even after async tasks have run.
-  SleepFor(kMaxAsyncTaskWait);
+  SleepFor(MaxAsyncTaskWaitDuration());
 
   auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
 
@@ -3010,7 +3024,7 @@ void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) 
 
   ASSERT_OK(LoggedWaitFor(
       [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
-      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+      MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
 }
 
 // Drop table on producer should hide the table until the consumer table is also dropped.
@@ -3053,8 +3067,6 @@ TEST_F(XClusterYsqlTest, DropTableWithWorkload) {
 TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1000;
-  const auto kMaxAsyncTaskWait =
-      3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1000;
 
@@ -3072,7 +3084,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   }
   auto& tablet_id = tablet_ids.front();
 
-  cdc::CDCStateTable cdc_state_table(producer_client());
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
   auto key = cdc::CDCStateTableKey(tablet_id, stream_id);
   auto cdc_row = ASSERT_RESULT(
       cdc_state_table.TryFetchEntry(key, cdc::CDCStateTableEntrySelector().IncludeAll()));
@@ -3082,7 +3094,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
 
   // Table should exist even after async tasks have run.
-  SleepFor(kMaxAsyncTaskWait);
+  SleepFor(MaxAsyncTaskWaitDuration());
 
   auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
 
@@ -3093,7 +3105,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   // Table should remain hidden.
   ASSERT_NOK(LoggedWaitFor(
       [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
-      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+      MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
   ASSERT_TRUE(producer_table_info->IsHiddenButNotDeleting());
 
   // Reduce retention and make sure table drops.
@@ -3101,7 +3113,7 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
 
   ASSERT_OK(LoggedWaitFor(
       [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
-      kMaxAsyncTaskWait, "Waiting for table to get delete"));
+      MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
 
   // Make sure stream is deleted from producer.
   ASSERT_NOK(GetCDCStreamID(producer_table_->id()));
@@ -3189,6 +3201,51 @@ TEST_F(XClusterYsqlTest, TransactionalBidirectionalWithTwoDBs) {
       producer_tables_[1]->name().namespace_id(), /*is_read_only=*/false, &producer_cluster_));
   ASSERT_OK(WriteWorkload(250, 350, &producer_cluster_, producer_tables_[1]->name()));
   ASSERT_OK(WriteWorkload(250, 350, &consumer_cluster_, consumer_tables_[1]->name()));
+}
+
+// Create and drop tables and indexes in a loop with PITR which will keep the dropped tables in
+// hidden state.
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, CreateDropTableAndIndexWithPITR) {
+  const auto kBatchSize = 10;
+  ASSERT_OK(CreateTableAndSetupReplication());
+  ASSERT_OK(EnablePITROnClusters());
+
+  auto producer_conn =
+      EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table_->name().namespace_name()));
+  auto consumer_conn =
+      EXPECT_RESULT(consumer_cluster_.ConnectToDB(consumer_table_->name().namespace_name()));
+
+  for (int run_count = 0; run_count < 5; run_count++) {
+    auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, &producer_cluster_));
+    std::shared_ptr<client::YBTable> new_producer_table;
+    ASSERT_OK(producer_client()->OpenTable(producer_table_name, &new_producer_table));
+
+    auto consumer_table_name = ASSERT_RESULT(CreateYsqlTable(
+        /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_));
+    std::shared_ptr<client::YBTable> new_consumer_table;
+    ASSERT_OK(consumer_client()->OpenTable(consumer_table_name, &new_consumer_table));
+
+    ASSERT_OK(
+        AlterUniverseReplication(kReplicationGroupId, {new_producer_table}, true /* add_tables */));
+
+    const auto create_index_stmt = Format(
+        "CREATE INDEX my_idx ON $0 ($1 ASC)", new_producer_table->name().table_name(),
+        kKeyColumnName);
+
+    ASSERT_OK(producer_conn.Execute(create_index_stmt));
+    ASSERT_OK(consumer_conn.Execute(create_index_stmt));
+
+    ASSERT_OK(InsertRowsInProducer(
+        run_count * kBatchSize, (run_count + 1) * kBatchSize, new_producer_table));
+    ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
+
+    ASSERT_OK(DropYsqlTable(producer_cluster_, *new_producer_table.get()));
+    ASSERT_OK(DropYsqlTable(consumer_cluster_, *new_consumer_table.get()));
+  }
+
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(VerifyWrittenRecords());
 }
 
 }  // namespace yb

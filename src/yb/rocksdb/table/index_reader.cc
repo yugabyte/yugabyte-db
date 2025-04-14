@@ -23,35 +23,107 @@ namespace rocksdb {
 
 using namespace std::placeholders;
 
-Status BinarySearchIndexReader::Create(
+namespace {
+
+class DataBlockAwareIndexInternalIteratorBase : public DataBlockAwareIndexInternalIterator {
+ public:
+  virtual std::unique_ptr<InternalIterator> GetCurrentDataBlockIterator() const = 0;
+
+  yb::Result<std::pair<std::string, std::string>> GetCurrentDataBlockBounds() const override {
+    auto block_iter = GetCurrentDataBlockIterator();
+    RETURN_NOT_OK(block_iter->status());
+
+    std::pair<std::string, std::string> result;
+    bool first = true;
+    for (auto& entry : {block_iter->SeekToFirst(), block_iter->SeekToLast()}) {
+      if (!entry.Valid()) {
+        BlockHandle block_handle;
+        Slice block_handle_slice = value();
+        RETURN_NOT_OK(block_handle.DecodeFrom(&block_handle_slice));
+        return STATUS_FORMAT(IllegalState, "Block is empty for $0", block_handle.ToDebugString());
+      }
+      if (first) {
+        result.first = entry.key;
+      } else {
+        result.second = entry.key;
+      }
+      first = false;
+    }
+    return result;
+  };
+};
+
+class DataBlockAwareIndexInternalIteratorImpl : public DataBlockAwareIndexInternalIteratorBase {
+ public:
+  DataBlockAwareIndexInternalIteratorImpl(
+      std::unique_ptr<InternalIterator> index_internal_iterator,
+      std::unique_ptr<TwoLevelIteratorState> data_iterator_state)
+      : index_internal_iterator_(std::move(index_internal_iterator)),
+        data_iterator_state_(std::move(data_iterator_state)) {}
+
+  const KeyValueEntry& Entry() const override { return index_internal_iterator_->Entry(); }
+  const KeyValueEntry& Next() override { return index_internal_iterator_->Next(); }
+  const KeyValueEntry& Prev() override { return index_internal_iterator_->Prev(); }
+  const KeyValueEntry& SeekToFirst() override { return index_internal_iterator_->SeekToFirst(); }
+  const KeyValueEntry& SeekToLast() override { return index_internal_iterator_->SeekToLast(); }
+
+  const KeyValueEntry& Seek(Slice target) override {
+    return index_internal_iterator_->Seek(target);
+  }
+
+  Status status() const override { return index_internal_iterator_->status(); }
+
+ protected:
+  std::unique_ptr<InternalIterator> GetCurrentDataBlockIterator() const override {
+    if (!index_internal_iterator_->Valid()) {
+      return std::unique_ptr<InternalIterator>(
+          NewErrorInternalIterator(STATUS(IllegalState, "Index iterator is not valid")));
+    }
+    return std::unique_ptr<InternalIterator>(
+        data_iterator_state_->NewSecondaryIterator(index_internal_iterator_->value()));
+  }
+
+  std::unique_ptr<InternalIterator> const index_internal_iterator_;
+  std::unique_ptr<TwoLevelIteratorState> const data_iterator_state_;
+};
+
+} // namespace
+
+Result<std::unique_ptr<BinarySearchIndexReader>> BinarySearchIndexReader::Create(
     RandomAccessFileReader* file, const Footer& footer,
     const BlockHandle& index_handle, Env* env,
     const ComparatorPtr& comparator,
-    std::unique_ptr<IndexReader>* index_reader,
     const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<Block> index_block;
-  auto s = block_based_table::ReadBlockFromFile(
-      file, footer, ReadOptions::kDefault, index_handle, &index_block, env, mem_tracker);
+  RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
+      file, footer, ReadOptions::kDefault, index_handle, &index_block, env, mem_tracker));
 
-  if (s.ok()) {
-    index_reader->reset(new BinarySearchIndexReader(comparator, std::move(index_block)));
-  }
-
-  return s;
+  return std::unique_ptr<BinarySearchIndexReader>(
+      new BinarySearchIndexReader(comparator, std::move(index_block)));
 }
 
 Result<std::string> BinarySearchIndexReader::GetMiddleKey() const {
   return index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
-Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
-                       const Footer& footer, RandomAccessFileReader* file,
-                       Env* env, const ComparatorPtr& comparator,
-                       const BlockHandle& index_handle,
-                       InternalIterator* meta_index_iter,
-                       std::unique_ptr<IndexReader>* index_reader,
-                       bool hash_index_allow_collision,
-                       const std::shared_ptr<yb::MemTracker>& mem_tracker) {
+DataBlockAwareIndexInternalIterator* BinarySearchIndexReader::NewDataBlockAwareIterator(
+    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+    std::unique_ptr<TwoLevelIteratorState> data_iterator_state, bool) {
+  return new DataBlockAwareIndexInternalIteratorImpl(
+      std::unique_ptr<InternalIterator>(
+          NewIterator(iter, std::move(index_iterator_state), /* total_order_seek = */ true)),
+      std::move(data_iterator_state));
+}
+
+
+Result<std::unique_ptr<IndexReader>> HashIndexReader::Create(
+    const SliceTransform* hash_key_extractor,
+    const Footer& footer, RandomAccessFileReader* file,
+    Env* env, const ComparatorPtr& comparator,
+    const BlockHandle& index_handle,
+    InternalIterator* meta_index_iter,
+    bool hash_index_allow_collision,
+    const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<Block> index_block;
   auto s = block_based_table::ReadBlockFromFile(file, footer, ReadOptions::kDefault, index_handle,
                              &index_block, env, mem_tracker);
@@ -63,8 +135,8 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
   // Note, failure to create prefix hash index does not need to be a hard error. We can still fall
   // back to the original binary search index.
   // So, Create will succeed regardless, from this point on.
-  HashIndexReader* new_index_reader;
-  index_reader->reset(new_index_reader = new HashIndexReader(comparator, std::move(index_block)));
+  std::unique_ptr<HashIndexReader> index_reader(
+      new HashIndexReader(comparator, std::move(index_block)));
 
   // Get prefixes block
   BlockHandle prefixes_handle;
@@ -72,7 +144,7 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                     &prefixes_handle);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to find hash index prefixes block: " << s;
-    return Status::OK();
+    return index_reader;
   }
 
   // Get index metadata block
@@ -81,7 +153,7 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                     &prefixes_meta_handle);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to find hash index prefixes metadata block: " << s;
-    return Status::OK();
+    return index_reader;
   }
 
   // Read contents for the blocks
@@ -97,7 +169,7 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                         true /* do decompression */);
   if (!s.ok()) {
     LOG(ERROR) << "Failed to read hash index prefixes metadata block: " << s;
-    return Status::OK();
+    return index_reader;
   }
 
   if (!hash_index_allow_collision) {
@@ -108,8 +180,8 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                              prefixes_meta_contents.data,
                              &hash_index);
     if (s.ok()) {
-      new_index_reader->index_block_->SetBlockHashIndex(hash_index);
-      new_index_reader->OwnPrefixesContents(std::move(prefixes_contents));
+      index_reader->index_block_->SetBlockHashIndex(hash_index);
+      index_reader->OwnPrefixesContents(std::move(prefixes_contents));
     } else {
       LOG(ERROR) << "Failed to create block hash index: " << s;
     }
@@ -120,29 +192,43 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                                  prefixes_meta_contents.data,
                                  &prefix_index);
     if (s.ok()) {
-      new_index_reader->index_block_->SetBlockPrefixIndex(prefix_index);
+      index_reader->index_block_->SetBlockPrefixIndex(prefix_index);
     } else {
       LOG(ERROR) << "Failed to create block prefix index: " << s;
     }
   }
 
-  return Status::OK();
+  return index_reader;
 }
 
 Result<std::string> HashIndexReader::GetMiddleKey() const {
   return index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
-class MultiLevelIterator final : public InternalIterator {
+DataBlockAwareIndexInternalIterator* HashIndexReader::NewDataBlockAwareIterator(
+    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+    std::unique_ptr<TwoLevelIteratorState> data_iterator_state, bool) {
+  return new DataBlockAwareIndexInternalIteratorImpl(
+      std::unique_ptr<InternalIterator>(
+          NewIterator(iter, std::move(index_iterator_state), /* total_order_seek = */ true)),
+      std::move(data_iterator_state));
+}
+
+
+class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase {
  public:
   static constexpr auto kIterChainInitialCapacity = 4;
 
   MultiLevelIterator(
-      std::unique_ptr<TwoLevelIteratorState> state, InternalIterator* top_level_iter,
+      std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+      std::unique_ptr<TwoLevelIteratorState> data_iterator_state, InternalIterator* top_level_iter,
       uint32_t num_levels, bool need_free_top_level_iter)
-    : state_(std::move(state)), iter_(num_levels), index_block_handle_(num_levels - 1),
-      bottom_level_iter_(iter_.data() + (num_levels - 1)),
-      need_free_top_level_iter_(need_free_top_level_iter)  {
+      : index_iterator_state_(std::move(index_iterator_state)),
+        data_iterator_state_(std::move(data_iterator_state)),
+        iter_(num_levels),
+        index_block_handle_(num_levels - 1),
+        bottom_level_iter_(iter_.data() + (num_levels - 1)),
+        need_free_top_level_iter_(need_free_top_level_iter) {
     iter_[0].Set(top_level_iter);
   }
 
@@ -155,7 +241,8 @@ class MultiLevelIterator final : public InternalIterator {
   }
 
   const KeyValueEntry& Seek(Slice target) override {
-    if (state_->check_prefix_may_match && !state_->PrefixMayMatch(target)) {
+    if (index_iterator_state_->check_prefix_may_match &&
+        !index_iterator_state_->PrefixMayMatch(target)) {
       bottommost_positioned_iter_ = &iter_[0];
       return Entry();
     }
@@ -268,16 +355,33 @@ class MultiLevelIterator final : public InternalIterator {
     } else {
       // TODO(index_iter): consider updating existing iterator rather than recreating, measure
       // potential perf impact.
-      InternalIterator* iter = state_->NewSecondaryIterator(handle);
+      InternalIterator* iter = index_iterator_state_->NewSecondaryIterator(handle);
       handle.CopyToBuffer(child_index_block_handle);
       SetSubIterator(sub_iter, iter);
     }
   }
 
-  std::unique_ptr<TwoLevelIteratorState> const state_;
+  std::unique_ptr<InternalIterator> GetCurrentDataBlockIterator() const override {
+    if (!Valid()) {
+      return std::unique_ptr<InternalIterator>(
+          NewErrorInternalIterator(STATUS(IllegalState, "Index iterator is not valid")));
+    }
+    if (!data_iterator_state_) {
+      return std::unique_ptr<InternalIterator>(
+          NewErrorInternalIterator(STATUS(IllegalState, "Data iterator state is not set")));
+    }
+    return std::unique_ptr<InternalIterator>(data_iterator_state_->NewSecondaryIterator(value()));
+  }
+
+  // We maintain separate states for data and index iterator in order to prevent data sequential
+  // reads and index sequential reads resetting each other readahead state.
+  // Such scenario happens when we sequentially read data and using Seek, for example during
+  // sampling data for YSQL ANALYZE query execution.
+  std::unique_ptr<TwoLevelIteratorState> const index_iterator_state_;
+  std::unique_ptr<TwoLevelIteratorState> const data_iterator_state_;
   boost::container::small_vector<IteratorWrapper, kIterChainInitialCapacity> iter_;
   // If iter_[level] holds non-nullptr, then "index_block_handle_[level-1]" holds the
-  // handle passed to state_->NewSecondaryIterator to create iter_[level].
+  // handle passed to index_iterator_state_->NewSecondaryIterator to create iter_[level].
   boost::container::small_vector<std::string, kIterChainInitialCapacity - 1> index_block_handle_;
   IteratorWrapper* const bottom_level_iter_;
   bool need_free_top_level_iter_;
@@ -298,11 +402,21 @@ Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
 }
 
 InternalIterator* MultiLevelIndexReader::NewIterator(
-    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state, bool) {
-  InternalIterator* top_level_iter = top_level_index_block_->NewIndexIterator(
+    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+    const bool) {
+  return NewDataBlockAwareIterator(
+      iter, std::move(index_iterator_state), /* data_iterator_state = */ nullptr,
+      /* total_order_seek = */ true);
+}
+
+DataBlockAwareIndexInternalIterator* MultiLevelIndexReader::NewDataBlockAwareIterator(
+    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+    std::unique_ptr<TwoLevelIteratorState> data_iterator_state, bool) {
+  InternalIterator* top_level_iter = top_level_index_block_->NewIndexBlockIterator(
       comparator_.get(), iter, /* total_order_seek = */ true);
   return new MultiLevelIterator(
-      std::move(index_iterator_state), top_level_iter, num_levels_, top_level_iter != iter);
+      std::move(index_iterator_state), std::move(data_iterator_state), top_level_iter, num_levels_,
+      top_level_iter != iter);
 }
 
 Result<std::string> MultiLevelIndexReader::GetMiddleKey() const {

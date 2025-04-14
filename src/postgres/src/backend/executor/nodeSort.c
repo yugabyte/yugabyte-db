@@ -21,7 +21,7 @@
 #include "miscadmin.h"
 #include "utils/tuplesort.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 
@@ -96,7 +96,8 @@ ExecSort(PlanState *pstate)
 		 * YugaByte doesn't sort the row, but Postgres layer does. YB has to do full scan and let
 		 * Postgres engine sort and limit the rows.
 		 */
-		if (IsYugaByteEnabled()) {
+		if (IsYugaByteEnabled())
+		{
 			estate->yb_exec_params.limit_use_default = true;
 		}
 

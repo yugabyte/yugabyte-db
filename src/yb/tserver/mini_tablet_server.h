@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "yb/common/common_fwd.h"
@@ -155,7 +156,11 @@ class MiniTabletServer {
 
   FsManager& fs_manager() const;
   MetricEntity& metric_entity() const;
-  const MemTrackerPtr& mem_tracker() const;
+  const std::shared_ptr<MemTracker>& mem_tracker() const;
+  HybridTime Now() const;
+
+  void SetPgServerHandlers(
+      std::function<Status(void)> start_pg, std::function<void(void)> shutdown_pg);
 
  private:
   bool started_;
@@ -164,6 +169,9 @@ class MiniTabletServer {
 
   std::unique_ptr<TabletServer> server_;
   std::unique_ptr<Tunnel> tunnel_;
+
+  std::function<Status(void)> start_pg_;
+  std::function<void(void)> shutdown_pg_;
 };
 
 } // namespace tserver

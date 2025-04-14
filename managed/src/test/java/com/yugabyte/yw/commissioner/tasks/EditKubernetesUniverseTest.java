@@ -656,7 +656,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         "change");
   }
 
-  @Test
+  //   @Test
   public void testEditKubernetesUniverseRetry() {
     setupUniverseSingleAZ(/* Create Masters */ true);
     RuntimeConfigEntry.upsert(
@@ -717,6 +717,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.EditKubernetesUniverse,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test

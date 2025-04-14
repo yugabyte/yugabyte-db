@@ -128,9 +128,19 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     "Enable consumption of changes via replication slots."
     "Requires yb_enable_replication_commands to be true.");
 
-DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
-    "Hide catalog version increment log messages.");
-TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_range, false,
+                       "Enable consumption of consistent changes via replication slots from "
+                       "a hash range of a table.");
+
+DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
+    "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
+    "and catalog version numbers to hide such details or omit the message entirely.");
+TAG_FLAG(TEST_hide_details_for_pg_regress, hidden);
+
+DEFINE_test_flag(bool, enable_object_locking_for_table_locks, false,
+    "This test flag enables the object lock APIs provided by tservers and masters - "
+    "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
+    "implement pg table locks.");
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -150,6 +160,13 @@ DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
 
 DEFINE_test_flag(bool, check_catalog_version_overflow, false,
                  "Check whether received catalog version is unreasonably too big");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_invalidation_messages, true,
+    "True to enable invalidation messages");
+
+DEFINE_test_flag(bool, ysql_yb_ddl_transaction_block_enabled, false,
+    "If true, DDL operations in YSQL will execute within the active transaction"
+    "block instead of their separate transactions.");
 
 namespace {
 
@@ -235,6 +252,15 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_skip_redundant_update_ops, true,
                        "SET clause of YSQL UPDATE queries to skip redundant secondary index "
                        "updates and redundant constraint checks.");
 TAG_FLAG(ysql_yb_skip_redundant_update_ops, advanced);
+
+DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values,
+                    true,
+                    "When this flag is set to true, cdc service will send null values for columns "
+                    "of composite types");
+
+DEFINE_RUNTIME_bool(ysql_enable_inheritance, false,
+                    "Enable YSQL support for table inheritance");
+TAG_FLAG(ysql_enable_inheritance, experimental);
 
 namespace yb {
 

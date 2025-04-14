@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
@@ -157,12 +158,13 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
       encryptedKeySize = 89;
     }
 
-    byte[] encryptionKey = encryptionService.createKey(testUniUUID, testConfigUUID, config);
+    EncryptionKey encryptionKey = encryptionService.createKey(testUniUUID, testConfigUUID, config);
 
-    String data = new String(encryptionKey, StandardCharsets.UTF_8);
+    String data = new String(encryptionKey.getKeyBytes(), StandardCharsets.UTF_8);
     LOG.debug("Data received :: {}", data);
     assertNotNull(encryptionKey);
-    assertEquals(encryptedKeySize, encryptionKey.length);
+    assertNotNull(encryptionKey.getKeyBytes());
+    assertEquals(encryptedKeySize, encryptionKey.getKeyBytes().length);
 
     encryptionService.cleanup(testUniUUID, testConfigUUID);
   }
@@ -200,12 +202,13 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
       encryptedKeySize = 89;
     }
 
-    final byte[] encryptionKey =
+    final EncryptionKey encryptionKey =
         encryptionService.createKeyWithService(testUniUUID, testConfigUUID, config);
-    String data = new String(encryptionKey, StandardCharsets.UTF_8);
+    String data = new String(encryptionKey.getKeyBytes(), StandardCharsets.UTF_8);
     LOG.debug("Data received :: {}", data);
     assertNotNull(encryptionKey);
-    assertEquals(encryptedKeySize, encryptionKey.length);
+    assertNotNull(encryptionKey.getKeyBytes());
+    assertEquals(encryptedKeySize, encryptionKey.getKeyBytes().length);
 
     encryptionService.cleanupWithService(testUniUUID, testConfigUUID);
   }
@@ -213,7 +216,7 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
   @Test
   public void testRetrieveKeyUsingHCVaultEARService() {
 
-    byte[] keyRef = null;
+    EncryptionKey keyRef = null;
     boolean hardcodedKey = false;
     String key = HashicorpEARServiceUtil.getVaultKeyForUniverse(fakeAuthConfig);
     int encryptedKeySize = 0;
@@ -240,20 +243,20 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
       String keyVal =
           "vault:v5:1Qs8S6MyrbyeVm0RMthKGTFMLpvud8rLSJqAc8IH/"
               + "olOiXcyBIvd0ZsMDn2HdcdSO4RQDrVgEaMXr4Yd";
-      keyRef = keyVal.getBytes(StandardCharsets.UTF_8);
+      keyRef = new EncryptionKey(keyVal.getBytes(StandardCharsets.UTF_8));
       encryptedKeySize = keyVal.length();
     } else {
       // create new key
       keyRef = encryptionService.createKeyWithService(testUniUUID, testConfigUUID, config);
-      String data = new String(keyRef, StandardCharsets.UTF_8);
+      String data = new String(keyRef.getKeyBytes(), StandardCharsets.UTF_8);
       LOG.debug("Data received :: {}", data);
-      assertEquals(encryptedKeySize, keyRef.length);
+      assertEquals(encryptedKeySize, keyRef.getKeyBytes().length);
     }
 
     if (MOCK_RUN) {
 
       String mockUniverseKey = "Z00gwQeyBZROEKjX8T3QEEi43scsl/o2FFNRsWKUFJo=";
-      final byte[] keyRef1 = keyRef;
+      final byte[] keyRef1 = keyRef.getKeyBytes();
       // mock decryptUniverseKey
       mockUtil
           .when(
@@ -263,7 +266,8 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
           .thenReturn(Base64.getDecoder().decode(mockUniverseKey));
     }
 
-    final byte[] encryptionKey = encryptionService.retrieveKeyWithService(testConfigUUID, keyRef);
+    final byte[] encryptionKey =
+        encryptionService.retrieveKeyWithService(testConfigUUID, keyRef.getKeyBytes(), null);
     // String data = new String(encryptionKey, StandardCharsets.UTF_8);
     LOG.debug("Data received :: {}", new String(Base64.getEncoder().encode(encryptionKey)));
     assertNotNull(encryptionKey);

@@ -48,7 +48,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -66,7 +65,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
@@ -715,7 +713,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   public void testPerAZGflags() {
     List<UUID> azList = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
     AtomicInteger idx = new AtomicInteger();
-    Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
         universe -> {
@@ -814,7 +811,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   public void testChangeSingleAZGflags() {
     List<UUID> azList = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
     AtomicInteger idx = new AtomicInteger();
-    Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
         universe -> {
@@ -851,7 +847,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UUID primaryUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
-    UUID readonlyUUID = defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
     Set<String> az1PrimaryNodeNames = new HashSet<>();
     Set<String> az1RRNodeNames = new HashSet<>();
 
@@ -1094,6 +1089,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         TaskType.GFlagsUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test
@@ -1147,11 +1143,9 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.runOnlyPrechecks = true;
 
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     TaskType[] precheckTasks = getPrecheckTasks(true);
     assertEquals(precheckTasks.length, subTasks.size());

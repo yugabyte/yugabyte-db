@@ -12,7 +12,6 @@ import {
   RbacValidator
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { TaskDetailDrawer } from '../../../redesign/features/tasks';
 import { SoftwareUpgradeTaskType } from '../../universes/helpers/universeHelpers';
 import { YBConfirmModal } from '../../modals';
 import './TasksList.scss';
@@ -31,9 +30,9 @@ export default class TaskListTable extends Component {
   }
 
   render() {
-    const { taskList, title, visibleModal, hideTaskAbortModal, showTaskAbortModal, featureFlags } = this.props;
+    const { taskList, title, visibleModal, hideTaskAbortModal, showTaskAbortModal, featureFlags, showTaskDrawer } = this.props;
     const isNewTaskDetailsUIEnabled = featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
-
+    const self = this;
     function nameFormatter(cell, row) {
       return <span>{row.title.replace(/.*:\s*/, '')}</span>;
     }
@@ -44,7 +43,7 @@ export default class TaskListTable extends Component {
           {row.typeName} {row.target}
         </Link>
       ) : (
-        `${row.typeName} ${row.target}`
+        <span style={{ paddingLeft: '5px' }}>{`${row.typeName} ${row.target}`}</span>
       );
     }
 
@@ -74,26 +73,17 @@ export default class TaskListTable extends Component {
             <code>{row?.details?.versionNumbers?.ybSoftwareVersion}</code>
           </span>
         );
-      } else if (row.status === 'Running' && row.abortable) {
+      } else if ((row.status === 'Running' || row.status === 'Created') && row.abortable) {
         return (
           <>
-            <YBConfirmModal
-              name="confirmAbortTask"
-              title="Confirm Abort"
-              hideConfirmModal={hideTaskAbortModal}
-              currentModal={'confirmAbortTask'}
-              visibleModal={visibleModal}
-              onConfirm={() => abortTaskClicked(row.id)}
-              confirmLabel="Abort"
-              cancelLabel="Cancel"
-            >
-              Are you sure you want to abort the task?
-            </YBConfirmModal>
             <RbacValidator
               accessRequiredOn={{ ...ApiPermissionMap.ABORT_TASK, onResource: row.targetUUID }}
               isControl
             >
-              <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
+              <div className="task-abort-view yb-pending-color" onClick={() => {
+                self.setState({ selectedTaskUUID: row.id });
+                showTaskAbortModal();
+              }}>
                 Abort Task
               </div>
             </RbacValidator>
@@ -118,11 +108,6 @@ export default class TaskListTable extends Component {
       <RbacValidator
         accessRequiredOn={ApiPermissionMap.GET_TASKS_LIST}
       >
-        <TaskDetailDrawer taskUUID={this.state.selectedTaskUUID} visible={this.state.selectedTaskUUID !== undefined} onClose={() => {
-          this.setState({
-            selectedTaskUUID: undefined
-          });
-        }} />
         <YBPanelItem
           header={<h2 className="task-list-header content-title">{title}</h2>}
           body={
@@ -133,9 +118,15 @@ export default class TaskListTable extends Component {
               search
               multiColumnSearch
               searchPlaceholder="Search by Name or Type"
+              hover={isNewTaskDetailsUIEnabled}
               options={{
-                onRowClick: (task) => isNewTaskDetailsUIEnabled && this.setState({ selectedTaskUUID: task.id })
-              }}
+                onRowClick: (task) => {
+                  if (isNewTaskDetailsUIEnabled) {
+                    showTaskDrawer(task.id);
+                  }
+                }
+              }
+              }
               trStyle={isNewTaskDetailsUIEnabled && { cursor: 'pointer' }}
             >
               <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
@@ -143,7 +134,7 @@ export default class TaskListTable extends Component {
                 dataField="type"
                 dataFormat={typeFormatter}
                 columnClassName="no-border name-column"
-                className="no-border"
+                className={`no-border ${isNewTaskDetailsUIEnabled ? 'task-type-column' : ''}`}
               >
                 Type
               </TableHeaderColumn>
@@ -154,7 +145,7 @@ export default class TaskListTable extends Component {
                 columnClassName="no-border name-column"
                 className="no-border"
               >
-                {isNewTaskDetailsUIEnabled ? 'Target' : 'Name'}
+                {isNewTaskDetailsUIEnabled ? 'Performed On' : 'Name'}
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="percentComplete"
@@ -202,6 +193,18 @@ export default class TaskListTable extends Component {
             </BootstrapTable>
           }
         />
+        <YBConfirmModal
+          name="confirmAbortTask"
+          title="Confirm Abort"
+          hideConfirmModal={hideTaskAbortModal}
+          currentModal={'confirmAbortTask'}
+          visibleModal={visibleModal}
+          onConfirm={() => abortTaskClicked(this.state.selectedTaskUUID)}
+          confirmLabel="Abort"
+          cancelLabel="Cancel"
+        >
+          Are you sure you want to abort the task?
+        </YBConfirmModal>
       </RbacValidator>
     );
   }

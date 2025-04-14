@@ -317,10 +317,14 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 	rel = relation_open(relid, AccessShareLock);
 	tupdesc = RelationGetDescr(rel);
 
-	raw_attrs = initArrayResult(BYTEAOID, GetCurrentMemoryContext(), false);
+	raw_attrs = initArrayResult(BYTEAOID, CurrentMemoryContext, false);
 	nattrs = tupdesc->natts;
 
-	if (rel->rd_rel->relam != HEAP_TABLE_AM_OID)
+	/*
+	 * Sequences always use heap AM, but they don't show that in the catalogs.
+	 */
+	if (rel->rd_rel->relkind != RELKIND_SEQUENCE &&
+		rel->rd_rel->relam != HEAP_TABLE_AM_OID)
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg("only heap AM is supported")));
 
@@ -396,7 +400,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 		}
 
 		raw_attrs = accumArrayResult(raw_attrs, PointerGetDatum(attr_data),
-									 is_null, BYTEAOID, GetCurrentMemoryContext());
+									 is_null, BYTEAOID, CurrentMemoryContext);
 		if (attr_data)
 			pfree(attr_data);
 	}
@@ -408,7 +412,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 
 	relation_close(rel, AccessShareLock);
 
-	return makeArrayResult(raw_attrs, GetCurrentMemoryContext());
+	return makeArrayResult(raw_attrs, CurrentMemoryContext);
 }
 
 /*

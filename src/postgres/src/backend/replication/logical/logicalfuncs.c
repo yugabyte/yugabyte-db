@@ -40,7 +40,7 @@
 #include "utils/regproc.h"
 #include "utils/resowner.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /* Private data for writing out data */
@@ -109,7 +109,7 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 		&& !yb_enable_replication_slot_consumption)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Getting logical slot changes is unavailable"),
+				 errmsg("getting logical slot changes is unavailable"),
 				 errdetail("yb_enable_replication_slot_consumption "
 						   "is false.")));
 

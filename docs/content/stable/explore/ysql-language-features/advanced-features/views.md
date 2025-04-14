@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: advanced-features-views
     parent: advanced-features
-    weight: 230
+    weight: 800
 type: docs
 ---
 
@@ -216,7 +216,7 @@ employee_no | name
 
 ## Read more
 
-<!-- - [Active Session History](../../../observability/active-session-history) -->
+- [Active Session History](../../../observability/active-session-history)
 
 For detailed documentation on materialized views, refer to the following topics:
 

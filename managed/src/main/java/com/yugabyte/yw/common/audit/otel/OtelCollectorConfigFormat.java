@@ -104,6 +104,7 @@ public class OtelCollectorConfigFormat {
     private String key;
     private String value;
     private String action;
+    private String from_attribute;
   }
 
   @Data
@@ -118,6 +119,7 @@ public class OtelCollectorConfigFormat {
     private boolean enabled;
     private String initial_interval;
     private String max_interval;
+    private String max_elapsed_time;
   }
 
   @Data

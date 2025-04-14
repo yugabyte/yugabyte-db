@@ -32,3 +32,14 @@ export const getMemorySizeUnits = (bytes: number): string => {
   const i = parseInt(String(Math.floor(Math.log(bytes) / Math.log(1024))));
   return `${Math.round(bytes / Math.pow(1024, i))} ${sizes[i]}`;
 };
+
+export const getStoredBooleanValue = (key: string, defaultValue: boolean) => {
+  const storedValue = localStorage.getItem(key);
+  if (storedValue === 'true') {
+    return true;
+  }
+  if (storedValue === 'false') {
+    return false;
+  }
+  return defaultValue;
+};

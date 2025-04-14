@@ -39,6 +39,10 @@
 #include "utils/numeric.h"
 #include "utils/sortsupport.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 /*
  * gcc's -ffast-math switch breaks routines that expect exact results from
  * expressions like timeval / SECS_PER_HOUR, where timeval is double.
@@ -768,7 +772,7 @@ Datum
 timestamptz_out(PG_FUNCTION_ARGS)
 {
 	TimestampTz dt = PG_GETARG_TIMESTAMPTZ(0);
-	DatumDecodeOptions *decode_options = NULL;
+	YbDatumDecodeOptions *decode_options = NULL;
 	char	   *result;
 	int			tz;
 	struct pg_tm tt,
@@ -777,16 +781,16 @@ timestamptz_out(PG_FUNCTION_ARGS)
 	const char *tzn;
 	char		buf[MAXDATELEN + 1];
 
-	if(PG_NARGS() == 2)
+	if (PG_NARGS() == 2)
 	{
-		decode_options = (DatumDecodeOptions *)PG_GETARG_POINTER(1);
+		decode_options = (YbDatumDecodeOptions *) PG_GETARG_POINTER(1);
 	}
 
 	if (TIMESTAMP_NOT_FINITE(dt))
 		EncodeSpecialTimestamp(dt, buf);
 	else if (((decode_options != NULL && decode_options->from_YB) ?
-		(timestamp2tm(dt, &tz, tm, &fsec, &tzn, pg_tzset(decode_options->timezone))) :
-		(timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL))) == 0)
+			  (timestamp2tm(dt, &tz, tm, &fsec, &tzn, pg_tzset(decode_options->timezone))) :
+			  (timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL))) == 0)
 		EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf);
 	else
 		ereport(ERROR,
@@ -1570,6 +1574,15 @@ Datum
 pg_conf_load_time(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TIMESTAMPTZ(PgReloadTime);
+}
+
+/*
+ * Get the current operating system time value as hybrid time.
+ */
+Datum
+yb_get_current_hybrid_time_lsn(PG_FUNCTION_ARGS)
+{
+	return Int64GetDatum(YBCGetCurrentHybridTimeLsn());
 }
 
 /*
@@ -2923,7 +2936,10 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timestamp out of range")));
 
-			tm->tm_mon += span->month;
+			if (pg_add_s32_overflow(tm->tm_mon, span->month, &tm->tm_mon))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("timestamp out of range")));
 			if (tm->tm_mon > MONTHS_PER_YEAR)
 			{
 				tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
@@ -2957,8 +2973,16 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timestamp out of range")));
 
-			/* Add days by converting to and from Julian */
-			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
+			/*
+			 * Add days by converting to and from Julian.  We need an overflow
+			 * check here since j2date expects a non-negative integer input.
+			 */
+			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
+			if (pg_add_s32_overflow(julian, span->day, &julian) ||
+				julian < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("timestamp out of range")));
 			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
@@ -2967,7 +2991,10 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 						 errmsg("timestamp out of range")));
 		}
 
-		timestamp += span->time;
+		if (pg_add_s64_overflow(timestamp, span->time, &timestamp))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
 
 		if (!IS_VALID_TIMESTAMP(timestamp))
 			ereport(ERROR,
@@ -3029,7 +3056,10 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timestamp out of range")));
 
-			tm->tm_mon += span->month;
+			if (pg_add_s32_overflow(tm->tm_mon, span->month, &tm->tm_mon))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("timestamp out of range")));
 			if (tm->tm_mon > MONTHS_PER_YEAR)
 			{
 				tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
@@ -3065,8 +3095,19 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timestamp out of range")));
 
-			/* Add days by converting to and from Julian */
-			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
+			/*
+			 * Add days by converting to and from Julian.  We need an overflow
+			 * check here since j2date expects a non-negative integer input.
+			 * In practice though, it will give correct answers for small
+			 * negative Julian dates; we should allow -1 to avoid
+			 * timezone-dependent failures, as discussed in timestamp.h.
+			 */
+			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
+			if (pg_add_s32_overflow(julian, span->day, &julian) ||
+				julian < -1)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("timestamp out of range")));
 			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 
 			tz = DetermineTimeZoneOffset(tm, session_timezone);
@@ -3077,7 +3118,10 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 						 errmsg("timestamp out of range")));
 		}
 
-		timestamp += span->time;
+		if (pg_add_s64_overflow(timestamp, span->time, &timestamp))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
 
 		if (!IS_VALID_TIMESTAMP(timestamp))
 			ereport(ERROR,
@@ -3254,19 +3298,13 @@ interval_mul(PG_FUNCTION_ARGS)
 	result = (Interval *) palloc(sizeof(Interval));
 
 	result_double = span->month * factor;
-	if (isnan(result_double) ||
-		result_double > INT_MAX || result_double < INT_MIN)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		goto out_of_range;
 	result->month = (int32) result_double;
 
 	result_double = span->day * factor;
-	if (isnan(result_double) ||
-		result_double > INT_MAX || result_double < INT_MIN)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		goto out_of_range;
 	result->day = (int32) result_double;
 
 	/*
@@ -3300,20 +3338,30 @@ interval_mul(PG_FUNCTION_ARGS)
 	 */
 	if (Abs(sec_remainder) >= SECS_PER_DAY)
 	{
-		result->day += (int) (sec_remainder / SECS_PER_DAY);
+		if (pg_add_s32_overflow(result->day,
+								(int) (sec_remainder / SECS_PER_DAY),
+								&result->day))
+			goto out_of_range;
 		sec_remainder -= (int) (sec_remainder / SECS_PER_DAY) * SECS_PER_DAY;
 	}
 
 	/* cascade units down */
-	result->day += (int32) month_remainder_days;
+	if (pg_add_s32_overflow(result->day, (int32) month_remainder_days,
+							&result->day))
+		goto out_of_range;
 	result_double = rint(span->time * factor + sec_remainder * USECS_PER_SEC);
 	if (isnan(result_double) || !FLOAT8_FITS_IN_INT64(result_double))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
+		goto out_of_range;
 	result->time = (int64) result_double;
 
 	PG_RETURN_INTERVAL_P(result);
+
+out_of_range:
+	ereport(ERROR,
+			errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			errmsg("interval out of range"));
+
+	PG_RETURN_NULL();			/* keep compiler quiet */
 }
 
 Datum
@@ -3332,7 +3380,8 @@ interval_div(PG_FUNCTION_ARGS)
 	Interval   *span = PG_GETARG_INTERVAL_P(0);
 	float8		factor = PG_GETARG_FLOAT8(1);
 	double		month_remainder_days,
-				sec_remainder;
+				sec_remainder,
+				result_double;
 	int32		orig_month = span->month,
 				orig_day = span->day;
 	Interval   *result;
@@ -3344,8 +3393,15 @@ interval_div(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
 
-	result->month = (int32) (span->month / factor);
-	result->day = (int32) (span->day / factor);
+	result_double = span->month / factor;
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		goto out_of_range;
+	result->month = (int32) result_double;
+
+	result_double = span->day / factor;
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		goto out_of_range;
+	result->day = (int32) result_double;
 
 	/*
 	 * Fractional months full days into days.  See comment in interval_mul().
@@ -3357,15 +3413,30 @@ interval_div(PG_FUNCTION_ARGS)
 	sec_remainder = TSROUND(sec_remainder);
 	if (Abs(sec_remainder) >= SECS_PER_DAY)
 	{
-		result->day += (int) (sec_remainder / SECS_PER_DAY);
+		if (pg_add_s32_overflow(result->day,
+								(int) (sec_remainder / SECS_PER_DAY),
+								&result->day))
+			goto out_of_range;
 		sec_remainder -= (int) (sec_remainder / SECS_PER_DAY) * SECS_PER_DAY;
 	}
 
 	/* cascade units down */
-	result->day += (int32) month_remainder_days;
-	result->time = rint(span->time / factor + sec_remainder * USECS_PER_SEC);
+	if (pg_add_s32_overflow(result->day, (int32) month_remainder_days,
+							&result->day))
+		goto out_of_range;
+	result_double = rint(span->time / factor + sec_remainder * USECS_PER_SEC);
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT64(result_double))
+		goto out_of_range;
+	result->time = (int64) result_double;
 
 	PG_RETURN_INTERVAL_P(result);
+
+out_of_range:
+	ereport(ERROR,
+			errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			errmsg("interval out of range"));
+
+	PG_RETURN_NULL();			/* keep compiler quiet */
 }
 
 
@@ -3886,8 +3957,9 @@ timestamp_bin(PG_FUNCTION_ARGS)
 	Timestamp	timestamp = PG_GETARG_TIMESTAMP(1);
 	Timestamp	origin = PG_GETARG_TIMESTAMP(2);
 	Timestamp	result,
-				tm_diff,
 				stride_usecs,
+				tm_diff,
+				tm_modulo,
 				tm_delta;
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
@@ -3903,24 +3975,40 @@ timestamp_bin(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("timestamps cannot be binned into intervals containing months or years")));
 
-	stride_usecs = stride->day * USECS_PER_DAY + stride->time;
+	if (unlikely(pg_mul_s64_overflow(stride->day, USECS_PER_DAY, &stride_usecs)) ||
+		unlikely(pg_add_s64_overflow(stride_usecs, stride->time, &stride_usecs)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
 
 	if (stride_usecs <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("stride must be greater than zero")));
 
-	tm_diff = timestamp - origin;
-	tm_delta = tm_diff - tm_diff % stride_usecs;
+	if (unlikely(pg_sub_s64_overflow(timestamp, origin, &tm_diff)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+
+	/* These calculations cannot overflow */
+	tm_modulo = tm_diff % stride_usecs;
+	tm_delta = tm_diff - tm_modulo;
+	result = origin + tm_delta;
 
 	/*
-	 * Make sure the returned timestamp is at the start of the bin, even if
-	 * the origin is in the future.
+	 * We want to round towards -infinity, not 0, when tm_diff is negative and
+	 * not a multiple of stride_usecs.  This adjustment *can* cause overflow,
+	 * since the result might now be out of the range origin .. timestamp.
 	 */
-	if (origin > timestamp && stride_usecs > 1)
-		tm_delta -= stride_usecs;
-
-	result = origin + tm_delta;
+	if (tm_modulo < 0)
+	{
+		if (unlikely(pg_sub_s64_overflow(result, stride_usecs, &result)) ||
+			!IS_VALID_TIMESTAMP(result))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+	}
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -3987,14 +4075,14 @@ timestamp_trunc(PG_FUNCTION_ARGS)
 					tm->tm_year = ((tm->tm_year + 999) / 1000) * 1000 - 999;
 				else
 					tm->tm_year = -((999 - (tm->tm_year - 1)) / 1000) * 1000 + 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_CENTURY:
 				/* see comments in timestamptz_trunc */
 				if (tm->tm_year > 0)
 					tm->tm_year = ((tm->tm_year + 99) / 100) * 100 - 99;
 				else
 					tm->tm_year = -((99 - (tm->tm_year - 1)) / 100) * 100 + 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_DECADE:
 				/* see comments in timestamptz_trunc */
 				if (val != DTK_MILLENNIUM && val != DTK_CENTURY)
@@ -4004,25 +4092,25 @@ timestamp_trunc(PG_FUNCTION_ARGS)
 					else
 						tm->tm_year = -((8 - (tm->tm_year - 1)) / 10) * 10;
 				}
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_YEAR:
 				tm->tm_mon = 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_QUARTER:
 				tm->tm_mon = (3 * ((tm->tm_mon - 1) / 3)) + 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_MONTH:
 				tm->tm_mday = 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_DAY:
 				tm->tm_hour = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_HOUR:
 				tm->tm_min = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_MINUTE:
 				tm->tm_sec = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_SECOND:
 				fsec = 0;
 				break;
@@ -4071,6 +4159,7 @@ timestamptz_bin(PG_FUNCTION_ARGS)
 	TimestampTz result,
 				stride_usecs,
 				tm_diff,
+				tm_modulo,
 				tm_delta;
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
@@ -4086,24 +4175,40 @@ timestamptz_bin(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("timestamps cannot be binned into intervals containing months or years")));
 
-	stride_usecs = stride->day * USECS_PER_DAY + stride->time;
+	if (unlikely(pg_mul_s64_overflow(stride->day, USECS_PER_DAY, &stride_usecs)) ||
+		unlikely(pg_add_s64_overflow(stride_usecs, stride->time, &stride_usecs)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
 
 	if (stride_usecs <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("stride must be greater than zero")));
 
-	tm_diff = timestamp - origin;
-	tm_delta = tm_diff - tm_diff % stride_usecs;
+	if (unlikely(pg_sub_s64_overflow(timestamp, origin, &tm_diff)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+
+	/* These calculations cannot overflow */
+	tm_modulo = tm_diff % stride_usecs;
+	tm_delta = tm_diff - tm_modulo;
+	result = origin + tm_delta;
 
 	/*
-	 * Make sure the returned timestamp is at the start of the bin, even if
-	 * the origin is in the future.
+	 * We want to round towards -infinity, not 0, when tm_diff is negative and
+	 * not a multiple of stride_usecs.  This adjustment *can* cause overflow,
+	 * since the result might now be out of the range origin .. timestamp.
 	 */
-	if (origin > timestamp && stride_usecs > 1)
-		tm_delta -= stride_usecs;
-
-	result = origin + tm_delta;
+	if (tm_modulo < 0)
+	{
+		if (unlikely(pg_sub_s64_overflow(result, stride_usecs, &result)) ||
+			!IS_VALID_TIMESTAMP(result))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+	}
 
 	PG_RETURN_TIMESTAMPTZ(result);
 }
@@ -4177,14 +4282,14 @@ timestamptz_trunc_internal(text *units, TimestampTz timestamp, pg_tz *tzp)
 					tm->tm_year = ((tm->tm_year + 999) / 1000) * 1000 - 999;
 				else
 					tm->tm_year = -((999 - (tm->tm_year - 1)) / 1000) * 1000 + 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_CENTURY:
 				/* truncating to the century? as above: -100, 1, 101... */
 				if (tm->tm_year > 0)
 					tm->tm_year = ((tm->tm_year + 99) / 100) * 100 - 99;
 				else
 					tm->tm_year = -((99 - (tm->tm_year - 1)) / 100) * 100 + 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_DECADE:
 
 				/*
@@ -4198,26 +4303,26 @@ timestamptz_trunc_internal(text *units, TimestampTz timestamp, pg_tz *tzp)
 					else
 						tm->tm_year = -((8 - (tm->tm_year - 1)) / 10) * 10;
 				}
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_YEAR:
 				tm->tm_mon = 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_QUARTER:
 				tm->tm_mon = (3 * ((tm->tm_mon - 1) / 3)) + 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_MONTH:
 				tm->tm_mday = 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_DAY:
 				tm->tm_hour = 0;
 				redotz = true;	/* for all cases >= DAY */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_HOUR:
 				tm->tm_min = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_MINUTE:
 				tm->tm_sec = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_SECOND:
 				fsec = 0;
 				break;
@@ -4363,33 +4468,33 @@ interval_trunc(PG_FUNCTION_ARGS)
 			case DTK_MILLENNIUM:
 				/* caution: C division may have negative remainder */
 				tm->tm_year = (tm->tm_year / 1000) * 1000;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_CENTURY:
 				/* caution: C division may have negative remainder */
 				tm->tm_year = (tm->tm_year / 100) * 100;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_DECADE:
 				/* caution: C division may have negative remainder */
 				tm->tm_year = (tm->tm_year / 10) * 10;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_YEAR:
 				tm->tm_mon = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_QUARTER:
 				tm->tm_mon = 3 * (tm->tm_mon / 3);
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_MONTH:
 				tm->tm_mday = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_DAY:
 				tm->tm_hour = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_HOUR:
 				tm->tm_min = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_MINUTE:
 				tm->tm_sec = 0;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case DTK_SECOND:
 				tm->tm_usec = 0;
 				break;
@@ -5926,4 +6031,18 @@ generate_series_timestamptz(PG_FUNCTION_ARGS)
 		/* do when there is no more left */
 		SRF_RETURN_DONE(funcctx);
 	}
+}
+
+/*
+ * Same as timestamptz_to_time_t, but with microsecond precision.
+ */
+pg_time_t
+yb_timestamptz_to_micros_time_t(TimestampTz t)
+{
+	pg_time_t	result;
+
+	result = (pg_time_t) (t +
+						  ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY));
+
+	return result;
 }

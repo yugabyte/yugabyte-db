@@ -19,6 +19,7 @@
 
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/util/env.h"
+#include "yb/util/metrics.h"
 #include "yb/util/threadpool.h"
 #include "yb/rocksdb/env.h"
 
@@ -64,7 +65,10 @@ struct TabletOptions {
 };
 
 using TransactionManagerProvider = std::function<client::TransactionManager&()>;
-using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*()>;
+
+YB_DEFINE_ENUM(VectorIndexThreadPoolType, (kInsert)(kBackfill));
+
+using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*(VectorIndexThreadPoolType)>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;

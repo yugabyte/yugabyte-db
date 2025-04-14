@@ -65,8 +65,6 @@
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_callback.h"
 
-YB_STRONGLY_TYPED_BOOL(HaveMoreMessages);
-
 namespace yb {
 
 class MetricEntity;
@@ -82,6 +80,11 @@ struct ReadOpsResult {
   OpId preceding_op;
   HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   int64_t read_from_disk_size = 0;
+};
+
+struct XClusterReadOpsResult {
+  ReadOpsResult result;
+  int64_t majority_replicated_index;
 };
 
 // Write-through cache for the log.

@@ -14,6 +14,7 @@
 #pragma once
 
 #include <future>
+#include <string>
 
 // This include is needed because we use std::shared_future<Result<IpAddress>>, and IpAddress
 // is an alias for boost::asio::ip::address. If we just include net_fwd.h, we get this compilation

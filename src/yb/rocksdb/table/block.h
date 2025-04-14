@@ -97,7 +97,7 @@ class Block {
                                 bool total_order_seek = true,
                                 size_t restart_block_cache_capacity = 0) const;
 
-  inline InternalIterator* NewIndexIterator(
+  inline InternalIterator* NewIndexBlockIterator(
       const Comparator* comparator, BlockIter* iter = nullptr, bool total_order_seek = true) const {
     return NewIterator(
         comparator, kIndexBlockKeyValueEncodingFormat, iter, total_order_seek);
@@ -227,10 +227,6 @@ class BlockIter final : public InternalIterator {
   inline uint32_t GetCurrentRestart() const {
     return restart_index_;
   }
-
-  ScanForwardResult ScanForward(
-      const Comparator* user_key_comparator, const Slice& upperbound,
-      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
 
  private:
   // It is required to store at least one entry, even in case if restart block caching is off.

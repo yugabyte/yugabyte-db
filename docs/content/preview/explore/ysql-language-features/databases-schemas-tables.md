@@ -15,7 +15,7 @@ type: docs
 To manage data in a database efficiently, you need to follow a structured process that involves creating databases, tables, and schemas. The following detailed guide can help you understand and implement each step.
 
 {{<tip>}}
-For the list of supported and unsupported schema relations operations, see [Schema operations](../sql-feature-support#schema-operations).
+For the list of supported and unsupported schema relations operations, see [Schema operations](../../../api/ysql/sql-feature-support#schema-operations).
 {{</tip>}}
 
 ## Setup

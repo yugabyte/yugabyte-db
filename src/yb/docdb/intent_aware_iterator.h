@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -79,6 +79,9 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // hybrid time).
   void SeekPastSubKey(Slice key);
 
+  // Seek before the specified subdoc key (it is consideres as an exclusive upperbound).
+  void SeekBeforeSubKey(Slice key);
+
   // For efficiency, this overload takes a non-const KeyBytes pointer avoids memory allocation by
   // using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
@@ -112,6 +115,9 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   const ReadHybridTime& read_time() const override { return read_time_; }
   Result<HybridTime> RestartReadHt() const override;
 
+  EncodedDocHybridTime ObtainLastSeenHtCheckpoint() override;
+  void RollbackLastSeenHt(EncodedDocHybridTime last_seen_ht) override;
+
   HybridTime TEST_MaxSeenHt() const;
 
   // Iterate through Next() until a row containing a full record (non merge record) is found, or the
@@ -138,6 +144,8 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // TTL row).
   // Returns HybridTime::kInvalid if no such record was found.
   Result<HybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
+
+  void UpdateFilterKey(Slice user_key_for_filter);
 
   void DebugDump();
 
@@ -182,13 +190,6 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   // Strong write intents which are either committed or written by the current
   // transaction (stored in txn_op_context) by considered time are considered as suitable.
-
-  // Seek intent sub-iterator to latest suitable intent starting with seek_key_buffer_.
-  // intent_iter_ will be positioned to first intent for the smallest key greater than
-  // resolved_intent_sub_doc_key_encoded_.
-  // If iterator already positioned far enough - does not perform seek.
-  // If we already resolved intent after seek_key_prefix_, then it will be used.
-  void SeekForwardToSuitableIntent();
 
   // Returns true if there is a resolved intent and it is correctly ordered towards the given key.
   template <Direction direction>
@@ -264,7 +265,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   bool SatisfyBounds(Slice slice);
 
-  const EncodedDocHybridTime& GetIntentDocHybridTime(bool* same_transaction = nullptr);
+  const EncodedDocHybridTime& GetIntentDocHybridTime(bool* same_transaction = nullptr) const;
 
   inline bool HasValidIntent() const {
     return resolved_intent_state_ == ResolvedIntentState::kValid;
@@ -283,8 +284,8 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // If use_suffix_for_prefix then suffix is used in seek_key_prefix_, otherwise it will match key.
   void IntentSeekForward(size_t prefix_len);
 
-  // Seeks backwards to specified encoded key taking (it is responsibility of caller to make sure it
-  // doesn't have hybrid time). Does not perform a seek if the iterator is already positioned
+  // Seeks backwards to specified encoded key taking (it is responsibility of a caller to make sure
+  // it doesn't have hybrid time). Does not perform a seek if the iterator is already positioned
   // before the given key.
   void IntentSeekBackward(Slice key);
 

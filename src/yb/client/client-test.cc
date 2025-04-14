@@ -817,11 +817,11 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
 TEST_F(ClientTest, TestListTables) {
   auto tables = ASSERT_RESULT(client_->ListTables("", true));
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
-    return n1.ToString() < n2.ToString();
+    return n1.ToString(/* include_id= */ false) < n2.ToString(/* include_id= */ false);
   });
   ASSERT_EQ(2 + master::kNumSystemTablesWithTxn, tables.size());
-  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << AsString(tables);
-  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << AsString(tables);
+  ASSERT_EQ(kTableName, tables[0]) << "Tables: " << AsString(tables);
+  ASSERT_EQ(kTable2Name, tables[1]) << "Tables: " << AsString(tables);
   tables.clear();
   tables = ASSERT_RESULT(client_->ListTables("testtb2"));
   ASSERT_EQ(1, tables.size());
@@ -2425,6 +2425,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";
   const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
+  const std::string kYqlTableId = "yqlrangepartitionedtableid";
   const size_t kColIdx = 1;
   const int64_t kKeyValue = 48238;
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
@@ -2472,6 +2473,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   // Create a YQL table using range partition.
   s = table_creator->table_name(yql_table_name)
+      .table_id(kYqlTableId)
       .schema(&schema)
       .set_range_partition_columns({"key"})
       .table_type(YBTableType::YQL_TABLE_TYPE)
@@ -2560,7 +2562,7 @@ class CompactionClientTest : public ClientTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
     ClientTest::SetUp();
     time_before_compaction_ =
-        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->clock()->Now();
+        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Now();
   }
 
  protected:
@@ -2766,7 +2768,7 @@ Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
   std::promise<Result<client::internal::RemoteTabletPtr>> tablet_lookup_promise;
   auto future = tablet_lookup_promise.get_future();
   client->LookupTabletById(
-      tablet_id, /* table =*/ nullptr, master::IncludeInactive::kTrue,
+      tablet_id, /* table =*/ nullptr, master::IncludeHidden::kTrue,
       master::IncludeDeleted::kFalse, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(1000),
       [&tablet_lookup_promise](const Result<client::internal::RemoteTabletPtr>& result) {
         tablet_lookup_promise.set_value(result);
@@ -2947,8 +2949,7 @@ class ColocationClientTest: public ClientTest {
     pgwrapper::PgProcessConf pg_process_conf =
         VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
             AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-            pg_ts->server()->GetSharedMemoryFd()));
+            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
     pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
     pg_process_conf.force_disable_log_file = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
@@ -2956,8 +2957,7 @@ class ColocationClientTest: public ClientTest {
     LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
               << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
               << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-    pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf,
-                                                               nullptr /* tserver */);
+    pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
     RETURN_NOT_OK(pg_supervisor_->Start());
 
     pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
@@ -3161,7 +3161,7 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
       ASSERT_OK(cluster_->mini_master()->catalog_manager()
           .TEST_IncrementTablePartitionListVersion(table->id()));
       table->MarkPartitionsAsStale();
-      SleepFor(10ms * kTimeMultiplier);
+      SleepFor(RegularBuildVsSanitizers(10ms, 100ms));
     }
   });
 

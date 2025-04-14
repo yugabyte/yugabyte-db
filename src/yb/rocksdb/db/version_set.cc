@@ -558,6 +558,12 @@ class LevelFileIteratorState : public TwoLevelIteratorState {
     return true;
   }
 
+  bool MatchFilter(
+      const IteratorFilter* filter, const QueryOptions& options, Slice user_key,
+      FilterKeyCache* cache) override {
+    return true;
+  }
+
  private:
   TableCache* table_cache_;
   const ReadOptions read_options_;
@@ -817,6 +823,17 @@ uint64_t VersionStorageInfo::GetEstimatedActiveKeys() const {
   }
 }
 
+template <class IteratorWrapperType, class... Args>
+void SetupIteratorFilter(MergeIteratorInHeapBuilder<IteratorWrapperType>* builder, Args&&... args) {
+  // Variable bloom filter is not supported by MergeIteratorInHeapBuilder.
+  LOG_WITH_FUNC(DFATAL) << "Not supported";
+}
+
+template <class... Args>
+void SetupIteratorFilter(MergeIteratorBuilder* builder, Args&&... args) {
+  builder->SetupIteratorFilter(std::forward<Args>(args)...);
+}
+
 template <typename MergeIteratorBuilderType, typename CreateIteratorFunc>
 void Version::AddLevel0Iterators(
     const ReadOptions& read_options,
@@ -825,31 +842,39 @@ void Version::AddLevel0Iterators(
     Arena* arena,
     const CreateIteratorFunc& create_iterator_func) {
   FilterKeyCache filter_key_cache(read_options.user_key_for_filter);
+  auto filter_options = QueryOptions::FromReadOptions(read_options);
+  bool added_iterator = false;
   for (size_t i = 0; i < storage_info_.LevelFilesBrief(0).num_files; i++) {
     const auto& file = storage_info_.LevelFilesBrief(0).files[i];
     if (!read_options.file_filter || read_options.file_filter->Filter(file)) {
-      InternalIterator *file_iter;
+      typename MergeIteratorBuilderType::IteratorType* file_iter;
       TableCache::TableReaderWithHandle trwh;
       Status s = cfd_->table_cache()->GetTableReaderForIterator(read_options, soptions,
           cfd_->internal_comparator(), file.fd, &trwh, cfd_->internal_stats()->GetFileReadHist(0),
           false);
       if (s.ok()) {
-        if (!read_options.table_aware_file_filter ||
-            read_options.table_aware_file_filter->Filter(
-                read_options, read_options.user_key_for_filter, &filter_key_cache,
+        if (!read_options.iterator_filter || read_options.defer_iterator_filter ||
+            read_options.iterator_filter->Filter(
+                filter_options, read_options.user_key_for_filter, &filter_key_cache,
                 trwh.table_reader)) {
           file_iter = create_iterator_func(&trwh, i);
         } else {
           file_iter = nullptr;
         }
       } else {
-        file_iter = NewErrorInternalIterator(s, arena);
+        file_iter = NewErrorIterator<typename MergeIteratorBuilderType::IteratorType>(s, arena);
       }
       if (file_iter) {
+        added_iterator = true;
         merge_iter_builder->AddIterator(file_iter);
       }
     }
-  }}
+  }
+
+  if (added_iterator && read_options.defer_iterator_filter) {
+    SetupIteratorFilter(merge_iter_builder, read_options.iterator_filter, filter_options);
+  }
+}
 
 void Version::AddIterators(const ReadOptions& read_options,
                            const EnvOptions& soptions,
@@ -892,6 +917,29 @@ void Version::AddIterators(const ReadOptions& read_options,
   }
 }
 
+namespace {
+
+template <typename IndexIteratorType>
+IndexIteratorType* NewIndexIterator(
+    const ReadOptions& read_options, TableCache* table_cache,
+    TableCache::TableReaderWithHandle* trwh);
+
+template<>
+DataBlockAwareIndexInternalIterator* NewIndexIterator<DataBlockAwareIndexInternalIterator>(
+    const ReadOptions& read_options, TableCache* table_cache,
+    TableCache::TableReaderWithHandle* trwh) {
+  return table_cache->NewDataBlockAwareIndexIterator(read_options, trwh);
+}
+
+template<>
+InternalIterator* NewIndexIterator<InternalIterator>(
+    const ReadOptions& read_options, TableCache* table_cache,
+    TableCache::TableReaderWithHandle* trwh) {
+  return table_cache->NewIndexIterator(read_options, trwh);
+}
+
+} // namespace
+
 template<typename MergeIteratorBuilderType>
 void Version::AddIndexIterators(
     const ReadOptions& read_options, const EnvOptions& soptions,
@@ -909,18 +957,31 @@ void Version::AddIndexIterators(
   AddLevel0Iterators(
       read_options, soptions, merge_iter_builder, /* arena = */ nullptr,
       [this, &read_options](TableCache::TableReaderWithHandle* trwh, size_t i) {
-        return cfd_->table_cache()->NewIndexIterator(read_options, trwh);
+        return NewIndexIterator<typename MergeIteratorBuilderType::IteratorType>(
+            read_options, cfd_->table_cache(), trwh);
       });
 }
 
 template void Version::AddIndexIterators(
     const ReadOptions& read_options, const EnvOptions& soptions,
-    MergeIteratorInHeapBuilder<IteratorWrapperBase</* kSkipLastEntry = */ false>>*
+    MergeIteratorInHeapBuilder<IteratorWrapperBase<InternalIterator, /* kSkipLastEntry = */ false>>*
         merge_iter_builder);
 
 template void Version::AddIndexIterators(
     const ReadOptions& read_options, const EnvOptions& soptions,
-    MergeIteratorInHeapBuilder<IteratorWrapperBase</* kSkipLastEntry = */ true>>*
+    MergeIteratorInHeapBuilder<IteratorWrapperBase<InternalIterator, /* kSkipLastEntry = */ true>>*
+        merge_iter_builder);
+
+template void Version::AddIndexIterators(
+    const ReadOptions& read_options, const EnvOptions& soptions,
+    MergeIteratorInHeapBuilder<
+        IteratorWrapperBase<DataBlockAwareIndexInternalIterator, /* kSkipLastEntry = */ false>>*
+        merge_iter_builder);
+
+template void Version::AddIndexIterators(
+    const ReadOptions& read_options, const EnvOptions& soptions,
+    MergeIteratorInHeapBuilder<
+        IteratorWrapperBase<DataBlockAwareIndexInternalIterator, /* kSkipLastEntry = */ true>>*
         merge_iter_builder);
 
 VersionStorageInfo::VersionStorageInfo(

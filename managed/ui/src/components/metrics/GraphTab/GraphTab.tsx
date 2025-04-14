@@ -24,6 +24,7 @@ interface MetricsData {
   title: string;
   tableName?: string;
   isGranularMetricsEnabled: boolean;
+  isMetricsTimezoneEnabled: boolean;
   printMode: boolean;
 }
 
@@ -35,6 +36,7 @@ export const GraphTab: FC<MetricsData> = ({
   title,
   tableName,
   isGranularMetricsEnabled,
+  isMetricsTimezoneEnabled,
   printMode = false
 }) => {
   let tabContent = null;
@@ -177,6 +179,7 @@ export const GraphTab: FC<MetricsData> = ({
     title,
     currentUser,
     isGranularMetricsEnabled,
+    isMetricsTimezoneEnabled,
     updateTimestamp,
     printMode
   );

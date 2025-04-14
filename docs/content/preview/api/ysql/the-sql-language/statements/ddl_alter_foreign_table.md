@@ -25,6 +25,7 @@ Use the `ALTER FOREIGN TABLE` command to alter a foreign table.
 Alter the foreign table named *table_name*.
 
 ### Add a column
+
 The `ADD COLUMN` clause can be used to add a new column to the foreign table. There's no effect on the underlying storage: the `ADD COLUMN` action just indicates that the newly added column can be accessed through the foreign table.
 
 ### Drop a column
@@ -32,12 +33,15 @@ The `ADD COLUMN` clause can be used to add a new column to the foreign table. Th
 The `DROP COLUMN` clause can be used to drop a column from the foreign table. `CASCADE` or `RESTRICT` can be specified.
 
 ### Change owner
+
 The `OWNER TO` clause can be used to specify the new_owner.
 
 ### Options
+
 The `OPTIONS` clause can be used to specify the new options of the foreign table. `ADD`, `SET`, and `DROP` specify the action to be performed. `ADD` is assumed if no operation is explicitly specified.
 
 ### Rename
+
 The `RENAME TO` clause can be used to rename the foreign table to **table_name**.
 
 ## Examples

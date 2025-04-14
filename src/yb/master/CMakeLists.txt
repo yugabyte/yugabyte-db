@@ -69,6 +69,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
+  async_rpc_tasks_base.cc
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
   backfill_index.cc
@@ -83,7 +84,9 @@ set(MASTER_SRCS
   catalog_manager_util.cc
   clone/clone_state_entity.cc
   clone/clone_state_manager.cc
+  clone/clone_tasks.cc
   cluster_balance.cc
+  cluster_balance_activity_info.cc
   cluster_balance_util.cc
   encryption_manager.cc
   flush_manager.cc
@@ -199,7 +202,6 @@ set(MASTER_DEPS
   ${MASTER_PROTO_LIBS}
   rpc_header_proto
   master_util
-  version_info_proto
   yb_pggate_flags
   yb_pggate
   cdc_util
@@ -242,6 +244,7 @@ set(MASTER_TEST_COMMON_SRCS
   master-test-util.cc
   master-test_base.cc
   master_cluster_client.cc
+  master_ddl_client.cc
   ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
@@ -260,11 +263,13 @@ ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(catalog_manager_mini_cluster_test)
 ADD_YB_TEST(clone/clone_state_manager-test)
+ADD_YB_TEST(cluster_balance_activity_info-test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(load_balancer_mocked-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(master_cluster_test)
+ADD_YB_TEST(master_tablet_service_test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(multi_step_monitored_task-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)

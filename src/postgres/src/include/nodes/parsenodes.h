@@ -1172,6 +1172,9 @@ typedef struct RangeTblEntry
 	Bitmapset  *updatedCols;	/* columns needing UPDATE permission */
 	Bitmapset  *extraUpdatedCols;	/* generated columns being updated */
 	List	   *securityQuals;	/* security barrier quals to apply, if any */
+	char	   *ybHintAlias; 	/* alias to use for hinting - unique across a query */
+	/* unique identifer (across all blocks) for a base rel - starting at '1' */
+	uint32		ybUniqueBaseId;
 } RangeTblEntry;
 
 /*
@@ -2037,7 +2040,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	bool		recurse;		/* exec-time recursion */
 
 	bool		yb_is_add_primary_key;	/* checks if adding primary key */
-	bool 		yb_cascade;		/* to restrict movement of single table in
+	bool		yb_cascade;		/* to restrict movement of single table in
 								 * colocated tablespace */
 } AlterTableCmd;
 
@@ -2265,7 +2268,7 @@ typedef struct CreateStmt
 	bool		if_not_exists;	/* just do nothing if it already exists? */
 
 	char	   *tablegroupname; /* tablegroup to use, or NULL */
-	struct OptSplit *split_options; /* SPLIT statement options */
+	struct YbOptSplit *split_options;	/* SPLIT statement options */
 } CreateStmt;
 
 /* ----------
@@ -2383,14 +2386,15 @@ typedef struct Constraint
 	bool		skip_validation;	/* skip validation of existing rows? */
 	bool		initially_valid;	/* mark the new constraint as valid? */
 
-	/* For YugaByte LSM primary or unique key defined inline with the table
+	/*
+	 * For YugaByte LSM primary or unique key defined inline with the table
 	 * definition, we allow the key definition to include the sorting info
-	 * like "create table (... primary key (h hash, r1 asc, r2 desc))".
-	 * We save the IndexElem of the attributes in 'yb_index_params' to access
-	 * the full definition of the key attributes.
+	 * like "create table (... primary key (h hash, r1 asc, r2 desc))". We
+	 * save the IndexElem of the attributes in 'yb_index_params' to access the
+	 * full definition of the key attributes.
 	 */
-	List	   *yb_index_params;	/* IndexElem nodes of UNIQUE or PRIMARY KEY
-									 * constraint */
+	List	   *yb_index_params;	/* IndexElem nodes of UNIQUE or PRIMARY
+									 * KEY constraint */
 } Constraint;
 
 /* ----------
@@ -2408,16 +2412,16 @@ typedef enum
 {
 	NUM_TABLETS = 0,
 	SPLIT_POINTS = 1
-} yb_split_type;
+} YbSplitType;
 
-typedef struct OptSplit
+typedef struct YbOptSplit
 {
-	NodeTag type;
+	NodeTag		type;
 
-	yb_split_type split_type;
-	int num_tablets;
-	List *split_points;
-} OptSplit;
+	YbSplitType split_type;
+	int			num_tablets;
+	List	   *split_points;
+} YbOptSplit;
 
 /* ----------------------
  *		Create/Drop Profile Statements
@@ -2428,7 +2432,7 @@ typedef struct YbCreateProfileStmt
 {
 	NodeTag		type;
 	char	   *prfname;
-	Integer	   *prffailedloginattempts;
+	Integer    *prffailedloginattempts;
 } YbCreateProfileStmt;
 
 typedef struct YbDropProfileStmt
@@ -2443,19 +2447,19 @@ typedef struct YbDropProfileStmt
  * ----------------------
  */
 
-typedef struct CreateTableGroupStmt
+typedef struct YbCreateTableGroupStmt
 {
 	NodeTag		type;
-	char 	   *tablegroupname;
+	char	   *tablegroupname;
 	RoleSpec   *owner;
-	List 	   *options;
-	char 	   *tablespacename;
+	List	   *options;
+	char	   *tablespacename;
 	/*
 	 * Whether this tablegroup is created implicitly by YB
 	 * or created explicitly by users.
 	 */
 	bool		implicit;
-} CreateTableGroupStmt;
+} YbCreateTableGroupStmt;
 
 /* ----------------------
  *		Create/Drop Table Space Statements
@@ -3062,7 +3066,7 @@ typedef struct IndexStmt
 	bool		if_not_exists;	/* just do nothing if index already exists? */
 	bool		reset_default_tblspc;	/* reset default_tablespace prior to
 										 * executing */
-	OptSplit *split_options; /* SPLIT statement options */
+	YbOptSplit *split_options;	/* SPLIT statement options */
 } IndexStmt;
 
 /* ----------------------
@@ -3662,30 +3666,30 @@ typedef struct ReindexStmt
  */
 
 /*
- * RowBounds - row bounds for BACKFILL INDEX statement
+ * YbRowBounds - row bounds for BACKFILL INDEX statement
  */
-typedef struct RowBounds
+typedef struct YbRowBounds
 {
-	NodeTag type;
+	NodeTag		type;
 	const char *partition_key;	/* Partition key of tablet containing bound */
 	const char *row_key_start;	/* Starting row of bound (inclusive) */
 	const char *row_key_end;	/* Ending row of bound (exclusive) */
-} RowBounds;
+} YbRowBounds;
 
 typedef struct YbBackfillInfo
 {
 	NodeTag		type;
 	const char *bfinstr;		/* Backfill instruction */
 	uint64_t	read_time;		/* Read time for backfill */
-	RowBounds  *row_bounds;		/* Rows to backfill */
+	YbRowBounds *row_bounds;	/* Rows to backfill */
 } YbBackfillInfo;
 
-typedef struct BackfillIndexStmt
+typedef struct YbBackfillIndexStmt
 {
 	NodeTag		type;
 	List	   *oid_list;		/* Oids of indexes to backfill */
 	YbBackfillInfo *bfinfo;
-} BackfillIndexStmt;
+} YbBackfillIndexStmt;
 
 /* ----------------------
  *		CREATE CONVERSION Statement

@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
@@ -29,10 +30,10 @@ import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
-import org.pac4j.play.store.PlaySessionStore;
 import play.libs.typedmap.TypedKey;
 import play.mvc.Action;
 import play.mvc.Http;
@@ -83,7 +84,7 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final Config config;
 
-  private final PlaySessionStore sessionStore;
+  private final SessionStore sessionStore;
 
   private final UserService userService;
 
@@ -96,7 +97,7 @@ public class TokenAuthenticator extends Action.Simple {
   @Inject
   public TokenAuthenticator(
       Config config,
-      PlaySessionStore sessionStore,
+      SessionStore sessionStore,
       UserService userService,
       RuntimeConfGetter confGetter,
       RuntimeConfigCache runtimeConfigCache,
@@ -115,10 +116,10 @@ public class TokenAuthenticator extends Action.Simple {
     boolean useOAuth = confGetter.getGlobalConf(GlobalConfKeys.useOauth);
     Optional<Http.Cookie> cookieValue = request.getCookie(COOKIE_PLAY_SESSION);
     if (useOAuth) {
-      final PlayWebContext context = new PlayWebContext(request, sessionStore);
-      final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+      final PlayWebContext context = new PlayWebContext(request);
+      final ProfileManager profileManager = new ProfileManager(context, sessionStore);
       if (profileManager.isAuthenticated()) {
-        CommonProfile profile = profileManager.get(true).get();
+        CommonProfile profile = profileManager.getProfile(CommonProfile.class).get();
         String emailAttr = confGetter.getGlobalConf(GlobalConfKeys.oidcEmailAttribute);
         String email;
         if (emailAttr.equals("")) {
@@ -169,14 +170,12 @@ public class TokenAuthenticator extends Action.Simple {
       Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
       Matcher matcher = pattern.matcher(path);
       UUID custUUID = null;
-      String patternForUUID =
-          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-      String patternForHost = ".+:[0-9]{4,5}";
 
       // Allow for disabling authentication on proxy endpoint so that
       // Prometheus can scrape database nodes.
       if (Pattern.matches(
-              String.format("^.*/universes/%s/proxy/%s/(.*)$", patternForUUID, patternForHost),
+              String.format(
+                  "^.*/universes/%s/proxy/%s/(.*)$", Util.PATTERN_FOR_UUID, Util.PATTERN_FOR_HOST),
               path)
           && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
         return delegate.call(request);

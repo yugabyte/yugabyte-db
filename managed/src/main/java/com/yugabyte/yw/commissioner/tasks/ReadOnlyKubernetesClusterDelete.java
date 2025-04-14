@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -44,9 +45,12 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
     super(baseTaskDependencies);
   }
 
+  @JsonDeserialize(converter = Params.Converter.class)
   public static class Params extends UniverseDefinitionTaskParams {
     public UUID clusterUUID;
     public Boolean isForceDelete = false;
+
+    public static class Converter extends BaseConverter<Params> {}
   }
 
   public Params params() {
@@ -66,16 +70,8 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     try {
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      Universe universe = null;
-      if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1);
-      } else {
-        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-      }
-
       List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
       if (CollectionUtils.isEmpty(roClusters)) {
         String msg =
@@ -193,6 +189,11 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       getRunnableTask().addSubTaskGroup(volumeDeletes);
       getRunnableTask().addSubTaskGroup(namespaceDeletes);
 
+      // Delete old PDB policy for the universe.
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(true /* deletePDB */);
+      }
+
       // Remove the cluster entry from the universe db entry.
       createDeleteClusterFromUniverseTask(params().clusterUUID)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
@@ -200,6 +201,11 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       // Remove the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+      // Create new PDB policy for the universe.
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(false /* deletePDB */);
+      }
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);

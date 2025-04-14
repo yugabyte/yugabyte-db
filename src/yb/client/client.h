@@ -34,56 +34,41 @@
 #include <stdint.h>
 
 #include <future>
-#include <memory>
 #include <string>
 #include <vector>
-#include <utility>
-#include <mutex>
 
-#include <boost/function.hpp>
-#include <boost/functional/hash/hash.hpp>
 #include <boost/range/any_range.hpp>
 
-#include <gtest/gtest_prod.h>
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/clock.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
-#include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
-#include "yb/common/transaction.h"
 
-#include "yb/encryption/encryption.pb.h"
+#include "yb/encryption/encryption.fwd.h"
 
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
 
 #include "yb/master/master_client.fwd.h"
-#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_replication.fwd.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/clock.h"
 
-#include "yb/tserver/pg_client.pb.h"
-#include "yb/util/enums.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/monotime.h"
+#include "yb/tserver/pg_client.fwd.h"
+
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/threadpool.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -92,11 +77,12 @@ template<class T> class scoped_refptr;
 namespace yb {
 
 class CloudInfoPB;
+class JsonWriter;
 class MemTracker;
 class MetricEntity;
+class ThreadPool;
 
 namespace master {
-class ReplicationInfoPB;
 class TabletLocationsPB;
 class GetAutoFlagsConfigResponsePB;
 }
@@ -122,43 +108,52 @@ struct NamespaceInfo {
 };
 
 struct CDCSDKStreamInfo {
-    std::string stream_id;
-    uint32_t database_oid;
-    ReplicationSlotName cdcsdk_ysql_replication_slot_name;
-    std::string cdcsdk_ysql_replication_slot_plugin_name;
+  std::string stream_id;
+  uint32_t database_oid;
+  ReplicationSlotName cdcsdk_ysql_replication_slot_name;
+  std::string cdcsdk_ysql_replication_slot_plugin_name;
+  tserver::PGReplicationSlotLsnType replication_slot_lsn_type;
+  std::unordered_map<std::string, std::string> options;
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_stream_id(stream_id);
+    pb->set_database_oid(database_oid);
+    if (!cdcsdk_ysql_replication_slot_name.empty()) {
+      pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
+    }
+    if (!cdcsdk_ysql_replication_slot_plugin_name.empty()) {
+      pb->set_output_plugin_name(cdcsdk_ysql_replication_slot_plugin_name);
+    }
+    if (replication_slot_lsn_type) {
+      pb->set_yb_lsn_type(replication_slot_lsn_type);
+    }
+  }
+
+  template <class PB>
+  static Result<CDCSDKStreamInfo> FromPB(const PB& pb) {
     std::unordered_map<std::string, std::string> options;
-
-    template <class PB>
-    void ToPB(PB* pb) const {
-      pb->set_stream_id(stream_id);
-      pb->set_database_oid(database_oid);
-      if (!cdcsdk_ysql_replication_slot_name.empty()) {
-        pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
-      }
-      if (!cdcsdk_ysql_replication_slot_plugin_name.empty()) {
-        pb->set_output_plugin_name(cdcsdk_ysql_replication_slot_plugin_name);
-      }
+    options.reserve(pb.options_size());
+    for (const auto& option : pb.options()) {
+      options.emplace(option.key(), option.value());
     }
 
-    template <class PB>
-    static Result<CDCSDKStreamInfo> FromPB(const PB& pb) {
-      std::unordered_map<std::string, std::string> options;
-      options.reserve(pb.options_size());
-      for (const auto& option : pb.options()) {
-        options.emplace(option.key(), option.value());
-      }
+    auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(pb.namespace_id()));
+    auto stream_info = CDCSDKStreamInfo{
+        .stream_id = pb.stream_id(),
+        .database_oid = database_oid,
+        .cdcsdk_ysql_replication_slot_name =
+            ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
+        .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
+        .replication_slot_lsn_type = GetPGReplicationSlotLsnType(
+            pb.cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type()),
+        .options = std::move(options)};
 
-      auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(pb.namespace_id()));
-      auto stream_info = CDCSDKStreamInfo{
-          .stream_id = pb.stream_id(),
-          .database_oid = database_oid,
-          .cdcsdk_ysql_replication_slot_name =
-              ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
-          .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
-          .options = std::move(options)};
+    return stream_info;
+  }
 
-      return stream_info;
-    }
+  static tserver::PGReplicationSlotLsnType
+      GetPGReplicationSlotLsnType(ReplicationSlotLsnType lsn_type);
 };
 
 namespace internal {
@@ -288,6 +283,8 @@ class YBClientBuilder {
 
   DISALLOW_COPY_AND_ASSIGN(YBClientBuilder);
 };
+
+YB_STRONGLY_TYPED_BOOL(SkipHidden);
 
 // The YBClient represents a connection to a cluster. From the user
 // perspective, they should only need to create one of these in their
@@ -459,11 +456,11 @@ class YBClient {
                          const TransactionMetadata* txn = nullptr,
                          const bool colocated = false,
                          CoarseTimePoint deadline = CoarseTimePoint(),
-                         std::optional<YbCloneInfo> yb_clone_info = std::nullopt);
+                         std::optional<YbcCloneInfo> yb_clone_info = std::nullopt);
 
   Status CloneNamespace(const std::string& target_namespace_name,
                         const YQLDatabase& database_type,
-                        YbCloneInfo& yb_clone_info);
+                        YbcCloneInfo& yb_clone_info);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -499,9 +496,11 @@ class YBClient {
       const std::string& namespace_name, const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
-  Status ReservePgsqlOids(const std::string& namespace_id,
-                          uint32_t next_oid, uint32_t count,
-                          uint32_t* begin_oid, uint32_t* end_oid);
+  // use_secondary_space is used by xCluster when a database is a target.
+  Status ReservePgsqlOids(
+      const std::string& namespace_id, uint32_t next_oid, uint32_t count, uint32_t* begin_oid,
+      uint32_t* end_oid, bool use_secondary_space,
+      uint32_t* oid_cache_invalidations_count = nullptr);
 
   Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 
@@ -610,7 +609,8 @@ class YBClient {
       const CDCSDKDynamicTablesOption& dynamic_tables_option =
           CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
       uint64_t* consistent_snapshot_time_out = nullptr,
-      const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt);
+      const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt,
+      const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -653,7 +653,8 @@ class YBClient {
       std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr,
       std::optional<std::string>* replication_slot_name = nullptr,
       std::vector<TableId>* unqualified_table_ids = nullptr,
-      std::optional<ReplicationSlotLsnType>* lsn_type = nullptr);
+      std::optional<ReplicationSlotLsnType>* lsn_type = nullptr,
+      std::optional<ReplicationSlotOrderingMode>* ordering_mode = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -669,6 +670,13 @@ class YBClient {
   Result<std::vector<CDCSDKStreamInfo>> ListCDCSDKStreams();
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
+
+  void AcquireObjectLocksGlobalAsync(
+      const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+      MonoDelta rpc_timeout);
+  void ReleaseObjectLocksGlobalAsync(
+      const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+      MonoDelta rpc_timeout);
 
   // Update a CDC stream's options.
   Status UpdateCDCStream(
@@ -726,7 +734,7 @@ class YBClient {
   // If use_cache is set to true, we return old value.
   Status TabletServerCount(int *tserver_count, bool primary_only = false,
       bool use_cache = false, const std::string* tablespace_id = nullptr,
-      const master::ReplicationInfoPB* replication_info = nullptr);
+      const ReplicationInfoPB* replication_info = nullptr);
 
   Result<std::vector<YBTabletServer>> ListTabletServers();
 
@@ -750,7 +758,7 @@ class YBClient {
       const std::string& filter = "",
       bool exclude_ysql = false,
       const std::string& ysql_db_filter = "",
-      bool skip_hidden = false);
+      SkipHidden skip_hidden = SkipHidden::kFalse);
 
   // List tables in a namespace.
   //
@@ -835,19 +843,19 @@ class YBClient {
 
   // Check if the table given by 'table_name' exists. 'skip_hidden' indicates whether to consider
   // hidden tables. Result value is set only on success.
-  Result<bool> TableExists(const YBTableName& table_name, bool skip_hidden = false);
+  Result<bool> TableExists(const YBTableName& table_name);
 
   Result<bool> IsLoadBalanced(uint32_t num_servers);
   Result<bool> IsLoadBalancerIdle();
 
   Status ModifyTablePlacementInfo(
-      const YBTableName& table_name, master::PlacementInfoPB&& live_replicas);
+      const YBTableName& table_name, PlacementInfoPB&& live_replicas);
 
   // Creates a transaction status table. 'table_name' is required to start with
   // kTransactionTablePrefix.
   Status CreateTransactionsStatusTable(
       const std::string& table_name,
-      const master::ReplicationInfoPB* replication_info = nullptr);
+      const ReplicationInfoPB* replication_info = nullptr);
 
   // Add a tablet to a transaction table.
   Status AddTransactionStatusTablet(const TableId& table_id);
@@ -863,6 +871,7 @@ class YBClient {
 
   void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
   void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                       master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
@@ -914,7 +923,7 @@ class YBClient {
   // and number of tservers.
   Result<int> NumTabletsForUserTable(
       TableType table_type, const std::string* tablespace_id = nullptr,
-      const master::ReplicationInfoPB* replication_info = nullptr);
+      const ReplicationInfoPB* replication_info = nullptr);
 
   void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 
@@ -942,10 +951,10 @@ class YBClient {
   // Given a host and port for a master, get the uuid of that process.
   Status GetMasterUUID(const std::string& host, uint16_t port, std::string* uuid);
 
-  Status SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
+  Status SetReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Check if placement information is satisfiable.
-  Status ValidateReplicationInfo(const master::ReplicationInfoPB& replication_info);
+  Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
@@ -964,7 +973,7 @@ class YBClient {
 
   void LookupTabletById(const std::string& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
-                        master::IncludeInactive include_inactive,
+                        master::IncludeHidden include_hidden,
                         master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
@@ -1047,6 +1056,8 @@ class YBClient {
       const tserver::TabletConsensusInfoPB& newly_received_info);
 
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
+
+  void RequestAbortAllRpcs();
 
  private:
   class Data;

@@ -95,7 +95,7 @@ select k, v from s.f();
 Notice that the cursor is opened in _scrollable_ mode. The function is created without error and then runs without error to produce this result:
 
 ```
- k  | v  
+ k  | v
 ----+----
  20 | 95
   2 |  5
@@ -111,7 +111,7 @@ Try the same test in vanilla PostgreSQL. It produces the identical result there.
 
 See the section **["Query for loop" with a bound refcursor variable](../../compound-statements/loop-exit-continue/query-for-loop/#query-for-loop-with-a-bound-refcursor-variable)**. The code example demonstrates the syntax and shows that it produces the expected results. But notice this at the end:
 
-> ...a *query for loop* with a bound refcursor variable brings very limited added value beyond what a [query for loop with a subquery](../../compound-statements/loop-exit-continue/query-for-loop/#query-for-loop-with-a-subquery) brings. 
+> ...a *query for loop* with a bound refcursor variable brings very limited added value beyond what a [query for loop with a subquery](../../compound-statements/loop-exit-continue/query-for-loop/#query-for-loop-with-a-subquery) brings.
 
 ### Iterating over the rows that a cursor defines using an "infinite loop"
 
@@ -139,7 +139,7 @@ Not only does this penalize performance; it also brings a semantic error if the 
 
 #### Ensure that the required roles are in place
 
-The approach that this section describes relies on the ideas that the section **[Case study: PL/pgSQL procedures for provisioning roles with privileges on only the current database](../../../../provisioning-roles-for-current-database/)** describes. Run each of the code blocks on that page, in order. (You can do that time and again. You might like to save the code to a single _.sql_ script so that you can start again with a clean slate whenever you want to. (Having said this, and as long as the roles are in place, you can re-run the code blocks that follow, in order, time and again without needing to re-create the roles.)
+The approach that this section describes relies on the ideas that the section **[Case study: PL/pgSQL procedures for provisioning roles with privileges on only the current database](../../../../provisioning-roles-for-current-database/)** describes. Run each of the code blocks on that page, in order. You can do that time and again. You might like to save the code to a single _.sql_ script so that you can start again with a clean slate whenever you want to. (Having said this, and as long as the roles are in place, you can re-run the code blocks that follow, in order, time and again without needing to re-create the roles.)
 
 Notice that the final code block on the referenced page is this:
 
@@ -214,7 +214,7 @@ as $body$
 declare
   cur constant refcursor not null := 'cur';
   stmt constant text not null :=
-    format('declare %I no scroll cursor without hold for select k, v from data.t order by v', cur);    
+    format('declare %I no scroll cursor without hold for select k, v from data.t order by v', cur);
 
   v_statement text not null := '';
   v_is_holdable boolean not null := true;
@@ -302,11 +302,11 @@ rollback;
 This is the result:
 
 ```output
-                                    statement                                     
+                                    statement
 ----------------------------------------------------------------------------------
  declare cur no scroll cursor without hold for select k, v from data.t order by v
 
- k  | v 
+ k  | v
 ----+---
  47 | A
  40 | B
@@ -314,7 +314,7 @@ This is the result:
   1 | D
  49 | E
 
- k  | v 
+ k  | v
 ----+---
  52 | F
  13 | G
@@ -322,7 +322,7 @@ This is the result:
   3 | I
  15 | J
 
- k  | v 
+ k  | v
 ----+---
  20 | K
   9 | L
@@ -411,20 +411,20 @@ select internal_client.three_batches();
 This is the result:
 
 ```output
- three_batches 
+ three_batches
 ---------------
     47: A
     40: B
     25: C
      1: D
     49: E
- 
+
     52: F
     13: G
     28: H
      3: I
     15: J
- 
+
     20: K
      9: L
     32: M

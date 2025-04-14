@@ -1,5 +1,5 @@
 ---
-title: Configure the AWS cloud provider
+title: Configure the AWS provider configuration
 headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Amazon Web Services (AWS) provider configuration.

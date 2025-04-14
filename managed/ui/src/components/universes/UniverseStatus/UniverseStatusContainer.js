@@ -4,7 +4,7 @@ import { connect } from 'react-redux';
 
 import UniverseStatus from './UniverseStatus';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
-import { retryTask, retryTaskResponse } from '../../../actions/tasks';
+import { showTaskInDrawer } from '../../../actions/tasks';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -13,10 +13,8 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
       });
     },
-    retryCurrentTask: (taskUUID) => {
-      return dispatch(retryTask(taskUUID)).then((response) => {
-        return dispatch(retryTaskResponse(response.payload));
-      });
+    showTaskDetailsInDrawer : (taskUUID) => {
+      dispatch(showTaskInDrawer(taskUUID));
     }
   };
 };
@@ -24,7 +22,8 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   return {
     tasks: state.tasks,
-    runtimeConfigs: state.customer.runtimeConfigs
+    runtimeConfigs: state.customer.runtimeConfigs,
+    featureFlags: state.featureFlags
   };
 }
 

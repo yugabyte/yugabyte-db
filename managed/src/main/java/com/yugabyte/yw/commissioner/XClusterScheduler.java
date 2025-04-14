@@ -51,6 +51,7 @@ public class XClusterScheduler {
   private final XClusterUniverseService xClusterUniverseService;
   private final MetricService metricService;
   private final UniverseTableHandler tableHandler;
+  private final long dbSyncTimeoutMs;
 
   // This is a key lock for xCluster Config by UUID.
   private static final KeyLock<UUID> XCLUSTER_CONFIG_LOCK = new KeyLock<>();
@@ -69,6 +70,7 @@ public class XClusterScheduler {
     this.xClusterUniverseService = xClusterUniverseService;
     this.metricService = metricService;
     this.tableHandler = tableHandler;
+    dbSyncTimeoutMs = confGetter.getGlobalConf(GlobalConfKeys.xclusterDbSyncTimeoutMs);
   }
 
   private Duration getSyncSchedulerInterval() {
@@ -107,20 +109,13 @@ public class XClusterScheduler {
   }
 
   private boolean isXClusterEligibleForScheduledSync(XClusterConfig xClusterConfig) {
-    if (xClusterConfig.getStatus() != XClusterConfigStatusType.Running) {
+    // For DB scoped xCluster configs, we don't need to sync tables. Only the pause state might need
+    // syncing which can happen when the user calls the GET API.
+    if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
       return false;
     }
-
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    if (sourceUniverse.getUniverseDetails().updateInProgress
-        || targetUniverse.getUniverseDetails().updateInProgress) {
-      return false;
-    }
-    if (sourceUniverse.getUniverseDetails().universePaused
-        || targetUniverse.getUniverseDetails().universePaused) {
-      return false;
-    }
     return confGetter.getConfForScope(targetUniverse, UniverseConfKeys.xClusterSyncOnUniverse)
         && confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xClusterSyncOnUniverse);
   }
@@ -270,19 +265,28 @@ public class XClusterScheduler {
     }
   }
 
-  public void syncXClusterConfig(XClusterConfig config) {
+  public void syncXClusterConfig(XClusterConfig xClusterConfig) {
     try {
-      XCLUSTER_CONFIG_LOCK.acquireLock(config.getUuid());
-      if (!isXClusterEligibleForScheduledSync(config)) {
-        log.debug("Skipping xCluster config {} for scheduled sync", config.getName());
+      if (xClusterConfig.getStatus() != XClusterConfigStatusType.Running) {
         return;
       }
-      compareTablesAndSyncXClusterConfig(config);
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+      Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+      if (sourceUniverse.getUniverseDetails().updateInProgress
+          || targetUniverse.getUniverseDetails().updateInProgress) {
+        return;
+      }
+      if (sourceUniverse.getUniverseDetails().universePaused
+          || targetUniverse.getUniverseDetails().universePaused) {
+        return;
+      }
+      XCLUSTER_CONFIG_LOCK.acquireLock(xClusterConfig.getUuid());
+      compareTablesAndSyncXClusterConfig(xClusterConfig);
     } catch (Exception e) {
       log.error("Error syncing xCluster config:", e);
     } finally {
       try {
-        XCLUSTER_CONFIG_LOCK.releaseLock(config.getUuid());
+        XCLUSTER_CONFIG_LOCK.releaseLock(xClusterConfig.getUuid());
       } catch (Exception e) {
         log.error("Error releasing lock for xCluster config:", e);
       }
@@ -297,7 +301,9 @@ public class XClusterScheduler {
     log.info("Running xCluster Sync Scheduler...");
     try {
       List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
-      xClusterConfigs.forEach(this::syncXClusterConfig);
+      xClusterConfigs.stream()
+          .filter(this::isXClusterEligibleForScheduledSync)
+          .forEach(this::syncXClusterConfig);
     } catch (Exception e) {
       log.error("Error running xCluster Sync Scheduler:", e);
     }
@@ -313,8 +319,8 @@ public class XClusterScheduler {
       XClusterConfig xClusterConfig, XClusterTableConfig xClusterTableConfig) {
     XClusterTableConfig.Status tableStatus = xClusterTableConfig.getStatus();
     if (xClusterTableConfig.getStatus().equals(XClusterTableConfig.Status.Running)) {
-      if (xClusterTableConfig.getReplicationStatusErrors().size() > 0) {
-        tableStatus = XClusterTableConfig.Status.ReplicationError;
+      if (!xClusterTableConfig.getReplicationStatusErrors().isEmpty()) {
+        tableStatus = XClusterTableConfig.Status.Error;
       }
     }
 
@@ -359,12 +365,15 @@ public class XClusterScheduler {
     }
 
     XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-        xClusterUniverseService, ybClientService, tableHandler, xClusterConfig);
+        xClusterUniverseService,
+        ybClientService,
+        tableHandler,
+        xClusterConfig,
+        dbSyncTimeoutMs,
+        this.confGetter);
     Set<XClusterTableConfig> xClusterTableConfigs = xClusterConfig.getTableDetails();
     xClusterTableConfigs.forEach(
-        tableConfig -> {
-          metricsList.add(buildMetricTemplate(xClusterConfig, tableConfig));
-        });
+        tableConfig -> metricsList.add(buildMetricTemplate(xClusterConfig, tableConfig)));
 
     return metricsList;
   }
@@ -389,7 +398,7 @@ public class XClusterScheduler {
     } catch (Exception e) {
       metricService.setFailureStatusMetric(
           MetricService.buildMetricTemplate(PlatformMetrics.XCLUSTER_METRIC_PROCESSOR_STATUS));
-      log.error("Error running xCluster Metrics Scheduler: {}", e);
+      log.error("Error running xCluster Metrics Scheduler:", e);
     }
   }
 }

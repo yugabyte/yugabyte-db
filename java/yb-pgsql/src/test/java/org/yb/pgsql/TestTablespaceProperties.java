@@ -36,10 +36,10 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.CommonNet;
 import org.yb.CommonNet.CloudInfoPB;
 import org.yb.YBTestRunner;
 import org.yb.client.*;
-import org.yb.master.CatalogEntityInfo;
 import org.yb.minicluster.MiniYBCluster;
 
 @RunWith(value = YBTestRunner.class)
@@ -363,6 +363,65 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
   }
 
   @Test
+  public void testTableRewrite() throws Exception {
+    markClusterNeedsRecreation();
+    final String dbname = "testdatabase";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", dbname));
+    }
+    final String nonColocatedTable = "colocation_opt_out_table";
+    final String nonColocatedIndex = "colocation_opt_out_idx";
+    final String regularTable = "testtable";
+    final String regularIndex = "testindex";
+    final String tablespaceClause = "TABLESPACE " + tablespaceName;
+
+    String[] databases = {dbname, "yugabyte"};
+    String[] tables = {nonColocatedTable, regularTable};
+    String[] indexes = {nonColocatedIndex, regularIndex};
+
+    for (int i = 0; i < databases.length; i++) {
+      try (Connection connection2 = getConnectionBuilder().withDatabase(databases[i]).connect();
+        Statement stmt = connection2.createStatement()) {
+        stmt.execute(
+          String.format(
+            "CREATE TABLE %s (h INT, a INT) WITH (colocated = false) %s",
+            tables[i], tablespaceClause));
+        stmt.execute(
+          String.format(
+            "CREATE INDEX %s ON %s (a) %s",
+            indexes[i], tables[i], tablespaceClause));
+        // Perform table rewrite.
+        stmt.execute(
+          String.format(
+            "ALTER TABLE %s ADD PRIMARY KEY (h)",
+            tables[i], tables[i]));
+      }
+      verifyTablePlacement(tables[i], customTablespace);
+      verifyTablePlacement(indexes[i], customTablespace);
+    }
+
+    findAndKillMasterLeader();
+    waitForMasterLeader(MASTER_LEADER_TIMEOUT_MS);
+
+    // Test that ALTER ... SET TABLESPACE works after table rewrite + master failover.
+    Tablespace ts2 = new Tablespace("tablespace_2", Collections.singletonList(1));
+    ts2.create(connection);
+
+    for (int i = 0; i < databases.length; i++) {
+      try (Connection connection2 = getConnectionBuilder().withDatabase(databases[i]).connect();
+        Statement stmt = connection2.createStatement()) {
+      stmt.execute(String.format("ALTER TABLE %s SET TABLESPACE %s", tables[i], ts2.name));
+      stmt.execute(String.format("ALTER INDEX %s SET TABLESPACE %s", indexes[i], ts2.name));
+      }
+      // Wait for load balancer to run.
+      waitForLoadBalancer();
+
+      verifyTablePlacement(tables[i], ts2);
+      verifyTablePlacement(indexes[i], ts2);
+    }
+  }
+
+  @Test
   public void readReplicaWithTablespaces() throws Exception {
     markClusterNeedsRecreation();
     final YBClient client = miniCluster.getClient();
@@ -388,35 +447,35 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
             .setPlacementZone("zone1")
             .build();
 
-    CatalogEntityInfo.PlacementBlockPB placementBlock0 =
-        CatalogEntityInfo.PlacementBlockPB.newBuilder()
+    CommonNet.PlacementBlockPB placementBlock0 =
+        CommonNet.PlacementBlockPB.newBuilder()
             .setCloudInfo(cloudInfo0)
             .setMinNumReplicas(1)
             .build();
 
-    List<CatalogEntityInfo.PlacementBlockPB> placementBlocksLive =
-        new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
+    List<CommonNet.PlacementBlockPB> placementBlocksLive =
+        new ArrayList<CommonNet.PlacementBlockPB>();
     placementBlocksLive.add(placementBlock0);
 
-    List<CatalogEntityInfo.PlacementBlockPB> placementBlocksReadOnly =
-        new ArrayList<CatalogEntityInfo.PlacementBlockPB>();
+    List<CommonNet.PlacementBlockPB> placementBlocksReadOnly =
+        new ArrayList<CommonNet.PlacementBlockPB>();
     placementBlocksReadOnly.add(placementBlock0);
 
-    CatalogEntityInfo.PlacementInfoPB livePlacementInfo =
-        CatalogEntityInfo.PlacementInfoPB.newBuilder()
+    CommonNet.PlacementInfoPB livePlacementInfo =
+        CommonNet.PlacementInfoPB.newBuilder()
             .addAllPlacementBlocks(placementBlocksLive)
             .setNumReplicas(1)
             .setPlacementUuid(ByteString.copyFromUtf8(""))
             .build();
 
-    CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo =
-        CatalogEntityInfo.PlacementInfoPB.newBuilder()
+    CommonNet.PlacementInfoPB readOnlyPlacementInfo =
+        CommonNet.PlacementInfoPB.newBuilder()
             .addAllPlacementBlocks(placementBlocksReadOnly)
             .setNumReplicas(1)
             .setPlacementUuid(ByteString.copyFromUtf8("readcluster"))
             .build();
 
-    List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements =
+    List<CommonNet.PlacementInfoPB> readOnlyPlacements =
         Arrays.asList(readOnlyPlacementInfo);
 
     ModifyClusterConfigReadReplicas readOnlyOperation =

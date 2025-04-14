@@ -82,7 +82,8 @@ public class SupportBundle extends Model {
   public enum SupportBundleStatusType {
     Running("Running"),
     Success("Success"),
-    Failed("Failed");
+    Failed("Failed"),
+    Aborted("Aborted");
 
     private final String status;
 

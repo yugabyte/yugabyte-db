@@ -41,6 +41,9 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/retryable_requests.h"
 
+#include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/docdb_util.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -342,8 +345,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         table.table_type(), schema, qlexpr::IndexMap(table.indexes()),
         table.has_index_info() ? std::optional<qlexpr::IndexInfo>(table.index_info())
                                : std::nullopt,
-        table.schema_version(), partition_schema, table.pg_table_id(),
-        tablet::SkipTableTombstoneCheck(table.skip_table_tombstone_check()));
+        table.schema_version(), partition_schema, OpId::FromPB(table.op_id()),
+        HybridTime::FromPB(table.hybrid_time()),
+        table.pg_table_id(), tablet::SkipTableTombstoneCheck(table.skip_table_tombstone_check()));
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
 
     auto tablet_assigned_root_data_dir = VERIFY_RESULT(fs_manager().GetTabletPath(tablet_id_));
@@ -629,15 +633,23 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
         << " in " << elapsed.ToSeconds() << " seconds";
   }
   // To avoid adding new file type to remote bootstrap we move intents as subdir of regular DB.
-  auto intents_tmp_dir = JoinPathSegments(rocksdb_dir, tablet::kIntentsSubdir);
-  if (env().FileExists(intents_tmp_dir)) {
-    auto intents_dir = rocksdb_dir + tablet::kIntentsDBSuffix;
-    LOG_WITH_PREFIX(INFO) << "Moving intents DB: " << intents_tmp_dir << " => " << intents_dir;
-    RETURN_NOT_OK(env().RenameFile(intents_tmp_dir, intents_dir));
+  auto& env = this->env();
+  auto children = VERIFY_RESULT(env.GetChildren(rocksdb_dir, ExcludeDots::kTrue));
+  for (const auto& child : children) {
+    if (!child.starts_with(docdb::kVectorIndexDirPrefix) && child != tablet::kIntentsDirName) {
+      continue;
+    }
+    auto source_dir = JoinPathSegments(rocksdb_dir, child);
+    if (!env.DirExists(source_dir)) {
+      continue;
+    }
+    auto dest_dir = docdb::GetStorageDir(rocksdb_dir, child);
+    LOG_WITH_PREFIX(INFO) << "Moving " << source_dir << " => " << dest_dir;
+    RETURN_NOT_OK(env.RenameFile(source_dir, dest_dir));
   }
   if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
     // Persist directory so that recently downloaded files are accessible.
-    RETURN_NOT_OK(env().SyncDir(rocksdb_dir));
+    RETURN_NOT_OK(env.SyncDir(rocksdb_dir));
   }
   downloaded_rocksdb_files_ = true;
   return Status::OK();

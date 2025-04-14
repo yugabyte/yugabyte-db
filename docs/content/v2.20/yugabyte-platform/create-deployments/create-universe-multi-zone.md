@@ -32,9 +32,11 @@ YugabyteDB Anywhere allows you to create a universe in one geographic region acr
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
 
+For information on modifying or scaling an existing universe, refer to [Modify universe](../../manage-deployments/edit-universe/).
+
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Create cloud provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
 
 ## Create a universe
 
@@ -58,7 +60,7 @@ Specify the provider and geolocations for the nodes in the universe:
 
 - Enter a name for the universe.
 
-- Choose the [provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/) to use to create the universe.
+- Choose the [provider configuration](../../configure-yugabyte-platform/) to use to create the universe.
 
 - Select the regions in which to deploy nodes. The available regions will depend on the provider you selected.
 
@@ -84,11 +86,19 @@ Specify the instance to use for the universe nodes:
 
 ### Security Configurations
 
+#### IP Settings
+
 To enable public access to the universe, select the **Assign Public IP** option.
 
-Enable the YSQL and YCQL endpoints and database authentication. You can also enable and disable authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
+#### Authentication Settings
 
-Enter the password to use for the default database admin superuser (yugabyte for YSQL, and cassandra for YCQL). For more information, refer to [Database authorization](../../security/authorization-platform/).
+Enable the YSQL and YCQL endpoints and database authentication.
+
+Enter the password to use for the default database admin superuser (for YSQL the user is `yugabyte`, and for YCQL `cassandra`). Be sure to save your password; the password is not saved in YugabyteDB Anywhere. For more information, refer to [Database authorization](../../security/authorization-platform/).
+
+By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration).
+
+#### Encryption Settings
 
 Enable encryption in transit to encrypt universe traffic. Refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/).
 

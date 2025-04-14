@@ -28,14 +28,20 @@
 namespace yb {
 namespace tserver {
 
+struct PgTableCacheGetOptions {
+  bool reopen = false;
+  uint64_t min_ysql_catalog_version = 0;
+  master::IncludeHidden include_hidden = master::IncludeHidden::kFalse;
+};
 class PgTableCache {
  public:
   explicit PgTableCache(std::shared_future<client::YBClient*> client_future);
   ~PgTableCache();
 
+
   Status GetInfo(
       const TableId& table_id,
-      master::IncludeHidden include_hidden,
+      const PgTableCacheGetOptions& options,
       client::YBTablePtr* table,
       master::GetTableSchemaResponsePB* schema);
 
@@ -43,9 +49,8 @@ class PgTableCache {
 
   void Invalidate(const TableId& table_id);
   void InvalidateAll(CoarseTimePoint invalidation_time);
-  void InvalidateDbTables(const std::unordered_set<uint32_t>& db_oids_updated,
-                          const std::unordered_set<uint32_t>& db_oids_deleted,
-                          CoarseTimePoint invalidation_time);
+  void InvalidateDbTables(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
+                          const std::unordered_set<uint32_t>& db_oids_deleted);
 
  private:
   class Impl;

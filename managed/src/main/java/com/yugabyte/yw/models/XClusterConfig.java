@@ -194,6 +194,7 @@ public class XClusterConfig extends Model {
   private Set<XClusterNamespaceConfig> namespaces = new HashSet<>();
 
   @ApiModelProperty(value = "Replication group name in the target universe cluster config")
+  @JsonProperty
   private String replicationGroupName;
 
   public enum ConfigType {
@@ -366,6 +367,16 @@ public class XClusterConfig extends Model {
               "Table with id (%s) does not belong to the xClusterConfig %s", tableId, this));
     }
     return tableConfig.get();
+  }
+
+  public XClusterNamespaceConfig getNamespaceById(String namespaceId) {
+    return maybeGetNamespaceById(namespaceId)
+        .orElseThrow(
+            () ->
+                new IllegalArgumentException(
+                    String.format(
+                        "Namespace with id (%s) does not belong to the xClusterConfig %s",
+                        namespaceId, this)));
   }
 
   public Set<XClusterTableConfig> getTablesById(Set<String> tableIds) {
@@ -712,11 +723,29 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void updateBackupForNamespaces(Set<String> namespaceIds, Backup backup) {
+    ensureNamespaceIdsExist(namespaceIds);
+    this.getNamespaces().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setBackup(backup));
+    update();
+  }
+
+  @Transactional
   public void updateRestoreForTables(Set<String> tableIds, Restore restore) {
     ensureTableIdsExist(tableIds);
     this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setRestore(restore));
+    update();
+  }
+
+  @Transactional
+  public void updateRestoreForNamespaces(Set<String> namespaceIds, Restore restore) {
+    ensureNamespaceIdsExist(namespaceIds);
+    this.getNamespaces().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setRestore(restore));
     update();
   }
 
@@ -839,12 +868,13 @@ public class XClusterConfig extends Model {
     return sourceUniverseUUID + "_" + configName;
   }
 
-  public void setReplicationGroupName(String replicationGroupName) {
+  @JsonIgnore
+  public void setReplicationGroupName(String newReplicationGroupName) {
     if (imported) {
-      this.replicationGroupName = replicationGroupName;
+      this.replicationGroupName = newReplicationGroupName;
       return;
     }
-    setReplicationGroupName(this.getSourceUniverseUUID(), replicationGroupName /* configName */);
+    setReplicationGroupName(this.getSourceUniverseUUID(), newReplicationGroupName /* configName */);
   }
 
   @JsonIgnore
@@ -1216,5 +1246,18 @@ public class XClusterConfig extends Model {
 
   public static boolean isUniverseXClusterParticipant(UUID universeUUID) {
     return !CollectionUtils.isEmpty(getByUniverseUuid(universeUUID));
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    XClusterConfig other = (XClusterConfig) o;
+    return this.uuid != null && this.uuid.equals(other.uuid);
+  }
+
+  @Override
+  public int hashCode() {
+    return this.uuid != null ? this.uuid.hashCode() : 0;
   }
 }

@@ -52,7 +52,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
@@ -212,7 +212,8 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * we cannot, in general, run parse analysis on one statement until we
 	 * have actually executed the prior ones.
 	 */
-	parsetree_list = transformCreateSchemaStmt(stmt);
+	parsetree_list = transformCreateSchemaStmtElements(stmt->schemaElts,
+													   schemaName);
 
 	/*
 	 * Execute each command contained in the CREATE SCHEMA.  Since the grammar
@@ -265,7 +266,10 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 
 #ifdef NEIL
 /* Pg11 API */
-void RemoveSchemaById(Oid schemaOid)
+void
+RemoveSchemaById(Oid schemaOid)
+{
+}
 #endif
 
 /*
@@ -424,7 +428,7 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		if (!is_member_of_role(GetUserId(), newOwnerId) && !IsYbDbAdminUser(GetUserId()))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 	errmsg("must be member of role \"%s\"",
+					 errmsg("must be member of role \"%s\"",
 							GetUserNameFromId(newOwnerId, false))));
 
 		/*
@@ -443,7 +447,7 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		else
 		{
 			aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(),
-													ACL_CREATE);
+											 ACL_CREATE);
 		}
 
 		if (aclresult != ACLCHECK_OK)

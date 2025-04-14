@@ -1,6 +1,7 @@
 package com.yugabyte.yw.common.cdc;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -125,6 +126,12 @@ public class CdcStreamManagerTest {
     when(mockStream2.getOptions()).thenReturn(options);
     when(mockStream2.getCdcsdkYsqlReplicationSlotName()).thenReturn("");
 
+    CDCStreamInfo mockStream3 = mock(CDCStreamInfo.class);
+    when(mockStream3.getStreamId()).thenReturn(streamId);
+    when(mockStream3.getOptions()).thenReturn(options);
+    when(mockStream3.getNamespaceId()).thenReturn(UUID.randomUUID().toString());
+    when(mockStream3.getCdcsdkYsqlReplicationSlotName()).thenReturn("test_slot_3");
+
     ListNamespacesResponse namespacesResponse = mock(ListNamespacesResponse.class);
     NamespaceIdentifierPB mockNamespaceIdentifierPB = mock(NamespaceIdentifierPB.class);
     when(mockNamespaceIdentifierPB.getId()).thenReturn(ByteString.copyFrom(namespaceId.getBytes()));
@@ -142,6 +149,7 @@ public class CdcStreamManagerTest {
               {
                 add(mockStream);
                 add(mockStream2);
+                add(mockStream3);
               }
             });
     when(mockClient.listCDCStreams(null, null, MasterReplicationOuterClass.IdTypePB.NAMESPACE_ID))
@@ -149,10 +157,24 @@ public class CdcStreamManagerTest {
 
     CDCReplicationSlotResponse r = streamManager.listReplicationSlot(mock(Universe.class));
 
-    assertEquals(1, r.replicationSlots.size());
-    assertEquals("test_database", r.getReplicationSlots().get(0).databaseName);
-    assertEquals("test_slot", r.getReplicationSlots().get(0).slotName);
-    assertEquals(streamId, r.getReplicationSlots().get(0).streamID);
-    assertEquals("ACTIVE", r.getReplicationSlots().get(0).state);
+    assertEquals(2, r.replicationSlots.size());
+    CDCReplicationSlotResponse.CDCReplicationSlotDetails testSlot =
+        r.replicationSlots.stream()
+            .filter(slot -> slot.slotName.equals("test_slot"))
+            .findFirst()
+            .get();
+    assertEquals("test_database", testSlot.databaseName);
+    assertEquals("test_slot", testSlot.slotName);
+    assertEquals(streamId, testSlot.streamID);
+    assertEquals("ACTIVE", testSlot.state);
+    CDCReplicationSlotResponse.CDCReplicationSlotDetails testSlot3 =
+        r.replicationSlots.stream()
+            .filter(slot -> slot.slotName.equals("test_slot_3"))
+            .findFirst()
+            .get();
+    assertNull(testSlot3.databaseName);
+    assertEquals("test_slot_3", testSlot3.slotName);
+    assertEquals(streamId, testSlot3.streamID);
+    assertEquals("ACTIVE", testSlot3.state);
   }
 }

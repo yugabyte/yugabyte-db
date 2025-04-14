@@ -46,12 +46,14 @@
 #include "parser/parsetree.h"
 #include "utils/rel.h"
 
-/* YB includes. */
+/* YB includes */
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 
-static List *expand_insert_targetlist(List *tlist, Relation rel);
+static List *expand_insert_targetlist(PlannerInfo *root, List *tlist,
+									  Relation rel);
 static List *expand_delete_targetlist(List *tlist, Index result_relation, Relation rel);
+
 
 /*
  * preprocess_targetlist
@@ -106,7 +108,7 @@ preprocess_targetlist(PlannerInfo *root)
 	 */
 	tlist = parse->targetList;
 	if (command_type == CMD_INSERT)
-		tlist = expand_insert_targetlist(tlist, target_relation);
+		tlist = expand_insert_targetlist(root, tlist, target_relation);
 	else if (command_type == CMD_UPDATE)
 		root->update_colnos = extract_update_targetlist_colnos(tlist);
 	/*
@@ -115,7 +117,7 @@ preprocess_targetlist(PlannerInfo *root)
 	 * TODO(neil) The optimizer should reduce the list to referenced columns.
 	 */
 	else if ((command_type == CMD_DELETE && IsYBRelation(target_relation) &&
-		 parse->returningList != NULL))
+			  parse->returningList != NULL))
 		tlist = expand_delete_targetlist(tlist, result_relation, target_relation);
 
 	/*
@@ -160,24 +162,23 @@ preprocess_targetlist(PlannerInfo *root)
 			ListCell   *l2;
 
 			if (action->commandType == CMD_INSERT)
-				action->targetList = expand_insert_targetlist(action->targetList,
+				action->targetList = expand_insert_targetlist(root,
+															  action->targetList,
 															  target_relation);
 			else if (action->commandType == CMD_UPDATE)
 				action->updateColnos =
 					extract_update_targetlist_colnos(action->targetList);
 
 			/*
-			 * Add resjunk entries for any Vars used in each action's
-			 * targetlist and WHEN condition that belong to relations other
-			 * than target.  Note that aggregates, window functions and
-			 * placeholder vars are not possible anywhere in MERGE's WHEN
-			 * clauses.  (PHVs may be added later, but they don't concern us
-			 * here.)
+			 * Add resjunk entries for any Vars and PlaceHolderVars used in
+			 * each action's targetlist and WHEN condition that belong to
+			 * relations other than the target.  We don't expect to see any
+			 * aggregates or window functions here.
 			 */
 			vars = pull_var_clause((Node *)
 								   list_concat_copy((List *) action->qual,
 													action->targetList),
-								   0);
+								   PVC_INCLUDE_PLACEHOLDERS);
 			foreach(l2, vars)
 			{
 				Var		   *var = (Var *) lfirst(l2);
@@ -227,6 +228,7 @@ preprocess_targetlist(PlannerInfo *root)
 		if (rc->allMarkTypes & ~(1 << ROW_MARK_COPY))
 		{
 			RangeTblEntry *rte = rt_fetch(rc->rti, range_table);
+
 			if (IsYBRelationById(rte->relid))
 			{
 				/* Need to fetch YB TID */
@@ -381,7 +383,7 @@ extract_update_targetlist_colnos(List *tlist)
  * but now this code is only applied to INSERT targetlists.
  */
 static List *
-expand_insert_targetlist(List *tlist, Relation rel)
+expand_insert_targetlist(PlannerInfo *root, List *tlist, Relation rel)
 {
 	List	   *new_tlist = NIL;
 	ListCell   *tlist_item;
@@ -410,6 +412,7 @@ expand_insert_targetlist(List *tlist, Relation rel)
 		for (int i = 0; i < tlist_length; ++i)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, tlist_item);
+
 			if (tle && tle->resno < 1)
 			{
 				new_tlist = lappend(new_tlist, tle);
@@ -456,26 +459,18 @@ expand_insert_targetlist(List *tlist, Relation rel)
 			 * confuse code comparing the finished plan to the target
 			 * relation, however.
 			 */
-			Oid			atttype = att_tup->atttypid;
-			Oid			attcollation = att_tup->attcollation;
 			Node	   *new_expr;
 
 			if (!att_tup->attisdropped)
 			{
-				new_expr = (Node *) makeConst(atttype,
-											  -1,
-											  attcollation,
-											  att_tup->attlen,
-											  (Datum) 0,
-											  true, /* isnull */
-											  att_tup->attbyval);
-				new_expr = coerce_to_domain(new_expr,
-											InvalidOid, -1,
-											atttype,
-											COERCION_IMPLICIT,
-											COERCE_IMPLICIT_CAST,
-											-1,
-											false);
+				new_expr = coerce_null_to_domain(att_tup->atttypid,
+												 att_tup->atttypmod,
+												 att_tup->attcollation,
+												 att_tup->attlen,
+												 att_tup->attbyval);
+				/* Must run expression preprocessing on any non-const nodes */
+				if (!IsA(new_expr, Const))
+					new_expr = eval_const_expressions(root, new_expr);
 			}
 			else
 			{
@@ -561,6 +556,7 @@ expand_delete_targetlist(List *tlist, Index result_relation, Relation rel)
 		for (int i = 0; i < tlist_length; ++i)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, tlist_item);
+
 			if (tle && tle->resno < 1)
 			{
 				new_tlist = lappend(new_tlist, tle);
@@ -589,9 +585,14 @@ expand_delete_targetlist(List *tlist, Index result_relation, Relation rel)
 
 		if (new_tle == NULL)
 		{
-			// This case is added only for DELETE from YugaByte table with RETURNING clause.
-			Node *new_expr;
-			if (att_tup->attisdropped) {
+			/*
+			 * This case is added only for DELETE from YugaByte table with
+			 * RETURNING clause.
+			 */
+			Node	   *new_expr;
+
+			if (att_tup->attisdropped)
+			{
 				/* Insert NULL for dropped column */
 				new_expr = (Node *) makeConst(INT4OID,
 											  -1,
@@ -603,7 +604,7 @@ expand_delete_targetlist(List *tlist, Index result_relation, Relation rel)
 			}
 			else
 			{
-				// Query all attribute in the YugaByte relation.
+				/* Query all attribute in the YugaByte relation. */
 				new_expr = (Node *) makeVar(result_relation,
 											attrno,
 											att_tup->atttypid,

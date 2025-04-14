@@ -1798,26 +1798,22 @@ class QLTransactionTestWithSegmentRollover : public QLTransactionTest {
   int NumTablets() override { return 1; }
 };
 
-Status GetLogSegmentsForTable(
-    const std::unique_ptr<yb::MiniCluster>& cluster, const std::string& table_id,
-    std::unordered_map<std::string, log::SegmentSequence>* tablet_peer_log_segments) {
-  auto peers = ListTabletPeers(cluster.get(), ListPeersFilter::kAll);
+Result<std::unordered_map<std::string, log::SegmentSequence>> GetLogSegmentsForTable(
+    const std::unique_ptr<yb::MiniCluster>& cluster, const std::string& table_id) {
+  std::unordered_map<std::string, log::SegmentSequence> result;
+  auto peers = ListTableTabletPeers(cluster.get(), table_id);
   for (const auto& peer : peers) {
-    if (peer->tablet_metadata()->table_id() != table_id) {
-      continue;
-    }
     log::SegmentSequence segments;
     RETURN_NOT_OK(peer->log()->GetSegmentsSnapshot(&segments));
-    tablet_peer_log_segments->emplace(peer->permanent_uuid(), std::move(segments));
+    CHECK(result.emplace(peer->permanent_uuid(), std::move(segments)).second);
   }
-  return Status::OK();
+  return result;
 }
 
 Status VerifyMinStartTimeInLogSegmentFooter(
     const std::unique_ptr<yb::MiniCluster>& cluster, const std::string& table_id,
     const std::optional<uint64_t> expected_min_start_time) {
-  std::unordered_map<std::string, log::SegmentSequence> tablet_peer_log_segments;
-  RETURN_NOT_OK(GetLogSegmentsForTable(cluster, table_id, &tablet_peer_log_segments));
+  auto tablet_peer_log_segments = VERIFY_RESULT(GetLogSegmentsForTable(cluster, table_id));
   for (const auto& [peer_id, segments] : tablet_peer_log_segments) {
     SCHECK_GT(
         segments.size(), 1, IllegalState,
@@ -1895,17 +1891,27 @@ TEST_F_EX(
 
 TEST_F_EX(
     QLTransactionTest, LogSegmentRolloverWithMultipleTxns, QLTransactionTestWithSegmentRollover) {
-  auto table_name = table_->name();
-  int num_txns = 10;
-  for (int i = 0; i != num_txns; i++) {
+  constexpr int kMinTransactions = 10;
+  for (int i = 0;; i++) {
     auto txn = CreateTransaction();
     ASSERT_OK(WriteRows(CreateSession(txn)));
     ASSERT_OK(txn->CommitFuture().get());
+    if (i >= kMinTransactions) {
+      auto tablet_peer_log_segments = ASSERT_RESULT(GetLogSegmentsForTable(
+          cluster_, table_->name().table_id()));
+      auto count = std::ranges::count_if(tablet_peer_log_segments, [](const auto& p) {
+        return p.second.size() <= 1;
+      });
+      if (count == 0) {
+        break;
+      }
+    }
   }
 
   // Verify min_start_time_running_txns in the closed segment's footer is always >= kInitial and
   // never Invalid.
-  ASSERT_OK(VerifyMinStartTimeInLogSegmentFooter(cluster_, table_name.table_id(), std::nullopt));
+  ASSERT_OK(VerifyMinStartTimeInLogSegmentFooter(
+      cluster_, table_->name().table_id(), std::nullopt));
 }
 
 class QLTransactionTestSingleTS : public QLTransactionTest {

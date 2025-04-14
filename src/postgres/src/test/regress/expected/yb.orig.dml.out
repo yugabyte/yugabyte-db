@@ -1,0 +1,119 @@
+--
+-- Yugabyte-owned file for testing DML queries that do not fall into more
+-- specific buckets (yb_dml_*.sql).
+--
+-- GH-22967: Test that a Value Scan fed by a Sub Plan does not cause an INSERT
+-- to crash. The query relies on the fact the EXISTS .. IN expression does not
+-- get constant-folded and is evaluated in its own Sub Plan.
+CREATE TABLE GH_22967 (k INT4 PRIMARY KEY);
+EXPLAIN (COSTS OFF) INSERT INTO GH_22967 VALUES ((EXISTS(SELECT 1) in (SELECT true))::INT4), (-10);
+           QUERY PLAN            
+---------------------------------
+ Insert on gh_22967
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT*
+   ->  Values Scan on "*VALUES*"
+         SubPlan 2
+           ->  Result *RESULT*_1
+(6 rows)
+
+INSERT INTO GH_22967 VALUES ((EXISTS(SELECT 1) in (SELECT true))::INT4), (-10);
+-- Test that foreign key constraints are enforced
+CREATE TABLE customers (
+    customer_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL
+);
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    order_date DATE NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    customer_id INTEGER NOT NULL,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);
+INSERT INTO customers (name, email) VALUES
+('Alice Johnson', 'alice@example.com'),
+('Bob Smith', 'bob@example.com');
+INSERT INTO orders (order_date, amount, customer_id) VALUES
+('2023-10-01', 250.00, 1),
+('2023-10-02', 450.50, 2);
+-- Attempt to insert an order with a non-existent customer
+INSERT INTO orders (order_date, amount, customer_id) VALUES
+('2023-10-03', 300.00, 3);
+ERROR:  insert or update on table "orders" violates foreign key constraint "orders_customer_id_fkey"
+DETAIL:  Key (customer_id)=(3) is not present in table "customers".
+-- Attempt to delete a customer that still has orders
+DELETE FROM customers WHERE customer_id = 2;
+ERROR:  update or delete on table "customers" violates foreign key constraint "orders_customer_id_fkey" on table "orders"
+DETAIL:  Key (customer_id)=(2) is still referenced from table "orders".
+-- Test cascading deletes
+DROP TABLE orders;
+CREATE TABLE orders_cascade (
+    order_id SERIAL PRIMARY KEY,
+    order_date DATE NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    customer_id INTEGER NOT NULL,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE
+);
+INSERT INTO orders_cascade (order_date, amount, customer_id) VALUES
+('2023-10-01', 250.00, 1),
+('2023-10-02', 450.50, 2);
+DELETE FROM customers WHERE customer_id = 2;
+SELECT * FROM orders_cascade;
+ order_id | order_date | amount | customer_id 
+----------+------------+--------+-------------
+        1 | 10-01-2023 | 250.00 |           1
+(1 row)
+
+-- Test adding foreign key constraint using ALTER TABLE ADD CONSTRAINT
+CREATE TABLE customers_test (
+    customer_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL
+);
+CREATE TABLE orders_test (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INTEGER,
+    name VARCHAR(100) NOT NULL
+);
+-- Add foreign key constraint using ALTER TABLE
+ALTER TABLE orders_test
+ADD CONSTRAINT fk_orders_customers
+FOREIGN KEY (customer_id) REFERENCES customers_test(customer_id);
+-- Insert valid data
+INSERT INTO customers_test (name) VALUES ('Customer 1'), ('Customer 2');
+INSERT INTO orders_test (customer_id, name) VALUES (1, 'Order 1'), (2, 'Order 2');
+-- Attempt to insert a child with a non-existent customer
+INSERT INTO orders_test (customer_id, name) VALUES (3, 'Order 3');
+ERROR:  insert or update on table "orders_test" violates foreign key constraint "fk_orders_customers"
+DETAIL:  Key (customer_id)=(3) is not present in table "customers_test".
+-- Attempt to delete a customer that still has orders
+DELETE FROM customers_test WHERE customer_id = 2;
+ERROR:  update or delete on table "customers_test" violates foreign key constraint "fk_orders_customers" on table "orders_test"
+DETAIL:  Key (customer_id)=(2) is still referenced from table "orders_test".
+-- Test that invalidation of the foreign key cache works
+ALTER TABLE orders_test DROP CONSTRAINT fk_orders_customers;
+INSERT INTO orders_test (customer_id, name) VALUES (3, 'Order 3');
+-- GH-26464: Test deleting rows across multiple partitions of a partitioned table
+CREATE TABLE base (k INT PRIMARY KEY, v INT) PARTITION BY RANGE (k);
+CREATE TABLE part1 PARTITION OF base FOR VALUES FROM (11) TO (21);
+CREATE TABLE part2 PARTITION OF base FOR VALUES FROM (21) TO (31);
+CREATE TABLE part3 PARTITION OF base FOR VALUES FROM (31) TO (41);
+CREATE TABLE part4 (k INT PRIMARY KEY, v INT) PARTITION BY RANGE (k);
+CREATE TABLE part4a PARTITION OF part4 FOR VALUES FROM (41) TO (46);
+CREATE TABLE part4b PARTITION OF part4 FOR VALUES FROM (46) TO (51);
+ALTER TABLE base ATTACH PARTITION part4 FOR VALUES FROM (41) TO (51);
+CREATE INDEX ON part3 (v);
+CREATE INDEX ON part4b (v);
+INSERT INTO base VALUES (11, 11), (22, 22), (23, 23), (33, 33), (34, 44), (44, 44), (47 ,47);
+-- Two partitions that individually satisfy single shard constraints.
+DELETE FROM base WHERE k IN (11, 22);
+-- One satisfies the single shard constraint, the other does not.
+DELETE FROM base WHERE k IN (23, 33);
+-- Partitions that are on different levels of the tree, some of which satisfy
+-- single shard constraints.
+DELETE FROM base WHERE k IN (34, 44, 47);
+SELECT * FROM base ORDER BY k;
+ k | v 
+---+---
+(0 rows)
+

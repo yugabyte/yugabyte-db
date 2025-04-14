@@ -409,7 +409,7 @@ Status::Status(StatePtr state)
     : state_(std::move(state)) {
 }
 
-Status::Status(YBCStatusStruct* state, AddRef add_ref)
+Status::Status(YbcStatusStruct* state, AddRef add_ref)
     : state_(pointer_cast<State*>(state), add_ref) {
 }
 
@@ -430,15 +430,15 @@ Status::Status(Code code,
     : Status(code, file_name, line_number, msg, error.Message(), error, file_name_len) {
 }
 
-YBCStatusStruct* Status::RetainStruct() const {
+YbcStatusStruct* Status::RetainStruct() const {
   if (state_) {
     intrusive_ptr_add_ref(state_.get());
   }
-  return pointer_cast<YBCStatusStruct*>(state_.get());
+  return pointer_cast<YbcStatusStruct*>(state_.get());
 }
 
-YBCStatusStruct* Status::DetachStruct() {
-  return pointer_cast<YBCStatusStruct*>(state_.detach());
+YbcStatusStruct* Status::DetachStruct() {
+  return pointer_cast<YbcStatusStruct*>(state_.detach());
 }
 
 const char* Status::CodeAsCString() const {

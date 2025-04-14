@@ -35,6 +35,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/catcache.h"
 
@@ -922,7 +923,7 @@ get_relation_constraint_attnos(Relation rel, const char *conname,
 	HeapTuple	tuple;
 	SysScanDesc scan;
 	ScanKeyData skey[3];
-	Oid relid = RelationGetRelid(rel);
+	Oid			relid = RelationGetRelid(rel);
 
 	/* Set *constraintOid, to avoid complaints about uninitialized vars */
 	*constraintOid = InvalidOid;
@@ -1122,14 +1123,17 @@ get_primary_key_attnos(Oid relid, bool deferrableOk, Oid *constraintOid)
 	/* Set *constraintOid, to avoid complaints about uninitialized vars */
 	*constraintOid = InvalidOid;
 
-	/* 
-	 * YB change: Search the catcache here to avoid having to go to master. 
+	/*
+	 * YB change: Search the catcache here to avoid having to go to master.
 	 * This will trigger a master RPC if this is the first time we're looking
 	 * up the primary key for this relation.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		iterator = YbCatCListIteratorBegin(SearchSysCacheList1(YBCONSTRAINTRELIDTYPIDNAME, relid));
-	} else {
+	}
+	else
+	{
 		/* Scan pg_constraint for constraints of the target rel */
 		pg_constraint = table_open(ConstraintRelationId, AccessShareLock);
 
@@ -1165,8 +1169,8 @@ get_primary_key_attnos(Oid relid, bool deferrableOk, Oid *constraintOid)
 			break;
 
 		/* Extract the conkey array, ie, attnums of PK's columns */
-		adatum = IsYugaByteEnabled() 
-			? SysCacheGetAttr(CONSTROID, tuple, Anum_pg_constraint_conkey, &isNull) 
+		adatum = IsYugaByteEnabled()
+			? SysCacheGetAttr(CONSTROID, tuple, Anum_pg_constraint_conkey, &isNull)
 			: heap_getattr(tuple, Anum_pg_constraint_conkey, RelationGetDescr(pg_constraint), &isNull);
 		if (isNull)
 			elog(ERROR, "null conkey for constraint %u",
@@ -1194,7 +1198,8 @@ get_primary_key_attnos(Oid relid, bool deferrableOk, Oid *constraintOid)
 
 	if (IsYugaByteEnabled())
 		YbCatCListIteratorFree(&iterator);
-	else {
+	else
+	{
 		systable_endscan(scan);
 
 		table_close(pg_constraint, AccessShareLock);

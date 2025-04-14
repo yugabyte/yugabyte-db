@@ -23,8 +23,9 @@
 #define YB_VIRTUAL_WAL_CLIENT_TYPEDEFS_H
 
 #include "c.h"
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-typedef YBCPgRowMessage YBCPgVirtualWalRecord;
+typedef YbcPgRowMessage YbVirtualWalRecord;
 
 #endif

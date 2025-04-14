@@ -27,7 +27,6 @@
 
 #include "access/gin_private.h"
 #include "utils/palloc.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 typedef struct YbginScanOpaqueData
@@ -38,7 +37,7 @@ typedef struct YbginScanOpaqueData
 	 */
 	GinScanOpaqueData gin_scan_opaque;
 	/* The handle for the internal YB Select statement. */
-	YBCPgStatement handle;
+	YbcPgStatement handle;
 	/*
 	 * Whether the scan was executed so that later gettuple calls just fetch the
 	 * cached rows.

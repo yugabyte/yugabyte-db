@@ -24,20 +24,28 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/client/client.h"
+#include "yb/client/transaction_rpc.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
+
 #include "yb/rpc/rpc.h"
+
 #include "yb/server/clock.h"
+
 #include "yb/tserver/tserver_service.fwd.h"
 #include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
-#include "yb/client/transaction_rpc.h"
 
 using namespace std::placeholders;
 using namespace std::literals;
@@ -64,6 +72,7 @@ struct WaitingTransactionData {
   std::shared_ptr<ConflictDataManager> blockers;
   StatusTabletDataPtr status_tablet_data;
   HybridTime wait_start_time;
+  boost::optional<PgSessionRequestVersion> pg_session_req_version;
   rpc::Rpcs::Handle rpc_handle;
 };
 
@@ -95,6 +104,9 @@ void AttachWaitingTransaction(
   txn->set_transaction_id(data.id.data(), data.id.size());
   txn->set_wait_start_time(data.wait_start_time.ToUint64());
   txn->set_request_id(data.request_id);
+  if (data.pg_session_req_version) {
+    txn->set_pg_session_req_version(*data.pg_session_req_version);
+  }
   for (const auto& blocker : data.blockers->RemainingTransactions()) {
     auto* blocking_txn = txn->add_blocking_transaction();
     blocking_txn->set_transaction_id(blocker.id.data(), blocker.id.size());
@@ -117,10 +129,11 @@ class StatusTabletData : public std::enable_shared_from_this<StatusTabletData> {
  public:
   explicit StatusTabletData(
       rpc::Rpcs* rpcs, client::YBClient* client, const TabletId& status_tablet_id,
-      const std::string& tserver_uuid, ThreadPoolToken* thread_pool_token) :
+      const std::string& tserver_uuid, ThreadPoolToken* thread_pool_token,
+      const server::ClockPtr clock) :
         rpcs_(rpcs), client_(client), status_tablet_id_(status_tablet_id),
         rpc_handle_(rpcs_->InvalidHandle()), tserver_uuid_(tserver_uuid),
-        thread_pool_token_(DCHECK_NOTNULL(thread_pool_token)) {}
+        thread_pool_token_(DCHECK_NOTNULL(thread_pool_token)), clock_(clock) {}
 
   void AddWaitingTransactionData(const std::shared_ptr<WaitingTransactionData>& waiter) {
     UniqueLock<decltype(mutex_)> tablet_lock(mutex_);
@@ -161,35 +174,32 @@ class StatusTabletData : public std::enable_shared_from_this<StatusTabletData> {
         std::bind(&StatusTabletData::SendPartialUpdate, shared_from(this), waiter, now));
   }
 
-  void SendFullUpdate(HybridTime now) {
+    void SendFullUpdate(HybridTime now) EXCLUDES(mutex_) {
     tserver::UpdateTransactionWaitingForStatusRequestPB req;
     UniqueLock<decltype(mutex_)> l(mutex_);
 
-    auto has_pending_request = rpc_handle_ != rpcs_->InvalidHandle();
+    if (rpc_handle_ != rpcs_->InvalidHandle()) {
+      VLOG(4)
+          << "Not sending UpdateTransactionWaitingForStatusRequestPB for"
+          << " status_tablet: " << status_tablet_id_
+          << " as an rpc seems to be in flight.";
+      return;
+    }
 
+    pending_updates_ = false;
     // Attach live waiters to req and remove any waiters which are no longer live.
-    EraseIf([&req, has_pending_request](const auto& item) {
+    EraseIf([&req](const auto& item) {
       if (auto blocked = item.lock()) {
-        if (PREDICT_TRUE(!has_pending_request)) {
-          AttachWaitingTransaction(*blocked, &req);
-        }
+        AttachWaitingTransaction(*blocked, &req);
         return false;
       }
       return true;
     }, &waiters);
-
-    if (req.waiting_transactions_size() == 0) {
-      VLOG(4)
-          << "Not sending UpdateTransactionWaitingForStatusRequestPB for"
-          << " status_tablet: " << status_tablet_id_
-          << " waiting_transactions_size: " << req.waiting_transactions_size();
-      return;
-    }
+    // Send the rpc even if req.waiting_transactions_size() == 0 so that the obsolete edges at the
+    // deadlock detector get pruned early.
 
     // Initiating an rpc call within the scope of the mutex (post reading latest status tablet data)
     // ensures that this full update contains all data from partial updates that it follows.
-    DCHECK(!has_pending_request)
-        << "req should only have waiting transactions if there is no pending request.";
     req.set_tablet_id(status_tablet_id_);
     req.set_propagated_hybrid_time(now.ToUint64());
     req.set_tserver_uuid(tserver_uuid_);
@@ -204,6 +214,11 @@ class StatusTabletData : public std::enable_shared_from_this<StatusTabletData> {
             AtomicFlagSleepMs(&FLAGS_TEST_inject_process_update_resp_delay_ms);
             UniqueLock<decltype(mutex_)> l(shared_this->mutex_);
             shared_this->rpcs_->Unregister(&shared_this->rpc_handle_);
+            if (shared_this->pending_updates_) {
+              WARN_NOT_OK(
+                  shared_this->SendFullUpdateAsync(shared_this->clock_->Now()),
+                  "Failed to send pending updates that prune old wait-for advisory lock edges.");
+            }
           }),
         &rpc_handle_);
     if (did_send) {
@@ -220,6 +235,14 @@ class StatusTabletData : public std::enable_shared_from_this<StatusTabletData> {
         std::bind(&StatusTabletData::SendFullUpdate, shared_from(this), now));
   }
 
+  Status RefreshBlockerDataForStatusTablet(const HybridTime& now) {
+    {
+      UniqueLock l(mutex_);
+      pending_updates_ = true;
+    }
+    return SendFullUpdateAsync(now);
+  }
+
  private:
   rpc::Rpcs* const rpcs_;
   client::YBClient* client_;
@@ -229,6 +252,8 @@ class StatusTabletData : public std::enable_shared_from_this<StatusTabletData> {
   rpc::Rpcs::Handle rpc_handle_ GUARDED_BY(mutex_);
   const std::string tserver_uuid_;
   ThreadPoolToken* thread_pool_token_;
+  const server::ClockPtr clock_;
+  bool pending_updates_ GUARDED_BY(mutex_) = false;
 };
 
 class LocalWaitingTxnRegistry::Impl {
@@ -251,9 +276,10 @@ class LocalWaitingTxnRegistry::Impl {
         const TransactionId& waiting,
         int64_t request_id,
         std::shared_ptr<ConflictDataManager> blockers,
-        const TabletId& status_tablet) override {
+        const TabletId& status_tablet,
+        boost::optional<PgSessionRequestVersion> pg_session_req_version) override {
       return registry_->RegisterWaitingFor(
-          waiting, request_id, std::move(blockers), status_tablet, this);
+          waiting, request_id, std::move(blockers), status_tablet, pg_session_req_version, this);
     }
 
     Status RegisterSingleShardWaiter(
@@ -272,6 +298,14 @@ class LocalWaitingTxnRegistry::Impl {
 
     int64 GetDataUseCount() const override {
       return blocked_data_.use_count();
+    }
+
+    Status PruneInactiveBlockerData(const TabletId& status_tablet) override {
+      // Reset blocked_data_ preserving the status tablet data shared ptr so as to schedule a full
+      // update that would exclude the now inactive blocking info.
+      auto status_tablet_data = blocked_data_->status_tablet_data;
+      blocked_data_.reset();
+      return registry_->RefreshBlockerDataForStatusTablet(status_tablet);
     }
 
    private:
@@ -359,7 +393,7 @@ class LocalWaitingTxnRegistry::Impl {
   std::shared_ptr<StatusTabletData> NewStatusTabletData(const TabletId& status_tablet_id,
                                                         ThreadPoolToken* thread_pool_token) {
     return std::make_shared<StatusTabletData>(
-        &rpcs_, &client(), status_tablet_id, tserver_uuid_, thread_pool_token);
+        &rpcs_, &client(), status_tablet_id, tserver_uuid_, thread_pool_token, clock_);
   }
 
   Result<std::shared_ptr<StatusTabletData>> GetOrAdd(const TabletId& status_tablet_id) {
@@ -402,7 +436,9 @@ class LocalWaitingTxnRegistry::Impl {
   Status RegisterWaitingFor(
       const TransactionId& waiting, int64_t request_id,
       std::shared_ptr<ConflictDataManager> blockers,
-      const TabletId& status_tablet_id, WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
+      const TabletId& status_tablet_id,
+      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
     DCHECK(!status_tablet_id.empty());
     auto shared_tablet_data = VERIFY_RESULT(GetOrAdd(status_tablet_id));
 
@@ -412,6 +448,7 @@ class LocalWaitingTxnRegistry::Impl {
       .blockers = std::move(blockers),
       .status_tablet_data = shared_tablet_data,
       .wait_start_time = clock_->Now(),
+      .pg_session_req_version = pg_session_req_version,
       .rpc_handle = rpcs_.InvalidHandle(),
     });
 
@@ -450,6 +487,18 @@ class LocalWaitingTxnRegistry::Impl {
     // reference to the single shard waiter. That way, we'll be able to track all active single
     // shard waiters at the local waiting transaction registry.
     wrapper->SetWaitingSingleShardTxnData(std::move(txn_data));
+    return Status::OK();
+  }
+
+  Status RefreshBlockerDataForStatusTablet(const TabletId& status_tablet_id) {
+    UniqueLock l(mutex_);
+    auto it = status_tablets_.find(status_tablet_id);
+    if (shutting_down_ || it == status_tablets_.end()) {
+      return Status::OK();
+    }
+    if (auto data = it->second.status_tablet_data.lock()) {
+      return data->RefreshBlockerDataForStatusTablet(clock_->Now());
+    }
     return Status::OK();
   }
 

@@ -83,6 +83,11 @@ public class TestPgTimeout extends BasePgSQLTest {
       }
     }
     assertEquals(timeoutEncountered, true);
+
+    if (isTestRunningWithConnectionManager()) {
+      query = "SET STATEMENT_TIMEOUT=0";
+      statement.execute(query);
+    }
     LOG.info("Done with the test");
   }
 }

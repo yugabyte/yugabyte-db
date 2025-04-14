@@ -20,7 +20,7 @@ import {
   abortTaskResponse,
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure
+  fetchCustomerTasksFailure,
 } from '../../../actions/tasks';
 import {
   fetchRunTimeConfigs,
@@ -101,6 +101,9 @@ const mapDispatchToProps = (dispatch) => {
     showDeleteUniverseModal: () => {
       dispatch(openDialog('deleteUniverseModal'));
     },
+    showForceDeleteUniverseModal: () => {
+      dispatch(openDialog('forceDeleteUniverseModal'));
+    },
     showToggleUniverseStateModal: () => {
       dispatch(openDialog('toggleUniverseStateForm'));
     },
@@ -151,6 +154,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     showConnectionPoolModal: () => {
       dispatch(openDialog('enableConnectionPooling'));
+    },
+    showInstallNodeAgentModal: () => {
+      dispatch(openDialog('installNodeAgentModal'));
     },
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {
@@ -239,7 +245,7 @@ function mapStateToProps(state) {
           const softwareVersions = state.customer?.dbVersionsWithMetadata;
           if (isCurrentVersionStable) {
             supportedSoftwareVersions =
-              softwareVersions
+              Object.keys(softwareVersions)
                 ?.filter((version) => isVersionStable(version))
                 ?.toSorted((versionA, versionB) =>
                   compareYBSoftwareVersions({
@@ -253,7 +259,7 @@ function mapStateToProps(state) {
                 ) ?? [];
           } else {
             supportedSoftwareVersions =
-              softwareVersions
+              Object.keys(softwareVersions)
                 ?.filter((version) => !isVersionStable(version))
                 ?.toSorted((versionA, versionB) =>
                   compareYBSoftwareVersions({

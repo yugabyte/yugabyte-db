@@ -191,4 +191,9 @@ message TabletLockInfoPB {
   // Leader term of the peer populating the response. Used to filter out duplicate responses for
   // the same tablet and ensure we pick the most recent results.
   optional uint64 term = 5;
+
+  // Indicates whether the tablet is associated with an advisory lock table.
+  // Advisory lock table has YQL table type and require different handling
+  // compared to regular PGSQL table.
+  optional bool is_advisory_lock_tablet = 6;
 }

@@ -145,6 +145,11 @@ YBTableCreator& YBTableCreator::xcluster_source_table_id(const TableId& source_t
   return *this;
 }
 
+YBTableCreator& YBTableCreator::xcluster_backfill_hybrid_time(uint64_t backfill_hybrid_time) {
+  xcluster_backfill_hybrid_time_ = backfill_hybrid_time;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   schema_ = schema;
   return *this;
@@ -193,8 +198,8 @@ YBTableCreator& YBTableCreator::set_range_partition_columns(
   return *this;
 }
 
-YBTableCreator& YBTableCreator::replication_info(const master::ReplicationInfoPB& ri) {
-  replication_info_ = std::make_unique<master::ReplicationInfoPB>(ri);
+YBTableCreator& YBTableCreator::replication_info(const ReplicationInfoPB& ri) {
+  replication_info_ = std::make_unique<ReplicationInfoPB>(ri);
   return *this;
 }
 
@@ -321,7 +326,12 @@ Status YBTableCreator::Create() {
   }
 
   if (!xcluster_source_table_id_.empty()) {
-    req.set_xcluster_source_table_id(xcluster_source_table_id_);
+    req.mutable_xcluster_table_info()->set_xcluster_source_table_id(xcluster_source_table_id_);
+  }
+
+  if (xcluster_backfill_hybrid_time_) {
+    req.mutable_xcluster_table_info()->set_xcluster_backfill_hybrid_time(
+        xcluster_backfill_hybrid_time_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or

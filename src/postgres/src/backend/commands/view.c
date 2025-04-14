@@ -35,7 +35,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/catalog.h"
 #include "pg_yb_utils.h"
 
@@ -113,8 +113,9 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		!IsBootstrapProcessingMode() &&
 		YbIsCatalogNamespaceByName(relation->schemaname))
 	{
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("system views cannot be created outside of YSQL upgrade")));
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("system views cannot be created outside of YSQL upgrade")));
 	}
 
 	if (OidIsValid(viewOid) && replace)

@@ -15,6 +15,8 @@
 
 #include <memory>
 
+#include "yb/gutil/casts.h"
+
 namespace yb {
 
 // A utility class that owns a cloneable pointer.
@@ -102,5 +104,10 @@ class clone_ptr {
  private:
   T* t_;
 };
+
+template <class U, class T>
+clone_ptr<U> down_cast(clone_ptr<T>&& t) {
+  return clone_ptr<U>(yb::down_cast<U*>(t.release()));
+}
 
 } // namespace yb

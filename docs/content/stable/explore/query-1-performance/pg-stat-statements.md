@@ -11,41 +11,41 @@ menu:
 type: docs
 ---
 
-<!-- {{<tabs>}}
+{{<tabs>}}
 {{<tabitem href="../pg-stat-statements/" text="YSQL" icon="postgres" active="true">}}
 {{<tabitem href="../ycql-stat-statements/" text="YCQL" icon="cassandra" >}}
-{{</tabs>}} -->
+{{</tabs>}}
 
 Databases can be resource-intensive, consuming a lot of memory CPU, IO, and network resources. Optimizing your SQL can be very helpful in minimizing resource utilization. The `pg_stat_statements` module helps you track planning and execution statistics for all the SQL statements executed by a server. It is installed by default.
 
 The columns of the `pg_stat_statements` view are described in the following table.
 
-| Column            |       Type       | Description |
-| :----             | :---             | :---        |
-userid              | oid              | OID of user who executed the statement |
-dbid                | oid              | OID of database in which the statement was executed |
-queryid             | bigint           | Internal hash code, computed from the statement's parse tree |
-query               | text             | Text of a representative statement |
-calls               | bigint           | Number of times executed |
-total_time          | double precision | Total time spent in the statement, in milliseconds |
-min_time            | double precision | Minimum time spent in the statement, in milliseconds |
-max_time            | double precision | Maximum time spent in the statement, in milliseconds |
-mean_time           | double precision | Mean time spent in the statement, in milliseconds |
-stddev_time         | double precision | Population standard deviation of time spent in the statement, in milliseconds |
-rows                | bigint           | Total number of rows retrieved or affected by the statement |
-shared_blks_hit     | bigint           | Total number of shared block cache hits by the statement |
-shared_blks_read    | bigint           | Total number of shared blocks read by the statement |
-shared_blks_dirtied | bigint           | Total number of shared blocks dirtied by the statement |
-shared_blks_written | bigint           | Total number of shared blocks written by the statement |
-local_blks_hit      | bigint           | Total number of local block cache hits by the statement |
-local_blks_read     | bigint           | Total number of local blocks read by the statement |
-local_blks_dirtied  | bigint           | Total number of local blocks dirtied by the statement |
-local_blks_written  | bigint           | Total number of local blocks written by the statement |
-temp_blks_read      | bigint           | Total number of temp blocks read by the statement |
-temp_blks_written   | bigint           | Total number of temp blocks written by the statement |
-blk_read_time       | double precision | Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
-blk_write_time      | double precision | Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
-yb_latency_histogram | jsonb           | List of key value pairs where key is the latency range and value is the count of times a query was executed |
+|        Column        |       Type       |                                                  Description                                                   |
+| :------------------- | :--------------- | :------------------------------------------------------------------------------------------------------------- |
+| userid              | oid              | OID of user who executed the statement |
+| dbid                | oid              | OID of database in which the statement was executed |
+| queryid             | bigint           | Internal hash code, computed from the statement's parse tree |
+| query               | text             | Text of a representative statement |
+| calls               | bigint           | Number of times executed |
+| total_time          | double precision | Total time spent in the statement, in milliseconds |
+| min_time            | double precision | Minimum time spent in the statement, in milliseconds |
+| max_time            | double precision | Maximum time spent in the statement, in milliseconds |
+| mean_time           | double precision | Mean time spent in the statement, in milliseconds |
+| stddev_time         | double precision | Population standard deviation of time spent in the statement, in milliseconds |
+| rows                | bigint           | Total number of rows retrieved or affected by the statement |
+| shared_blks_hit     | bigint           | Not populated in YugabyteDB                                                                                    |
+| shared_blks_read    | bigint           | Not populated in YugabyteDB                                                                                    |
+| shared_blks_dirtied | bigint           | Not populated in YugabyteDB                                                                                    |
+| shared_blks_written | bigint           | Not populated in YugabyteDB                                                                                    |
+| local_blks_hit      | bigint           | Total number of local block cache hits by the statement |
+| local_blks_read     | bigint           | Total number of local blocks read by the statement |
+| local_blks_dirtied  | bigint           | Total number of local blocks dirtied by the statement |
+| local_blks_written  | bigint           | Total number of local blocks written by the statement |
+| temp_blks_read      | bigint           | Total number of temp blocks read by the statement |
+| temp_blks_written   | bigint           | Total number of temp blocks written by the statement |
+| blk_read_time       | double precision | Not populated in YugabyteDB                                                                                    |
+| blk_write_time      | double precision | Not populated in YugabyteDB                                                                                    |
+| yb_latency_histogram | jsonb           | List of key value pairs where key is the latency range and value is the count of times a query was executed |
 
 ## Configuration parameters
 
@@ -454,4 +454,4 @@ yugabyte=# select pg_stat_statements_reset();
 ## Learn more
 
 - [Latency histogram and P99 latencies](../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
-<!-- - [Active Session History](../../observability/active-session-history) -->
+- [Active Session History](../../observability/active-session-history)

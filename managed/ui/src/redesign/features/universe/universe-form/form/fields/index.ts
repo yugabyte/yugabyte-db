@@ -31,7 +31,6 @@ export * from './UniverseNameField/UniverseNameField';
 export * from './VolumeInfoField/VolumeInfoField';
 export * from './VolumeInfoField/StorageTypeField';
 export * from './YBCField/YBCField';
-export * from './YEDISField/YEDISField';
 export * from './YCQLField/YCQLField';
 export * from './YSQLField/YSQLField';
 export * from './UserTagsField/UserTagsField';

@@ -26,6 +26,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/doc_ttl_util.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value_type.h"
@@ -72,8 +73,7 @@ struct DocWriteBatch::LazyIterator {
     if (!iterator) {
       iterator = CreateIntentAwareIterator(
           *doc_db,
-          BloomFilterMode::USE_BLOOM_FILTER,
-          doc_path->encoded_doc_key().AsSlice(),
+          BloomFilterOptions::Fixed(doc_path->encoded_doc_key().AsSlice()),
           query_id,
           TransactionOperationContext(),
           *read_operation_data);
@@ -448,12 +448,17 @@ Status DocWriteBatch::SetPrimitiveInternal(
       });
       kv_pair_ptr = &put_batch_.back();
     }
+
     auto& encoded_value = kv_pair_ptr->value;
     control_fields.AppendEncoded(&encoded_value);
     size_t prefix_len = encoded_value.size();
 
     if (value.encoded_value()) {
+      // TODO(AR) This assignment completely neglects control_fields and prefix_len. It looks very
+      // unsafe and could be a bug.
       encoded_value.assign(value.encoded_value()->cdata(), value.encoded_value()->size());
+    } else if (value.vector_value()) {
+      value.vector_value()->EncodeTo(&encoded_value);
     } else {
       dockv::AppendEncodedValue(value.value_pb(), &encoded_value);
       if (value.custom_value_type() != ValueEntryType::kInvalid) {
@@ -670,10 +675,9 @@ Status DocWriteBatch::ReplaceRedisInList(
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
   key_prefix_ = sub_doc_key.Encode();
 
-  auto iter = yb::docdb::CreateIntentAwareIterator(
+  auto iter = CreateIntentAwareIterator(
       doc_db_,
-      BloomFilterMode::USE_BLOOM_FILTER,
-      key_prefix_.AsSlice(),
+      BloomFilterOptions::Fixed(key_prefix_.AsSlice()),
       query_id,
       TransactionOperationContext(),
       read_operation_data);
@@ -773,8 +777,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   auto iter = yb::docdb::CreateIntentAwareIterator(
       doc_db_,
-      BloomFilterMode::USE_BLOOM_FILTER,
-      key_prefix_.AsSlice(),
+      BloomFilterOptions::Fixed(key_prefix_.AsSlice()),
       query_id,
       TransactionOperationContext(),
       read_operation_data);
@@ -871,24 +874,30 @@ void DocWriteBatch::Clear() {
   cache_.Clear();
 }
 
-// TODO(lw_uc) allocate entries on the same arena, then just reference them.
-void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) {
-  for (auto& entry : put_batch_) {
-    auto* kv_pair = kv_pb->add_write_pairs();
-    kv_pair->dup_key(entry.key);
-    kv_pair->dup_value(entry.value);
-  }
-  if (has_ttl()) {
-    kv_pb->set_ttl(ttl_ns());
+void DocWriteBatch::MoveLocksToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb, bool is_lock) const {
+  for (const auto& entry : lock_batch_) {
+    auto* lock_pair = kv_pb->add_lock_pairs();
+    lock_pair->mutable_lock()->dup_key(entry.lock.key);
+    lock_pair->mutable_lock()->dup_value(entry.lock.value);
+    lock_pair->set_mode(
+        entry.mode == PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE
+            ? dockv::DocdbLockMode::DOCDB_LOCK_EXCLUSIVE
+            : dockv::DocdbLockMode::DOCDB_LOCK_SHARE);
+    lock_pair->set_is_lock(is_lock);
   }
 }
 
-void DocWriteBatch::TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
+// TODO(lw_uc) allocate entries on the same arena, then just reference them.
+void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
   for (auto& entry : put_batch_) {
     auto* kv_pair = kv_pb->add_write_pairs();
     kv_pair->dup_key(entry.key);
     kv_pair->dup_value(entry.value);
   }
+  if (!delete_vector_ids_.empty()) {
+    kv_pb->dup_delete_vector_ids(delete_vector_ids_.AsSlice());
+  }
+  MoveLocksToWriteBatchPB(kv_pb, /* is_lock= */ true);
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());
   }
@@ -952,6 +961,14 @@ const QLValuePB kNullValuePB;
 }
 
 ValueRef::ValueRef(ValueEntryType value_type) : value_pb_(&kNullValuePB), value_type_(value_type) {
+}
+
+ValueRef::ValueRef(std::reference_wrapper<const dockv::DocVectorValue> vector_value,
+                   SortingType sorting_type)
+      : value_pb_(&(vector_value.get().value())),
+        sorting_type_(sorting_type),
+        value_type_(dockv::ValueEntryType::kInvalid),
+        vector_value_(&vector_value.get()) {
 }
 
 std::string ValueRef::ToString() const {

@@ -23,6 +23,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -182,16 +183,17 @@ AsyncRpc::AsyncRpc(
 AsyncRpc::~AsyncRpc() {
   if (trace_) {
     if (trace_->must_print()) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-                << "us. Trace:";
+      LOG(INFO)
+          << ToString() << " took " << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString()
+          << ". Trace:";
       trace_->DumpToLogInfo(true);
     } else {
       const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
       if (print_trace_every_n > 0) {
         bool was_printed = false;
         YB_LOG_EVERY_N(INFO, print_trace_every_n)
-            << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-            << "us. Trace:" << Trace::SetTrue(&was_printed);
+            << ToString() << " took " << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString()
+            << ". Trace:" << Trace::SetTrue(&was_printed);
         if (was_printed)
           trace_->DumpToLogInfo(true);
       }
@@ -242,7 +244,6 @@ void AsyncRpc::Finished(const Status& status) {
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
     }
-
   }
   if (tablet_invoker_.Done(&new_status)) {
     if (tablet().is_split() ||
@@ -306,7 +307,8 @@ void AsyncRpc::Failed(const Status& status) {
         break;
       }
       case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::PGSQL_WRITE: {
+      case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::PGSQL_LOCK: {
         PgsqlResponsePB* resp = down_cast<YBPgsqlOp*>(yb_op)->mutable_response();
         resp->set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
                                              : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
@@ -364,6 +366,28 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
                  bool need_full_metadata,
                  tserver::WriteRequestPB* req) {
   SetMetadata(metadata, need_full_metadata, req->mutable_write_batch());
+  if (metadata.background_transaction_meta) {
+    // Indicates an attempt to acquire either a session-level or transaction-level advisory lock.
+    // The background_transaction_id ensures no conflicts occur between session-level and
+    // transaction-level advisory locks within the same session.
+    // - For session-level advisory lock requests: background_transaction_id points to
+    //   the in-progress DocDB transaction, if any.
+    // - For transaction-level advisory lock requests: background_transaction_id points to
+    //   the session-level transaction, if exists. Note that a session level transaction is only
+    //   created on demand when we encounter a session advisory lock request.
+    req->mutable_write_batch()->set_background_transaction_id(
+        metadata.background_transaction_meta->transaction_id.data(),
+        metadata.background_transaction_meta->transaction_id.size());
+    req->mutable_write_batch()->set_background_txn_status_tablet(
+        metadata.background_transaction_meta->status_tablet);
+  }
+  if (metadata.pg_session_req_version) {
+    // Populate the current request version for a session level transaction. This is used to unblock
+    // requests that were involved in a deadlock. Note that unlike regular distributed docdb txns,
+    // session level transactions aren't aborted on a deadlock and hence we need the write rpc to
+    // keep track of the request version which it was launched with.
+    req->mutable_write_batch()->set_pg_session_req_version(*metadata.pg_session_req_version);
+  }
 }
 
 } // namespace
@@ -379,6 +403,7 @@ template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     const AsyncRpcData& data, YBConsistencyLevel consistency_level)
     : AsyncRpc(data, consistency_level) {
+  // TODO(#26139): this set_allocated_* call is not safe.
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
@@ -419,7 +444,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
 
 template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::~AsyncRpcBase() {
-  req_.release_tablet_id();
+  (void) req_.release_tablet_id();
 }
 
 template <class Req, class Resp>
@@ -576,7 +601,10 @@ template <class Repeated>
 void ReleaseOps(Repeated* repeated) {
   auto size = repeated->size();
   if (size) {
-    repeated->ExtractSubrange(0, size, nullptr);
+    // ExtractSubrange with nullptr for last argument will hit debug assertion, probably due to
+    // unsafety with arenas. We don't use arenas here, so it's not an issue, and
+    // UnsafeArenaExtractSubrange provides the same behavior (but without DCHECK).
+    repeated->UnsafeArenaExtractSubrange(0, size, nullptr);
   }
 }
 
@@ -584,25 +612,36 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
     : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated");
   VTRACE_TO(1, trace_, "Tablet $0 table $1", data.tablet->tablet_id(), table()->name().ToString());
+  const auto op_group = data.ops.front().yb_op->group();
 
-  // Add the rows
-  switch (table()->table_type()) {
-    case YBTableType::REDIS_TABLE_TYPE:
-      FillOps<YBRedisWriteOp>(
-          ops_, YBOperation::Type::REDIS_WRITE, &req_, req_.mutable_redis_write_batch());
-      break;
-    case YBTableType::YQL_TABLE_TYPE:
-      FillOps<YBqlWriteOp>(
-          ops_, YBOperation::Type::QL_WRITE, &req_, req_.mutable_ql_write_batch());
-      break;
-    case YBTableType::PGSQL_TABLE_TYPE:
-      FillOps<YBPgsqlWriteOp>(
-          ops_, YBOperation::Type::PGSQL_WRITE, &req_, req_.mutable_pgsql_write_batch());
-      break;
-    case YBTableType::UNKNOWN_TABLE_TYPE:
-    case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
-      LOG(DFATAL) << "Unsupported table type: " << table()->ToString();
-      break;
+  if (op_group == OpGroup::kLock || op_group == OpGroup::kUnlock) {
+    FillOps<YBPgsqlLockOp>(
+        ops_, YBOperation::Type::PGSQL_LOCK, &req_, req_.mutable_pgsql_lock_batch());
+    // Set wait policy for non-blocking lock requests.
+    if (op_group == OpGroup::kLock &&
+        !down_cast<YBPgsqlLockOp*>(data.ops.front().yb_op.get())->mutable_request()->wait()) {
+      req_.mutable_write_batch()->set_wait_policy(WAIT_SKIP);
+    }
+  } else {
+    // Add the rows
+    switch (table()->table_type()) {
+      case YBTableType::REDIS_TABLE_TYPE:
+        FillOps<YBRedisWriteOp>(
+            ops_, YBOperation::Type::REDIS_WRITE, &req_, req_.mutable_redis_write_batch());
+        break;
+      case YBTableType::YQL_TABLE_TYPE:
+        FillOps<YBqlWriteOp>(
+            ops_, YBOperation::Type::QL_WRITE, &req_, req_.mutable_ql_write_batch());
+        break;
+      case YBTableType::PGSQL_TABLE_TYPE:
+        FillOps<YBPgsqlWriteOp>(
+            ops_, YBOperation::Type::PGSQL_WRITE, &req_, req_.mutable_pgsql_write_batch());
+        break;
+      case YBTableType::UNKNOWN_TABLE_TYPE:
+      case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
+        LOG(DFATAL) << "Unsupported table type: " << table()->ToString();
+        break;
+    }
   }
 
   VLOG(3) << "Created batch for " << data.tablet->tablet_id() << ":\n"
@@ -645,6 +684,7 @@ WriteRpc::~WriteRpc() {
   ReleaseOps(req_.mutable_redis_write_batch());
   ReleaseOps(req_.mutable_ql_write_batch());
   ReleaseOps(req_.mutable_pgsql_write_batch());
+  ReleaseOps(req_.mutable_pgsql_lock_batch());
 }
 
 void WriteRpc::CallRemoteMethod() {
@@ -722,6 +762,17 @@ Status WriteRpc::SwapResponses() {
         pgsql_idx++;
         break;
       }
+      case YBOperation::Type::PGSQL_LOCK: {
+        if (pgsql_idx >= resp_.pgsql_response_batch().size()) {
+          ++pgsql_idx;
+          continue;
+        }
+        // Restore pgsql lock request and extract response.
+        auto* pgsql_op = down_cast<YBPgsqlLockOp*>(yb_op);
+        pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
+        ++pgsql_idx;
+        break;
+      }
       case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_READ:
@@ -790,6 +841,7 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   tablet_invoker_.proxy()->ReadAsync(
     req_, &resp_, PrepareController(), std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
@@ -855,6 +907,7 @@ Status ReadRpc::SwapResponses() {
       case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_WRITE:
+      case YBOperation::Type::PGSQL_LOCK:
         LOG(FATAL) << "Not a read operation " << op.yb_op->type();
         break;
     }
@@ -866,6 +919,7 @@ Status ReadRpc::SwapResponses() {
 }
 
 void ReadRpc::NotifyBatcher(const Status& status) {
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::NotifyBatcher", &resp_);
   batcher_->ProcessReadResponse(*this, status);
 }
 

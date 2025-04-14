@@ -21,6 +21,11 @@ export interface YsqlSlowQuery {
   stddev_time: number;
   total_time: number;
   rolname: string;
+  min_plan_time: number;
+  max_plan_time: number;
+  mean_plan_time: number;
+  stddev_plan_time: number;
+  total_plan_time: number;
   yb_latency_histogram: HistogramBucket[];
 }
 
@@ -36,6 +41,8 @@ export interface YsqlLiveQuery {
   query: string;
   queryStartTime: string;
   sessionStatus: string;
+  leader_pid: number;
+  query_id: number;
 }
 
 export interface YcqlLiveQuery {
@@ -50,8 +57,8 @@ export interface YcqlLiveQuery {
   type: string;
 }
 
-export type YsqlSlowQueryPrimativeFields = keyof Omit<YsqlSlowQuery, 'yb_latency_histogram'>;
-export type YsqlLiveQueryPrimativeFields = keyof YsqlLiveQuery;
-export type YcqlLiveQueryPrimativeFields = keyof YcqlLiveQuery;
+export type YsqlSlowQueryPrimitiveFields = keyof Omit<YsqlSlowQuery, 'yb_latency_histogram'>;
+export type YsqlLiveQueryPrimitiveFields = keyof YsqlLiveQuery;
+export type YcqlLiveQueryPrimitiveFields = keyof YcqlLiveQuery;
 
 export type QueryResponseKeys = keyof YcqlLiveQuery | keyof YsqlLiveQuery | keyof YsqlSlowQuery;

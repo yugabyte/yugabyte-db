@@ -39,6 +39,7 @@ namespace master {
 class GetXClusterSafeTimeRequestPB;
 class GetXClusterSafeTimeResponsePB;
 struct LeaderEpoch;
+class UniverseReplicationInfo;
 class XClusterConsumerReplicationStatusPB;
 struct XClusterStatus;
 
@@ -48,7 +49,7 @@ class XClusterManagerIf {
       const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
       const LeaderEpoch& epoch) const = 0;
   virtual Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) = 0;
-  virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const = 0;
+  virtual XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() const = 0;
   virtual Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) = 0;
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace(
@@ -65,7 +66,8 @@ class XClusterManagerIf {
   virtual std::unordered_set<xcluster::ReplicationGroupId>
   GetInboundTransactionalReplicationGroups() const = 0;
 
-  virtual Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
+  virtual Status ClearXClusterFieldsAfterYsqlDDL(
+      TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyAutoFlagsConfigChanged() = 0;
 
@@ -80,6 +82,9 @@ class XClusterManagerIf {
       const xcluster::ReplicationGroupId& replication_group_id) = 0;
 
   virtual bool IsTableReplicationConsumer(const TableId& table_id) const = 0;
+
+  virtual bool IsNamespaceInAutomaticModeSource(const NamespaceId& namespace_id) const = 0;
+  virtual bool IsNamespaceInAutomaticModeTarget(const NamespaceId& namespace_id) const = 0;
 
   virtual void RemoveTableConsumerStreams(
       const xcluster::ReplicationGroupId& replication_group_id,

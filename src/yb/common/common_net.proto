@@ -30,3 +30,38 @@ message CloudInfoPB {
 message CloudInfoListPB {
   repeated CloudInfoPB zones = 1;
 }
+
+// This represents one instance of a placement constraint for a table. It is
+// used to dictate what is the minimum number of expected replicas in a certain
+// cloud/region/zone combo.
+message PlacementBlockPB {
+  // The cloud, region and zone information for this placement block.
+  optional CloudInfoPB cloud_info = 1;
+
+  // The minimum number of replicas that should always be up in this placement.
+  optional int32 min_num_replicas = 2;
+}
+
+// This keeps track of the set of PlacementBlockPBs defining the placement
+// requirements for a certain table. This is used both in the on-disk storage
+// in SysCatalog, as well as in the actual table creation calls and in the
+// schema returned to client queries.
+//
+// This is tightly coupled with the overall num_replicas for a certain table,
+// as we want to both be able to specify requirements, per placement block, but
+// also for the overall RF factor of the table.
+message PlacementInfoPB {
+  optional int32 num_replicas = 1;
+  repeated PlacementBlockPB placement_blocks = 2;
+  optional bytes placement_uuid = 3;
+}
+
+// Higher level structure to keep track of all types of replicas configured. This will have, at a
+// minimum, the information about the replicas that are supposed to be active members of the raft
+// configs, but can also include extra information, such as read only replicas.
+message ReplicationInfoPB {
+  optional PlacementInfoPB live_replicas = 1;
+  repeated PlacementInfoPB read_replicas = 2;
+  repeated CloudInfoPB affinitized_leaders = 3;
+  repeated CloudInfoListPB multi_affinitized_leaders = 4;
+}

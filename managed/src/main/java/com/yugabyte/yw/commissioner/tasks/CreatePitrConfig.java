@@ -11,6 +11,7 @@ import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -161,6 +162,10 @@ public class CreatePitrConfig extends UniverseTaskBase {
               throw new RuntimeException(e);
             }
           });
+      Date currentDate = new Date();
+      pitrConfig.setCreateTime(currentDate);
+      pitrConfig.setUpdateTime(currentDate);
+      pitrConfig.save();
     } catch (Exception e) {
       log.error("{} hit exception : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

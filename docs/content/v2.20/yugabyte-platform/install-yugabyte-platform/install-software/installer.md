@@ -7,27 +7,20 @@ headContent: Install YBA software using YBA Installer
 menu:
   v2.20_yugabyte-platform:
     parent: install-yugabyte-platform
-    identifier: install-software-4-installer
-    weight: 77
+    identifier: install-software-1-installer
+    weight: 10
 rightNav:
   hideH4: true
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere (YBA) software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
-
-Note: For higher availability, one or more additional YBA instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere (YBA) instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../installer/" class="nav-link active">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
-  <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
+      <i class="fa-solid fa-building"></i>On-premises and public clouds</a>
   </li>
 
   <li>
@@ -35,22 +28,17 @@ Note: For higher availability, one or more additional YBA instances can be separ
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
-  </li>
-
 </ul>
 
-Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA.
+Use YBA Installer to install YugabyteDB Anywhere on a host, either online or airgapped. YBA Installer performs preflight checks to validate if the workspace is ready to run YugabyteDB Anywhere.
 
-You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
+You can also use YBA Installer to migrate an existing Replicated installation. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
 
 -> To perform a new installation, follow the steps in [Quick start](#quick-start).
 
 -> To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
 
--> To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated).
+-> To migrate an installation from Replicated, refer to [Migrate from Replicated](../../migrate-replicated/).
 
 -> For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
 
@@ -58,13 +46,18 @@ After the installation is complete, you can use YBA Installer to manage your ins
 
 ## Before you begin
 
-Make sure your machine satisfies the [minimum prerequisites](../../prerequisites/installer/).
+Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
+
+Installation requires a license file. To obtain your license, contact your sales representative. If you are not yet a customer and want to try YugabyteDB Anywhere, [book a demo](https://www.yugabyte.com/demo/).
+
+{{< warning title="Keep the control plane separate from the data plane" >}}
+Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
+{{< /warning >}}
 
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from {{% support-platform %}}.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -98,12 +91,12 @@ For more detailed installation instructions and information on how to use YBA In
 Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-$ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.20" format="long">}}/yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
-$ tar -xf yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
-$ cd yba_installer_full-{{<yb-version version="v2.20" format="build">}}/
+wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.20" format="long">}}/yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
+tar -xf yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
+cd yba_installer_full-{{<yb-version version="v2.20" format="build">}}/
 ```
 
-This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
+This bundle provides everything needed (except your license), to complete a fresh install of YBA:
 
 - `yba-ctl` executable binary is used to perform all of the YBA Installer workflows.
 - `yba-ctl.yml.reference` is a YAML reference for the available configuration options for both YBA Installer and YugabyteDB Anywhere.
@@ -111,7 +104,7 @@ This bundle provides everything needed, except a [license](#provide-a-license), 
 To see a full list of commands, run the following command:
 
 ```sh
-$ ./yba-ctl help
+./yba-ctl help
 ```
 
 yba-ctl commands need to be run in the correct context; see [Running yba-ctl commands](#running-yba-ctl-commands).
@@ -121,7 +114,7 @@ yba-ctl commands need to be run in the correct context; see [Running yba-ctl com
 Many YBA Installer commands require a configuration file, including `preflight` and `install`. When using these commands without a configuration file, you are prompted to continue using default values. For example:
 
 ```sh
-$ sudo ./yba-ctl preflight
+sudo ./yba-ctl preflight
 ```
 
 ```output
@@ -143,12 +136,10 @@ You can change some configuration options post-installation using the [reconfigu
 
 ### Provide a license
 
-YBA Installer requires a valid license before installing. To obtain a license, contact {{% support-platform %}}.
-
 Provide the license to YBA Installer by running the `license` command as follows:
 
 ```sh
-$ sudo ./yba-ctl license add -l /path/to/license
+sudo ./yba-ctl license add -l /path/to/license
 ```
 
 You can use this command to update to a new license if needed.
@@ -157,10 +148,10 @@ You can also provide a license when running the `install` command. Refer to [Ins
 
 ### Run preflight checks
 
-Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../prerequisites/installer/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
+Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../../prepare/server-yba/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
 
 ```sh
-$ sudo ./yba-ctl preflight
+sudo ./yba-ctl preflight
 ```
 
 ```output
@@ -179,10 +170,10 @@ $ sudo ./yba-ctl preflight
 
 Some checks, such as CPU or memory, can be skipped, though this is not recommended for a production installation. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
 
-If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `–skip_preflight <name>[,<name2>]`. For example:
+If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `--skip_preflight <name>[,<name2>]`. For example:
 
 ```sh
-$ sudo ./yba-ctl preflight --skip_preflight cpu
+sudo ./yba-ctl preflight --skip_preflight cpu
 ```
 
 ### Install the software
@@ -190,13 +181,13 @@ $ sudo ./yba-ctl preflight --skip_preflight cpu
 To perform an install, run the `install` command. Once started, an install can take several minutes to complete.
 
 ```sh
-$ sudo ./yba-ctl install
+sudo ./yba-ctl install
 ```
 
-You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license) :
+You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license):
 
 ```sh
-$ sudo ./yba-ctl install -l /path/to/license
+sudo ./yba-ctl install -l /path/to/license
 ```
 
 ```output
@@ -213,127 +204,71 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 
 The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YBA to start. After the install succeeds, you can immediately start using YBA.
 
-## Migrate from Replicated
+### Use a stand-alone data disk
 
-{{< warning title="Replicated end of life" >}}
+{{<tags/feature/ea idea="1829">}}By default, YugabyteDB Anywhere stores its data in `/opt/yugabyte/data`. You can also use a stand-alone data disk for YugabyteDB Anywhere data.
 
-YugabyteDB Anywhere will end support for Replicated installation at the end of 2024.
+Using a stand-alone data disk allows you to swap your YugabyteDB Anywhere data between installations for tasks such as boot disk replacement.
 
-{{< /warning >}}
+#### Prerequisites
 
-You can migrate your existing Replicated installation to YBA Installer in place on the same VM (recommended). When migrating in place, both your Replicated configuration and the YBA metadata (universes, providers, and so on) are migrated to the YBA Installer format.
+- The data disk should have a minimum of 200GB free space. If you use a data disk, the root disk does not need the full size requirement.
+- The data disk should be formatted and have a filesystem. YBA Installer does not format, partition, or run mkfs on the disk.
+- If you are replacing a data disk, the data on the replacement must be from the same or earlier version of YugabyteDB Anywhere. YugabyteDB Anywhere will not start if you attempt to use a data disk from a later version of YugabyteDB Anywhere.
 
-Alternately, you can migrate the Replicated installation to YBA Installer on a different VM. Only the YBA metadata (universes, providers, and so on) is migrated to the new VM; the Replicated configuration is not.
+Note that if you run [clean –-all](#clean-uninstall), the data disk will be cleaned, regardless of the installation type.
 
-### Before you begin
+#### New installation
 
-1. Review the [prerequisites](../../prerequisites/installer/).
-1. YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
-1. If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.3 or later.
-1. If you haven't already, [download and extract YBA Installer](#download-yba-installer). It is recommended that you migrate using the same version of YBA Installer as the version of YugabyteDB you are running in Replicated. For example, if you have updated to v2.20.2.1 in Replicated, use v2.20.2.1 of YBA Installer to do the migration.
+To have YugabyteDB Anywhere use a new stand-alone data disk, do the following:
 
-### Migrate a YBA installation in place
-
-If you have [high availability](../../../administer-yugabyte-platform/high-availability/) configured, you need to migrate your instances in a specific order. See [In-place migration and high availability](#in-place-migration-and-high-availability).
-
-To migrate your installation from Replicated, do the following:
-
-1. Optionally, configure the migration as follows:
+1. Mount the data disk to `/opt/yugabyte/data`. For example:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate config
+    mount /dev/sdb1 /opt/yugabyte/data
     ```
 
-    This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You can edit the file to customize the install further.
-
-    Note that the `installRoot` (by default `/opt/ybanywhere`) in `yba-ctl.yml` needs to be different from the Replicated Storage Path (by default `/opt/yugabyte`). If they are set to the same value, the migration will fail. You can delete `yba-ctl.yml` and try again.
-
-    For a list of options, refer to [Configuration options](#configuration-options).
-
-1. Start the migration, passing in your license file:
+1. Install YugabyteDB Anywhere.
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
+    sudo ./yba-ctl install
     ```
 
-    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.
+1. Add the mount to `/etc/fstab`.
 
-1. Validate YBA is up and running with the correct data, including Prometheus.
+#### Existing installation
 
-    If YBA does not come up or the migration has failed, you can revert to your Replicated installation using the `replicated-migrate rollback` command.
+To use an existing data disk, first unmount the disk from the existing YugabyteDB Anywhere installation as follows:
 
-    After the new YBA comes up successfully, do not attempt to roll back to the original Replicated install of YBA. Rollback is only intended for scenarios where the migration fails. Any changes made with a new YBA (either using the UI or the API) are not reflected after a rollback.
+1. Run `sudo yba-ctl stop` to stop YugabyteDB Anywhere.
 
-    In particular, do not configure HA until running the `finish` command (next step) on all instances.
-
-1. If the new YBA installation is correct, finish the migration as follows:
+1. Unmount the data disk:
 
     ```sh
-    $ sudo ./yba-ctl replicated-migrate finish
+    unmount /opt/yugabyte/data
     ```
 
-    This uninstalls Replicated and makes the new YBA instance permanent.
+1. Optionally, with the disk unmounted you can safely clean up the YugabyteDB Anywhere installation by running `sudo yba-ctl clean --all`.
 
-#### In-place migration and high availability
+The disk is now ready to be reused with a new installation.
 
-If you have [high availability](../../../administer-yugabyte-platform/high-availability/) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
+To use the data disk with a new installation, do the following:
 
-##### Replicated uses HTTPS
-
-Note that if your node has a timezone that is not UTC, in-place migration requires changing the timezone to UTC. If this is not possible, follow the instructions for [Replicated uses HTTP](#replicated-uses-http) instead.
-
-If Replicated is using HTTPS, migrate as follows:
-
-1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your active and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
-1. [Migrate and finish](#migrate-a-yba-installation-in-place) the active instance.
-1. Migrate and finish the standby instances.
-
-Failovers are only possible after you finish the migration on both the primary and standby.
-
-##### Replicated uses HTTP
-
-If Replicated is using HTTP (or any servers are configured with a timezone that is not UTC), you need to remove the standbys and delete the high availability configuration before migrating. Migrate as follows:
-
-1. [Remove the standby instances](../../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
-1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.
-1. If your instances are v2.18.5 or earlier, or 2.20.0, [upgrade the primary and standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
-1. [Migrate and finish](#migrate-a-yba-installation-in-place) the active instance.
-1. Migrate and finish the standby instances.
-1. [Configure HA on the updated instances](../../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
-
-Failovers are possible again after the completion of this step.
-
-### Migrate from Replicated to YBA Installer on a different VM
-
-Note that [Replicated configuration](../default/#set-up-https-optional) will not be migrated when using this method.
-
-To migrate to a different VM, do the following:
-
-1. [Install and configure YBA Installer](#configuration-options) on a new VM.
-1. Disable [high availability](../../../administer-yugabyte-platform/high-availability/) (if configured) on the Replicated installation.
-1. Perform a full [backup of YBA](../../../administer-yugabyte-platform/back-up-restore-yp/) on the Replicated installation.
-
-    This backup includes Prometheus data and all [imported releases](../../../manage-deployments/upgrade-software-install/).
-
-    If the backup is too large, consider removing unused releases; and/or reducing the Prometheus retention interval in the Replicated Admin console.
-
-1. Stop YBA on the Replicated installation using the [Replicated UI or command line](../../../administer-yugabyte-platform/shutdown/#replicated).
-
-    This is a critical step, otherwise you could end up with two YBA instances managing the same set of universes, which can lead to severe consequences.
-
-1. Transfer the full backup from Step 3 to the YBA Installer VM.
-1. Restore the backup on the YBA Installer VM using the command line as follows:
+1. Install YugabyteDB Anywhere using the `--without-data` option:
 
     ```sh
-    sudo yba-ctl restoreBackup --migration <path to backup.tar.gz>
+    sudo ./yba-ctl install --without-data
     ```
 
-1. Verify the resulting YBA Installer installation contains all the YBA metadata, such as universes, providers, backups, and so on, from the original Replicated installation.
-1. [Completely delete the Replicated installation](https://support.yugabyte.com/hc/en-us/articles/11095326804877-Uninstall-Replicated-based-Yugabyte-Anywhere-aka-Yugabyte-Platform-from-the-Linux-host) or re-image the Replicated VM.
+1. Mount the data disk to `/opt/yugabyte/data`. For example:
 
-{{< warning title="High availability" >}}
-If you had [high availability](../../../administer-yugabyte-platform/high-availability/) configured for your Replicated installation, set up a new YBA Installer VM to be the standby and configure high availability from scratch. _Do not attempt to continue to use the existing Replicated standby VM_.
-{{</warning>}}
+    ```sh
+    mount /dev/sdb1 /opt/yugabyte/data
+    ```
+
+1. Start YugabyteDB Anywhere by running `sudo yba-ctl start`.
+
+1. Add the mount to `/etc/fstab`.
 
 ## Manage a YBA installation
 
@@ -344,7 +279,7 @@ YBA Installer can be used to reconfigure an installed YBA instance.
 To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuration file with your changes, and then run the command as follows:
 
 ```sh
-$ sudo yba-ctl reconfigure
+sudo yba-ctl reconfigure
 ```
 
 For a list of options, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
@@ -354,14 +289,14 @@ For a list of options, refer to [Configuration options](#configuration-options).
 YBA Installer provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (`platform`, `postgres`, and `prometheus`), or any individual service.
 
 ```sh
-$ sudo yba-ctl [start, stop, reconfigure]
-$ sudo yba-ctl [start, stop, reconfigure] prometheus
+sudo yba-ctl [start, stop, reconfigure]
+sudo yba-ctl [start, stop, reconfigure] prometheus
 ```
 
 In addition to the state changing operations, you can use the `status` command to show the status of all YugabyteDB Anywhere services, in addition to other information such as the log and configuration location, versions of each service, and the URL to access the YugabyteDB Anywhere UI.
 
 ```sh
-$ sudo yba-ctl status
+sudo yba-ctl status
 ```
 
 ```output
@@ -384,7 +319,7 @@ Upgrade works similarly to the install workflow, by first running preflight chec
 When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
 
 ```sh
-$ sudo ./yba-ctl upgrade
+sudo ./yba-ctl upgrade
 ```
 
 The upgrade takes a few minutes to complete. When finished, use the [status command](#service-management) to verify that YBA has been upgraded to the target version.
@@ -396,8 +331,8 @@ YBA Installer also provides utilities to take full backups of the YBA state (not
 To perform a backup, provide the full path to the directory where the backup will be generated. The `createBackup` command creates a timestamped `tgz` file for the backup. For example:
 
 ```sh
-$ sudo yba-ctl createBackup ~/test_backup
-$ ls test_backup/
+sudo yba-ctl createBackup ~/test_backup
+ls test_backup/
 ```
 
 ```output
@@ -407,7 +342,7 @@ backup_23-04-25-16-54.tgz
 To restore from the same backup, use the `restoreBackup` command:
 
 ```sh
-$ sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
+sudo yba-ctl restoreBackup ~/test_backup/backup_23-04-25-16-64.tgz
 ```
 
 For more information, refer to [Back up and restore YugabyteDB Anywhere](../../../administer-yugabyte-platform/back-up-restore-installer/).
@@ -419,7 +354,7 @@ To uninstall a YBA instance, YBA Installer also provides a `clean` command.
 By default, `clean` removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information:
 
 ```sh
-$ sudo yba-ctl clean
+sudo yba-ctl clean
 ```
 
 ```output
@@ -428,10 +363,10 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-To delete all data, run `clean` with the `–-all` flag as follows:
+To delete all data, run `clean` with the `--all` flag as follows:
 
 ```sh
-$ sudo yba-ctl clean --all
+sudo yba-ctl clean --all
 ```
 
 ```output
@@ -468,7 +403,7 @@ The `help`, `license`, and `preflight` commands can be run in either context.
 If you don't use the correct execution path, yba-ctl fails with an error:
 
 ```sh
-$ sudo ./yba-ctl createBackup ~/backup.tgz
+sudo ./yba-ctl createBackup ~/backup.tgz
 ```
 
 ```output
@@ -479,7 +414,7 @@ FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 
 YBA Installer also supports a non-sudo installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
 
-To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
+To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The target location for the installation defaults to the current user's home directory, instead of `/opt`, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
 To perform a non-sudo installation, run any of the preceding commands without sudo access. You can't switch between a sudo and non-sudo access installation, and `yba-ctl` will return an error if sudo is not used when operating in an installation where sudo access was used.
 
@@ -494,7 +429,7 @@ You can set the following YBA Installer configuration options.
 | `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. | {{<icon/partial>}} |
 | `host` | Hostname or IP Address used for CORS and certificate creation. Optional. | |
 | `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
-| `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. | |
+| `server_cert_path`<br />`server_key_path` | If you are using custom certificates, provide the path to the location of the server cert and server key files (in PEM format). If you don't specify server_cert_path and server_key_path, the installation process generates self-signed certificates in $installRoot/data/yba-installer/certs. Optional. | |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
 
 {{<icon/partial>}} You can't change these settings after installation.

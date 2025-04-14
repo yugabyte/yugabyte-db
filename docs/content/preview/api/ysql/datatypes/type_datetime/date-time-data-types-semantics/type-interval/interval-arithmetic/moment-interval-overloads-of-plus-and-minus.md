@@ -304,7 +304,7 @@ The function finishes without an _assert_ violation—showing that a pure second
 
 The PL/pgSQL code, by simply adding a number of seconds to the start moment to get the end moment in the regime of seconds since the start of the epoch, vividly makes the point that the moment-_interval_ overloads of `+` and `-` for pure seconds _interval_ values honor _clock-time-semantics_.
 
-**Note:** YSQL inherits the fact from the PostgreSQL implementation of the [proleptic Gregorian calendar](https://www.postgresql.org/docs/11/datetime-units-history.html) that [leap seconds](https://www.timeanddate.com/time/leapseconds.html) are not supported. If they were, then the explanation of the semantics of moment-_interval_ would demand yet more care.
+**Note:** YSQL inherits the fact from the PostgreSQL implementation of the [proleptic Gregorian calendar](https://www.postgresql.org/docs/15/datetime-units-history.html) that [leap seconds](https://www.timeanddate.com/time/leapseconds.html) are not supported. If they were, then the explanation of the semantics of moment-_interval_ would demand yet more care.
 
 Now test it using a timezone that does not respect Daylight Savings time:
 

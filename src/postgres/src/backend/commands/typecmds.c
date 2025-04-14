@@ -53,7 +53,6 @@
 #include "catalog/pg_range.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
-#include "commands/extension.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
 #include "executor/executor.h"
@@ -75,8 +74,10 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/*  YB includes. */
+/* YB includes */
+#include "commands/extension.h"
 #include "pg_yb_utils.h"
+
 
 /* result structure for get_rels_with_domain() */
 typedef struct
@@ -221,17 +222,10 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser or a member of the yb_extension "
-				 		"role to create a base type")));
+						"role to create a base type")));
 
 	/* Convert list of names to a name and namespace */
 	typeNamespace = QualifiedNameGetCreationNamespace(names, &typeName);
-
-	/*
-	 * Increment sticky object count if the object is a create type of the
-	 * form base or shell type.
-	 */
-	if (YbIsClientYsqlConnMgr())
-		increment_sticky_object_count();
 
 #ifdef NOT_USED
 	/* XXX this is unnecessary given the superuser check above */
@@ -1567,8 +1561,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid, /* type's collation (ranges never have one) */
-				   false);			/* whether relation is shared (n/a here) */
+				   InvalidOid,	/* type's collation (ranges never have one) */
+				   false);		/* whether relation is shared (n/a here) */
 	Assert(typoid == InvalidOid || typoid == address.objectId);
 	typoid = address.objectId;
 
@@ -2427,7 +2421,7 @@ AssignTypeArrayOid(void)
 	Oid			type_array_oid;
 
 	/* Use binary-upgrade override for pg_type.typarray? */
-	if (IsBinaryUpgrade || yb_binary_restore)
+	if ((IsBinaryUpgrade || yb_binary_restore) && !yb_extension_upgrade)
 	{
 		if (!OidIsValid(binary_upgrade_next_array_pg_type_oid))
 			ereport(ERROR,
@@ -2699,9 +2693,9 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 							 false, /* a domain isn't an implicit array */
 							 false, /* nor is it any kind of dependent type */
 							 false, /* don't touch extension membership */
-							 true, /* We do need to rebuild dependencies */
+							 true,	/* We do need to rebuild dependencies */
 							 false, /* not a system relation rowtype */
-							 false); /* not a shared relation rowtype */
+							 false);	/* not a shared relation rowtype */
 
 	InvokeObjectPostAlterHook(TypeRelationId, domainoid, 0);
 
@@ -4446,7 +4440,7 @@ AlterTypeRecurse(Oid typeOid, bool isImplicitArray,
 							 false, /* don't touch extension membership */
 							 true,
 							 false, /* not a system relation rowtype */
-							 false); /* not a shared relation rowtype */
+							 false);	/* not a shared relation rowtype */
 
 	InvokeObjectPostAlterHook(TypeRelationId, typeOid, 0);
 

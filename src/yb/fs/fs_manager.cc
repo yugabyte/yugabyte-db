@@ -59,6 +59,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/path_util.h"
@@ -782,10 +783,21 @@ bool FsManager::LookupTablet(const std::string &tablet_id) {
 }
 
 namespace {
+
 // Return true if 'fname' is a valid tablet ID.
-bool IsValidTabletId(const std::string& fname) {
+bool CheckTabletId(Env* env, const std::string& dir, const std::string& fname) {
   if (fname.find(kTmpInfix) != string::npos) {
-    LOG(WARNING) << "Ignoring tmp file in tablet metadata dir: " << fname;
+    auto msg_suffix = "temporary tablet metadata: " + fname;
+    if (env) {
+      auto status = env->DeleteFile(JoinPathSegments(dir, fname));
+      if (status.ok()) {
+        LOG(INFO) << "Removed " << msg_suffix;
+      } else {
+        LOG(WARNING) << "Failed to remove " << msg_suffix << ": " << status;
+      }
+    } else {
+      LOG(INFO) << "Ignored " << msg_suffix;
+    }
     return false;
   }
 
@@ -799,7 +811,8 @@ bool IsValidTabletId(const std::string& fname) {
 }
 } // anonymous namespace
 
-Result<std::vector<std::string>> FsManager::ListTabletIds() {
+Result<std::vector<std::string>> FsManager::ListTabletIds(
+    CleanupTemporaryFiles cleanup_temporary_files) {
   std::lock_guard lock(data_mutex_);
   std::unordered_set<std::string> tablet_ids;
   for (const auto& dir : GetRaftGroupMetadataDirs()) {
@@ -807,7 +820,7 @@ Result<std::vector<std::string>> FsManager::ListTabletIds() {
         Substitute("Couldn't list tablets in metadata directory $0", dir));
 
     for (const auto& child : children) {
-      if (!IsValidTabletId(child)) {
+      if (!CheckTabletId(cleanup_temporary_files ? env_ : nullptr, dir, child)) {
         continue;
       }
       auto tablet_dirname = DirName(dir);
@@ -934,9 +947,7 @@ void FsManager::DumpFileSystemTree(ostream& out, const string& prefix,
 }
 
 Result<std::vector<std::string>> FsManager::ListDir(const std::string& path) const {
-  std::vector<std::string> result;
-  RETURN_NOT_OK(env_->GetChildren(path, ExcludeDots::kTrue, &result));
-  return result;
+  return env_->GetChildren(path, ExcludeDots::kTrue);
 }
 
 Status FsManager::ListDir(const std::string& path, std::vector<std::string> *objects) const {

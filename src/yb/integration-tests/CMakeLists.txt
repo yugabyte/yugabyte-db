@@ -47,12 +47,14 @@ add_custom_command(
 
 add_custom_target(fips_install DEPENDS ${CMAKE_BINARY_DIR}/openssl-config/openssl-fips.cnf)
 
-file(COPY
-  ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
-  DESTINATION ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
-
-add_custom_target(
-  xcluster_ddl_replication_sql DEPENDS ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
+add_custom_target(xcluster_ddl_replication_sql
+  COMMAND ${CMAKE_COMMAND} -E remove_directory
+    ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
+    ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql/sql
+  DEPENDS ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
+  COMMENT "Copying SQL files for xcluster_ddl_replication_pgregress-test.cc")
 
 configure_file(
   ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/upgrade-tests/builds.xml
@@ -96,7 +98,7 @@ set(INTEGRATION_TESTS_SRCS
   xcluster/xcluster_ysql_test_base.cc
   xcluster/xcluster_ycql_test_base.cc
   xcluster/xcluster_ddl_replication_test_base.cc
-  upgrade-tests/pg15_upgrade_test_base.cc
+  upgrade-tests/ysql_major_upgrade_test_base.cc
   upgrade-tests/upgrade_test_base.cc
 )
 
@@ -223,6 +225,8 @@ ADD_YB_TEST(load_balancer_multi_table-test)
 ADD_YB_TEST(load_balancer_colocated_tables-test)
 ADD_YB_TEST(load_balancer_respect_affinity-test)
 ADD_YB_TEST(load_balancer_placement_policy-test)
+ADD_YB_TEST(sys_catalog-itest)
+YB_TEST_TARGET_LINK_LIBRARIES(sys_catalog-itest pg_wrapper_test_base)
 ADD_YB_TEST(sys_catalog_respect_affinity-test)
 ADD_YB_TEST(restart-test)
 ADD_YB_TEST(yb-ts-cli-itest)
@@ -247,6 +251,8 @@ ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(pg_cron-test)
 ADD_YB_TEST(pg_partman-test)
 ADD_YB_TEST(secure_connection_test)
+ADD_YB_TEST(system_table_delete-test)
+YB_TEST_TARGET_LINK_LIBRARIES(system_table_delete-test pg_wrapper_test_base)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
 ADD_YB_TEST(xcluster/xcluster_db_scoped-test)
 ADD_YB_TEST(xcluster/xcluster_ddl_replication-test)
@@ -262,11 +268,23 @@ ADD_YB_TEST(xcluster/xcluster_ysql_index-test)
 ADD_YB_TEST(xcluster/xcluster-tablet-split-itest)
 ADD_YB_TEST(xcluster/xcluster-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-itest)
+ADD_YB_TEST(xcluster/xcluster_secondary_oid_space-test)
+YB_TEST_TARGET_LINK_LIBRARIES(xcluster_secondary_oid_space-test pg_wrapper_test_base)
 ADD_YB_TEST(retryable_request-test)
+ADD_YB_TEST(upgrade-tests/auto_flag_upgrade-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
-ADD_YB_TEST(upgrade-tests/pg15_upgrade-test)
-ADD_YB_TEST(upgrade-tests/pg15_upgrade_pgregress-test)
+ADD_YB_TEST(upgrade-tests/replication_info_upgrade-test)
+ADD_YB_TEST(upgrade-tests/pg_locks_v76_upgrade-test)
+ADD_YB_TEST(upgrade-tests/ycql_only_upgrade-test)
+
+ADD_YB_TEST(upgrade-tests/ysql_major_extension_upgrade-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_check-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_conn_mgr-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_expression_pushdown-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
@@ -300,6 +318,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(disk_full-test pg_wrapper_test_base)
 
 ADD_YB_TEST(sequence_utility-itest)
 YB_TEST_TARGET_LINK_LIBRARIES(sequence_utility-itest pg_wrapper_test_base)
+
+ADD_YB_TEST(upgrade-tests/ysql_ddl_whitelist-test)
+YB_TEST_TARGET_LINK_LIBRARIES(upgrade-tests/ysql_ddl_whitelist-test pg_wrapper_test_base)
 
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)

@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
@@ -70,6 +72,8 @@ public class UniverseYbDbAdminHandler {
   @Inject PasswordPolicyService policyService;
   @Inject RuntimeConfGetter confGetter;
   @Inject UniverseTableHandler tableHandler;
+  @Inject GFlagsValidation gFlagsValidation;
+  @Inject SoftwareUpgradeHelper softwareUpgradeHelper;
 
   public UniverseYbDbAdminHandler() {}
 
@@ -208,6 +212,12 @@ public class UniverseYbDbAdminHandler {
       ConfigureDBApiParams requestParams, Customer customer, Universe universe) {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot configure YSQL APIs as a major version upgrade is in progress.");
+    }
+
     // Check runtime flag for connection pooling.
     if (requestParams.enableConnectionPooling) {
       boolean allowConnectionPooling =
@@ -264,6 +274,8 @@ public class UniverseYbDbAdminHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe, true);
+    gFlagsValidation.validateConnectionPoolingGflags(
+        universe, requestParams.connectionPoolingGflags);
     requestParams.validatePassword(policyService);
     requestParams.validateYSQLTables(universe, tableHandler);
     TaskType taskType =

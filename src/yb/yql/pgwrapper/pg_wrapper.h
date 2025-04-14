@@ -24,17 +24,12 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pgwrapper/pg_wrapper_context.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
 namespace yb {
 
 class Thread;
-
-namespace tserver {
-
-class TabletServerIf;
-
-} // namespace tserver
 
 namespace pgwrapper {
 
@@ -44,11 +39,11 @@ std::string GetPostgresInstallRoot();
 // Configuration for an external PostgreSQL server.
 struct PgProcessConf : public ProcessWrapperCommonConfig {
   static constexpr uint16_t kDefaultPort = 5433;
+  static constexpr uint16_t kDefaultPortWithConnMgr = 6433;
 
   static Result<PgProcessConf> CreateValidateAndRunInitDb(
       const std::string& bind_addresses,
-      const std::string& data_dir,
-      const int tserver_shm_fd);
+      const std::string& data_dir);
 
   std::string ToString();
 
@@ -56,9 +51,6 @@ struct PgProcessConf : public ProcessWrapperCommonConfig {
   uint16_t pg_port = kDefaultPort;
   std::string listen_addresses = "0.0.0.0";
   std::string master_addresses;
-
-  // File descriptor of the local tserver's shared memory.
-  int tserver_shm_fd = -1;
 
   // If this is true, we will not log to the file, even if the log file is specified.
   bool force_disable_log_file = false;
@@ -85,16 +77,23 @@ class PgWrapper : public ProcessWrapper {
   // version.) This function is intended to be used during tablet server initialization.
   Status InitDbLocalOnlyIfNeeded();
 
+  // Cleanup the data directory, and any associated symlinks.
+  static Status CleanupPgData(const std::string& data_dir);
+
   // Run initdb in a mode that sets up the required metadata in the YB cluster. This is done
   // only once after the cluster has started up. tmp_dir_base is used as a base directory to
   // create a temporary PostgreSQL directory that is later deleted.
   static Status InitDbForYSQL(
-      const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd,
-      std::vector<std::pair<std::string, YBCPgOid>> db_to_oid, bool is_major_upgrade);
+      PgWrapperContext* server, const server::ServerBaseOptions& options, FsManager& fs_manager,
+      const std::string& tmp_dir_base, std::vector<std::pair<std::string, YbcPgOid>> db_to_oid,
+      bool is_major_upgrade);
+
+  void PrepareSharedMemoryNegotiation(PgWrapperContext* server);
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
 
   struct PgUpgradeParams {
+    std::string ysql_user_name;
     std::string data_dir;
     std::string old_version_pg_address;
     std::string old_version_socket_dir;
@@ -110,7 +109,7 @@ class PgWrapper : public ProcessWrapper {
     std::string versioned_data_dir;
   };
   struct GlobalInitdbParams {
-    std::vector<std::pair<std::string, YBCPgOid>> db_to_oid;
+    std::vector<std::pair<std::string, YbcPgOid>> db_to_oid;
     bool is_major_upgrade = false;
   };
   using InitdbParams = std::variant<LocalInitdbParams, GlobalInitdbParams>;
@@ -153,6 +152,8 @@ class PgWrapper : public ProcessWrapper {
   // Set common environment for a child process (initdb or postgres itself).
   void SetCommonEnv(Subprocess* proc, bool yb_enabled);
   PgProcessConf conf_;
+  int address_negotiator_fd_ = -1;
+  std::string shared_mem_uuid_;
   key_t ysql_conn_mgr_stats_shmem_key_;
 };
 
@@ -160,8 +161,10 @@ class PgWrapper : public ProcessWrapper {
 // Starts a separate thread to monitor the child process.
 class PgSupervisor : public ProcessSupervisor {
  public:
-  explicit PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver);
+  explicit PgSupervisor(PgProcessConf conf, PgWrapperContext* server);
   ~PgSupervisor();
+
+  void Stop() override;
 
   const PgProcessConf& conf() const {
     return conf_;
@@ -179,10 +182,12 @@ class PgSupervisor : public ProcessSupervisor {
   Status RegisterReloadPgConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
   void DeregisterPgFlagChangeNotifications() REQUIRES(mtx_);
 
-  PgProcessConf conf_;
-  std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   void PrepareForStop() REQUIRES(mtx_) override;
   Status PrepareForStart() REQUIRES(mtx_) override;
+
+  PgProcessConf conf_;
+  PgWrapperContext* server_;
+  std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
   std::string GetProcessName() override {

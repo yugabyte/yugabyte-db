@@ -14,25 +14,38 @@
 
 #pragma once
 
+#include <span>
 #include <unordered_map>
+
+#include "yb/util/logging.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace pggate {
-
+namespace yb::pggate {
 
 class PgTypeInfo {
  public:
-  PgTypeInfo(const YBCPgTypeEntity *YBCDataTypeTable, int count);
+  explicit PgTypeInfo(YbcPgTypeEntities entities) {
+    for (const auto& entity : std::span(entities.data, entities.count)) {
+      map_[entity.type_oid] = &entity;
+    }
+    ybctid_ = Find(kByteArrayOid);
+    CHECK(ybctid_) << "Failed to find type for ybctid";
+  }
 
-  const YBCPgTypeEntity* GetTypeEntity(int32_t type_id);
+  const YbcPgTypeEntity* Find(PgOid type_oid) const {
+    auto it = map_.find(type_oid);
+    return it == map_.end() ? nullptr : it->second;
+  }
+
+  const YbcPgTypeEntity& GetYbctid() const {
+    return *ybctid_;
+  }
 
  private:
   // Mapping table of YugaByte and PostgreSQL datatypes.
-  std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
+  std::unordered_map<int, const YbcPgTypeEntity*> map_;
+  const YbcPgTypeEntity* ybctid_;
 };
 
-
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

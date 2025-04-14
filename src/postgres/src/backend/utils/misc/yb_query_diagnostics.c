@@ -24,7 +24,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "yb_query_diagnostics.h"
+#include "postgres.h"
 
 #include <math.h>
 #include <unistd.h>
@@ -36,9 +36,10 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_namespace_d.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
-#include "commands/tablespace.h"
 #include "commands/explain.h"
+#include "commands/tablespace.h"
 #include "common/fe_memutils.h"
 #include "common/file_perm.h"
 #include "common/pg_prng.h"
@@ -46,85 +47,144 @@
 #include "executor/spi.h"
 #include "foreign/foreign.h"
 #include "funcapi.h"
+#include "parser/analyze.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
+#include "postmaster/interrupt.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "yb_query_diagnostics.h"
 
-#define QUERY_DIAGNOSTICS_HASH_MAX_SIZE 100	/* Maximum number of entries in the hash table */
-#define BIND_VAR_FILE "bind_variables.csv"
-#define PGSS_FILE "pg_stat_statements.csv"
-#define ASH_FILE "active_session_history.csv"
-#define EXPLAIN_PLAN_FILE "explain_plan.txt"
-#define SCHEMA_DETAILS_FILE "schema_details.txt"
+static const char *constants_and_bind_variables_file = "constants_and_bind_variables.csv";
+static const char *pgss_file = "pg_stat_statements.csv";
+static const char *ash_file = "active_session_history.csv";
+static const char *explain_plan_file = "explain_plan.txt";
+static const char *schema_details_file = "schema_details.txt";
+
 /* Separates schema details for different tables by 60 '=' */
-#define SCHEMA_DETAILS_SEPARATOR "============================================================"
+const char *schema_details_separator = "============================================================";
+
+/* Maximum number of entries in the hash table */
+#define QUERY_DIAGNOSTICS_HASH_MAX_SIZE 100
 
 /* Constants used for yb_query_diagnostics_status view */
 #define YB_QUERY_DIAGNOSTICS_STATUS_COLS 8
-#define DIAGNOSTICS_SUCCESS 0
-#define DIAGNOSTICS_IN_PROGRESS 1
-#define DIAGNOSTICS_ERROR 2
-#define DIAGNOSTICS_CANCELLED 3
 
-typedef struct BundleInfo
+typedef struct YbBundleInfo
 {
-	YbQueryDiagnosticsMetadata metadata; /* stores bundle's metadata */
-	int			status; /* 0 - Success; 1 - In Progress; 2 - ERROR */
-	char		description[YB_QD_DESCRIPTION_LEN]; /* stores error description */
-} BundleInfo;
+	YbQueryDiagnosticsMetadata metadata;	/* stores bundle's metadata */
+	int			status;			/* 0 - Success; 1 - In Progress; 2 - ERROR */
+	char		description[YB_QD_DESCRIPTION_LEN]; /* stores error
+													 * description */
+} YbBundleInfo;
 
 typedef struct YbQueryDiagnosticsBundles
 {
 	int			index;			/* index to insert new buffer entry */
 	int			max_entries;	/* maximum # of entries in the buffer */
-	LWLock	 	lock;			/* protects circular buffer from search/modification */
-	BundleInfo	bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
+	LWLock		lock;			/* protects circular buffer from
+								 * search/modification */
+	YbBundleInfo bundles[FLEXIBLE_ARRAY_MEMBER];	/* circular buffer to
+													 * store info about
+													 * bundles */
 } YbQueryDiagnosticsBundles;
 
+typedef struct
+{
+	/*
+	 * Identifies the starting position of the query within the source text,
+	 * equivalent to Query->stmt_location
+	 */
+	int			stmt_location;
+
+	/* Number of constants in the query */
+	int			count;
+
+	/* Holds the locations of constants in the query */
+	LocationLen locations[YB_QD_MAX_CONSTANTS];
+} YbQueryConstantsMetadata;
+
+typedef struct YbDatabaseConnectionWorkerInfo
+{
+	/*
+	 * Create a deep copy of the data to prevent race conditions. The original
+	 * entry in the hash table may be deleted by yb_query_diagnostics_bgworker
+	 * while the database connection worker is still processing it. This ensures data
+	 * consistency between background workers.
+	 */
+	YbQueryDiagnosticsEntry entry;  /* Copy of the entry we're processing */
+	bool		initialized;  /* Flag to check if the worker is initialized */
+} YbDatabaseConnectionWorkerInfo;
+
 /* GUC variables */
-int yb_query_diagnostics_bg_worker_interval_ms;
-int yb_query_diagnostics_circular_buffer_size;
+bool		yb_enable_query_diagnostics;
+int			yb_query_diagnostics_bg_worker_interval_ms;
+int			yb_query_diagnostics_circular_buffer_size;
 
 /* Saved hook value in case of unload */
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 
-/* Flags set by interrupt handlers for later service in the main loop. */
-static volatile sig_atomic_t got_sigterm = false;
-static volatile sig_atomic_t got_sighup = false;
-
+/* Function pointers */
 YbGetNormalizedQueryFuncPtr yb_get_normalized_query = NULL;
 TimestampTz *yb_pgss_last_reset_time;
+YbPgssFillInConstantLengths yb_qd_fill_in_constant_lengths = NULL;
 
+/* session variables */
+static YbQueryConstantsMetadata query_constants = {
+	.stmt_location = 0,
+	.count = 0,
+	.locations = {{0, 0}}
+};
+
+typedef struct YbBackgroundWorkerHandle
+{
+	int slot;
+	uint64 generation;
+} YbBackgroundWorkerHandle;
+
+enum QueryOutputFormat
+{
+	YB_QD_TABULAR = 0,
+	YB_QD_CSV
+};
+
+/* shared variables */
 static HTAB *bundles_in_progress = NULL;
-static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
+static LWLock *bundles_in_progress_lock;	/* protects bundles_in_progress
+											 * hash table */
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
 static const char *status_msg[] = {"Success", "In Progress", "Error", "Cancelled"};
 static bool current_query_sampled = false;
+static YbBackgroundWorkerHandle *bg_worker_handle = NULL;
+static YbDatabaseConnectionWorkerInfo *database_connection_worker_info = NULL;
+static bool *bg_worker_should_be_active = NULL;
 
+static void YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query,
+												  JumbleState *jstate);
 static void YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc);
 
+static bool IsBgWorkerStopped();
+static void StartBgWorkerIfStopped();
 static void InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata);
 static void FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo);
 static void ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata);
-static void FormatParams(StringInfo buf, const ParamListInfo params);
-static int DumpToFile(const char *path, const char *file_name, const char *data, char *description);
+static void FormatBindVariables(StringInfo buf, const ParamListInfo params);
+static void FormatConstants(StringInfo constants, const char *query, int constants_count,
+							int query_location, LocationLen *constant_locations);
+static int	DumpToFile(const char *path, const char *file_name, const char *data, char *description);
 static void FlushAndCleanBundles();
-static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
-									const double totaltime_ms, const ParamListInfo params);
 static void AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry,
 							  bool explain_analyze, bool explain_dist, double totaltime_ms);
-static void YbQueryDiagnosticsBgWorkerSighup(SIGNAL_ARGS);
-static void YbQueryDiagnosticsBgWorkerSigterm(SIGNAL_ARGS);
 static inline TimestampTz BundleEndTime(const YbQueryDiagnosticsEntry *entry);
-static int YbQueryDiagnosticsBundlesShmemSize(void);
+static int	YbQueryDiagnosticsBundlesShmemSize(void);
 static Datum CreateJsonb(const YbQueryDiagnosticsParams *params);
 static void CreateJsonbInt(JsonbParseState *state, char *key, int64 value);
 static void CreateJsonbBool(JsonbParseState *state, char *key, bool value);
@@ -136,31 +196,33 @@ static void ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc);
 static void ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc);
 static inline int CircularBufferMaxEntries(void);
 static void RemoveBundleInfo(int64 query_id);
-static int MakeDirectory(const char *path, char *description);
+static int	MakeDirectory(const char *path, char *description);
 static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
-								  int status, const char *description);
-static int DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
+								   int status, const char *description);
+static int	DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
 								 const char *folder_path, char *description, slock_t *mutex);
+static int DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description);
+static void GetResultsInCsvFormat(StringInfo output_buffer, int num_cols);
+static void GetResultsInTabularFormat(StringInfo output_buffer, int num_cols);
 
-/* Function used in gathering bind_variables data */
-static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
-									const double totaltime_ms, const ParamListInfo params);
+/* Function used in gathering bind_variables/constants data */
+static void AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, StringInfo params);
 
 /* Functions used in gathering pg_stat_statements */
 static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss,
 						 const char *queryString);
-static void AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *result);
-
-/* Functions used in gathering schema details */
 static void FetchSchemaOids(List *rtable, Oid *schema_oids);
-static bool ExecuteQuery(StringInfo schema_details, const char *query,
-						 const char *title, char *description);
-static int DescribeOneTable(Oid oid, StringInfo schema_details, char *description);
-static void PrintTableName(Oid oid, StringInfo schema_details);
+static bool ExecuteQuery(StringInfo output_buffer, const char *query, int output_format);
+static int	DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details, char *description);
+static void PrintTableAndDatabaseName(Oid oid, const char *db_name, StringInfo schema_details);
+static void RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry);
 
 void
 YbQueryDiagnosticsInstallHook(void)
 {
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
+	post_parse_analyze_hook = YbQueryDiagnostics_post_parse_analyze;
+
 	prev_ExecutorStart = ExecutorStart_hook;
 	ExecutorStart_hook = YbQueryDiagnostics_ExecutorStart;
 
@@ -178,7 +240,7 @@ YbQueryDiagnosticsBundlesShmemSize(void)
 	Size		size;
 
 	size = offsetof(YbQueryDiagnosticsBundles, bundles);
-	size = add_size(size, mul_size(CircularBufferMaxEntries(), sizeof(BundleInfo)));
+	size = add_size(size, mul_size(CircularBufferMaxEntries(), sizeof(YbBundleInfo)));
 
 	return size;
 }
@@ -194,9 +256,12 @@ YbQueryDiagnosticsShmemSize(void)
 
 	size = MAXALIGN(sizeof(LWLock));
 	size = add_size(size, hash_estimate_size(QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
-													sizeof(YbQueryDiagnosticsEntry)));
+											 sizeof(YbQueryDiagnosticsEntry)));
 	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
 	size = add_size(size, sizeof(TimestampTz));
+	size = add_size(size, sizeof(YbBackgroundWorkerHandle)); /* bg_worker_handle */
+	size = add_size(size, sizeof(YbDatabaseConnectionWorkerInfo)); /* database_connection_worker_info */
+	size = add_size(size, sizeof(bool)); /* bg_worker_should_be_active */
 
 	return size;
 }
@@ -208,8 +273,8 @@ YbQueryDiagnosticsShmemSize(void)
 void
 YbQueryDiagnosticsShmemInit(void)
 {
-	HASHCTL 	ctl;
-	bool 		found;
+	HASHCTL		ctl;
+	bool		found;
 
 	bundles_in_progress = NULL;
 	/* Initialize the hash table control structure */
@@ -220,7 +285,7 @@ YbQueryDiagnosticsShmemInit(void)
 	ctl.entrysize = sizeof(YbQueryDiagnosticsEntry);
 
 	/* Create the hash table in shared memory */
-	bundles_in_progress_lock = (LWLock *)ShmemInitStruct("YbQueryDiagnostics Lock",
+	bundles_in_progress_lock = (LWLock *) ShmemInitStruct("YbQueryDiagnostics Lock",
 														  sizeof(LWLock), &found);
 
 	if (!found)
@@ -231,10 +296,10 @@ YbQueryDiagnosticsShmemInit(void)
 	}
 
 	bundles_in_progress = ShmemInitHash("YbQueryDiagnostics shared hash table",
-											  QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
-											  QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
-											  &ctl,
-											  HASH_ELEM | HASH_BLOBS);
+										QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
+										QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
+										&ctl,
+										HASH_ELEM | HASH_BLOBS);
 
 	bundles_completed =
 		(YbQueryDiagnosticsBundles *) ShmemInitStruct("YbQueryDiagnostics Status",
@@ -247,7 +312,7 @@ YbQueryDiagnosticsShmemInit(void)
 		bundles_completed->index = 0;
 		bundles_completed->max_entries = CircularBufferMaxEntries();
 
-		MemSet(bundles_completed->bundles, 0, sizeof(BundleInfo) * bundles_completed->max_entries);
+		MemSet(bundles_completed->bundles, 0, sizeof(YbBundleInfo) * bundles_completed->max_entries);
 
 		LWLockInitialize(&bundles_completed->lock,
 						 LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER);
@@ -255,23 +320,42 @@ YbQueryDiagnosticsShmemInit(void)
 
 	yb_pgss_last_reset_time = (TimestampTz *) ShmemAlloc(sizeof(TimestampTz));
 	(*yb_pgss_last_reset_time) = 0;
+
+	/* Initialize the background worker handle */
+	bg_worker_handle = (YbBackgroundWorkerHandle *) ShmemAlloc(sizeof(YbBackgroundWorkerHandle));
+	bg_worker_handle->slot = -1;
+	bg_worker_handle->generation = -1;
+
+	/* Initialize the database connection worker info */
+	database_connection_worker_info = (YbDatabaseConnectionWorkerInfo *)
+			ShmemAlloc(sizeof(YbDatabaseConnectionWorkerInfo));
+	database_connection_worker_info->initialized = false;
+
+	/* Initialize bg_worker_should_be_active */
+	bg_worker_should_be_active = (bool *) ShmemAlloc(sizeof(bool));
+
+	/*
+	 * Initialize background worker as inactive until
+	 * explicitly triggered by a diagnostics request.
+	 */
+	(*bg_worker_should_be_active) = false;
 }
 
 static inline int
 CircularBufferMaxEntries(void)
 {
-	return yb_query_diagnostics_circular_buffer_size * 1024 / sizeof(BundleInfo);
+	return yb_query_diagnostics_circular_buffer_size * 1024 / sizeof(YbBundleInfo);
 }
 
 /*
- * InsertCompletedBundleInfo
+ * InsertBundlesIntoView
  * 		Add a query diagnostics entry to the circular buffer.
  */
 static void
 InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata, int status,
 					  const char *description)
 {
-	BundleInfo *sample;
+	YbBundleInfo *sample;
 
 	LWLockAcquire(&bundles_completed->lock, LW_EXCLUSIVE);
 
@@ -362,10 +446,10 @@ yb_get_query_diagnostics_status(PG_FUNCTION_ARGS)
 	MemoryContext oldcontext;
 
 	/* Ensure that query diagnostics is enabled */
-	if (!YBIsQueryDiagnosticsEnabled())
+	if (!yb_enable_query_diagnostics)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("TEST_yb_enable_query_diagnostics gflag must be true")));
+				 errmsg("ysql_yb_enable_query_diagnostics gflag must be true")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -438,7 +522,7 @@ OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
 static void
 ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 {
-	HASH_SEQ_STATUS	status;
+	HASH_SEQ_STATUS status;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
@@ -447,7 +531,7 @@ ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 
 	while ((entry = hash_seq_search(&status)) != NULL)
 		OutputBundle(entry->metadata, "",
-					 status_msg[DIAGNOSTICS_IN_PROGRESS], tupstore, tupdesc);
+					 status_msg[YB_DIAGNOSTICS_IN_PROGRESS], tupstore, tupdesc);
 
 	LWLockRelease(bundles_in_progress_lock);
 }
@@ -466,7 +550,7 @@ ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 
 	for (int i = 0; i < bundles_completed->max_entries; ++i)
 	{
-		BundleInfo *sample= &bundles_completed->bundles[i];
+		YbBundleInfo *sample = &bundles_completed->bundles[i];
 
 		if (sample->metadata.params.query_id != 0)
 			OutputBundle(sample->metadata, sample->description,
@@ -476,51 +560,104 @@ ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
 	LWLockRelease(&bundles_completed->lock);
 }
 
-static void
-YbQueryDiagnosticsBgWorkerSighup(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sighup = true;
-	SetLatch(MyLatch);
-
-	errno = save_errno;
-}
-
-static void
-YbQueryDiagnosticsBgWorkerSigterm(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sigterm = true;
-	SetLatch(MyLatch);
-
-	errno = save_errno;
-}
-
 /*
- * YbQueryDiagnosticsBgWorkerRegister
- *		Register the background worker for yb_query_diagnostics
+ * BgWorkerRegister
+ *		Dynamically register the background worker.
  *
  * Background worker is required to periodically check for expired entries
  * within the shared hash table and stop the query diagnostics for them.
  */
-void
-YbQueryDiagnosticsBgWorkerRegister(void)
+static void
+BgWorkerRegister(void)
 {
+	pid_t		pid;
 	BackgroundWorker worker;
+	BackgroundWorkerHandle *handle;
+	BgwHandleStatus status;
+
 	MemSet(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "yb_query_diagnostics bgworker");
 	sprintf(worker.bgw_type, "yb_query_diagnostics bgworker");
-	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
+					   BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
-	/* Value of 1 allows the background worker for yb_query_diagnostics to restart */
-	worker.bgw_restart_time = 1;
+	worker.bgw_restart_time = BGW_DEFAULT_RESTART_INTERVAL;
 	sprintf(worker.bgw_library_name, "postgres");
 	sprintf(worker.bgw_function_name, "YbQueryDiagnosticsMain");
 	worker.bgw_main_arg = (Datum) 0;
-	worker.bgw_notify_pid = 0;
-	RegisterBackgroundWorker(&worker);
+	/* set bgw_notify_pid so that we can use WaitForBackgroundWorkerStartup */
+	worker.bgw_notify_pid = MyProcPid;
+	if (!RegisterDynamicBackgroundWorker(&worker, &handle))
+		ereport(WARNING,
+				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+				 errmsg("due to being out of background worker slots, "
+						"yb_query_diagnostics bgworker cannot be started"),
+				 errhint("You might need to increase max_worker_processes")));
+
+	status = WaitForBackgroundWorkerStartup(handle, &pid);
+
+	if (status == BGWH_STOPPED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("yb_query_diagnostics bgworker cannot be started"),
+				 errhint("More details may be available in the server log")));
+
+	if (status == BGWH_POSTMASTER_DIED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("yb_query_diagnostics bgworker cannot be started without postmaster"),
+				 errhint("Kill all remaining database processes and restart the database")));
+
+	Assert(status == BGWH_STARTED);
+
+	/* Save the handle for future use */
+	memcpy(bg_worker_handle, handle, sizeof(YbBackgroundWorkerHandle));
+
+	/* Set the bg_worker_should_be_active to true */
+	(*bg_worker_should_be_active) = true;
+}
+
+/*
+ * RegisterDatabaseConnectionBgWorker
+ *		Register the background worker for schema details
+ *
+ * A separate bg worker is required because the database with which we need to initialize the bg worker
+ * can be different for each bundle.
+ */
+static void
+RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry)
+{
+	Assert(database_connection_worker_info != NULL && !database_connection_worker_info->initialized);
+
+	ereport(DEBUG1,
+			(errmsg("registering background worker to dump schema details")));
+
+	database_connection_worker_info->initialized = true;
+
+	BackgroundWorker worker;
+	BackgroundWorkerHandle *handle;
+
+	/* Copy data to shared memory */
+	memcpy(&database_connection_worker_info->entry, entry, sizeof(YbQueryDiagnosticsEntry));
+
+	/* Initialize worker struct */
+	memset(&worker, 0, sizeof(worker));
+	sprintf(worker.bgw_type, "yb_query_diagnostics database connection bgworker");
+	sprintf(worker.bgw_name, "yb_query_diagnostics database connection bgworker");
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
+					   BGWORKER_BACKEND_DATABASE_CONNECTION;
+	worker.bgw_start_time = BgWorkerStart_ConsistentState;
+	worker.bgw_restart_time = BGW_NEVER_RESTART;
+	sprintf(worker.bgw_library_name, "postgres");
+	sprintf(worker.bgw_function_name, "YbQueryDiagnosticsDatabaseConnectionWorkerMain");
+	worker.bgw_main_arg = (Datum) 0;
+	worker.bgw_notify_pid = MyProcPid;
+
+	/* Register the worker */
+	if (!RegisterDynamicBackgroundWorker(&worker, &handle))
+		ereport(LOG,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				errmsg("could not register query diagnostics database connection worker")));
 }
 
 /*
@@ -555,10 +692,131 @@ YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_
 	LWLockRelease(bundles_in_progress_lock);
 }
 
+/*
+ * FormatBindVariables
+ *		Iterates over params and prints all of the bind variables in CSV fromat.
+ */
+static void
+FormatBindVariables(StringInfo buf, const ParamListInfo params)
+{
+	Oid			typoutput;
+	bool		typIsVarlena;
+	char	   *val;
+	bool		is_text;
+
+	MemoryContext oldcxt = CurrentMemoryContext;
+	MemoryContext cxt = AllocSetContextCreate(CurrentMemoryContext,
+											  "FormatBindVariables temporary context",
+											  ALLOCSET_DEFAULT_SIZES);
+
+	MemoryContextSwitchTo(cxt);
+	for (int i = 0; i < params->numParams; ++i)
+	{
+		if (params->params[i].isnull)
+			appendStringInfo(buf, "NULL");
+		else
+		{
+			getTypeOutputInfo(params->params[i].ptype,
+							  &typoutput, &typIsVarlena);
+			val = OidOutputFunctionCall(typoutput, params->params[i].value);
+
+			/* Check if the type is text-like (char, varchar, text) */
+			is_text = (params->params[i].ptype == TEXTOID ||
+					   params->params[i].ptype == VARCHAROID ||
+					   params->params[i].ptype == BPCHAROID);
+
+			if (i > 0)
+				appendStringInfoChar(buf, ',');
+
+			/* Append the value with quotes if it is a text-like type */
+			appendStringInfo(buf, is_text ? "'%s'" : "%s", val);
+
+			pfree(val);
+		}
+	}
+
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(cxt);
+}
+
+/*
+ * FormatConstants
+ *		Formats and copies the constants from the query into the constants buffer.
+ */
+static void
+FormatConstants(StringInfo constants, const char *query, int constants_count,
+				int query_location, LocationLen *constant_locations)
+{
+	int			i;
+
+	/* Offset from the start of the query string for the current constant */
+	int			offset;
+
+	/* Length (in bytes) of the current constant */
+	int			constant_len;
+
+	for (i = 0; i < constants_count; i++)
+	{
+		offset = constant_locations[i].location;
+		constant_len = constant_locations[i].length;
+
+		if (constant_len < 0)
+			continue;
+
+		/* Adjust recorded location if we're dealing with partial string */
+		offset -= query_location;
+
+		/* Copy the constant */
+		if (i > 0)
+			appendStringInfoChar(constants, ',');
+
+		appendBinaryStringInfo(constants, query + offset, constant_len);
+	}
+}
+
+static void
+YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+
+	int64		query_id = query->queryId;
+	YbQueryDiagnosticsEntry *entry;
+
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
+	/*
+	 * This can slow down the query execution, even if the query is not being bundled.
+	 */
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
+													&query_id, HASH_FIND,
+													NULL);
+	if (entry)
+	{
+		if (jstate && jstate->clocations_count > 0)
+		{
+			int			query_location = query->stmt_location;
+
+			/*
+			 * Get constants' lengths (Postgres infrastructure only gives us locations).
+			 * Note this also ensures the items are sorted by location.
+			 */
+			yb_qd_fill_in_constant_lengths(jstate, pstate->p_sourcetext, query_location);
+
+			query_constants.stmt_location = query_location;
+			query_constants.count = Min(jstate->clocations_count, YB_QD_MAX_CONSTANTS);
+			memcpy(query_constants.locations, jstate->clocations,
+				   sizeof(LocationLen) * query_constants.count);
+		}
+	}
+
+	LWLockRelease(bundles_in_progress_lock);
+}
+
 static void
 YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	uint64		query_id = queryDesc->plannedstmt->queryId;
+	int64		query_id = queryDesc->plannedstmt->queryId;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
@@ -592,8 +850,7 @@ YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags)
 static void
 YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 {
-	uint64		query_id = queryDesc->plannedstmt->queryId;
-	double 		totaltime_ms;
+	int64		query_id = queryDesc->plannedstmt->queryId;
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
@@ -608,13 +865,46 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 	if (entry)
 	{
-		totaltime_ms = INSTR_TIME_GET_MILLISEC(queryDesc->totaltime->counter);
+		/*
+		 * Make sure stats accumulation is done.  (Note: it's okay if several
+		 * levels of hook all do this.)
+		 */
+		InstrEndLoop(queryDesc->totaltime);
+		double		totaltime_ms = queryDesc->totaltime->total * 1000.0;
 
-		if (queryDesc->params &&
-			entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms)
-			AccumulateBindVariables(entry, totaltime_ms, queryDesc->params);
+		if (entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms &&
+			(queryDesc->params || query_constants.count > 0))
+		{
+			StringInfoData buf;
 
-		AccumulatePgss(queryDesc, entry);
+			initStringInfo(&buf);
+
+			/* For prepared statements, format bind variables in a CSV format */
+			if (queryDesc->params)
+				FormatBindVariables(&buf, queryDesc->params);
+
+			/* For non-prepared statements, format constants in a CSV format. */
+			else if (query_constants.count > 0)
+			{
+				FormatConstants(&buf, queryDesc->sourceText,
+								query_constants.count,
+								query_constants.stmt_location,
+								query_constants.locations);
+
+				/* Reset the constants metadata */
+				query_constants.stmt_location = 0;
+				query_constants.count = 0;
+				MemSet(query_constants.locations, 0, sizeof(LocationLen) * YB_QD_MAX_CONSTANTS);
+			}
+
+			if (buf.len > 0)
+			{
+				appendStringInfo(&buf, ",%lf ms\n", totaltime_ms);
+				AccumulateBindVariablesOrConstants(entry, &buf);
+			}
+
+			pfree(buf.data);
+		}
 
 		if (current_query_sampled)
 			AccumulateExplain(queryDesc, entry,
@@ -635,84 +925,122 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 		standard_ExecutorEnd(queryDesc);
 }
 
+/*
+ * AccumulateBindVariablesOrConstants
+ *		Appends current query's bind variables/constants to the entry.
+ */
 static void
-AccumulateBindVariables(YbQueryDiagnosticsEntry *entry, const double totaltime_ms,
-						const ParamListInfo params)
+AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, StringInfo params)
 {
-	/* Check if the bind_vars is already full */
 	SpinLockAcquire(&entry->mutex);
-	bool is_full = strlen(entry->bind_vars) == YB_QD_MAX_BIND_VARS_LEN - 1;
-	SpinLockRelease(&entry->mutex);
 
-	if (is_full)
-		return;
-
-	StringInfoData buf;
-	initStringInfo(&buf);
-	FormatParams(&buf, params);
-	appendStringInfo(&buf, "%lf\n", totaltime_ms);
-
-	SpinLockAcquire(&entry->mutex);
 	size_t		current_len = strlen(entry->bind_vars);
-	if (current_len + buf.len <= YB_QD_MAX_BIND_VARS_LEN - 1)
-	{
-		memcpy(entry->bind_vars + current_len, buf.data, buf.len);
-		entry->bind_vars[current_len + buf.len] = '\0'; /* Ensure null termination */
-	}
-	SpinLockRelease(&entry->mutex);
 
-	pfree(buf.data);
+	if (current_len + params->len <= YB_QD_MAX_BIND_VARS_LEN - 1)
+	{
+		memcpy(entry->bind_vars + current_len, params->data, params->len);
+		entry->bind_vars[current_len + params->len] = '\0'; /* Ensure null
+															 * termination */
+	}
+
+	SpinLockRelease(&entry->mutex);
 }
 
-static void
-AccumulatePgss(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry)
+void
+YbQueryDiagnosticsAccumulatePgss(int64 query_id, YbQdPgssStoreKind kind,
+								 double total_time, uint64 rows,
+								 const BufferUsage *bufusage,
+								 const WalUsage *walusage,
+								 const struct JitInstrumentation *jitusage)
 {
-	double totaltime_ms = INSTR_TIME_GET_DOUBLE(queryDesc->totaltime->counter) * 1000;
-	int64 rows = queryDesc->estate->es_processed;
-	BufferUsage *bufusage = &queryDesc->totaltime->bufusage;
+	YbQueryDiagnosticsEntry *entry;
 
-	SpinLockAcquire(&entry->mutex);
-	entry->pgss.counters.calls++;
-	entry->pgss.counters.total_time += totaltime_ms;
-	entry->pgss.counters.rows += queryDesc->estate->es_processed;
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+	/*
+	 * This can slow down the query execution, even if the query is not being bundled.
+	 * Worst case : O(QUERY_DIAGNOSTICS_HASH_MAX_SIZE)
+	 */
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
+													&query_id, HASH_FIND,
+													NULL);
 
-	if (entry->pgss.counters.calls == 1)
+	if (entry)
 	{
-		entry->pgss.counters.min_time = totaltime_ms;
-		entry->pgss.counters.max_time = totaltime_ms;
-		entry->pgss.counters.mean_time = totaltime_ms;
-	}
-	else
-	{
-		double old_mean = entry->pgss.counters.mean_time;
-		/*
-		 * 'calls' cannot be 0 here because
-		 * it is initialized to 0 and incremented by calls++ above
-		 */
-		entry->pgss.counters.mean_time += (totaltime_ms - old_mean) / entry->pgss.counters.calls;
-		entry->pgss.counters.sum_var_time += (totaltime_ms - old_mean) *
-											  (totaltime_ms - entry->pgss.counters.mean_time);
-		if (entry->pgss.counters.min_time > totaltime_ms)
-			entry->pgss.counters.min_time = totaltime_ms;
-		if (entry->pgss.counters.max_time < totaltime_ms)
-			entry->pgss.counters.max_time = totaltime_ms;
+		SpinLockAcquire(&entry->mutex);
+		entry->pgss.counters.calls[kind] += 1;
+		entry->pgss.counters.total_time[kind] += total_time;
+		entry->pgss.counters.rows += rows;
+
+		if (entry->pgss.counters.calls[kind] == 1)
+		{
+			entry->pgss.counters.min_time[kind] = total_time;
+			entry->pgss.counters.max_time[kind] = total_time;
+			entry->pgss.counters.mean_time[kind] = total_time;
+		}
+		else
+		{
+			double		old_mean = entry->pgss.counters.mean_time[kind];
+			/*
+			 * 'calls' cannot be 0 here because
+			 * it is initialized to 0 and incremented by calls++ above
+			 */
+			entry->pgss.counters.mean_time[kind] +=
+				(total_time - old_mean) / entry->pgss.counters.calls[kind];
+			entry->pgss.counters.sum_var_time[kind] +=
+				(total_time - old_mean) * (total_time - entry->pgss.counters.mean_time[kind]);
+			if (entry->pgss.counters.min_time[kind] > total_time)
+				entry->pgss.counters.min_time[kind] = total_time;
+			if (entry->pgss.counters.max_time[kind] < total_time)
+				entry->pgss.counters.max_time[kind] = total_time;
+		}
+
+		entry->pgss.counters.rows += rows;
+		entry->pgss.counters.shared_blks_hit += bufusage->shared_blks_hit;
+		entry->pgss.counters.shared_blks_read += bufusage->shared_blks_read;
+		entry->pgss.counters.shared_blks_dirtied += bufusage->shared_blks_dirtied;
+		entry->pgss.counters.shared_blks_written += bufusage->shared_blks_written;
+		entry->pgss.counters.local_blks_hit += bufusage->local_blks_hit;
+		entry->pgss.counters.local_blks_read += bufusage->local_blks_read;
+		entry->pgss.counters.local_blks_dirtied += bufusage->local_blks_dirtied;
+		entry->pgss.counters.local_blks_written += bufusage->local_blks_written;
+		entry->pgss.counters.temp_blks_read += bufusage->temp_blks_read;
+		entry->pgss.counters.temp_blks_written += bufusage->temp_blks_written;
+		entry->pgss.counters.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
+		entry->pgss.counters.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
+		entry->pgss.counters.wal_records += walusage->wal_records;
+		entry->pgss.counters.wal_fpi += walusage->wal_fpi;
+		entry->pgss.counters.wal_bytes += walusage->wal_bytes;
+
+		if (jitusage)
+		{
+			entry->pgss.counters.jit_functions += jitusage->created_functions;
+			entry->pgss.counters.jit_generation_time += INSTR_TIME_GET_MILLISEC(jitusage->generation_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->inlining_counter))
+				entry->pgss.counters.jit_inlining_count++;
+			entry->pgss.counters.jit_inlining_time += INSTR_TIME_GET_MILLISEC(jitusage->inlining_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->optimization_counter))
+				entry->pgss.counters.jit_optimization_count++;
+			entry->pgss.counters.jit_optimization_time += INSTR_TIME_GET_MILLISEC(jitusage->optimization_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->emission_counter))
+				entry->pgss.counters.jit_emission_count++;
+			entry->pgss.counters.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
+		}
+
+		SpinLockRelease(&entry->mutex);
 	}
 
-	entry->pgss.counters.rows += rows;
-	entry->pgss.counters.shared_blks_hit += bufusage->shared_blks_hit;
-	entry->pgss.counters.shared_blks_read += bufusage->shared_blks_read;
-	entry->pgss.counters.shared_blks_dirtied += bufusage->shared_blks_dirtied;
-	entry->pgss.counters.shared_blks_written += bufusage->shared_blks_written;
-	entry->pgss.counters.local_blks_hit += bufusage->local_blks_hit;
-	entry->pgss.counters.local_blks_read += bufusage->local_blks_read;
-	entry->pgss.counters.local_blks_dirtied += bufusage->local_blks_dirtied;
-	entry->pgss.counters.local_blks_written += bufusage->local_blks_written;
-	entry->pgss.counters.temp_blks_read += bufusage->temp_blks_read;
-	entry->pgss.counters.temp_blks_written += bufusage->temp_blks_written;
-	entry->pgss.counters.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
-	entry->pgss.counters.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
-	SpinLockRelease(&entry->mutex);
+	LWLockRelease(bundles_in_progress_lock);
 }
+
+static double
+CalculateStandardDeviation(int64 calls, double sum_var_time)
+{
+	return (calls > 1) ? (sqrt(sum_var_time / calls)) : 0.0;
+}
+
 
 /*
  * PgssToString
@@ -725,21 +1053,63 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 		query_str = "";
 
 	snprintf(pgss_str, YB_QD_MAX_PGSS_LEN,
-			"queryid,query,calls,total_time,min_time,max_time,mean_time,stddev_time,rows,"
-			"shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,"
+			"query_id,query,calls,total_plan_time,total_exec_time,"
+			"min_plan_time,min_exec_time,max_plan_time,max_exec_time,"
+			"mean_plan_time,mean_exec_time,stddev_plan_time,stddev_exec_time,"
+			"rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,"
 			"local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,"
-			"temp_blks_read,temp_blks_written,blk_read_time,blk_write_time\n"
-			"%ld,\"%s\",%ld,%lf,%lf,%lf,%lf,%lf,%ld,%ld,%ld,%ld,"
-			"%ld,%ld,%ld,%ld,%ld,%ld,%ld,%lf,%lf\n",
-			query_id, query_str, pgss.counters.calls,
-			pgss.counters.total_time, pgss.counters.min_time, pgss.counters.max_time,
-			pgss.counters.mean_time, sqrt(pgss.counters.sum_var_time / pgss.counters.calls),
-			pgss.counters.rows, pgss.counters.shared_blks_hit, pgss.counters.shared_blks_read,
-			pgss.counters.shared_blks_dirtied, pgss.counters.shared_blks_written,
-			pgss.counters.local_blks_hit, pgss.counters.local_blks_read,
-			pgss.counters.local_blks_dirtied, pgss.counters.local_blks_written,
-			pgss.counters.temp_blks_read, pgss.counters.temp_blks_written,
-			pgss.counters.blk_read_time, pgss.counters.blk_write_time);
+			"temp_blks_read,temp_blks_written,blk_read_time,blk_write_time,"
+			"temp_blk_read_time,temp_blk_write_time,wal_records,wal_fpi,wal_bytes,"
+			"jit_functions,jit_generation_time,jit_inlining_count,jit_inlining_time,"
+			"jit_optimization_count,jit_optimization_time,jit_emission_count,jit_emission_time\n"
+			"%ld,\"%s\",%ld,%lf,%lf,%lf,%lf,"
+			"%lf,%lf,%lf,%lf,%lf,%lf,"
+			"%ld,%ld,%ld,%ld,%ld,"
+			"%ld,%ld,%ld,%ld,"
+			"%ld,%ld,%lf,%lf,"
+			"%lf,%lf,%ld,%ld,%ld,"
+			"%ld,%lf,%ld,%lf,"
+			"%ld,%lf,%ld,%lf\n",
+			query_id, query_str,
+			pgss.counters.calls[YB_QD_PGSS_EXEC],
+			pgss.counters.total_time[YB_QD_PGSS_PLAN],
+			pgss.counters.total_time[YB_QD_PGSS_EXEC],
+			pgss.counters.min_time[YB_QD_PGSS_PLAN],
+			pgss.counters.min_time[YB_QD_PGSS_EXEC],
+			pgss.counters.max_time[YB_QD_PGSS_PLAN],
+			pgss.counters.max_time[YB_QD_PGSS_EXEC],
+			pgss.counters.mean_time[YB_QD_PGSS_PLAN],
+			pgss.counters.mean_time[YB_QD_PGSS_EXEC],
+			CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_PLAN],
+			pgss.counters.sum_var_time[YB_QD_PGSS_PLAN]),
+			CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_EXEC],
+			pgss.counters.sum_var_time[YB_QD_PGSS_EXEC]),
+			pgss.counters.rows,
+			pgss.counters.shared_blks_hit,
+			pgss.counters.shared_blks_read,
+			pgss.counters.shared_blks_dirtied,
+			pgss.counters.shared_blks_written,
+			pgss.counters.local_blks_hit,
+			pgss.counters.local_blks_read,
+			pgss.counters.local_blks_dirtied,
+			pgss.counters.local_blks_written,
+			pgss.counters.temp_blks_read,
+			pgss.counters.temp_blks_written,
+			pgss.counters.blk_read_time,
+			pgss.counters.blk_write_time,
+			pgss.counters.temp_blk_read_time,
+			pgss.counters.temp_blk_write_time,
+			pgss.counters.wal_records,
+			pgss.counters.wal_fpi,
+			pgss.counters.wal_bytes,
+			pgss.counters.jit_functions,
+			pgss.counters.jit_generation_time,
+			pgss.counters.jit_inlining_count,
+			pgss.counters.jit_inlining_time,
+			pgss.counters.jit_optimization_count,
+			pgss.counters.jit_optimization_time,
+			pgss.counters.jit_emission_count,
+			pgss.counters.jit_emission_time);
 }
 
 static void
@@ -763,14 +1133,18 @@ AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool exp
 	if (es->costs)
 		ExplainPrintJITSummary(es, queryDesc);
 
-	/* Removes the trailing newline that might be introduced by ExplainPrintJITSummary */
+	/*
+	 * Removes the trailing newline that might be introduced by
+	 * ExplainPrintJITSummary
+	 */
 	if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
 		es->str->data[--es->str->len] = '\0';
 
 	SpinLockAcquire(&entry->mutex);
 
 	/* TODO(GH#23720): Add support for handling oversized explain plans */
-	int remaining_space = sizeof(entry->explain_plan) - strlen(entry->explain_plan) - 1;
+	int			remaining_space = sizeof(entry->explain_plan) - strlen(entry->explain_plan) - 1;
+
 	if (remaining_space > 0)
 		snprintf(entry->explain_plan + strlen(entry->explain_plan), remaining_space,
 				 "duration: %.3f ms\nplan:\n%s\n\n", totaltime_ms, es->str->data);
@@ -782,47 +1156,67 @@ AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool exp
 	pfree(es);
 }
 
+static bool
+IsBgWorkerStopped()
+{
+	pid_t		pid;
+
+	return (GetBackgroundWorkerPid((BackgroundWorkerHandle *)bg_worker_handle,
+								   &pid) != BGWH_STARTED);
+}
 
 /*
- * FormatParams
- *		Iterates over all of the params and prints them in CSV fromat.
+ * StartBgWorkerIfStopped()
+ *		Starts the background worker if it is not already running.
+ *
+ * This function manages the background worker lifecycle with the following logic:
+ * 1.	If no worker has ever been initialized (invalid slot and generation),
+ *		registers a new worker immediately.
+ * 2.	If a worker is marked as inactive and not running, registers a new worker.
+ * 3.	If a worker is marked as inactive but still running (in termination process),
+ *		waits for the worker to fully terminate before registering a new one.
+ *		If the wait exceeds the timeout (5 seconds), raises an ERROR to prevent
+ *		indefinite waiting.
  */
 static void
-FormatParams(StringInfo buf, const ParamListInfo params)
+StartBgWorkerIfStopped()
 {
-	MemoryContext oldcxt = CurrentMemoryContext;
-	MemoryContext cxt = AllocSetContextCreate(CurrentMemoryContext,
-													 "FormatParams temporary context",
-													 ALLOCSET_DEFAULT_SIZES);
+	int			max_attempts = 50;
+	int			attempts = 0;
 
-	MemoryContextSwitchTo(cxt);
-	for (int i = 0; i < params->numParams; ++i)
+	/* Worker was never initialized (invalid slot and generation) */
+	if (bg_worker_handle->slot == -1 && bg_worker_handle->generation == -1)
+		BgWorkerRegister();
+
+	/* Worker was initialized but not currently running */
+	else if ((*bg_worker_should_be_active) == false)
 	{
-		if (params->params[i].isnull)
-			appendStringInfo(buf, "NULL");
-		else
+		while (attempts < max_attempts)
 		{
-			Oid			typoutput;
-			bool		typIsVarlena;
-			char	   *val;
+			if (IsBgWorkerStopped())
+			{
+				BgWorkerRegister();
+				break;
+			}
 
-			getTypeOutputInfo(params->params[i].ptype,
-							  &typoutput, &typIsVarlena);
-			val = OidOutputFunctionCall(typoutput, params->params[i].value);
-
-			appendStringInfo(buf, "%s,", val);
+			pg_usleep(100000); /* Sleep for 100ms */
+			attempts++;
 		}
-	}
 
-	MemoryContextSwitchTo(oldcxt);
-	MemoryContextDelete(cxt);
+		if (attempts >= max_attempts)
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+					 errmsg("timed out after waiting 5 seconds for "
+							"query diagnostics background worker to terminate")));
+	}
 }
 
 /*
  * InsertNewBundleInfo
  *		Adds the entry into bundles_in_progress hash table.
  *		Entry is inserted only if it is not already present,
- *		otherwise an error is raised.
+ *		otherwise an error is raised. This function also starts
+ *		yb_query_diagnostics bgworker if it is not already running.
  */
 static void
 InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
@@ -832,6 +1226,13 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	YbQueryDiagnosticsEntry *entry;
 
 	LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
+
+	/*
+	 * Note that we need not worry about concurrent registration attempts
+	 * from different sessions as we are within an EXCLUSIVE lock.
+	 */
+	StartBgWorkerIfStopped();
+
 	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress, &key,
 													HASH_ENTER, &found);
 
@@ -839,11 +1240,20 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	{
 		entry->metadata = *metadata;
 		entry->metadata.directory_created = false;
+		entry->metadata.flush_only_schema_details = false;
 		MemSet(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
 		MemSet(entry->explain_plan, 0, YB_QD_MAX_EXPLAIN_PLAN_LEN);
 		MemSet(entry->schema_oids, 0, sizeof(Oid) * YB_QD_MAX_SCHEMA_OIDS);
 		SpinLockInit(&entry->mutex);
-		entry->pgss = (YbQueryDiagnosticsPgss) {.counters = {0}, .query_offset = 0, .query_len = 0};
+		entry->pgss = (YbQueryDiagnosticsPgss)
+		{
+			.counters =
+			{
+				{ 0 }
+			},
+				.query_offset = 0,
+				.query_len = 0,
+		};
 	}
 
 	LWLockRelease(bundles_in_progress_lock);
@@ -851,7 +1261,7 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	if (found)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("Query diagnostics for %ld, is already being generated",
+				 errmsg("query diagnostics for %ld is already being generated",
 						metadata->params.query_id)));
 }
 
@@ -864,16 +1274,16 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 static inline TimestampTz
 BundleEndTime(const YbQueryDiagnosticsEntry *entry)
 {
-	return entry->metadata.start_time +
-		   (entry->metadata.params.diagnostics_interval_sec * USECS_PER_SEC);
+	return (entry->metadata.start_time +
+			(entry->metadata.params.diagnostics_interval_sec * USECS_PER_SEC));
 }
 
 void
-AppendToDescription(char *description, const char *format, ...)
+YbQueryDiagnosticsAppendToDescription(char *description, const char *format,...)
 {
 	int			current_len = strlen(description);
 	va_list		args;
-	int			remaining_len = YB_QD_DESCRIPTION_LEN - current_len - 1; /* -1 for '\0' */
+	int			remaining_len = YB_QD_DESCRIPTION_LEN - current_len - 1;	/* -1 for '\0' */
 
 	if (remaining_len <= 0)
 		return;
@@ -910,10 +1320,13 @@ FlushAndCleanBundles()
 	TimestampTz current_time = GetCurrentTimestamp();
 	HASH_SEQ_STATUS status;
 	YbQueryDiagnosticsEntry *entry;
-	YbQueryDiagnosticsEntry expired_entries[QUERY_DIAGNOSTICS_HASH_MAX_SIZE];
+	MemoryContext curr_context = CurrentMemoryContext;
 	int			expired_entries_index = 0;
+	YbQueryDiagnosticsEntry *expired_entries;
 
-	memset(expired_entries, 0, sizeof(expired_entries));
+	expired_entries = (YbQueryDiagnosticsEntry *)
+		palloc0(sizeof(YbQueryDiagnosticsEntry) *
+				QUERY_DIAGNOSTICS_HASH_MAX_SIZE);
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 
@@ -936,20 +1349,24 @@ FlushAndCleanBundles()
 		 * because that is set only once, when the bundle is created.
 		 */
 		char	   *folder_path = entry->metadata.path;
-		int			status = DIAGNOSTICS_SUCCESS;
+		int			status = YB_DIAGNOSTICS_SUCCESS;
 		bool		has_expired = current_time >= BundleEndTime(entry);
 
 		/* Description of the warnings/errors that occurred */
 		char		description[YB_QD_DESCRIPTION_LEN];
+
 		description[0] = '\0';
 
-		/* Since only the background worker accesses this variable, no lock is needed */
+		/*
+		 * Since only the background worker accesses this variable, no lock is
+		 * needed
+		 */
 		if (!entry->metadata.directory_created)
 		{
 			/* Creates the directory structure recursively for this bundle */
-			if (MakeDirectory(folder_path, description) == DIAGNOSTICS_ERROR)
+			if (MakeDirectory(folder_path, description) == YB_DIAGNOSTICS_ERROR)
 			{
-				FinishBundleProcessing(&entry->metadata, DIAGNOSTICS_ERROR, description);
+				FinishBundleProcessing(&entry->metadata, YB_DIAGNOSTICS_ERROR, description);
 				goto end_of_loop;
 			}
 
@@ -960,10 +1377,10 @@ FlushAndCleanBundles()
 		{
 			SpinLockAcquire(&entry->mutex);
 			/*
-			* To avoid holding the lock while flushing to disk, we create a copy of the data
-			* that is to be dumped, this protects us from potential overwriting of the entry
-			* during the flushing process.
-			*/
+			 * To avoid holding the lock while flushing to disk, we create a copy of the data
+			 * that is to be dumped, this protects us from potential overwriting of the entry
+			 * during the flushing process.
+			 */
 			memcpy(&expired_entries[expired_entries_index++], entry, sizeof(YbQueryDiagnosticsEntry));
 			SpinLockRelease(&entry->mutex);
 		}
@@ -977,10 +1394,10 @@ FlushAndCleanBundles()
 			 * while flushing to disk.
 			 */
 			status = DumpBufferIfHalfFull(entry->bind_vars, YB_QD_MAX_BIND_VARS_LEN,
-										  BIND_VAR_FILE, folder_path, description,
+										  constants_and_bind_variables_file, folder_path, description,
 										  &entry->mutex);
 
-			if (status == DIAGNOSTICS_ERROR)
+			if (status == YB_DIAGNOSTICS_ERROR)
 			{
 				/* Expire the bundle as we are not able to dump */
 				FinishBundleProcessing(&entry->metadata, status, description);
@@ -988,10 +1405,10 @@ FlushAndCleanBundles()
 			}
 
 			status = DumpBufferIfHalfFull(entry->explain_plan, YB_QD_MAX_EXPLAIN_PLAN_LEN,
-										  EXPLAIN_PLAN_FILE, folder_path, description,
+										  explain_plan_file, folder_path, description,
 										  &entry->mutex);
 
-			if (status == DIAGNOSTICS_ERROR)
+			if (status == YB_DIAGNOSTICS_ERROR)
 			{
 				/* Expire the bundle as we are not able to dump */
 				FinishBundleProcessing(&entry->metadata, status, description);
@@ -1008,28 +1425,55 @@ end_of_loop:
 	/* Handle expired entries */
 	for (int i = 0; i < expired_entries_index; i++)
 	{
-		YbQueryDiagnosticsEntry entry = expired_entries[i];
+		YbQueryDiagnosticsEntry *entry = &expired_entries[i];
 
 		char		description[YB_QD_DESCRIPTION_LEN];
-		int			status = DIAGNOSTICS_SUCCESS;
-		int			query_len = Min(entry.pgss.query_len, YB_QD_MAX_PGSS_QUERY_LEN);
+		int			status = YB_DIAGNOSTICS_SUCCESS;
+		int			query_len = Min(entry->pgss.query_len, YB_QD_MAX_PGSS_QUERY_LEN);
 		char		query_str[query_len + 1];
 
 		description[0] = '\0';
 		query_str[0] = '\0';
 
 		/* No queries were executed that needed to be bundled */
-		if (query_len == 0)
+		if (entry->pgss.query_len == 0)
 		{
-			AppendToDescription(description, "No query executed;");
+			YbQueryDiagnosticsAppendToDescription(description, "No query executed;");
 			goto remove_entry;
 		}
 
-		/* Dump bind variables */
-		status = DumpToFile(entry.metadata.path, BIND_VAR_FILE,
-							entry.bind_vars, description);
+		/*
+		 * Wait for dumping schema details for the future iterations,
+		 * if the database connection bgworker is busy.
+		 */
+		if (database_connection_worker_info->initialized)
+		{
+			/*
+			 * If we have already dumped ash, pgss, bind_var and explain plans
+			 * then wait for bgworker to become idle.
+			 */
+			if (entry->metadata.flush_only_schema_details)
+				continue;
 
-		if (status == DIAGNOSTICS_ERROR)
+			/* If we haven't yet dumped ash, pgss, bind_var and explain plans then do it. */
+			entry->metadata.flush_only_schema_details = true;
+			goto skip_schema_details;
+		}
+
+		/* Gather and dump schema details through a separate bg worker */
+		RegisterDatabaseConnectionBgWorker(entry);
+
+		/* If rest of the data is already dumped then we can remove the entry. */
+		if (entry->metadata.flush_only_schema_details)
+			goto remove_entry;
+
+skip_schema_details:
+
+		/* Dump bind variables */
+		status = DumpToFile(entry->metadata.path, constants_and_bind_variables_file,
+							entry->bind_vars, description);
+
+		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
 		/*
@@ -1042,92 +1486,199 @@ end_of_loop:
 		 * may still hold a non-zero garbage value until a new query is run
 		 * and query_len is updated.
 		 */
-		if (*yb_pgss_last_reset_time >= entry.metadata.start_time)
-			AppendToDescription(description, "pg_stat_statements was reset, " \
-													 "query string not available;");
+		if (*yb_pgss_last_reset_time >= entry->metadata.start_time)
+			YbQueryDiagnosticsAppendToDescription(description,
+												  "pg_stat_statements was reset, "
+												  "query string not available;");
 		else
 		{
-			if (yb_get_normalized_query)
+			PG_TRY();
 			{
-				/* Extract query string from pgss_query_texts.stat file */
-				yb_get_normalized_query(entry.pgss.query_offset, entry.pgss.query_len, query_str);
+				if (yb_get_normalized_query)
+				{
+					/* Extract query string from pgss_query_texts.stat file */
+					status = yb_get_normalized_query(entry->pgss.query_offset,
+													 entry->pgss.query_len,
+													 query_str);
 
-				if (query_str[0] == '\0')
-					AppendToDescription(description,
-										"Error fetching pg_stat_statements normalized query string;");
+					if (query_str[0] == '\0')
+						YbQueryDiagnosticsAppendToDescription(description,
+															  "Error fetching "
+															  "pg_stat_statements "
+															  "normalized query "
+															  "string;");
+				}
 			}
+			PG_CATCH();
+			{
+				/*
+				 * Not setting status = YB_DIAGNOSTICS_ERROR,
+				 * so that rest of the data can be printed
+				 */
+				ErrorData  *edata;
+
+				/* save error info */
+				MemoryContextSwitchTo(curr_context);
+				edata = CopyErrorData();
+				FlushErrorState();
+
+				YbQueryDiagnosticsAppendToDescription(description,
+													  "Fetching pg_stat_statements normalized "
+													  "query string "
+													  "errored out, with the following message: "
+													  "%s;",
+													  edata->message);
+
+				ereport(LOG,
+						(errmsg("error while fetching normalized query string; "
+								"%s",
+								edata->message)),
+						(errhint("%s", edata->hint)));
+
+				FreeErrorData(edata);
+			}
+			PG_END_TRY();
 		}
 
 		/* Convert pg_stat_statements data to string format */
 		char		pgss_str[YB_QD_MAX_PGSS_LEN];
-		PgssToString(entry.metadata.params.query_id, pgss_str, entry.pgss, query_str);
+
+		PgssToString(entry->metadata.params.query_id, pgss_str, entry->pgss, query_str);
 
 		/* Dump pg_stat_statements */
-		status = DumpToFile(entry.metadata.path, PGSS_FILE,
-							pgss_str, description);
+		status = DumpToFile(entry->metadata.path, pgss_file, pgss_str, description);
 
-		if (status == DIAGNOSTICS_ERROR)
+		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
 		/* Dump explain plan */
-		status = DumpToFile(entry.metadata.path, EXPLAIN_PLAN_FILE,
-							entry.explain_plan, description);
+		status = DumpToFile(entry->metadata.path, explain_plan_file,
+							entry->explain_plan, description);
 
-		if (status == DIAGNOSTICS_ERROR)
+		if (status == YB_DIAGNOSTICS_ERROR)
 			goto remove_entry;
 
-		/* Collect schema details */
-		StringInfoData schema_details;
-		initStringInfo(&schema_details);
+		/* Keep bundle in hash table as dumping schema details is pending */
+		if (entry->metadata.flush_only_schema_details)
+			continue;
 
+remove_entry:
+		FinishBundleProcessing(&entry->metadata, status, description);
+	}
+
+	pfree(expired_entries);
+}
+
+static int
+DumpSchemaDetails(YbQueryDiagnosticsEntry *entry, char *description)
+{
+	StringInfoData schema_details;
+	MemoryContext curr_context = CurrentMemoryContext;
+	int			status = YB_DIAGNOSTICS_SUCCESS;
+
+	initStringInfo(&schema_details);
+
+	PG_TRY();
+	{
+		/* Fetch schema details for each schema oid */
 		for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
 		{
-			if (entry.schema_oids[i] == InvalidOid)
+			if (entry->schema_oids[i] == InvalidOid)
 				break;
 
-			status = DescribeOneTable(entry.schema_oids[i], &schema_details,
+			status = DescribeOneTable(entry->schema_oids[i],
+									  entry->metadata.db_name, &schema_details,
 									  description);
 
-			if (status == DIAGNOSTICS_ERROR)
-				goto remove_entry;
+			if (status == YB_DIAGNOSTICS_ERROR)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+								 errmsg("error while dumping schema details %s", description)));
+			}
 
-			appendStringInfo(&schema_details, "\n%s\n\n", SCHEMA_DETAILS_SEPARATOR);
+			appendStringInfo(&schema_details, "\n%s\n\n",
+							 schema_details_separator);
 		}
 
 		/* Dump schema details */
-		status = DumpToFile(entry.metadata.path, SCHEMA_DETAILS_FILE,
+		status = DumpToFile(entry->metadata.path, schema_details_file,
 							schema_details.data, description);
 
 		pfree(schema_details.data);
-
-		if (status == DIAGNOSTICS_ERROR)
-			goto remove_entry;
-
-		/* Dump ASH */
-		if (yb_ash_enable_infra)
-		{
-			Assert(yb_enable_ash);
-
-			StringInfoData ash_buffer;
-			initStringInfo(&ash_buffer);
-
-			GetAshDataForQueryDiagnosticsBundle(entry.metadata.start_time,
-												BundleEndTime(&entry),
-												entry.metadata.params.query_id,
-												&ash_buffer, description);
-
-			status = DumpToFile(entry.metadata.path, ASH_FILE,
-								ash_buffer.data, description);
-
-			pfree(ash_buffer.data);
-
-			if (status == DIAGNOSTICS_ERROR)
-				goto remove_entry;
-		}
-
-remove_entry:
-		FinishBundleProcessing(&entry.metadata, status, description);
+		pfree(description);
 	}
+	PG_CATCH();
+	{
+		ErrorData *edata;
+
+		/* save error info */
+		MemoryContextSwitchTo(curr_context);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		YbQueryDiagnosticsAppendToDescription(description,
+											  "Fetching schema details errored "
+											  "out "
+											  "with the following message: %s",
+											  edata->message);
+
+		ereport(LOG,
+				(errmsg("error while dumping schema details %s", edata->message)),
+				(errhint("%s", edata->hint)));
+
+		FreeErrorData(edata);
+	}
+	PG_END_TRY();
+
+	database_connection_worker_info->initialized = false;
+
+	return status;
+}
+
+/*
+ * DumpActiveSessionHistory
+ *		Gathers ASH data using SPI and dumps it to a file.
+ */
+static int
+DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description)
+{
+	char		query[256];
+	StringInfoData ash_buffer;
+	TimestampTz end_time = BundleEndTime(entry);
+	int			status = YB_DIAGNOSTICS_SUCCESS;
+
+	Assert(entry->metadata.start_time < end_time);
+
+	char	   *start_time_str = pstrdup(timestamptz_to_str(entry->metadata.start_time));
+	char	   *end_time_str = pstrdup(timestamptz_to_str(end_time));
+
+	initStringInfo(&ash_buffer);
+	snprintf(query, sizeof(query),
+			 "SELECT * FROM yb_active_session_history "
+			 "WHERE sample_time >= '%s' AND sample_time <= '%s'",
+			 start_time_str, end_time_str);
+
+	PG_TRY();
+	{
+		/* Execute the query */
+		if (!ExecuteQuery(&ash_buffer, query, YB_QD_CSV))
+			YbQueryDiagnosticsAppendToDescription(description, "Fetching ASH data failed; ");
+		else
+			DumpToFile(entry->metadata.path, ash_file,
+					   ash_buffer.data, description);
+	}
+	PG_CATCH();
+	{
+		status = YB_DIAGNOSTICS_ERROR;
+	}
+	PG_END_TRY();
+
+	pfree(start_time_str);
+	pfree(end_time_str);
+	pfree(ash_buffer.data);
+
+	return status;
 }
 
 /*
@@ -1135,23 +1686,24 @@ remove_entry:
  *      Checks if the buffer is at least half full, and if so, dumps it to a file.
  *
  * Returns:
- * DIAGNOSTICS_SUCCESS if successful, DIAGNOSTICS_ERROR otherwise
+ * YB_DIAGNOSTICS_SUCCESS if successful, YB_DIAGNOSTICS_ERROR otherwise
  */
 static int
 DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name, const char *folder_path,
 					 char *description, slock_t *mutex)
 {
-	int			status = DIAGNOSTICS_SUCCESS;
+	int			status = YB_DIAGNOSTICS_SUCCESS;
 
 	SpinLockAcquire(mutex);
 
-	int buffer_len = strlen(buffer);
+	int			buffer_len = strlen(buffer);
+
 	if (buffer_len >= max_len / 2)
 	{
 		char	   *buffer_copy = palloc(buffer_len + 1);
 
 		memcpy(buffer_copy, buffer, buffer_len + 1);
-		buffer[0] = '\0'; /* Reset the buffer */
+		buffer[0] = '\0';		/* Reset the buffer */
 
 		SpinLockRelease(mutex);
 
@@ -1173,7 +1725,10 @@ DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name, const 
 static void
 FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata, int status, const char *description)
 {
-	/* Insert the completed bundle info into the bundles_completed circular buffer */
+	/*
+	 * Insert the completed bundle info into the bundles_completed circular
+	 * buffer
+	 */
 	InsertBundlesIntoView(metadata, status, description);
 
 	/* Remove the entry from the bundles_in_progress hash table */
@@ -1202,17 +1757,28 @@ RemoveBundleInfo(int64 query_id)
 /*
  * MakeDirectory
  *		Creates the directory structure recursively for storing the diagnostics data.
+ *
+ * Returns:
+ * YB_DIAGNOSTICS_SUCCESS if successful, YB_DIAGNOSTICS_ERROR otherwise
  */
 static int
 MakeDirectory(const char *path, char *description)
 {
-	if (pg_mkdir_p((char *)path, pg_dir_create_mode) == -1)
+	/*
+	 * pg_mkdir_p modifies the path in case of failure, so we create a copy of the path
+	 * and pass it to pg_mkdir_p.
+	 */
+	char		path_copy[MAXPGPATH];
+
+	memcpy(path_copy, path, MAXPGPATH);
+
+	if (pg_mkdir_p((char *) path_copy, pg_dir_create_mode) == -1)
 	{
 		snprintf(description, YB_QD_DESCRIPTION_LEN,
 				 "Failed to create query diagnostics directory, %s;", strerror(errno));
-		return DIAGNOSTICS_ERROR;
+		return YB_DIAGNOSTICS_ERROR;
 	}
-	return DIAGNOSTICS_SUCCESS;
+	return YB_DIAGNOSTICS_SUCCESS;
 }
 
 /*
@@ -1220,12 +1786,13 @@ MakeDirectory(const char *path, char *description)
  * 		This function prints table details for the given table oid into schema_details.
  *		Note: This function is a modified version of DescribeOneTableDetails in describe.c
  *
- *		Returns DIAGNOSTICS_SUCCESS if the function executed successfully,
- *		DIAGNOSTICS_ERROR in case of an error.
+ *		Returns YB_DIAGNOSTICS_SUCCESS if the function executed successfully,
+ *		YB_DIAGNOSTICS_ERROR in case of an error.
  *		In case of an error, the function copies the error message to description.
  */
 static int
-DescribeOneTable(Oid oid, StringInfo schema_details, char *description)
+DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details,
+				 char *description)
 {
 	const char *queries[] = {
 		/* Table info, tablegroup, and colocated status */
@@ -1462,29 +2029,48 @@ DescribeOneTable(Oid oid, StringInfo schema_details, char *description)
 	int			num_of_queries = sizeof(queries) / sizeof(queries[0]);
 	char		formatted_query[BLCKSZ];
 
-	PrintTableName(oid, schema_details);
+	PrintTableAndDatabaseName(oid, db_name, schema_details);
 
 	for (int i = 0; i < num_of_queries; i++)
 	{
 		snprintf(formatted_query, sizeof(formatted_query), queries[i], oid);
 
-		if (!ExecuteQuery(schema_details, formatted_query, titles[i], description))
-			return DIAGNOSTICS_ERROR;
+		/* Initialize a temporary buffer to hold the query result. */
+		StringInfoData temp_buffer;
+		initStringInfo(&temp_buffer);
+
+		/* Execute the query and format the output in tabular view. */
+		if (!ExecuteQuery(&temp_buffer, formatted_query, YB_QD_TABULAR))
+		{
+			YbQueryDiagnosticsAppendToDescription(description,
+												  "Fetching schema details failed;");
+			pfree(temp_buffer.data);
+			return YB_DIAGNOSTICS_ERROR;
+		}
+
+		/* If the query returned any data, append it with a title header. */
+		if (temp_buffer.len > 0)
+			appendStringInfo(schema_details, "- %s:\n%s\n", titles[i], temp_buffer.data);
+
+		pfree(temp_buffer.data);
 	}
 
-	return DIAGNOSTICS_SUCCESS;
+	return YB_DIAGNOSTICS_SUCCESS;
 }
 
 static void
-PrintTableName(Oid oid, StringInfo schema_details)
+PrintTableAndDatabaseName(Oid oid, const char *db_name,
+						  StringInfo schema_details)
 {
 	StartTransactionCommand();
 
-	char		*table_name = get_rel_name(oid);
+	char	   *table_name = get_rel_name(oid);
 
 	if (table_name)
 	{
-		appendStringInfo(schema_details, "Table name: %s\n", table_name);
+		appendStringInfo(schema_details,
+						 "- Table name: %s\n- Database name: %s\n", table_name,
+						 db_name);
 		pfree(table_name);
 	}
 
@@ -1493,24 +2079,21 @@ PrintTableName(Oid oid, StringInfo schema_details)
 
 /*
  * ExecuteQuery
- *		Uses SPI framework to execute the given query and appends the results to schema_details.
- *		The results are formatted as a table with a title.
+ *		Uses SPI framework to execute the given query and appends the results to
+ *		the output_buffer. The results are formatted based on the output_format.
+ *		- YB_QD_CSV: Comma-separated values
+ *		- YB_QD_TABULAR: Tabular format
+ *		Note: title is only added for YB_QD_TABULAR format to maintain consistency
+ *			  with csv formatting.
  *
  *		Returns true if the query was executed successfully, false in case of an error.
  *		Error is copied to description.
  */
 static bool
-ExecuteQuery(StringInfo schema_details, const char *query, const char *title, char *description)
+ExecuteQuery(StringInfo output_buffer, const char *query, int output_format)
 {
 	int			ret;
 	int			num_cols;
-	int		   *col_widths;
-	bool		is_result_empty = true;
-	StringInfoData result;
-	StringInfoData columns;
-
-	initStringInfo(&result);
-	initStringInfo(&columns);
 
 	/*
 	 * Start a transaction on which we can run queries. Note that each StartTransactionCommand()
@@ -1526,33 +2109,120 @@ ExecuteQuery(StringInfo schema_details, const char *query, const char *title, ch
 	ret = SPI_connect();
 	if (ret != SPI_OK_CONNECT)
 	{
-		snprintf(description, YB_QD_DESCRIPTION_LEN,
-				 "Failed to gather schema details. SPI_connect failed: %s",
-				 SPI_result_code_string(ret));
+		ereport(LOG,
+				(errmsg("SPI_connect failed: %s, while executing: %s",
+						SPI_result_code_string(ret), query)));
 		pgstat_report_activity(STATE_IDLE, NULL);
 		return false;
 	}
 
-	/* Creates an "active" snapshot which is necessary for queries to have MVCC data to work on */
+	/*
+	 * Creates an "active" snapshot which is necessary for queries to have
+	 * MVCC data to work on
+	 */
 	PushActiveSnapshot(GetTransactionSnapshot());
 
 	/* Make our activity visible through the pgstat views */
 	pgstat_report_activity(STATE_RUNNING, query);
 
 	/* Execute the query and get all of the rows from the result set */
-	ret = SPI_execute(query, true /* read_only */, 0 /* tcount (0 = unlimited rows) */);
+	ret = SPI_execute(query,
+					  true,		/* read_only */
+					  0);		/* tcount (0 = unlimited rows) */
 	if (ret != SPI_OK_SELECT)
 	{
-		snprintf(description, YB_QD_DESCRIPTION_LEN,
-				 "Failed to gather schema details. SPI_execute failed: %s",
-				 SPI_result_code_string(ret));
+		ereport(LOG,
+				(errmsg("SPI_execute failed: %s, while executing: %s",
+						SPI_result_code_string(ret), query)));
 		pgstat_report_activity(STATE_IDLE, NULL);
 		return false;
 	}
 
-	/* Calculate column widths for formatting */
 	num_cols = SPI_tuptable->tupdesc->natts;
-	col_widths = (int *) palloc0(num_cols * sizeof(int));
+
+	switch (output_format)
+	{
+		case YB_QD_CSV:
+		{
+			GetResultsInCsvFormat(output_buffer, num_cols);
+			break;
+		}
+
+		case YB_QD_TABULAR:
+		{
+			GetResultsInTabularFormat(output_buffer, num_cols);
+			break;
+		}
+
+		default:
+			Assert(false);
+	}
+
+	/* Close the SPI connection and clean up the transaction context */
+	ret = SPI_finish();
+	if (ret != SPI_OK_FINISH)
+	{
+		ereport(LOG,
+				(errmsg("SPI_finish failed: %s, while executing: %s",
+						SPI_result_code_string(ret), query)));
+		pgstat_report_activity(STATE_IDLE, NULL);
+		return false;
+	}
+
+	PopActiveSnapshot();
+	CommitTransactionCommand();
+	pgstat_report_stat(true);
+	pgstat_report_activity(STATE_IDLE, NULL);
+	return true;
+}
+
+static void
+GetResultsInCsvFormat(StringInfo output_buffer, int num_cols)
+{
+	/*
+	 * If there are no rows within output then its better to not create the file
+	 * than to output only the header.
+	 */
+	if (SPI_processed == 0)
+		return;
+
+	/* Build CSV header */
+	for (int i = 0; i < num_cols; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
+		appendStringInfo(output_buffer, "%s%s", (i == 0 ? "" : ","),
+						 NameStr(attr->attname));
+	}
+	appendStringInfoChar(output_buffer, '\n');
+	/* Build rows in CSV format */
+	for (uint64 j = 0; j < SPI_processed; j++)
+	{
+		HeapTuple tuple = SPI_tuptable->vals[j];
+		for (int i = 0; i < num_cols; i++)
+		{
+			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
+			appendStringInfo(output_buffer, "%s%s", (i == 0 ? "" : ","),
+							 val ? val : "");
+			if (val)
+				pfree(val);
+		}
+		appendStringInfoChar(output_buffer, '\n');
+	}
+}
+
+static void
+GetResultsInTabularFormat(StringInfo output_buffer, int num_cols)
+{
+	/*
+	 * If there are no rows within output then its better to not create the file
+	 * than to output only the header.
+	 */
+	if (SPI_processed == 0)
+		return;
+
+	int		   *col_widths = (int *) palloc0(num_cols * sizeof(int));
+	int			initial_len = output_buffer->len;
+	bool		is_it_all_null = true;
 
 	/* Initialize column widths with column name lengths */
 	for (int i = 0; i < num_cols; i++)
@@ -1579,78 +2249,68 @@ ExecuteQuery(StringInfo schema_details, const char *query, const char *title, ch
 	}
 
 	/* Format column names */
-	appendStringInfoChar(&columns, '|');
+	appendStringInfoChar(output_buffer, '|');
 	for (int i = 0; i < num_cols; i++)
 	{
 		Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, i);
-		appendStringInfo(&columns, "%-*s |", col_widths[i], NameStr(attr->attname));
+		appendStringInfo(output_buffer, "%-*s |", col_widths[i],
+						 NameStr(attr->attname));
 	}
 
-	appendStringInfoChar(&columns, '\n');
+	appendStringInfoChar(output_buffer, '\n');
 
 	/* Add separator line */
-	appendStringInfoChar(&columns, '+');
+	appendStringInfoChar(output_buffer, '+');
 	for (int i = 0; i < num_cols; i++)
 	{
 		for (int j = 0; j <= col_widths[i]; j++)
-		{
-			appendStringInfoChar(&columns, '-');
-		}
-		appendStringInfoChar(&columns, '+');
+			appendStringInfoChar(output_buffer, '-');
+
+		appendStringInfoChar(output_buffer, '+');
 	}
+
+	appendStringInfoChar(output_buffer, '\n');
 
 	/* Format rows */
 	for (uint64 j = 0; j < SPI_processed; j++)
 	{
 		HeapTuple tuple = SPI_tuptable->vals[j];
 
-		appendStringInfoChar(&result, '|');
+		appendStringInfoChar(output_buffer, '|');
 		for (int i = 0; i < num_cols; i++)
 		{
 			char	   *val = SPI_getvalue(tuple, SPI_tuptable->tupdesc, i + 1);
 
-			appendStringInfo(&result, "%-*s |", col_widths[i], val ? val : "");
+			appendStringInfo(output_buffer, "%-*s |", col_widths[i], val ? val : "");
 			if (val)
 			{
-				is_result_empty = false;
+				is_it_all_null = false;
 				pfree(val);
 			}
 		}
-		appendStringInfoChar(&result, '\n');
+		appendStringInfoChar(output_buffer, '\n');
 	}
 
-	/* Append formatted results to schema_details if not empty */
-	if (!is_result_empty)
-		appendStringInfo(schema_details, "- %s:\n%s\n%s\n", title, columns.data, result.data);
-
-	/* Clean up */
-	pfree(result.data);
-	pfree(columns.data);
-	pfree(col_widths);
-
-	/* Close the SPI connection and clean up the transaction context */
-	ret = SPI_finish();
-	if (ret != SPI_OK_FINISH)
+	/*
+	 * Reset output_buffer to the original state if the result is empty to avoid
+	 * only printing headers.
+	 */
+	if (is_it_all_null)
 	{
-		snprintf(description, YB_QD_DESCRIPTION_LEN,
-				 "Failed to gather schema details. SPI_finish failed: %s",
-				 SPI_result_code_string(ret));
-		pgstat_report_activity(STATE_IDLE, NULL);
-		return false;
+		output_buffer->len = initial_len;
+		Assert(output_buffer->data);
+		output_buffer->data[initial_len] = '\0';
 	}
 
-	PopActiveSnapshot();
-	CommitTransactionCommand();
-	pgstat_report_stat(true);
-	pgstat_report_activity(STATE_IDLE, NULL);
-	return true;
+	if (col_widths)
+		pfree(col_widths);
 }
 
 /*
  * DumpToFile
  *		Creates the file (/folder_path/file_name) and writes the data to it.
  * Returns:
- *		DIAGNOSTICS_SUCCESS if the file was successfully written, DIAGNOSTICS_ERROR otherwise.
+ *		YB_DIAGNOSTICS_SUCCESS if the file was successfully written, YB_DIAGNOSTICS_ERROR otherwise.
  */
 static int
 DumpToFile(const char *folder_path, const char *file_name, const char *data,
@@ -1660,10 +2320,11 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 	File		file = 0;
 	const int	file_path_len = MAXPGPATH + strlen(file_name) + 1;
 	char		file_path[file_path_len];
+	MemoryContext curr_context = CurrentMemoryContext;
 
 	/* No data to write */
 	if (data[0] == '\0')
-		return DIAGNOSTICS_SUCCESS;
+		return YB_DIAGNOSTICS_SUCCESS;
 
 #ifdef WIN32
 	snprintf(file_path, file_path_len, "%s\\%s", path, file_name);
@@ -1681,9 +2342,8 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 									 O_RDWR | O_CREAT | O_APPEND)) < 0)
 			snprintf(description, YB_QD_DESCRIPTION_LEN,
 					 "out of file descriptors: %s; release and retry", strerror(errno));
-
-		else if(FileWrite(file, (char *)data, strlen(data), FileSize(file),
-						  WAIT_EVENT_DATA_FILE_WRITE) < 0)
+		else if (FileWrite(file, (char *) data, strlen(data), FileSize(file),
+						   WAIT_EVENT_DATA_FILE_WRITE) < 0)
 			snprintf(description, YB_QD_DESCRIPTION_LEN, "Error writing to file; %s",
 					 strerror(errno));
 
@@ -1692,13 +2352,18 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 	}
 	PG_CATCH();
 	{
-		ErrorData *edata;
+		ErrorData  *edata;
 
-		/* Capture the error data */
+		/* save the error data */
+		MemoryContextSwitchTo(curr_context);
 		edata = CopyErrorData();
 		FlushErrorState();
 
 		snprintf(description, YB_QD_DESCRIPTION_LEN, "%s", edata->message);
+
+		ereport(LOG,
+				(errmsg("error while dumping to file %s", edata->message)),
+				(errhint("%s", edata->hint)));
 
 		FreeErrorData(edata);
 	}
@@ -1707,7 +2372,7 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 	if (file > 0)
 		FileClose(file);
 
-	return ok ? DIAGNOSTICS_SUCCESS : DIAGNOSTICS_ERROR;
+	return ok ? YB_DIAGNOSTICS_SUCCESS : YB_DIAGNOSTICS_ERROR;
 }
 
 /*
@@ -1721,29 +2386,25 @@ DumpToFile(const char *folder_path, const char *file_name, const char *data,
 void
 YbQueryDiagnosticsMain(Datum main_arg)
 {
-	/*
-	 * TODO(GH#22612): Add support to switch off and on the bgworker as per the need,
-	 *			       thereby saving resources
-	 */
 	ereport(LOG,
 			(errmsg("starting bgworker for yb_query_diagnostics with time interval of %dms",
-					 yb_query_diagnostics_bg_worker_interval_ms)));
+					yb_query_diagnostics_bg_worker_interval_ms)));
 
 	/* Register functions for SIGTERM/SIGHUP management */
-	pqsignal(SIGHUP, YbQueryDiagnosticsBgWorkerSighup);
-	pqsignal(SIGTERM, YbQueryDiagnosticsBgWorkerSigterm);
+	pqsignal(SIGHUP, SignalHandlerForConfigReload);
+	pqsignal(SIGTERM, SignalHandlerForShutdownRequest);
+	pqsignal(SIGINT, SignalHandlerForShutdownRequest);
+	pqsignal(SIGQUIT, SignalHandlerForCrashExit);
 
 	/* Initialize the worker process */
 	BackgroundWorkerUnblockSignals();
 
-	/* Connect to the database */
-	BackgroundWorkerInitializeConnection("yugabyte", NULL, 0);
-
 	pgstat_report_appname("yb_query_diagnostics bgworker");
 
-	while (!got_sigterm)
+	while (true)
 	{
 		int			rc;
+
 		/* Wait necessary amount of time */
 		rc = WaitLatch(MyLatch,
 					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
@@ -1755,21 +2416,75 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		if (rc & WL_POSTMASTER_DEATH)
 			proc_exit(1);
 
-		/* Process signals */
-		if (got_sighup)
-		{
-			/* Process config file */
-			got_sighup = false;
-			ProcessConfigFile(PGC_SIGHUP);
-			ereport(LOG,
-					(errmsg("bgworker yb_query_diagnostics signal: processed SIGHUP")));
-		}
+		HandleMainLoopInterrupts();
 
 		/* Check for expired entries within the shared hash table */
 		FlushAndCleanBundles();
+
+		/*
+		 * Acquire the exclusive lock on the bundles_in_progress hash table.
+		 * This is necessary to prevent other sessions from
+		 * removing entries while we are checking.
+		 */
+		LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
+
+		/* If there are no bundles being diagnosed, switch off the bgworker */
+		if (hash_get_num_entries(bundles_in_progress) == 0)
+			(*bg_worker_should_be_active) = false;
+
+		LWLockRelease(bundles_in_progress_lock);
+
+		/* Do this outside the lock to ensure we release the lock before exiting. */
+		if (!(*bg_worker_should_be_active))
+		{
+			if (YBQueryDiagnosticsTestRaceCondition())
+				pg_usleep(10000000L); /* 10 seconds */
+
+			/* Kill the bgworker */
+			ereport(LOG,
+					(errmsg("stopping query diagnostics background worker "
+								 "- no active bundles")));
+			proc_exit(0);
+		}
+	}
+}
+
+/*
+ * YbQueryDiagnosticsDatabaseConnectionWorkerMain
+ * 		Background worker for dumping schema details, active session history.
+ *		Since these operations require query execution, a separate bgworker is
+ *		required which can initialize connection to database.
+ */
+void
+YbQueryDiagnosticsDatabaseConnectionWorkerMain(Datum main_arg)
+{
+	ereport(LOG,
+			(errmsg("starting a background worker to dump schema details " \
+					"and active session history")));
+
+	YbQueryDiagnosticsEntry *entry = &database_connection_worker_info->entry;
+	const char	   *database_name = entry->metadata.db_name;
+	int			status = YB_DIAGNOSTICS_SUCCESS;
+	char	   *description = palloc0(YB_QD_DESCRIPTION_LEN);
+
+	if (!database_name || !entry)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("invalid worker info passed to " \
+						"YbQueryDiagnosticsDatabaseConnectionWorkerMain")));
+		proc_exit(1);
 	}
 
-	proc_exit(0);
+	/* Connect to the database */
+	BackgroundWorkerInitializeConnection(database_name, NULL, 0);
+
+	if (yb_enable_ash)
+		DumpActiveSessionHistory(entry, description);
+
+	status = DumpSchemaDetails(entry, description);
+
+	proc_exit(status == YB_DIAGNOSTICS_SUCCESS ? 0 : 1);
 }
 
 /*
@@ -1823,19 +2538,19 @@ FetchSchemaOids(List *rtable, Oid *schema_oids)
 static void
 ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata)
 {
-	uint32		rand_num =DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
-										   sizeof(metadata->start_time)));
+	uint32		rand_num = DatumGetUInt32(hash_any((unsigned char *) &metadata->start_time,
+												   sizeof(metadata->start_time)));
 #ifdef WIN32
-	const char *format = "%s\\%s\\%ld\\%ud\\";
+	const char *format = "%s\\%s\\%ld\\%u\\";
 #else
-	const char *format = "%s/%s/%ld/%ud/";
+	const char *format = "%s/%s/%ld/%u/";
 #endif
 	if (snprintf(metadata->path, MAXPGPATH, format,
 				 DataDir, "query-diagnostics", metadata->params.query_id, rand_num) >= MAXPGPATH)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("Path to pg_data is too long"),
-				 errhint("Move the data directory to a shorter path")));
+				 errmsg("path to pg_data is too long"),
+				 errhint("Move the data directory to a shorter path.")));
 }
 
 /*
@@ -1872,6 +2587,11 @@ FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("bind_var_query_min_duration_ms cannot be less than 0")));
+
+	if (params->explain_dist && !params->explain_analyze)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("explain_dist cannot be true without explain_analyze")));
 }
 
 /*
@@ -1884,18 +2604,21 @@ FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo)
 Datum
 yb_query_diagnostics(PG_FUNCTION_ARGS)
 {
-	if (!YBIsQueryDiagnosticsEnabled())
+	if (!yb_enable_query_diagnostics)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("query diagnostics is not enabled"),
-				 errhint("Set TEST_yb_enable_query_diagnostics gflag to true")));
+				 errhint("Set ysql_yb_enable_query_diagnostics gflag to true")));
 
 	YbQueryDiagnosticsMetadata metadata;
+
 	metadata.start_time = GetCurrentTimestamp();
 
 	FetchParams(&metadata.params, fcinfo);
 
 	ConstructDiagnosticsPath(&metadata);
+
+	snprintf(metadata.db_name, NAMEDATALEN, "%s", YBCGetDatabaseName(MyDatabaseId));
 
 	InsertNewBundleInfo(&metadata);
 
@@ -1912,19 +2635,19 @@ yb_query_diagnostics(PG_FUNCTION_ARGS)
 Datum
 yb_cancel_query_diagnostics(PG_FUNCTION_ARGS)
 {
-	if (!YBIsQueryDiagnosticsEnabled())
+	if (!yb_enable_query_diagnostics)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("query diagnostics is not enabled"),
-				 errhint("Set TEST_yb_enable_query_diagnostics gflag to true")));
+				 errhint("Set ysql_yb_enable_query_diagnostics gflag to true")));
 
-	int64			query_id = PG_GETARG_INT64(0);
+	int64		query_id = PG_GETARG_INT64(0);
 	YbQueryDiagnosticsEntry *entry;
 
 	if (query_id == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("there cannot be a query with query_id 0")));
+				 errmsg("there cannot be a query with query_id 0")));
 
 	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 
@@ -1933,7 +2656,7 @@ yb_cancel_query_diagnostics(PG_FUNCTION_ARGS)
 													NULL);
 	if (entry)
 	{
-		InsertBundlesIntoView(&entry->metadata, DIAGNOSTICS_CANCELLED,
+		InsertBundlesIntoView(&entry->metadata, YB_DIAGNOSTICS_CANCELLED,
 							  "Bundle was cancelled");
 
 		LWLockRelease(bundles_in_progress_lock);

@@ -75,6 +75,7 @@ struct od_client {
 
 	uint64_t client_id;
 	int64_t yb_db_oid;
+	int64_t yb_user_oid;
 	kiwi_fe_error_t *deploy_err;
 
 	bool yb_is_authenticating;
@@ -85,6 +86,17 @@ struct od_client {
 	 * This refers to the actual client connected to the conn manager.
 	 */
 	od_client_t *yb_external_client;
+
+	/* logical client version of the client. This field is populated 
+	 * after successful authentication via auth backend.
+	 */
+	int64_t logical_client_version;
+
+	/*
+	 * This stores the last unnamed prepared statement.
+	 * Fields are NULL/0 if no such case.
+	 */
+	kiwi_prepared_statement_t yb_unnamed_prep_stmt;
 };
 
 static const size_t OD_CLIENT_DEFAULT_HASHMAP_SZ = 420;
@@ -138,10 +150,13 @@ static inline void od_client_init(od_client_t *client)
 	client->prep_stmt_ids = NULL;
 	client->client_id = 0;
 	client->yb_db_oid = -1;
+	client->yb_user_oid = -1;
 	client->deploy_err = NULL;
 
 	client->yb_is_authenticating = false;
 	client->yb_external_client = NULL;
+	client->logical_client_version = 0;
+	yb_prepared_statement_init(&client->yb_unnamed_prep_stmt);
 }
 
 static inline od_client_t *od_client_allocate(void)
@@ -172,6 +187,7 @@ static inline void od_client_free(od_client_t *client)
 		free(client->deploy_err);
 		client->deploy_err = NULL;
 	}
+	yb_prepared_statement_free(&client->yb_unnamed_prep_stmt);
 	free(client);
 }
 

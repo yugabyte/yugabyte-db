@@ -16,6 +16,7 @@ typedef struct PLySavedArgs
 {
 	struct PLySavedArgs *next;	/* linked-list pointer */
 	PyObject   *args;			/* "args" element of globals dict */
+	PyObject   *td;				/* "TD" element of globals dict, if trigger */
 	int			nargs;			/* length of namedargs array */
 	PyObject   *namedargs[FLEXIBLE_ARRAY_MEMBER];	/* named args */
 } PLySavedArgs;
@@ -32,6 +33,7 @@ typedef struct PLyProcedure
 	bool		fn_readonly;
 	bool		is_setof;		/* true, if function returns result set */
 	bool		is_procedure;
+	bool		is_trigger;		/* called as trigger? */
 	PLyObToDatum result;		/* Function result output conversion info */
 	PLyDatumToOb result_in;		/* For converting input tuples in a trigger */
 	char	   *src;			/* textual procedure code, after mangling */
@@ -45,7 +47,7 @@ typedef struct PLyProcedure
 	PyObject   *globals;		/* data saved across calls, global scope */
 	long		calldepth;		/* depth of recursive calls of function */
 	PLySavedArgs *argstack;		/* stack of outer-level call arguments */
-	uint64 yb_catalog_version; /* catalog version at function load time */
+	uint64		yb_catalog_version; /* catalog version at function load time */
 } PLyProcedure;
 
 /* the procedure cache key */

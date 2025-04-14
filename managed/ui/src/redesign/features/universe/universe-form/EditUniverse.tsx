@@ -1,4 +1,6 @@
 import { FC, useContext, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { browserHistory } from 'react-router';
@@ -14,6 +16,8 @@ import {
 } from './action-modals';
 import { YBLoading } from '../../../../components/common/indicators';
 import { api, QUERY_KEY } from './utils/api';
+import { showTaskInDrawer } from '../../../../actions/tasks';
+import { useIsTaskNewUIEnabled } from '../../tasks/TaskUtils';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
 import {
   createErrorMessage,
@@ -50,6 +54,7 @@ import {
   SPOT_INSTANCE_FIELD
 } from './utils/constants';
 import { providerQueryKey, api as helperApi } from '../../../helpers/api';
+import { TaskDetailDrawer } from '../../tasks';
 
 interface EditUniverseProps {
   uuid: string;
@@ -58,6 +63,8 @@ interface EditUniverseProps {
 
 export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
+  const dispatch = useDispatch();
+  const { t } = useTranslation();
   const { isLoading, universeConfigureTemplate } = contextState;
   const { initializeForm, setUniverseResourceTemplate } = contextMethods;
 
@@ -68,6 +75,8 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
   const [showPlacementModal, setPlacementModal] = useState(false);
   const [showK8Modal, setK8Modal] = useState(false);
   const [universePayload, setUniversePayload] = useState<UniverseDetails | null>(null);
+
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
 
   const { isLoading: isUniverseLoading, data: originalData } = useQuery(
     [QUERY_KEY.fetchUniverse, uuid],
@@ -114,10 +123,23 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
 
   const onCancel = () => browserHistory.push(`/universes/${uuid}`);
 
-  const submitEditUniverse = async (finalPayload: UniverseConfigure) => {
+  const submitEditUniverse = async (finalPayload: UniverseConfigure, runOnlyPrechecks = false) => {
     try {
-      let response = await api.editUniverse(finalPayload, uuid);
-      response && transitToUniverse(uuid);
+      finalPayload.runOnlyPrechecks = runOnlyPrechecks;
+      const response = await api.editUniverse(finalPayload, uuid);
+      if ('taskUUID' in response) {
+        const taskUUID = response.taskUUID;
+        runOnlyPrechecks &&
+          toast.success(t('universeActions.precheckInitiatedMsg'), {
+            autoClose: TOAST_AUTO_DISMISS_INTERVAL
+          });
+        if (isNewTaskUIEnabled) {
+          dispatch(showTaskInDrawer(taskUUID));
+        } else {
+          transitToUniverse(uuid);
+        }
+      }
+      response && !runOnlyPrechecks && transitToUniverse(uuid);
     } catch (error) {
       toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
       console.error(error);
@@ -175,11 +197,12 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
         userIntent.masterDeviceInfo = _.get(formData, MASTER_DEVICE_INFO_FIELD);
       }
 
-      if (isK8sUniverse && masterPlacement === MasterPlacementMode.DEDICATED) {
-        userIntent.masterK8SNodeResourceSpec = userIntent.dedicatedNodes
-          ? _.get(formData, MASTER_K8_NODE_SPEC_FIELD)
-          : null;
+      if (isK8sUniverse) {
+        userIntent.masterK8SNodeResourceSpec = _.get(formData, MASTER_K8_NODE_SPEC_FIELD);
         userIntent.tserverK8SNodeResourceSpec = _.get(formData, TSERVER_K8_NODE_SPEC_FIELD);
+        // In case of K8 universe, user intent dedicatedNodes will be false,
+        // hence we need to set masterDeviceInfo here as well
+        userIntent.masterDeviceInfo = _.get(formData, MASTER_DEVICE_INFO_FIELD);
       }
 
       payload.clusters[primaryIndex].placementInfo.cloudList[0].regionList = getPlacements(
@@ -214,6 +237,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
         universeUUID={uuid}
         isViewMode={isViewMode}
       />
+      <TaskDetailDrawer />
       {universePayload && (
         <>
           {showRNModal && (
@@ -235,7 +259,9 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
                 setSRModal(false);
                 setRNModal(true);
               }}
-              handleFullMove={() => submitEditUniverse(universePayload)}
+              handleFullMove={(runOnlyPrechecks: boolean) =>
+                submitEditUniverse(universePayload, runOnlyPrechecks)
+              }
             />
           )}
           {showFMModal && (
@@ -245,7 +271,9 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setFMModal(false)}
-              onSubmit={() => submitEditUniverse(universePayload)}
+              onSubmit={(runOnlyPrechecks: boolean) =>
+                submitEditUniverse(universePayload, runOnlyPrechecks)
+              }
             />
           )}
           {showPlacementModal && (
@@ -255,7 +283,9 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setPlacementModal(false)}
-              onSubmit={() => submitEditUniverse(universePayload)}
+              onSubmit={(runOnlyPrechecks: boolean) =>
+                submitEditUniverse(universePayload, runOnlyPrechecks)
+              }
             />
           )}
           {showK8Modal && (
@@ -265,7 +295,9 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setK8Modal(false)}
-              onSubmit={() => submitEditUniverse(universePayload)}
+              onSubmit={(runOnlyPrechecks: boolean) =>
+                submitEditUniverse(universePayload, runOnlyPrechecks)
+              }
             />
           )}
         </>

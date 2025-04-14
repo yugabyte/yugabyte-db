@@ -83,8 +83,16 @@ namespace master {
 
 class TSRegistrationPB;
 class TSInformationPB;
-class ReplicationInfoPB;
 class TServerMetricsPB;
+class RefreshYsqlLeaseInfoPB;
+
+struct YsqlLeaseUpdate {
+
+  bool new_lease = false;
+  uint64_t lease_epoch = 0;
+
+  RefreshYsqlLeaseInfoPB ToPB();
+};
 
 using ProxyTuple = util::SharedPtrTuple<
   tserver::TabletServerAdminServiceProxy,
@@ -93,8 +101,9 @@ using ProxyTuple = util::SharedPtrTuple<
   cdc::CDCServiceProxy,
   consensus::ConsensusServiceProxy>;
 
-struct PersistentTServerInfo
-    : public Persistent<SysTabletServerEntryPB> {};
+struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
+  bool IsLive() const;
+};
 
 // Master-side view of a single tablet server.
 //
@@ -121,7 +130,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   static TSDescriptorPtr LoadFromEntry(
       const std::string& permanent_uuid, const SysTabletServerEntryPB& metadata,
-      CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache);
+      CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache, MonoTime load_time);
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
@@ -135,8 +144,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // from the heartbeat request. This method also validates that this is the latest heartbeat
   // request received from the tserver. If not, this method does no mutations and returns an error
   // status.
-  Status UpdateTSMetadataFromHeartbeat(
-      const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock);
+  Status UpdateFromHeartbeat(const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock);
 
   // Return the amount of time since the last heartbeat received from this TS.
   MonoDelta TimeSinceHeartbeat() const;
@@ -154,6 +162,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
+
+  int32_t receiving_full_report_seq_no() const;
+  void set_receiving_full_report_seq_no(int32_t value);
 
   bool has_faulty_drive() const;
 
@@ -334,11 +345,12 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
+  std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
+
  private:
   mutable rw_spinlock mutex_;
   template <class TProxy>
-  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result,
-                          std::shared_ptr<TProxy>* result_cache);
+  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result, std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class LoadBalancerMockedBase;
@@ -391,6 +403,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   struct TSMetrics ts_metrics_ GUARDED_BY(mutex_);
 
+  // The cloud info of the master.
   CloudInfoPB local_cloud_info_ GUARDED_BY(mutex_);
   rpc::ProxyCache* proxy_cache_ GUARDED_BY(mutex_);
   int64_t latest_seqno_ GUARDED_BY(mutex_);
@@ -399,7 +412,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   MonoTime last_heartbeat_ GUARDED_BY(mutex_);
   const bool registered_through_heartbeat_;
 
-  // The physical and hybrid times on this node at the time of heartbeat
+  // The physical and hybrid times on the tserver represented by this object at the time it sent the
+  // last heartbeat received by this master.
   MicrosTime physical_time_ GUARDED_BY(mutex_);
   HybridTime hybrid_time_ GUARDED_BY(mutex_);
 
@@ -415,7 +429,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   int32_t latest_report_seqno_ GUARDED_BY(mutex_);
 
   // Set to true once this instance has reported all of its tablets.
-  bool has_tablet_report_ GUARDED_BY(mutex_);
+  bool has_tablet_report_ GUARDED_BY(mutex_) = false;
+
+  int32_t receiving_full_report_seq_no_ GUARDED_BY(mutex_) = 0;
 
   // Tablet server has at least one faulty drive.
   bool has_faulty_drive_ GUARDED_BY(mutex_);
@@ -437,12 +453,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_ GUARDED_BY(mutex_);
-
-  // We don't remove TSDescriptor's from the master's in memory map since several classes hold
-  // references to this object and those would be invalidated if we remove the descriptor from
-  // the master's map. As a result, we just store a boolean indicating this entry is removed and
-  // shouldn't be surfaced.
-  std::atomic<bool> removed_{false};
 
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };

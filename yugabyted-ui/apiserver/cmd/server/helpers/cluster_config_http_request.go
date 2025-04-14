@@ -37,6 +37,7 @@ type ClusterConfigStruct struct {
     Version         int                   `json:"version"`
     ReplicationInfo ReplicationInfoStruct `json:"replication_info"`
     ClusterUuid     string                `json:"cluster_uuid"`
+    UniverseUuid    string                `json:"universe_uuid"`
     EncryptionInfo  EncryptionInfoStruct  `json:"encryption_info"`
 }
 

@@ -54,13 +54,11 @@
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
-#include "commands/tablegroup.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "commands/view.h"
-#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
 #include "postmaster/bgwriter.h"
@@ -75,9 +73,12 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-#include "pg_yb_utils.h"
-#include "commands/ybccmds.h"
+/* YB includes */
+#include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
+#include "commands/yb_tablegroup.h"
+#include "libpq/libpq-be.h"
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
 
@@ -87,12 +88,12 @@
  * It will be called after all plugins hooks.
  */
 static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
-                                        const char *queryString,
+										const char *queryString,
 										bool readOnlyTree,
-                                        ProcessUtilityContext context,
-                                        ParamListInfo params,
-                                        QueryEnvironment *queryEnv,
-                                        DestReceiver *dest,
+										ProcessUtilityContext context,
+										ParamListInfo params,
+										QueryEnvironment *queryEnv,
+										DestReceiver *dest,
 										QueryCompletion *qc);
 ProcessUtility_hook_type ProcessUtility_hook = &YBProcessUtilityDefaultHook;
 
@@ -413,12 +414,15 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 				return 0;		/* silence stupider compilers */
 			}
 
-		case T_BackfillIndexStmt:
-		case T_CreateTableGroupStmt:
+		case T_YbBackfillIndexStmt:
+		case T_YbCreateTableGroupStmt:
 		case T_YbCreateProfileStmt:
 		case T_YbDropProfileStmt:
 			{
-				/* YB_TODO(review)(mihnea & sushant) Changed code - DDL is not read-only. */
+				/*
+				 * YB_TODO(review)(mihnea & sushant) Changed code - DDL is not
+				 * read-only.
+				 */
 				return COMMAND_IS_NOT_READ_ONLY;
 			}
 
@@ -672,10 +676,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						break;
 
 					case TRANS_STMT_PREPARE:
-						if  (IsYugaByteEnabled()) {
+						if (IsYugaByteEnabled())
+						{
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg("PREPARE not supported by YugaByte yet")));
+									 errmsg("PREPARE not supported by YugaByte yet")));
 						}
 						if (!PrepareTransactionBlock(stmt->gid))
 						{
@@ -747,9 +752,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			ExecuteDoStmt(pstate, (DoStmt *) parsetree, isAtomicContext);
 			break;
 
-		case T_CreateTableGroupStmt:
+		case T_YbCreateTableGroupStmt:
 			PreventInTransactionBlock(isTopLevel, "CREATE TABLEGROUP");
-			CreateTableGroup((CreateTableGroupStmt *) parsetree);
+			CreateTableGroup((YbCreateTableGroupStmt *) parsetree);
 			break;
 
 		case T_CreateTableSpaceStmt:
@@ -770,7 +775,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_TruncateStmt:
-			ExecuteTruncate((TruncateStmt *) parsetree);
+			ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel);
 			break;
 
 		case T_CopyStmt:
@@ -998,7 +1003,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			ExecReindex(pstate, (ReindexStmt *) parsetree, isTopLevel);
 			break;
 
-		case T_BackfillIndexStmt:
+		case T_YbBackfillIndexStmt:
 			/*
 			 * Only tserver-postgres libpq connection can send BACKFILL request.
 			 */
@@ -1011,7 +1016,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						 errmsg("cannot run this query: %s",
 								CreateCommandName(parsetree))));
 			}
-			YbBackfillIndex((BackfillIndexStmt *) parsetree, dest);
+			YbBackfillIndex((YbBackfillIndexStmt *) parsetree, dest);
 			break;
 
 			/*
@@ -2114,7 +2119,7 @@ ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 			if (stmt->concurrent)
 				PreventInTransactionBlock(isTopLevel,
 										  "DROP INDEX CONCURRENTLY");
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case OBJECT_TABLE:
 		case OBJECT_SEQUENCE:
@@ -2181,7 +2186,7 @@ UtilityReturnsTuples(Node *parsetree)
 		case T_VariableShowStmt:
 			return true;
 
-		case T_BackfillIndexStmt:
+		case T_YbBackfillIndexStmt:
 			return true;
 
 		default:
@@ -2239,8 +2244,8 @@ UtilityTupleDescriptor(Node *parsetree)
 				return GetPGVariableResultDesc(n->name);
 			}
 
-		case T_BackfillIndexStmt:
-			return YbBackfillIndexResultDesc((BackfillIndexStmt *) parsetree);
+		case T_YbBackfillIndexStmt:
+			return YbBackfillIndexResultDesc((YbBackfillIndexStmt *) parsetree);
 
 		default:
 			return NULL;
@@ -2605,7 +2610,7 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_CREATE_TABLE;
 			break;
 
-		case T_CreateTableGroupStmt:
+		case T_YbCreateTableGroupStmt:
 			tag = CMDTAG_CREATE_TABLEGROUP;
 			break;
 
@@ -3138,7 +3143,7 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_CREATE_CONVERSION;
 			break;
 
-		case T_BackfillIndexStmt:
+		case T_YbBackfillIndexStmt:
 			tag = CMDTAG_BACKFILL_INDEX;
 			break;
 
@@ -3767,7 +3772,7 @@ GetCommandLogLevel(Node *parsetree)
 			lev = LOGSTMT_ALL;	/* should this be DDL? */
 			break;
 
-		case T_BackfillIndexStmt:
+		case T_YbBackfillIndexStmt:
 			lev = LOGSTMT_ALL;	/* should this be DDL? */
 			break;
 
@@ -3909,7 +3914,7 @@ GetCommandLogLevel(Node *parsetree)
 			}
 			break;
 
-		case T_CreateTableGroupStmt:
+		case T_YbCreateTableGroupStmt:
 			lev = LOGSTMT_DDL;
 			break;
 
@@ -3925,23 +3930,26 @@ GetCommandLogLevel(Node *parsetree)
 
 void
 YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
-                            const char *queryString,
+							const char *queryString,
 							bool readOnlyTree,
-                            ProcessUtilityContext context,
-                            ParamListInfo params,
-                            QueryEnvironment *queryEnv,
-                            DestReceiver *dest,
+							ProcessUtilityContext context,
+							ParamListInfo params,
+							QueryEnvironment *queryEnv,
+							DestReceiver *dest,
 							QueryCompletion *qc)
 {
-	if (IsYugaByteEnabled() && !(IsA(pstmt->utilityStmt, ExecuteStmt) ||
-			IsA(pstmt->utilityStmt, PrepareStmt) || IsA(pstmt->utilityStmt, DeallocateStmt) ||
-			IsA(pstmt->utilityStmt, ExplainStmt))) {
+	if (IsYugaByteEnabled() &&
+		!(IsA(pstmt->utilityStmt, ExecuteStmt) ||
+		  IsA(pstmt->utilityStmt, PrepareStmt) ||
+		  IsA(pstmt->utilityStmt, DeallocateStmt) ||
+		  IsA(pstmt->utilityStmt, ExplainStmt)))
+	{
 		YBBeginOperationsBuffering();
-		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest,
-								qc);
+		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+								params, queryEnv, dest, qc);
 		YBEndOperationsBuffering();
-  } else {
-		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest,
-								qc);
 	}
+	else
+		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+								params, queryEnv, dest, qc);
 }

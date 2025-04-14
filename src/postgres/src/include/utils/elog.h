@@ -16,6 +16,7 @@
 
 #include <setjmp.h>
 
+/* YB includes */
 #include "yb/yql/pggate/util/ybc_util.h"
 
 /* Error level codes */
@@ -195,15 +196,15 @@ extern pg_attribute_cold bool yb_errstart_cold(int elevel);
 extern void yb_errfinish(const char *filename, int lineno, const char *funcname);
 
 extern int	errcode(int sqlerrcode);
-extern int	yb_txn_errcode(uint16_t txn_errcode);
+extern int	yb_external_errcode(int sqlerrcode);
 
 extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
 
 extern int	errmsg(const char *fmt,...) pg_attribute_printf(1, 2);
-extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char** args);
-extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char** args);
-extern void yb_set_pallocd_error_file_and_func(const char* filename, const char* funcname);
+extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args);
+extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args);
+extern void yb_set_pallocd_error_file_and_func(const char *filename, const char *funcname);
 extern int	errmsg_internal(const char *fmt,...) pg_attribute_printf(1, 2);
 
 extern int	errmsg_plural(const char *fmt_singular, const char *fmt_plural,
@@ -428,12 +429,9 @@ typedef struct ErrorData
 	char	   *internalquery;	/* text of internally-generated query */
 	int			saved_errno;	/* errno at entry */
 
-	uint16_t	yb_txn_errcode;	/* YB transaction error cast to uint16, as returned by static_cast
-								 * of TransactionErrorTag::Decode
-								 * of Status::ErrorData(TransactionErrorTag::kCategory) */
 	/* context containing associated non-constant strings */
 	struct MemoryContextData *assoc_context;
-	bool		yb_owns_file_and_func; /* Whether we own filename/funcname. */
+	bool		yb_owns_file_and_func;	/* Whether we own filename/funcname. */
 } ErrorData;
 
 extern sigjmp_buf *yb_get_exception_stack(void);
@@ -505,5 +503,11 @@ extern void set_syslog_parameters(const char *ident, int facility);
  * safely (memory context, GUC load etc)
  */
 extern void write_stderr(const char *fmt,...) pg_attribute_printf(1, 2);
+
+/*
+ * Write a message to STDERR using only async-signal-safe functions.  This can
+ * be used to safely emit a message from a signal handler.
+ */
+extern void write_stderr_signal_safe(const char *fmt);
 
 #endif							/* ELOG_H */

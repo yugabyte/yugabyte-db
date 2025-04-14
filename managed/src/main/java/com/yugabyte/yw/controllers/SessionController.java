@@ -85,6 +85,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
+import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.oidc.profile.OidcProfileDefinition;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
@@ -442,9 +443,8 @@ public class SessionController extends AbstractPlatformController {
 
     try {
       // Persist the JWT auth token in case of successful login.
-      ProfileManager<CommonProfile> profileManager =
-          thirdPartyLoginHandler.getProfileManager(request);
-      CommonProfile profile = profileManager.get(true).get();
+      ProfileManager profileManager = thirdPartyLoginHandler.getProfileManager(request);
+      CommonProfile profile = profileManager.getProfile(CommonProfile.class).get();
       String refreshTokenEndpoint = confGetter.getGlobalConf(GlobalConfKeys.ybSecuritySecret);
       if (profile.containsAttribute("refresh_token") && refreshTokenEndpoint != null) {
         refreshAccessToken.start(profileManager, user);
@@ -484,7 +484,7 @@ public class SessionController extends AbstractPlatformController {
     Instant expirationTime = null;
     try {
       // Persist the JWT auth token in case of successful login.
-      CommonProfile profile = thirdPartyLoginHandler.getProfile(request);
+      OidcProfile profile = (OidcProfile) thirdPartyLoginHandler.getProfile(request);
       if (profile.containsAttribute(OidcProfileDefinition.ID_TOKEN)) {
         idToken = (String) profile.getAttribute(OidcProfileDefinition.ID_TOKEN);
       }
@@ -492,7 +492,7 @@ public class SessionController extends AbstractPlatformController {
         preferredUsername = (String) profile.getAttribute(OidcProfileDefinition.PREFERRED_USERNAME);
       }
       if (profile.containsAttribute(OIDC_TOKEN_EXPIRATION)) {
-        Date expTime = (Date) profile.getAttribute(OIDC_TOKEN_EXPIRATION);
+        Date expTime = profile.getExpiration();
         expirationTime = expTime.toInstant();
       }
     } catch (Exception e) {
@@ -709,7 +709,7 @@ public class SessionController extends AbstractPlatformController {
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
 
     // Sync all the built-in roles when a new customer is created.
-    R__Sync_System_Roles.syncSystemRoles();
+    R__Sync_System_Roles.syncSystemRoles(cust.getUuid());
 
     if (useNewAuthz) {
       Role newRbacRole = Role.get(cust.getUuid(), role.name());

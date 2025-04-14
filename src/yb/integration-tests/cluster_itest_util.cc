@@ -100,6 +100,15 @@
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
+DECLARE_int64(tablet_force_split_threshold_bytes);
+
 namespace yb {
 namespace itest {
 
@@ -1584,6 +1593,21 @@ Status WaitForTabletIsDeletedOrHidden(
     },
     timeout,
     Format("Wait for tablet is deleted or hidden: $0", tablet_id));
+}
+
+void SetupQuickSplit(int64_t forced_split_threshold) {
+  // Setting this very low will just cause to include metrics in every heartbeat, no overhead on
+  // setting it lower than FLAGS_heartbeat_interval_ms.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 1000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = forced_split_threshold;
 }
 
 } // namespace itest

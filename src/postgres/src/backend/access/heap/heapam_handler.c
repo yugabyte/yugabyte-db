@@ -45,7 +45,7 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/yb_scan.h"
 
 static void reform_and_rewrite_tuple(HeapTuple tuple,
@@ -847,7 +847,7 @@ heapam_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 				break;
 			case HEAPTUPLE_RECENTLY_DEAD:
 				*tups_recently_dead += 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case HEAPTUPLE_LIVE:
 				/* Live or recently dead, must copy it */
 				isdead = false;
@@ -1192,8 +1192,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 	BlockNumber previous_blkno = InvalidBlockNumber;
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
-	MemoryContext	oldcontext = GetCurrentMemoryContext();
-	int				yb_tuples_done = 0;
+	MemoryContext oldcontext = CurrentMemoryContext;
+	int			yb_tuples_done = 0;
 
 	/*
 	 * sanity checks
@@ -1267,7 +1267,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 									 allow_sync);	/* syncscan OK? */
 		if (IsYBRelation(heapRelation))
 		{
-			YBCPgExecParameters *exec_params = &estate->yb_exec_params;
+			YbcPgExecParameters *exec_params = &estate->yb_exec_params;
+
 			if (bfinfo)
 			{
 				if (bfinfo->bfinstr)
@@ -1434,7 +1435,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 				* tuples.
 				*/
 				switch (HeapTupleSatisfiesVacuum(heapTuple, OldestXmin,
-												hscan->rs_cbuf))
+												 hscan->rs_cbuf))
 				{
 					case HEAPTUPLE_DEAD:
 						/* Definitely dead, we can ignore it */
@@ -1502,7 +1503,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 						{
 							if (!is_system_catalog)
 								elog(WARNING, "concurrent insert in progress within table \"%s\"",
-									RelationGetRelationName(heapRelation));
+									 RelationGetRelationName(heapRelation));
 
 							/*
 							* If we are performing uniqueness checks, indexing
@@ -1517,8 +1518,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 								*/
 								LockBuffer(hscan->rs_cbuf, BUFFER_LOCK_UNLOCK);
 								XactLockTableWait(xwait, heapRelation,
-												&heapTuple->t_self,
-												XLTW_InsertIndexUnique);
+												  &heapTuple->t_self,
+												  XLTW_InsertIndexUnique);
 								CHECK_FOR_INTERRUPTS();
 								goto recheck;
 							}
@@ -1561,7 +1562,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 						{
 							if (!is_system_catalog)
 								elog(WARNING, "concurrent delete in progress within table \"%s\"",
-									RelationGetRelationName(heapRelation));
+									 RelationGetRelationName(heapRelation));
 
 							/*
 							* If we are performing uniqueness checks, assuming
@@ -1585,8 +1586,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 								*/
 								LockBuffer(hscan->rs_cbuf, BUFFER_LOCK_UNLOCK);
 								XactLockTableWait(xwait, heapRelation,
-												&heapTuple->t_self,
-												XLTW_InsertIndexUnique);
+												  &heapTuple->t_self,
+												  XLTW_InsertIndexUnique);
 								CHECK_FOR_INTERRUPTS();
 								goto recheck;
 							}
@@ -1660,7 +1661,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 			reltuples += 1;
 
 			/* Set up for predicate or expression evaluation */
-			ExecStoreHeapTuple(heapTuple, slot, false /* shouldFree */);
+			ExecStoreHeapTuple(heapTuple, slot, false /* shouldFree */ );
 		}
 
 		/*
@@ -1738,7 +1739,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 		else if (IsYBRelation(indexRelation))
 		{
 			ybcallback(indexRelation, heapTuple->t_ybctid, values, isnull,
-					 tupleIsAlive, callback_state);
+					   tupleIsAlive, callback_state);
 		}
 		else
 		{
@@ -2024,7 +2025,7 @@ heapam_index_validate_scan(Relation heapRelation,
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
 						 false,
 						 indexInfo,
-						 false /* yb_shared_insert */);
+						 false /* yb_shared_insert */ );
 
 			state->tups_inserted += 1;
 		}
@@ -2191,9 +2192,11 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	 * Ignore any claimed entries past what we think is the end of the
 	 * relation. It may have been extended after the start of our scan (we
 	 * only hold an AccessShareLock, and it could be inserts from this
-	 * backend).
+	 * backend).  We don't take this optimization in SERIALIZABLE isolation
+	 * though, as we need to examine all invisible tuples reachable by the
+	 * index.
 	 */
-	if (page >= hscan->rs_nblocks)
+	if (!IsolationIsSerializable() && page >= hscan->rs_nblocks)
 		return false;
 
 	/*

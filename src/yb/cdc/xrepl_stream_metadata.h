@@ -39,9 +39,14 @@ class StreamMetadata {
  public:
   struct StreamTabletMetadata {
     std::mutex mutex_;
+    int64_t term_ GUARDED_BY(mutex_) = 0;
     int64_t apply_safe_time_checkpoint_op_id_ GUARDED_BY(mutex_) = 0;
     HybridTime last_apply_safe_time_ GUARDED_BY(mutex_);
     MonoTime last_apply_safe_time_update_time_ GUARDED_BY(mutex_);
+
+    // Reset the cache if the term changes.
+    void ResetOnTermChange(int64_t term) REQUIRES(mutex_);
+
     // TODO(hari): #16774 Move last_readable_index and last sent opid here, and use them to make
     // UpdateCDCTabletMetrics run asynchronously.
 
@@ -133,6 +138,11 @@ class StreamMetadata {
     DCHECK(loaded_);
     return replication_slot_lsn_type_;
   }
+  std::optional<ReplicationSlotOrderingMode> GetReplicationSlotOrderingMode() const {
+    std::lock_guard l_table(mutex_);
+    DCHECK(loaded_);
+    return replication_slot_ordering_mode_;
+  }
 
   std::optional<uint32_t> GetDbOidToGetSequencesFor() const {
     std::lock_guard l_table(mutex_);
@@ -150,6 +160,8 @@ class StreamMetadata {
       const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client)
       EXCLUDES(load_mutex_);
 
+  std::string ToString() const;
+
  private:
   Status GetStreamInfoFromMaster(const xrepl::StreamId& stream_id, client::YBClient* client)
       REQUIRES(load_mutex_) EXCLUDES(table_ids_mutex_, tablet_metadata_map_mutex_);
@@ -166,6 +178,7 @@ class StreamMetadata {
   CDCCheckpointType checkpoint_type_ GUARDED_BY(mutex_);
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option_ GUARDED_BY(mutex_);
   std::optional<ReplicationSlotLsnType> replication_slot_lsn_type_ GUARDED_BY(mutex_);
+  std::optional<ReplicationSlotOrderingMode> replication_slot_ordering_mode_ GUARDED_BY(mutex_);
   std::optional<std::string> replication_slot_name_ GUARDED_BY(mutex_);
   // xCluster: if we are a sequences_data stream, then this holds the OID of the DB we are supposed
   // to be getting sequences for.

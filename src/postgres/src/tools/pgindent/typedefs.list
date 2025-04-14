@@ -169,7 +169,6 @@ AutoVacuumShmemStruct
 AutoVacuumWorkItem
 AutoVacuumWorkItemType
 AuxProcType
-BackfillIndexStmt
 BF_ctx
 BF_key
 BF_word
@@ -355,6 +354,7 @@ CaseTestExpr
 CaseWhen
 Cash
 CastInfo
+CatCInProgress
 CatCList
 CatCTup
 CatCache
@@ -504,7 +504,6 @@ CreateStmt
 CreateStmtContext
 CreateSubscriptionStmt
 CreateTableAsStmt
-CreateTableGroupStmt
 CreateTableSpaceStmt
 CreateTransformStmt
 CreateTrigStmt
@@ -815,7 +814,6 @@ FormData_pg_statistic_ext
 FormData_pg_statistic_ext_data
 FormData_pg_subscription
 FormData_pg_subscription_rel
-FormData_pg_tablegroup
 FormData_pg_tablespace
 FormData_pg_transform
 FormData_pg_trigger
@@ -826,9 +824,6 @@ FormData_pg_ts_parser
 FormData_pg_ts_template
 FormData_pg_type
 FormData_pg_user_mapping
-FormData_pg_yb_tablegroup
-FormData_pg_yb_profile
-FormData_pg_yb_role_profile
 Form_pg_aggregate
 Form_pg_am
 Form_pg_amop
@@ -877,7 +872,6 @@ Form_pg_statistic_ext
 Form_pg_statistic_ext_data
 Form_pg_subscription
 Form_pg_subscription_rel
-Form_pg_tablegroup
 Form_pg_tablespace
 Form_pg_transform
 Form_pg_trigger
@@ -888,9 +882,6 @@ Form_pg_ts_parser
 Form_pg_ts_template
 Form_pg_type
 Form_pg_user_mapping
-Form_pg_yb_tablegroup
-Form_pg_yb_profile
-Form_pg_yb_role_profile
 FormatNode
 FreeBlockNumberArray
 FreeListData
@@ -1035,8 +1026,6 @@ GucEnumAssignHook
 GucEnumCheckHook
 GucIntAssignHook
 GucIntCheckHook
-GucOidAssignHook
-GucOidCheckHook
 GucRealAssignHook
 GucRealCheckHook
 GucShowHook
@@ -1348,7 +1337,6 @@ LLVMJitHandle
 LLVMMemoryBufferRef
 LLVMModuleRef
 LLVMOrcJITStackRef
-LLVMOrcLookupStateRef
 LLVMOrcModuleHandle
 LLVMOrcTargetAddress
 LLVMPassManagerBuilderRef
@@ -2231,6 +2219,7 @@ ReadLocalXLogPageNoWaitPrivate
 ReadReplicationSlotCmd
 ReassignOwnedStmt
 RecheckForeignScan_function
+RecordCacheArrayEntry
 RecordCacheEntry
 RecordCompareData
 RecordIOData
@@ -2265,6 +2254,7 @@ RelMapFile
 RelMapping
 RelOptInfo
 RelOptKind
+RelStatsInfo
 RelToCheck
 RelToCluster
 RelabelType
@@ -2356,7 +2346,6 @@ RoleSpec
 RoleSpecType
 RoleStmtType
 RollupData
-RowBounds
 RowCompareExpr
 RowCompareType
 RowExpr
@@ -2648,6 +2637,7 @@ SupportRequestSelectivity
 SupportRequestSimplify
 SupportRequestWFuncMonotonic
 Syn
+SyncingTablesState
 SyncOps
 SyncRepConfigData
 SyncRepStandbyData
@@ -2702,6 +2692,7 @@ TSQuerySign
 TSReadPointer
 TSTemplateInfo
 TSTernaryValue
+TSTokenTypeItem
 TSTokenTypeStorage
 TSVector
 TSVectorBuildState
@@ -3067,7 +3058,6 @@ XmlTableBuilderData
 YYLTYPE
 YYSTYPE
 YY_BUFFER_STATE
-YbCreateProfileStmt
 ZSTD_CCtx
 ZSTD_DCtx
 ZSTD_inBuffer
@@ -3087,6 +3077,7 @@ _locale_t
 _resultmap
 _stringlist
 acquireLocksOnSubLinks_context
+addFkConstraintSides
 adjust_appendrel_attrs_context
 aff_regex_struct
 allocfunc
@@ -3265,6 +3256,7 @@ fill_string_relopt
 finalize_primnode_context
 find_dependent_phvs_context
 find_expr_references_context
+fireRIRonSubLink_context
 fix_join_expr_context
 fix_scan_expr_context
 fix_upper_expr_context
@@ -3378,6 +3370,8 @@ json_manifest_perwalrange_callback
 json_ofield_action
 json_scalar_action
 json_struct_action
+keepwal_entry
+keepwal_hash
 keyEntryData
 key_t
 lclContext
@@ -3424,6 +3418,7 @@ mbstr_verifier
 memoize_hash
 memoize_iterator
 metastring
+missing_cache_key
 mix_data_t
 mixedStruct
 mode_t
@@ -3458,6 +3453,9 @@ parallel_worker_main_type
 parse_error_callback_arg
 parser_context
 partition_method_t
+pe_test_config
+pe_test_escape_func
+pe_test_vector
 pendingPosition
 pgParameterStatus
 pg_atomic_flag
@@ -3495,6 +3493,9 @@ pg_md5_ctx
 pg_on_exit_callback
 pg_prng_state
 pg_re_flags
+pg_regex_t
+pg_regmatch_t
+pg_regoff_t
 pg_saslprep_rc
 pg_sha1_ctx
 pg_sha224_ctx
@@ -3709,6 +3710,7 @@ string
 substitute_actual_parameters_context
 substitute_actual_srf_parameters_context
 substitute_phv_relids_context
+subxids_array_status
 symbol
 tablespaceinfo
 teSection

@@ -3,5 +3,5 @@
 ####################################################################################################
 # This suite validates that targets are properly set for different scan types
 ####################################################################################################
-test: yb_no_explicit_target
-test: yb_system_targets
+test: yb.orig.no_explicit_target
+test: yb.orig.system_targets

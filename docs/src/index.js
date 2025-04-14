@@ -1,6 +1,7 @@
 import Clipboard from 'clipboard';
 
 const $ = window.jQuery;
+let yugabytePageFinderList = [];
 
 /**
  * Create Cookie.
@@ -101,6 +102,25 @@ function yugabyteScrollLeftNav(activeLink) {
 }
 
 /**
+ * Function to calculate and rotate "Page Finder" to horizontal or vertical design
+ * based on the container width.
+ */
+function yugabytePageFinderWidth() {
+  yugabytePageFinderList.forEach(({width, parent}) => {
+    if (parent) {
+      const innerContainer = document.querySelector('.content-area');
+      if (width > innerContainer.offsetWidth) {
+        parent.classList.add('vertical');
+        parent.classList.remove('horizontal');
+      } else {
+        parent.classList.add('horizontal');
+        parent.classList.remove('vertical');
+      }
+    }
+  });
+}
+
+/**
  * Active left navigation depending on the tabs/pills.
  */
 function yugabyteActiveLeftNav() {
@@ -157,6 +177,14 @@ $(document).ready(() => {
     $('body').addClass('is-safari');
   }
 
+  const pageFinderContainer = document.querySelectorAll('.page-finder .finder-panel .inner-container');
+  if (pageFinderContainer) {
+    yugabytePageFinderList = Array.from(pageFinderContainer).map((element) => ({
+      width: element.offsetWidth,
+      parent: element.parentElement,
+    }));
+  }
+
   let searchValue = '';
 
   /**
@@ -187,6 +215,14 @@ $(document).ready(() => {
     });
 
     $(document).on('click', '.start-now-popup.open + .header-submenu', (event) => {
+      $(event.currentTarget.parentNode).find('.open').toggleClass('open');
+    });
+
+    $(document).on('click', '.products-dropdown .selected', (event) => {
+      $(event.currentTarget).toggleClass('open');
+    });
+
+    $(document).on('click', '.products-dropdown .dropdown-submenu', (event) => {
       $(event.currentTarget.parentNode).find('.open').toggleClass('open');
     });
 
@@ -238,6 +274,7 @@ $(document).ready(() => {
           maxWidth: mouseMoveX,
         });
         $('body').addClass('dragging');
+        yugabytePageFinderWidth();
       });
     });
 
@@ -616,6 +653,13 @@ $(document).ready(() => {
       window.location.href = `/search/?q=${searchValue}`;
     }
   });
+
+  yugabytePageFinderWidth();
+  document.querySelector('.side-nav-collapse-toggle-2').addEventListener('click', () => {
+    setTimeout(() => {
+      yugabytePageFinderWidth();
+    }, 500);
+  });
 });
 
 $(window).resize(() => {
@@ -626,4 +670,5 @@ $(window).resize(() => {
   setTimeout(() => {
     setCookie('leftMenuWidth', 300, 3);
   }, 1000);
+  yugabytePageFinderWidth();
 });

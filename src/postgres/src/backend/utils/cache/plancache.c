@@ -57,7 +57,6 @@
 #include <limits.h>
 
 #include "access/transam.h"
-#include "access/xact.h"
 #include "catalog/namespace.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -74,18 +73,24 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
-#include "optimizer/ybcplan.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "access/xact.h"
+#include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
+
 
 /*
  * We must skip "overhead" operations that involve database access when the
- * cached plan's subject statement is a transaction control command.
+ * cached plan's subject statement is a transaction control command or one
+ * that requires a snapshot not to be set yet (such as SET or LOCK).  More
+ * generally, statements that do not require parse analysis/rewrite/plan
+ * activity never need to be revalidated, so we can treat them all like that.
+ * For the convenience of postgres.c, treat empty statements that way too.
  */
-#define IsTransactionStmtPlan(plansource)  \
-	((plansource)->raw_parse_tree && \
-	 IsA((plansource)->raw_parse_tree->stmt, TransactionStmt))
+#define StmtPlanRequiresRevalidation(plansource)  \
+	((plansource)->raw_parse_tree != NULL && \
+	 stmt_requires_parse_analysis((plansource)->raw_parse_tree))
 
 /*
  * This is the head of the backend's list of "saved" CachedPlanSources (i.e.,
@@ -126,13 +131,13 @@ int			plan_cache_mode;
  * For prepared statements, generate custom plans for at least the first 5 runs
  * (arbitrary)
  */
-int yb_test_planner_custom_plan_threshold = 5;
+int			yb_test_planner_custom_plan_threshold = 5;
 
 /*
  * Prefer custom plan over generic plan for prepared statement if more
  * partitions are pruned using a custom plan.
  */
-bool enable_choose_custom_plan_for_partition_pruning = true;
+bool		enable_choose_custom_plan_for_partition_pruning = true;
 
 /*
  * InitPlanCache: initialize module during InitPostgres.
@@ -165,7 +170,7 @@ InitPlanCache(void)
  * still had a clean copy to present at plan cache creation time.
  *
  * All arguments presented to CreateCachedPlan are copied into a memory
- * context created as a child of the call-time GetCurrentMemoryContext(), which
+ * context created as a child of the call-time CurrentMemoryContext, which
  * should be a reasonably short-lived working context that will go away in
  * event of an error.  This ensures that the cached plan data structure will
  * likewise disappear if an error occurs before we have fully constructed it.
@@ -194,7 +199,7 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	 * caller's context (which we assume to be transient), so that it will be
 	 * cleaned up on error.
 	 */
-	source_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	source_context = AllocSetContextCreate(CurrentMemoryContext,
 										   "CachedPlanSource",
 										   ALLOCSET_START_SMALL_SIZES);
 
@@ -285,7 +290,7 @@ CreateOneShotCachedPlan(RawStmt *raw_parse_tree,
 	plansource->cursor_options = 0;
 	plansource->fixed_result = false;
 	plansource->resultDesc = NULL;
-	plansource->context = GetCurrentMemoryContext();
+	plansource->context = CurrentMemoryContext;
 	plansource->query_list = NIL;
 	plansource->relationOids = NIL;
 	plansource->invalItems = NIL;
@@ -362,7 +367,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 				   bool fixed_result)
 {
 	MemoryContext source_context = plansource->context;
-	MemoryContext oldcxt = GetCurrentMemoryContext();
+	MemoryContext oldcxt = CurrentMemoryContext;
 
 	/* Assert caller is doing things in a sane order */
 	Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
@@ -377,7 +382,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	 */
 	if (plansource->is_oneshot)
 	{
-		querytree_context = GetCurrentMemoryContext();
+		querytree_context = CurrentMemoryContext;
 	}
 	else if (querytree_context != NULL)
 	{
@@ -397,13 +402,13 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->query_context = querytree_context;
 	plansource->query_list = querytree_list;
 
-	if (!plansource->is_oneshot && !IsTransactionStmtPlan(plansource))
+	if (!plansource->is_oneshot && StmtPlanRequiresRevalidation(plansource))
 	{
 		/*
 		 * Use the planner machinery to extract dependencies.  Data is saved
 		 * in query_context.  (We assume that not a lot of extra cruft is
 		 * created by this call.)  We can skip this for one-shot plans, and
-		 * transaction control commands have no such dependencies anyway.
+		 * plans not needing revalidation have no such dependencies anyway.
 		 */
 		extract_query_dependencies((Node *) querytree_list,
 								   &plansource->relationOids,
@@ -446,7 +451,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
 
 	/* If the planner txn uses a pg relation, so will the execution txn */
-	plansource->usesPostgresRel = IsCurrentTxnWithPGRel();
+	plansource->usesPostgresRel = YbGetPgOpsInCurrentTxn() & YB_TXN_USES_TEMPORARY_RELATIONS;
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -585,11 +590,11 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	/*
 	 * For one-shot plans, we do not support revalidation checking; it's
 	 * assumed the query is parsed, planned, and executed in one transaction,
-	 * so that no lock re-acquisition is necessary.  Also, there is never any
-	 * need to revalidate plans for transaction control commands (and we
-	 * mustn't risk any catalog accesses when handling those).
+	 * so that no lock re-acquisition is necessary.  Also, if the statement
+	 * type can't require revalidation, we needn't do anything (and we mustn't
+	 * risk catalog accesses when handling, eg, transaction control commands).
 	 */
-	if (plansource->is_oneshot || IsTransactionStmtPlan(plansource))
+	if (plansource->is_oneshot || !StmtPlanRequiresRevalidation(plansource))
 	{
 		Assert(plansource->is_valid);
 		return NIL;
@@ -750,7 +755,7 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	 * Allocate new query_context and copy the completed querytree into it.
 	 * It's transient until we complete the copying and dependency extraction.
 	 */
-	querytree_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	querytree_context = AllocSetContextCreate(CurrentMemoryContext,
 											  "CachedPlanQuery",
 											  ALLOCSET_START_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(querytree_context);
@@ -903,7 +908,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	bool		snapshot_set;
 	bool		is_transient;
 	MemoryContext plan_context;
-	MemoryContext oldcxt = GetCurrentMemoryContext();
+	MemoryContext oldcxt = CurrentMemoryContext;
 	ListCell   *lc;
 
 	/*
@@ -966,7 +971,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	 */
 	if (!plansource->is_oneshot)
 	{
-		plan_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+		plan_context = AllocSetContextCreate(CurrentMemoryContext,
 											 "CachedPlan",
 											 ALLOCSET_START_SMALL_SIZES);
 		MemoryContextCopyAndSetIdentifier(plan_context, plansource->query_string);
@@ -979,7 +984,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 		plist = copyObject(plist);
 	}
 	else
-		plan_context = GetCurrentMemoryContext();
+		plan_context = CurrentMemoryContext;
 
 	/*
 	 * Create and fill the CachedPlan struct within the new context.
@@ -1046,8 +1051,8 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	/* Otherwise, never any point in a custom plan if there's no parameters */
 	if (boundParams == NULL)
 		return false;
-	/* ... nor for transaction control statements */
-	if (IsTransactionStmtPlan(plansource))
+	/* ... nor when planning would be a no-op */
+	if (!StmtPlanRequiresRevalidation(plansource))
 		return false;
 
 	/* Let settings force the decision */
@@ -1069,16 +1074,20 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	if (plansource->num_custom_plans < yb_test_planner_custom_plan_threshold)
 		return true;
 
-	/* For single row modify operations, use a custom plan so as to push down
+	/*
+	 * For single row modify operations, use a custom plan so as to push down
 	 * the update to the DocDB without performing the read. This involves
-	 * faking the read results in postgres. However the boundParams needs to be
-	 * passed for the creation of the plan and hence we would need to enforce a
-	 * custom plan.
+	 * faking the read results in postgres. However the boundParams needs to
+	 * be passed for the creation of the plan and hence we would need to
+	 * enforce a custom plan.
 	 */
-	if (plansource->gplan && list_length(plansource->gplan->stmt_list)) {
-		PlannedStmt *pstmt =
-			linitial_node(PlannedStmt, plansource->gplan->stmt_list);
-		if (YBCIsSingleRowModify(pstmt)) {
+	if (plansource->gplan && list_length(plansource->gplan->stmt_list))
+	{
+		PlannedStmt *pstmt = linitial_node(PlannedStmt,
+										   plansource->gplan->stmt_list);
+
+		if (YBCIsSingleRowModify(pstmt))
+		{
 			return true;
 		}
 	}
@@ -1091,8 +1100,8 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	 * generic plan.
 	 */
 	if (enable_choose_custom_plan_for_partition_pruning && plansource->gplan &&
-		plansource->yb_custom_max_num_referenced_rels <
-			plansource->yb_generic_num_referenced_rels)
+		(plansource->yb_custom_max_num_referenced_rels <
+		 plansource->yb_generic_num_referenced_rels))
 		return true;
 
 	/*
@@ -1118,10 +1127,12 @@ static int
 num_referenced_relations(CachedPlan *plan)
 {
 	ListCell   *lc1;
-	int nrelations = 0;
+	int			nrelations = 0;
+
 	foreach(lc1, plan->stmt_list)
 	{
 		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc1);
+
 		nrelations += plannedstmt->yb_num_referenced_relations;
 	}
 
@@ -1284,7 +1295,8 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		plansource->total_custom_cost += cached_plan_cost(plan, true);
 
 		plansource->num_custom_plans++;
-		if (IsYugaByteEnabled()) {
+		if (IsYugaByteEnabled())
+		{
 			/*
 			 * Store the maximum number of relations referenced across all
 			 * the runs using custom plan. In Yugabyte clusters, higher the
@@ -1294,7 +1306,8 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 			 * the number of pruned partitions can be a huge performance
 			 * factor.
 			 */
-			int nrelations = num_referenced_relations(plan);
+			int			nrelations = num_referenced_relations(plan);
+
 			if (plansource->num_custom_plans == 1 ||
 				plansource->yb_custom_max_num_referenced_rels < nrelations)
 				plansource->yb_custom_max_num_referenced_rels = nrelations;
@@ -1518,7 +1531,9 @@ CachedPlanIsSimplyValid(CachedPlanSource *plansource, CachedPlan *plan,
 	 * that here we *do* check plansource->is_valid, so as to force plan
 	 * rebuild if that's become false.
 	 */
-	if (!plansource->is_valid || plan != plansource->gplan || !plan->is_valid)
+	if (!plansource->is_valid ||
+		plan == NULL || plan != plansource->gplan ||
+		!plan->is_valid)
 		return false;
 
 	Assert(plan->magic == CACHEDPLAN_MAGIC);
@@ -1601,7 +1616,7 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	if (plansource->is_oneshot)
 		elog(ERROR, "cannot copy a one-shot cached plan");
 
-	source_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	source_context = AllocSetContextCreate(CurrentMemoryContext,
 										   "CachedPlanSource",
 										   ALLOCSET_START_SMALL_SIZES);
 
@@ -1747,7 +1762,7 @@ GetCachedExpression(Node *expr)
 	 * avoid leaking a long-lived context if we fail while copying data, we
 	 * initially make the context under the caller's context.
 	 */
-	cexpr_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cexpr_context = AllocSetContextCreate(CurrentMemoryContext,
 										  "CachedExpression",
 										  ALLOCSET_SMALL_SIZES);
 
@@ -2039,8 +2054,8 @@ PlanCacheRelCallback(Datum arg, Oid relid)
 		if (!plansource->is_valid)
 			continue;
 
-		/* Never invalidate transaction control commands */
-		if (IsTransactionStmtPlan(plansource))
+		/* Never invalidate if parse/plan would be a no-op anyway */
+		if (!StmtPlanRequiresRevalidation(plansource))
 			continue;
 
 		/*
@@ -2124,8 +2139,8 @@ PlanCacheObjectCallback(Datum arg, int cacheid, uint32 hashvalue)
 		if (!plansource->is_valid)
 			continue;
 
-		/* Never invalidate transaction control commands */
-		if (IsTransactionStmtPlan(plansource))
+		/* Never invalidate if parse/plan would be a no-op anyway */
+		if (!StmtPlanRequiresRevalidation(plansource))
 			continue;
 
 		/*
@@ -2234,7 +2249,6 @@ ResetPlanCache(void)
 	{
 		CachedPlanSource *plansource = dlist_container(CachedPlanSource,
 													   node, iter.cur);
-		ListCell   *lc;
 
 		Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
 
@@ -2246,32 +2260,16 @@ ResetPlanCache(void)
 		 * We *must not* mark transaction control statements as invalid,
 		 * particularly not ROLLBACK, because they may need to be executed in
 		 * aborted transactions when we can't revalidate them (cf bug #5269).
+		 * In general there's no point in invalidating statements for which a
+		 * new parse analysis/rewrite/plan cycle would certainly give the same
+		 * results.
 		 */
-		if (IsTransactionStmtPlan(plansource))
+		if (!StmtPlanRequiresRevalidation(plansource))
 			continue;
 
-		/*
-		 * In general there is no point in invalidating utility statements
-		 * since they have no plans anyway.  So invalidate it only if it
-		 * contains at least one non-utility statement, or contains a utility
-		 * statement that contains a pre-analyzed query (which could have
-		 * dependencies.)
-		 */
-		foreach(lc, plansource->query_list)
-		{
-			Query	   *query = lfirst_node(Query, lc);
-
-			if (query->commandType != CMD_UTILITY ||
-				UtilityContainsQuery(query->utilityStmt))
-			{
-				/* non-utility statement, so invalidate */
-				plansource->is_valid = false;
-				if (plansource->gplan)
-					plansource->gplan->is_valid = false;
-				/* no need to look further */
-				break;
-			}
-		}
+		plansource->is_valid = false;
+		if (plansource->gplan)
+			plansource->gplan->is_valid = false;
 	}
 
 	/* Likewise invalidate cached expressions */

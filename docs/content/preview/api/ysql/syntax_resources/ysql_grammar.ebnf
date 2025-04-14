@@ -198,7 +198,10 @@ alter_sequence_options = [ 'AS' seq_data_type ]  \
                            [ 'RESTART' [ [ 'WITH' ] int_literal ] ]  \
                            [ 'CACHE' int_literal ]  \
                            [ [ 'NO' ] 'CYCLE' ]  \
-                           [ 'OWNED BY' table_name '.' column_name | 'NONE' ] ;
+                           [ 'OWNED BY' ( table_name '.' column_name | 'NONE' ) ] \
+                           [ 'SET' ( 'LOGGED' | 'UNLOGGED' | 'SCHEMA' schema_name ) ] \
+                           [ 'OWNER' 'TO' ( new_owner | 'CURRENT_USER' | 'SESSION_USER' ) ] \
+                           [ 'RENAME' 'TO' new_name ] ;
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
 
@@ -219,8 +222,7 @@ alter_table_action =
   ( 'ADD' [ 'COLUMN' ] [ 'IF' 'NOT' 'EXISTS' ] column_name data_type [ alter_column_constraint { alter_column_constraint } ]
     | 'RENAME' 'TO' table_name
     | 'DROP' [ 'COLUMN' ] [ 'IF' 'EXISTS' ] column_name [ 'RESTRICT' | 'CASCADE' ]
-    | 'ALTER' [ 'COLUMN' ] column_name [ 'SET DATA' ]
-      'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
+    | 'ALTER' [ 'COLUMN' ] column_name [ alter_column_action ]
     | 'ADD' alter_table_constraint
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
     | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name
@@ -228,7 +230,9 @@ alter_table_action =
     | 'DISABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'ENABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'FORCE' 'ROW' 'LEVEL' 'SECURITY'
-    | 'SET' 'TABLESPACE' tablespace_name
+    | 'SET' ( 'TABLESPACE' tablespace_name | 'LOGGED' | 'UNLOGGED'
+              | '(' param_name '=' param_value ')' )
+    | 'RESET' '(' param_name ')'
     | 'NO' 'FORCE' 'ROW' 'LEVEL' 'SECURITY' ) ;
 
 alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
@@ -237,6 +241,16 @@ alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
                            'FOREIGN' 'KEY' '(' column_names ')' references_clause |
                            'PRIMARY' 'KEY' '(' key_columns ')' ) \
                          [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
+
+alter_column_action = (
+                    [ 'SET DATA' ] 'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
+                    | 'SET' 'DEFAULT' expression
+                    | 'DROP' 'DEFAULT'
+                    | 'DROP' 'IDENTITY' [ 'IF EXISTS' ]
+                    | { 'SET' | 'DROP' } 'NOT' 'NULL'
+                    | 'ADD' 'GENERATED' { 'ALWAYS' | 'BY' 'DEFAULT' } 'AS' 'IDENTITY' [ ( sequence_options ) ]
+                    | 'SET' 'GENERATED' { 'ALWAYS' | 'BY' 'DEFAULT' }
+);
 
 alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                           (  'NOT' 'NULL' |
@@ -267,8 +281,8 @@ alter_materialized_view_action =
     | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 (* 'ALTER' 'PUBLICATION' *)
-alter_publication = 
-  'ALTER' 'PUBLICATION' publication_name 
+alter_publication =
+  'ALTER' 'PUBLICATION' publication_name
   [ alter_publication_action { ',' alter_publication_action } ] ;
 
 alter_publication_action =
@@ -357,7 +371,8 @@ commit = 'COMMIT' [ 'TRANSACTION' | 'WORK' ] ;
 (* 'COPY' *)
 copy_from = 'COPY' table_name [ '(' column_name { ',' column_name } ')' ] \
             'FROM' ( 'filename' | 'PROGRAM' 'command' | 'STDIN' ) \
-             [ [ 'WITH' ] '(' copy_option { ',' copy_option } ')' ] ;
+             [ [ 'WITH' ] '(' copy_option { ',' copy_option } ')' ] \
+             [ 'WHERE' condition ] ;
 
 copy_to = 'COPY' ( table_name [ '(' column_names ')' ] | subquery ) \
           'TO' ( 'filename' | 'PROGRAM' 'command' | 'STDOUT' ) \
@@ -474,6 +489,11 @@ create_cast_with_inout = 'CREATE' 'CAST' '(' cast_signature ')'
 cast_signature = source_type 'AS' target_type ;
 
 (* 'CREATE' 'DATABASE' *)
+timestamptz_string = '<DateTime Literal>' ;
+unix_timestamp_microseconds = positive_int_literal ;
+clone_timestamp = timestamptz_string
+                | unix_timestamp_microseconds ;
+
 create_database = 'CREATE' 'DATABASE' name [ create_database_options ] ;
 
 create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
@@ -484,7 +504,8 @@ create_database_options =  [ 'WITH' ] [ 'OWNER' [ '=' ] user_name ]  \
                              [ 'ALLOW_CONNECTIONS' [ '=' ] allowconn ]  \
                              [ 'CONNECTION' 'LIMIT' [ '=' ] connlimit ]  \
                              [ 'IS_TEMPLATE' [ '=' ] istemplate ] \
-                             [ 'COLOCATION' [ '=' ] ('true' | 'false') ] ;
+                             [ 'COLOCATION' [ '=' ] ('true' | 'false') ] \
+                             [ 'AS OF' [ '=' ] clone_timestamp ] ;
 
 user_name = name ;
 template_name = name ;
@@ -582,6 +603,7 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'CONCURRENTLY' | 'NONCONCURRENTLY
                [ 'USING' access_method_name ]
                '(' index_elem { ',' index_elem } ')' \
                [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
+               [ 'NULLS' [ 'NOT' ] 'DISTINCT' ] \
                [ 'TABLESPACE' tablespace_name ] \
                [ 'SPLIT' ( 'INTO' int_literal 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ]
@@ -643,18 +665,18 @@ create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
 unalterable_proc_attribute = 'LANGUAGE' lang_name | 'AS' subprogram_implementation ;
 
 (* 'CREATE' 'PUBLICATION' *)
-create_publication = 
-  'CREATE' 'PUBLICATION' publication_name 
+create_publication =
+  'CREATE' 'PUBLICATION' publication_name
   [ 'FOR' publication_for_option ] ;
 
-publication_for_option = 
+publication_for_option =
   'TABLE' table_name { ',' table_name } |
   'ALL' 'TABLES' ;
 
 (* 'CREATE_REPLICATION_SLOT' *)
-create_replication_slot = 
-  'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin 
-  [ 'NOEXPORT_SNAPSHOT' | 'USE_SNAPSHOT' ] ;
+create_replication_slot =
+  'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin
+  [ 'NOEXPORT_SNAPSHOT' | 'USE_SNAPSHOT' ] [ 'SEQUENCE' | 'HYBRID_TIME' ];
 
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event 'TO' table_name \
@@ -704,7 +726,8 @@ create_schema_role = 'CREATE' 'SCHEMA' [ 'IF' 'NOT' 'EXISTS']
                        'AUTHORIZATION' role_specification ;
 
 (* 'CREATE' 'SEQUENCE' *)
-create_sequence = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'SEQUENCE' [ 'IF' 'NOT' 'EXISTS' ] sequence_name  sequence_options ;
+create_sequence = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'SEQUENCE'
+                    [ 'IF' 'NOT' 'EXISTS' ] sequence_name  sequence_options ;
 
 sequence_name = qualified_name ;
 
@@ -735,8 +758,9 @@ drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
 
 
 (* 'CREATE' 'TABLE' *)
-create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
-                 '(' [ table_elem { ',' table_elem } ] ')'  \
+create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'TABLE'
+                 [ 'IF' 'NOT' 'EXISTS' ] table_name
+                 '(' [ table_elem { ',' table_elem } ] ')' \
                  [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ 'TABLESPACE' tablespace_name ]
@@ -752,6 +776,7 @@ column_constraint = [ 'CONSTRAINT' constraint_name ]
                          | 'NULL'
                          | 'CHECK' '(' expression ')'
                          | 'DEFAULT' expression
+                         | 'GENERATED' 'ALWAYS' 'AS' '(' generation_expr ')' 'STORED'
                          | 'GENERATED' ('ALWAYS' | 'BY DEFAULT') 'AS' 'IDENTITY' [ ( sequence_options ) ]
                          | 'UNIQUE' index_parameters
                          | 'PRIMARY' 'KEY'
@@ -794,7 +819,7 @@ create_table_as = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS
 
 
 (* CREATE TRIGGER *)
-create_trigger = 'CREATE' 'TRIGGER' name
+create_trigger = 'CREATE' [ 'OR' 'REPLACE' ] 'TRIGGER' name
                   ( 'BEFORE' | 'AFTER' | 'INSTEAD' 'OF' ) ( event { 'OR' event } )
                       'ON' table_name
                       [ 'FROM' table_name ] \
@@ -1042,10 +1067,10 @@ option = 'ANALYZE' [ boolean ]
            | 'COSTS' [ boolean ]
            | 'DEBUG' [boolean]
            | 'DIST' [boolean]
-           | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' ) ;
+           | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' )
            | 'SUMMARY' [ boolean ]
            | 'TIMING' [ boolean ]
-           | 'VERBOSE' [ boolean ]
+           | 'VERBOSE' [ boolean ] ;
 
 (* 'GRANT' *)
 grant = ( grant_table |
@@ -1242,7 +1267,7 @@ trailing_select_clauses = [ 'FROM' ( from_item { ','  from_item } ) ] \
                           [ 'FETCH' ( 'FIRST' | 'NEXT' ) int_expression ( 'ROW' | 'ROWS' ) 'ONLY' ] \
                           { 'FOR' ( 'UPDATE' | 'NO KEY UPDATE' | 'SHARE' | 'KEY SHARE' ) [ 'OF' table_name { ',' table_name} ] [ 'NOWAIT' | 'SKIP LOCKED' ] };
 
-from_item = '<See https://www.postgresql.org/docs/11/sql-select.html>' ;
+from_item = '<See https://www.postgresql.org/docs/15/sql-select.html>' ;
 
 common_table_expression = cte_name [ '(' column_name { ',' column_name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
 
@@ -1290,11 +1315,11 @@ show_stmt = 'SHOW' ( run_time_parameter | 'ALL' ) ;
 show_transaction = 'SHOW' 'TRANSACTION' 'ISOLATION' 'LEVEL' ;
 
 (* 'START_REPLICATION' *)
-start_replication = 
-  'START_REPLICATION' 'SLOT' slot_name 'LOGICAL' log_sequence_number 
+start_replication =
+  'START_REPLICATION' 'SLOT' slot_name 'LOGICAL' log_sequence_number
     [ '(' start_replication_option { ',' start_replication_option } ')' ] ;
 
-start_replication_option = 
+start_replication_option =
   start_replication_option_name [ start_replication_option_value ] ;
 
 (* 'START' 'TRANSACTION' *)
@@ -1452,6 +1477,7 @@ numeric_expression = expression ;
 text_expression = expression ;
 array_expression  = expression ;
 interval_expression = expression ;
+generation_expr = expression ;
 expression = '<expression>' ;
 
 boolean = 'TRUE' | 'FALSE' ;
@@ -1512,6 +1538,7 @@ op_type = data_type ;
 storage_type = data_type ;
 using_expression = expression ;
 check_expression = expression ;
+condition = expression ;
 new_name = name ;
 version = text_literal ;
 extension_name = name ;

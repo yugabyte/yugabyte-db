@@ -82,6 +82,7 @@ struct XClusterOutboundReplicationGroupStatus {
   xcluster::ReplicationGroupId replication_group_id;
   std::string state;
   std::string target_universe_info;
+  bool automatic_ddl_mode;
   std::vector<XClusterOutboundReplicationGroupNamespaceStatus> namespace_statuses;
 };
 

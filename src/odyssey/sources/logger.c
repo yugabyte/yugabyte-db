@@ -36,14 +36,18 @@ static char *od_log_level[] = { "info", "error", "debug", "fatal" };
 od_retcode_t od_logger_init(od_logger_t *logger, od_pid_t *pid)
 {
 	logger->pid = pid;
+	logger->loaded = 0;
 	logger->log_debug = 0;
 	logger->log_stdout = 1;
 	logger->log_syslog = 0;
 	logger->format = NULL;
 	logger->format_len = 0;
 	logger->fd = -1;
-	logger->loaded = 0;
-
+	logger->log_dir = NULL;
+	logger->next_rotate_timestamp = 0;
+	logger->max_log_size = 0;
+	logger->current_log_size = 0;
+	logger->rotate_interval = 0;
 	/* set temporary format */
 	od_logger_set_format(logger, "%p %t %l (%c) %h %m\n");
 
@@ -79,23 +83,82 @@ od_retcode_t od_logger_load(od_logger_t *logger)
 	return OK_RESPONSE;
 }
 
-int od_logger_open(od_logger_t *logger, char *path)
+/* 
+Best effort log rollover. If the new log file is not ready, we will
+be writing to the old log file. We would try for the log rollover to occur
+on every log write operation though.
+*/
+int od_logger_rotate(od_logger_t *logger)
 {
-	logger->fd = open(path, O_RDWR | O_CREAT | O_APPEND, 0644);
-	if (logger->fd == -1)
+	time_t curr_time = time(NULL);
+	char file_name[512];
+	struct tm *tm = localtime(&curr_time);
+	strftime(file_name, sizeof(file_name), "ysql-conn-mgr-%Y-%m-%d_%H%M%S.log", tm);
+	snprintf(file_name + strlen(file_name), sizeof(file_name) - strlen(file_name), ".%s", logger->pid->pid_sz);
+
+	char *log_file_path = malloc(strlen(logger->log_dir) + strlen(file_name) + 2);
+	if (!log_file_path) {
+		return -1;  // Memory allocation failure
+	}
+
+	sprintf(log_file_path, "%s/%s", logger->log_dir, file_name);
+	int old_fd = logger->fd;
+	int new_fd = open(log_file_path, O_RDWR | O_CREAT | O_APPEND, 0644);
+	
+	if (new_fd > 0) {
+		logger->fd = new_fd;
+		logger->current_log_size = 0;
+	} else {
+		free(log_file_path);
 		return -1;
+	}
+	
+	if (old_fd > 0) {
+		close(old_fd);
+	}
+
+	if (logger->rotate_interval > 0) {
+		logger->next_rotate_timestamp = curr_time + logger->rotate_interval;
+	} else {
+		struct tm midnight = *localtime(&curr_time);
+		midnight.tm_hour = 0;
+		midnight.tm_min = 0;
+		midnight.tm_sec = 0;
+		midnight.tm_mday++;
+		logger->next_rotate_timestamp = mktime(&midnight);
+	}
+
+	free(log_file_path);
 	return 0;
 }
 
-int od_logger_reopen(od_logger_t *logger, char *path)
+int od_logger_check_rotation(od_logger_t *logger)
 {
-	int old_fd = logger->fd;
-	int rc = od_logger_open(logger, path);
-	if (rc == -1)
-		logger->fd = old_fd;
-	else if (old_fd != -1)
-		close(old_fd);
-	return rc;
+	time_t curr_time = time(NULL);
+	int should_rotate = 0;
+
+    // Check size-based rotation
+	if (logger->max_log_size > 0 &&
+			logger->current_log_size >= logger->max_log_size) {
+		should_rotate = 1; // Rotate due to size
+	}
+
+	// Check time-based rotation
+	if (curr_time >= logger->next_rotate_timestamp) {
+		should_rotate = 1; // Rotate due to time
+	}
+
+	return should_rotate;
+}
+
+int od_logger_open(od_logger_t *logger)
+{
+	return od_logger_rotate(logger);
+}
+
+int od_logger_reopen(od_logger_t *logger)
+{
+	return od_logger_open(logger);
 }
 
 int od_logger_open_syslog(od_logger_t *logger, char *ident, char *facility)
@@ -454,8 +517,15 @@ static inline void od_logger(void *arg)
 		case OD_MSG_LOG: {
 			_od_log_entry *le = machine_msg_data(msg);
 			int len = strlen(le->msg);
-
-			_od_logger_write(logger, le->msg, len, le->lvl);
+			if (logger->fd != -1) {
+				if (od_logger_check_rotation(logger)) {
+					od_logger_rotate(logger);
+				}
+				if (logger->max_log_size > 0) {
+					logger->current_log_size += len;
+				}
+			}
+			_od_logger_write(logger, le->msg, len, le->lvl);			
 		} break;
 		default: {
 			assert(0);
@@ -493,7 +563,7 @@ void od_logger_write(od_logger_t *logger, od_logger_level_t level,
 	int len;
 	len = od_logger_format(logger, level, context, client, server, fmt,
 			       args, output, sizeof(output));
-	if (logger->loaded && false) {
+	if (logger->loaded) {
 		/* create new log event and pass it to logger pool */
 		machine_msg_t *msg;
 		msg = machine_msg_create(od_log_entry_req_size(len));

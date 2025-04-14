@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <algorithm>
+#include <future>
+#include <type_traits>
+
 // Implementation of std functions we want to use, but cannot until we switch to newer C++.
 
 namespace yb {
@@ -98,5 +102,33 @@ template <class Pq>
 ReverseHeapToVectorHelper<Pq> ReverseHeapToVector(Pq& pq) {
   return ReverseHeapToVectorHelper<Pq>(pq);
 }
+
+template <class It, class Value, class Cmp = std::less<void>>
+auto binary_search_iterator(
+    const It& begin, const It& end, const Value& value, const Cmp& cmp = Cmp()) {
+  auto it = std::lower_bound(begin, end, value, cmp);
+  return it == end || !cmp(value, *it) ? it : end;
+}
+
+template <class It, class Value, class Cmp, class Transform>
+auto binary_search_iterator(
+    const It& begin, const It& end, const Value& value, const Cmp& cmp,
+    const Transform& transform) {
+  auto it = std::lower_bound(begin, end, value, [cmp, transform](const auto& lhs, const auto& rhs) {
+    return cmp(transform(lhs), rhs);
+  });
+  return it == end || !cmp(value, transform(*it)) ? it : end;
+}
+
+template<class T>
+auto ValueAsFuture(T&& value) {
+  using Tp = std::remove_cvref_t<T>;
+  std::promise<Tp> promise;
+  promise.set_value(std::forward<T>(value));
+  return promise.get_future();
+}
+
+template <class T>
+using optional_ref = std::optional<std::reference_wrapper<T>>;
 
 } // namespace yb

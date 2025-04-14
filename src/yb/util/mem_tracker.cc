@@ -225,8 +225,10 @@ class MemTracker::TrackerMetrics {
   }
 
   void Init(const MemTracker& mem_tracker) {
+    // The GaugePrototype object is owned by the AtomicGauge and is also shared with
+    // MetricsAggregator or PrometheusWriter when the metric is being aggregated.
     metric_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
-        std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+        std::shared_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
             metric_entity_->prototype().name(), mem_tracker.metric_name(),
             CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
             CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
@@ -239,7 +241,7 @@ class MemTracker::TrackerMetrics {
   void operator=(const TrackerMetrics&) = delete;
 
   ~TrackerMetrics() {
-    metric_entity_->Remove(metric_->prototype());
+    metric_entity_->RemoveFromMetricMap(metric_->prototype());
   }
 
   MetricEntityPtr metric_entity_;
@@ -518,12 +520,10 @@ bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
       if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
         // One of the trackers failed, attempt to GC memory or expand our limit. If that
         // succeeds, TryUpdate() again. Bail if either fails.
-        if (!tracker->GcMemory(tracker->limit_ - bytes) ||
-            tracker->ExpandLimit(bytes)) {
-          if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
-            break;
-          }
-        } else {
+        if (tracker->GcMemory(tracker->limit_ - bytes)) {
+          break;
+        }
+        if (!TryIncrementBy(bytes, tracker->limit_, &tracker->consumption_, tracker->metrics_)) {
           break;
         }
       }
@@ -728,7 +728,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
       if (did_gc) {
         current_consumption = GetUpdatedConsumption();
         if (current_consumption <= max_consumption) {
-          return true;
+          return false;
         }
       }
     }

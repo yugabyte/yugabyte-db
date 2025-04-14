@@ -9,6 +9,9 @@ menu:
     identifier: yugabytedb-managed-releases
     parent: yugabytedb-managed
     weight: 22
+    params:
+      classes: separator
+      hideLink: true
 type: docs
 rightNav:
   hideH4: true
@@ -16,7 +19,44 @@ rightNav:
 
 ## Change log
 
+### 2025
+
+#### January 30, 2025
+
+##### New features
+
+- YugabyteDB v2.25.0.0 featuring support for PostgreSQL 15 is now available for testing on the Preview database track. To test it out, [create a Sandbox](../cloud-basics/create-clusters/create-clusters-free/) cluster with the Database version set to the Preview track.
+  - [YugabyteDB v2.25.0.0 Release Notes](/preview/releases/ybdb-releases/v2.25/)
+  - [PostgreSQL 15 features](/preview/develop/pg15-features/)
+  - [YugabyteDB Levels Up with PG15 Features](https://www.yugabyte.com/blog/postgresql-compatibility-new-yugabytedb-pg15-features/)
+- Support for configuring custom identity providers for [federated authentication](../managed-security/managed-authentication/federated-custom/), to provide single sign-on access for your account users.
+
+##### Database
+
+- Innovation track updated to 2024.1.4.0.
+- Preview track updated to 2.25.0.0.
+
+#### January 8, 2025
+
+##### Database
+
+- Production track updated to 2.20.8.0.
+- Innovation track updated to 2024.1.3.1.
+
 ### 2024
+
+#### December 18, 2024
+
+##### Database
+
+- Early Access track updated to 2024.2.0.0.
+- Innovation track updated to 2.20.8.0.
+
+#### November 29, 2024
+
+##### New features
+
+- General availability for [exporting cluster metrics](../cloud-monitor/managed-integrations/) from clusters deployed in AWS and GCP to [VictoriaMetrics](https://docs.victoriametrics.com/).
 
 #### November 12, 2024
 
@@ -76,7 +116,7 @@ rightNav:
 
 ##### New features
 
-- Support for exporting [PostgreSQL logs](https://www.postgresql.org/docs/11/runtime-config-logging.html) to third-party tools (such as Datadog) for security monitoring, to build operations and health dashboards, troubleshooting, and more.
+- Support for exporting [PostgreSQL logs](https://www.postgresql.org/docs/15/runtime-config-logging.html) to third-party tools (such as Datadog) for security monitoring, to build operations and health dashboards, troubleshooting, and more.
 - New regions. Jakarta and Hyderabad on AWS, and Singapore on Azure.
 
 ##### Database
@@ -219,7 +259,7 @@ rightNav:
 
 ##### Database
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.19.0](../../releases/ybdb-releases/v2.19/#v2.19.0.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.19.0. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 #### June 30, 2023
 
@@ -245,7 +285,7 @@ rightNav:
 
 ##### Database
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.3](../../releases/ybdb-releases/v2.17/#v2.17.3.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.17.3. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 #### June 7, 2023
 
@@ -257,7 +297,7 @@ rightNav:
 
 ##### Database
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.9](../../releases/ybdb-releases/v2.14/#v2.14.9.0). New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.14.9. New clusters use this version by default.
 
 #### April 28, 2023
 
@@ -269,7 +309,7 @@ rightNav:
 
 ##### Database
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.2](../../releases/ybdb-releases/v2.17/#v2.17.2.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.17.2. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 #### March 27, 2023
 
@@ -288,21 +328,21 @@ rightNav:
 
 ##### Database
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.7](../../releases/ybdb-releases/v2.14/#v2.14.7.0) for dedicated clusters. New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.14.7 for dedicated clusters. New clusters use this version by default.
 
 #### March 1, 2023
 
 ##### Database
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/ybdb-releases/end-of-life/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to version 2.12.9 for dedicated clusters. New clusters use this version by default.
 
 #### February 13, 2023
 
 ##### Database
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version [2.17.1](../../releases/ybdb-releases/v2.17/#v2.17.1.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.17.1. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.14.6](../../releases/ybdb-releases/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to version 2.14.6 for dedicated clusters. New clusters use this version by default.
 
 #### February 8, 2023
 
@@ -334,7 +374,7 @@ rightNav:
 
 ##### Database
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.6](../../releases/ybdb-releases/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.14.6 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### 2022
 
@@ -347,7 +387,7 @@ rightNav:
 
 ##### Database
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.5](../../releases/ybdb-releases/v2.14/#v2.14.5.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.14.5 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 #### December 12, 2022
 
@@ -582,7 +622,7 @@ This release includes the following features:
 
 - **Missing Slow Queries** - On clusters with multiple nodes, in some circumstances some nodes may not return all query statements when requested. If this happens, the query statements will be missing from the Slow Queries page.
 - **Slow Queries Reset** - When resetting Slow Queries, the query used for the reset remains in the table.
-- **Tables** - In some instances in Sandbox clusters, the **Tables** tab will show all tables with a size of 0B.
+- **Tables** - In some instances in Sandbox clusters, the [Tables tab](../cloud-monitor/monitor-tables/) will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.

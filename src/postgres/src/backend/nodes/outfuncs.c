@@ -357,6 +357,11 @@ _outPlanInfo(StringInfo str, const Plan *node)
 	WRITE_NODE_FIELD(initPlan);
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
+	WRITE_STRING_FIELD(ybHintAlias);
+	WRITE_UINT_FIELD(ybUniqueId);
+	WRITE_STRING_FIELD(ybInheritedHintAlias);
+	WRITE_BOOL_FIELD(ybIsHinted);
+	WRITE_BOOL_FIELD(ybHasHintedUid);
 }
 
 /*
@@ -445,8 +450,6 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(yb_skip_entities);
 	WRITE_NODE_FIELD(yb_update_affected_entities);
 	WRITE_BOOL_FIELD(no_row_trigger);
-	WRITE_BOOL_FIELD(ybUseScanTupleInUpdate);
-	WRITE_BOOL_FIELD(ybHasWholeRowAttribute);
 }
 
 static void
@@ -1165,8 +1168,8 @@ _outPartitionPruneStepOp(StringInfo str, const PartitionPruneStepOp *node)
 }
 
 static void
-_outPartitionPruneStepFuncOp(StringInfo str,
-							   const PartitionPruneStepFuncOp *node)
+_outYbPartitionPruneStepFuncOp(StringInfo str,
+							   const YbPartitionPruneStepFuncOp *node)
 {
 	WRITE_NODE_TYPE("PARTITIONPRUNESTEPFUNCOP");
 
@@ -4051,14 +4054,14 @@ _outYbSkippableEntities(StringInfo str, const YbSkippableEntities *node)
 static void
 _outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *node)
 {
-	int nfields = node->matrix.nrows;
-	int nentities = node->matrix.ncols;
+	int			nfields = node->matrix.nrows;
+	int			nentities = node->matrix.ncols;
 
 	WRITE_NODE_TYPE("YBUPDATEAFFECTEDENTITIES");
 
 	/* Write out the number of fields and entities to support deserialization */
-	WRITE_INT_FIELD(matrix.nrows); /* Number of fields */
-	WRITE_INT_FIELD(matrix.ncols); /* Number of entities */
+	WRITE_INT_FIELD(matrix.nrows);	/* Number of fields */
+	WRITE_INT_FIELD(matrix.ncols);	/* Number of entities */
 
 	for (int i = 0; i < nentities; i++)
 	{

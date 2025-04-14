@@ -42,7 +42,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -169,29 +168,16 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
   private void assertTaskSequence(
       Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks, boolean oldNamingBased) {
-    assertTaskSequence(subTasksByPosition, numTasks, numTasks, false, oldNamingBased);
-  }
-
-  private void assertTaskSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      int numTasks,
-      boolean forceDelete,
-      boolean oldNamingBased) {
-    assertTaskSequence(subTasksByPosition, numTasks, numTasks, forceDelete, oldNamingBased);
+    assertTaskSequence(subTasksByPosition, numTasks, numTasks, oldNamingBased);
   }
 
   private void assertTaskSequence(
       Map<Integer, List<TaskInfo>> subTasksByPosition,
       int numTasks,
       int numNamespaceDelete,
-      boolean forceDelete,
       boolean oldNamingBased) {
     int position = 0;
-    if (!forceDelete) {
-      // Shift by 1 subtask due to FreezeUniverse.
-      assertEquals(
-          TaskType.FreezeUniverse, subTasksByPosition.get(position++).get(0).getTaskType());
-    }
+    assertEquals(TaskType.FreezeUniverse, subTasksByPosition.get(position++).get(0).getTaskType());
     for (int i = 0; i < KUBERNETES_DESTROY_UNIVERSE_TASKS.size(); i++) {
       TaskType taskType = KUBERNETES_DESTROY_UNIVERSE_TASKS.get(i);
       JsonNode expectedResults = KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS.get(i);
@@ -228,25 +214,16 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     }
   }
 
-  private TaskInfo submitTask(
-      DestroyKubernetesUniverse.Params taskParams, Duration otherTaskFinishWaitTime) {
+  private TaskInfo submitTask(DestroyKubernetesUniverse.Params taskParams) {
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 2;
     try {
       UUID taskUUID = commissioner.submit(TaskType.DestroyKubernetesUniverse, taskParams);
-      if (otherTaskFinishWaitTime != null) {
-        Thread.sleep(otherTaskFinishWaitTime.toMillis());
-        setUpdateInProgress(false);
-      }
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
     }
     return null;
-  }
-
-  private TaskInfo submitTask(DestroyKubernetesUniverse.Params taskParams) {
-    return submitTask(taskParams, null /* otherTaskFinishWaitTime */);
   }
 
   @Test
@@ -368,8 +345,9 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testForceDestroyKubernetesUniverseWithUpdateInProgress() {
-    setupUniverse(true);
+  public void testForceDestroyKubernetesUniverse() {
+    // Setting updateInProgress=true without running a task is invalid.
+    setupUniverse(false);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
@@ -378,15 +356,14 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteBackups = false;
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    TaskInfo taskInfo =
-        submitTask(taskParams, UniverseTaskBase.SLEEP_TIME_FORCE_LOCK_RETRY.multipliedBy(2));
+    TaskInfo taskInfo = submitTask(taskParams);
     verify(mockKubernetesManager, times(1)).helmDelete(config, NODE_PREFIX, NODE_PREFIX);
     verify(mockKubernetesManager, times(1)).deleteStorage(config, NODE_PREFIX, NODE_PREFIX);
     verify(mockKubernetesManager, times(1)).deleteNamespace(config, NODE_PREFIX);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(subTasksByPosition, 1, true, true);
+    assertTaskSequence(subTasksByPosition, 1, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
@@ -479,7 +456,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(subTasksByPosition, 3, 1, false, true);
+    assertTaskSequence(subTasksByPosition, 3, 1, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }

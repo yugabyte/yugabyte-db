@@ -30,7 +30,7 @@
 /**
  * Checks if the given environment variable is set to a "true" value (e.g. "1").
  */
-extern bool YBCIsEnvVarTrue(const char* env_var_name);
+extern bool YBCIsEnvVarTrue(const char *env_var_name);
 
 /**
  * Checks if the given environment variable is set to a "true" value (e.g. "1"),
@@ -46,6 +46,8 @@ extern bool YBCIsEnvVarTrueWithDefault(const char *env_var_name,
  * in the "normal processing mode" and we have a YB client session.
  */
 extern bool YBIsEnabledInPostgresEnvVar();
+
+extern bool YBIsLocalInitdbEnvVar();
 
 /**
  * Returns true to allow running PostgreSQL server and initdb as any user. This
@@ -75,7 +77,7 @@ extern bool YBIsUsingYBParser();
 /**
  * Returns ERROR or WARNING level depends on environment variable
  */
-extern int YBUnsupportedFeatureSignalLevel();
+extern int	YBUnsupportedFeatureSignalLevel();
 
 /**
  * Returns whether unsafe ALTER notice should be suppressed.
@@ -132,19 +134,11 @@ extern bool YBIsCollationEnabled();
  * Returns the value of the configration variable `max_clock_sec_usec`
  * returns -1 if the configuration was not found.
  */
-extern int YBGetMaxClockSkewUsec();
+extern int	YBGetMaxClockSkewUsec();
 
-extern int YBGetHeartbeatIntervalMs();
+extern int	YBGetHeartbeatIntervalMs();
 
-extern int YBGetYsqlOutputBufferSize();
-
-/**
- * Test only constant. When set to true initdb imports default collation
- * from the OS environment. As a result the default collation will be
- * en_US.UTF-8. All the initial databases will have en_US.UTF-8 collation.
- * The text columns of all system tables will have en_US.UTF-8 collation.
- */
-extern const bool kTestOnlyUseOSDefaultCollation;
+extern int	YBGetYsqlOutputBufferSize();
 
 /**
  * Returns whether colocation is enabled by default for each database.
@@ -152,20 +146,15 @@ extern const bool kTestOnlyUseOSDefaultCollation;
 extern bool YBColocateDatabaseByDefault();
 
 /**
- * Returns whether we're doing an initdb for a ysql major upgrade.
- */
-extern bool YBIsMajorUpgradeInitDb();
-
-/**
  * Returns the OID for database_name from the environment, if it exists and is
  * valid. Otherwise, returns InvalidOid.
  * Used for online upgrades.
  */
-Oid YBGetDatabaseOidFromEnv(const char *database_name);
+Oid			YBGetDatabaseOidFromEnv(const char *database_name);
 
 /**
- * Returns whether the query diagnostics feature is enabled.
+ * Returns whether FLAGS_TEST_ysql_yb_query_diagnostics_race_condition is set.
  */
-extern bool YBIsQueryDiagnosticsEnabled();
+extern bool YBQueryDiagnosticsTestRaceCondition();
 
-#endif /* PG_YB_COMMON_H */
+#endif							/* PG_YB_COMMON_H */

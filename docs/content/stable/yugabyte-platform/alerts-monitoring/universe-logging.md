@@ -22,15 +22,15 @@ Note that YugabyteDB is based on PostgreSQL 11 and uses PostgreSQL Audit Extensi
 
 ## Prerequisites
 
-The Audit log export feature is {{<tags/feature/ea>}}. To enable the feature in YugabyteDB Anywhere, set the **Enable DB Audit Logging** Global Configuration option (config key `yb.universe.audit_logging_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings. The flag can't be turned off if audit logging is enabled on a universe.
+The Audit log export feature is {{<tags/feature/ea idea="792">}}. To enable the feature in YugabyteDB Anywhere, set the **Enable DB Audit Logging** Global Configuration option (config key `yb.universe.audit_logging_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings. The flag can't be turned off if audit logging is enabled on a universe.
 
 To export logs, you need to first create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Manage export configurations](../anywhere-export-configuration).
 
-If you want to set pgaudit.log_level to a [severity level](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) greater than WARNING (that is, DEBUG1-5, INFO, NOTICE), you must set the YB-TServer [ysql_log_min_messages](../../../reference/configuration/yb-tserver/#--ysql-log-min-messages) flag accordingly.
+If you want to set pgaudit.log_level to a [severity level](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) greater than WARNING (that is, DEBUG1-5, INFO, NOTICE), you must set the YB-TServer [ysql_log_min_messages](../../../reference/configuration/yb-tserver/#ysql-log-min-messages) flag accordingly.
 
 ## Limitations
 
-- Log export is only supported for cloud-based universes and automatically provisioned on-premises universes. Manually provisioned universes and Kubernetes universes are not supported.
+- Kubernetes universes are not supported.
 - Only YSQL database audit logs can be exported, not YCQL.
 
 ## Best practices

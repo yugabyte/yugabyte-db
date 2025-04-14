@@ -32,11 +32,16 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
-// YB includes.
+/* YB includes */
+#include "catalog/yb_oid_assignment.h"
 #include "pg_yb_utils.h"
+#include <math.h>
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_pg_enum_oid = InvalidOid;
+
+/* YB: NAN is not a valid sortorder. */
+float4		yb_binary_upgrade_next_pg_enum_sortorder = NAN;
 
 /*
  * Hash table of enum value OIDs created during the current transaction by
@@ -83,35 +88,48 @@ EnumValuesCreate(Oid enumTypeOid, List *vals)
 
 	pg_enum = table_open(EnumRelationId, RowExclusiveLock);
 
-	/*
-	 * Allocate OIDs for the enum's members.
-	 *
-	 * While this method does not absolutely guarantee that we generate no
-	 * duplicate OIDs (since we haven't entered each oid into the table before
-	 * allocating the next), trouble could only occur if the OID counter wraps
-	 * all the way around before we finish. Which seems unlikely.
-	 */
 	oids = (Oid *) palloc(num_elems * sizeof(Oid));
 
-	for (elemno = 0; elemno < num_elems; elemno++)
+	if (YbUsingEnumLabelOidAssignment())
+	{
+		elemno = 0;
+		foreach(lc, vals)
+		{
+			char *label = strVal(lfirst(lc));
+			oids[elemno] = YbLookupOidAssignmentForEnumLabel(enumTypeOid, label);
+			elemno++;
+		}
+	}
+	else
 	{
 		/*
-		 * We assign even-numbered OIDs to all the new enum labels.  This
-		 * tells the comparison functions the OIDs are in the correct sort
-		 * order and can be compared directly.
+		 * Allocate OIDs for the enum's members.
+		 *
+		 * While this method does not absolutely guarantee that we generate no
+		 * duplicate OIDs (since we haven't entered each oid into the table before
+		 * allocating the next), trouble could only occur if the OID counter wraps
+		 * all the way around before we finish. Which seems unlikely.
 		 */
-		Oid			new_oid;
-
-		do
+		for (elemno = 0; elemno < num_elems; elemno++)
 		{
-			new_oid = GetNewOidWithIndex(pg_enum, EnumOidIndexId,
-										 Anum_pg_enum_oid);
-		} while (new_oid & 1);
-		oids[elemno] = new_oid;
-	}
+			/*
+			 * We assign even-numbered OIDs to all the new enum labels.  This
+			 * tells the comparison functions the OIDs are in the correct sort
+			 * order and can be compared directly.
+			 */
+			Oid			new_oid;
 
-	/* sort them, just in case OID counter wrapped from high to low */
-	qsort(oids, num_elems, sizeof(Oid), oid_cmp);
+			do
+			{
+				new_oid = GetNewOidWithIndex(pg_enum, EnumOidIndexId,
+											 Anum_pg_enum_oid);
+			} while (new_oid & 1);
+			oids[elemno] = new_oid;
+		}
+
+		/* sort them, just in case OID counter wrapped from high to low */
+		qsort(oids, num_elems, sizeof(Oid), oid_cmp);
+	}
 
 	/* and make the entries */
 	memset(nulls, false, sizeof(nulls));
@@ -380,6 +398,11 @@ restart:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("pg_enum OID value not set when in binary upgrade mode")));
+		if (isnan(yb_binary_upgrade_next_pg_enum_sortorder))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("pg_enum sortorder value not set when in binary upgrade mode")));
+
 
 		/*
 		 * Use binary-upgrade override for pg_enum.oid, if supplied. During
@@ -393,7 +416,13 @@ restart:
 
 		newOid = binary_upgrade_next_pg_enum_oid;
 		binary_upgrade_next_pg_enum_oid = InvalidOid;
+
+		/* Override the previously computed newelemorder above. */
+		newelemorder = yb_binary_upgrade_next_pg_enum_sortorder;
+		yb_binary_upgrade_next_pg_enum_sortorder = NAN;
 	}
+	else if (YbUsingEnumLabelOidAssignment())
+		newOid = YbLookupOidAssignmentForEnumLabel(enumTypeOid, newVal);
 	else
 	{
 		/*

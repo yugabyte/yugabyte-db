@@ -28,10 +28,12 @@
 
 #include "postgres.h"
 
-#include "access/relscan.h"
 #include "executor/execdebug.h"
 #include "executor/nodeBitmapOr.h"
 #include "miscadmin.h"
+
+/* YB includes */
+#include "access/relscan.h"
 #include "nodes/tidbitmap.h"
 #include "pg_yb_utils.h"
 
@@ -116,7 +118,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 	PlanState **bitmapplans;
 	int			nplans;
 	int			i;
-	TupleBitmap result = {NULL};
+	YbTupleBitmap result = {NULL};
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
@@ -134,7 +136,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 	for (i = 0; i < nplans; i++)
 	{
 		PlanState  *subnode = bitmapplans[i];
-		TupleBitmap subresult = {NULL};
+		YbTupleBitmap subresult = {NULL};
 
 		/*
 		 * We can special-case BitmapIndexScan children to avoid an explicit
@@ -147,9 +149,9 @@ MultiExecBitmapOr(BitmapOrState *node)
 			{
 				/* XXX should we use less than work_mem for this? */
 				result.tbm = tbm_create(work_mem * 1024L,
-										((BitmapOr *) node->ps.plan)->isshared
-											? node->ps.state->es_query_dsa
-											: NULL);
+										(((BitmapOr *) node->ps.plan)->isshared ?
+										 node->ps.state->es_query_dsa :
+										 NULL));
 			}
 
 			((BitmapIndexScanState *) subnode)->biss_result = result.tbm;
@@ -161,7 +163,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 		/* We do the same for YbBitmapIndexScan children */
 		else if (IsA(subnode, YbBitmapIndexScanState))
 		{
-			if (result.ybtbm == NULL) /* first subplan */
+			if (result.ybtbm == NULL)	/* first subplan */
 				result.ybtbm = yb_tbm_create(work_mem * 1024L);
 
 			((YbBitmapIndexScanState *) subnode)->biss_result = result.ybtbm;
@@ -197,8 +199,9 @@ MultiExecBitmapOr(BitmapOrState *node)
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
 		InstrStopNode(node->ps.instrument,
-					  IsA(result.ybtbm, YbTIDBitmap)
-						? yb_tbm_get_size(result.ybtbm) : 0);
+					  (IsA(result.ybtbm, YbTIDBitmap) ?
+					   yb_tbm_get_size(result.ybtbm) :
+					   0));
 
 
 	return (Node *) result.tbm;

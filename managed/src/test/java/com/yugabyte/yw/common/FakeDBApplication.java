@@ -11,6 +11,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.TaskQueue;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
@@ -38,9 +39,9 @@ import java.util.concurrent.Executors;
 import java.util.function.Function;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.YBClient;
 import play.Application;
@@ -49,6 +50,7 @@ import play.libs.Json;
 
 public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
+  public TaskQueue mockTaskQueue = mock(TaskQueue.class);
   public CallHome mockCallHome = mock(CallHome.class);
   public ApiHelper mockApiHelper = mock(ApiHelper.class);
   public ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
@@ -97,6 +99,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
   public ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
   public XClusterScheduler mockXClusterScheduler = mock(XClusterScheduler.class);
+  public SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -123,6 +126,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .configure(testDatabase())
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+                .overrides(bind(TaskQueue.class).toInstance(mockTaskQueue))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(Executors.class).toInstance(mockExecutors))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
@@ -134,7 +138,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-                .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+                .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
                 .overrides(
                     bind(CustomerLicenseManager.class).toInstance(mockCustomerLicenseManager))
@@ -174,6 +178,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(XClusterScheduler.class).toInstance(mockXClusterScheduler))
+        .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
         .build();
   }
 

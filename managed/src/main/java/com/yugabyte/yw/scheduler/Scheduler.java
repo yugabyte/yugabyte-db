@@ -21,7 +21,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.CreateBackup;
-import com.yugabyte.yw.commissioner.tasks.CreateYbaBackup;
+import com.yugabyte.yw.commissioner.tasks.CreateContinuousBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
@@ -47,6 +47,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Singleton
@@ -152,7 +153,7 @@ public class Scheduler {
         Date expectedIncrementScheduleTaskTime = schedule.getNextIncrementScheduleTaskTime();
         boolean backlogStatus = schedule.isBacklogStatus();
         boolean incrementBacklogStatus = schedule.isIncrementBacklogStatus();
-        if (cronExpression == null && frequency == 0) {
+        if (StringUtils.isBlank(cronExpression) && frequency == 0) {
           log.error(
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
           continue;
@@ -239,22 +240,20 @@ public class Scheduler {
             // fetch last successful full backup for the schedule on which incremental
             // backup can be taken.
             baseBackupUUID = fetchBaseBackupUUIDfromLatestSuccessfulBackup(schedule);
-            if (shouldRunTask || baseBackupUUID == null) {
+            if (shouldRunTask) {
               // We won't do incremental backups if a full backup is due since
               // full backups take priority but make sure to take an incremental backup
               // either when it's scheduled or to catch up on any backlog.
-              if (baseBackupUUID == null) {
-                // If a scheduled backup is already not in progress and avoid running full backup.
-                if (!verifyScheduledBackupInProgress(schedule)) {
-                  shouldRunTask = true;
-                }
-              }
               baseBackupUUID = null;
               log.debug("Scheduling a full backup for schedule {}", schedule.getScheduleUUID());
             } else if (isExpectedIncrementScheduleTaskTime || incrementBacklogStatus) {
-              shouldRunTask = true;
-              log.debug(
-                  "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
+              // Schedule next incremental backup only if there is a full backup present else
+              // wait for next scheduled full backup.
+              if (baseBackupUUID != null) {
+                shouldRunTask = true;
+                log.debug(
+                    "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
+              }
             }
           }
 
@@ -274,8 +273,8 @@ public class Scheduler {
                 break;
               case CreateAndRotateAccessKey:
                 this.runAccessKeyRotation(schedule, alreadyRunning);
-              case CreateYbaBackup:
-                this.runCreateYbaBackupTask(schedule, alreadyRunning);
+              case CreateContinuousBackup:
+                this.runCreateContinuousBackupTask(schedule, alreadyRunning);
               default:
                 log.error(
                     "Cannot schedule task {} for scheduler {}",
@@ -337,9 +336,10 @@ public class Scheduler {
     createBackup.runScheduledBackup(schedule, commissioner, alreadyRunning, baseBackupUUID);
   }
 
-  private void runCreateYbaBackupTask(Schedule schedule, boolean alreadyRunning) {
-    CreateYbaBackup createYbaBackup = AbstractTaskBase.createTask(CreateYbaBackup.class);
-    createYbaBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
+  private void runCreateContinuousBackupTask(Schedule schedule, boolean alreadyRunning) {
+    CreateContinuousBackup createContinuousBackup =
+        AbstractTaskBase.createTask(CreateContinuousBackup.class);
+    createContinuousBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
   }
 
   private void runExternalScriptTask(Schedule schedule, boolean alreadyRunning) {

@@ -52,7 +52,11 @@ For more details, see [Partial indexes](../../explore/ysql-language-features/ind
 
 If you need values in some of the columns to be unique, you can specify your index as UNIQUE.
 
-When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a NULL value is treated as a distinct value, you can have multiple NULL values in a column with a unique index.
+When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows.
+
+{{<note>}}
+By default a NULL value is treated as a distinct value, allowing you to have multiple NULL values in a column with a unique index. This can be turned OFF by adding the [NULLS NOT DISTINCT](../../api/ysql/the-sql-language/statements/ddl_create_index#nulls-not-distinct) option when creating the unique index.
+{{</note>}}
 
 {{<lead link="../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/">}}
 For more details, see [Unique indexes](../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/).
@@ -62,7 +66,7 @@ For more details, see [Unique indexes](../../explore/ysql-language-features/inde
 
 Sequences in databases automatically generate incrementing numbers, perfect for generating unique values like order numbers, user IDs, check numbers, and so on. They prevent multiple application instances from concurrently generating duplicate values. However, generating sequences on a database that is spread across regions could have a latency impact on your applications.
 
-Enable [server-level caching](../../api/ysql/exprs/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
+Enable [server-level caching](../../api/ysql/exprs/sequence_functions/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
 
 {{<lead link="https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76">}}
 For a demo, see the YugabyteDB Friday Tech Talk on [Scaling sequences with server-level caching](https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76).
@@ -92,8 +96,8 @@ For more details, see [Fast single-row transactions](../../develop/learn/transac
 
 Use [table partitioning](../../explore/ysql-language-features/advanced-features/partitions/) to split your data into multiple partitions according to date so that you can quickly delete older data by dropping the partition.
 
-{{<lead link="../common-patterns/timeseries/partitioning-by-time/">}}
-For more details, see [Partition data by time](../common-patterns/timeseries/partitioning-by-time/).
+{{<lead link="../data-modeling/common-patterns/timeseries/partitioning-by-time/">}}
+For more details, see [Partition data by time](../data-modeling/common-patterns/timeseries/partitioning-by-time/).
 {{</lead>}}
 
 ## Use the right data types for partition keys
@@ -174,6 +178,10 @@ YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/) provide advanced c
 For more information, see [Load balancing with smart drivers](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver).
 {{</lead>}}
 
+## Make sure the application uses new nodes
+
+When a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Regardless of the language of the driver or whether you are using a smart driver, the application must either explicitly request new connections or, if it is using a pooling solution, it can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
+
 ## Scale your application with connection pools
 
 Set up different pools with different load balancing policies as needed for your application to scale by using popular pooling solutions such as HikariCP and Tomcat along with YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/).
@@ -184,7 +192,7 @@ For more information, see [Connection pooling](../../drivers-orms/smart-drivers/
 
 ## Use YSQL Connection Manager
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/tp>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/ea idea="1368">}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 For more information, refer to the following:
 
@@ -194,6 +202,20 @@ For more information, refer to the following:
 ## Re-use query plans with prepared statements
 
 Whenever possible, use [prepared statements](../../api/ysql/the-sql-language/statements/perf_prepare/) to ensure that YugabyteDB can re-use the same query plan and eliminate the need for a server to parse the query on each operation.
+
+{{<warning title="Avoid explicit PREPARE or EXECUTE">}}
+
+When using server-side pooling, avoid explicit PREPARE and EXECUTE calls and use protocol-level prepared statements instead. Explicit prepare/execute calls can make connections sticky, which prevents you from realizing the benefits of using YSQL Connection Manager{{<tags/feature/tp idea="1368">}} and server-side pooling.
+
+Depending on your driver, you may have to set some parameters to leverage prepared statements. For example, Npgsql supports automatic preparation using the Max Auto Prepare and Auto Prepare Min Usages connection parameters, which you add to your connection string as follows:
+
+```sh
+Max Auto Prepare=100;Auto Prepare Min Usages=5;
+```
+
+Consult your driver documentation.
+
+{{</warning>}}
 
 {{<lead link="https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3">}}
 For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3).
@@ -211,7 +233,7 @@ For more details, see [Large scans and batch jobs](../../develop/learn/transacti
 
 Use the [JSONB](../../api/ysql/datatypes/type_json) datatype to model JSON data; that is, data that doesn't have a set schema but has a truly dynamic schema.
 
-JSONB in YSQL is the same as the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
+JSONB in YSQL is the same as the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/15/datatype-json.html).
 
 You can use JSONB to group less interesting or less frequently accessed columns of a table.
 

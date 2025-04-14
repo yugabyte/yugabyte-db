@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.sql.Statement;
 
 import org.apache.commons.io.FileUtils;
 import org.junit.Test;
@@ -40,12 +41,28 @@ import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import com.google.common.collect.Sets;
 
+/**
+ * TestYsqlDump
+ *    Tests by loading schema from files in src/postgres/src/test/regress/sql,
+ *    taking a ysql dump / dumpall, then comparing the output to the expected
+ *    files in src/postgres/src/test/regress/data.
+ *
+ *    Some of the tests then import the dump into a fresh db/cluster and run
+ *    describe commands from src/postgres/src/test/regress/sql/ and compare
+ *    the output to th expected files in src/postgres/src/test/regress/expected.
+ *
+ *    Ideally, all tests would import the dump back into a fresh cluster but it
+ *    is not always possible. For ex, ysql_dumpall outputs CREATE ROLE postgres
+ *    which always fails on a new cluster.
+ *
+ */
 @RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestYsqlDump extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
 
   private static enum IncludeYbMetadata { ON, OFF }
   private static enum NoTableSpaces { ON, OFF }
+  private static enum DumpRoleChecks { ON, OFF }
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -65,6 +82,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Turn off sequence cache.
     flagMap.put("ysql_sequence_cache_minval", "0");
+    flagMap.put("ysql_enable_inheritance", "true");
     return flagMap;
   }
 
@@ -79,7 +97,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   private static String  VERSION_NUMBER_REPLACEMENT_STR =
       " version X.X-YB-X.X.X.X-bX";
 
-  private String postprocessOutputLine(String s) {
+  private static String postprocessOutputLine(String s) {
     if (s == null)
       return null;
     return StringUtil.expandTabsAndRemoveTrailingSpaces(
@@ -88,17 +106,59 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpWithYbMetadata() throws Exception {
+
+    markClusterNeedsRecreation();
+    restartCluster();
+
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump.sql" /* inputFileRelativePath */,
-        "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+        "sql/yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dump.data.sql" /* expectedDumpRelativePath */,
-        "expected/yb_ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
-        "results/yb_ysql_dump.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dump_describe.out" /* outputDescribeFileRelativePath */,
+        "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate(String.format("CREATE DATABASE import_db;"));
+    }
+
+    verifyYsqlDump(
+      true /* importDump */,
+      "import_db" /* verifyDbName */,
+      "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
+  }
+
+  @Test
+  public void ysqlDumpWithDumpRoleChecks() throws Exception {
+
+    markClusterNeedsRecreation();
+    restartCluster();
+
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
+        "data/yb_ysql_dump_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF,
+        DumpRoleChecks.ON);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate(String.format("CREATE DATABASE import_db;"));
+    }
+
+    verifyYsqlDump(
+      true /* importDump */,
+      "import_db" /* verifyDbName */,
+      "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
   }
 
   @Test
@@ -107,31 +167,76 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
-        "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dumpall.data.sql" /* expectedDumpRelativePath */,
-        "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
-        "results/yb_ysql_dumpall.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */,
+        "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
+
+    // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
+    // like CREATE ROLE postgres
+    verifyYsqlDump(
+      false /* importDump*/,
+      "" /* verifyDbName */,
+      "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */
+    );
+  }
+
+  @Test
+  public void ysqlDumpAllWithDumpRoleChecks() throws Exception {
+    // Note that we're using the same describe input as for regular ysql_dump!
+    ysqlDumpTester(
+        "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
+        "data/yb_ysql_dumpall_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF,
+        DumpRoleChecks.ON);
+
+    // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
+    // like CREATE ROLE postgres
+    verifyYsqlDump(
+      false /* importDump*/,
+      "" /* verifyDbName */,
+      "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */
+    );
   }
 
   @Test
   public void ysqlDumpWithoutYbMetadata() throws Exception {
+
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump_without_ybmetadata.sql" /* inputFileRelativePath */,
-        "sql/yb_ysql_dump_without_ybmetadata_describe.sql" /* inputDescribeFileRelativePath */,
+        "sql/yb.orig.ysql_dump_without_ybmetadata.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dump_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
-        "expected/yb_ysql_dump_without_ybmetadata_describe.out"
-        /* expectedDescribeFileRelativePath */,
-        "results/yb_ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dump_without_ybmetadata_describe.out"
-        /* outputDescribeFileRelativePath */,
+        "results/yb.orig.ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
         IncludeYbMetadata.OFF,
         NoTableSpaces.OFF);
+
+    restartCluster();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate(String.format("CREATE DATABASE import_db;"));
+    }
+
+    verifyYsqlDump(
+      true /* importDump */,
+      "import_db" /* verifyDbName */,
+      "results/yb.orig.ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_without_ybmetadata_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_without_ybmetadata_describe.out"
+      /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_without_ybmetadata_describe.out"
+      /* outputDescribeFileRelativePath */);
   }
 
   @Test
@@ -140,15 +245,22 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
-        "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dumpall_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
-        "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
-        "results/yb_ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dumpall_without_ybmetadata_describe.out"
-        /* outputDescribeFileRelativePath */,
+        "results/yb.orig.ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
         IncludeYbMetadata.OFF,
         NoTableSpaces.OFF);
+
+    // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
+    // like CREATE ROLE postgres
+    verifyYsqlDump(
+      false /*importDump*/,
+      "" /* verifyDbName */,
+      "results/yb.orig.ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_without_ybmetadata_describe.out"
+      /* outputDescribeFileRelativePath */);
   }
 
   @Test
@@ -156,22 +268,34 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colocated_db" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
-        "sql/yb_ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
+        "sql/yb.orig.ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dump_colocated_database.data.sql" /* expectedDumpRelativePath */,
-        "expected/yb_ysql_dump_describe_colocated_database.out"
-        /* expectedDescribeFileRelativePath */,
-        "results/yb_ysql_dump_colocated_database.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dump_describe_colocated_database.out" /* outputDescribeFileRelativePath */,
+        "results/yb.orig.ysql_dump_colocated_database.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
+
+    restartCluster();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate(String.format(
+        "CREATE DATABASE %s WITH colocation = true", "colocated_db"));
+    }
+
+    verifyYsqlDump(
+      true /*importDump*/,
+      "colocated_db" /*verifyDbName*/,
+      "results/yb.orig.ysql_dump_colocated_database.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe_colocated_database.out"
+      /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_describe_colocated_database.out"
+      /* outputDescribeFileRelativePath */);
   }
 
   @Test
   public void ysqlDumpColocatedTablesWithTablespaces() throws Exception {
     markClusterNeedsRecreation();
     restartClusterWithClusterBuilder(cb -> {
-      cb.addCommonFlag("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
       cb.addCommonFlag("ysql_enable_colocated_tables_with_tablespaces", "true");
       cb.addCommonTServerFlag("placement_cloud", "testCloud");
       cb.addCommonTServerFlag("placement_region", "testRegion");
@@ -181,23 +305,33 @@ public class TestYsqlDump extends BasePgSQLTest {
           Collections.singletonMap("placement_zone", "testZone3")));
     });
     LOG.info("created mini cluster");
+
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colo_tables" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump_colocated_tables_with_tablespaces.sql"
+        "sql/yb.orig.ysql_dump_colocated_tables_with_tablespaces.sql"
         /* inputFileRelativePath */,
-        "sql/yb_ysql_dump_describe_colocated_tables_with_tablespaces.sql"
-        /* inputDescribeFileRelativePath */,
         "data/yb_ysql_dump_colocated_tables_with_tablespaces.data.sql"
         /* expectedDumpRelativePath */,
-        "expected/yb_ysql_dump_describe_colocated_tables_with_tablespaces.out"
-        /* expectedDescribeFileRelativePath */,
-        "results/yb_ysql_dump_colocated_tables_with_tablespaces.out"
+        "results/yb.orig.ysql_dump_colocated_tables_with_tablespaces.out"
         /* outputFileRelativePath */,
-        "results/yb_ysql_dump_describe_colocated_tables_with_tablespaces.out"
-        /* outputDescribeFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.ON);
+
+
+    // The resulting dump cannot be imported due to #25299
+    verifyYsqlDump(
+      false /*importDump*/,
+      "colo_tables" /* dumpedDatabaseName */,
+      "results/yb.orig.ysql_dump_colocated_tables_with_tablespaces.out"
+      /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.sql"
+      /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.out"
+      /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.out"
+      /* outputDescribeFileRelativePath */
+    );
   }
 
   @Test
@@ -211,28 +345,56 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colocated_db" /* dumpedDatabaseName */,
-        "sql/yb_ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
-        "sql/yb_ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
+        "sql/yb.orig.ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
         "data/yb_ysql_dump_legacy_colocated_database.data.sql" /* expectedDumpRelativePath */,
-        "expected/yb_ysql_dump_describe_legacy_colocated_database.out"
-        /* expectedDescribeFileRelativePath */,
-        "results/yb_ysql_dump_legacy_colocated_database.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dump_describe_legacy_colocated_database.out"
-        /* outputDescribeFileRelativePath */,
+        "results/yb.orig.ysql_dump_legacy_colocated_database.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
+
+    restartClusterWithFlags(
+      Collections.singletonMap(
+        "ysql_legacy_colocated_database_creation", "true"),
+      Collections.emptyMap());
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate(String.format(
+        "CREATE DATABASE %s WITH colocation = true", "colocated_db"));
+    }
+
+    verifyYsqlDump(
+      true/* importDump */,
+      "colocated_db" /* dumpedDatabaseName */,
+      "results/yb.orig.ysql_dump_legacy_colocated_database.out"
+      /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe_colocated_database.sql"
+      /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe_legacy_colocated_database.out"
+      /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_describe_legacy_colocated_database.out"
+      /* outputDescribeFileRelativePath */
+    );
   }
 
   void ysqlDumpTester(final String binaryName,
                       final String dumpedDatabaseName,
                       final String inputFileRelativePath,
-                      final String inputDescribeFileRelativePath,
                       final String expectedDumpRelativePath,
-                      final String expectedDescribeFileRelativePath,
                       final String outputFileRelativePath,
-                      final String outputDescribeFileRelativePath,
                       final IncludeYbMetadata includeYbMetadata,
                       final NoTableSpaces noTableSpaces) throws Exception {
+    ysqlDumpTester(
+        binaryName, dumpedDatabaseName, inputFileRelativePath, expectedDumpRelativePath,
+        outputFileRelativePath, includeYbMetadata, noTableSpaces, DumpRoleChecks.OFF);
+  }
+
+  void ysqlDumpTester(final String binaryName,
+                      final String dumpedDatabaseName,
+                      final String inputFileRelativePath,
+                      final String expectedDumpRelativePath,
+                      final String outputFileRelativePath,
+                      final IncludeYbMetadata includeYbMetadata,
+                      final NoTableSpaces noTableSpaces,
+                      final DumpRoleChecks dumpRoleChecks) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
@@ -248,7 +410,7 @@ public class TestYsqlDump extends BasePgSQLTest {
       "-f", inputFile.toString()
     ), "ysqlsh");
 
-    // Dump and validate the data
+    // Get a ysql dump
     File pgBinDir     = PgRegressBuilder.getPgBinDir();
     File ysqlDumpExec = new File(pgBinDir, binaryName);
 
@@ -269,45 +431,31 @@ public class TestYsqlDump extends BasePgSQLTest {
     if (noTableSpaces == NoTableSpaces.ON) {
       args.add("--no-tablespaces");
     }
+    if (dumpRoleChecks == DumpRoleChecks.ON) {
+      args.add("--dump-role-checks");
+    }
+
     if (!dumpedDatabaseName.isEmpty()) {
       Collections.addAll(args, "-d", dumpedDatabaseName);
     }
     ProcessUtil.executeSimple(args, binaryName);
 
+    // Verify the dump matches what is expected
     assertOutputFile(expected, actual);
 
-    File inputDesc    = new File(pgRegressDir, inputDescribeFileRelativePath);
-    File expectedDesc = new File(pgRegressDir, expectedDescribeFileRelativePath);
-    File actualDesc   = new File(pgRegressDir, outputDescribeFileRelativePath);
-    actualDesc.getParentFile().mkdirs();
-
-    // Run some validations
-    List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
-      ysqlshExec.toString(),
-      "-h", getPgHost(tserverIndex),
-      "-p", Integer.toString(getPgPort(tserverIndex)),
-      "-U", DEFAULT_PG_USER,
-      "-f", inputDesc.toString(),
-      "-o", actualDesc.toString()
-    ));
-    if (!dumpedDatabaseName.isEmpty()) {
-      Collections.addAll(ysqlsh_args, "-d", dumpedDatabaseName);
-    }
-    ProcessUtil.executeSimple(ysqlsh_args, "ysqlsh (validate describes)");
-
-    assertOutputFile(expectedDesc, actualDesc);
   }
 
   /** Compare the expected output and the actual output. */
-  private void assertOutputFile(File expected, File actual) throws IOException {
+  public static void assertOutputFile(File expected, File actual) throws IOException {
     List<String> expectedLines = FileUtils.readLines(expected, StandardCharsets.UTF_8);
     List<String> actualLines   = FileUtils.readLines(actual, StandardCharsets.UTF_8);
 
     // Create the side-by-side diff between the actual output and expected output.
     // The resulting string will be used to provide debug information if the below
     // comparison between the two files fails.
-    String message = "Side-by-side diff between expected output and actual output:\n" +
-          SideBySideDiff.generate(expected, actual) + "\n";
+    String message = "Side-by-side diff between expected output from " +
+      expected.getAbsolutePath() + " and actual output from: " + actual.getAbsolutePath() + " \n" +
+      SideBySideDiff.generate(expected, actual) + "\n";
 
     int i = 0;
     for (; i < expectedLines.size() && i < actualLines.size(); ++i) {
@@ -319,9 +467,67 @@ public class TestYsqlDump extends BasePgSQLTest {
     assertOnlyEmptyLines(message, actualLines.subList(i, actualLines.size()));
   }
 
-  private void assertOnlyEmptyLines(String message, List<String> lines) {
+  private static void assertOnlyEmptyLines(String message, List<String> lines) {
     Set<String> processedLinesSet =
         lines.stream().map((l) -> l.trim()).collect(Collectors.toSet());
     assertTrue(message, Sets.newHashSet("").containsAll(processedLinesSet));
   }
+
+  void verifyYsqlDump(
+    boolean importDump,
+    final String verifyDbName,
+    final String outputFileRelativePath,
+    final String inputDescribeFileRelativePath,
+    final String expectedDescribeFileRelativePath,
+    final String outputDescribeFileRelativePath) throws Exception {
+
+    // Location of Postgres regression tests
+    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
+    int tserverIndex = 0;
+    File ysqlshExec = new File(pgBinDir, "ysqlsh");
+    File actual   = new File(pgRegressDir, outputFileRelativePath);
+    File inputDesc    = new File(pgRegressDir, inputDescribeFileRelativePath);
+    File expectedDesc = new File(pgRegressDir, expectedDescribeFileRelativePath);
+    File actualDesc   = new File(pgRegressDir, outputDescribeFileRelativePath);
+    actualDesc.getParentFile().mkdirs();
+
+    if (importDump) {
+      // Import the ysql dump, raising errors
+      List<String> ysqlsh_import_args = new ArrayList<>(Arrays.asList(
+        ysqlshExec.toString(),
+        "-h", getPgHost(tserverIndex),
+        "-p", Integer.toString(getPgPort(tserverIndex)),
+        "-U", DEFAULT_PG_USER,
+        "-f", actual.getAbsolutePath(),
+        "--echo-all",
+        "-v", "ON_ERROR_STOP=1"
+      ));
+
+      if (!verifyDbName.isEmpty()) {
+        ysqlsh_import_args.add("-d");
+        ysqlsh_import_args.add(verifyDbName);
+      }
+
+      LOG.info("Importing ysql dump " + ysqlsh_import_args.toString());
+      ProcessUtil.executeSimple(ysqlsh_import_args, "ysqlsh (import)");
+    }
+
+    // Run some validations
+    List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
+      ysqlshExec.toString(),
+      "-h", getPgHost(tserverIndex),
+      "-p", Integer.toString(getPgPort(tserverIndex)),
+      "-U", DEFAULT_PG_USER,
+      "-f", inputDesc.toString(),
+      "-o", actualDesc.toString()
+    ));
+    if (!verifyDbName.isEmpty()) {
+      ysqlsh_args.add("-d");
+      ysqlsh_args.add(verifyDbName);
+    }
+    ProcessUtil.executeSimple(ysqlsh_args, "ysqlsh (validate describes)");
+
+    assertOutputFile(expectedDesc, actualDesc);
+  }
+
 }

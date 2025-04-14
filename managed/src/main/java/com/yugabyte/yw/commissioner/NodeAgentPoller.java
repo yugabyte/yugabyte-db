@@ -32,6 +32,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -67,7 +68,26 @@ public class NodeAgentPoller {
   private static final String NODE_AGENT_VERSION_MISMATCH_NAME = "yba_nodeagent_version_mismatch";
   private static final Gauge NODE_AGENT_VERSION_MISMATCH_GAUGE =
       Gauge.build(NODE_AGENT_VERSION_MISMATCH_NAME, "Has Node Agent version mismatched")
-          .labelNames(KnownAlertLabels.NODE_AGENT_UUID.labelName())
+          .labelNames(
+              KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName())
+          .register(CollectorRegistry.defaultRegistry);
+
+  private static final String NODE_AGENT_SERVER_CERT_EXPIRING_NAME =
+      "yba_nodeagent_server_cert_expiring";
+  private static final Gauge NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE =
+      Gauge.build(NODE_AGENT_SERVER_CERT_EXPIRING_NAME, "Is Node Agent server cert expiring")
+          .labelNames(
+              KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName())
+          .register(CollectorRegistry.defaultRegistry);
+
+  private static final String NODE_AGENT_CONNECTION_NAME = "yba_nodeagent_connection";
+  private static final Gauge NODE_AGENT_CONNECTION_GAUGE =
+      Gauge.build(NODE_AGENT_CONNECTION_NAME, "Is Node Agent connection successful")
+          .labelNames(
+              KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName())
           .register(CollectorRegistry.defaultRegistry);
 
   private final RuntimeConfGetter confGetter;
@@ -161,13 +181,37 @@ public class NodeAgentPoller {
       return lastFailedCount < MAX_FAILED_CONN_COUNT;
     }
 
-    private boolean checkVersion(NodeAgent nodeAgent) {
+    private boolean versionMatched(NodeAgent nodeAgent) {
       String ybaVersion = param.getSoftwareVersion();
       boolean versionMatched = Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true);
-      NODE_AGENT_VERSION_MISMATCH_GAUGE
-          .labels(nodeAgent.getUuid().toString())
-          .set(versionMatched ? 0 : 1);
+      publishMetric(nodeAgent, NODE_AGENT_VERSION_MISMATCH_GAUGE, versionMatched ? 0 : 1);
+      if (!versionMatched) {
+        log.debug("YBA version is {}. Version mismatched for node agent {}", ybaVersion, nodeAgent);
+      }
       return versionMatched;
+    }
+
+    private boolean needsUpgrade(NodeAgent nodeAgent) {
+      if (!versionMatched(nodeAgent)) {
+        return true;
+      }
+      // This handles the rare case where YBA has never been upgraded close to a year.
+      // There is a chance that while an ongoing API call is made, upgrade starts kicking in, but
+      // it is very rare because this happens if YBA has not been upgraded for almost a year and
+      // every API call first checks if node agent needs an upgrade and waits if an upgrade is
+      // currently running.
+      Date expiresAt = nodeAgent.getServerCertExpiry();
+      Duration duration = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerCertExpiryNotice);
+      boolean expiring =
+          Instant.now()
+              .plus(duration.getSeconds(), ChronoUnit.SECONDS)
+              .isAfter(nodeAgent.getServerCertExpiry().toInstant());
+      publishMetric(nodeAgent, NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE, expiring ? 0 : 1);
+      if (expiring) {
+        log.debug("Node agent server cert is expiring soon on {}", expiresAt);
+        return true;
+      }
+      return false;
     }
 
     @VisibleForTesting
@@ -213,7 +257,6 @@ public class NodeAgentPoller {
     }
 
     private void poll(NodeAgent nodeAgent) {
-      boolean versionMatched = checkVersion(nodeAgent);
       if (!isTargetFileWritten) {
         // This method checks if the file already exists to ignore writing again.
         swamperHelper.writeNodeAgentTargetJson(nodeAgent);
@@ -221,6 +264,7 @@ public class NodeAgentPoller {
       }
       try {
         nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
+        publishMetric(nodeAgent, NODE_AGENT_CONNECTION_GAUGE, 1);
       } catch (RuntimeException e) {
         if (lastFailedCount < MAX_FAILED_CONN_COUNT) {
           lastFailedCount++;
@@ -228,10 +272,11 @@ public class NodeAgentPoller {
         if (lastFailedCount % 10 == 0) {
           log.warn(
               "Node agent {} has not been responding for count {}- {}",
-              nodeAgent.getUuid(),
+              nodeAgent,
               lastFailedCount,
               e.getMessage());
         }
+        publishMetric(nodeAgent, NODE_AGENT_CONNECTION_GAUGE, 0);
         Instant expiryDate =
             Instant.now().minus(param.getLifetime().toMinutes(), ChronoUnit.MINUTES);
         if (expiryDate.isAfter(nodeAgent.getUpdatedAt().toInstant())) {
@@ -252,7 +297,7 @@ public class NodeAgentPoller {
           if (!nodeIps.contains(nodeAgent.getIp())) {
             log.info(
                 "Purging node agent {} because connection failed. Error: {}",
-                nodeAgent.getUuid(),
+                nodeAgent,
                 e.getMessage());
             // Purge the node agent record and its certs.
             nodeAgentManager.purge(nodeAgent);
@@ -269,27 +314,32 @@ public class NodeAgentPoller {
       }
       switch (nodeAgent.getState()) {
         case READY:
-          if (versionMatched) {
+          if (!needsUpgrade(nodeAgent)) {
             return;
           }
           // Fall-thru to complete in single cycle.
         case UPGRADE:
         case UPGRADED:
           if (!isUpgrading.compareAndSet(false, true)) {
-            log.info("Node agent {} is being upgraded", nodeAgent.getUuid());
+            log.info("Node agent {} is being upgraded", nodeAgent);
             return;
           }
           // In a rare case, the node could have just been upgraded. It is ok because the node agent
           // state is refreshed after this exclusive access to check the state again before the
           // upgrade, preventing double upgrade.
           try {
-            log.info("Submitting upgrade task for node agent {}", nodeAgent.getUuid());
+            log.info("Submitting upgrade task for node agent {}", nodeAgent);
             // Submit to upgrade pool to not starve poller.
             future =
                 upgradeExecutor.submit(
                     () -> {
                       try {
-                        upgradeNodeAgent(nodeAgent);
+                        Util.doWithCorrelationId(
+                            id -> {
+                              log.info("Upgrading node agent {} via poller", nodeAgent);
+                              upgradeNodeAgent(nodeAgent);
+                              return null;
+                            });
                       } finally {
                         notifyAfterUpgrade();
                       }
@@ -298,12 +348,12 @@ public class NodeAgentPoller {
             notifyAfterUpgrade();
             log.warn(
                 "Upgrade for node agent {} cannot be scheduled at the moment - {}",
-                nodeAgent.getUuid(),
+                nodeAgent,
                 e.getMessage());
           }
           break;
         default:
-          log.trace("Unhandled state: {}", nodeAgent.getState());
+          log.trace("Unhandled state for node agent {}", nodeAgent);
       }
     }
 
@@ -312,55 +362,58 @@ public class NodeAgentPoller {
       if (HighAvailabilityConfig.isFollower()) {
         // Task may have already been submitted. This check ensures that submitted tasks are not
         // run.
-        log.info("Skipping node agent upgrade as it is a follower instance");
+        log.info("Skipping node agent upgrade for {} as it is a follower instance", nodeAgent);
         return;
       }
       nodeAgent.refresh();
-      checkState(nodeAgent.isActive(), "Invalid state " + nodeAgent.getState());
+      checkState(nodeAgent.isActive(), "Invalid state for node agent " + nodeAgent);
       if (nodeAgent.getState() == State.READY) {
-        if (checkVersion(nodeAgent)) {
-          log.info(
-              "Skipping upgrade task for node agent {} because of same version",
-              nodeAgent.getUuid());
+        if (!needsUpgrade(nodeAgent)) {
+          log.debug("Node agent {} does not need an upgrade", nodeAgent);
           return;
         }
         nodeAgent.saveState(State.UPGRADE);
       }
       if (nodeAgent.getState() == State.UPGRADE) {
-        log.info("Initiating upgrade for node agent {}", nodeAgent.getUuid());
+        log.info("Uploading upgrade files for node agent {}", nodeAgent);
         InstallerFiles installerFiles =
-            nodeAgentManager.getInstallerFiles(nodeAgent, Paths.get(nodeAgent.getHome()));
+            nodeAgentManager.getInstallerFiles(
+                nodeAgent, Paths.get(nodeAgent.getHome()), versionMatched(nodeAgent));
         // Upload the installer files including new cert and key to the remote node agent.
         uploadInstallerFiles(nodeAgent, installerFiles);
+        log.info("Uploaded upgrade files for node agent {}", nodeAgent);
         NodeAgentUpgradeParam upgradeParam =
             NodeAgentUpgradeParam.builder()
                 .certDir(installerFiles.getCertDir())
                 .packagePath(installerFiles.getPackagePath())
                 .build();
+        log.info("Starting remote upgrade for node agent {}", nodeAgent);
         // Set up the config and symlink on the remote node agent.
         nodeAgentClient.startUpgrade(nodeAgent, upgradeParam);
+        log.info("Completed remote upgrade for node agent", nodeAgent);
         // Point the node agent to the new cert and key locally.
         // At this point, the node agent is still with old cert and key.
         // So, this client has to trust both old and new certs.
         // The new key should also work on node agent.
         // Update the state atomically with the cert update.
         nodeAgentManager.replaceCerts(nodeAgent);
+        log.info("Rolled over to new certs for node agent {}", nodeAgent);
       }
       if (nodeAgent.getState() == State.UPGRADED) {
-        log.info("Finalizing upgrade for node agent {}", nodeAgent.getUuid());
+        log.info("Finalizing upgrade for node agent {}", nodeAgent);
         // Inform the node agent to restart and load the new cert and key on restart.
         String nodeAgentHome = nodeAgentClient.finalizeUpgrade(nodeAgent);
         PingResponse pingResponse =
             nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
         ServerInfo serverInfo = pingResponse.getServerInfo();
         if (serverInfo.getRestartNeeded()) {
-          log.info("Server restart is needed for node agent {}", nodeAgent.getUuid());
+          log.info("Server restart is needed for node agent {}", nodeAgent);
         } else {
           // If the node has restarted and loaded the new cert and key,
           // delete the local merged certs.
           nodeAgentManager.postUpgrade(nodeAgent);
           nodeAgent.finalizeUpgrade(nodeAgentHome, serverInfo.getVersion());
-          log.info("Node agent {} has been upgraded successfully", nodeAgent.getUuid());
+          log.info("Node agent {} has been upgraded successfully", nodeAgent);
         }
       }
     }
@@ -401,6 +454,14 @@ public class NodeAgentPoller {
         this::pollerService);
   }
 
+  private static void publishMetric(NodeAgent nodeAgent, Gauge guage, double value) {
+    guage
+        .labels(
+            nodeAgent.getUuid().toString(),
+            String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()))
+        .set(value);
+  }
+
   @VisibleForTesting
   void setUpgradeExecutor(ExecutorService upgradeExecutor) {
     this.upgradeExecutor = upgradeExecutor;
@@ -412,7 +473,7 @@ public class NodeAgentPoller {
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
     if (dirs.size() > 0) {
-      log.info("Creating directories {} on node agent {}", dirs, nodeAgent.getUuid());
+      log.info("Creating directories {} on node agent {}", dirs, nodeAgent);
       List<String> command =
           ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
       nodeAgentClient.executeCommand(nodeAgent, command).processErrors();
@@ -424,7 +485,7 @@ public class NodeAgentPoller {
                   "Uploading {} to {} on node agent {}",
                   f.getSourcePath(),
                   f.getTargetPath(),
-                  nodeAgent.getUuid());
+                  nodeAgent);
               int perm = 0;
               if (StringUtils.isNotBlank(f.getPermission())) {
                 try {
@@ -508,13 +569,11 @@ public class NodeAgentPoller {
     Duration lifetime = confGetter.getGlobalConf(GlobalConfKeys.deadNodeAgentRetention);
     String softwareVersion = nodeAgentManager.getSoftwareVersion();
     PollerTask pollerTask = getOrCreatePollerTask(nodeAgentUuid, lifetime, softwareVersion);
-    if (pollerTask.checkVersion(nodeAgent)) {
-      log.debug(
-          "Node agent {} is already on the latest version {}",
-          nodeAgentUuid,
-          nodeAgent.getVersion());
+    if (!pollerTask.needsUpgrade(nodeAgent)) {
+      log.trace("Node agent {} does not need an upgrade", nodeAgent);
       return false;
     }
+    log.info("Node agent {} needs an upgrade", nodeAgent);
     try {
       nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
     } catch (RuntimeException e) {
@@ -524,19 +583,23 @@ public class NodeAgentPoller {
       throw e;
     }
     if (!pollerTask.isUpgrading.compareAndSet(false, true)) {
+      log.info("Upgrade is already running for node agent {}", nodeAgent);
       pollerTask.waitForUpgrade();
     } else {
       try {
-        log.info("Starting explicit upgrade on node agent {}", nodeAgentUuid);
+        log.info("Starting explicit upgrade on node agent {}", nodeAgent);
         pollerTask.upgradeNodeAgent(nodeAgent);
+      } catch (RuntimeException e) {
+        log.error("Explicit upgrade failed for node agent {}", nodeAgent);
+        throw e;
       } finally {
         pollerTask.notifyAfterUpgrade();
       }
     }
     nodeAgent.refresh();
-    if (!pollerTask.checkVersion(nodeAgent)) {
+    if (pollerTask.needsUpgrade(nodeAgent)) {
       throw new RuntimeException(
-          String.format("Node agent %s is different after an upgrade", nodeAgent.getUuid()));
+          String.format("Node agent %s still needs upgrade after an upgrade", nodeAgent));
     }
     return true;
   }

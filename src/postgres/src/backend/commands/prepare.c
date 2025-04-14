@@ -41,6 +41,7 @@
 #include "pg_yb_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
+
 /*
  * The hash table in which prepared queries are stored. This is
  * per-backend: query plans are not shared between backends.
@@ -150,6 +151,7 @@ PrepareQuery(ParseState *pstate, PrepareStmt *stmt,
 		 * made sticky.
 		 */
 		increment_sticky_object_count();
+		elog(LOG, "Incrementing sticky object count for prepared statement %s", stmt->name);
 	}
 }
 
@@ -188,8 +190,9 @@ ExecuteQuery(ParseState *pstate,
 	 * If the planner found a pg relation in this plan, set the appropriate
 	 * flag for the execution txn.
 	 */
-	if (entry->plansource->usesPostgresRel) {
-		SetTxnWithPGRel();
+	if (entry->plansource->usesPostgresRel)
+	{
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	/* Evaluate parameters, if any */

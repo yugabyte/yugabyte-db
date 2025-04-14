@@ -21,7 +21,7 @@ import {
 import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
-import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import './CustomerMetricsPanel.scss';
@@ -50,6 +50,9 @@ const PanelBody = ({
     runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === RuntimeConfigKey.GRANULAR_METRICS_FEATURE_FLAG
     )?.value === 'true';
+  const isMetricsTimezoneEnabled =
+    runtimeConfigs?.data?.configEntries?.find((c) => c.key === RuntimeConfigKey.ENABLE_METRICS_TZ)
+      ?.value === 'true';
   const isPerProcessMetricsEnabled =
     runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === RuntimeConfigKey.PER_PROCESS_METRICS_FEATURE_FLAG
@@ -63,7 +66,7 @@ const PanelBody = ({
   if (origin === MetricOrigin.TABLE) {
     defaultTabToDisplay = MetricTypes.LSMDB_TABLE;
   } else if (origin === MetricOrigin.CUSTOMER) {
-    if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
+    if (selectedUniverse && getIsKubernetesUniverse(selectedUniverse)) {
       defaultTabToDisplay = MetricTypes.CONTAINER;
     } else {
       defaultTabToDisplay = MetricTypes.SERVER;
@@ -86,7 +89,7 @@ const PanelBody = ({
   }
 
   if (!(selectedUniverse === MetricConsts.ALL)) {
-    selectedUniverse && isKubernetesUniverse(selectedUniverse)
+    selectedUniverse && getIsKubernetesUniverse(selectedUniverse)
       ? invalidTabType.push(MetricTypes.SERVER, MetricTypes.DISK_IO, MetricTypes.PER_PROCESS)
       : invalidTabType.push(MetricTypes.CONTAINER);
   }
@@ -138,6 +141,7 @@ const PanelBody = ({
                   width={width}
                   tableName={tableName}
                   isGranularMetricsEnabled={isGranularMetricsEnabled}
+                  isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
                   printMode={printMode}
                 />
               </div>
@@ -160,6 +164,7 @@ const PanelBody = ({
                   width={width}
                   tableName={tableName}
                   isGranularMetricsEnabled={isGranularMetricsEnabled}
+                  isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
                 />
               </Tab>
             );
@@ -216,6 +221,7 @@ const PanelBody = ({
             title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
             width={width}
             tableName={tableName}
+            isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
             isGranularMetricsEnabled={isGranularMetricsEnabled}
             printMode={printMode}
           />
@@ -243,6 +249,7 @@ const PanelBody = ({
               title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
               width={width}
               tableName={tableName}
+              isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
               isGranularMetricsEnabled={isGranularMetricsEnabled}
             />
           </Tab>

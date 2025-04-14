@@ -646,7 +646,7 @@ PgCronLauncherMain(Datum arg)
 	}
 
 
-	CronLoopContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	CronLoopContext = AllocSetContextCreate(CurrentMemoryContext,
 											  "pg_cron loop context",
 											  ALLOCSET_DEFAULT_MINSIZE,
 											  ALLOCSET_DEFAULT_INITSIZE,
@@ -1342,6 +1342,9 @@ PollForTasks(List *taskList)
 static bool
 CanStartTask(CronTask *task)
 {
+	if (IsYugaByteEnabled() && !ybIsLeader)
+		return false;
+
 	return task->state == CRON_TASK_WAITING && task->pendingRunCount > 0 &&
 		   RunningTaskCount < MaxRunningTasks;
 }
@@ -1891,7 +1894,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				if (task->freeErrorMessage)
 				{
-					free(task->errorMessage);
+					pfree(task->errorMessage);
 				}
 			}
 			else
@@ -1967,7 +1970,7 @@ GetTaskFeedback(PGresult *result, CronTask *task)
 		case PGRES_BAD_RESPONSE:
 		case PGRES_FATAL_ERROR:
 		{
-			task->errorMessage = strdup(PQresultErrorMessage(result));
+			task->errorMessage = pstrdup(PQresultErrorMessage(result));
 			task->freeErrorMessage = true;
 			task->pollingStatus = 0;
 			task->state = CRON_TASK_ERROR;
@@ -2110,7 +2113,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 					char *nonconst_tag;
 					char *cmdTuples;
 
-					nonconst_tag = strdup(tag);
+					nonconst_tag = pstrdup(tag);
 
 					if (CronLogRun)
 						UpdateJobRunDetail(task->runId, NULL, GetCronStatus(CRON_STATUS_SUCCEEDED), nonconst_tag, NULL, &end_time);
@@ -2121,7 +2124,7 @@ ProcessBgwTaskFeedback(CronTask *task, bool running)
 											 task->jobId, nonconst_tag, cmdTuples)));
 					}
 
-					free(nonconst_tag);
+					pfree(nonconst_tag);
 					break;
 				}
 			case 'A':
@@ -2161,11 +2164,11 @@ CronBackgroundWorker(Datum main_arg)
 	/* Set up a memory context and resource owner. */
 	Assert(CurrentResourceOwner == NULL);
 	CurrentResourceOwner = ResourceOwnerCreate(NULL, "pg_cron");
-	CurrentMemoryContext = AllocSetContextCreate(TopMemoryContext,
-												 "pg_cron worker",
-												 ALLOCSET_DEFAULT_MINSIZE,
-												 ALLOCSET_DEFAULT_INITSIZE,
-												 ALLOCSET_DEFAULT_MAXSIZE);
+	YbCurrentMemoryContext = AllocSetContextCreate(TopMemoryContext,
+												   "pg_cron worker",
+												   ALLOCSET_DEFAULT_MINSIZE,
+												   ALLOCSET_DEFAULT_INITSIZE,
+												   ALLOCSET_DEFAULT_MAXSIZE);
 
 	/* Set up a dynamic shared memory segment. */
 	seg = dsm_attach(DatumGetInt32(main_arg));
@@ -2418,6 +2421,14 @@ ExecuteSqlString(const char *sql)
 static bool
 jobCanceled(CronTask *task)
 {
+	if (IsYugaByteEnabled() && !ybIsLeader)
+	{
+		task->errorMessage = "pg_cron leader changed";
+		task->state = CRON_TASK_ERROR;
+		task->pollingStatus = 0;
+		return true;
+	}
+
     Assert(task->state == CRON_TASK_CONNECTING || \
             task->state == CRON_TASK_SENDING || \
             task->state == CRON_TASK_BGW_RUNNING || \

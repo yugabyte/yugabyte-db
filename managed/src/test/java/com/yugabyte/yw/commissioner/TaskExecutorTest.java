@@ -25,6 +25,7 @@ import static play.inject.Bindings.bind;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
@@ -96,6 +97,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ReplaceNodeInUniverse,
           TaskType.EditKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
+          TaskType.ReadOnlyClusterDelete,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
@@ -114,6 +116,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.SoftwareKubernetesUpgrade,
           TaskType.SoftwareKubernetesUpgradeYB,
           TaskType.FinalizeUpgrade,
+          TaskType.FinalizeKubernetesUpgrade,
           TaskType.RollbackUpgrade,
           TaskType.RollbackKubernetesUpgrade,
           TaskType.SoftwareUpgrade,
@@ -124,8 +127,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.RestartUniverse,
           TaskType.RestartUniverseKubernetesUpgrade,
           TaskType.ThirdpartySoftwareUpgrade,
-          TaskType.FinalizeUpgrade,
           TaskType.CertsRotate,
+          TaskType.TlsToggle,
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
           TaskType.StartMasterOnNode,
@@ -134,9 +137,23 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ReprovisionNode,
           TaskType.CloudProviderEdit,
           TaskType.SwitchoverDrConfig,
+          TaskType.SwitchoverDrConfigRollback,
           TaskType.FailoverDrConfig,
           TaskType.ResumeKubernetesUniverse,
-          TaskType.PauseKubernetesUniverse);
+          TaskType.PauseKubernetesUniverse,
+          TaskType.FailoverDrConfig,
+          TaskType.DeleteDrConfig,
+          TaskType.DeleteXClusterConfig,
+          TaskType.DecommissionNode,
+          TaskType.EditBackupScheduleKubernetes,
+          TaskType.CreateBackupScheduleKubernetes,
+          TaskType.CreateXClusterConfig,
+          TaskType.EditXClusterConfig,
+          TaskType.CreateDrConfig,
+          TaskType.EditDrConfig,
+          TaskType.SetDatabasesDrConfig,
+          TaskType.SetTablesDrConfig,
+          TaskType.DecommissionNode);
 
   @Override
   protected Application provideApplication() {
@@ -160,13 +177,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   private TaskInfo waitForTask(UUID taskUUID) {
-    long elapsedTimeMs = 0;
-    while (taskExecutor.isTaskRunning(taskUUID) && elapsedTimeMs < 20000) {
+    return waitForTask(taskUUID, Duration.ofSeconds(10));
+  }
+
+  private TaskInfo waitForTask(UUID taskUUID, Duration waitTime) {
+    Stopwatch watch = Stopwatch.createStarted();
+    while (taskExecutor.isTaskRunning(taskUUID) && watch.elapsed().compareTo(waitTime) < 0) {
       try {
         Thread.sleep(100);
       } catch (InterruptedException e) {
       }
-      elapsedTimeMs += 100;
     }
     if (taskExecutor.isTaskRunning(taskUUID)) {
       fail("Task " + taskUUID + " did not complete in time");
@@ -543,8 +563,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
     // This should get rejected as the executor is already shutdown.
     assertThrows(
-        IllegalStateException.class,
+        PlatformServiceException.class,
         () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
+    taskInfo = TaskInfo.getOrBadRequest(taskRunner2.getTaskUUID());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -569,7 +591,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
             inv -> {
               latch.countDown();
               while (true) {
-                taskExecutor.getRunnableTask(taskUUIDRef.get()).waitFor(Duration.ofMillis(200));
+                taskExecutor.getRunnableTask(taskUUIDRef.get()).waitFor(Duration.ofSeconds(1));
               }
             })
         .when(subTask)
@@ -666,7 +688,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void testTaskValidationFailure() {
     ITask task = mockTaskCommon(false);
     doThrow(new RuntimeException("Validation failed")).when(task).validateParams(true);
-    assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task, null));
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+    assertThrows(
+        PlatformServiceException.class,
+        () -> taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1)));
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskRunner.getTaskUUID());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
   }
 
   @Test

@@ -17,14 +17,21 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "yb/common/transaction.h"
+
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
+
+#include "yb/util/status_callback.h"
 
 namespace yb::rpc {
 class RpcContext;
 }
 
-namespace yb::tablet {
+namespace yb::tserver {
 class TSLocalLockManager;
+using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 }
 namespace yb::tserver {
 class AcquireObjectLockRequestPB;
@@ -34,9 +41,16 @@ class ReleaseObjectLockResponsePB;
 class DdlLockEntriesPB;
 }  // namespace yb::tserver
 
-namespace yb::master {
+namespace yb {
+class CountDownLatch;
+}
 
-struct LeaderEpoch;
+namespace yb::master {
+class AcquireObjectLocksGlobalRequestPB;
+class AcquireObjectLocksGlobalResponsePB;
+class ReleaseObjectLocksGlobalRequestPB;
+class ReleaseObjectLocksGlobalResponsePB;
+
 class ObjectLockInfo;
 
 class ObjectLockInfoManager {
@@ -44,18 +58,36 @@ class ObjectLockInfoManager {
   ObjectLockInfoManager(Master* master, CatalogManager* catalog_manager);
   virtual ~ObjectLockInfoManager();
 
+  void Start();
+
   void LockObject(
-      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+      const AcquireObjectLocksGlobalRequestPB& req, AcquireObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
 
   void UnlockObject(
-      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+      const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
+  void ReleaseLocksForTxn(const TransactionId& txn_id);
 
-  void ExportObjectLockInfo(const std::string& tserver_uuid, tserver::DdlLockEntriesPB* resp);
+  Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp,
+                          rpc::RpcContext& rpc,
+                          const LeaderEpoch& epoch);
+
+  tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
   void Clear();
-  std::shared_ptr<tablet::TSLocalLockManager> TEST_ts_local_lock_manager();
+  tserver::TSLocalLockManagerPtr TEST_ts_local_lock_manager();
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager();
+
+  // Releases any object locks that may have been taken by the specified tservers's previous
+  // incarnations.
+  std::shared_ptr<CountDownLatch> ReleaseLocksHeldByExpiredLeaseEpoch(
+      const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
+      std::optional<LeaderEpoch> leader_epoch = std::nullopt);
+
+  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> GetLeaseInfos() const;
+
+  void BootstrapLocksPostLoad();
 
  private:
   template <class Req, class Resp>

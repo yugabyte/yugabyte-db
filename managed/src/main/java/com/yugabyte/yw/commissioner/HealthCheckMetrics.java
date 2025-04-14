@@ -58,6 +58,7 @@ public class HealthCheckMetrics {
   private static final String CLIENT_CERT_CHECK = "Client Cert Expiry Days";
   public static final String NODE_EXPORTER_CHECK = "Node exporter";
   private static final String YB_CONTROLLER_CHECK = "YB-Controller server check";
+  public static final String UNEXPECTED_PROCESSES_CHECK = "Check unexpected masters/tservers";
 
   public static final String CUSTOM_NODE_METRICS_COLLECTION_METRIC = "yb_node_custom_node_metrics";
   public static final String DDL_ATOMICITY_CHECK_METRIC = "yb_ddl_atomicity_check";

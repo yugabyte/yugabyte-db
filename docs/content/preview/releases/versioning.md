@@ -18,7 +18,7 @@ YugabyteDB and YugabyteDB Anywhere have three kinds of releases:
 - Stable, with Standard-term support (STS)
 - Preview, with no official support
 
-Additionally, individual features may also be designated as tech preview or early access, or generally available. These designations indicate the feature maturity level, and provide different levels of documentation and support as described in  [Feature maturity](#feature-maturity).
+Additionally, individual features may also be designated as tech preview or early access, or generally available. These designations indicate the feature maturity level, and provide different levels of documentation and support as described in [Feature maturity](#feature-maturity).
 
 ## Stable releases
 
@@ -32,16 +32,37 @@ Stable release versions use the numbering format `YYYY.N.MAINTENANCE.PATCH` as f
   - For YugabyteDB, backward compatible bug fixes are included.
   - For YugabyteDB Anywhere, functionality may be added in a backward compatible manner.
 
-- `PATCH` - Includes bug fixes and revisions that do not break backward compatibility.
+- `PATCH` - Includes bug fixes and revisions that do not break backward compatibility. Patch releases are typically for specific issues, and only applicable to specific customers.
 
-On rare occasions, YugabyteDB may issue a hot fix release. Hot fix releases are for specific point issues, and usually offered only to specific customers. Hot fix releases append an additional number to the release versioning convention as `YYYY.N.MAINTENANCE.PATCH.HOTFIX`.
+(Prior to version 2024.1, stable releases used a convention similar to [preview releases](#preview-releases), except the MINOR integer is always even.)
 
 {{< note title="Important" >}}
 
-- Yugabyte supports _production deployments_ on stable YugabyteDB releases and upgrades to newer stable releases. For a list of releases and their support timelines, see [YugabyteDB releases](../ybdb-releases/) and [YugabyteDB Anywhere releases](../yba-releases/).
-- For recommendations on which version to use for development and testing, see [Recommended release series for projects](../../releases/#recommended-release-series-for-projects).
+Yugabyte supports _production deployments_ on stable YugabyteDB releases, and upgrades to newer stable releases.
+
+For a list of releases and their support timelines, see [YugabyteDB releases](../ybdb-releases/) and [YugabyteDB Anywhere releases](../yba-releases/).
 
 {{< /note >}}
+
+### Stable Release support policy
+
+For Stable releases, the LTS or STS designation determines its support timelines.
+
+**LTS** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 2.5 years of support is provided in total.
+
+**STS** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 1.5 years of support is provided in total.
+
+- **Extended support:** Following the maintenance update period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
+  - Updates and Upgrades will not be made to the minor release.
+  - Yugabyte will direct Customers to existing Updates and workarounds applicable to the reported case.
+  - Yugabyte may direct Customers to Upgrade to a current release if a workaround does not exist.
+- **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected Software and the timeline for discontinuing Support Services.
+
+  {{<note title="Archived docs available">}}
+Documentation for EOL stable releases is available at the [YugabyteDB docs archive](https://docs-archive.yugabyte.com/).
+  {{</note>}}
+
+The information in this section is a summary for convenience only. For complete details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.com/yugabyte-software-support-services-agreement/).
 
 ## Preview releases
 
@@ -64,8 +85,9 @@ Preview releases use the numbering format `MAJOR.MINOR.PATCH.HOTFIX`, where non-
 
 {{< note title="Note" >}}
 
-- The preview release series is not supported for production deployments.
-- There is currently no migration path from a preview release to a stable release.
+The preview release series is not supported for production deployments.
+
+There is currently no migration path from a preview release to a stable release.
 
 {{< /note >}}
 
@@ -110,7 +132,7 @@ Documentation (if provided) for TP features is marked as such.
 
 A feature in Early Access (EA) is new or enhanced functionality made available for you to use.
 
-EA features are supported by Yugabyte Support, and issues are addressed according to the [stable release support policy](../#stable-release-support-policy).
+EA features are supported by Yugabyte Support, and issues are addressed according to the [stable release support policy](#stable-release-support-policy).
 
 Code is well tested. Typically these features are not enabled by default. Enabling the feature is considered safe.
 
@@ -130,7 +152,7 @@ Documentation for EA features is marked as such.
 
 A feature in General Availability (GA) is enabled and accessible by default for all customers.
 
-GA features are supported by Yugabyte Support, and issues are addressed according to the [stable release support policy](../#stable-release-support-policy).
+GA features are supported by Yugabyte Support, and issues are addressed according to the [stable release support policy](#stable-release-support-policy).
 
 Any feature not marked Tech Preview or Early Access should be considered GA.
 

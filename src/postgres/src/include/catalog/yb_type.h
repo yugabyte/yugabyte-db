@@ -26,47 +26,43 @@
 #include "access/htup.h"
 #include "catalog/dependency.h"
 #include "nodes/parsenodes.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
  * Constants for OIDs of supported Postgres native types (that do not have an
  * already declared constant in Postgres).
  */
-#define YB_CHARARRAYOID 1002 /* char[] */
-#define YB_TEXTARRAYOID 1009 /* text[] */
+#define YB_CHARARRAYOID 1002	/* char[] */
+#define YB_TEXTARRAYOID 1009	/* text[] */
 #define YB_ACLITEMARRAYOID 1034 /* aclitem[] */
 
 /*
  * Special type entity used for ybgin null categories.
  */
-extern const YBCPgTypeEntity YBCGinNullTypeEntity;
+extern const YbcPgTypeEntity YBCGinNullTypeEntity;
 
-extern const YBCPgTypeEntity *YbDataTypeFromOidMod(int attnum, Oid type_id);
+extern const YbcPgTypeEntity *YbDataTypeFromOidMod(int attnum, Oid type_id);
 
 /*
- * For non-primitive types (the ones without a corresponding YBCPgTypeEntity),
+ * For non-primitive types (the ones without a corresponding YbcPgTypeEntity),
  * returns the corresponding primitive type's oid.
  */
-extern Oid YbGetPrimitiveTypeOid(Oid type_id, char typtype,
-								 Oid typbasetype);
+extern Oid	YbGetPrimitiveTypeOid(Oid type_id, char typtype,
+								  Oid typbasetype);
 
 /*
  * Returns true if we are allow the given type to be used for key columns such as primary key or
  * indexing key.
  */
-bool YbDataTypeIsValidForKey(Oid type_id);
+bool		YbDataTypeIsValidForKey(Oid type_id);
 
-/*
- * Array of all type entities.
- */
-void YbGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
+extern YbcPgTypeEntities YbGetTypeTable();
 
 /*
  * Callback functions
  */
-int64_t YbUnixEpochToPostgresEpoch(int64_t unix_t);
-bool YbTypeDetails(Oid elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign);
-void YbConstructArrayDatum(Oid arraytypoid, const char **items,
-						   const int nelems, char **datum, size_t *len);
+int64_t		YbUnixEpochToPostgresEpoch(int64_t unix_t);
+bool		YbTypeDetails(Oid elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign);
+void		YbConstructArrayDatum(Oid arraytypoid, const char **items,
+								  const int nelems, char **datum, size_t *len);
 #endif

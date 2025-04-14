@@ -62,11 +62,11 @@ struct DocPgParamDesc {
 
 struct DocPgVarRef {
   size_t var_col_idx;
-  const YBCPgTypeEntity* var_type;
-  YBCPgTypeAttrs var_type_attrs;
+  const YbcPgTypeEntity* var_type;
+  YbcPgTypeAttrs var_type_attrs;
 };
 
-const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
+const YbcPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
 
 Status DocPgInit();
 
@@ -76,7 +76,8 @@ Status DocPgInit();
 
 Status DocPgPrepareExpr(const std::string& expr_str,
                         YbgPreparedExpr *expr,
-                        DocPgVarRef *ret_type);
+                        DocPgVarRef *ret_type,
+                        const std::optional<int> version);
 
 Status DocPgAddVarRef(size_t column_idx,
                       int32_t attno,

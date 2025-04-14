@@ -4,53 +4,58 @@ import { toast } from 'react-toastify';
 import { useDispatch, useSelector } from 'react-redux';
 import { useMutation, useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { useForm, FormProvider, Controller } from 'react-hook-form';
-import { Box, Typography, Tooltip } from '@material-ui/core';
+import { Box, Typography, Tooltip, makeStyles } from '@material-ui/core';
 import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import {
   YBModal,
   YBAutoComplete,
   YBCheckboxField,
   YBLabel,
-  YBInputField
+  YBInputField,
+  YBAlert,
+  AlertVariant,
+  YBButton
 } from '../../../../components';
 import { api } from '../../../../utils/api';
 import {
   getPrimaryCluster,
   createErrorMessage,
-  transitToUniverse,
-  getAsyncCluster
+  transitToUniverse
 } from '../../universe-form/utils/helpers';
-import { Universe } from '../../universe-form/utils/dto';
+import { PRECHECK_UPGRADE_TYPE, Universe } from '../../universe-form/utils/dto';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
 import {
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure
+  fetchCustomerTasksFailure,
+  showTaskInDrawer
 } from '../../../../../actions/tasks';
+import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
+import { fetchTaskUntilItCompletes } from '../../../../../actions/xClusterReplication';
 import { DBUpgradeFormFields, UPGRADE_TYPE, DBUpgradePayload } from './utils/types';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
+import { RuntimeConfigKey } from '../../../../helpers/constants';
 import { fetchLatestStableVersion, fetchCurrentLatestVersion } from './utils/helper';
 import {
   compareYBSoftwareVersions,
   isVersionStable
 } from '../../../../../utils/universeUtilsTyped';
+import { useIsTaskNewUIEnabled } from '../../../tasks/TaskUtils';
 //Rbac
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
+import { isEmptyString, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 //imported styles
 import { dbUpgradeFormStyles } from './utils/RollbackUpgradeStyles';
+
 //icons
 import BulbIcon from '../../../../assets/bulb.svg';
 import ExclamationIcon from '../../../../assets/exclamation-traingle.svg';
 import { ReactComponent as UpgradeArrow } from '../../../../assets/upgrade-arrow.svg';
 import WarningIcon from '../../../../assets/warning-triangle.svg';
-import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
-import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
-import { RuntimeConfigKey } from '../../../../helpers/constants';
-
 import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
 
 interface DBUpgradeModalProps {
@@ -117,8 +122,11 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
   const { t } = useTranslation();
   const classes = dbUpgradeFormStyles();
   const [needPrefinalize, setPrefinalize] = useState(false);
+  const [isYSQLMajorVersionUpgrade, setYSQLMajorVersionUpgrade] = useState(false);
   const releases = useSelector((state: any) => state.customer.dbVersionsWithMetadata);
   const featureFlags = useSelector((state: any) => state.featureFlags);
+  const [upgradeCautionModalVisible, setUpgradeCautionModalVisible] = useState(false);
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
   const { universeDetails, universeUUID, rollMaxBatchSize } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const currentReleaseFromCluster = primaryCluster?.userIntent.ybSoftwareVersion;
@@ -242,8 +250,13 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
       return api.upgradeSoftware(universeUUID, values);
     },
     {
-      onSuccess: () => {
-        toast.success('Database upgrade initiated', TOAST_OPTIONS);
+      onSuccess: (resp, variabes) => {
+        toast.success(
+          variabes.runOnlyPrechecks
+            ? t('universeActions.precheckInitiatedMsg')
+            : t('universeActions.dbRollbackUpgrade.dbUpgradeInitiated'),
+          TOAST_OPTIONS
+        );
         dispatch(fetchCustomerTasks() as any).then((response: any) => {
           if (!response.error) {
             dispatch(fetchCustomerTasksSuccess(response.payload));
@@ -257,7 +270,11 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
             dispatch(fetchUniverseInfoResponse(response.payload));
           });
         }, 2000);
-        transitToUniverse(universeUUID);
+        if (isNewTaskUIEnabled) {
+          dispatch(showTaskInDrawer(resp.taskUUID));
+        } else {
+          transitToUniverse(universeUUID);
+        }
         onClose();
       },
       onError: (error) => {
@@ -268,16 +285,21 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
 
   const callPrefinalizeCheck = async (version: string) => {
     try {
-      const { finalizeRequired } = await api.getUpgradeDetails(universeUUID, {
-        ybSoftwareVersion: version
-      });
+      const { finalizeRequired, ysqlMajorVersionUpgrade } = await api.getUpgradeDetails(
+        universeUUID,
+        {
+          ybSoftwareVersion: version
+        }
+      );
       setPrefinalize(finalizeRequired ? true : false);
+      setYSQLMajorVersionUpgrade(!!ysqlMajorVersionUpgrade);
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleFormSubmit = handleSubmit(async (values) => {
+  const handleFormSubmit = async (runOnlyPrechecks = false) => {
+    const values = formMethods.getValues();
     if (universeDetails?.clusters && universeDetails?.nodePrefix) {
       const payload: DBUpgradePayload = {
         ybSoftwareVersion: values?.softwareVersion ? values.softwareVersion : '',
@@ -288,7 +310,8 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
         taskType: 'Software',
         clusters: universeDetails.clusters,
         nodePrefix: universeDetails.nodePrefix,
-        enableYbc: featureFlags.released.enableYbc || featureFlags.test.enableYbc
+        enableYbc: featureFlags.released.enableYbc || featureFlags.test.enableYbc,
+        runOnlyPrechecks
       };
       if (values.rollingUpgrade) {
         payload.rollMaxBatchSize = {
@@ -303,7 +326,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
         console.error(e);
       }
     }
-  });
+  };
 
   const ybSoftwareVersionValue = watch('softwareVersion');
   const isRollingUpgradeValue = watch('rollingUpgrade');
@@ -316,6 +339,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
 
   const handleVersionChange = (e: ChangeEvent<{}>, option: any) => {
     setPrefinalize(false);
+    setYSQLMajorVersionUpgrade(false);
     setValue('softwareVersion', option?.version, { shouldValidate: true });
   };
 
@@ -379,12 +403,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
       overrideHeight={universeHasXcluster ? '810px' : '720px'}
       overrideWidth="800px"
       onClose={onClose}
-      onSubmit={handleFormSubmit}
-      cancelLabel={t('common.cancel')}
-      submitLabel={t('universeActions.dbRollbackUpgrade.upgradeAction')}
       title={t('universeActions.dbRollbackUpgrade.modalTitle')}
-      submitTestId="DBUpgradeModal-UpgradeButton"
-      cancelTestId="DBUpgradeModal-Cancel"
       titleIcon={<UpgradeArrow />}
       buttonProps={{
         primary: {
@@ -392,6 +411,50 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
         }
       }}
       submitButtonTooltip={!canUpgradeSoftware ? RBAC_ERR_MSG_NO_PERM : ''}
+      footerAccessory={
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            width: '100%'
+          }}
+        >
+          <YBButton variant="secondary" data-testid="DBUpgradeModal-Cancel" onClick={onClose}>
+            {t('common.cancel')}
+          </YBButton>
+          <YBButton
+            variant="secondary"
+            onClick={() => {
+              handleSubmit(() => {
+                handleFormSubmit(true);
+              })();
+            }}
+            data-testid="DBUpgradeModal-Precheck"
+          >
+            {t('universeActions.runPrecheckOnlyButton')}
+          </YBButton>
+          <YBButton
+            variant="primary"
+            onClick={() => {
+              handleSubmit(() => {
+                //if it is YSQL Major version upgrade, show caution modal
+                if (isYSQLMajorVersionUpgrade) {
+                  setUpgradeCautionModalVisible(true);
+                }
+                // else directly submit the form
+                else {
+                  handleFormSubmit();
+                }
+              })();
+            }}
+            data-testid="DBUpgradeModal-UpgradeButton"
+          >
+            {t('universeActions.dbRollbackUpgrade.upgradeAction')}
+          </YBButton>
+        </div>
+      }
     >
       <FormProvider {...formMethods}>
         <Box className={classes.mainContainer} data-testid="DBUpgradeModal-Container">
@@ -543,6 +606,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                     {t('universeActions.dbRollbackUpgrade.footerMsg1')}
                     <b>{t('universeActions.dbRollbackUpgrade.rollbackPrevious')}</b>&nbsp;
                     {t('universeActions.dbRollbackUpgrade.footerMsg2')}
+                    <div>{t('universeActions.dbRollbackUpgrade.footerMsg3')}</div>
                   </Typography>
                 </Box>
               </Box>
@@ -567,6 +631,76 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
           </Box>
         </Box>
       </FormProvider>
+      <UpgradeCautionModal
+        open={upgradeCautionModalVisible}
+        onClose={() => {
+          setUpgradeCautionModalVisible(false);
+        }}
+        onSubmit={() => {
+          setUpgradeCautionModalVisible(false);
+          handleFormSubmit();
+        }}
+        targetSoftwareVersion={ybSoftwareVersionValue}
+      />
+    </YBModal>
+  );
+};
+
+interface UpgradeCautionModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+  targetSoftwareVersion: string | null;
+}
+
+const UpgradeModalStyles = makeStyles(() => ({
+  root: {
+    overflow: 'hidden'
+  },
+  alertMsg: {
+    alignItems: 'flex-start'
+  }
+}));
+
+const UpgradeCautionModal: FC<UpgradeCautionModalProps> = ({
+  open,
+  onClose,
+  onSubmit,
+  targetSoftwareVersion
+}) => {
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'universeActions.dbRollbackUpgrade.upgradeModal'
+  });
+  const classes = UpgradeModalStyles();
+
+  if (!open) return null;
+  return (
+    <YBModal
+      open={open}
+      submitLabel={t('submitAction')}
+      cancelLabel={t('cancel', { keyPrefix: 'common' })}
+      onSubmit={onSubmit}
+      onClose={onClose}
+      title={t('title')}
+      size="xs"
+      dialogContentProps={{
+        className: classes.root,
+        dividers: true
+      }}
+    >
+      <YBAlert
+        variant={AlertVariant.Warning}
+        open
+        text={
+          <Trans
+            i18nKey="upgradeWarning"
+            t={t}
+            components={{ b: <b />, br: <br /> }}
+            values={{ version: targetSoftwareVersion }}
+          />
+        }
+        className={classes.alertMsg}
+      />
     </YBModal>
   );
 };

@@ -53,8 +53,6 @@ class Uuid {
 
   explicit Uuid(const uuid_t copy);
 
-  Uuid(const Uuid& other);
-
   // Generate a new boost uuid
   static Uuid Generate();
   static Uuid Generate(std::mt19937_64* rng);
@@ -130,35 +128,6 @@ class Uuid {
     return boost_uuid_.is_nil();
   }
 
-  bool operator==(const Uuid& other) const {
-    return (boost_uuid_ == other.boost_uuid_);
-  }
-
-  bool operator!=(const Uuid& other) const {
-    return !(*this == other);
-  }
-
-  // A custom comparator that compares UUID v1 according to their timestamp.
-  // If not, it will compare the version first and then lexicographically.
-  bool operator<(const Uuid& other) const;
-
-  bool operator>(const Uuid& other) const {
-    return (other < *this);
-  }
-
-  bool operator<=(const Uuid& other) const {
-    return !(other < *this);
-  }
-
-  bool operator>=(const Uuid& other) const {
-    return !(*this < other);
-  }
-
-  Uuid& operator=(const Uuid& other) {
-    boost_uuid_ = other.boost_uuid_;
-    return *this;
-  }
-
   const boost::uuids::uuid& impl() const {
     return boost_uuid_;
   }
@@ -182,6 +151,30 @@ class Uuid {
   auto version() const {
     return boost_uuid_.version();
   }
+
+  friend bool operator==(const Uuid& lhs, const Uuid& rhs) noexcept {
+    return (lhs.boost_uuid_ == rhs.boost_uuid_);
+  }
+
+  friend bool operator!=(const Uuid& lhs, const Uuid& rhs) noexcept {
+    return !(lhs == rhs);
+  }
+
+  friend bool operator>(const Uuid& lhs, const Uuid& rhs) {
+    return (rhs < lhs);
+  }
+
+  friend bool operator<=(const Uuid& lhs, const Uuid& rhs) {
+    return !(rhs < lhs);
+  }
+
+  friend bool operator>=(const Uuid& lhs, const Uuid& rhs) {
+    return !(lhs < rhs);
+  }
+
+  // A custom comparator that compares UUID v1 according to their timestamp.
+  // If not, it will compare the version first and then lexicographically.
+  friend bool operator<(const Uuid& lhs, const Uuid& rhs);
 
  private:
   boost::uuids::uuid boost_uuid_;
@@ -277,3 +270,6 @@ inline size_t hash_value(const Uuid& uuid) {
 using UuidHash = boost::hash<Uuid>;
 
 } // namespace yb
+
+template <>
+struct std::hash<yb::Uuid> : public yb::UuidHash {};

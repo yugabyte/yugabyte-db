@@ -20,8 +20,9 @@
 #include "nodes/parsenodes.h"
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "executor/execPartition.h"
+
 
 /*
  * The "eflags" argument to ExecutorStart and the various ExecInitNode
@@ -248,6 +249,9 @@ extern TupleTableSlot *EvalPlanQual(EPQState *epqstate, Relation relation,
 									Index rti, TupleTableSlot *testslot);
 extern void EvalPlanQualInit(EPQState *epqstate, EState *parentestate,
 							 Plan *subplan, List *auxrowmarks, int epqParam);
+extern void EvalPlanQualInitExt(EPQState *epqstate, EState *parentestate,
+								Plan *subplan, List *auxrowmarks,
+								int epqParam, List *resultRelations);
 extern void EvalPlanQualSetPlan(EPQState *epqstate,
 								Plan *subplan, List *auxrowmarks);
 extern TupleTableSlot *EvalPlanQualSlot(EPQState *epqstate,
@@ -322,8 +326,7 @@ extern ProjectionInfo *ExecBuildUpdateProjection(List *targetList,
 												 TupleDesc relDesc,
 												 ExprContext *econtext,
 												 TupleTableSlot *slot,
-												 PlanState *parent,
-												 bool ybUseScanTuple);
+												 PlanState *parent);
 extern ExprState *ExecPrepareExpr(Expr *node, EState *estate);
 extern ExprState *ExecPrepareQual(List *qual, EState *estate);
 extern ExprState *ExecPrepareCheck(List *qual, EState *estate);
@@ -701,6 +704,7 @@ extern ResultRelInfo *ExecLookupResultRelByOid(ModifyTableState *node,
 											   bool update_cache);
 
 extern void YbBatchFetchConflictingRows(ResultRelInfo *resultRelInfo,
+										YbInsertOnConflictBatchState *yb_ioc_state,
 										EState *estate,
 										List *arbiterIndexes);
 extern bool YbShouldCheckUniqueOrExclusionIndex(IndexInfo *indexInfo,

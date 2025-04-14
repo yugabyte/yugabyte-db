@@ -13,6 +13,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -40,6 +41,7 @@ public class KubernetesPostExpansionCheckVolume extends AbstractTaskBase {
     public UUID providerUUID;
     public String newDiskSizeGi;
     public String helmReleaseName;
+    public ServerType serverType;
   }
 
   public static String getSubTaskGroupName() {
@@ -61,15 +63,15 @@ public class KubernetesPostExpansionCheckVolume extends AbstractTaskBase {
     if (KubernetesUtil.needsExpandPVC(
         taskParams().namespace,
         taskParams().helmReleaseName,
-        "yb-tserver",
+        taskParams().serverType == ServerType.TSERVER ? "yb-tserver" : "yb-master" /* appName */,
         taskParams().newNamingStyle,
         taskParams().newDiskSizeGi,
         taskParams().config,
         kubernetesManagerFactory)) {
       throw new RuntimeException(
           String.format(
-              "PVC expansion attempt to %s has failed in namespace %s",
-              taskParams().newDiskSizeGi, taskParams().namespace));
+              "PVC expansion attempt to %s has failed in namespace %s for server type %s",
+              taskParams().newDiskSizeGi, taskParams().namespace, taskParams().serverType));
     }
   }
 }

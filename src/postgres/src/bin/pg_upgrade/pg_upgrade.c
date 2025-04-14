@@ -51,6 +51,9 @@
 #include "fe_utils/string_utils.h"
 #include "pg_upgrade.h"
 
+/* YB includes */
+#include "fe_utils/query_utils.h"
+
 static void prepare_new_cluster(void);
 static void prepare_new_globals(void);
 static void create_new_objects(void);
@@ -58,6 +61,7 @@ static void copy_xact_xlog_xid(void);
 static void set_frozenxids(bool minmxid_only);
 static void make_outputdirs(char *pgdata);
 static void setup(char *argv0, bool *live_check);
+static void yb_execute_extension_updates(void);
 
 ClusterInfo old_cluster,
 			new_cluster;
@@ -78,10 +82,7 @@ char	   *output_files[] = {
 int
 main(int argc, char **argv)
 {
-#ifdef YB_TODO
-	/* Unused variable due to later YB_TODO create_script_for_old_cluster_deletion */
 	char	   *deletion_script_file_name = NULL;
-#endif
 	bool		live_check = false;
 
 	pg_logging_init(argv[0]);
@@ -138,10 +139,13 @@ main(int argc, char **argv)
 	output_check_banner(live_check);
 
 	/*
-	 * YB: The check for Postgres versions is performed at higher layers.
-	 * Socket directories are explicitly set from input arguments.
+	 * YB: Socket directories are explicitly set from input arguments.
 	 */
-	if (!is_yugabyte_enabled())
+	if (is_yugabyte_enabled())
+	{
+		yb_check_cluster_versions();
+	}
+	else
 	{
 		check_cluster_versions();
 		get_sock_dir(&old_cluster, live_check);
@@ -149,8 +153,10 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * This checks for global state information initialized
-	 * during initdb and is not relevant for YB currently.
+	 * This checks for global state information initialized during initdb and is
+	 * not relevant for YB. The storage doesn't change between versions, and YB
+	 * controls the creation of the new cluster, so we don't need to be as
+	 * meticulous about checking the state.
 	 */
 	if (!is_yugabyte_enabled())
 		check_cluster_compatibility(live_check);
@@ -162,10 +168,12 @@ main(int argc, char **argv)
 	if (!is_yugabyte_enabled())
 		start_postmaster(&new_cluster, true);
 
-#ifdef YB_TODO
-	/* Investigate relevant checks within check_new_cluster */
-	check_new_cluster();
-#endif
+	/*
+	 * YB: If this is run as a preflight check, the new cluster is not yet started.
+	 */
+	if (!is_yugabyte_enabled())
+		check_new_cluster();
+
 	report_clusters_compatible();
 
 	pg_log(PG_REPORT,
@@ -182,75 +190,86 @@ main(int argc, char **argv)
 
 	/*
 	 * Destructive Changes to New Cluster
+	 * YB: We don't need to start / stop the postmaster, or copy around commit
+	 * logs, as those are handled by the YB master.
 	 */
-#ifdef YB_TODO
-	/* Investigate whether this should be permanently disabled */
-	copy_xact_xlog_xid();
+	if (!is_yugabyte_enabled())
+	{
+		copy_xact_xlog_xid();
 
-	/* New now using xids of the old system */
+		/* New now using xids of the old system */
 
-	/* -- NEW -- */
-	start_postmaster(&new_cluster, true);
-#endif
+		/* -- NEW -- */
+		start_postmaster(&new_cluster, true);
+	}
 
 	prepare_new_globals();
 
 	create_new_objects();
 
+	/*
+	 * YB: The YB major version upgrade flow does not require disabling the old
+	 * cluster, as the upgrade is online and in place. We don't need to delete
+	 * the old cluster data files, because the relevant data lives on DocDB.
+	 */
 	if (!is_yugabyte_enabled())
+	{
 		stop_postmaster(false);
 
-#ifdef YB_TODO
-	/* Investigate these functions being executed after pg_restore is done */
-	/*
-	 * Most failures happen in create_new_objects(), which has completed at
-	 * this point.  We do this here because it is just before linking, which
-	 * will link the old and new cluster data files, preventing the old
-	 * cluster from being safely started once the new cluster is started.
-	 */
-	if (user_opts.transfer_mode == TRANSFER_MODE_LINK)
-		disable_old_cluster();
+		/*
+		 * Most failures happen in create_new_objects(), which has completed at
+		 * this point.  We do this here because it is just before linking, which
+		 * will link the old and new cluster data files, preventing the old
+		 * cluster from being safely started once the new cluster is started.
+		 */
+		if (user_opts.transfer_mode == TRANSFER_MODE_LINK)
+			disable_old_cluster();
 
-	transfer_all_new_tablespaces(&old_cluster.dbarr, &new_cluster.dbarr,
-								 old_cluster.pgdata, new_cluster.pgdata);
+		transfer_all_new_tablespaces(&old_cluster.dbarr, &new_cluster.dbarr,
+									 old_cluster.pgdata, new_cluster.pgdata);
 
-	/*
-	 * Assuming OIDs are only used in system tables, there is no need to
-	 * restore the OID counter because we have not transferred any OIDs from
-	 * the old system, but we do it anyway just in case.  We do it late here
-	 * because there is no need to have the schema load use new oids.
-	 */
-	prep_status("Setting next OID for new cluster");
-	exec_prog(UTILITY_LOG_FILE, NULL, true, true,
-			  "\"%s/pg_resetwal\" -o %u \"%s\"",
-			  new_cluster.bindir, old_cluster.controldata.chkpnt_nxtoid,
-			  new_cluster.pgdata);
-	check_ok();
-
-	if (user_opts.do_sync)
-	{
-		prep_status("Sync data directory to disk");
+		/*
+		 * Assuming OIDs are only used in system tables, there is no need to
+		 * restore the OID counter because we have not transferred any OIDs from
+		 * the old system, but we do it anyway just in case.  We do it late here
+		 * because there is no need to have the schema load use new oids.
+		 */
+		prep_status("Setting next OID for new cluster");
 		exec_prog(UTILITY_LOG_FILE, NULL, true, true,
-				  "\"%s/initdb\" --sync-only \"%s\"", new_cluster.bindir,
+				  "\"%s/pg_resetwal\" -o %u \"%s\"",
+				  new_cluster.bindir, old_cluster.controldata.chkpnt_nxtoid,
 				  new_cluster.pgdata);
 		check_ok();
+
+		if (user_opts.do_sync)
+		{
+			prep_status("Sync data directory to disk");
+			exec_prog(UTILITY_LOG_FILE, NULL, true, true,
+					  "\"%s/initdb\" --sync-only \"%s\"", new_cluster.bindir,
+					  new_cluster.pgdata);
+			check_ok();
+		}
+
+		create_script_for_old_cluster_deletion(&deletion_script_file_name);
+
+		issue_warnings_and_set_wal_level();
 	}
 
-	create_script_for_old_cluster_deletion(&deletion_script_file_name);
-
-	issue_warnings_and_set_wal_level();
+	yb_execute_extension_updates();
 
 	pg_log(PG_REPORT,
 		   "\n"
 		   "Upgrade Complete\n"
 		   "----------------\n");
 
-	output_completion_banner(deletion_script_file_name);
+	if (!is_yugabyte_enabled())
+	{
+		output_completion_banner(deletion_script_file_name);
 
-	pg_free(deletion_script_file_name);
+		pg_free(deletion_script_file_name);
+	}
 
 	cleanup_output_dirs();
-#endif
 	return 0;
 }
 
@@ -351,10 +370,12 @@ setup(char *argv0, bool *live_check)
 	 * make sure the user has a clean environment, otherwise, we may confuse
 	 * libpq when we connect to one (or both) of the servers.
 	 */
-#ifdef YB_TODO
-	/* Investigate/implement this check */
-	check_pghost_envvar();
-#endif
+	if (!is_yugabyte_enabled())
+		/*
+		 * YB: New cluster creation is controlled by Yugabyte, but the IP
+		 * addresses don't match the expected values of this check.
+		 */
+		check_pghost_envvar();
 
 	/*
 	 * In case the user hasn't specified the directory for the new binaries
@@ -505,7 +526,7 @@ create_new_objects(void)
 				  true,
 				  true,
 				  "\"%s/pg_restore\" %s %s --exit-on-error --verbose "
-				  "--dbname postgres \"%s/%s\"",
+				  "--dbname yugabyte \"%s/%s\"",
 				  new_cluster.bindir,
 				  cluster_conn_opts(&new_cluster),
 				  create_opts,
@@ -531,15 +552,11 @@ create_new_objects(void)
 		snprintf(log_file_name, sizeof(log_file_name), DB_DUMP_LOG_FILE_MASK, old_db->db_oid);
 
 		/*
-		 * postgres database will already exist in the target installation, so
+		 * yugabyte database will already exist in the target installation, so
 		 * tell pg_restore to drop and recreate it; otherwise we would fail to
 		 * propagate its database-level properties.
 		 */
-		if (strcmp(old_db->db_name, "postgres") == 0)
-			create_opts = "--clean --create";
-		else if (strcmp(old_db->db_name, "yugabyte") == 0)
-			create_opts = "--clean --create";
-		else if (strcmp(old_db->db_name, "system_platform") == 0)
+		if (strcmp(old_db->db_name, "yugabyte") == 0)
 			create_opts = "--clean --create";
 		else
 			create_opts = "--create";
@@ -837,5 +854,57 @@ set_frozenxids(bool minmxid_only)
 
 	PQfinish(conn_template1);
 
+	check_ok();
+}
+
+void
+yb_execute_extension_updates()
+{
+	int			dbnum;
+
+	prep_status("Executing extension updates");
+
+	for (dbnum = 0; dbnum < new_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res;
+		int			ntups;
+		int			rowno;
+		int			i_name;
+		DbInfo	   *active_db = &new_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&new_cluster, active_db->db_name);
+
+		/* find extensions needing updates */
+		res = executeQueryOrDie(conn,
+								"SELECT name "
+								"FROM pg_available_extensions "
+								"WHERE installed_version != default_version");
+
+		ntups = PQntuples(res);
+		i_name = PQfnumber(res, "name");
+
+		if (ntups > 0)
+			executeCommand(conn, "SET yb_extension_upgrade = true", false /* echo */ );
+
+		for (rowno = 0; rowno < ntups; rowno++)
+		{
+			const char *extension_name = PQgetvalue(res, rowno, i_name);
+			char query[256];
+
+			PGresult   *res;
+			snprintf(query, sizeof(query), "ALTER EXTENSION %s UPDATE;",
+					 quote_identifier(extension_name));
+
+			res = PQexec(conn, query);
+			if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
+			{
+				pg_log(PG_REPORT, "fatal\n");
+				pg_fatal("Unable to update extension %s\n\n", extension_name);
+			}
+		}
+
+		PQclear(res);
+
+		PQfinish(conn);
+	}
 	check_ok();
 }

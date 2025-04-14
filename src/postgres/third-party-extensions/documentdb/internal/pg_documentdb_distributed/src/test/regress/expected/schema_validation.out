@@ -1,0 +1,199 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 17770000;
+SET documentdb.next_collection_id TO 177700;
+SET documentdb.next_collection_index_id TO 177700;
+-- create a collection and insert a document
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}, "validationLevel": "strict", "validationAction": "error"}');
+ERROR:  validator not supported yet
+set documentdb.enableSchemaValidation = true;
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}, "validationLevel": "strict", "validationAction": "error"}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- get collection info
+SELECT cursorpage, continuation, persistconnection, cursorid  FROM documentdb_api.list_collections_cursor_first_page('schema_validation', '{ "listCollections": 1, "nameOnly": true }');
+                                                                                              cursorpage                                                                                              | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation.$cmd.ListCollections", "firstBatch" : [ { "name" : "col", "type" : "collection" } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select validator, validation_level, validation_action from documentdb_api_catalog.collections where database_name = 'schema_validation' and collection_name = 'col';
+                                           validator                                            | validation_level | validation_action 
+---------------------------------------------------------------------
+ { "$jsonSchema" : { "bsonType" : "object", "properties" : { "a" : { "bsonType" : "int" } } } } | strict           | error
+(1 row)
+
+-- create again without schema validator
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col"}');
+ERROR:  ns: schema_validation.col already exists with different options: { "validator" : { "$jsonSchema" : { "bsonType" : "object", "properties" : { "a" : { "bsonType" : "int" } } } }, "validationLevel" : "strict", "validationAction" : "error" }
+-- create again without schema validation level
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}, "validationAction": "warn"}');
+ERROR:  ns: schema_validation.col already exists with different options: { "validator" : { "$jsonSchema" : { "bsonType" : "object", "properties" : { "a" : { "bsonType" : "int" } } } }, "validationLevel" : "strict", "validationAction" : "error" }
+-- create again without schema validation action
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}, "validationLevel": "moderate"}');
+ERROR:  ns: schema_validation.col already exists with different options: { "validator" : { "$jsonSchema" : { "bsonType" : "object", "properties" : { "a" : { "bsonType" : "int" } } } }, "validationLevel" : "strict", "validationAction" : "error" }
+-- create with unmatched schema validator
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"b": {"bsonType": "string"}}}}, "validationLevel": "strict", "validationAction": "error"}');
+ERROR:  ns: schema_validation.col already exists with different options: { "validator" : { "$jsonSchema" : { "bsonType" : "object", "properties" : { "a" : { "bsonType" : "int" } } } }, "validationLevel" : "strict", "validationAction" : "error" }
+-- create again with same parameters
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}, "validationLevel": "strict", "validationAction": "error"}');
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- create collection without schema validator
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col3"}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- get collection info
+SELECT cursorpage, continuation, persistconnection, cursorid  FROM documentdb_api.list_collections_cursor_first_page('schema_validation', '{ "listCollections": 1, "filter": { "name": "col3" }, "nameOnly": true }');
+                                                                                              cursorpage                                                                                               | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation.$cmd.ListCollections", "firstBatch" : [ { "name" : "col3", "type" : "collection" } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select validator, validation_level, validation_action from documentdb_api_catalog.collections where database_name = 'schema_validation' and collection_name = 'col3';
+ validator | validation_level | validation_action 
+---------------------------------------------------------------------
+           |                  | 
+(1 row)
+
+-- create again with schema validator
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col3", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}}');
+ERROR:  ns: schema_validation.col3 already exists with different options: { }
+-- create again with schema validation level
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col3", "validationLevel": "strict"}');
+ERROR:  ns: schema_validation.col3 already exists with different options: { }
+-- create again with schema validation action
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col3", "validationAction": "error"}');
+ERROR:  ns: schema_validation.col3 already exists with different options: { }
+-- create again with same parameters
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col3"}');
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- create collection with schema validatorAction
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col4", "validationLevel": "strict"}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- get collection info
+SELECT cursorpage, continuation, persistconnection, cursorid  FROM documentdb_api.list_collections_cursor_first_page('schema_validation', '{ "listCollections": 1, "filter": { "name": "col4" }, "nameOnly": true }');
+                                                                                              cursorpage                                                                                               | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation.$cmd.ListCollections", "firstBatch" : [ { "name" : "col4", "type" : "collection" } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select validator, validation_level, validation_action from documentdb_api_catalog.collections where database_name = 'schema_validation' and collection_name = 'col4';
+ validator | validation_level | validation_action 
+---------------------------------------------------------------------
+           | strict           | error
+(1 row)
+
+-- create again with schema validatorAction
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col4", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "int"}}}}}');
+ERROR:  ns: schema_validation.col4 already exists with different options: { "validationLevel" : "strict", "validationAction" : "error" }
+-- create again with same parameters
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col4", "validationLevel": "strict"}');
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set documentdb.enableSchemaValidation = false;
+-- update validation action
+SELECT documentdb_api.coll_mod('schema_validation', 'col', '{"collMod":"col", "validationAction": "warn"}');
+ERROR:  validator not supported yet
+set documentdb.enableSchemaValidation = true;
+SELECT documentdb_api.coll_mod('schema_validation', 'col', '{"collMod":"col", "validationAction": "warn"}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.coll_mod('schema_validation', 'col', '{"collMod":"col", "validator": {"$jsonSchema": {"bsonType": "object", "properties": {"a": {"bsonType": "string"}}}}}');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- get updated collection info
+SELECT cursorpage, continuation, persistconnection, cursorid  FROM documentdb_api.list_collections_cursor_first_page('schema_validation', '{ "listCollections": 1, "filter": { "name": "col" }, "nameOnly": true }');
+                                                                                              cursorpage                                                                                              | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation.$cmd.ListCollections", "firstBatch" : [ { "name" : "col", "type" : "collection" } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select validator, validation_level, validation_action from documentdb_api_catalog.collections where database_name = 'schema_validation' and collection_name = 'col';
+                                             validator                                             | validation_level | validation_action 
+---------------------------------------------------------------------
+ { "$jsonSchema" : { "bsonType" : "object", "properties" : { "a" : { "bsonType" : "string" } } } } | strict           | warn
+(1 row)
+
+-- insert a document with type mismatch
+-- SELECT documentdb_api.insert('schema_validation','{"insert":"col", "documents":[{"_id":"8", "a":"yy"}]}');
+-- SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation','col');
+-- update: ignore validation when action = warn
+-- SELECT documentdb_api.update('schema_validation', '{"update":"col", "updates":[{"q":{"a":1},"u":{"$set":{"a":"tt"}}}]}');
+-- SELECT documentdb_api.coll_mod('schema_validation', 'col', '{"collMod":"col", "validationAction": "error"}');
+-- SELECT documentdb_api.update('schema_validation', '{"update":"col", "updates":[{"q":{"a":2},"u":{"$set":{"a":"ss"}},"multi":true}]}');
+-- SELECT documentdb_api.update('schema_validation', '{"update":"col", "updates":[{"q":{"a":"yy"},"u":{"$set":{"a":"yyy"}}}]}');
+-- update validation level
+-- SELECT documentdb_api.coll_mod('schema_validation', 'col', '{"collMod":"col", "validationLevel": "moderate"}');
+-- update document with type mismatch
+-- SELECT documentdb_api.update('schema_validation', '{"update":"col", "updates":[{"q":{"a":"yy"},"u":{"$set":{"a":"yyy"}},"multi":true}]}');
+-- SELECT shard_key_value, object_id, document from documentdb_api.collection('schema_validation','col');
+-- validator without $jsonSchema
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col1", "validator": {"a":{"$type":"int"}}, "validationLevel": "strict", "validationAction": "error"}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- get collection info
+SELECT cursorpage, continuation, persistconnection, cursorid  FROM documentdb_api.list_collections_cursor_first_page('schema_validation', '{ "listCollections": 1, "filter": { "name": "col1" }, "nameOnly": true }');
+                                                                                              cursorpage                                                                                               | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation.$cmd.ListCollections", "firstBatch" : [ { "name" : "col1", "type" : "collection" } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select validator, validation_level, validation_action from documentdb_api_catalog.collections where database_name = 'schema_validation' and collection_name = 'col1';
+           validator           | validation_level | validation_action 
+---------------------------------------------------------------------
+ { "a" : { "$type" : "int" } } | strict           | error
+(1 row)
+
+-- select documentdb_api.insert('schema_validation', '{"insert":"col1", "documents":[{"_id":"1", "a":1}]}');
+-- select documentdb_api.insert('schema_validation', '{"insert":"col1", "documents":[{"_id":"1", "a":"hello"}]}');
+-- validator > 10k throw error
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col2", "validator": {"$jsonSchema":{"bsonType":"object","properties":{"name":{"bsonType":"string","description":"The name of the entity"},"age":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_1":{"bsonType":"string","description":"The name of the entity"},"age_1":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_1":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_1":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_1":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_1":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_1":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_2":{"bsonType":"string","description":"The name of the entity"},"age_2":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_2":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_2":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_2":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_2":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_2":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_3":{"bsonType":"string","description":"The name of the entity"},"age_3":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_3":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_3":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_3":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_3":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_3":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_4":{"bsonType":"string","description":"The name of the entity"},"age_4":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_4":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_4":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_4":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_4":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_4":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about theentity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_5":{"bsonType":"string","description":"The name of the entity"},"age_5":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_5":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_5":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_5":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_5":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"Listof contacts"},"info_5":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_6":{"bsonType":"string","description":"The name of the entity"},"age_6":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_6":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_6":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_6":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_6":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type:phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_6":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_7":{"bsonType":"string","description":"The name of the entity"},"age_7":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_7":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_7":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_7":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_7":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_7":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"largeField1":{"bsonType":"string","description":"A large field to increase validator size"},"largeField2":{"bsonType":"int","description":"Another large field to increase validator size"},"largeTextField":{"bsonType":"string","description":"A very large text field"}},"required":["name","age"]}}}');
+ERROR:  validator of size > 10KB is not supported. Contact Azure Support if you need to increase this limit.
+SELECT cursorpage, continuation, persistconnection, cursorid  FROM documentdb_api.list_collections_cursor_first_page('schema_validation', '{ "listCollections": 1, "filter": { "name": "col2" }, "nameOnly": true }');
+                                                                         cursorpage                                                                          | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "schema_validation.$cmd.ListCollections", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+-- increase maxSchemaValidatorSize to 20KB
+SET documentdb.maxSchemaValidatorSize = 20480;
+SELECT documentdb_api.create_collection_view('schema_validation', '{ "create": "col2", "validator": {"$jsonSchema":{"bsonType":"object","properties":{"name":{"bsonType":"string","description":"The name of the entity"},"age":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_1":{"bsonType":"string","description":"The name of the entity"},"age_1":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_1":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_1":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_1":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_1":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_1":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_2":{"bsonType":"string","description":"The name of the entity"},"age_2":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_2":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_2":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_2":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_2":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_2":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_3":{"bsonType":"string","description":"The name of the entity"},"age_3":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_3":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_3":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_3":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_3":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_3":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_4":{"bsonType":"string","description":"The name of the entity"},"age_4":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_4":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_4":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_4":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_4":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_4":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about theentity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_5":{"bsonType":"string","description":"The name of the entity"},"age_5":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_5":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_5":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_5":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_5":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"Listof contacts"},"info_5":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_6":{"bsonType":"string","description":"The name of the entity"},"age_6":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_6":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_6":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_6":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_6":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type:phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_6":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"name_7":{"bsonType":"string","description":"The name of the entity"},"age_7":{"bsonType":"int","minimum":{"$numberInt":"18"},"description":"The age of the entity, must be at least 18"},"address_7":{"bsonType":"object","properties":{"street":{"bsonType":"string","description":"The street address"},"city":{"bsonType":"string","description":"The city"},"state":{"bsonType":"string","description":"The state or province"},"country":{"bsonType":"string","description":"The country"}},"required":["street","city","country"],"description":"The address object"},"hobbies_7":{"bsonType":"array","items":{"bsonType":"string"},"description":"List of hobbies"},"scores_7":{"bsonType":"object","properties":{"math":{"bsonType":"int"},"science":{"bsonType":"int"},"history":{"bsonType":"int"}},"description":"Subject scores","additionalProperties":false},"contacts_7":{"bsonType":"array","items":{"bsonType":"object","properties":{"type":{"bsonType":"string","enum":["phone","email"],"description":"Contact type: phone or email"},"value":{"bsonType":"string","description":"Contact value"}},"required":["type","value"]},"description":"List of contacts"},"info_7":{"bsonType":"object","properties":{"description":{"bsonType":"string","description":"Description about the entity"},"details":{"bsonType":"object","properties":{"field1":{"bsonType":"string"},"field2":{"bsonType":"string"},"field3":{"bsonType":"string"}}}}},"largeField1":{"bsonType":"string","description":"A large field to increase validator size"},"largeField2":{"bsonType":"int","description":"Another large field to increase validator size"},"largeTextField":{"bsonType":"string","description":"A very large text field"}},"required":["name","age"]}}}');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+

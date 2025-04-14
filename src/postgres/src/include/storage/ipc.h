@@ -18,6 +18,7 @@
 #ifndef IPC_H
 #define IPC_H
 
+/* YB includes */
 #include <stdatomic.h>
 
 typedef void (*pg_on_exit_callback) (int code, Datum arg);

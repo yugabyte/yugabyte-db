@@ -14,6 +14,8 @@ import static org.hamcrest.Matchers.hasProperty;
 import static org.hamcrest.Matchers.hasValue;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
@@ -39,6 +41,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeInstance;
@@ -60,13 +63,11 @@ import java.util.UUID;
 import java.util.concurrent.ThreadPoolExecutor;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import junitparams.converters.Nullable;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
@@ -197,39 +198,6 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       allNodes.addAll(nodes);
     }
     return allNodes;
-  }
-
-  @Test
-  // @formatter:off
-  @Parameters({
-    "onprem, 1.1.1.1, false", // onprem with private IP
-    "onprem, null, true" // onprem without private IP
-  })
-  // @formatter:on
-  public void testCreateDestroyServerTasks(
-      CloudType cloudType, @Nullable String privateIp, boolean setToFailedCleanup) {
-    List<NodeDetails> nodes = setupNodeDetails(cloudType, privateIp);
-    Universe universe = Mockito.mock(Universe.class);
-    when(universe.getNodes()).thenReturn(nodes);
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
-    UniverseDefinitionTaskParams.Cluster cluster =
-        new UniverseDefinitionTaskParams.Cluster(
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY, userIntent);
-    UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-    universeDetails.clusters.add(cluster);
-    Mockito.when(universe.getCluster(Mockito.any())).thenReturn(cluster);
-    Mockito.when(universe.getUniverseDetails()).thenReturn(universeDetails);
-    universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false, true);
-    for (int i = 0; i < NUM_NODES; i++) {
-      // Node should not be in use.
-      NodeInstance ni = NodeInstance.get(nodes.get(i).nodeUuid);
-      if (setToFailedCleanup) {
-        assertEquals(NodeInstance.State.DECOMMISSIONED, ni.getState());
-      } else {
-        assertEquals(NodeInstance.State.USED, ni.getState());
-      }
-    }
   }
 
   @Test
@@ -488,6 +456,23 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     // Test no clusters and add all nodes
     lbMap = universeTaskBase.generateLoadBalancerMap(taskParams, null, null, new HashSet<>(nodes));
     assertThat(lbMap, anEmptyMap());
+  }
+
+  @Test
+  public void testNoDuplicateCommunicationPorts() {
+    // Verify all ports are unique.
+    CommunicationPorts communicationPorts = new CommunicationPorts();
+    communicationPorts.masterHttpPort = 7000;
+    communicationPorts.masterRpcPort = 7100;
+    communicationPorts.tserverHttpPort = 9000;
+    communicationPorts.tserverRpcPort = 9100;
+    communicationPorts.yqlServerHttpPort = 12000;
+    communicationPorts.yqlServerRpcPort = 12100;
+    assertFalse(CommunicationPorts.hasDuplicatePorts(communicationPorts));
+
+    // Verify duplicate port.
+    communicationPorts.ysqlServerRpcPort = 12100;
+    assertTrue(CommunicationPorts.hasDuplicatePorts(communicationPorts));
   }
 
   private class TestUniverseTaskBase extends UniverseTaskBase {

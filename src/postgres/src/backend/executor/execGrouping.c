@@ -15,18 +15,18 @@
 #include "postgres.h"
 
 #include "access/parallel.h"
-#include "catalog/pg_type.h"
 #include "common/hashfn.h"
-#include "nodes/nodeFuncs.h"
-#include "optimizer/clauses.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_collation.h"
+#include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "optimizer/clauses.h"
 #include "pg_yb_utils.h"
 
 static int	TupleHashTableMatch(struct tuplehash_hash *tb, const MinimalTuple tuple1, const MinimalTuple tuple2);
@@ -139,16 +139,18 @@ execTuplesHashPrepare(int numCols,
 ExprState *
 ybPrepareOuterExprsEqualFn(List *outer_exprs, Oid *eqOps, PlanState *parent)
 {
-	List *quals = NULL;
-	ListCell *lc;
-	int i = 0;
+	List	   *quals = NULL;
+	ListCell   *lc;
+	int			i = 0;
+
 	foreach(lc, outer_exprs)
 	{
-		Expr *rhs = lfirst(lc);
-		Expr *lhs = yb_copy_replace_varnos(rhs, OUTER_VAR, INNER_VAR);
+		Expr	   *rhs = lfirst(lc);
+		Expr	   *lhs = yb_copy_replace_varnos(rhs, OUTER_VAR, INNER_VAR);
 
-		int collid = exprCollation((Node *) rhs);
-		Oid eqop;
+		int			collid = exprCollation((Node *) rhs);
+		Oid			eqop;
+
 		/*
 		 * We can't directly use eqOps[i] as that might be a cross-type
 		 * comparison between the outer and inner sides. We attempt to get
@@ -156,9 +158,9 @@ ybPrepareOuterExprsEqualFn(List *outer_exprs, Oid *eqOps, PlanState *parent)
 		 * with itself.
 		 */
 		(void) get_compatible_hash_operators(eqOps[i], NULL, &eqop);
-		Expr *qual =
-			make_opclause(eqop, BOOLOID, false, lhs, rhs,
-						  collid, collid);
+		Expr	   *qual = make_opclause(eqop, BOOLOID, false, lhs, rhs,
+										 collid, collid);
+
 		set_opfuncid((OpExpr *) qual);
 		quals = lappend(quals, qual);
 		i++;
@@ -249,7 +251,7 @@ YbBuildTupleHashTableExt(PlanState *parent,
 	 * functions (i.e. nothing that'd employ RegisterExprContextCallback()).
 	 */
 	hashtable->exprcontext =
-	expr_cxt ? expr_cxt : CreateStandaloneExprContext();
+		expr_cxt ? expr_cxt : CreateStandaloneExprContext();
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -353,9 +355,8 @@ BuildTupleHashTableExt(PlanState *parent,
 	allow_jit = metacxt != tablecxt;
 
 	/* build comparator for all columns */
-	/* XXX: should we support non-minimal tuples for the inputslot? */
 	hashtable->tab_eq_func = ExecBuildGroupingEqual(inputDesc, inputDesc,
-													&TTSOpsMinimalTuple, &TTSOpsMinimalTuple,
+													NULL, &TTSOpsMinimalTuple,
 													numCols,
 													keyColIdx, eqfuncoids, collations,
 													allow_jit ? parent : NULL);
@@ -554,7 +555,7 @@ FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
  * copied into the table.
  *
  * Also, the caller must select an appropriate memory context for running
- * the hash functions. (dynahash.c doesn't change GetCurrentMemoryContext().)
+ * the hash functions. (dynahash.c doesn't change CurrentMemoryContext.)
  */
 static uint32
 TupleHashTableHash_internal(struct tuplehash_hash *tb,
@@ -567,7 +568,7 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 	TupleTableSlot *slot;
 	FmgrInfo   *hashfunctions;
 	int			i;
-	ExprState  **eval_exprs = NULL;
+	ExprState **eval_exprs = NULL;
 
 	if (tuple == NULL)
 	{
@@ -617,9 +618,10 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 			uint32		hkey;
 
 			/* YB doesn't support collations with hash functions. */
-			Oid yb_collation = (IsYugaByteEnabled() ?
-								DEFAULT_COLLATION_OID :
-								hashtable->tab_collations[i]);
+			Oid			yb_collation = (IsYugaByteEnabled() ?
+										DEFAULT_COLLATION_OID :
+										hashtable->tab_collations[i]);
+
 			hkey = DatumGetUInt32(FunctionCall1Coll(&hashfunctions[i],
 													yb_collation,
 													attr));

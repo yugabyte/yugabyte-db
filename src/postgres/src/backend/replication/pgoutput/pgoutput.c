@@ -33,7 +33,7 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
@@ -87,6 +87,13 @@ static void yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid);
 static bool publications_valid;
 static bool in_streaming;
 
+/*
+ * Private memory context for publication data, created in
+ * PGOutputData->context when starting pgoutput, and set to NULL when its
+ * parent context is reset via a dedicated MemoryContextCallback.
+ */
+static MemoryContext pubctx = NULL;
+
 static List *LoadPublications(List *pubnames);
 static void publication_invalidation_cb(Datum arg, int cacheid,
 										uint32 hashvalue);
@@ -99,15 +106,14 @@ static void send_repl_origin(LogicalDecodingContext *ctx,
 static void update_replication_progress(LogicalDecodingContext *ctx,
 										bool skipped_xact);
 
-/* 
+/*
  * This indicates whether the plugin being used is yboutput or pgoutput. In
- * yboutput mode, we also support yb-specific replica identity 
+ * yboutput mode, we also support yb-specific replica identity
  * (CHANGE for now).
  */
 static bool yb_is_yboutput_mode;
 
-static void
-yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
+static void yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
 
 /*
  * Only 3 publication actions are used for row filtering ("insert", "update",
@@ -407,6 +413,15 @@ parse_output_parameters(List *options, PGOutputData *data)
 }
 
 /*
+ * Callback of PGOutputData->context in charge of cleaning pubctx.
+ */
+static void
+pgoutput_pubctx_reset_callback(void *arg)
+{
+	pubctx = NULL;
+}
+
+/*
  * Initialize this plugin
  */
 static void
@@ -414,6 +429,8 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 				 bool is_init)
 {
 	PGOutputData *data = palloc0(sizeof(PGOutputData));
+	static bool publication_callback_registered = false;
+	MemoryContextCallback *mcallback;
 
 	/* Create our memory context for private allocations. */
 	data->context = AllocSetContextCreate(ctx->context,
@@ -423,6 +440,15 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 	data->cachectx = AllocSetContextCreate(ctx->context,
 										   "logical replication cache context",
 										   ALLOCSET_DEFAULT_SIZES);
+
+	Assert(pubctx == NULL);
+	pubctx = AllocSetContextCreate(ctx->context,
+								   "logical replication publication list context",
+								   ALLOCSET_SMALL_SIZES);
+
+	mcallback = palloc0(sizeof(MemoryContextCallback));
+	mcallback->func = pgoutput_pubctx_reset_callback;
+	MemoryContextRegisterResetCallback(ctx->context, mcallback);
 
 	ctx->output_plugin_private = data;
 
@@ -505,9 +531,18 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 		/* Init publication state. */
 		data->publications = NIL;
 		publications_valid = false;
-		CacheRegisterSyscacheCallback(PUBLICATIONOID,
-									  publication_invalidation_cb,
-									  (Datum) 0);
+
+		/*
+		 * Register callback for pg_publication if we didn't already do that
+		 * during some previous call in this process.
+		 */
+		if (!publication_callback_registered)
+		{
+			CacheRegisterSyscacheCallback(PUBLICATIONOID,
+										  publication_invalidation_cb,
+										  (Datum) 0);
+			publication_callback_registered = true;
+		}
 
 		/* Initialize relation schema cache. */
 		init_rel_sync_cache(CacheMemoryContext);
@@ -738,7 +773,7 @@ maybe_send_schema(LogicalDecodingContext *ctx,
 
 	if (IsYugaByteEnabled())
 		elog(DEBUG1, "Sent the RELATION message for table_id: %d",
-			RelationGetRelid(relation));
+			 RelationGetRelid(relation));
 }
 
 /*
@@ -1119,8 +1154,8 @@ init_tuple_slot(PGOutputData *data, Relation relation,
 	 * Create tuple table slots. Create a copy of the TupleDesc as it needs to
 	 * live as long as the cache remains.
 	 */
-	oldtupdesc = CreateTupleDescCopy(RelationGetDescr(relation));
-	newtupdesc = CreateTupleDescCopy(RelationGetDescr(relation));
+	oldtupdesc = CreateTupleDescCopyConstr(RelationGetDescr(relation));
+	newtupdesc = CreateTupleDescCopyConstr(RelationGetDescr(relation));
 
 	entry->old_slot = MakeSingleTupleTableSlot(oldtupdesc, &TTSOpsHeapTuple);
 	entry->new_slot = MakeSingleTupleTableSlot(newtupdesc, &TTSOpsHeapTuple);
@@ -1137,8 +1172,8 @@ init_tuple_slot(PGOutputData *data, Relation relation,
 		TupleDesc	indesc = RelationGetDescr(relation);
 		TupleDesc	outdesc = RelationGetDescr(ancestor);
 
-		/* Map must live as long as the session does. */
-		oldctx = MemoryContextSwitchTo(CacheMemoryContext);
+		/* Map must live as long as the logical decoding context. */
+		oldctx = MemoryContextSwitchTo(data->cachectx);
 
 		entry->attrmap = build_attrmap_by_name_if_req(indesc, outdesc);
 
@@ -1527,14 +1562,15 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 			maybe_send_schema(ctx, change, relation, relentry);
 
-			bool		*yb_old_is_omitted = NULL;
-			bool		*yb_new_is_omitted = NULL;
+			bool	   *yb_old_is_omitted = NULL;
+			bool	   *yb_new_is_omitted = NULL;
+
 			if (IsYugaByteEnabled() && yb_is_yboutput_mode)
 			{
 				yb_old_is_omitted =
-					(change->data.tp.oldtuple) ?
-						change->data.tp.oldtuple->yb_is_omitted :
-						NULL;
+					change->data.tp.oldtuple ?
+					change->data.tp.oldtuple->yb_is_omitted :
+					NULL;
 
 				yb_new_is_omitted = change->data.tp.newtuple->yb_is_omitted;
 			}
@@ -1623,6 +1659,16 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	{
 		RelationClose(ancestor);
 		ancestor = NULL;
+	}
+
+	/* Drop the new slots that were used to store the converted tuples. */
+	if (relentry->attrmap)
+	{
+		if (old_slot)
+			ExecDropSingleTupleTableSlot(old_slot);
+
+		if (new_slot)
+			ExecDropSingleTupleTableSlot(new_slot);
 	}
 
 	/* Cleanup */
@@ -1756,9 +1802,9 @@ pgoutput_origin_filter(LogicalDecodingContext *ctx,
 /*
  * Shutdown the output plugin.
  *
- * Note, we don't need to clean the data->context and data->cachectx as
- * they are child context of the ctx->context so it will be cleaned up by
- * logical decoding machinery.
+ * Note, we don't need to clean the data->context, data->cachectx and pubctx
+ * as they are child contexts of the ctx->context so they will be cleaned up
+ * by logical decoding machinery.
  */
 static void
 pgoutput_shutdown(LogicalDecodingContext *ctx)
@@ -1768,6 +1814,9 @@ pgoutput_shutdown(LogicalDecodingContext *ctx)
 		hash_destroy(RelationSyncCache);
 		RelationSyncCache = NULL;
 	}
+
+	/* Better safe than sorry */
+	pubctx = NULL;
 }
 
 static void
@@ -1775,7 +1824,7 @@ yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
 {
 	elog(DEBUG1, "yb_pgoutput_schema_change for relid: %d", relid);
 
-	rel_sync_cache_relation_cb(0 /* unused */, relid);
+	rel_sync_cache_relation_cb(0 /* unused */ , relid);
 }
 
 /*
@@ -1950,7 +1999,9 @@ static void
 init_rel_sync_cache(MemoryContext cachectx)
 {
 	HASHCTL		ctl;
+	static bool relation_callbacks_registered = false;
 
+	/* Nothing to do if hash table already exists */
 	if (RelationSyncCache != NULL)
 		return;
 
@@ -1965,6 +2016,10 @@ init_rel_sync_cache(MemoryContext cachectx)
 
 	Assert(RelationSyncCache != NULL);
 
+	/* No more to do if we already registered callbacks */
+	if (relation_callbacks_registered)
+		return;
+
 	CacheRegisterRelcacheCallback(rel_sync_cache_relation_cb, (Datum) 0);
 	CacheRegisterSyscacheCallback(PUBLICATIONRELMAP,
 								  rel_sync_cache_publication_cb,
@@ -1972,6 +2027,8 @@ init_rel_sync_cache(MemoryContext cachectx)
 	CacheRegisterSyscacheCallback(PUBLICATIONNAMESPACEMAP,
 								  rel_sync_cache_publication_cb,
 								  (Datum) 0);
+
+	relation_callbacks_registered = true;
 }
 
 /*
@@ -2071,12 +2128,11 @@ get_rel_sync_entry(PGOutputData *data, Relation relation)
 		/* Reload publications if needed before use. */
 		if (!publications_valid)
 		{
-			oldctx = MemoryContextSwitchTo(CacheMemoryContext);
-			if (data->publications)
-			{
-				list_free_deep(data->publications);
-				data->publications = NIL;
-			}
+			Assert(pubctx);
+
+			MemoryContextReset(pubctx);
+			oldctx = MemoryContextSwitchTo(pubctx);
+
 			data->publications = LoadPublications(data->publication_names);
 			MemoryContextSwitchTo(oldctx);
 			publications_valid = true;
@@ -2102,9 +2158,33 @@ get_rel_sync_entry(PGOutputData *data, Relation relation)
 		 * Tuple slots cleanups. (Will be rebuilt later if needed).
 		 */
 		if (entry->old_slot)
+		{
+			TupleDesc	desc = entry->old_slot->tts_tupleDescriptor;
+
+			Assert(desc->tdrefcount == -1);
+
 			ExecDropSingleTupleTableSlot(entry->old_slot);
+
+			/*
+			 * ExecDropSingleTupleTableSlot() would not free the TupleDesc, so
+			 * do it now to avoid any leaks.
+			 */
+			FreeTupleDesc(desc);
+		}
 		if (entry->new_slot)
+		{
+			TupleDesc	desc = entry->new_slot->tts_tupleDescriptor;
+
+			Assert(desc->tdrefcount == -1);
+
 			ExecDropSingleTupleTableSlot(entry->new_slot);
+
+			/*
+			 * ExecDropSingleTupleTableSlot() would not free the TupleDesc, so
+			 * do it now to avoid any leaks.
+			 */
+			FreeTupleDesc(desc);
+		}
 
 		entry->old_slot = NULL;
 		entry->new_slot = NULL;

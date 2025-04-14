@@ -36,6 +36,8 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.Common;
 import org.yb.CommonNet;
+import org.yb.CommonNet.PlacementBlockPB;
+import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.YBParameterizedTestRunner;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.LocatedTablet;
@@ -44,9 +46,6 @@ import org.yb.client.ModifyClusterConfigReadReplicas;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
-import org.yb.master.CatalogEntityInfo;
-import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
-import org.yb.master.CatalogEntityInfo.PlacementInfoPB;
 import org.yb.minicluster.MiniYBDaemon;
 
 import com.google.common.collect.ImmutableMap;

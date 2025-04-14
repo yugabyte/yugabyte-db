@@ -26,6 +26,10 @@
     margin: 0 8px 0 3px;
   }
 
+  #reportrange {
+    display: flex;
+  }
+
   #all-divider {
     width: auto;
     top: 50px;
@@ -208,6 +212,14 @@
     padding: 5px 20px;
   }
 
+  .customMenuItem {
+    top: 26% !important;
+  }
+
+  .MuiPaper-root.customMenuItem {
+    top: 26% !important;
+  }
+
   .graph-interval-container {
     display: inline-block;
     padding-right: 15px;
@@ -241,7 +253,7 @@
 
   .timezone {
     display: inline;
-    margin-top: 20px;
+    margin-top: 12px;
   }
 
   .date-picker {

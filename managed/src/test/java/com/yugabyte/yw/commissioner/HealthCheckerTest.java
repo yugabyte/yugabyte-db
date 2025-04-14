@@ -145,6 +145,9 @@ public class HealthCheckerTest extends FakeDBApplication {
             any(Universe.class), eq(UniverseConfKeys.nodeCheckTimeoutSec)))
         .thenReturn(1);
     when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.nodeCheckTimeoutDdlSec)))
+        .thenReturn(1);
+    when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.ddlAtomicityCheckEnabled)))
         .thenReturn(true);
     when(mockConfGetter.getConfForScope(
@@ -184,8 +187,10 @@ public class HealthCheckerTest extends FakeDBApplication {
             mockNodeUniverseManager,
             executorService,
             executorService,
+            executorService,
             mockFileHelperService,
-            mockMaintenanceService) {
+            mockMaintenanceService,
+            null) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig);

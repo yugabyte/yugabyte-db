@@ -48,7 +48,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 typedef struct EventTriggerQueryState
@@ -128,7 +128,7 @@ CreateEventTrigger(CreateEventTrigStmt *stmt)
 				 errmsg("permission denied to create event trigger \"%s\"",
 						stmt->trigname),
 				 errhint("Must be superuser or a member of the yb_db_admin "
-				 		 "role to create an event trigger.")));
+						 "role to create an event trigger.")));
 
 	/* Validate event name. */
 	if (strcmp(stmt->eventname, "ddl_command_start") != 0 &&
@@ -487,7 +487,7 @@ AlterEventTriggerOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 				 errmsg("permission denied to change owner of event trigger \"%s\"",
 						NameStr(form->evtname)),
 				 errhint("The owner of an event trigger must be a superuser "
-				 		 "or a member of the yb_db_admin role.")));
+						 "or a member of the yb_db_admin role.")));
 
 	form->evtowner = newOwnerId;
 	CatalogTupleUpdate(rel, &tup->t_self, tup);
@@ -905,7 +905,7 @@ EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata)
 	 * Let's evaluate event triggers in their own memory context, so that any
 	 * leaks get cleaned up promptly.
 	 */
-	context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	context = AllocSetContextCreate(CurrentMemoryContext,
 									"event trigger context",
 									ALLOCSET_DEFAULT_SIZES);
 	oldcontext = MemoryContextSwitchTo(context);
@@ -1016,7 +1016,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_VIEW:
 			return true;
 
-		/* YB cases */
+			/* YB cases */
 		case OBJECT_YBPROFILE:
 			/* no support for event triggers on profiles */
 			return false;
@@ -1088,7 +1088,7 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 		case OCLASS_TRANSFORM:
 			return true;
 
-		/* YB cases */
+			/* YB cases */
 		case OCLASS_TBLGROUP:
 			/* no support for event triggers on tablegroups */
 			return false;
@@ -2131,7 +2131,7 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_VIEW:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 
-		/* YB cases */
+			/* YB cases */
 		case OBJECT_YBPROFILE:
 			return "PROFILE";
 		case OBJECT_YBTABLEGROUP:
@@ -2221,7 +2221,7 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_VIEW:
 			elog(ERROR, "unsupported object type: %d", (int) objtype);
 
-		/* YB cases */
+			/* YB cases */
 		case OBJECT_YBPROFILE:
 			return "PROFILES";
 		case OBJECT_YBTABLEGROUP:

@@ -14,15 +14,17 @@
 #ifndef PLANNODES_H
 #define PLANNODES_H
 
-#include "access/relation.h"
 #include "access/sdir.h"
 #include "access/stratnum.h"
 #include "lib/stringinfo.h"
 #include "nodes/bitmapset.h"
 #include "nodes/lockoptions.h"
 #include "nodes/parsenodes.h"
-#include "nodes/pathnodes.h"
 #include "nodes/primnodes.h"
+
+/* YB includes */
+#include "access/relation.h"	/* TODO: is needed? */
+#include "nodes/pathnodes.h"	/* TODO: is needed? */
 #include "nodes/ybbitmatrix.h"
 
 
@@ -99,7 +101,7 @@ typedef struct PlannedStmt
 	 * Number of relations that are still referenced by the plan after
 	 * constraint exclusion and partition pruning.
 	 */
-	int		yb_num_referenced_relations;
+	int			yb_num_referenced_relations;
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -170,6 +172,28 @@ typedef struct Plan
 	 */
 	Bitmapset  *extParam;
 	Bitmapset  *allParam;
+
+	/* alias to use for hinting - unique across all blocks/entire query */
+	char	   *ybHintAlias;
+
+	/*
+	 * Unique id across all plan nodes. This is inherited from corresponding
+	 * Path node (in a few cases there is not one).
+	 */
+	uint32		ybUniqueId;
+
+	/*
+	 * If a node is a child of a Subquery Scan node and the scan node gets
+	 * removed the child node will 'inherit' the unique hint alias
+	 * of the scan.
+	 */
+	char	   *ybInheritedHintAlias;
+
+	/* Is this a join that was referenced in a leading join hint? */
+	bool		ybIsHinted;
+
+	/* Is this node forced using a UID? */
+	bool		ybHasHintedUid;
 } Plan;
 
 /* ----------------
@@ -236,13 +260,13 @@ typedef struct
 	NodeTag		type;
 
 	/* A list of indexes whose update can be skipped */
-	List		*index_list;
+	List	   *index_list;
 
 	/*
 	 * A list of skippable foreign key relationships where the relation under
 	 * consideration is the referencing relation.
 	 */
-	List		*referencing_fkey_list;
+	List	   *referencing_fkey_list;
 
 	/*
 	 * A list of skippable foreign key relationships where the relation under
@@ -253,7 +277,7 @@ typedef struct
 	 * constraints where one side of the relationship may be skippable, and the
 	 * other side may not be.
 	 */
-	List		*referenced_fkey_list;
+	List	   *referenced_fkey_list;
 } YbSkippableEntities;
 
 /*
@@ -271,10 +295,11 @@ typedef struct YbUpdateAffectedEntities
 	 * Identifying information about a list of entities that may be impacted by
 	 * the current query.
 	 */
-	struct YbUpdateEntity {
-		Oid oid; /* OID of the entity that might need an update */
-		YbSkippableEntityType etype; /* What type of entity is it? */
-	}			*entity_list;
+	struct YbUpdateEntity
+	{
+		Oid			oid;		/* OID of the entity that might need an update */
+		YbSkippableEntityType etype;	/* What type of entity is it? */
+	}		   *entity_list;
 
 	/*
 	 * YbUpdateColInfo holds information about columns that may be modified as
@@ -290,21 +315,22 @@ typedef struct YbUpdateAffectedEntities
 	 * update operation. Similarly, modification of a column that has a foreign
 	 * key constraint on it will trigger a referential integrity check.
 	 */
-	struct YbUpdateColInfo {
+	struct YbUpdateColInfo
+	{
 		/*
 		 * The attribute number of the column offset by
 		 *'YBFirstLowInvalidAttributeNumber' or 'FirstLowInvalidHeapAttributeNumber'
 		 * The offset makes the attribute number non-negative, allowing direct
 		 * interfacing with bitmapsets.
 		 */
-		AttrNumber attnum;
+		AttrNumber	attnum;
 
 		/*
-		 * A list of entities that reference the column. 
+		 * A list of entities that reference the column.
 		 * Entities are identified by their index in the entity_list.
 		 */
-		List *entity_refs;
-	}			*col_info_list;
+		List	   *entity_refs;
+	}		   *col_info_list;
 
 	/*
 	 * A matrix that facilitates optimizing the number of columns to be compared
@@ -314,7 +340,7 @@ typedef struct YbUpdateAffectedEntities
 	 * A working copy of this matrix is made for each tuple that is updated at
 	 * execution time.
 	 */
-	YbBitMatrix	matrix;
+	YbBitMatrix matrix;
 } YbUpdateAffectedEntities;
 
 #define YB_UPDATE_AFFECTED_ENTITIES_NUM_FIELDS(state) \
@@ -327,11 +353,12 @@ typedef struct YbUpdateAffectedEntities
  *		Apply rows produced by outer plan to result table(s),
  *		by inserting, updating, or deleting.
  *
- * If the originally named target table is a partitioned table, both
- * nominalRelation and rootRelation contain the RT index of the partition
- * root, which is not otherwise mentioned in the plan.  Otherwise rootRelation
- * is zero.  However, nominalRelation will always be set, as it's the rel that
- * EXPLAIN should claim is the INSERT/UPDATE/DELETE/MERGE target.
+ * If the originally named target table is a partitioned table or inheritance
+ * tree, both nominalRelation and rootRelation contain the RT index of the
+ * partition root or appendrel RTE, which is not otherwise mentioned in the
+ * plan.  Otherwise rootRelation is zero.  However, nominalRelation will
+ * always be set, as it's the rel that EXPLAIN should claim is the
+ * INSERT/UPDATE/DELETE/MERGE target.
  *
  * Note that rowMarks and epqParam are presumed to be valid for all the
  * table(s); they can't contain any info that varies across tables.
@@ -343,7 +370,7 @@ typedef struct ModifyTable
 	CmdType		operation;		/* INSERT, UPDATE, DELETE, or MERGE */
 	bool		canSetTag;		/* do we set the command tag/es_processed? */
 	Index		nominalRelation;	/* Parent RT index for use of EXPLAIN */
-	Index		rootRelation;	/* Root RT index, if target is partitioned */
+	Index		rootRelation;	/* Root RT index, if partitioned/inherited */
 	bool		partColsUpdated;	/* some part key in hierarchy updated? */
 	List	   *resultRelations;	/* integer list of RT indexes */
 	List	   *updateColnosLists;	/* per-target-table update_colnos lists */
@@ -364,11 +391,9 @@ typedef struct ModifyTable
 									 * MERGE */
 
 	List	   *ybPushdownTlist;	/* tlist for the pushdown SET expressions */
-	List	   *ybReturningColumns;	/* columns to fetch from DocDB */
+	List	   *ybReturningColumns; /* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
-	bool 		ybUseScanTupleInUpdate; /* use old scan tuple in UPDATE to construct the new tuple */
-	bool		ybHasWholeRowAttribute; /* whether subplan tlist contains wholerow junk attribute */
 
 	/*
 	 * A collection of entities that are impacted by the ModifyTable query, and
@@ -509,16 +534,16 @@ typedef struct SeqScan
  * ----------------
  */
 
-typedef struct PushdownExprs
+typedef struct YbPushdownExprs
 {
-	List *quals;
-	List *colrefs;
-} PushdownExprs;
+	List	   *quals;
+	List	   *colrefs;
+} YbPushdownExprs;
 
 typedef struct YbSeqScan
 {
 	Scan		scan;
-	PushdownExprs yb_pushdown;
+	YbPushdownExprs yb_pushdown;
 	YbPlanInfo	yb_plan_info;
 } YbSeqScan;
 
@@ -581,11 +606,11 @@ typedef struct IndexScan
 	List	   *indexorderbyops;	/* OIDs of sort ops for ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
-	PushdownExprs yb_idx_pushdown;
-	PushdownExprs yb_rel_pushdown;
+	YbPushdownExprs yb_idx_pushdown;
+	YbPushdownExprs yb_rel_pushdown;
 	YbPlanInfo	yb_plan_info;
-	int         yb_distinct_prefixlen; /* distinct index scan prefix */
-	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
+	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
+	YbLockMechanism yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
 
 /* ----------------
@@ -628,7 +653,7 @@ typedef struct IndexOnlyScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
-	PushdownExprs yb_pushdown;
+	YbPushdownExprs yb_pushdown;
 	/*
 	 * yb_indexqual_for_recheck is the modified version of indexqual.
 	 * It is used in tuple recheck step only.
@@ -636,7 +661,7 @@ typedef struct IndexOnlyScan
 	 */
 	List	   *yb_indexqual_for_recheck;
 	YbPlanInfo	yb_plan_info;
-	int			yb_distinct_prefixlen; /* distinct index scan prefix */
+	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
 } IndexOnlyScan;
 
 /* ----------------
@@ -690,7 +715,7 @@ typedef struct YbBitmapIndexScan
 	List	   *indexqual;		/* list of index quals (OpExprs) */
 	List	   *indexqualorig;	/* the same in original form */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
-	PushdownExprs yb_idx_pushdown;
+	YbPushdownExprs yb_idx_pushdown;
 	YbPlanInfo	yb_plan_info;
 } YbBitmapIndexScan;
 
@@ -721,14 +746,14 @@ typedef struct BitmapHeapScan
 typedef struct YbBitmapTableScan
 {
 	Scan		scan;
-	PushdownExprs rel_pushdown;		/* any pushable quals that aren't already
+	YbPushdownExprs rel_pushdown;	/* any pushable quals that aren't already
 									 * guaranteed by the Bitmap Index Scan
 									 * nodes. */
-	PushdownExprs recheck_pushdown;		/* pushable index quals */
-	List		 *recheck_local_quals;	/* non-pushable index quals */
-	PushdownExprs fallback_pushdown;	/* all pushable quals */
-	List		 *fallback_local_quals;	/* all non-pushable quals */
-	YbPlanInfo	  yb_plan_info;
+	YbPushdownExprs recheck_pushdown;	/* pushable index quals */
+	List	   *recheck_local_quals;	/* non-pushable index quals */
+	YbPushdownExprs fallback_pushdown;	/* all pushable quals */
+	List	   *fallback_local_quals;	/* all non-pushable quals */
+	YbPlanInfo	yb_plan_info;
 } YbBitmapTableScan;
 
 /* ----------------
@@ -994,21 +1019,21 @@ typedef struct NestLoop
  */
 typedef struct YbBNLHashClauseInfo
 {
-	Oid hashOp;				/*
-							 * Operator to hash the outer side of this clause
-							 * with. The inner side must be the left input of
-							 * this op.
-							 */
-	int innerHashAttNo;		/* Attno of inner side variable. */
-	Expr *outerParamExpr;	/* Outer expression of this clause. */
-	Expr *orig_expr;
+	Oid			hashOp;			/*
+								 * Operator to hash the outer side of this clause
+								 * with. The inner side must be the left input of
+								 * this op.
+								 */
+	int			innerHashAttNo; /* Attno of inner side variable. */
+	Expr	   *outerParamExpr; /* Outer expression of this clause. */
+	Expr	   *orig_expr;
 } YbBNLHashClauseInfo;
 
 typedef struct YbBatchedNestLoop
 {
-	NestLoop nl;
+	NestLoop	nl;
 
-	double first_batch_factor;
+	double		first_batch_factor;
 	/* Only relevant if we're using the hash batching strategy. */
 
 	/*
@@ -1016,9 +1041,9 @@ typedef struct YbBatchedNestLoop
 	 * hashable join clause.
 	 */
 	YbBNLHashClauseInfo *hashClauseInfos;
-	int num_hashClauseInfos;
+	int			num_hashClauseInfos;
 	/* remaining fields are just like the sort-key info in struct Sort */
-	int			numSortCols;		/* number of sort-key columns */
+	int			numSortCols;	/* number of sort-key columns */
 	AttrNumber *sortColIdx;		/* their indexes in the target list */
 	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
 	Oid		   *collations;		/* OIDs of collations */
@@ -1030,7 +1055,7 @@ typedef struct NestLoopParam
 	NodeTag		type;
 	int			paramno;		/* number of the PARAM_EXEC Param to set */
 	Var		   *paramval;		/* outer-relation Var to assign to Param */
-	int	   		yb_batch_size;	/* Batch size of this param. */
+	int			yb_batch_size;	/* Batch size of this param. */
 } NestLoopParam;
 
 /* ----------------
@@ -1359,7 +1384,7 @@ typedef struct Limit
  * doing a separate remote query to lock each selected row is usually pretty
  * unappealing, so early locking remains a credible design choice for FDWs.
  *
- * When doing UPDATE, DELETE, or SELECT FOR UPDATE/SHARE, we have to uniquely
+ * When doing UPDATE/DELETE/MERGE/SELECT FOR UPDATE/SHARE, we have to uniquely
  * identify all the source rows, not only those from the target relations, so
  * that we can perform EvalPlanQual rechecking at need.  For plain tables we
  * can just fetch the TID, much as for a target relation; this case is
@@ -1388,7 +1413,7 @@ typedef enum RowMarkType
  * PlanRowMark -
  *	   plan-time representation of FOR [KEY] UPDATE/SHARE clauses
  *
- * When doing UPDATE, DELETE, or SELECT FOR UPDATE/SHARE, we create a separate
+ * When doing UPDATE/DELETE/MERGE/SELECT FOR UPDATE/SHARE, we create a separate
  * PlanRowMark node for each non-target relation in the query.  Relations that
  * are not specified as FOR UPDATE/SHARE are marked ROW_MARK_REFERENCE (if
  * regular tables or supported foreign tables) or ROW_MARK_COPY (if not).
@@ -1582,11 +1607,11 @@ typedef struct PartitionPruneStepCombine
 	List	   *source_stepids;
 } PartitionPruneStepCombine;
 
-typedef struct PartitionPruneStepFuncOp
+typedef struct YbPartitionPruneStepFuncOp
 {
 	PartitionPruneStep step;
-	List       *exprs;
-} PartitionPruneStepFuncOp;
+	List	   *exprs;
+} YbPartitionPruneStepFuncOp;
 
 /*
  * Plan invalidation info

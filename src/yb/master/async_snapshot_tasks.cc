@@ -85,10 +85,6 @@ TabletId AsyncTabletSnapshotOp::tablet_id() const {
   return tablet_->tablet_id();
 }
 
-TabletServerId AsyncTabletSnapshotOp::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->id() : "";
-}
-
 bool AsyncTabletSnapshotOp::RetryAllowed(TabletServerErrorPB::Code code, const Status& status) {
   switch (code) {
     case TabletServerErrorPB::TABLET_NOT_FOUND:
@@ -193,6 +189,7 @@ AsyncTabletSnapshotOp::HandleReplicaLookupFailure(const Status& replica_lookup_s
 }
 
 void AsyncTabletSnapshotOp::Finished(const Status& status) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "status: " << status << ", resp: " << AsString(resp_);
   if (!callback_) {
     return;
   }

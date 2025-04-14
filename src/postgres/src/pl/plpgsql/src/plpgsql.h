@@ -1013,7 +1013,8 @@ typedef struct PLpgSQL_function
 	struct PLpgSQL_execstate *cur_estate;
 	unsigned long use_count;
 
-	uint64 yb_catalog_version; /* Catalog version when this function was compiled */
+	uint64		yb_catalog_version; /* Catalog version when this function was
+									 * compiled */
 } PLpgSQL_function;
 
 /*
@@ -1077,7 +1078,7 @@ typedef struct PLpgSQL_execstate
 
 	/* lookup table to use for executing type casts */
 	HTAB	   *cast_hash;
-	MemoryContext cast_hash_context;
+	MemoryContext cast_hash_context;	/* not used; now always NULL */
 
 	/* memory context for statement-lifespan temporary values */
 	MemoryContext stmt_mcontext;	/* current stmt context, or NULL if none */
@@ -1323,6 +1324,7 @@ extern void plpgsql_dumptree(PLpgSQL_function *func);
  */
 extern int	plpgsql_base_yylex(void);
 extern int	plpgsql_yylex(void);
+extern int	plpgsql_token_length(void);
 extern void plpgsql_push_back_token(int token);
 extern bool plpgsql_token_is_unreserved_keyword(int token);
 extern void plpgsql_append_source_text(StringInfo buf,

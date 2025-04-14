@@ -479,7 +479,8 @@ Result<std::string> GetEncodedHashPartitionKey(const std::string& partition_key)
 
 } // namespace
 
-Result<std::string> PartitionSchema::GetEncodedPartitionKey(const std::string& partition_key) {
+Result<std::string> PartitionSchema::GetEncodedPartitionKey(
+    const std::string& partition_key) const {
   if (!IsHashPartitioning() || partition_key.empty()) {
     return partition_key;
   }
@@ -652,7 +653,7 @@ Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
                              0, kMaxPartitionKey);
   }
 
-  LOG(INFO) << "Creating partitions with num_tablets: " << num_tablets;
+  VLOG(1) << "Creating partitions with num_tablets: " << num_tablets;
 
   // May be also add an upper bound? TODO.
   if (num_tablets <= 0) {

@@ -149,7 +149,13 @@ Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped
   RETURN_NOT_OK(Reconnect());
 
   started_ = true;
-  return wait_tablets_bootstrapped ? WaitStarted() : Status::OK();
+  if (wait_tablets_bootstrapped) {
+    RETURN_NOT_OK(WaitStarted());
+  }
+  if (start_pg_) {
+    RETURN_NOT_OK(start_pg_());
+  }
+  return Status::OK();
 }
 
 string MiniTabletServer::ToString() const { return Format("ts-$0", index_); }
@@ -195,6 +201,9 @@ void MiniTabletServer::Shutdown() {
     tunnel_->Shutdown();
   }
   if (started_) {
+    if (shutdown_pg_) {
+      shutdown_pg_();
+    }
     // Save bind address and port so we can later restart the server.
     opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(
         index_, bound_rpc_addr().port());
@@ -310,11 +319,9 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   Schema schema_with_ids = SchemaBuilder(schema).Build();
   auto partition = tablet::CreateDefaultPartition(schema_with_ids);
 
-  auto table_info = std::make_shared<tablet::TableInfo>(
-      consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,
-      table_id, ns_id, table_id, table_type, schema_with_ids, qlexpr::IndexMap(),
-      std::nullopt /* index_info */, 0 /* schema_version */, partition.first, "" /* pg_table_id */,
-      tablet::SkipTableTombstoneCheck::kFalse);
+  auto table_info = tablet::TableInfo::TEST_CreateWithLogPrefix(
+      consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()),
+      table_id, ns_id, table_id, table_type, schema_with_ids, partition.first);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(
       table_info, tablet_id, partition.second, config));
@@ -365,6 +372,17 @@ MetricEntity& MiniTabletServer::metric_entity() const {
 const MemTrackerPtr& MiniTabletServer::mem_tracker() const {
   CHECK(started_);
   return server_->mem_tracker();
+}
+
+HybridTime MiniTabletServer::Now() const {
+  CHECK(started_);
+  return server_->clock()->Now();
+}
+
+void MiniTabletServer::SetPgServerHandlers(
+    std::function<Status(void)> start_pg, std::function<void(void)> shutdown_pg) {
+  start_pg_ = start_pg;
+  shutdown_pg_ = shutdown_pg;
 }
 
 } // namespace tserver

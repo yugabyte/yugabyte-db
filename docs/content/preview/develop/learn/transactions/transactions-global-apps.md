@@ -33,8 +33,8 @@ In such scenarios, you can enable [follower reads](../../../../explore/going-bey
 To enable follower reads, set the transaction to be [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) and turn on the YSQL parameter `yb_read_from_followers`. For example:
 
 ```plpgsql
-SET yb_read_from_followers = true;
 BEGIN TRANSACTION READ ONLY;
+SET yb_read_from_followers = true;
 ...
 COMMIT;
 ```

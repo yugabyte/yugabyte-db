@@ -32,10 +32,13 @@ struct ConnectionStats {
   uint64_t waiting_clients;
   uint64_t active_servers;
   uint64_t idle_servers;
+  uint64_t sticky_connections;
   uint64_t query_rate;
   uint64_t transaction_rate;
   uint64_t avg_wait_time_ns;
   uint64_t last_updated_timestamp;
   char database_name[DB_NAME_MAX_LEN];
   char user_name[USER_NAME_MAX_LEN];
+  int database_oid;
+  int user_oid;
 };

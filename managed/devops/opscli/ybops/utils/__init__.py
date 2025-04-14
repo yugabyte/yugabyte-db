@@ -17,10 +17,12 @@ import pipes
 import platform
 import random
 import re
+import requests
 import socket
 import string
 import subprocess
 import sys
+import time
 
 from enum import Enum
 
@@ -58,6 +60,9 @@ DEFAULT_YSQL_PROXY_RPC_PORT = 5433
 DEFAULT_REDIS_PROXY_HTTP_PORT = 11000
 DEFAULT_REDIS_PROXY_RPC_PORT = 6379
 DEFAULT_NODE_EXPORTER_HTTP_PORT = 9300
+
+MAX_RETRIES = 5
+RETRY_DELAY = 10  # Initial delay, increases exponentially
 
 
 def get_path_from_yb(path):
@@ -302,6 +307,7 @@ def validate_instance(connect_options, mount_paths, **kwargs):
     Returns:
         (dict): return success/failure code and corresponding message (0 = success, 1-3 = failure)
     """
+    remote_shell = None
     try:
         remote_shell = RemoteShell(connect_options)
         for path in [mount_path.strip() for mount_path in mount_paths]:
@@ -321,7 +327,7 @@ def validate_instance(connect_options, mount_paths, **kwargs):
         logging.error("[app] Failed to execute remote command: {}".format(ex))
         return ValidationResult.UNREACHABLE
     finally:
-        if remote_shell:
+        if remote_shell is not None:
             remote_shell.close()
 
 
@@ -334,6 +340,7 @@ def validate_cron_status(connect_options, **kwargs):
     Returns:
         bool: true if all cronjobs are present, false otherwise (or if errored)
     """
+    remote_shell = None
     try:
         remote_shell = RemoteShell(connect_options)
         stdout = remote_shell.exec_command("crontab -l", output_only=True)
@@ -343,7 +350,7 @@ def validate_cron_status(connect_options, **kwargs):
         logging.error("Failed to validate cronjobs: {}".format(ex))
         return False
     finally:
-        if remote_shell:
+        if remote_shell is not None:
             remote_shell.close()
 
 
@@ -356,6 +363,7 @@ def remote_exec_command(connect_options, cmd, **kwargs):
         stdout (str): output log
         stderr (str): error logs
     """
+    remote_shell = None
     try:
         remote_shell = RemoteShell(connect_options)
         rc, stdout, stderr = remote_shell.exec_command(cmd)
@@ -364,7 +372,7 @@ def remote_exec_command(connect_options, cmd, **kwargs):
         logging.error("Failed to execute remote command: {}".format(e))
         return 1, None, None  # treat this as a non-zero return code
     finally:
-        if remote_shell:
+        if remote_shell is not None:
             remote_shell.close()
 
 
@@ -433,15 +441,60 @@ def get_mount_roots(connect_options, paths):
     connect_options_copy = connect_options.copy()
     # Remove node_agent_user to default to the user of the server process.
     connect_options_copy.pop("node_agent_user")
-    remote_shell = RemoteShell(connect_options_copy)
-    remote_cmd = 'df --output=target {}'.format(" ".join(paths.split(",")))
-    # Example output of the df cmd
-    # $ df --output=target /bar/foo/rnd /storage/abc
-    # Mounted on
-    # /bar
-    # /storage
+    remote_shell = None
+    try:
+        remote_shell = RemoteShell(connect_options_copy)
+        remote_cmd = 'df --output=target {}'.format(" ".join(paths.split(",")))
+        # Example output of the df cmd
+        # $ df --output=target /bar/foo/rnd /storage/abc
+        # Mounted on
+        # /bar
+        # /storage
 
-    mount_roots = remote_shell.run_command(remote_cmd).stdout.split('\n')[1:]
-    return ",".join(
-        [mroot.strip() for mroot in mount_roots if mroot.strip()]
-    )
+        mount_roots = remote_shell.run_command(remote_cmd).stdout.split('\n')[1:]
+        return ",".join(
+            [mroot.strip() for mroot in mount_roots if mroot.strip()]
+        )
+    finally:
+        if remote_shell is not None:
+            remote_shell.close()
+
+
+def retry_operation_for_timeout(operation, *args, operation_name="", **kwargs):
+    """
+    Generic retry mechanism with exponential backoff for timeout calls.
+
+    :param operation: Function to retry.
+    :param args: Arguments to pass to the function.
+    :param operation_name: Name of the operation for logging.
+    :param kwargs: Keyword arguments to pass to the function.
+    :return: Result of the operation if successful.
+    :raises: Last exception if all retries fail.
+    """
+    precondition_check = kwargs.get('precondition_check', None)
+    postcondition_check = kwargs.get('postcondition_check', None)
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            if precondition_check:
+                kwargs.pop('precondition_check')
+                if precondition_check():
+                    logging.warning(f"{operation_name} is still in progress... \
+                                     Waiting ({attempt}/{MAX_RETRIES})")
+                    time.sleep(RETRY_DELAY * (2 ** (attempt - 1)))
+                    continue
+
+            if postcondition_check:
+                kwargs.pop('postcondition_check')
+                if precondition_check():
+                    logging.info(f"{operation_name} is complete... Returning")
+                    return
+            logging.info(f"Attempting {operation_name} (Attempt {attempt}/{MAX_RETRIES})")
+            return operation(*args, **kwargs)  # Execute the function
+        except (requests.exceptions.RequestException, TimeoutError, socket.timeout) as e:
+            logging.warning(f"Timeout during {operation_name} with error {str(e)}. \
+                            Retrying... ({attempt}/{MAX_RETRIES})")
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY * (2 ** (attempt - 1)))  # Exponential backoff
+            else:
+                logging.error(f"Failed to complete {operation_name} after {MAX_RETRIES} attempts")
+                raise  # Raise the last exception

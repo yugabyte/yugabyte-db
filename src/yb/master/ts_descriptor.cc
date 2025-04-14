@@ -37,9 +37,11 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
@@ -49,9 +51,12 @@
 #include "yb/util/status_format.h"
 
 DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 namespace yb {
 namespace master {
+
+bool PersistentTServerInfo::IsLive() const { return pb.state() == SysTabletServerEntryPB::LIVE; }
 
 TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
                            RegisteredThroughHeartbeat registered_through_heartbeat,
@@ -60,7 +65,7 @@ TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
   : permanent_uuid_(permanent_uuid),
     local_cloud_info_(std::move(local_cloud_info)),
     proxy_cache_(proxy_cache),
-    last_heartbeat_(registered_through_heartbeat ? MonoTime::Now() : MonoTime()),
+    last_heartbeat_(MonoTime::NowIf(registered_through_heartbeat)),
     registered_through_heartbeat_(registered_through_heartbeat),
     latest_report_seqno_(std::numeric_limits<int32_t>::min()),
     has_tablet_report_(false),
@@ -85,7 +90,7 @@ Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> TSDescriptor::Create
 
 TSDescriptorPtr TSDescriptor::LoadFromEntry(
     const std::string& permanent_uuid, const SysTabletServerEntryPB& metadata,
-    CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache) {
+    CloudInfoPB&& cloud_info, rpc::ProxyCache* proxy_cache, MonoTime load_time) {
   // The RegisteredThroughHeartbeat parameter controls how last_heartbeat_ is initialized.
   // If true, last_heartbeat_ is set to now. If false, last_heartbeat_ is an uninitialized MonoTime.
   // Use true here because:
@@ -125,10 +130,14 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   std::lock_guard spinlock(mutex_);
   // After re-registering, make the TS re-report its tablets.
   has_tablet_report_ = false;
-
   l.mutable_data()->pb.set_instance_seqno(instance.instance_seqno());
   *l.mutable_data()->pb.mutable_registration() = registration.common();
   *l.mutable_data()->pb.mutable_resources() = registration.resources();
+  if (registration.has_version_info()) {
+    *l.mutable_data()->pb.mutable_version_info() = registration.version_info();
+  } else {
+    l.mutable_data()->pb.clear_version_info();
+  }
   l.mutable_data()->pb.set_state(
       registered_through_heartbeat ? SysTabletServerEntryPB::LIVE
                                    : SysTabletServerEntryPB::UNRESPONSIVE);
@@ -152,8 +161,8 @@ std::string TSDescriptor::placement_id() const {
   return placement_id_;
 }
 
-Status TSDescriptor::UpdateTSMetadataFromHeartbeat(
-    const TSHeartbeatRequestPB& req, const TSDescriptor::WriteLock& lock) {
+Status TSDescriptor::UpdateFromHeartbeat(const TSHeartbeatRequestPB& req,
+                                         const TSDescriptor::WriteLock& lock) {
   DCHECK_GE(req.num_live_tablets(), 0);
   DCHECK_GE(req.leader_count(), 0);
   {
@@ -213,6 +222,17 @@ bool TSDescriptor::has_tablet_report() const {
 void TSDescriptor::set_has_tablet_report(bool has_report) {
   std::lock_guard l(mutex_);
   has_tablet_report_ = has_report;
+  receiving_full_report_seq_no_ = 0;
+}
+
+int32_t TSDescriptor::receiving_full_report_seq_no() const {
+  SharedLock lock(mutex_);
+  return receiving_full_report_seq_no_;
+}
+
+void TSDescriptor::set_receiving_full_report_seq_no(int32_t value) {
+  std::lock_guard lock(mutex_);
+  receiving_full_report_seq_no_ = value;
 }
 
 bool TSDescriptor::has_faulty_drive() const {
@@ -444,9 +464,7 @@ std::size_t TSDescriptor::NumTasks() const {
   return tablets_pending_delete_.size();
 }
 
-bool TSDescriptor::IsLive() const {
-  return LockForRead()->pb.state() == SysTabletServerEntryPB::LIVE;
-}
+bool TSDescriptor::IsLive() const { return LockForRead()->IsLive(); }
 
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
@@ -470,5 +488,25 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
   }
   return !placement_uuid().empty();
 }
+
+std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
+  auto proto_lock = LockForWrite();
+  SharedLock<decltype(mutex_)> transient_lock(mutex_);
+  if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
+      time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
+          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+    proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
+    return std::move(proto_lock);
+  }
+  return std::nullopt;
+}
+
+RefreshYsqlLeaseInfoPB YsqlLeaseUpdate::ToPB() {
+  RefreshYsqlLeaseInfoPB pb;
+  pb.set_new_lease(new_lease);
+  pb.set_lease_epoch(lease_epoch);
+  return pb;
+}
+
 } // namespace master
 } // namespace yb

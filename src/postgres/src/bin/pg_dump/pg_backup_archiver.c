@@ -42,6 +42,7 @@
 
 /* YB includes */
 #include "catalog/pg_class_d.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 
 #define TEXT_DUMP_HEADER "--\n-- YSQL database dump\n--\n\n"
 #define TEXT_DUMPALL_HEADER "--\n-- YSQL database cluster dump\n--\n\n"
@@ -94,6 +95,7 @@ static RestorePass _tocEntryRestorePass(TocEntry *te);
 static bool _tocEntryIsACL(TocEntry *te);
 static void _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te);
 static void _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te);
+static bool is_load_via_partition_root(TocEntry *te);
 static void buildTocEntryArrays(ArchiveHandle *AH);
 static void _moveBefore(TocEntry *pos, TocEntry *te);
 static int	_discoverArchiveFormat(ArchiveHandle *AH);
@@ -146,6 +148,17 @@ static void inhibit_data_for_failed_table(ArchiveHandle *AH, TocEntry *te);
 
 static void StrictNamesCheck(RestoreOptions *ropt);
 
+/*
+ * Set the yb_disable_auto_analyze GUC on the database to disable auto analyze. For backwards
+ * compatiblity, check for the presence of the GUC before setting it.
+ */
+static const char *yb_disable_auto_analyze_cmd =
+		"DO $$\n"
+		"BEGIN\n"
+		"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
+		"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
+		"END IF;\n"
+		"END $$;\n";
 
 /*
  * Allocate a new DumpOptions block containing all default values.
@@ -170,6 +183,8 @@ InitDumpOptions(DumpOptions *opts)
 	opts->include_everything = true;
 	opts->cparams.promptPassword = TRI_DEFAULT;
 	opts->dumpSections = DUMP_UNSECTIONED;
+	opts->dumpSchema = true;
+	opts->dumpData = true;
 }
 
 /*
@@ -188,8 +203,8 @@ dumpOptionsFromRestoreOptions(RestoreOptions *ropt)
 	dopt->cparams.username = ropt->cparams.username ? pg_strdup(ropt->cparams.username) : NULL;
 	dopt->cparams.promptPassword = ropt->cparams.promptPassword;
 	dopt->outputClean = ropt->dropSchema;
-	dopt->dataOnly = ropt->dataOnly;
-	dopt->schemaOnly = ropt->schemaOnly;
+	dopt->dumpData = ropt->dumpData;
+	dopt->dumpSchema = ropt->dumpSchema;
 	dopt->if_exists = ropt->if_exists;
 	dopt->column_inserts = ropt->column_inserts;
 	dopt->dumpSections = ropt->dumpSections;
@@ -434,12 +449,12 @@ RestoreArchive(Archive *AHX)
 	 * Work out if we have an implied data-only restore. This can happen if
 	 * the dump was data only or if the user has used a toc list to exclude
 	 * all of the schema data. All we do is look for schema entries - if none
-	 * are found then we set the dataOnly flag.
+	 * are found then we unset the dumpSchema flag.
 	 *
 	 * We could scan for wanted TABLE entries, but that is not the same as
-	 * dataOnly. At this stage, it seems unnecessary (6-Mar-2001).
+	 * data-only. At this stage, it seems unnecessary (6-Mar-2001).
 	 */
-	if (!ropt->dataOnly)
+	if (ropt->dumpSchema)
 	{
 		int			impliedDataOnly = 1;
 
@@ -453,7 +468,7 @@ RestoreArchive(Archive *AHX)
 		}
 		if (impliedDataOnly)
 		{
-			ropt->dataOnly = impliedDataOnly;
+			ropt->dumpSchema = false;
 			pg_log_info("implied data-only restore");
 		}
 	}
@@ -730,6 +745,13 @@ RestoreArchive(Archive *AHX)
 		}
 	}
 
+	if (AH->public.dopt->include_yb_metadata && !AH->public.ropt->createDB)
+	{
+		ahprintf(AH, "-- YB: re-enable auto analyze after all catalog changes\n");
+		ahprintf(AH, yb_disable_auto_analyze_cmd, "off");
+		ahprintf(AH, "\n");
+	}
+
 	if (ropt->single_txn)
 	{
 		if (AH->connection)
@@ -775,7 +797,7 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 	/* Dump any relevant dump warnings to stderr */
 	if (!ropt->suppressDumpWarnings && strcmp(te->desc, "WARNING") == 0)
 	{
-		if (!ropt->dataOnly && te->defn != NULL && strlen(te->defn) != 0)
+		if (ropt->dumpSchema && te->defn != NULL && strlen(te->defn) != 0)
 			pg_log_warning("warning from original dump file: %s", te->defn);
 		else if (te->copyStmt != NULL && strlen(te->copyStmt) != 0)
 			pg_log_warning("warning from original dump file: %s", te->copyStmt);
@@ -887,6 +909,8 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 				}
 				else
 				{
+					bool		use_truncate;
+
 					_disableTriggersIfNecessary(AH, te);
 
 					/* Select owner and schema as necessary */
@@ -898,13 +922,24 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 
 					/*
 					 * In parallel restore, if we created the table earlier in
-					 * the run then we wrap the COPY in a transaction and
-					 * precede it with a TRUNCATE.  If archiving is not on
-					 * this prevents WAL-logging the COPY.  This obtains a
-					 * speedup similar to that from using single_txn mode in
-					 * non-parallel restores.
+					 * this run (so that we know it is empty) and we are not
+					 * restoring a load-via-partition-root data item then we
+					 * wrap the COPY in a transaction and precede it with a
+					 * TRUNCATE.  If wal_level is set to minimal this prevents
+					 * WAL-logging the COPY.  This obtains a speedup similar
+					 * to that from using single_txn mode in non-parallel
+					 * restores.
+					 *
+					 * We mustn't do this for load-via-partition-root cases
+					 * because some data might get moved across partition
+					 * boundaries, risking deadlock and/or loss of previously
+					 * loaded data.  (We assume that all partitions of a
+					 * partitioned table will be treated the same way.)
 					 */
-					if (is_parallel && te->created)
+					use_truncate = is_parallel && te->created &&
+						!is_load_via_partition_root(te);
+
+					if (use_truncate)
 					{
 						/*
 						 * Parallel restore is always talking directly to a
@@ -942,7 +977,7 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 					AH->outputKind = OUTPUT_SQLCMDS;
 
 					/* close out the transaction started above */
-					if (is_parallel && te->created)
+					if (use_truncate)
 						CommitTransaction(&AH->public);
 
 					_enableTriggersIfNecessary(AH, te);
@@ -978,6 +1013,8 @@ NewRestoreOptions(void)
 	opts->format = archUnknown;
 	opts->cparams.promptPassword = TRI_DEFAULT;
 	opts->dumpSections = DUMP_UNSECTIONED;
+	opts->dumpSchema = true;
+	opts->dumpData = true;
 
 	return opts;
 }
@@ -988,7 +1025,7 @@ _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te)
 	RestoreOptions *ropt = AH->public.ropt;
 
 	/* This hack is only needed in a data-only restore */
-	if (!ropt->dataOnly || !ropt->disable_triggers)
+	if (ropt->dumpSchema || !ropt->disable_triggers)
 		return;
 
 	pg_log_info("disabling triggers for %s", te->tag);
@@ -1014,7 +1051,7 @@ _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te)
 	RestoreOptions *ropt = AH->public.ropt;
 
 	/* This hack is only needed in a data-only restore */
-	if (!ropt->dataOnly || !ropt->disable_triggers)
+	if (ropt->dumpSchema || !ropt->disable_triggers)
 		return;
 
 	pg_log_info("enabling triggers for %s", te->tag);
@@ -1032,6 +1069,43 @@ _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te)
 	 */
 	ahprintf(AH, "ALTER TABLE %s ENABLE TRIGGER ALL;\n\n",
 			 fmtQualifiedId(te->namespace, te->tag));
+}
+
+/*
+ * Detect whether a TABLE DATA TOC item is performing "load via partition
+ * root", that is the target table is an ancestor partition rather than the
+ * table the TOC item is nominally for.
+ *
+ * In newer archive files this can be detected by checking for a special
+ * comment placed in te->defn.  In older files we have to fall back to seeing
+ * if the COPY statement targets the named table or some other one.  This
+ * will not work for data dumped as INSERT commands, so we could give a false
+ * negative in that case; fortunately, that's a rarely-used option.
+ */
+static bool
+is_load_via_partition_root(TocEntry *te)
+{
+	if (te->defn &&
+		strncmp(te->defn, "-- load via partition root ", 27) == 0)
+		return true;
+	if (te->copyStmt && *te->copyStmt)
+	{
+		PQExpBuffer copyStmt = createPQExpBuffer();
+		bool		result;
+
+		/*
+		 * Build the initial part of the COPY as it would appear if the
+		 * nominal target table is the actual target.  If we see anything
+		 * else, it must be a load-via-partition-root case.
+		 */
+		appendPQExpBuffer(copyStmt, "COPY %s ",
+						  fmtQualifiedId(te->namespace, te->tag));
+		result = strncmp(te->copyStmt, copyStmt->data, copyStmt->len) != 0;
+		destroyPQExpBuffer(copyStmt);
+		return result;
+	}
+	/* Assume it's not load-via-partition-root */
+	return false;
 }
 
 /*
@@ -1174,10 +1248,13 @@ PrintTOCSummary(Archive *AHX)
 	curSection = SECTION_PRE_DATA;
 	for (te = AH->toc->next; te != AH->toc; te = te->next)
 	{
+		/* This bit must match ProcessArchiveRestoreOptions' marking logic */
 		if (te->section != SECTION_NONE)
 			curSection = te->section;
+		te->reqs = _tocEntryRequired(te, curSection, AH);
+		/* Now, should we print it? */
 		if (ropt->verbose ||
-			(_tocEntryRequired(te, curSection, AH) & (REQ_SCHEMA | REQ_DATA)) != 0)
+			(te->reqs & (REQ_SCHEMA | REQ_DATA)) != 0)
 		{
 			char	   *sanitized_name;
 			char	   *sanitized_schema;
@@ -2682,6 +2759,7 @@ processEncodingEntry(ArchiveHandle *AH, TocEntry *te)
 			pg_fatal("unrecognized encoding \"%s\"",
 					 ptr1);
 		AH->public.encoding = encoding;
+		setFmtEncoding(encoding);
 	}
 	else
 		pg_fatal("invalid ENCODING item: %s",
@@ -2868,7 +2946,10 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 			 * TOC entry types only if their parent object is being restored.
 			 * Without selectivity options, we let through everything in the
 			 * archive.  Note there may be such entries with no parent, eg
-			 * non-default ACLs for built-in objects.
+			 * non-default ACLs for built-in objects.  Also, we make
+			 * per-column ACLs additionally depend on the table's ACL if any
+			 * to ensure correct restore order, so those dependencies should
+			 * be ignored in this check.
 			 *
 			 * This code depends on the parent having been marked already,
 			 * which should be the case; if it isn't, perhaps due to
@@ -2879,8 +2960,23 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 			 * But it's hard to tell which of their dependencies is the one to
 			 * consult.
 			 */
-			if (te->nDeps != 1 ||
-				TocIDRequired(AH, te->dependencies[0]) == 0)
+			bool		dumpthis = false;
+
+			for (int i = 0; i < te->nDeps; i++)
+			{
+				TocEntry   *pte = getTocEntryByDumpId(AH, te->dependencies[i]);
+
+				if (!pte)
+					continue;	/* probably shouldn't happen */
+				if (strcmp(pte->desc, "ACL") == 0)
+					continue;	/* ignore dependency on another ACL */
+				if (pte->reqs == 0)
+					continue;	/* this object isn't marked, so ignore it */
+				/* Found a parent to be dumped, so we want to dump this too */
+				dumpthis = true;
+				break;
+			}
+			if (!dumpthis)
 				return 0;
 		}
 	}
@@ -2977,8 +3073,12 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 			res = res & ~REQ_DATA;
 	}
 
-	/* If there's no definition command, there's no schema component */
-	if (!te->defn || !te->defn[0])
+	/*
+	 * If there's no definition command, there's no schema component.  Treat
+	 * "load via partition root" comments as not schema.
+	 */
+	if (!te->defn || !te->defn[0] ||
+		strncmp(te->defn, "-- load via partition root ", 27) == 0)
 		res = res & ~REQ_SCHEMA;
 
 	/*
@@ -2988,13 +3088,13 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 	if ((strcmp(te->desc, "<Init>") == 0) && (strcmp(te->tag, "Max OID") == 0))
 		return 0;
 
-	/* Mask it if we only want schema */
-	if (ropt->schemaOnly)
+	/* Mask it if we don't want data */
+	if (!ropt->dumpData)
 	{
 		/*
-		 * The sequence_data option overrides schemaOnly for SEQUENCE SET.
+		 * The sequence_data option overrides dumpData for SEQUENCE SET.
 		 *
-		 * In binary-upgrade mode, even with schemaOnly set, we do not mask
+		 * In binary-upgrade mode, even with dumpData unset, we do not mask
 		 * out large objects.  (Only large object definitions, comments and
 		 * other metadata should be generated in binary-upgrade mode, not the
 		 * actual data, but that need not concern us here.)
@@ -3011,8 +3111,8 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 			res = res & REQ_SCHEMA;
 	}
 
-	/* Mask it if we only want data */
-	if (ropt->dataOnly)
+	/* Mask it if we don't want schema */
+	if (!ropt->dumpSchema)
 		res = res & REQ_DATA;
 
 	return res;
@@ -3083,6 +3183,7 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	{
 		ahprintf(AH, "SET yb_binary_restore = true;\n");
 		ahprintf(AH, "SET yb_ignore_pg_class_oids = false;\n");
+		ahprintf(AH, "SET yb_ignore_relfilenode_ids = false;\n");
 		ahprintf(AH, "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n");
 	}
 	ahprintf(AH, "SET statement_timeout = 0;\n");
@@ -3123,19 +3224,36 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 		ahprintf(AH, "SET row_security = off;\n");
 
 	static bool first_run = true;
+
 	if (AH->public.dopt->include_yb_metadata && first_run)
 	{
 		first_run = false;
-		ahprintf(AH, "\n-- Set variable use_tablespaces (if not already set)\n"
-					 "\\if :{?use_tablespaces}\n"
-					 "\\else\n"
-					 "\\set use_tablespaces true\n"
-					 "\\endif\n");
-		ahprintf(AH, "\n-- Set variable use_roles (if not already set)\n"
-					 "\\if :{?use_roles}\n"
-					 "\\else\n"
-					 "\\set use_roles true\n"
-					 "\\endif\n");
+		ahprintf(AH,
+				 "\n-- Set variable use_tablespaces (if not already set)\n"
+				 "\\if :{?use_tablespaces}\n"
+				 "\\else\n"
+				 "\\set use_tablespaces true\n"
+				 "\\endif\n");
+		ahprintf(AH,
+				 "\n-- Set variable use_roles (if not already set)\n"
+				 "\\if :{?use_roles}\n"
+				 "\\else\n"
+				 "\\set use_roles true\n"
+				 "\\endif\n");
+
+		/* If the --create option is specified, the target database will be created and connected to.
+		 * The current connection is to another database and we don't want to disable auto analyze on
+		 * that.
+		 *
+		 * TODO: If --create is specified, disable auto analyze after the target database is created
+		 * and we connect to it.
+		 */
+		if (!AH->public.ropt->createDB)
+		{
+			ahprintf(AH,
+				"\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
+			ahprintf(AH, yb_disable_auto_analyze_cmd, "on");
+		}
 	}
 
 	ahprintf(AH, "\n");
@@ -3374,13 +3492,14 @@ _selectTablespace(ArchiveHandle *AH, const char *tablespace)
 
 		PQclear(res);
 	}
+	else if (AH->public.dopt->include_yb_metadata)
+		ahprintf(AH,
+				 "\\if :use_tablespaces\n"
+				 "    %s;\n"
+				 "\\endif\n\n",
+				 qry->data);
 	else
-		if (AH->public.dopt->include_yb_metadata)
-			ahprintf(AH, "\\if :use_tablespaces\n"
-						 "    %s;\n"
-						 "\\endif\n\n", qry->data);
-		else
-			ahprintf(AH, "%s;\n\n", qry->data);
+		ahprintf(AH, "%s;\n\n", qry->data);
 
 	if (AH->currTablespace)
 		free(AH->currTablespace);
@@ -3632,13 +3751,18 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			 * catalog. So, as a hack for table creation, we set AH->outputKind
 			 * to OUTPUT_OTHERDATA, so that ahprintf sends each statement to the
 			 * backend separately, avoiding the limitation.
+			 *
+			 * We do the same for tablegroup creation because CREATE TABLEGROUP
+			 * cannot run inside a transaction block.
 			 */
 			if (AH->currentTE &&
-				AH->currentTE->catalogId.tableoid == RelationRelationId &&
+				(AH->currentTE->catalogId.tableoid == RelationRelationId ||
+				 AH->currentTE->catalogId.tableoid == YbTablegroupRelationId) &&
 				AH->outputKind == OUTPUT_SQLCMDS)
 			{
 				ArchiverOutput yb_saved_output_kind = AH->outputKind;
 				static const char yb_zero_sqlparse[sizeof(AH->sqlparse)];
+
 				if (memcmp(&AH->sqlparse, &yb_zero_sqlparse,
 						   sizeof(AH->sqlparse)) != 0)
 					pg_fatal("AH->sqlparse not 0 before printing definition");
@@ -3710,9 +3834,26 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
 
 			if (AH->public.dopt->include_yb_metadata)
-				ahprintf(AH, "\\if :use_roles\n"
-							 "    %s\n"
-							 "\\endif\n\n", temp->data);
+			{
+				ahprintf(AH, "\\if :use_roles\n");
+				if (AH->public.dopt->yb_dump_role_checks)
+				{
+					PQExpBuffer role_buf = createPQExpBuffer();
+					appendStringLiteralAHX(role_buf, te->owner, AH);
+					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
+								 ") AS role_exists \\gset\n"
+								 "\\if :role_exists\n"
+								 "    %s\n"
+								 "\\else\n"
+								 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
+								 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
+					destroyPQExpBuffer(role_buf);
+				}
+				else
+					ahprintf(AH, "    %s\n", temp->data);
+
+				ahprintf(AH, "\\endif\n\n");
+			}
 			else
 				ahprintf(AH, "%s\n\n", temp->data);
 

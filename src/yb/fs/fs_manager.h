@@ -43,7 +43,7 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_uuid.h"
@@ -67,6 +67,7 @@ class ExternalMiniClusterFsInspector;
 
 class InstanceMetadataPB;
 
+YB_STRONGLY_TYPED_BOOL(CleanupTemporaryFiles);
 YB_STRONGLY_TYPED_BOOL(ShouldDeleteLogs);
 YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);
 
@@ -197,7 +198,7 @@ class FsManager {
 
   // Read all RaftGroupMetadataDirs and fill tablet_id_to_path_.
   // Return the tablet IDs in the metadata directory.
-  Result<std::vector<std::string>> ListTabletIds();
+  Result<std::vector<std::string>> ListTabletIds(CleanupTemporaryFiles cleanup_temporary_files);
 
   Result<std::string> GetUniverseUuidFromTserverInstanceMetadata() const;
 

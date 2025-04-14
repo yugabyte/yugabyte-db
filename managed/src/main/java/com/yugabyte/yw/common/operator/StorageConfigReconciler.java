@@ -3,6 +3,7 @@ package com.yugabyte.yw.common.operator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -11,6 +12,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
+import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
@@ -18,7 +20,10 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.StorageConfigStatus;
+import io.yugabyte.operator.v1alpha1.storageconfigspec.AwsSecretAccessKeySecret;
+import io.yugabyte.operator.v1alpha1.storageconfigspec.AzureStorageSasTokenSecret;
 import io.yugabyte.operator.v1alpha1.storageconfigspec.Data;
+import io.yugabyte.operator.v1alpha1.storageconfigspec.GcsCredentialsJsonSecret;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -55,25 +60,20 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     return cust.getUuid().toString();
   }
 
-  public static JsonNode getConfigPayloadFromCRD(StorageConfig sc) {
+  public JsonNode getConfigPayloadFromCRD(StorageConfig sc) {
     ObjectMapper objectMapper = new ObjectMapper();
     objectMapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
 
     objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
     objectMapper.configure(SerializationFeature.WRITE_NULL_MAP_VALUES, false);
+    // Convert to upper snake case for the customer config
+    objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.UPPER_SNAKE_CASE);
 
     ObjectNode payload = objectMapper.createObjectNode();
 
     Data data = sc.getSpec().getData();
     JsonNode dataJson = objectMapper.valueToTree(data);
     ObjectNode object = (ObjectNode) dataJson;
-    // TODO: find a better way to do cleanup
-    object.remove("aws_ACCESS_KEY_ID");
-    object.remove("aws_SECRET_ACCESS_KEY");
-    object.remove("backup_LOCATION");
-    object.remove("gcs_CREDENTIALS_JSON");
-    object.remove("azure_STORAGE_SAS_TOKEN");
-    object.remove("use_IAM");
 
     boolean useIAM = object.has("USE_IAM") && (object.get("USE_IAM").asBoolean(false) == true);
     object.remove("USE_IAM");
@@ -91,6 +91,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       }
       object.put(iamFieldName, useIAM);
     }
+    parseSecrets(object, sc);
 
     return dataJson;
   }
@@ -116,6 +117,41 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
 
     sc.setStatus(status);
     resourceClient.inNamespace(namespace).resource(sc).replaceStatus();
+  }
+
+  private void parseSecrets(ObjectNode configObject, StorageConfig sc) {
+    AwsSecretAccessKeySecret awsSecret = sc.getSpec().getAwsSecretAccessKeySecret();
+    if (awsSecret != null) {
+      Secret secret = operatorUtils.getSecret(awsSecret.getName(), awsSecret.getNamespace());
+      if (secret != null) {
+        String awsSecretKey = operatorUtils.parseSecretForKey(secret, "AWS_SECRET_ACCESS_KEY");
+        configObject.put("AWS_SECRET_ACCESS_KEY", awsSecretKey);
+      } else {
+        log.warn("AWS secret access key secret {} not found", awsSecret.getName());
+      }
+    }
+
+    GcsCredentialsJsonSecret gcsSecret = sc.getSpec().getGcsCredentialsJsonSecret();
+    if (gcsSecret != null) {
+      Secret secret = operatorUtils.getSecret(gcsSecret.getName(), gcsSecret.getNamespace());
+      if (secret != null) {
+        String gcsSecretKey = operatorUtils.parseSecretForKey(secret, "GCS_CREDENTIALS_JSON");
+        configObject.put("GCS_CREDENTIALS_JSON", gcsSecretKey);
+      } else {
+        log.warn("GCS credentials json secret {} not found", gcsSecret.getName());
+      }
+    }
+
+    AzureStorageSasTokenSecret azureSecret = sc.getSpec().getAzureStorageSasTokenSecret();
+    if (azureSecret != null) {
+      Secret secret = operatorUtils.getSecret(azureSecret.getName(), azureSecret.getNamespace());
+      if (secret != null) {
+        String azureSecretKey = operatorUtils.parseSecretForKey(secret, "AZURE_STORAGE_SAS_TOKEN");
+        configObject.put("AZURE_STORAGE_SAS_TOKEN", azureSecretKey);
+      } else {
+        log.warn("Azure storage sas token secret {} not found", azureSecret.getName());
+      }
+    }
   }
 
   @Override
@@ -180,8 +216,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       cc.setData((ObjectNode) payload);
       this.ccs.edit(cc);
     } catch (Exception e) {
-      log.error("Got Error {}", e);
-      log.info("Failed updating storageconfig {}, ", oldSc.getMetadata().getName());
+      log.error("Failed updating storageconfig {}, ", oldSc.getMetadata().getName(), e);
       updateStatus(newSc, false, configUUID, e.getMessage());
       return;
     }

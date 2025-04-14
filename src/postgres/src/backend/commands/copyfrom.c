@@ -53,8 +53,9 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
-/* Yugabyte includes */
-#include "executor/ybcModifyTable.h"
+/* YB includes */
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 
 /*
@@ -540,7 +541,7 @@ CopyFrom(CopyFromState cstate)
 	ModifyTableState *mtstate;
 	ExprContext *econtext;
 	TupleTableSlot *singleslot = NULL;
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 
 	PartitionTupleRouting *proute = NULL;
 	ErrorContextCallback errcallback;
@@ -554,10 +555,12 @@ CopyFrom(CopyFromState cstate)
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
+	bool orig_yb_disable_transactional_writes = yb_disable_transactional_writes;
 
 	/* Yb variables */
-	bool useNonTxnInsert = false;
+	bool		useNonTxnInsert = false;
 	bool		has_more_tuples;
+	bool set_txn_batch_size_explicitly = true;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
@@ -569,6 +572,7 @@ CopyFrom(CopyFromState cstate)
 	if (cstate->opts.batch_size < 0)
 	{
 		cstate->opts.batch_size = yb_default_copy_from_rows_per_transaction;
+		set_txn_batch_size_explicitly = false;
 	}
 
 	/*
@@ -625,8 +629,10 @@ CopyFrom(CopyFromState cstate)
 	 * scan or command tolerates false negatives. FREEZE causes other sessions
 	 * to see rows they would not see under MVCC, and a false negative merely
 	 * spreads that anomaly to the current session.
+	 *
+	 * YB: We don't support COPY FREEZE on YB tables.
 	 */
-	if (cstate->opts.freeze)
+	if (!IsYugaByteEnabled() && cstate->opts.freeze)
 	{
 		/*
 		 * We currently disallow COPY FREEZE on partitioned tables.  The
@@ -666,6 +672,11 @@ CopyFrom(CopyFromState cstate)
 
 		ti_options |= TABLE_INSERT_FROZEN;
 	}
+
+	if (IsYugaByteEnabled() && cstate->opts.freeze)
+		ereport(yb_ignore_freeze_with_copy ? NOTICE : ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot perform COPY FREEZE on a YugaByte table")));
 
 	/*
 	 * We need a ResultRelInfo so we can use the regular executor's
@@ -725,6 +736,32 @@ CopyFrom(CopyFromState cstate)
 	if (cstate->whereClause)
 		cstate->qualexpr = ExecInitQual(castNode(List, cstate->whereClause),
 										&mtstate->ps);
+	/*
+	 * For colocated table, default to non-txn for better performance. But for consistency,
+	 * we need to ensure the index and the row are written in same batch.
+	 * If ROWS_PER_TRANSACTION is not explicitly set for a colocated table, non-txn will be
+	 * enabled automatically. In this case, the batch_size will be set to 0, ensuring that
+	 * data is sent continuously in a pipeline i.e., without an intervening commit which will
+	 * act as a flush barrier.
+	 * Always use distributed transaction in following cases for consistency:
+	 * 1. When foreign key constrain is defined. If a foreign key constraint is violated,
+	 *    the data will still be loaded into the table, leading to inconsistencies.
+	 * 2. When rules or trigger are defined. Both rules and trigger may write data in separate
+	 *    buffer, leading to inconsistencies.
+	 */
+	bool has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
+		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
+	if (yb_fast_path_for_colocated_copy &&
+		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
+		!has_rule_or_trigger && !IsTransactionBlock())
+	{
+		elog(LOG,"using non-txn for copy from colocated table");
+		useNonTxnInsert = true;
+		yb_disable_transactional_writes = true;
+		cstate->opts.batch_size = 0;
+		YBAdjustOperationsBuffering(YBCRelInfoGetSecondaryIndicesCount(resultRelInfo) + 1);
+	}
 
 	if (cstate->opts.batch_size > 0)
 	{
@@ -733,36 +770,36 @@ CopyFrom(CopyFromState cstate)
 		 * under the following use cases in which case
 		 * all rows will be copied over in a single transaction.
 		 */
-		int batch_size = 0;
+		int			batch_size = 0;
 
 		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
 		{
 			Assert(resultRelInfo->ri_RelationDesc->rd_rel->relpersistence == RELPERSISTENCE_TEMP ||
-					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
+				   resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on %s tables. "
-						"Defaulting to using one transaction for the entire copy.",
-						YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
-				 errhint("Either copy onto non-temporary table or set rows_per_transaction "
-						 "option to `0` to disable batching and remove this warning.")));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("batched COPY is not supported on %s tables",
+							YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
+					 errdetail("Defaulting to using one transaction for the entire copy."),
+					 errhint("Either copy onto non-temporary table or set rows_per_transaction "
+							 "option to `0` to disable batching and remove this warning.")));
 		}
 		else if (YBIsDataSent())
 			ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Batched COPY is not supported in transaction blocks. "
-						"Defaulting to using one transaction for the entire copy."),
-				 errhint("Either run this COPY outside of a transaction block or set "
-						 "rows_per_transaction option to `0` to disable batching and "
-						 "remove this warning.")));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("batched COPY is not supported in transaction blocks"),
+					 errdetail("Defaulting to using one transaction for the entire copy."),
+					 errhint("Either run this COPY outside of a transaction block or set "
+							 "rows_per_transaction option to `0` to disable batching and "
+							 "remove this warning.")));
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 	 errmsg("Batched COPY is not supported on table with non RI trigger. "
-						"Defaulting to using one transaction for the entire copy."),
-				 errhint("Set rows_per_transaction option to `0` to disable batching "
-				 		 "and remove this warning.")));
-		else			
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("batched COPY is not supported on table with non RI trigger"),
+					 errdetail("Defaulting to using one transaction for the entire copy."),
+					 errhint("Set rows_per_transaction option to `0` to disable batching "
+							 "and remove this warning.")));
+		else
 			batch_size = cstate->opts.batch_size;
 
 		cstate->opts.batch_size = batch_size;
@@ -820,6 +857,9 @@ CopyFrom(CopyFromState cstate)
 		 * Can't support multi-inserts if there are any volatile function
 		 * expressions in WHERE clause.  Similarly to the trigger case above,
 		 * such expressions may query the table we're inserting into.
+		 *
+		 * Note: the whereClause was already preprocessed in DoCopy(), so it's
+		 * okay to use contain_volatile_functions() directly.
 		 */
 		insertMethod = CIM_SINGLE;
 	}
@@ -905,7 +945,10 @@ CopyFrom(CopyFromState cstate)
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
-	/* Warn if non-txn COPY enabled and relation does not meet non-txn criteria. */
+	/*
+	 * Warn if non-txn COPY enabled and relation does not meet non-txn
+	 * criteria.
+	 */
 	if (YBIsNonTxnCopyEnabled() && !useNonTxnInsert)
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -919,7 +962,7 @@ CopyFrom(CopyFromState cstate)
 	/* Skip num_initial_skipped_rows. */
 	for (uint64 i = 0; i < cstate->opts.num_initial_skipped_rows; i++)
 	{
-		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */);
+		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */ );
 		if (!has_more_tuples)
 			break;
 	}
@@ -980,7 +1023,7 @@ yb_process_more_batches:
 		/* Directly store the values/nulls array in the slot */
 		has_more_tuples = NextCopyFrom(cstate, econtext, myslot->tts_values,
 									   myslot->tts_isnull,
-									   false /* skip_row */);
+									   false /* skip_row */ );
 		if (!has_more_tuples)
 			break;
 
@@ -1239,6 +1282,7 @@ yb_process_more_batches:
 					else if (resultRelInfo->ri_FdwRoutine != NULL)
 					{
 						MemoryContext saved_context;
+
 						saved_context = MemoryContextSwitchTo(estate->es_query_cxt);
 						myslot = resultRelInfo->ri_FdwRoutine->ExecForeignInsert(estate,
 																				 resultRelInfo,
@@ -1298,9 +1342,9 @@ yb_process_more_batches:
 
 	if (cstate->opts.batch_size > 0)
 	{
-		/* 
+		/*
 		 * Handle queued AFTER triggers before committing. If there are errors,
-		 * do not commit the current batch. 
+		 * do not commit the current batch.
 		 */
 		AfterTriggerEndQuery(estate);
 
@@ -1311,7 +1355,8 @@ yb_process_more_batches:
 		 */
 		YBCCommitTransaction();
 
-		/* Update progress of the COPY command as well.
+		/*
+		 * Update progress of the COPY command as well.
 		 */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
 		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
@@ -1322,7 +1367,10 @@ yb_process_more_batches:
 	}
 	else
 	{
-		/* We need to flush buffered operations so that error callback is executed */
+		/*
+		 * We need to flush buffered operations so that error callback is
+		 * executed
+		 */
 		YBFlushBufferedOperations();
 
 		/* Update progress of the COPY command as well */
@@ -1377,6 +1425,7 @@ yb_no_more_tuples:
 
 	FreeExecutorState(estate);
 
+	yb_disable_transactional_writes = orig_yb_disable_transactional_writes;
 	return processed;
 }
 
@@ -1434,7 +1483,7 @@ BeginCopyFrom(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 
@@ -1545,6 +1594,12 @@ BeginCopyFrom(ParseState *pstate,
 		cstate->need_transcoding = true;
 		cstate->conversion_proc = FindDefaultConversionProc(cstate->file_encoding,
 															GetDatabaseEncoding());
+		if (!OidIsValid(cstate->conversion_proc))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("default conversion function for encoding \"%s\" to \"%s\" does not exist",
+							pg_encoding_to_char(cstate->file_encoding),
+							pg_encoding_to_char(GetDatabaseEncoding()))));
 	}
 
 	cstate->copy_src = COPY_FILE;	/* default */
@@ -1656,7 +1711,8 @@ BeginCopyFrom(ParseState *pstate,
 				 * known to be safe for use with the multi-insert
 				 * optimization. Hence we use this special case function
 				 * checker rather than the standard check for
-				 * contain_volatile_functions().
+				 * contain_volatile_functions().  Note also that we already
+				 * ran the expression through expression_planner().
 				 */
 				if (!volatile_defexprs)
 					volatile_defexprs = contain_volatile_functions_not_nextval((Node *) defexpr);
@@ -1691,8 +1747,9 @@ BeginCopyFrom(ParseState *pstate,
 		Assert(!is_program);	/* the grammar does not allow this */
 		if (whereToSendOutput == DestRemote)
 		{
-			bool isDataSent = YBIsDataSent();
-			bool isDataSentForCurrQuery = YBIsDataSentForCurrQuery();
+			bool		isDataSent = YBIsDataSent();
+			bool		isDataSentForCurrQuery = YBIsDataSentForCurrQuery();
+
 			ReceiveCopyBegin(cstate);
 			/*
 			 * ReceiveCopyBegin sends a message back to the client
@@ -1701,8 +1758,10 @@ BeginCopyFrom(ParseState *pstate,
 			 * although the message does not contain any data from YB.
 			 * So we can safely roll back YBIsDataSent to its previous value.
 			 */
-			if (!isDataSent) YBMarkDataNotSent();
-			if (!isDataSentForCurrQuery) YBMarkDataNotSentForCurrQuery();
+			if (!isDataSent)
+				YBMarkDataNotSent();
+			if (!isDataSentForCurrQuery)
+				YBMarkDataNotSentForCurrQuery();
 		}
 		else
 			cstate->copy_file = stdin;

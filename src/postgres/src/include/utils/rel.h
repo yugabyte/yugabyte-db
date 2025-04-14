@@ -28,8 +28,9 @@
 #include "utils/relcache.h"
 #include "utils/reltrigger.h"
 
-/* YB includes. */
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 
 /*
  * LockRelId and LockInfo really belong to lmgr.h, but it's more convenient
@@ -251,13 +252,13 @@ typedef struct RelationData
 	/* use "struct" here to avoid needing to include pgstat.h: */
 	struct PgStat_TableStatus *pgstat_info; /* statistics collection area */
 
-	YbTableProperties yb_table_properties; /* NULL if not loaded */
+	YbcTableProperties yb_table_properties; /* NULL if not loaded */
 
-	// contains all except yb system primary keys of the relation.
-	Bitmapset* primary_key_bms; /* NULL if not initialized */
+	/* contains all except yb system primary keys of the relation. */
+	Bitmapset  *primary_key_bms;	/* NULL if not initialized */
 
-	// contains all primary keys of the relation, including yb system columns.
-	Bitmapset* full_primary_key_bms; /* NULL if not initialized */
+	/* contains all primary keys of the relation, including yb system columns. */
+	Bitmapset  *full_primary_key_bms;	/* NULL if not initialized */
 } RelationData;
 
 
@@ -282,6 +283,7 @@ typedef struct ForeignKeyCacheInfo
 	Oid			conrelid;		/* relation constrained by the foreign key */
 	Oid			confrelid;		/* relation referenced by the foreign key */
 	int			nkeys;			/* number of columns in the foreign key */
+	Oid			ybconindid;		/* oid of index supporting the FK constraint */
 	/* these arrays each have nkeys valid entries: */
 	AttrNumber	conkey[INDEX_MAX_KEYS]; /* cols in referencing table */
 	AttrNumber	confkey[INDEX_MAX_KEYS];	/* cols in referenced table */
@@ -339,10 +341,10 @@ typedef struct StdRdOptions
 
 	/* YB additions. */
 	bool		colocated;
-	Oid 		tablegroup_oid;
-	Oid 		colocation_id;
-	Oid 		table_oid;
-	Oid 		row_type_oid;
+	Oid			tablegroup_oid;
+	Oid			colocation_id;
+	Oid			table_oid;
+	Oid			row_type_oid;
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10
@@ -436,7 +438,8 @@ typedef struct ViewOptions
 	bool		security_invoker;
 	ViewOptCheckOption check_option;
 
-	bool		yb_use_initdb_acl;	/* initialize with default initdb-like permissions */
+	bool		yb_use_initdb_acl;	/* initialize with default initdb-like
+									 * permissions */
 } ViewOptions;
 
 /*
@@ -739,7 +742,7 @@ extern void RelationDecrementReferenceCount(Relation rel);
 typedef struct YbParitionedTableOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
-	Oid 		colocation_id;
+	Oid			colocation_id;
 } YbParitionedTableOptions;
 
 #endif							/* REL_H */

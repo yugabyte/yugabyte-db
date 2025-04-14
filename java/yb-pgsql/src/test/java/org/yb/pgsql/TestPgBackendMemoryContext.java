@@ -20,12 +20,13 @@ import java.util.Collections;
 import java.util.Map.Entry;
 import java.util.List;
 
-import org.junit.Before;
 import org.junit.Assume;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBDaemon;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.YBTestRunner;
 
 import com.google.common.net.HostAndPort;
@@ -37,6 +38,18 @@ import com.google.common.net.HostAndPort;
 public class TestPgBackendMemoryContext extends BasePgSQLTest {
   private final List<String> logBackendMemoryContextsResults =
       Collections.synchronizedList(new ArrayList<>());
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    if (isTestRunningWithConnectionManager()) {
+      // Disable the random warmup mode of the connection manager. This test
+      // calls the getPgBackendPid() function multiple times. To ensure the
+      // same PID is returned each time, switch to
+      // ConnectionManagerWarmupMode.NONE.
+      warmupMode = ConnectionManagerWarmupMode.NONE;
+    }
+    super.customizeMiniClusterBuilder(builder);
+  }
 
   @Before
   public void setUp() throws Exception {
@@ -66,9 +79,6 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
     // [69974] LOG:  level: 1; RowDescriptionContext: \
     //  8192 total in 1 blocks; 6880 free (0 chunks); 1312 used
 
-    Assume.assumeFalse(BasePgSQLTest.NO_PHYSICAL_CONN_ATTACHED,
-      isTestRunningWithConnectionManager());
-
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("SELECT pg_log_backend_memory_contexts(pg_backend_pid());");
 
@@ -77,6 +87,10 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
 
       boolean foundBackendPid = false;
       boolean foundTopMemoryContext = false;
+      // With connection manager, getPgBackendPid can return the PID of any
+      // backend process out of pool of physical connections it is maintaining.
+      // Therefore running the test in NONE mode of connection manager to return
+      // the same PID.
       final String EXPECTED_LOG_START_STRING = String.format("logging memory contexts of PID %s",
                                                             getPgBackendPid(connection));
       final String EXPECTED_TOP_MEMORY_CONTEXT_STRING = "level: 0; TopMemoryContext";
@@ -90,6 +104,10 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
         }
       }
 
+      // With connection manager, getPgBackendPid can return the PID of any
+      // backend process out of pool of physical connections it is maintaining.
+      // Therefore running the test in NONE mode of connection manager to return
+      // the same PID.
       assertTrue(String.format("pg_log_backend_memory_contexts should log the contexts " +
                               "of a specific process with PID %s",
                               getPgBackendPid(connection)),

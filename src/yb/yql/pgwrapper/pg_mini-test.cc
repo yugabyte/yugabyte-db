@@ -89,7 +89,6 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_bootstrap_intent_ht_filter);
-DECLARE_bool(ysql_yb_ash_enable_infra);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
@@ -180,6 +179,8 @@ class PgMiniTest : public PgMiniTestBase {
   void TestForeignKey(IsolationLevel isolation);
 
   void TestBigInsert(bool restart);
+
+  void TestAnalyze(int row_width);
 
   void CreateTableAndInitialize(std::string table_name, int num_tablets);
 
@@ -1461,7 +1462,28 @@ TEST_F(PgMiniTest, AlterTableWithReplicaIdentity) {
   ASSERT_NOK(conn.Execute("CREATE TABLE t4 (a int primary key)"));
 }
 
-TEST_F(PgMiniTest, TestSkipTableTombstoneCheck) {
+TEST_F(PgMiniTest, TestNoStaleDataOnColocationIdReuse) {
+  const auto kColocatedTableName = "colo_test";
+  const auto kColocatedTableName2 = "colo_test2";
+  const auto kDatabaseName = "testdb";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v1 int) WITH (colocation_id=20001);",
+      kColocatedTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (110), (111), (112);", kColocatedTableName));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0;", kColocatedTableName));
+
+  // Create colocated table with different table name and reuse the same colocation_id.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v1 int) WITH (colocation_id=20001);",
+      kColocatedTableName2));
+  // Verify read output is empty. This is to ensure that the tombstone is not being checked.
+  auto scan_result =
+      ASSERT_RESULT(conn.FetchAllAsString(Format("SELECT * FROM $0", kColocatedTableName2)));
+  ASSERT_TRUE(scan_result.empty());
+}
+
+TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   // Setup test data.
   const auto kNonColocatedTableName = "test";
   const auto kColocatedTableName = "colo_test";
@@ -1495,39 +1517,6 @@ TEST_F(PgMiniTest, TestSkipTableTombstoneCheck) {
   ASSERT_TRUE(ASSERT_RESULT(
       colocated_tablet_peer->tablet_metadata()->GetTableInfo(table_id))
       ->skip_table_tombstone_check);
-
-  const auto kRowCount = 100;
-
-  for (int i = 0; i < kRowCount; ++i) {
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kColocatedTableName, i));
-  }
-
-  auto RunPointSelectQueriesOnColocatedTable = [&conn, &kColocatedTableName]() {
-    for (int i = 0; i < kRowCount; ++i) {
-      ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0 WHERE a = $1;", kColocatedTableName, i));
-    }
-  };
-
-  // Verify that read from the colocated table only does 100 seek.
-  auto num_seek_before_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
-      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
-
-  RunPointSelectQueriesOnColocatedTable();
-
-  auto num_seek_after_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
-      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
-  ASSERT_EQ(kRowCount, num_seek_after_read - num_seek_before_read);
-
-  // Verify that the number of seeks is still 100 even after a TRUNCATE
-  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", kColocatedTableName));
-  num_seek_before_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
-      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
-
-  RunPointSelectQueriesOnColocatedTable();
-
-  num_seek_after_read = colocated_tablet_peer->shared_tablet()->regulardb_statistics()
-      ->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK);
-  ASSERT_EQ(kRowCount, num_seek_after_read - num_seek_before_read);
 
   // Verify that skip_table_tombstone_check=false for pg system tables.
   table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
@@ -1684,7 +1673,7 @@ class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
 
 template <class T>
 T* GetMetricOpt(const MetricEntity& metric_entity, const MetricPrototype& prototype) {
-  const auto& map = metric_entity.UnsafeMetricsMapForTests();
+  const auto& map = metric_entity.TEST_UsageMetricsMap();
   auto it = map.find(&prototype);
   if (it == map.end()) {
     return nullptr;
@@ -1745,7 +1734,7 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 30_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 10_KB;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
         FLAGS_tablet_force_split_threshold_bytes / 4;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
@@ -1787,11 +1776,13 @@ void PgMiniTest::StartReadWriteThreads(const std::string table_name,
     TestThreadHolder *thread_holder) {
   // Writer thread that does parallel writes into table
   thread_holder->AddThread([this, table_name] {
+    LOG(INFO) << "Starting writes to " << table_name;
     auto conn = ASSERT_RESULT(Connect());
     for (int i = 501; i < 2000; i++) {
       ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2, $3, $4)",
                                    table_name, i, i, i, 1));
     }
+    LOG(INFO) << "Completed writes to " << table_name;
   });
 
   // Index read from the table
@@ -2288,6 +2279,70 @@ TEST_F(PgMiniTest, ReadHugeRow) {
   const auto res = conn.Fetch("SELECT * FROM test LIMIT 1");
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.status().ToString(), "Sending too long RPC message");
+}
+
+// Check that fetch of data amount exceeding the message size automatically paginates and succeeds
+TEST_F(PgMiniTest, ReadHugeRows) {
+  // kNumRows should be less than default yb_fetch_row_limit, but not too low, so system can work
+  constexpr size_t kNumRows = 1000;
+  constexpr size_t kColumnSize = 100000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = kColumnSize * kNumRows;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) =
+      kColumnSize * kNumRows - 1_KB - 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  // One tablet to make sure that the node has enough data to exceed the message size
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test(pk INT PRIMARY KEY, i INT, t TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("CREATE INDEX on test(i ASC)"));
+  for (size_t i = 0; i < kNumRows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES($0, $0 * 2, repeat('0', $1))", i, kColumnSize));
+  }
+
+  // SeqScan, direct fetch from the main table
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  // IndexScan, fetch from the main table by ybctids
+  ASSERT_OK(conn.Fetch("SELECT * FROM test ORDER BY i"));
+}
+
+// Test that ANALYZE on tables with different row width does not exceed the RPC size limit
+// The FLAGS_rpc_max_message_size is set to be lower than total amount data to fetch by ANALYZE,
+// so multiple messages are needed, and at least one has size as close to the limit as possible.
+void PgMiniTest::TestAnalyze(int row_width) {
+  // kNumRows is equal to the sample size, so ANALYZE fetches entire table.
+  constexpr uint64_t kNumRows = 30000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) =
+      std::min(FLAGS_rpc_max_message_size, row_width * kNumRows);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) =
+      FLAGS_rpc_max_message_size - 1_KB - 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  // One tablet to make sure that the node has enough data to exceed the message size
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test(pk INT PRIMARY KEY, i INT, t TEXT) SPLIT INTO 1 TABLETS"));
+  LOG(INFO) << "Test table is created";
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, i * 2, repeat('0', $0) FROM generate_series(1, $1) i",
+      row_width, kNumRows));
+  LOG(INFO) << "Test table is populated";
+  ASSERT_OK(conn.Execute("ANALYZE test"));
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AnalyzeLargeRows)) {
+  PgMiniTest::TestAnalyze(/* row_width = */ 10000);
+}
+
+TEST_F(PgMiniTest, AnalyzeMediumRows) {
+  PgMiniTest::TestAnalyze(/* row_width = */ 500);
+}
+
+TEST_F(PgMiniTest, AnalyzeSmallRows) {
+  // The row_width=25 makes the minimal rpc_max_message_size allowing to send
+  // fetch request with 30,000 ybctids in it
+  PgMiniTest::TestAnalyze(/* row_width = */ 25);
 }
 
 TEST_F_EX(

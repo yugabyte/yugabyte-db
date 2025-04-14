@@ -16,8 +16,9 @@
 #include <memory>
 #include <utility>
 
-#include "yb/gutil/casts.h"
-#include "yb/vector_index/vector_index_if.h"
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index_container.hpp>
 
 #pragma GCC diagnostic push
 
@@ -35,16 +36,20 @@
 
 #pragma GCC diagnostic pop
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/status.h"
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
+#include "yb/vector_index/vector_index_if.h"
 
 namespace yb::vector_index {
 
 using hnswlib::Stats;
 
 namespace {
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class HnswlibVectorIterator;
 
@@ -54,18 +59,18 @@ class HnswlibIndex :
  public:
   using Scalar = typename Vector::value_type;
 
-  using HNSWImpl = typename hnswlib::HierarchicalNSW<DistanceResult>;
+  using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
 
   explicit HnswlibIndex(const HNSWOptions& options)
       : options_(options) {
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
     return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
         hnsw_->vectors_begin(), options_.dimensions);
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
     return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
         hnsw_->vectors_end(), options_.dimensions);
   }
@@ -90,9 +95,18 @@ class HnswlibIndex :
     return Status::OK();
   }
 
-  Status DoInsert(VertexId vertex_id, const Vector& v) {
-    hnsw_->addPoint(v.data(), vertex_id);
+  Status DoInsert(VectorId vector_id, const Vector& v) {
+    hnsw_->addPoint(v.data(), vector_id);
+
     return Status::OK();
+  }
+
+  size_t Size() const override {
+    return hnsw_->getCurrentElementCount();
+  }
+
+  size_t Capacity() const override {
+    return hnsw_->getInternalParameters().max_elements;
   }
 
   Status DoSaveToFile(const std::string& path) {
@@ -105,7 +119,7 @@ class HnswlibIndex :
     return Status::OK();
   }
 
-  Status DoLoadFromFile(const std::string& path) {
+  Status DoLoadFromFile(const std::string& path, size_t) {
     // Create hnsw_ before loading from file.
     RETURN_NOT_OK(Reserve(0, 0, 0));
     try {
@@ -121,25 +135,22 @@ class HnswlibIndex :
     return space_->get_dist_func()(lhs.data(), rhs.data(), space_->get_dist_func_param());
   }
 
-  std::vector<VertexWithDistance<DistanceResult>> DoSearch(
-      const Vector& query_vector, size_t max_num_results) const {
-    std::vector<VertexWithDistance<DistanceResult>> result;
-    auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), max_num_results);
+  std::vector<VectorWithDistance<DistanceResult>> DoSearch(
+      const Vector& query_vector, const SearchOptions& options) const {
+    std::vector<VectorWithDistance<DistanceResult>> result;
+    auto tmp_result = hnsw_->searchKnnCloserFirst(query_vector.data(), options.max_num_results);
     result.reserve(tmp_result.size());
     for (const auto& entry : tmp_result) {
-      // Being careful to avoid switching the order of distance and vertex id..
+      // Being careful to avoid switching the order of distance and vertex id.
       const auto distance = entry.first;
       static_assert(std::is_same_v<std::remove_const_t<decltype(distance)>, DistanceResult>);
 
-      const auto label = entry.second;
-      static_assert(VertexIdCompatible<decltype(label)>);
-
-      result.push_back(VertexWithDistance<DistanceResult>(label, distance));
+      result.push_back({ entry.second, distance });
     }
     return result;
   }
 
-  Result<Vector> GetVector(VertexId vertex_id) const override {
+  Result<Vector> GetVector(VectorId vector_id) const override {
     return STATUS(
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
   }
@@ -214,29 +225,32 @@ class HnswlibIndex :
 
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibVectorIterator : public AbstractIterator<std::pair<Vector, VertexId>> {
+class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
  public:
-  HnswlibVectorIterator(typename hnswlib::VectorIterator<DistanceResult> position, int dimensions)
+  using VectorIndex = HnswlibIndex<Vector, DistanceResult>;
+  using HNSWIterator = hnswlib::VectorIterator<DistanceResult, VectorId>;
+
+  HnswlibVectorIterator(HNSWIterator position, int dimensions)
       : internal_iterator_(position), dimensions_(dimensions) {}
 
  protected:
-  std::pair<Vector, VertexId> Dereference() const override {
+  std::pair<VectorId, Vector> Dereference() const override {
     auto pair_data = *internal_iterator_;
     Vector result_vector(dimensions_);
-    std::memcpy(
-        result_vector.data(), pair_data.first, dimensions_ * sizeof(typename Vector::value_type));
-    return std::make_pair(result_vector, pair_data.second);
+    std::memcpy(result_vector.data(), pair_data.first,
+                dimensions_ * sizeof(typename Vector::value_type));
+    return { pair_data.second, result_vector};
   }
 
   void Next() override { ++internal_iterator_; }
 
-  bool NotEquals(const AbstractIterator<std::pair<Vector, VertexId>>& other) const override {
+  bool NotEquals(const AbstractIterator<std::pair<VectorId, Vector>>& other) const override {
     const auto& other_casted = down_cast<const HnswlibVectorIterator&>(other);
     return internal_iterator_ != other_casted.internal_iterator_;
   }
 
  private:
-  hnswlib::VectorIterator<DistanceResult> internal_iterator_;
+  HNSWIterator internal_iterator_;
   int dimensions_;
 };
 

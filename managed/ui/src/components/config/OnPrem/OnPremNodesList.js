@@ -42,7 +42,8 @@ class OnPremNodesList extends Component {
       nodeToBeDeleted: {},
       nodeToBePrechecked: {},
       tasksPolling: false,
-      nodeToBeRecommissioned: {}
+      nodeToBeRecommissioned: {},
+      nodeToBeDecommissioned: {}
     };
   }
 
@@ -85,6 +86,16 @@ class OnPremNodesList extends Component {
     this.props.hideDialog();
   };
 
+  showConfirmDecommissionNodeModal(row) {
+    this.setState({ nodeToBeDecommissioned: row });
+    this.props.showConfirmDecommissionNodeModal();
+  }
+
+  hideDecommissionNodeModal = () => {
+    this.setState({ nodeToBeDecommissioned: {} });
+    this.props.hideDialog();
+  };
+
   precheckInstance = () => {
     const row = this.state.nodeToBePrechecked;
     if (!row.inUse) {
@@ -107,13 +118,26 @@ class OnPremNodesList extends Component {
     this.hideDeleteNodeModal();
   };
 
-  recommissionInstance = () => {
+  changeInstanceStatus = (nodeState) => {
     const onPremProvider = this.findProvider();
-    const node = this.state.nodeToBeRecommissioned;
-    if (!node.inUse) {
-      this.props.recommissionInstance(onPremProvider.uuid, node.ip);
+
+    if (nodeState === OnPremNodeState.FREE) {
+      const node = this.state.nodeToBeRecommissioned;
+      if (!node.inUse) {
+        this.props.changeInstanceStatus(onPremProvider.uuid, node.ip, {
+          state: OnPremNodeState.FREE
+        });
+      }
+      this.hideRecommissionNodeModal();
+    } else if (nodeState === OnPremNodeState.DECOMMISSIONED) {
+      const node = this.state.nodeToBeDecommissioned;
+      if (!node.inUse) {
+        this.props.changeInstanceStatus(onPremProvider.uuid, node.ip, {
+          state: OnPremNodeState.DECOMMISSIONED
+        });
+      }
+      this.hideDecommissionNodeModal();
     }
-    this.hideRecommissionNodeModal();
   };
 
   findProvider = () => {
@@ -389,16 +413,12 @@ class OnPremNodesList extends Component {
     };
 
     const nodeAgentStatus = (cell, row) => {
-      let status = '';
-      let isReachable = false;
       if (nodeAgentStatusByIPs.isSuccess) {
-        const nodeAgents = nodeAgentStatusByIPs.data.entities;
+        const nodeAgents = nodeAgentStatusByIPs.data?.entities ?? [];
         const nodeAgent = nodeAgents.find((nodeAgent) => row.ip === nodeAgent.ip);
-        status = nodeAgent?.state;
-        isReachable = nodeAgent?.reachable;
+        return nodeAgent ? <NodeAgentStatus nodeAgent={nodeAgent} /> : null;
       }
-
-      return <NodeAgentStatus status={status} isReachable={isReachable} />;
+      return null;
     };
 
     const rowClassNameFormat = (row) => {
@@ -409,6 +429,7 @@ class OnPremNodesList extends Component {
     const actionsList = (cell, row) => {
       const precheckDisabled = row.inUse || isActive(row.precheckTask);
       const isNodeDecommissioned = row.state === OnPremNodeState.DECOMMISSIONED;
+      const isNodeFree = row.state === OnPremNodeState.FREE;
       const isNodeInUse = row.state === OnPremNodeState.USED;
 
       return (
@@ -437,12 +458,18 @@ class OnPremNodesList extends Component {
               disabled={row.inUse || isNodeInUse}
             >
               <i className={`fa fa-trash`} />
-              Delete node
+              Delete Instance
             </MenuItem>
-            {row.state === OnPremNodeState.DECOMMISSIONED && (
+            {isNodeDecommissioned && (
               <MenuItem onClick={self.showConfirmRecommissionNodeModal.bind(self, row)}>
                 <i className="fa fa-plus" />
                 Recommission Node
+              </MenuItem>
+            )}
+            {isNodeFree && (
+              <MenuItem onClick={self.showConfirmDecommissionNodeModal.bind(self, row)}>
+                <i className="fa fa-minus" />
+                Decommission Node
               </MenuItem>
             )}
           </DropdownButton>
@@ -553,14 +580,19 @@ class OnPremNodesList extends Component {
             );
           })
       : null;
-    const deleteConfirmationText = `Are you sure you want to delete node${
-      isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName
-        ? ' ' + this.state.nodeToBeDeleted.nodeName
+    const deleteConfirmationText = `Are you sure you want to delete instance${
+      isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.ip
+        ? ' ' + this.state.nodeToBeDeleted.ip
         : ''
     }?`;
-    const recommisionNodeConfirmationText = `Are you sure you want to recommission node${
+    const recommissionNodeConfirmationText = `Are you sure you want to recommission node${
       isNonEmptyObject(this.state.nodeToBeRecommissioned) && this.state.nodeToBeRecommissioned.ip
         ? ' ' + this.state.nodeToBeRecommissioned.ip
+        : ''
+    }?`;
+    const decommissionNodeConfirmationText = `Are you sure you want to decommission node${
+      isNonEmptyObject(this.state.nodeToBeDecommissioned) && this.state.nodeToBeDecommissioned.ip
+        ? ' ' + this.state.nodeToBeDecommissioned.ip
         : ''
     }?`;
     const precheckConfirmationText = `Are you sure you want to run precheck on node${
@@ -598,7 +630,7 @@ class OnPremNodesList extends Component {
             >
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} dataSort />
               <TableHeaderColumn dataField="instanceName" dataSort>
-                Node Name
+                Instance Name
               </TableHeaderColumn>
               <TableHeaderColumn dataField="ip" dataSort>
                 Address
@@ -654,7 +686,7 @@ class OnPremNodesList extends Component {
         </YBModal>
         <YBConfirmModal
           name={'confirmDeleteNodeInstance'}
-          title={'Delete Node'}
+          title={'Delete Instance'}
           hideConfirmModal={this.hideDeleteNodeModal}
           currentModal={'confirmDeleteNodeInstance'}
           visibleModal={visibleModal}
@@ -682,11 +714,23 @@ class OnPremNodesList extends Component {
           hideConfirmModal={this.hideRecommissionNodeModal}
           currentModal={'confirmRecommissionNodeInstance'}
           visibleModal={visibleModal}
-          onConfirm={this.recommissionInstance}
+          onConfirm={() => this.changeInstanceStatus(OnPremNodeState.FREE)}
           confirmLabel="Apply"
           cancelLabel="Cancel"
         >
-          {recommisionNodeConfirmationText}
+          {recommissionNodeConfirmationText}
+        </YBConfirmModal>
+        <YBConfirmModal
+          name={'confirmDecommissionNodeInstance'}
+          title={'Decommission Node'}
+          hideConfirmModal={this.hideDecommissionNodeModal}
+          currentModal={'confirmDecommissionNodeInstance'}
+          visibleModal={visibleModal}
+          onConfirm={() => this.changeInstanceStatus(OnPremNodeState.DECOMMISSIONED)}
+          confirmLabel="Apply"
+          cancelLabel="Cancel"
+        >
+          {decommissionNodeConfirmationText}
         </YBConfirmModal>
       </div>
     );

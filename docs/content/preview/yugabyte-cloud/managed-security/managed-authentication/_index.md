@@ -16,6 +16,12 @@ In addition to email-based accounts, you can use social logins or federated auth
 
 To configure social logins and federated authentication, navigate to **Security > Access Control > Authentication**.
 
+{{< tip title="Allow pop-ups for federated authentication" >}}
+
+If you have set up federated authentication, let your users know they should allow pop-up requests from your IdP.
+
+{{< /tip >}}
+
 {{<index/block>}}
 
   {{<index/item

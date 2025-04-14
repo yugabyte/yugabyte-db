@@ -54,6 +54,7 @@ import { AllowedTasks } from '../../../redesign/helpers/dtos';
 import { RunTimeConfigEntry } from '../../../redesign/features/universe/universe-form/utils/dto';
 import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { handleCACertErrMsg } from '../../customCACerts';
+import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import './BackupCreateModal.scss';
 
 import Close from '../../universes/images/close.svg';
@@ -237,7 +238,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
   const dispatch = useDispatch();
-
+  const interceptBackupLink = useInterceptBackupTaskLinks();
   const doCreateBackup = useMutation(
     (values: any) => {
       if (isYbcEnabledinCurrentUniverse) {
@@ -257,9 +258,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         toast.success(
           <span>
             Backup is in progress. Click &nbsp;
-            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
               here
-            </a>
+            </a>)}
             &nbsp; for task details
           </span>
         );
@@ -313,9 +314,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         toast.success(
           <span>
             Creating schedule policy. Click &nbsp;
-            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
               here
-            </a>
+            </a>)}
             &nbsp; for task details
           </span>
         );

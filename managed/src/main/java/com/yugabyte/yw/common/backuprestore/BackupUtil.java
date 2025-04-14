@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.models.Backup;
@@ -57,6 +58,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -161,6 +163,23 @@ public class BackupUtil {
     return !snapshotInfoList.stream().anyMatch(info -> info.getState().equals(State.FAILED));
   }
 
+  public static long getMinRecoveryTimeForSchedule(
+      List<SnapshotInfo> snapshotInfoList, PitrConfig pitrConfig) {
+    Optional<SnapshotInfo> oldestSuccessfulSnapshotScheduleOptional =
+        snapshotInfoList.stream()
+            .filter(i -> i.getState().equals(State.COMPLETE))
+            .sorted(Comparator.comparing(SnapshotInfo::getSnapshotTime))
+            .findFirst();
+    if (oldestSuccessfulSnapshotScheduleOptional.isPresent()) {
+      return Math.max(
+          System.currentTimeMillis() - pitrConfig.getRetentionPeriod() * 1000L,
+          Math.max(
+              pitrConfig.getCreateTime().getTime(),
+              pitrConfig.getIntermittentMinRecoverTimeInMillis()));
+    }
+    return 0L;
+  }
+
   public static Metric buildMetricTemplate(
       PlatformMetrics metric, Universe universe, PitrConfig pitrConfig, double value) {
     return MetricService.buildMetricTemplate(
@@ -243,8 +262,8 @@ public class BackupUtil {
       tables.addAll(tableNameList);
       if (MapUtils.isNotEmpty(tablesWithIndexesMap)) {
         Set<String> indexes =
-            tablesWithIndexesMap.values().parallelStream()
-                .flatMap(tI -> tI.parallelStream())
+            tablesWithIndexesMap.values().stream()
+                .flatMap(tI -> tI.stream())
                 .collect(Collectors.toSet());
         tables.addAll(indexes);
       }
@@ -256,9 +275,9 @@ public class BackupUtil {
       Set<String> indexes = new HashSet<>();
       if (MapUtils.isNotEmpty(tablesWithIndexesMap)) {
         indexes =
-            tablesWithIndexesMap.entrySet().parallelStream()
+            tablesWithIndexesMap.entrySet().stream()
                 .filter(tWE -> parentTables.contains(tWE.getKey()))
-                .flatMap(tWE -> tWE.getValue().parallelStream())
+                .flatMap(tWE -> tWE.getValue().stream())
                 .collect(Collectors.toSet());
       }
       return indexes;
@@ -390,7 +409,7 @@ public class BackupUtil {
         .tableByTableBackup(backup.getBackupInfo().tableByTableBackup);
     List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
     Set<KeyspaceTablesList> kTLists =
-        backupParams.parallelStream()
+        backupParams.stream()
             .map(
                 b -> {
                   return KeyspaceTablesList.builder()
@@ -901,5 +920,18 @@ public class BackupUtil {
       return baseBackupOpt.get().getBackupInfo().isPointInTimeRestoreEnabled();
     }
     return false;
+  }
+
+  public static void checkApiEnabled(TableType tableType, UserIntent userIntent)
+      throws PlatformServiceException {
+    if (tableType != null) {
+      if (tableType.equals(TableType.YQL_TABLE_TYPE) && !userIntent.enableYCQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot perform operation on YCQL tables when API is disabled");
+      } else if (tableType.equals(TableType.PGSQL_TABLE_TYPE) && !userIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot perform operation on YSQL tables when API is disabled");
+      }
+    }
   }
 }

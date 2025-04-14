@@ -28,7 +28,9 @@ namespace docdb {
 // Implementation of YQLStorageIf with rocksdb as a backend. This is what all of our QL tables use.
 class QLRocksDBStorage : public YQLStorageIf {
  public:
-  explicit QLRocksDBStorage(const DocDB& doc_db);
+  explicit QLRocksDBStorage(
+      const std::string& log_prefix, const DocDB& doc_db,
+      const EncodedPartitionBounds& encoded_partition_bounds);
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
@@ -83,12 +85,24 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      SkipSeek skip_seek = SkipSeek::kFalse) const override;
+      SkipSeek skip_seek,
+      UseVariableBloomFilter use_variable_bloom_filter) const override;
+
+  Result<SampleBlocksReservoir> GetSampleBlocks(
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      DocDbBlocksSamplingMethod blocks_sampling_method,
+      size_t num_blocks_for_sample, BlocksSamplingState* state) const override;
 
   std::string ToString() const override;
 
  private:
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  const std::string log_prefix_;
   const DocDB doc_db_;
+  const EncodedPartitionBounds& encoded_partition_bounds_;
 };
 
 }  // namespace docdb

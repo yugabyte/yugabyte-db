@@ -32,9 +32,11 @@
 #include "yb/master/master_heartbeat.service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
 
 #include "yb/util/debug/trace_event.h"
@@ -116,6 +118,7 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
 DECLARE_bool(enable_register_ts_from_raft);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
+DECLARE_bool(skip_tserver_version_checks);
 
 namespace yb {
 namespace master {
@@ -158,13 +161,19 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     TabletInfoPtr info;
     const ReportedTabletPB* report;
     std::map<TableId, scoped_refptr<TableInfo>> tables;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(tablet_id, info, report, tables);
+    }
   };
+
   using ReportedTablets = std::vector<ReportedTablet>;
 
-  Status ProcessTabletReport(
+  // Returns true if report was processed, or false if full report should be requested.
+  Result<bool> ProcessTabletReport(
       const TSDescriptorPtr& ts_desc,
       const NodeInstancePB& ts_instance,
-      const TabletReportPB& full_report,
+      const TabletReportPB* full_report,
       const LeaderEpoch& epoch,
       TabletReportUpdatesPB* full_report_update,
       rpc::RpcContext* rpc);
@@ -241,6 +250,9 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   Status FillHeartbeatResponseOrRespond(
       const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp, rpc::RpcContext* rpc);
+
+  void PopulatePgCatalogVersionInfo(const TSHeartbeatRequestPB& req,
+                                    TSHeartbeatResponsePB& resp);
 };
 
 Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
@@ -269,25 +281,113 @@ Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
   return Status::OK();
 }
 
+void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
+    const TSHeartbeatRequestPB& req,
+    TSHeartbeatResponsePB& resp) {
+  // Retrieve the ysql catalog schema version. We only check --enable_ysql
+  // when --ysql_enable_db_catalog_version_mode=true to keep the logic
+  // backward compatible.
+  if (!FLAGS_ysql_enable_db_catalog_version_mode || !FLAGS_enable_ysql) {
+    uint64_t last_breaking_version = 0;
+    uint64_t catalog_version = 0;
+    auto s = catalog_manager_->GetYsqlCatalogVersion(
+        &catalog_version, &last_breaking_version);
+    if (s.ok()) {
+      resp.set_ysql_catalog_version(catalog_version);
+      resp.set_ysql_last_breaking_catalog_version(last_breaking_version);
+      VLOG_IF(1, FLAGS_log_ysql_catalog_versions)
+        << "responding (to ts " << req.common().ts_instance().permanent_uuid()
+        << ") catalog version: " << catalog_version
+        << ", breaking version: " << last_breaking_version;
+    } else {
+      LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
+                    << s.ToUserMessage();
+    }
+    return;
+  }
+
+  DbOidToCatalogVersionMap versions;
+  uint64_t fingerprint; // can only be used when versions is not empty.
+  auto s = catalog_manager_->GetYsqlAllDBCatalogVersions(
+      FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
+      &versions, &fingerprint);
+  if (!s.ok() || versions.empty()) {
+    LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
+                 << s.ToUserMessage();
+    return;
+  }
+
+  // Return versions back via heartbeat response if the tserver does not provide
+  // a fingerprint or the tserver's fingerprint does not match the master's
+  // fingerprint. The tserver does not provide a fingerprint when it has
+  // not received any catalog versions yet after it starts.
+  if (req.has_ysql_db_catalog_versions_fingerprint() &&
+      req.ysql_db_catalog_versions_fingerprint() == fingerprint) {
+    VLOG_IF(2, FLAGS_log_ysql_catalog_versions)
+        << "Responding (to ts "
+        << req.common().ts_instance().permanent_uuid()
+        << ") without db catalog versions: fingerprints matched";
+    return;
+  }
+
+  auto* const mutable_version_data = resp.mutable_db_catalog_version_data();
+  for (const auto& it : versions) {
+    auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
+    catalog_version->set_db_oid(it.first);
+    catalog_version->set_current_version(it.second.current_version);
+    catalog_version->set_last_breaking_version(it.second.last_breaking_version);
+  }
+
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
+    // We only read pg_yb_invalidation_messages when there is any catalog version
+    // change. This reduces the number of reading pg_yb_invalidation_messages which
+    // may be bulky if there are many databases and/or large invalidation messages.
+    // The risk is that if this read fails, we end up only having catalog version
+    // updates but not the associated invalidation messages updates which can cause
+    // catalog cache refreshes on those nodes that have got the new catalog
+    // version but missed the messages.
+    auto messages = catalog_manager_->GetYsqlCatalogInvalationMessages(
+        FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */);
+    if (messages.ok()) {
+      // The table pg_yb_invalidation_messages is empty.
+      VLOG_IF(2, messages->empty()) << "No YSQL invalidation messages for heartbeat response: "
+                                    << ResultToStatus(messages);
+      auto* const mutable_messages_data = resp.mutable_db_catalog_inval_messages_data();
+      for (auto& [db_oid_version, message_list] : *messages) {
+        auto* const inval_messages = mutable_messages_data->add_db_catalog_inval_messages();
+        inval_messages->set_db_oid(db_oid_version.first);
+        inval_messages->set_current_version(db_oid_version.second);
+        if (message_list.has_value()) {
+          inval_messages->set_message_list(std::move(*message_list));
+        }
+      }
+    } else {
+      const auto& s = messages.status();
+      auto msg = Format("Could not get YSQL invalidation messages for heartbeat response: $0", s);
+      if (s.IsNotFound()) {
+        // During upgrade, the table pg_yb_invalidation_messages is created in the finalization
+        // phase. We do not want to flood the log before that.
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << msg;
+      } else {
+        LOG(WARNING) << msg;
+      }
+    }
+  }
+
+  VLOG_IF(2, FLAGS_log_ysql_catalog_versions)
+    << "responding (to ts "
+    << req.common().ts_instance().permanent_uuid()
+    << ") db catalog versions: "
+    << resp.db_catalog_version_data().ShortDebugString()
+    << ") db inval messages: "
+    << resp.db_catalog_inval_messages_data().ShortDebugString();
+}
+
 void MasterHeartbeatServiceImpl::TSHeartbeat(
     const TSHeartbeatRequestPB* req,
     TSHeartbeatResponsePB* resp,
     rpc::RpcContext rpc) {
   LongOperationTracker long_operation_tracker("TSHeartbeat", 1s);
-
-  // If CatalogManager is not initialized don't even know whether or not we will
-  // be a leader (so we can't tell whether or not we can accept tablet reports).
-  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
-
-  if (req->common().ts_instance().permanent_uuid().empty()) {
-    // In FSManager, we have already added empty UUID protection so that TServer will
-    // crash before even sending heartbeat to Master. Here is only for the case that
-    // new updated Master might received empty UUID from old version of TServer that
-    // doesn't have the crash code in FSManager.
-    rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
-                              req->common().ts_instance().ShortDebugString()));
-    return;
-  }
 
   consensus::ConsensusStatePB cpb;
   Status s = catalog_manager_->GetCurrentConfig(&cpb);
@@ -302,6 +402,21 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
                 << req->common().ts_instance().permanent_uuid();
     }
   } // Do nothing if config not ready.
+
+
+  // If CatalogManager is not initialized don't even know whether or not we will
+  // be a leader (so we can't tell whether or not we can accept tablet reports).
+  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
+
+  if (req->common().ts_instance().permanent_uuid().empty()) {
+    // In FSManager, we have already added empty UUID protection so that TServer will
+    // crash before even sending heartbeat to Master. Here is only for the case that
+    // new updated Master might received empty UUID from old version of TServer that
+    // doesn't have the crash code in FSManager.
+    rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
+                              req->common().ts_instance().ShortDebugString()));
+    return;
+  }
 
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     resp->set_leader_master(false);
@@ -322,7 +437,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
   if (!desc_result.ok()) {
     return;
   }
-  TSDescriptorPtr ts_desc = std::move(*desc_result);
+  TSDescriptorPtr& ts_desc = *desc_result;
 
   resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
 
@@ -331,14 +446,18 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     ts_desc->UpdateMetrics(req->metrics());
   }
 
-  if (req->has_tablet_report()) {
-    s = ProcessTabletReport(
-        ts_desc, req->common().ts_instance(), req->tablet_report(), l.epoch(),
-        resp->mutable_tablet_report(), &rpc);
-    if (!s.ok()) {
-      rpc.RespondFailure(s.CloneAndPrepend("Failed to process tablet report"));
-      return;
-    }
+  auto process_tablet_report_result = ProcessTabletReport(
+      ts_desc, req->common().ts_instance(),
+      req->has_tablet_report() ? &req->tablet_report() : nullptr,
+      l.epoch(),
+      resp->mutable_tablet_report(), &rpc);
+  if (!process_tablet_report_result.ok()) {
+    rpc.RespondFailure(
+        process_tablet_report_result.status().CloneAndPrepend("Failed to process tablet report"));
+    return;
+  }
+  if (!*process_tablet_report_result) {
+    resp->set_needs_full_tablet_report(true);
   }
 
   if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
@@ -374,11 +493,6 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
         ProcessTabletReplicaFullCompactionStatus(ts_desc->permanent_uuid(), full_compaction_status);
       }
     }
-
-    // Only set once. It may take multiple heartbeats to receive a full tablet report.
-    if (!ts_desc->has_tablet_report()) {
-      resp->set_needs_full_tablet_report(true);
-    }
   }
 
   // Retrieve all the nodes known by the master.
@@ -388,61 +502,14 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     *resp->add_tservers() = desc->GetTSInformationPB();
   }
 
-  // Retrieve the ysql catalog schema version. We only check --enable_ysql
-  // when --ysql_enable_db_catalog_version_mode=true to keep the logic
-  // backward compatible.
-  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
-    DbOidToCatalogVersionMap versions;
-    uint64_t fingerprint; // can only be used when versions is not empty.
-    s = catalog_manager_->GetYsqlAllDBCatalogVersions(
-        FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
-        &versions, &fingerprint);
-    if (s.ok() && !versions.empty()) {
-      // Return versions back via heartbeat response if the tserver does not provide
-      // a fingerprint or the tserver's fingerprint does not match the master's
-      // fingerprint. The tserver does not provide a fingerprint when it has
-      // not received any catalog versions yet after it starts.
-      if (!req->has_ysql_db_catalog_versions_fingerprint() ||
-          req->ysql_db_catalog_versions_fingerprint() != fingerprint) {
-        auto* const mutable_version_data = resp->mutable_db_catalog_version_data();
-        for (const auto& it : versions) {
-          auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
-          catalog_version->set_db_oid(it.first);
-          catalog_version->set_current_version(it.second.current_version);
-          catalog_version->set_last_breaking_version(it.second.last_breaking_version);
-        }
-        if (FLAGS_log_ysql_catalog_versions) {
-          VLOG_WITH_FUNC(2) << "responding (to ts "
-                            << req->common().ts_instance().permanent_uuid()
-                            << ") db catalog versions: "
-                            << resp->db_catalog_version_data().ShortDebugString();
-        }
-      } else if (FLAGS_log_ysql_catalog_versions) {
-        VLOG_WITH_FUNC(2) << "responding (to ts "
-                          << req->common().ts_instance().permanent_uuid()
-                          << ") without db catalog versions: fingerprints matched";
-      }
-    } else {
-      LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
-                    << s.ToUserMessage();
-    }
+  PopulatePgCatalogVersionInfo(*req, *resp);
+
+  auto cluster_config = server_->catalog_manager()->GetClusterConfig();
+  if (cluster_config) {
+    resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
   } else {
-    uint64_t last_breaking_version = 0;
-    uint64_t catalog_version = 0;
-    s = catalog_manager_->GetYsqlCatalogVersion(
-        &catalog_version, &last_breaking_version);
-    if (s.ok()) {
-      resp->set_ysql_catalog_version(catalog_version);
-      resp->set_ysql_last_breaking_catalog_version(last_breaking_version);
-      if (FLAGS_log_ysql_catalog_versions) {
-        VLOG_WITH_FUNC(1) << "responding (to ts " << req->common().ts_instance().permanent_uuid()
-                          << ") catalog version: " << catalog_version
-                          << ", breaking version: " << last_breaking_version;
-      }
-    } else {
-      LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
-                    << s.ToUserMessage();
-    }
+    LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
+                 << cluster_config.status().ToUserMessage();
   }
 
   uint64_t transaction_tables_version = catalog_manager_->GetTransactionTablesVersion();
@@ -537,13 +604,34 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
     epoch);
 }
 
-Status MasterHeartbeatServiceImpl::ProcessTabletReport(
+Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     const TSDescriptorPtr& ts_desc,
     const NodeInstancePB& ts_instance,
-    const TabletReportPB& full_report,
+    const TabletReportPB* full_report_ptr,
     const LeaderEpoch& epoch,
     TabletReportUpdatesPB* full_report_update,
     rpc::RpcContext* rpc) {
+  if (!full_report_ptr) {
+    return ts_desc->has_tablet_report();
+  }
+  const auto& full_report = *full_report_ptr;
+
+  if (!ts_desc->has_tablet_report()) {
+    if (full_report.is_incremental()) {
+      LOG(WARNING) << "Invalid tablet report from " << ts_desc->permanent_uuid()
+                 << ": Received an incremental tablet report when a full one was needed";
+      return false;
+    } else if (full_report.full_report_seq_no() &&
+               full_report.full_report_seq_no() != full_report.sequence_number() &&
+               full_report.full_report_seq_no() != ts_desc->receiving_full_report_seq_no()) {
+      LOG(WARNING)
+          << ts_desc->permanent_uuid()
+          << " sent full report continuation with unexpected sequence number: "
+          << full_report.full_report_seq_no() << " vs " << ts_desc->receiving_full_report_seq_no();
+      return false;
+    }
+  }
+
   int num_tablets = full_report.updated_tablets_size();
   TRACE_EVENT2("master", "ProcessTabletReport",
               "requestor", rpc->requestor_string(),
@@ -551,14 +639,6 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
 
   VLOG(2) << "Received tablet report from " << rpc::RequestorString(rpc) << "("
           << ts_desc->permanent_uuid() << "): " << full_report.DebugString();
-
-  if (!ts_desc->has_tablet_report() && full_report.is_incremental()) {
-    LOG(WARNING)
-        << "Invalid tablet report from " << ts_desc->permanent_uuid()
-        << ": Received an incremental tablet report when a full one was needed";
-    // We should respond with success in order to send reply that we need full report.
-    return Status::OK();
-  }
 
   // TODO: on a full tablet report, we may want to iterate over the tablets we think
   // the server should have, compare vs the ones being reported, and somehow mark
@@ -623,7 +703,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
         LOG(INFO) << "Reached Heartbeat deadline. Returning early after processing "
                   << full_report_update->tablets_size() << " tablets";
         full_report_update->set_processing_truncated(true);
-        return Status::OK();
+        break;
       }
     }
   } // Loop to process the next batch until fully iterated.
@@ -631,17 +711,25 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
   if (!full_report.is_incremental()) {
     // A full report may take multiple heartbeats.
     // The TS communicates how much is left to process for the full report beyond this specific HB.
-    bool completed_full_report = !full_report.has_remaining_tablet_count()
-                              || full_report.remaining_tablet_count() == 0;
+    bool completed_full_report =
+        full_report.remaining_tablet_count() == 0 && !full_report_update->processing_truncated();
     if (full_report.updated_tablets_size() == 0) {
       LOG(INFO) << ts_desc->permanent_uuid() << " sent full tablet report with 0 tablets.";
     } else if (!ts_desc->has_tablet_report()) {
       LOG(INFO) << ts_desc->permanent_uuid()
                 << (completed_full_report ? " finished" : " receiving") << " first full report: "
-                << full_report.updated_tablets_size() << " tablets.";
+                << reported_tablets.size() << " tablets.";
     }
-    // We have a tablet report only once we're done processing all the chunks of the initial report.
-    ts_desc->set_has_tablet_report(completed_full_report);
+    if (completed_full_report) {
+      // We have a tablet report only once we're done processing all the chunks of the initial
+      // report.
+      ts_desc->set_has_tablet_report(completed_full_report);
+    } else if (!ts_desc->receiving_full_report_seq_no()) {
+      LOG_WITH_FUNC(INFO)
+          << ts_desc->permanent_uuid() << " set full report seq no: "
+          << full_report.full_report_seq_no();
+      ts_desc->set_receiving_full_report_seq_no(full_report.full_report_seq_no());
+    }
   }
 
   // 14. Queue background processing if we had updates.
@@ -649,7 +737,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReport(
     catalog_manager_->WakeBgTaskIfPendingUpdates();
   }
 
-  return Status::OK();
+  return true;
 }
 
 int64_t GetCommittedConsensusStateOpIdIndex(const ReportedTabletPB& report) {
@@ -839,15 +927,9 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     }
   }
 
-  // Update the table state if all its tablets are now running.
-  for (auto& [table_id, tablets] : new_running_tablets) {
-    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
-  }
-
   // Filter the mutated tablets to find which tablets were modified. Need to actually commit the
   // state of the tablets before updating the system.partitions table, so get this first.
-  std::vector<TabletInfoPtr> yql_partitions_mutated_tablets = VERIFY_RESULT(
-      catalog_manager_->GetYqlPartitionsVtable().FilterRelevantTablets(mutated_tablets));
+  auto yql_partitions_mutated_tablets = YQLPartitionsVTable::FilterRelevantTablets(mutated_tablets);
 
   // Publish the in-memory tablet mutations and release the locks.
   for (auto& l : tablet_write_locks) {
@@ -860,6 +942,11 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     l.second.Commit();
   }
   table_write_locks.clear();
+
+  // Update the table state if all its tablets are now running.
+  for (auto& [table_id, tablets] : new_running_tablets) {
+    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
+  }
 
   // Update the relevant tablet entries in system.partitions.
   if (!yql_partitions_mutated_tablets.empty()) {
@@ -1329,11 +1416,12 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
         leader_lease_status,
         new_ht_lease_exp,
         new_heartbeats_without_leader_lease};
-  TabletReplicaDriveInfo drive_info{
-        storage_metadata.sst_file_size(),
-        storage_metadata.wal_file_size(),
-        storage_metadata.uncompressed_sst_file_size(),
-        storage_metadata.may_have_orphaned_post_split_data()};
+  auto drive_info = TabletReplicaDriveInfo {
+    .sst_files_size = storage_metadata.sst_file_size(),
+    .wal_files_size = storage_metadata.wal_file_size(),
+    .uncompressed_sst_file_size = storage_metadata.uncompressed_sst_file_size(),
+    .may_have_orphaned_post_split_data = storage_metadata.may_have_orphaned_post_split_data(),
+  };
   tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
 }
 
@@ -1445,23 +1533,33 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   return Status::OK();
 }
 
-Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
+Result<TSDescriptorPtr>
+MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     const LeaderEpoch& epoch, const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp,
     rpc::RpcContext* rpc) {
+  if (!FLAGS_skip_tserver_version_checks && req.registration().has_version_info()) {
+    const auto& registration = req.registration();
+    auto status = server_->ysql_manager().ValidateTServerVersion(registration.version_info());
+    if (!status.ok()) {
+      LOG(WARNING) << "yb-tserver " << registration.common().ShortDebugString()
+                   << " running invalid version: "
+                   << registration.version_info().ShortDebugString();
+      resp->set_is_fatal_error(true);
+      auto* error = resp->mutable_error();
+      error->set_code(MasterErrorPB::INTERNAL_ERROR);
+      StatusToPB(status, error->mutable_status());
+      rpc->RespondSuccess();
+      return status;
+    }
+  }
+
   auto desc_result = server_->ts_manager()->RegisterFromHeartbeat(
       req, epoch, server_->MakeCloudInfoPB(), &server_->proxy_cache());
   if (desc_result.ok()) {
-    // Populate the response to bootstrap object locks.
-    // TODO: This would also need to be done whenever a tablet server with an
-    // expired lease gets a new lease. YSQL Leases are yet to be implemented.
-    // when that happens, we should re-bootstrap the TServer and bump up
-    // it's incarnation id (similar to how instance_seqno behaves across restarts).
     LOG(INFO) << "Registering " << req.common().ts_instance().ShortDebugString();
-    server_->catalog_manager_impl()->ExportObjectLockInfo(
-        req.common().ts_instance().permanent_uuid(), resp->mutable_ddl_lock_entries());
-    return std::move(*desc_result);
+    return desc_result;
   }
-  auto status = std::move(desc_result.status());
+  auto& status = desc_result.status();
   if (status.IsAlreadyPresent()) {
     // AlreadyPresent indicates a host port collision. This tserver shouldn't be heartbeating
     // anymore, but in any case ask it to re-register to preserve existing semantics.
@@ -1472,13 +1570,13 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     resp->set_needs_reregister(true);
     resp->set_needs_full_tablet_report(true);
     rpc->RespondSuccess();
-    return status;
+    return desc_result;
   }
   LOG(WARNING) << Format(
       "Failed to register tablet server { $0 } as $1; Status was: $2",
       req.common().ts_instance().ShortDebugString(), rpc->requestor_string(), status);
   rpc->RespondFailure(status);
-  return status;
+  return desc_result;
 }
 
 Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorOrRespond(
@@ -1487,31 +1585,30 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::UpdateAndReturnTSDescriptorO
   if (req.has_registration()) {
     return RegisterTServerOrRespond(epoch, req, resp, rpc);
   }
-
   auto desc_result = server_->ts_manager()->LookupAndUpdateTSFromHeartbeat(req, epoch);
   if (desc_result.ok()) {
-    return std::move(*desc_result);
+    return desc_result;
   }
-  auto status = std::move(desc_result.status());
   // todo(zdrudi): be more precise about the error code here.
-  if (status.IsNotFound()) {
+  if (desc_result.status().IsNotFound()) {
     LOG(INFO) << Format(
         "Failed to lookup tablet server { $0 } as $1; Asking this server to re-register. Status "
         "from ts lookup: $2",
-        req.common().ts_instance().ShortDebugString(), rpc->requestor_string(), status);
+        req.common().ts_instance().ShortDebugString(), rpc->requestor_string(),
+        desc_result.status());
     resp->set_needs_reregister(true);
     resp->set_needs_full_tablet_report(true);
     rpc->RespondSuccess();
-    return status;
+    return desc_result;
   }
   // Under some circumstances TS lookups from a heartbeat may trigger sys catalog writes which can
   // fail. Distinguish these failures from lookup failures using a different log message and failing
   // the rpc.
   LOG(WARNING) << Format(
       "Failed to lookup tablet server { $0 } as $1; Status was: $2",
-      req.common().ts_instance().ShortDebugString(), rpc->requestor_string(), status);
-  rpc->RespondFailure(status);
-  return status;
+      req.common().ts_instance().ShortDebugString(), rpc->requestor_string(), desc_result.status());
+  rpc->RespondFailure(desc_result.status());
+  return desc_result;
 }
 
 } // namespace

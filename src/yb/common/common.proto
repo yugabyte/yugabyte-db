@@ -134,11 +134,32 @@ enum PgVectorIndexType {
   HNSW = 3;
 }
 
+message PgHnswIndexOptionsPB {
+  optional uint32 m = 1;
+  optional uint32 m0 = 2;
+  optional uint32 ef_construction = 3;
+}
+
 message PgVectorIdxOptionsPB {
   optional PgVectorDistanceType dist_type = 1;
   optional PgVectorIndexType idx_type = 2;
   optional uint32 dimensions = 3;
   optional uint32 column_id = 4;
+
+  reserved 5, 6;
+  optional PgHnswIndexOptionsPB hnsw = 7;
+}
+
+message PgHnswReadOptionsPB {
+  required uint32 ef_search = 1;
+}
+
+message PgVectorReadOptionsPB {
+  required QLValuePB vector = 1;
+  required int32 prefetch_size = 2;
+  oneof index_params {
+    PgHnswReadOptionsPB hnsw_options = 3;
+  }
 }
 
 message TablePropertiesPB {
@@ -611,6 +632,10 @@ message TServerDBCatalogVersionInfo {
   optional int32 shm_index = 2;
 }
 
+message TServerDBCatalogMessageListInfo {
+  optional bytes message_list = 2;
+}
+
 message DatumMessagePB {
   optional string column_name = 1;
   optional int64 column_type = 2;
@@ -657,6 +682,13 @@ enum ReplicationSlotLsnType {
   ReplicationSlotLsnType_UNSPECIFIED = 0;
   ReplicationSlotLsnType_SEQUENCE = 1;
   ReplicationSlotLsnType_HYBRID_TIME = 2;
+}
+
+// The type of ordering mode to be used while using logical replication.
+enum ReplicationSlotOrderingMode {
+  ReplicationSlotOrderingMode_UNSPECIFIED = 0;
+  ReplicationSlotOrderingMode_ROW = 1;
+  ReplicationSlotOrderingMode_TRANSACTION = 2;
 }
 
 message AshMetadataPB {
@@ -714,9 +746,25 @@ message CDCSDKStreamCreateOptionsPB {
   optional
       CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
   optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
+  optional ReplicationSlotOrderingMode ordering_mode =
+    13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 }
 
 message TserverMetricsInfoPB {
   required string name = 1;
   required string value = 2;
+}
+
+// See ql_rocksdb_storage.cc for details on each method.
+enum DocDbBlocksSamplingMethod {
+  SPLIT_INTERSECTING_BLOCKS = 0;
+  SPLIT_INTERSECTING_BLOCKS_V3 = 1;
+  COMBINE_INTERSECTING_BLOCKS = 2;
+}
+
+// See yb_sampling_algorithm flag description.
+// Should be in sync with YbcSamplingAlgorithmEnum in GUC (ybc_util.h).
+enum YsqlSamplingAlgorithm {
+  FULL_TABLE_SCAN = 0;
+  BLOCK_BASED_SAMPLING = 1;
 }

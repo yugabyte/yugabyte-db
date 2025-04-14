@@ -85,7 +85,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/thread.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 #include "yb/util/tcmalloc_util.h"
 
 DEFINE_UNKNOWN_int32(num_reactor_threads, -1,
@@ -369,7 +369,7 @@ Status RpcServerBase::DumpServerInfo(const string& path,
   GetStatusPB(&status);
 
   if (boost::iequals(format, "json")) {
-    string json = JsonWriter::ToJson(status, JsonWriter::PRETTY);
+    string json = JsonWriter::ToJson(status, JsonWriter::PRETTY_ESCAPE_STR);
     RETURN_NOT_OK(WriteStringToFile(options_.env, Slice(json), path));
   } else if (boost::iequals(format, "pb")) {
     // TODO: Use PB container format?
@@ -417,7 +417,7 @@ void RpcServerBase::MetricsLoggingThread() {
     MetricJsonOptions opts;
     opts.include_raw_histograms = true;
 
-    JsonWriter writer(&buf, JsonWriter::COMPACT);
+    JsonWriter writer(&buf, JsonWriter::COMPACT_ESCAPE_STR);
     Status s = metric_registry_->WriteAsJson(&writer, opts);
     if (!s.ok()) {
       WARN_NOT_OK(s, "Unable to collect metrics to log");

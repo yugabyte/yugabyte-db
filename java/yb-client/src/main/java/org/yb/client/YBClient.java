@@ -56,6 +56,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
 import org.yb.CommonNet;
+import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
@@ -65,7 +66,6 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
@@ -1100,6 +1100,47 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Gets the list of status and schema of Tablets for a TServer.
+   *
+   * @param hp host and port of the TServer.
+   * @return a object containing the list of status and schema of tablets
+   *         that exist on the TServer.
+   */
+  public ListTabletsResponse listStatusAndSchemaOfTabletsForTServer(HostAndPort hp)
+      throws Exception {
+    Deferred<ListTabletsResponse> d = asyncClient.listStatusAndSchemaOfTabletsForTServer(hp);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get consensus state for a tablet from a Tserver.
+   *
+   * @param tabletId
+   * @param hp host and port of the Tserver.
+   * @return
+   */
+  public GetConsensusStateResponse getTabletConsensusStateFromTS(final String tabletId,
+      final HostAndPort hp) throws Exception {
+    Deferred<GetConsensusStateResponse> d = asyncClient.getTabletConsensusStateFromTS(tabletId, hp);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get the OpIds of the latest entries for a given list of tablets.
+   *
+   * @param hp        host and port of the Tserver on which the tablets are
+   *                  present.
+   * @param tabletIds
+   * @return
+   * @throws Exception
+   */
+  public GetLatestEntryOpIdResponse getLatestEntryOpIds(final HostAndPort hp,
+      List<String> tabletIds) throws Exception {
+    Deferred<GetLatestEntryOpIdResponse> d = asyncClient.getLatestEntryOpIds(hp, tabletIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Check if the server is ready to serve requests.
    *
    * @param hp the host and port of the server.
@@ -2123,6 +2164,122 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
+  /**
+   * Initiates the YSQL major catalog upgrade process.
+   *
+   * @return An {@link StartYsqlMajorCatalogUpgradeResponse} object containing the response.
+   */
+  public StartYsqlMajorCatalogUpgradeResponse startYsqlMajorCatalogUpgrade() throws Exception {
+    Deferred<StartYsqlMajorCatalogUpgradeResponse> d = asyncClient.startYsqlMajorCatalogUpgrade();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        startYsqlMajorCatalogUpgradeResponse -> {
+          return startYsqlMajorCatalogUpgradeResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Checks if the YSQL major catalog upgrade is done.
+   *
+   * @return An {@link IsYsqlMajorCatalogUpgradeDoneResponse} indicating the status of the upgrade.
+   */
+  public IsYsqlMajorCatalogUpgradeDoneResponse isYsqlMajorCatalogUpgradeDone() throws Exception {
+    Deferred<IsYsqlMajorCatalogUpgradeDoneResponse> d = asyncClient.isYsqlMajorCatalogUpgradeDone();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        isYsqlMajorCatalogUpgradeDoneResponse -> {
+          return isYsqlMajorCatalogUpgradeDoneResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Finalizes the YSQL major catalog upgrade.
+   *
+   * @return An {@link FinalizeYsqlMajorCatalogUpgradeResponse} object containing the response.
+   */
+  public FinalizeYsqlMajorCatalogUpgradeResponse finalizeYsqlMajorCatalogUpgrade()
+      throws Exception {
+    Deferred<FinalizeYsqlMajorCatalogUpgradeResponse> d =
+        asyncClient.finalizeYsqlMajorCatalogUpgrade();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        finalizeYsqlMajorCatalogUpgradeResponse -> {
+          return finalizeYsqlMajorCatalogUpgradeResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Rolls back the YSQL major catalog version.
+   *
+   * @return An {@link RollbackYsqlMajorCatalogVersionResponse} object containing the response.
+   */
+  public RollbackYsqlMajorCatalogVersionResponse rollbackYsqlMajorCatalogVersion()
+      throws Exception {
+    Deferred<RollbackYsqlMajorCatalogVersionResponse> d =
+        asyncClient.rollbackYsqlMajorCatalogVersion();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        rollbackYsqlMajorCatalogVersionResponse -> {
+          return rollbackYsqlMajorCatalogVersionResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Retrieves the YSQL major catalog upgrade state response.
+   *
+   * @return An {@link GetYsqlMajorCatalogUpgradeStateResponse} object containing the response.
+   */
+  public GetYsqlMajorCatalogUpgradeStateResponse getYsqlMajorCatalogUpgradeState()
+      throws Exception {
+    Deferred<GetYsqlMajorCatalogUpgradeStateResponse> d =
+        asyncClient.getYsqlMajorCatalogUpgradeState();
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+        getYsqlMajorCatalogUpgradeStateResponse -> {
+          return getYsqlMajorCatalogUpgradeStateResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
   public SetCheckpointResponse bootstrapTablet(
       YBTable table,
       String streamId,
@@ -2182,6 +2339,14 @@ public class YBClient implements AutoCloseable {
       String replicationGroupName) throws Exception {
     Deferred<GetXClusterOutboundReplicationGroupInfoResponse> d =
         asyncClient.getXClusterOutboundReplicationGroupInfo(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /** @see {@link AsyncYBClient#getXClusterOutboundReplicationGroups(String)} */
+  public GetXClusterOutboundReplicationGroupsResponse getXClusterOutboundReplicationGroups(
+    @Nullable String namespaceId) throws Exception {
+    Deferred<GetXClusterOutboundReplicationGroupsResponse> d =
+        asyncClient.getXClusterOutboundReplicationGroups(namespaceId);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -2435,10 +2600,10 @@ public class YBClient implements AutoCloseable {
    * @see AsyncYBClient#getTabletLocations(List<String>, String, boolean, boolean)
    */
   public GetTabletLocationsResponse getTabletLocations(
-      List<String> tabletIds, String tableId, boolean includeInactive, boolean includeDeleted)
+      List<String> tabletIds, String tableId, boolean includeHidden, boolean includeDeleted)
       throws Exception {
     Deferred<GetTabletLocationsResponse> d =
-        asyncClient.getTabletLocations(tabletIds, tableId, includeInactive, includeDeleted);
+        asyncClient.getTabletLocations(tabletIds, tableId, includeHidden, includeDeleted);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -2448,6 +2613,17 @@ public class YBClient implements AutoCloseable {
     Deferred<CreateSnapshotScheduleResponse> d =
         asyncClient.createSnapshotSchedule(
             databaseType, keyspaceName, retentionInSecs, timeIntervalInSecs);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public EditSnapshotScheduleResponse editSnapshotSchedule(
+      UUID snapshotScheduleUUID,
+      long retentionInSecs,
+      long timeIntervalInSecs)
+      throws Exception {
+    Deferred<EditSnapshotScheduleResponse> d =
+        asyncClient.editSnapshotSchedule(
+            snapshotScheduleUUID, retentionInSecs, timeIntervalInSecs);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -2501,6 +2677,37 @@ public class YBClient implements AutoCloseable {
 
   public DeleteSnapshotResponse deleteSnapshot(UUID snapshotUUID) throws Exception {
     Deferred<DeleteSnapshotResponse> d = asyncClient.deleteSnapshot(snapshotUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CloneNamespaceResponse cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String targetKeyspaceName,
+      long cloneTimeInMillis)
+      throws Exception {
+    Deferred<CloneNamespaceResponse> d =
+        asyncClient.cloneNamespace(
+            databaseType, sourceKeyspaceName, targetKeyspaceName, cloneTimeInMillis);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CloneNamespaceResponse cloneNamespace(
+      YQLDatabase databaseType,
+      String sourceKeyspaceName,
+      String keyspaceId,
+      String targetKeyspaceName,
+      long cloneTimeInMillis)
+      throws Exception {
+    Deferred<CloneNamespaceResponse> d =
+        asyncClient.cloneNamespace(
+            databaseType, sourceKeyspaceName, keyspaceId, targetKeyspaceName, cloneTimeInMillis);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ListClonesResponse listClones(String keyspaceId, Integer cloneSeqNo)
+      throws Exception {
+    Deferred<ListClonesResponse> d = asyncClient.listClones(keyspaceId, cloneSeqNo);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

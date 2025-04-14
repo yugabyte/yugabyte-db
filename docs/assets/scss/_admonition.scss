@@ -71,6 +71,10 @@ main {
       position: relative;
       margin: 1em 0;
 
+      &.note {
+        padding: 16px 16px 16px 50px;
+      }
+
       &::before {
         content: "";
         width: 18px;

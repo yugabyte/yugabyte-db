@@ -141,32 +141,34 @@ typedef struct JHashState
 } JHashState;
 
 /* State for json_validate_object_keys */
-typedef struct ValidateOkeysState
+typedef struct YbValidateOkeysState
 {
 	JsonLexContext *lex;
 	/* The set of keys the json object should contain */
-	char	**required_keys;
+	char	  **required_keys;
 
 	/*
 	 * For 'i' such that 'expected_keys' was found in the
 	 * json object being processed, found_key[i] will be set
 	 * to true, false otherwise.
 	 */
-	bool	*found_key;
+	bool	   *found_key;
 
 	/* Number of keys in 'required_keys' */
-	int	 num_required_keys;
+	int			num_required_keys;
 
 	/* The set of keys the json object can contain */
-	char	**optional_keys;
+	char	  **optional_keys;
 
 	/* Number of keys in 'optional_keys' */
-	int	 num_optional_keys;
+	int			num_optional_keys;
 
-	/* The actual json being processed, convenience object
-	 * for printing descriptive error messages */
-	char	*json_text;
-} ValidateOkeysState;
+	/*
+	 * The actual json being processed, convenience object for printing
+	 * descriptive error messages
+	 */
+	char	   *json_text;
+} YbValidateOkeysState;
 
 /* hashtable element */
 typedef struct JsonHashEntry
@@ -372,10 +374,13 @@ static void okeys_scalar(void *state, char *token, JsonTokenType tokentype);
 
 /* Invoked whenever the parser encounters the start of a json object */
 static void validate_okeys_object_field_start(void *state, char *fname, bool isnull);
+
 /* Invoked whenever the parser encounters a json array */
 static void validate_okeys_array_start(void *state);
+
 /* Invoked whenever a json scalar is encountered by the parser */
 static void validate_okeys_scalar(void *state, char *token, JsonTokenType tokentype);
+
 /* Invoked whenever a json object has been processed completely by the parser */
 static void validate_okeys_object_end(void *state);
 
@@ -467,8 +472,8 @@ static Datum populate_record_worker(FunctionCallInfo fcinfo, const char *funcnam
 
 /* helper functions for populate_record[set] */
 static HeapTupleHeader populate_record(TupleDesc tupdesc, RecordIOData **record_p,
-				HeapTupleHeader defaultval, MemoryContext mcxt,
-				JsObject *obj);
+									   HeapTupleHeader defaultval, MemoryContext mcxt,
+									   JsObject *obj);
 static void get_record_type_from_argument(FunctionCallInfo fcinfo,
 										  const char *funcname,
 										  PopulateRecordCache *cache);
@@ -695,6 +700,7 @@ report_json_context(JsonLexContext *lex)
 	line_start = lex->line_start;
 	context_start = line_start;
 	context_end = lex->token_terminator;
+	Assert(context_end >= context_start);
 
 	/* Advance until we are close enough to context_end */
 	while (context_end - context_start >= 50)
@@ -840,7 +846,7 @@ okeys_scalar(void *state, char *token, JsonTokenType tokentype)
 static void
 validate_okeys_object_field_start(void *state, char *fname, bool isnull)
 {
-	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+	YbValidateOkeysState *_state = (YbValidateOkeysState *) state;
 
 	/* only verifying keys for the top level object */
 	if (_state->lex->lex_level != 1)
@@ -862,62 +868,64 @@ validate_okeys_object_field_start(void *state, char *fname, bool isnull)
 	{
 		if (strcmp(fname, _state->optional_keys[i]) == 0)
 		{
-			/* This is a valid key*/
+			/* This is a valid key */
 			return;
 		}
 	}
 
 	ereport(ERROR,
-		(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		errmsg("Invalid key \"%s\" found in json object %s", fname, _state->json_text)));
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("invalid key \"%s\" found in json object %s", fname, _state->json_text)));
 }
 
 static void
 validate_okeys_object_end(void *state)
 {
-	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+	YbValidateOkeysState *_state = (YbValidateOkeysState *) state;
 
 	/* Nothing to do for nested objects */
 	if (_state->lex->lex_level > 0)
 		return;
 
-	/* Since the entire object has been processed, check whether
-	 * all required keys have been found */
+	/*
+	 * Since the entire object has been processed, check whether all required
+	 * keys have been found
+	 */
 	for (int i = 0; i < _state->num_required_keys; i++)
 	{
 		if (!_state->found_key[i])
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Required key \"%s\" not specified in json object: %s",
-					_state->required_keys[i],
-					_state->json_text)));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("required key \"%s\" not specified in json object %s",
+							_state->required_keys[i],
+							_state->json_text)));
 	}
 }
 
 static void
 validate_okeys_array_start(void *state)
 {
-	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+	YbValidateOkeysState *_state = (YbValidateOkeysState *) state;
 
 	/* top level must be a json object */
 	if (_state->lex->lex_level == 0)
 		ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("Found unexpected JSON array in json object %s",
-				_state->json_text)));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("found unexpected JSON array in json object %s",
+						_state->json_text)));
 }
 
 static void
 validate_okeys_scalar(void *state, char *token, JsonTokenType tokentype)
 {
-	ValidateOkeysState *_state = (ValidateOkeysState *) state;
+	YbValidateOkeysState *_state = (YbValidateOkeysState *) state;
 
 	/* top level must be a json object */
 	if (_state->lex->lex_level == 0)
 		ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("Found unexpected JSON scalar in json object %s",
-				_state->json_text)));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("found unexpected JSON scalar in json object %s",
+						_state->json_text)));
 }
 
 /*
@@ -949,15 +957,15 @@ jsonb_object_field(PG_FUNCTION_ARGS)
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	text	   *key = PG_GETARG_TEXT_PP(1);
 	JsonbValue *v;
- 	JsonbValue	vbuf;
+	JsonbValue	vbuf;
 
 	if (!JB_ROOT_IS_OBJECT(jb))
 		PG_RETURN_NULL();
 
- 	v = getKeyJsonValueFromContainer(&jb->root,
- 									 VARDATA_ANY(key),
- 									 VARSIZE_ANY_EXHDR(key),
- 									 &vbuf);
+	v = getKeyJsonValueFromContainer(&jb->root,
+									 VARDATA_ANY(key),
+									 VARSIZE_ANY_EXHDR(key),
+									 &vbuf);
 
 	if (v != NULL)
 		PG_RETURN_JSONB_P(JsonbValueToJsonb(v));
@@ -987,16 +995,15 @@ jsonb_object_field_text(PG_FUNCTION_ARGS)
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	text	   *key = PG_GETARG_TEXT_PP(1);
 	JsonbValue *v;
- 	JsonbValue	vbuf;
+	JsonbValue	vbuf;
 
 	if (!JB_ROOT_IS_OBJECT(jb))
 		PG_RETURN_NULL();
 
- 	v = getKeyJsonValueFromContainer(&jb->root,
- 									 VARDATA_ANY(key),
- 									 VARSIZE_ANY_EXHDR(key),
- 									 &vbuf);
-
+	v = getKeyJsonValueFromContainer(&jb->root,
+									 VARDATA_ANY(key),
+									 VARSIZE_ANY_EXHDR(key),
+									 &vbuf);
 
 	if (v != NULL && v->type != jbvNull)
 		PG_RETURN_TEXT_P(JsonbValueAsText(v));
@@ -2056,7 +2063,7 @@ each_worker_jsonb(FunctionCallInfo fcinfo, const char *funcname, bool as_text)
 	rsi = (ReturnSetInfo *) fcinfo->resultinfo;
 	InitMaterializedSRF(fcinfo, MAT_SRF_BLESS);
 
-	tmp_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	tmp_cxt = AllocSetContextCreate(CurrentMemoryContext,
 									"jsonb_each temporary cxt",
 									ALLOCSET_DEFAULT_SIZES);
 
@@ -2147,7 +2154,7 @@ each_worker(FunctionCallInfo fcinfo, bool as_text)
 	state->normalize_results = as_text;
 	state->next_scalar = false;
 	state->lex = lex;
-	state->tmp_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	state->tmp_cxt = AllocSetContextCreate(CurrentMemoryContext,
 										   "json_each temporary cxt",
 										   ALLOCSET_DEFAULT_SIZES);
 
@@ -2299,7 +2306,7 @@ elements_worker_jsonb(FunctionCallInfo fcinfo, const char *funcname,
 
 	InitMaterializedSRF(fcinfo, MAT_SRF_USE_EXPECTED_DESC | MAT_SRF_BLESS);
 
-	tmp_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	tmp_cxt = AllocSetContextCreate(CurrentMemoryContext,
 									"jsonb_array_elements temporary cxt",
 									ALLOCSET_DEFAULT_SIZES);
 
@@ -2390,7 +2397,7 @@ elements_worker(FunctionCallInfo fcinfo, const char *funcname, bool as_text)
 	state->normalize_results = as_text;
 	state->next_scalar = false;
 	state->lex = lex;
-	state->tmp_cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	state->tmp_cxt = AllocSetContextCreate(CurrentMemoryContext,
 										   "json_array_elements temporary cxt",
 										   ALLOCSET_DEFAULT_SIZES);
 
@@ -2859,7 +2866,7 @@ populate_array(ArrayIOData *aio,
 
 	ctx.aio = aio;
 	ctx.mcxt = mcxt;
-	ctx.acxt = GetCurrentMemoryContext();
+	ctx.acxt = CurrentMemoryContext;
 	ctx.astate = initArrayResult(aio->element_type, ctx.acxt, true);
 	ctx.colname = colname;
 	ctx.ndims = 0;				/* unknown yet */
@@ -3300,8 +3307,8 @@ JsObjectGetField(JsObject *obj, char *field, JsValue *jsv)
 	else
 	{
 		jsv->val.jsonb = !obj->val.jsonb_cont ? NULL :
- 			getKeyJsonValueFromContainer(obj->val.jsonb_cont, field, strlen(field),
- 										 NULL);
+			getKeyJsonValueFromContainer(obj->val.jsonb_cont, field, strlen(field),
+										 NULL);
 
 		return jsv->val.jsonb != NULL;
 	}
@@ -3600,7 +3607,7 @@ get_json_object_as_hash(char *json, int len, const char *funcname)
 
 	ctl.keysize = NAMEDATALEN;
 	ctl.entrysize = sizeof(JsonHashEntry);
-	ctl.hcxt = GetCurrentMemoryContext();
+	ctl.hcxt = CurrentMemoryContext;
 	tab = hash_create("json object hashtable",
 					  100,
 					  &ctl,
@@ -3994,7 +4001,7 @@ populate_recordset_object_start(void *state)
 	/* Object at level 1: set up a new hash table for this object */
 	ctl.keysize = NAMEDATALEN;
 	ctl.entrysize = sizeof(JsonHashEntry);
-	ctl.hcxt = GetCurrentMemoryContext();
+	ctl.hcxt = CurrentMemoryContext;
 	_state->json_hash = hash_create("json object hashtable",
 									100,
 									&ctl,
@@ -5672,23 +5679,27 @@ transform_string_values_scalar(void *state, char *token, JsonTokenType tokentype
  * json strings.
  */
 
-int json_get_int_value(text *json, char *key)
+int
+json_get_int_value(text *json, char *key)
 {
-	text *value = json_get_value(json, key);
+	text	   *value = json_get_value(json, key);
+
 	if (value == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Required key \"%s\" not found", key)));
+				 errmsg("required key \"%s\" not found", key)));
 	}
 
-	char *int_str = text_to_cstring(value);
-	const int ret_value = atoi(int_str);
-	if (ret_value <= 0) {
+	char	   *int_str = text_to_cstring(value);
+	const int	ret_value = atoi(int_str);
+
+	if (ret_value <= 0)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Invalid value for \"%s\" key", key),
-				 errdetail("Found %s but %s value should be an integer > 0",
+				 errmsg("invalid value for \"%s\" key", key),
+				 errdetail("Found %s but %s value should be an integer > 0.",
 						   int_str, key)));
 	}
 	return ret_value;
@@ -5704,37 +5715,40 @@ json_get_denormalized_value(text *json, char *key)
 	return get_worker(json, &key, NULL, 1, true);
 }
 
-text*
+text *
 json_get_value(text *json, char *key)
 {
 	return get_worker(json, &key, NULL, 1, false);
 }
 
-text*
+text *
 get_json_array_element(text *json, int index)
 {
 	return get_worker(json, NULL, &index, 1, true);
 }
 
-int get_json_array_length(text *json)
+int
+get_json_array_length(text *json)
 {
 	/* Create a dummy fcinfo to invoke json_array_length */
 	LOCAL_FCINFO(fcinfo, 1);
 	InitFunctionCallInfoData(*fcinfo, NULL, 1, InvalidOid, NULL, NULL);
 	fcinfo->args[0].value = PointerGetDatum(json);
 	fcinfo->args[0].isnull = false;
-	Datum result = json_array_length(fcinfo);
+	Datum		result = json_array_length(fcinfo);
+
 	return DatumGetInt32(result);
 }
 
-void validate_json_object_keys(text *json, char **required_keys, int num_required_keys, char **optional_keys, int num_optional_keys)
+void
+validate_json_object_keys(text *json, char **required_keys, int num_required_keys, char **optional_keys, int num_optional_keys)
 {
-	ValidateOkeysState  *state;
+	YbValidateOkeysState *state;
 	JsonLexContext *lex;
 	JsonSemAction *sem;
 
 	lex = makeJsonLexContext(json, true);
-	state = palloc0(sizeof(ValidateOkeysState));
+	state = palloc0(sizeof(YbValidateOkeysState));
 	sem = palloc0(sizeof(JsonSemAction));
 
 	state->lex = lex;

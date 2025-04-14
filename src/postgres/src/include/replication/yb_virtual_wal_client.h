@@ -23,18 +23,20 @@
 #ifndef YB_VIRTUAL_WAL_CLIENT_H
 #define YB_VIRTUAL_WAL_CLIENT_H
 
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "access/xlogreader.h"
 #include "c.h"
+
+#include "access/xlogreader.h"
 #include "nodes/pg_list.h"
 #include "replication/yb_virtual_wal_client_typedefs.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 extern void YBCInitVirtualWal(List *yb_publication_names);
 extern void YBCDestroyVirtualWal();
+extern void YBCGetTableHashRange(List **options);
 
-extern YBCPgVirtualWalRecord *YBCReadRecord(XLogReaderState *state,
-                                            List *publication_names,
-                                            char **errormsg);
+extern YbVirtualWalRecord *YBCReadRecord(XLogReaderState *state,
+										 List *publication_names,
+										 char **errormsg);
 extern XLogRecPtr YBCGetFlushRecPtr(void);
 
 extern XLogRecPtr YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush);

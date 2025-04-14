@@ -49,7 +49,7 @@ namespace yb {
 class TypeInfoResolver {
  public:
   const TypeInfo* GetTypeInfo(DataType t) {
-    const TypeInfo *type_info = mapping_[to_underlying(t)].get();
+    const TypeInfo *type_info = mapping_[std::to_underlying(t)].get();
     CHECK(type_info != nullptr) << "Bad type: " << t;
     return type_info;
   }
@@ -84,11 +84,13 @@ class TypeInfoResolver {
     AddMapping<DataType::USER_DEFINED_TYPE>();
     AddMapping<DataType::FROZEN>();
     AddMapping<DataType::TUPLE>();
+    AddMapping<DataType::VECTOR>();
+    AddMapping<DataType::BSON>();
   }
 
   template<DataType type> void AddMapping() {
     using TypeTraitsClass = TypeTraits<type>;
-    mapping_[to_underlying(type)] = std::make_shared<TypeInfo>(TypeInfo {
+    mapping_[std::to_underlying(type)] = std::make_shared<TypeInfo>(TypeInfo {
       .type = TypeTraitsClass::type,
       .physical_type = TypeTraitsClass::physical_type,
       .name = TypeTraitsClass::name(),
@@ -130,6 +132,10 @@ void DataTypeTraits<DataType::TIMEUUID>::AppendDebugStringForValue(
 bool TypeInfo::is_collection() const {
   return type == DataType::LIST || type == DataType::MAP || type == DataType::SET ||
          type == DataType::USER_DEFINED_TYPE;
+}
+
+bool TypeInfo::is_vector() const {
+  return type == DataType::VECTOR;
 }
 
 } // namespace yb

@@ -43,7 +43,7 @@
 #include "replication/snapbuild.h"
 #include "storage/standby.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "replication/yb_decode.h"
 
@@ -585,7 +585,7 @@ logicalmsg_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	TransactionId xid = XLogRecGetXid(r);
 	uint8		info = XLogRecGetInfo(r) & ~XLR_INFO_MASK;
 	RepOriginId origin_id = XLogRecGetOrigin(r);
-	Snapshot	snapshot;
+	Snapshot	snapshot = NULL;
 	xl_logical_message *message;
 
 	if (info != XLOG_LOGICAL_MESSAGE)
@@ -615,7 +615,17 @@ logicalmsg_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			  SnapBuildXactNeedsSkip(builder, buf->origptr)))
 		return;
 
-	snapshot = SnapBuildGetOrBuildSnapshot(builder, xid);
+	/*
+	 * If this is a non-transactional change, get the snapshot we're expected
+	 * to use. We only get here when the snapshot is consistent, and the
+	 * change is not meant to be skipped.
+	 *
+	 * For transactional changes we don't need a snapshot, we'll use the
+	 * regular snapshot maintained by ReorderBuffer. We just leave it NULL.
+	 */
+	if (!message->transactional)
+		snapshot = SnapBuildGetOrBuildSnapshot(builder, xid);
+
 	ReorderBufferQueueMessage(ctx->reorder, xid, snapshot, buf->endptr,
 							  message->transactional,
 							  message->message, /* first part of message is
@@ -749,7 +759,7 @@ DecodePrepare(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 	SnapBuild  *builder = ctx->snapshot_builder;
 	XLogRecPtr	origin_lsn = parsed->origin_lsn;
 	TimestampTz prepare_time = parsed->xact_time;
-	RepOriginId	origin_id = XLogRecGetOrigin(buf->record);
+	RepOriginId origin_id = XLogRecGetOrigin(buf->record);
 	int			i;
 	TransactionId xid = parsed->twophase_xid;
 
@@ -825,7 +835,7 @@ DecodeAbort(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 	int			i;
 	XLogRecPtr	origin_lsn = InvalidXLogRecPtr;
 	TimestampTz abort_time = parsed->xact_time;
-	RepOriginId	origin_id = XLogRecGetOrigin(buf->record);
+	RepOriginId origin_id = XLogRecGetOrigin(buf->record);
 	bool		skip_xact;
 
 	if (parsed->xinfo & XACT_XINFO_HAS_ORIGIN)

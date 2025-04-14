@@ -41,16 +41,16 @@
 #include "utils/rel.h"
 #include "utils/rls.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
-#include "executor/ybcModifyTable.h"
-#include "port/pg_bswap.h"
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
+#include "port/pg_bswap.h"
 
-int yb_default_copy_from_rows_per_transaction = DEFAULT_BATCH_ROWS_PER_TRANSACTION;
+int			yb_default_copy_from_rows_per_transaction = DEFAULT_BATCH_ROWS_PER_TRANSACTION;
 
 /*
  *	 DoCopy executes the SQL COPY statement
@@ -129,9 +129,8 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		rel = table_openrv(stmt->relation, lockmode);
 
 		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
-				IsYugaByteEnabled()) {
-			SetTxnWithPGRel();
-		}
+			IsYugaByteEnabled())
+			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 
 		relid = RelationGetRelid(rel);
 
@@ -164,7 +163,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		attnums = CopyGetAttnums(tupDesc, rel, stmt->attlist);
 		foreach(cur, attnums)
 		{
-			int attno = lfirst_int(cur) - YBGetFirstLowInvalidAttributeNumber(rel);
+			int			attno = lfirst_int(cur) - YBGetFirstLowInvalidAttributeNumber(rel);
 
 			if (is_from)
 				rte->insertedCols = bms_add_member(rte->insertedCols, attno);
@@ -256,11 +255,14 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 
 			/*
 			 * Build RangeVar for from clause, fully qualified based on the
-			 * relation which we have opened and locked.
+			 * relation which we have opened and locked.  Use "ONLY" so that
+			 * COPY retrieves rows from only the target table not any
+			 * inheritance children, the same as when RLS doesn't apply.
 			 */
 			from = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 								pstrdup(RelationGetRelationName(rel)),
 								-1);
+			from->inh = false;	/* apply ONLY */
 
 			/* Build query */
 			select = makeNode(SelectStmt);
@@ -407,7 +409,7 @@ defGetCopyHeaderChoice(DefElem *def, bool is_from)
  *
  * This is exported so that external users of the COPY API can sanity-check
  * a list of options.  In that usage, 'opts_out' can be passed as NULL and
- * the collected data is just leaked until GetCurrentMemoryContext() is reset.
+ * the collected data is just leaked until CurrentMemoryContext is reset.
  *
  * Note that additional checking, such as whether column names listed in FORCE
  * QUOTE actually exist, has to be applied later.  This just checks for
@@ -572,7 +574,8 @@ ProcessCopyOptions(ParseState *pstate,
 		}
 		else if (strcmp(defel->defname, "rows_per_transaction") == 0)
 		{
-			int rows = defGetInt32(defel);
+			int			rows = defGetInt32(defel);
+
 			if (rows >= 0)
 				opts_out->batch_size = rows;
 			else
@@ -583,7 +586,8 @@ ProcessCopyOptions(ParseState *pstate,
 		}
 		else if (strcmp(defel->defname, "skip") == 0)
 		{
-			int64_t num_initial_skipped_rows = defGetInt64(defel);
+			int64_t		num_initial_skipped_rows = defGetInt64(defel);
+
 			if (num_initial_skipped_rows >= 0)
 				opts_out->num_initial_skipped_rows = num_initial_skipped_rows;
 			else

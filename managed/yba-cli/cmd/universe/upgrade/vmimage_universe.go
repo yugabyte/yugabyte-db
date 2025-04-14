@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
@@ -37,13 +38,13 @@ var upgradeVMImageCmd = &cobra.Command{
 				formatter.Colorize("No universe name found to upgrade\n", formatter.RedColor))
 		}
 
-		// Validations before vm image upgrade operation
+		// universeutil.Validations before vm image upgrade operation
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, _, err := Validations(cmd, util.UpgradeOperation)
+			_, _, err := universeutil.Validations(cmd, util.UpgradeOperation)
 			if err != nil {
 				logrus.Fatalf(
 					formatter.Colorize(err.Error()+"\n", formatter.RedColor),
@@ -60,7 +61,7 @@ var upgradeVMImageCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, universe, err := Validations(cmd, util.UpgradeOperation)
+		authAPI, universe, err := universeutil.Validations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -85,7 +86,14 @@ var upgradeVMImageCmd = &cobra.Command{
 			)
 		}
 
-		primaryCluster := clusters[0]
+		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
+		if primaryCluster == (ybaclient.Cluster{}) {
+			err := fmt.Errorf(
+				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
+			)
+			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		}
+
 		primaryUserIntent := primaryCluster.GetUserIntent()
 
 		provider, response, err := authAPI.GetProvider(primaryUserIntent.GetProvider()).Execute()
@@ -123,7 +131,21 @@ var upgradeVMImageCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			rrCluster := clusters[1]
+			var rrCluster ybaclient.Cluster
+			for _, c := range clusters {
+				if strings.EqualFold(c.GetClusterType(), util.ReadReplicaClusterType) {
+					rrCluster = c
+					break
+				}
+			}
+
+			if rrCluster == (ybaclient.Cluster{}) {
+				err := fmt.Errorf(
+					"No read replica cluster found in universe " + universeName + " (" + universeUUID + ")\n",
+				)
+				logrus.Fatalf(formatter.Colorize(err.Error(), formatter.RedColor))
+			}
+
 			rrImageBundle := ""
 			if !inheritFromPrimary {
 				rrLinuxVersionName, err := cmd.Flags().GetString("rr-linux-version")
@@ -182,7 +204,7 @@ var upgradeVMImageCmd = &cobra.Command{
 				universeUUID,
 			))
 
-		WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
+		universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, rUpgrade)
 	},
 }
 

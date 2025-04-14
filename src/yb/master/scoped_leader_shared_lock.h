@@ -78,7 +78,7 @@ namespace master {
 //
 class ScopedLeaderSharedLock {
  public:
-  // Creates a new shared lock, acquiring the catalog manager's leader_lock_
+  // Creates a new shared lock, acquiring the catalog manager's leader_mutex_
   // for reading in the process. The lock is released when this object is
   // destroyed.
   //
@@ -172,6 +172,8 @@ class ScopedLeaderSharedLock {
   template<typename RespClass, typename ErrorClass>
   bool CheckIsInitializedOrRespondInternal(RespClass* resp, rpc::RpcContext* rpc,
                                            bool set_error = true);
+
+  Status Lock();
 
   CatalogManager* catalog_;
   std::shared_lock<RWMutex> leader_shared_lock_;

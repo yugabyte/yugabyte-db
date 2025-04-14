@@ -11,14 +11,13 @@
 // under the License.
 //
 
-#include <cstddef>
-
 #include "yb/vector_index/hnsw_util.h"
+
+#include <cstddef>
 
 #include "yb/gutil/casts.h"
 
 #include "yb/util/random_util.h"
-#include "yb/util/tostring.h"
 
 namespace yb::vector_index {
 

@@ -63,6 +63,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -121,6 +122,7 @@ public class YbcBackupUtil {
   private final CustomerConfigService configService;
   private final EncryptionAtRestManager encryptionAtRestManager;
   private final StorageUtilFactory storageUtilFactory;
+  private final GFlagsValidation gFlagsValidation;
 
   @Inject
   public YbcBackupUtil(
@@ -128,12 +130,14 @@ public class YbcBackupUtil {
       UniverseInfoHandler universeInfoHandler,
       CustomerConfigService configService,
       EncryptionAtRestManager encryptionAtRestManager,
-      StorageUtilFactory storageUtilFactory) {
+      StorageUtilFactory storageUtilFactory,
+      GFlagsValidation gFlagsValidation) {
     this.universeInfoHandler = universeInfoHandler;
     this.configService = configService;
     this.encryptionAtRestManager = encryptionAtRestManager;
     this.storageUtilFactory = storageUtilFactory;
     this.autoFlagUtil = autoFlagUtil;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(YbcBackupUtil.class);
@@ -178,7 +182,7 @@ public class YbcBackupUtil {
         if (!hasIndexTables) {
           return new HashSet<>();
         }
-        return indexTableRelations.parallelStream()
+        return indexTableRelations.stream()
             .map(iT -> iT.indexTableName)
             .collect(Collectors.toSet());
       }
@@ -187,13 +191,13 @@ public class YbcBackupUtil {
     @JsonIgnore
     public Set<String> getIndexTables(Set<String> parentTables) {
       Set<String> tablesSet =
-          tableDetailsMap.entrySet().parallelStream()
+          tableDetailsMap.entrySet().stream()
               .filter(
                   tDE ->
                       CollectionUtils.isNotEmpty(parentTables)
                           ? parentTables.contains(tDE.getKey())
                           : true)
-              .flatMap(tDE -> tDE.getValue().getAllIndexTables().parallelStream())
+              .flatMap(tDE -> tDE.getValue().getAllIndexTables().stream())
               .collect(Collectors.toSet());
       return tablesSet;
     }
@@ -211,7 +215,7 @@ public class YbcBackupUtil {
     @JsonIgnore
     public Map<String, Set<String>> getTablesWithIndexesMap() {
       Map<String, Set<String>> tablesWithIndexesMap =
-          tableDetailsMap.entrySet().parallelStream()
+          tableDetailsMap.entrySet().stream()
               .filter(tDE -> tDE.getValue().hasIndexTables)
               .collect(
                   Collectors.toMap(Map.Entry::getKey, tDE -> tDE.getValue().getAllIndexTables()));
@@ -251,6 +255,9 @@ public class YbcBackupUtil {
 
     @JsonProperty("backup_uuid")
     public String backupUUID;
+
+    @JsonProperty("ysql_major_version")
+    public String ysqlMajorVersion;
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -779,7 +786,8 @@ public class YbcBackupUtil {
             DEFAULT_REGION_STRING,
             commonSuffix,
             keyspacePreviousLocationsMap.get(DEFAULT_REGION_STRING),
-            configData);
+            configData,
+            universe);
     cloudStoreConfigBuilder.setDefaultSpec(defaultSpec);
     Map<String, String> regionLocationMap =
         storageUtilFactory.getStorageUtil(config.getName()).getRegionLocationsMap(configData);
@@ -790,7 +798,7 @@ public class YbcBackupUtil {
             regionSpecMap.put(
                 r,
                 storageUtil.createCloudStoreSpec(
-                    r, commonSuffix, keyspacePreviousLocationsMap.get(r), configData));
+                    r, commonSuffix, keyspacePreviousLocationsMap.get(r), configData, universe));
           });
     }
     if (MapUtils.isNotEmpty(regionSpecMap)) {
@@ -820,7 +828,7 @@ public class YbcBackupUtil {
     CloudStoreSpec defaultSpec =
         storageUtilFactory
             .getStorageUtil(config.getName())
-            .createCloudStoreSpec(DEFAULT_REGION_STRING, "", "", config.getDataObject());
+            .createCloudStoreSpec(DEFAULT_REGION_STRING, "", "", config.getDataObject(), universe);
     ProxyConfig pConfig =
         storageUtilFactory
             .getStorageUtil(config.getName())
@@ -838,7 +846,8 @@ public class YbcBackupUtil {
                 DEFAULT_REGION_STRING,
                 bucketLocationsMap.get(DEFAULT_REGION_STRING).cloudDir,
                 config.getDataObject(),
-                false);
+                false,
+                universe);
     ProxyConfig pConfig =
         storageUtilFactory
             .getStorageUtil(config.getName())
@@ -855,14 +864,16 @@ public class YbcBackupUtil {
         successMarker.responseCloudStoreSpec.defaultLocation;
     CloudStoreSpec defaultSpec =
         storageUtil.createRestoreCloudStoreSpec(
-            DEFAULT_REGION_STRING, defaultBucketLocation.cloudDir, configData, false);
+            DEFAULT_REGION_STRING, defaultBucketLocation.cloudDir, configData, false, universe);
 
     Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
     if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
       successMarker.responseCloudStoreSpec.regionLocations.forEach(
           (r, bL) -> {
             regionSpecMap.put(
-                r, storageUtil.createRestoreCloudStoreSpec(r, bL.cloudDir, configData, false));
+                r,
+                storageUtil.createRestoreCloudStoreSpec(
+                    r, bL.cloudDir, configData, false, universe));
           });
     }
     ProxyConfig pConfig =
@@ -877,7 +888,7 @@ public class YbcBackupUtil {
     CustomerConfigData configData = config.getDataObject();
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(config.getName());
     CloudStoreSpec defaultSpec =
-        storageUtil.createDsmCloudStoreSpec(defaultBackupLocation, configData);
+        storageUtil.createDsmCloudStoreSpec(defaultBackupLocation, configData, universe);
     ProxyConfig pConfig = storageUtil.createYbcProxyConfig(universe, config.getDataObject());
     return getCloudStoreConfig(defaultSpec, null, pConfig);
   }
@@ -954,7 +965,7 @@ public class YbcBackupUtil {
     Map<String, String> parentTablesMap = new ConcurrentHashMap<>();
 
     // Get parent tables first
-    successMarker.snapshotObjectDetails.parallelStream()
+    successMarker.snapshotObjectDetails.stream()
         .filter(
             sOD ->
                 sOD.type.equals(SnapshotObjectType.TABLE)
@@ -973,7 +984,7 @@ public class YbcBackupUtil {
 
     // Add index tables if required
     if (!filterIndexTables) {
-      successMarker.snapshotObjectDetails.parallelStream()
+      successMarker.snapshotObjectDetails.stream()
           .filter(
               sOD ->
                   sOD.type.equals(SnapshotObjectType.TABLE)
@@ -1046,6 +1057,16 @@ public class YbcBackupUtil {
         config.universeKeys = universeKeyHistory.get("universe_keys");
         config.masterKeyMetadata = universeKeyHistory.get("master_key_metadata");
       }
+
+      if (tableParams.backupType != null
+          && tableParams.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
+        Optional<Integer> ysqlMajorVersionOptional =
+            gFlagsValidation.getYsqlMajorVersion(ybdbSoftwareVersion);
+        if (ysqlMajorVersionOptional.isPresent()) {
+          config.ysqlMajorVersion = String.valueOf(ysqlMajorVersionOptional.get());
+        }
+      }
+
       BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
           BackupServiceTaskExtendedArgs.newBuilder();
       ObjectMapper mapper = new ObjectMapper();
@@ -1053,9 +1074,7 @@ public class YbcBackupUtil {
       if (tableParams.useTablespaces) {
         extendedArgsBuilder.setUseTablespaces(true);
       }
-      if (tableParams.isPointInTimeRestoreEnabled()) {
-        extendedArgsBuilder.setSaveRetentionWindow(true);
-      }
+      extendedArgsBuilder.setSaveRetentionWindow(true);
       return extendedArgsBuilder.build();
     } catch (Exception e) {
       log.error("Error while fetching extended args for backup: ", e);
@@ -1065,6 +1084,28 @@ public class YbcBackupUtil {
               "%s Unable to generate backup keys metadata. error : %s",
               getBaseLogMessage(tableParams.backupUuid, tableParams.getKeyspace()),
               e.getMessage()));
+    }
+  }
+
+  public void validateYsqlMajorVersion(Universe restoreUniverse, String backupYsqlMajorVersion)
+      throws IOException {
+    if (StringUtils.isEmpty(backupYsqlMajorVersion)) {
+      return;
+    }
+    Optional<Integer> restoreUniverseYsqlMajorVersionOptional =
+        gFlagsValidation.getYsqlMajorVersion(
+            restoreUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    int restoreUniverseYsqlMajorVersion =
+        restoreUniverseYsqlMajorVersionOptional.isPresent()
+            ? restoreUniverseYsqlMajorVersionOptional.get()
+            : 11;
+    if (Integer.parseInt(backupYsqlMajorVersion) > restoreUniverseYsqlMajorVersion) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot restore backup as the backup was taken on YSQL major version %s and the"
+                  + " universe is running on YSQL major version %s",
+              backupYsqlMajorVersion, restoreUniverseYsqlMajorVersion));
     }
   }
 
@@ -1341,7 +1382,7 @@ public class YbcBackupUtil {
                       perLocationBackupInfoBuilder.backupLocation(e.getKey());
                       YbcBackupResponse sMarker = e.getValue();
                       SnapshotObjectData namespaceDetails =
-                          sMarker.snapshotObjectDetails.parallelStream()
+                          sMarker.snapshotObjectDetails.stream()
                               .filter(sOD -> sOD.type.equals(SnapshotObjectType.NAMESPACE))
                               .findAny()
                               .get()

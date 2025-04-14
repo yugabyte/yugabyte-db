@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -62,10 +63,10 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
           createUpgradeTask(
               universe,
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-              true /* isMasterChanged */,
-              true /* isTserverChanged */,
+              true /* upgradeMasters */,
+              true /* upgradeTservers */,
               universe.isYbcEnabled(),
-              universe.getUniverseDetails().getYbcSoftwareVersion());
+              confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion));
 
           // Now update Universe state in DB.
           // Update custom communication ports in universe and node details

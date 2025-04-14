@@ -76,7 +76,6 @@
 #include <sys/param.h>
 #include <netdb.h>
 #include <limits.h>
-#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
@@ -96,7 +95,6 @@
 
 #include "access/transam.h"
 #include "access/xlog.h"
-#include "access/xact.h"
 #include "access/xlogrecovery.h"
 #include "catalog/pg_control.h"
 #include "common/file_perm.h"
@@ -120,17 +118,12 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "replication/logicallauncher.h"
-#include "replication/slot.h"
-#include "replication/syncrep.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
-#include "storage/procarray.h"
-#include "storage/procsignal.h"
-#include "storage/sinvaladt.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
@@ -142,15 +135,24 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
-#include "arpa/inet.h"
-#include "common/pg_yb_common.h"
-#include "pg_yb_utils.h"
-#include "yb_ash.h"
-
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
 #endif
+
+/* YB includes */
+#include "access/xact.h"
+#include "arpa/inet.h"
+#include "common/pg_yb_common.h"
+#include "pg_yb_utils.h"
+#include "replication/slot.h"
+#include "replication/syncrep.h"
+#include "storage/procarray.h"
+#include "storage/procsignal.h"
+#include "storage/sinvaladt.h"
+#include "yb/yql/pggate/ybc_pg_shared_mem.h"
+#include "yb_ash.h"
+#include "yb_query_diagnostics.h"
+#include "yb_terminated_queries.h"
 
 /*
  * Possible types of a backend. Beyond being the possible bkend_type values in
@@ -608,7 +610,7 @@ PostmasterMain(int argc, char *argv[])
 	int			i;
 	char	   *output_config_variable = NULL;
 
-	// This should be done as the first thing after process start.
+	/* This should be done as the first thing after process start. */
 	YBSetParentDeathSignal();
 
 	InitProcessGlobals();
@@ -1022,7 +1024,8 @@ PostmasterMain(int argc, char *argv[])
 
 	YBReportIfYugaByteEnabled();
 #ifdef __APPLE__
-	if (YBIsEnabledInPostgresEnvVar()) {
+	if (YBIsEnabledInPostgresEnvVar())
+	{
 		/*
 		 * Resolve local hostname to initialize macOS network libraries. If we
 		 * don't do this, there might be a lot of segmentation faults in
@@ -1072,13 +1075,18 @@ PostmasterMain(int argc, char *argv[])
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
 
-	/* Register the query diagnostics background worker */
-	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
-		YbQueryDiagnosticsBgWorkerRegister();
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		/*
+		 * Set up reserved address segment for shared memory allocators. This needs to done before
+		 * any process that needs it is forked.
+		 */
+		YBCSetupSharedMemoryAddressSegment();
 
-	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
-		YbAshRegister();
+		/* Register ASH collector */
+		if (yb_enable_ash)
+			YbAshRegister();
+	}
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
@@ -1218,6 +1226,17 @@ PostmasterMain(int argc, char *argv[])
 						LOG_METAINFO_DATAFILE)));
 
 	/*
+	 * Initialize input sockets.
+	 *
+	 * Mark them all closed, and set up an on_proc_exit function that's
+	 * charged with closing the sockets again at postmaster shutdown.
+	 */
+	for (i = 0; i < MAXLISTEN; i++)
+		ListenSocket[i] = PGINVALID_SOCKET;
+
+	on_proc_exit(CloseServerPorts, 0);
+
+	/*
 	 * If enabled, start up syslogger collection subprocess
 	 */
 	SysLoggerPID = SysLogger_Start();
@@ -1251,15 +1270,7 @@ PostmasterMain(int argc, char *argv[])
 
 	/*
 	 * Establish input sockets.
-	 *
-	 * First, mark them all closed, and set up an on_proc_exit function that's
-	 * charged with closing the sockets again at postmaster shutdown.
 	 */
-	for (i = 0; i < MAXLISTEN; i++)
-		ListenSocket[i] = PGINVALID_SOCKET;
-
-	on_proc_exit(CloseServerPorts, 0);
-
 	if (ListenAddresses)
 	{
 		char	   *rawstring;
@@ -1499,6 +1510,8 @@ PostmasterMain(int argc, char *argv[])
 	 * calls fork() without an immediate exec(), both of which have undefined
 	 * behavior in a multithreaded program.  A multithreaded postmaster is the
 	 * normal case on Windows, which offers neither fork() nor sigprocmask().
+	 * Currently, macOS is the only platform having pthread_is_threaded_np(),
+	 * so we need not worry whether this HINT is appropriate elsewhere.
 	 */
 	if (pthread_is_threaded_np() != 0)
 		ereport(FATAL,
@@ -1790,7 +1803,7 @@ ServerLoop(void)
 
 	nSockets = initMasks(&readmask);
 #ifdef __APPLE__
-	bool yb_enabled = YBIsEnabledInPostgresEnvVar();
+	bool		yb_enabled = YBIsEnabledInPostgresEnvVar();
 #endif
 
 #ifdef __linux__
@@ -1863,8 +1876,9 @@ ServerLoop(void)
 			int			i;
 
 #ifdef __APPLE__
-			// If STDIN is closed, it means that parent did exit
-			if (yb_enabled && FD_ISSET(STDIN_FILENO, &rmask)) {
+			/* If STDIN is closed, it means that parent did exit */
+			if (yb_enabled && FD_ISSET(STDIN_FILENO, &rmask))
+			{
 				return STATUS_OK;
 			}
 #endif
@@ -2041,7 +2055,8 @@ initMasks(fd_set *rmask)
 	FD_ZERO(rmask);
 
 #ifdef __APPLE__
-	if (YBIsEnabledInPostgresEnvVar()) {
+	if (YBIsEnabledInPostgresEnvVar())
+	{
 		FD_SET(STDIN_FILENO, rmask);
 		maxsock = STDIN_FILENO;
 	}
@@ -2096,7 +2111,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	 * of the actual client. This information is passed by the connection
 	 * manager to the auth-backend.
 	 */
-	char *yb_auth_backend_remote_host = NULL;
+	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
 
@@ -2386,9 +2401,9 @@ retry1:
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
 							 errmsg("yb_authonly can only be set "
-							   "if the connection is made over unix domain "
-							   "socket")));
-
+									"if the connection is made over unix domain "
+									"socket")));
+				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
@@ -2407,24 +2422,6 @@ retry1:
 
 				yb_logical_conn_type = *pstrdup(valptr);
 				yb_logical_conn_type_provided = true;
-			}
-			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_is_client_ysqlconnmgr") == 0)
-			{
-				if (!parse_bool(valptr, &yb_is_client_ysqlconnmgr))
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_is_client_ysqlconnmgr",
-									valptr),
-							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
-
-				/* Client needs to be connected on the unix domain socket */
-				if (port->raddr.addr.ss_family != AF_UNIX)
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("ysql connection manager makes all connections "
-							   "over unix domain socket to postgres")));
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
@@ -2513,6 +2510,7 @@ retry1:
 			port->remote_host = yb_auth_backend_remote_host;
 
 			struct sockaddr_in *ip_address_1;
+
 			ip_address_1 = (struct sockaddr_in *) (&MyProcPort->raddr.addr);
 			inet_pton(AF_INET, port->remote_host,
 					  &(ip_address_1->sin_addr));
@@ -2570,8 +2568,6 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (YBIsEnabledInPostgresEnvVar() && yb_is_client_ysqlconnmgr)
-		MyBackendType = YB_YSQL_CONN_MGR;
 	else
 		MyBackendType = B_BACKEND;
 
@@ -2903,14 +2899,13 @@ ClosePostmasterPorts(bool am_syslogger)
 
 
 /*
- * InitProcessGlobals -- set MyProcPid, MyStartTime[stamp], random seeds
+ * InitProcessGlobals -- set MyStartTime[stamp], random seeds
  *
  * Called early in the postmaster and every backend.
  */
 void
 InitProcessGlobals(void)
 {
-	MyProcPid = getpid();
 	MyStartTimestamp = GetCurrentTimestamp();
 	MyStartTime = timestamptz_to_time_t(MyStartTimestamp);
 
@@ -3232,8 +3227,9 @@ reaper(SIGNAL_ARGS)
 		 *    XLogCtl->info_lck, ProcStructLock.
 		 */
 
-		int i;
-		bool foundProcStruct = false;
+		int			i;
+		bool		foundProcStruct = false;
+
 		for (i = 0; i < ProcGlobal->allProcCount; i++)
 		{
 			PGPROC	   *proc = &ProcGlobal->allProcs[i];
@@ -3268,7 +3264,21 @@ reaper(SIGNAL_ARGS)
 				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash from "
 								"unexpected error code %d",
-							WTERMSIG(exitstatus))));
+								WTERMSIG(exitstatus))));
+				break;
+			}
+
+			/*
+			 * We can't know what the parent of a background requires to properly clean this up.
+			 * ReportBackgroundWorkerExit seems like it should do the trick, there's complexity
+			 * caused by latches.
+			 */
+			if (proc->isBackgroundWorker)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend worker "
+								"crash")));
 				break;
 			}
 
@@ -3799,13 +3809,10 @@ CleanupBackend(int pid,
 	{
 		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
 
-#ifdef YB_TODO
-		/* Postgres changed the implemenation for stats. Need new code. */
 		if (WTERMSIG(exitstatus) == SIGKILL)
-			pgstat_report_query_termination("Terminated by SIGKILL", pid);
+			yb_report_query_termination("Terminated by SIGKILL", pid);
 		else if (WTERMSIG(exitstatus) == SIGSEGV)
-			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
-#endif
+			yb_report_query_termination("Terminated by SIGSEGV", pid);
 	}
 	else
 		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
@@ -3915,7 +3922,8 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 
 	if (take_action)
 	{
-		int level = YBIsEnabledInPostgresEnvVar() ? INFO : LOG;
+		int			level = YBIsEnabledInPostgresEnvVar() ? INFO : LOG;
+
 		LogChildExit(level, procname, pid, exitstatus);
 		ereport(level,
 				(errmsg("terminating any other active server processes")));
@@ -4585,18 +4593,21 @@ SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
 	if (oom_score_adj[0] == 0)
 		return;
 
-	char file_name[64];
+	char		file_name[64];
+
 	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
-	FILE * fPtr;
+	FILE	   *fPtr;
+
 	fPtr = fopen(file_name, "w");
 
-	if(fPtr == NULL)
+	if (fPtr == NULL)
 	{
-		int saved_errno = errno;
+		int			saved_errno = errno;
+
 		ereport(LOG,
-			(errcode_for_file_access(),
-				errmsg("error %d: %s, unable to open file %s", saved_errno,
-				strerror(saved_errno), file_name)));
+				(errcode_for_file_access(),
+				 errmsg("error %d: %s, unable to open file %s", saved_errno,
+						strerror(saved_errno), file_name)));
 	}
 	else
 	{
@@ -4846,8 +4857,12 @@ BackendInitialize(Port *port)
 	 * Save remote_host and remote_port in port structure (after this, they
 	 * will appear in log_line_prefix data for log messages).
 	 */
-	port->remote_host = strdup(remote_host);
-	port->remote_port = strdup(remote_port);
+	/*
+	 * YB: Allocate memory in the context using pstrdup so that with auth-backend
+	 * where the backend is closed after authentication, the memory is automatically freed.
+	 */
+	port->remote_host = pstrdup(remote_host);
+	port->remote_port = pstrdup(remote_port);
 
 	/* And now we can issue the Log_connections message, if wanted */
 	if (Log_connections)
@@ -4961,8 +4976,9 @@ BackendInitialize(Port *port)
 
 		YBC_LOG_INFO("Started %s backend with pid: %d, user_name: %s, "
 					 "remote_ps_data: %s",
-					 (am_walsender ? "walsender" :
-									 (yb_is_auth_backend ? "auth" : "regular")),
+					 (am_walsender ?
+					  "walsender" :
+					  (yb_is_auth_backend ? "auth" : "regular")),
 					 getpid(), port->user_name, remote_ps_data);
 	}
 }
@@ -5311,18 +5327,10 @@ retry:
 
 	/*
 	 * Queue a waiter to signal when this child dies. The wait will be handled
-	 * automatically by an operating system thread pool.
-	 *
-	 * Note: use malloc instead of palloc, since it needs to be thread-safe.
-	 * Struct will be free():d from the callback function that runs on a
-	 * different thread.
+	 * automatically by an operating system thread pool.  The memory will be
+	 * freed by a later call to waitpid().
 	 */
-	childinfo = malloc(sizeof(win32_deadchild_waitinfo));
-	if (!childinfo)
-		ereport(FATAL,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-
+	childinfo = palloc(sizeof(win32_deadchild_waitinfo));
 	childinfo->procHandle = pi.hProcess;
 	childinfo->procId = pi.dwProcessId;
 
@@ -5336,7 +5344,7 @@ retry:
 				(errmsg_internal("could not register process for wait: error code %lu",
 								 GetLastError())));
 
-	/* Don't close pi.hProcess here - the wait thread needs access to it */
+	/* Don't close pi.hProcess here - waitpid() needs access to it */
 
 	CloseHandle(pi.hThread);
 
@@ -5579,15 +5587,16 @@ ExitPostmaster(int status)
 
 	/*
 	 * There is no known cause for a postmaster to become multithreaded after
-	 * startup.  Recheck to account for the possibility of unknown causes.
+	 * startup.  However, we might reach here via an error exit before
+	 * reaching the test in PostmasterMain, so provide the same hint as there.
 	 * This message uses LOG level, because an unclean shutdown at this point
 	 * would usually not look much different from a clean shutdown.
 	 */
 	if (pthread_is_threaded_np() != 0)
 		ereport(LOG,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg_internal("postmaster became multithreaded"),
-				 errdetail("Please report this to <%s>.", PACKAGE_BUGREPORT)));
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("postmaster became multithreaded"),
+				 errhint("Set the LC_ALL environment variable to a valid locale.")));
 #endif
 
 	/* should cleanup shared memory and kill all backends */
@@ -5879,7 +5888,8 @@ StartChildProcess(AuxProcType type)
 	if (YBIsEnabledInPostgresEnvVar() &&
 		(type == BgWriterProcess ||
 		 type == WalWriterProcess ||
-		 type == WalReceiverProcess)) {
+		 type == WalReceiverProcess))
+	{
 		return 0;
 	}
 
@@ -6167,6 +6177,9 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 NULL,			/* no out_dbname */
 				 NULL);			/* session id */
 
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
+
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
@@ -6195,6 +6208,9 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
 				 NULL,			/* no out_dbname */
 				 session_id);	/* session id */
+
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
@@ -6365,12 +6381,12 @@ bgworker_should_start_now(BgWorkerStartTime start_time)
 		case PM_RUN:
 			if (start_time == BgWorkerStart_RecoveryFinished)
 				return true;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case PM_HOT_STANDBY:
 			if (start_time == BgWorkerStart_ConsistentState)
 				return true;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case PM_RECOVERY:
 		case PM_STARTUP:
@@ -6978,36 +6994,21 @@ ShmemBackendArrayRemove(Backend *bn)
 static pid_t
 waitpid(pid_t pid, int *exitstatus, int options)
 {
+	win32_deadchild_waitinfo *childinfo;
+	DWORD		exitcode;
 	DWORD		dwd;
 	ULONG_PTR	key;
 	OVERLAPPED *ovl;
 
-	/*
-	 * Check if there are any dead children. If there are, return the pid of
-	 * the first one that died.
-	 */
-	if (GetQueuedCompletionStatus(win32ChildQueue, &dwd, &key, &ovl, 0))
+	/* Try to consume one win32_deadchild_waitinfo from the queue. */
+	if (!GetQueuedCompletionStatus(win32ChildQueue, &dwd, &key, &ovl, 0))
 	{
-		*exitstatus = (int) key;
-		return dwd;
+		errno = EAGAIN;
+		return -1;
 	}
 
-	return -1;
-}
-
-/*
- * Note! Code below executes on a thread pool! All operations must
- * be thread safe! Note that elog() and friends must *not* be used.
- */
-static void WINAPI
-pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
-{
-	win32_deadchild_waitinfo *childinfo = (win32_deadchild_waitinfo *) lpParameter;
-	DWORD		exitcode;
-
-	if (TimerOrWaitFired)
-		return;					/* timeout. Should never happen, since we use
-								 * INFINITE as timeout value. */
+	childinfo = (win32_deadchild_waitinfo *) key;
+	pid = childinfo->procId;
 
 	/*
 	 * Remove handle from wait - required even though it's set to wait only
@@ -7023,13 +7024,11 @@ pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
 		write_stderr("could not read exit code for process\n");
 		exitcode = 255;
 	}
-
-	if (!PostQueuedCompletionStatus(win32ChildQueue, childinfo->procId, (ULONG_PTR) exitcode, NULL))
-		write_stderr("could not post child completion status\n");
+	*exitstatus = exitcode;
 
 	/*
-	 * Handle is per-process, so we close it here instead of in the
-	 * originating thread
+	 * Close the process handle.  Only after this point can the PID can be
+	 * recycled by the kernel.
 	 */
 	CloseHandle(childinfo->procHandle);
 
@@ -7037,9 +7036,36 @@ pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
 	 * Free struct that was allocated before the call to
 	 * RegisterWaitForSingleObject()
 	 */
-	free(childinfo);
+	pfree(childinfo);
 
-	/* Queue SIGCHLD signal */
+	return pid;
+}
+
+/*
+ * Note! Code below executes on a thread pool! All operations must
+ * be thread safe! Note that elog() and friends must *not* be used.
+ */
+static void WINAPI
+pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
+{
+	/* Should never happen, since we use INFINITE as timeout value. */
+	if (TimerOrWaitFired)
+		return;
+
+	/*
+	 * Post the win32_deadchild_waitinfo object for waitpid() to deal with. If
+	 * that fails, we leak the object, but we also leak a whole process and
+	 * get into an unrecoverable state, so there's not much point in worrying
+	 * about that.  We'd like to panic, but we can't use that infrastructure
+	 * from this thread.
+	 */
+	if (!PostQueuedCompletionStatus(win32ChildQueue,
+									0,
+									(ULONG_PTR) lpParameter,
+									NULL))
+		write_stderr("could not post child completion status\n");
+
+	/* Queue SIGCHLD signal. */
 	pg_queue_signal(SIGCHLD);
 }
 #endif							/* WIN32 */

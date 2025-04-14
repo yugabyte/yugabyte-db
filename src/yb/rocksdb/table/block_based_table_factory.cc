@@ -140,7 +140,7 @@ std::string BlockBasedTableFactory::GetPrintableTableOptions() const {
            table_options_.cache_index_and_filter_blocks);
   ret.append(buffer);
   snprintf(buffer, kBufferSize, "  index_type: %d\n",
-           yb::to_underlying(table_options_.index_type));
+           std::to_underlying(table_options_.index_type));
   ret.append(buffer);
   snprintf(buffer, kBufferSize, "  hash_index_allow_collision: %d\n",
            table_options_.hash_index_allow_collision);

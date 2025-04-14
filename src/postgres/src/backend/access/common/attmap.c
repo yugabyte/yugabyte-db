@@ -26,8 +26,9 @@
 #include "access/htup_details.h"
 #include "utils/builtins.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 static bool check_attrmap_match(TupleDesc indesc,
 								TupleDesc outdesc,
@@ -267,7 +268,7 @@ build_attrmap_by_name_if_req(TupleDesc indesc,
 
 	/* Verify compatibility and prepare attribute-number map */
 	attrMap = build_attrmap_by_name(indesc, outdesc,
-									false /* yb_ignore_type_mismatch */);
+									false /* yb_ignore_type_mismatch */ );
 
 	/* Check if the map has a one-to-one match */
 	if (check_attrmap_match(indesc, outdesc, attrMap))

@@ -17,11 +17,15 @@ import com.azure.resourcemanager.monitor.fluent.models.EventDataInner;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
+import com.azure.storage.blob.batch.BlobBatchClient;
+import com.azure.storage.blob.batch.BlobBatchClientBuilder;
 import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobStorageException;
+import com.azure.storage.blob.models.DeleteSnapshotsOptionType;
 import com.azure.storage.blob.models.ListBlobsOptions;
 import com.azure.storage.blob.specialized.BlobInputStream;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
@@ -29,6 +33,8 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -40,6 +46,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -47,10 +54,14 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +69,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
@@ -70,6 +85,8 @@ import play.libs.Json;
 @Singleton
 @Slf4j
 public class AZUtil implements CloudUtil {
+
+  @Inject RuntimeConfGetter runtimeConfGetter;
 
   public static final String AZURE_LOCATION_PREFIX = "https://";
 
@@ -283,11 +300,6 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
-  public boolean uploadYbaBackup(CustomerConfigData configData, File backup, String backupDir) {
-    return false;
-  }
-
-  @Override
   public boolean deleteStorage(
       CustomerConfigData configData, Map<String, List<String>> backupRegionLocationsMap) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
@@ -319,7 +331,7 @@ public class AZUtil implements CloudUtil {
                 pagedIterable.iterableByPage().iterator();
             log.debug("Retrieved blobs info for container " + container + " with prefix " + blob);
             retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
-          } catch (BlobStorageException e) {
+          } catch (RuntimeException e) {
             log.error(
                 "Error occured while deleting objects at location {}. Error {}",
                 backupLocation,
@@ -336,22 +348,47 @@ public class AZUtil implements CloudUtil {
   }
 
   public static void retrieveAndDeleteObjects(
-      Iterator<PagedResponse<BlobItem>> pagedResponse, BlobContainerClient blobContainerClient) {
-    while (pagedResponse.hasNext()) {
-      PagedResponse<BlobItem> response = pagedResponse.next();
-      BlobClient blobClient;
-      for (BlobItem blobItem : response.getValue()) {
-        if (blobItem.getSnapshot() != null) {
-          blobClient =
-              blobContainerClient.getBlobClient(blobItem.getName(), blobItem.getSnapshot());
-        } else {
-          blobClient = blobContainerClient.getBlobClient(blobItem.getName());
-        }
-        if (blobClient.exists()) {
-          blobClient.delete();
+      Iterator<PagedResponse<BlobItem>> pagedResponseIter,
+      BlobContainerClient blobContainerClient) {
+    BlobBatchClient batchClient = new BlobBatchClientBuilder(blobContainerClient).buildClient();
+    List<String> blobUrls = new ArrayList<>();
+    String baseUrl = blobContainerClient.getBlobContainerUrl();
+    // blobClient.getBlobUrl() requires decoding the url, this method should be marginally better.
+    while (pagedResponseIter.hasNext()) {
+      PagedResponse<BlobItem> pagedResponse = pagedResponseIter.next();
+      for (BlobItem blobItem : pagedResponse.getValue()) {
+        blobUrls.add(baseUrl + "/" + blobItem.getName());
+        if (blobUrls.size() == 256) {
+          batchDeleteBlobs(batchClient, blobUrls);
+          // Reset blob url list
+          blobUrls.clear();
         }
       }
     }
+    // Delete final set of blobs
+    batchDeleteBlobs(batchClient, blobUrls);
+  }
+
+  private static void batchDeleteBlobs(BlobBatchClient batchClient, List<String> blobUrls) {
+    if (blobUrls.isEmpty()) {
+      log.info("No blobs found to delete");
+      return;
+    }
+    log.info("batch deleting {} blobs", blobUrls.size());
+    log.trace("blob urls to delete: {}", blobUrls);
+    batchClient
+        .deleteBlobs(blobUrls, DeleteSnapshotsOptionType.INCLUDE)
+        .forEach(
+            response -> {
+              if (response.getStatusCode() >= 300) {
+                log.error(
+                    "status code {} deleting blob {}: {}",
+                    response.getStatusCode(),
+                    response.getRequest().getUrl(),
+                    response.getValue());
+                throw new RuntimeException("Error deleting blob: " + response.getStatusCode());
+              }
+            });
   }
 
   @Override
@@ -359,7 +396,8 @@ public class AZUtil implements CloudUtil {
       String region,
       String commonDir,
       String previousBackupLocation,
-      CustomerConfigData configData) {
+      CustomerConfigData configData,
+      Universe universe) {
     Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, region);
     CloudLocationInfoAzure csInfoAzure =
         (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, "");
@@ -385,7 +423,11 @@ public class AZUtil implements CloudUtil {
   // In case of Success marker download - cloud Dir is the location provided by user in API
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
-      String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+      String region,
+      String cloudDir,
+      CustomerConfigData configData,
+      boolean isDsm,
+      Universe universe) {
     Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, region);
     if (isDsm) {
       CloudLocationInfoAzure csInfoAzure =
@@ -718,5 +760,433 @@ public class AZUtil implements CloudUtil {
           INTERNAL_SERVER_ERROR,
           "Fetch interruptions status for AZURE failed with" + e.getMessage());
     }
+  }
+
+  @Override
+  public boolean uploadYbaBackup(CustomerConfigData configData, File backup, String backupDir) {
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    CloudLocationInfoAzure cLInfo =
+        (CloudLocationInfoAzure)
+            getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+    String azureUrl = cLInfo.azureUrl;
+    String container = cLInfo.bucket;
+    String sasToken = azData.azureSasToken;
+    try {
+      BlobContainerClient blobContainerClient =
+          createBlobContainerClient(azureUrl, sasToken, container);
+      String blobName =
+          Stream.of(stripSlash(cLInfo.cloudPath), backupDir, backup.getName())
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.joining("/"));
+      BlobClient blobClient = blobContainerClient.getBlobClient(blobName);
+      try (InputStream inputStream = new FileInputStream(backup)) {
+        blobClient.upload(BinaryData.fromStream(inputStream));
+      }
+
+      // Upload the marker file
+      File markerFile = File.createTempFile("backup_marker", ".txt");
+      markerFile.deleteOnExit();
+      String markerKey =
+          Stream.of(stripSlash(cLInfo.cloudPath), backupDir, YBA_BACKUP_MARKER)
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.joining("/"));
+      BlobContainerClient markerBlobContainerClient =
+          createBlobContainerClient(azureUrl, sasToken, container);
+      BlobClient markerBlobClient = markerBlobContainerClient.getBlobClient(markerKey);
+
+      // Create marker if it doesn't exist
+      if (!markerBlobClient.exists()) {
+        try (InputStream markerInputStream = new FileInputStream(markerFile)) {
+          markerBlobClient.upload(BinaryData.fromStream(markerInputStream));
+        }
+      }
+      return true;
+    } catch (BlobStorageException e) {
+      log.error("Azure exception uploading backups: {}", e.getServiceMessage(), e);
+    } catch (Exception e) {
+      log.error("Unexpected exception while uploading YBA backup: {}", e.getMessage());
+    }
+    return false;
+  }
+
+  @Override
+  public List<String> getYbaBackupDirs(CustomerConfigData configData) {
+    try {
+      CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+      CloudLocationInfoAzure cLInfo =
+          (CloudLocationInfoAzure)
+              getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+      BlobContainerClient blobContainerClient =
+          createBlobContainerClient(cLInfo.azureUrl, azData.azureSasToken, cLInfo.bucket);
+      String prefix =
+          Stream.of(stripSlash(cLInfo.cloudPath))
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.joining("/"));
+
+      Set<String> backupDirs = new HashSet<>();
+
+      // Get the pageable iterator
+      PagedIterable<BlobItem> blobPages =
+          blobContainerClient.listBlobs(
+              new ListBlobsOptions().setPrefix(prefix), Duration.ofMinutes(5));
+
+      // Iterate through all pages
+      for (BlobItem blobItem : blobPages) {
+        String key = blobItem.getName();
+        if (key != null && key.endsWith(YBA_BACKUP_MARKER)) {
+          String[] parts = key.split("/");
+          if (parts.length >= 2) {
+            backupDirs.add(parts[parts.length - 2]);
+          }
+        }
+      }
+
+      return new ArrayList<>(backupDirs);
+    } catch (BlobStorageException e) {
+      log.error("Azure exception getting backup dirs: {}", e.getServiceMessage(), e);
+    } catch (Exception e) {
+      log.error("Unexpected exception while getting backup dirs in Azure: {}", e.getMessage(), e);
+    }
+    return new ArrayList<>();
+  }
+
+  public String getYbaBackupStorageLocation(CustomerConfigData configData, String backupDir) {
+    try {
+      CloudLocationInfoAzure cLInfo =
+          (CloudLocationInfoAzure)
+              getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+      String azureUrl = cLInfo.azureUrl;
+      String container = cLInfo.bucket;
+      return Stream.of(
+              stripSlash(cLInfo.azureUrl),
+              stripSlash(cLInfo.bucket),
+              stripSlash(cLInfo.cloudPath),
+              stripSlash(backupDir))
+          .filter(s -> !s.isEmpty())
+          .collect(Collectors.joining("/"));
+    } catch (Exception e) {
+      log.error("Exception determining storage location: {}", e);
+    }
+    return null;
+  }
+
+  @Override
+  public boolean cleanupUploadedBackups(CustomerConfigData configData, String backupDir) {
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    CloudLocationInfoAzure cLInfo =
+        (CloudLocationInfoAzure)
+            getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+    String azureUrl = cLInfo.azureUrl;
+    String container = cLInfo.bucket;
+    String sasToken = azData.azureSasToken;
+    try {
+      BlobContainerClient blobContainerClient =
+          createBlobContainerClient(azureUrl, sasToken, container);
+      String prefix =
+          Stream.of(stripSlash(cLInfo.cloudPath), backupDir)
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.joining("/"));
+      // List all blobs in the specified backup directory, sorted by last modified time
+      Pattern backupPattern = Pattern.compile("backup_.*\\.tgz");
+      List<BlobItem> sortedBackups =
+          StreamSupport.stream(
+                  blobContainerClient
+                      .listBlobs(new ListBlobsOptions().setPrefix(prefix), Duration.ofMinutes(5))
+                      .spliterator(),
+                  false)
+              .filter(blobItem -> backupPattern.matcher(blobItem.getName()).find())
+              .sorted(
+                  (b1, b2) -> {
+                    BlobClient b1Client = blobContainerClient.getBlobClient(b1.getName());
+                    BlobClient b2Client = blobContainerClient.getBlobClient(b2.getName());
+                    return b2Client
+                        .getProperties()
+                        .getLastModified()
+                        .compareTo(b1Client.getProperties().getLastModified());
+                  })
+              .collect(Collectors.toList());
+
+      // Only keep the n most recent backups
+      int numKeepBackups =
+          runtimeConfGetter.getGlobalConf(GlobalConfKeys.numCloudYbaBackupsRetention);
+      if (sortedBackups.size() <= numKeepBackups) {
+        log.info(
+            "No backups to delete, only {} backups in {}/{}{} less than limit {}",
+            sortedBackups.size(),
+            container,
+            StringUtils.isBlank(cLInfo.cloudPath) ? "" : cLInfo.cloudPath + "/",
+            backupDir,
+            numKeepBackups);
+        return true;
+      }
+
+      // Identify backups to delete
+      List<BlobItem> backupsToDelete = sortedBackups.subList(numKeepBackups, sortedBackups.size());
+
+      // Delete the old backups
+      for (BlobItem blobItem : backupsToDelete) {
+        BlobClient blobClient = blobContainerClient.getBlobClient(blobItem.getName());
+        blobClient.delete();
+      }
+
+      log.info(
+          "Deleted {} old backup(s) from {}/{}{}",
+          backupsToDelete.size(),
+          container,
+          StringUtils.isBlank(cLInfo.cloudPath) ? "" : cLInfo.cloudPath + "/",
+          backupDir);
+
+    } catch (BlobStorageException e) {
+      log.error("Azure exception deleting backups: {}", e.getServiceMessage(), e);
+      return false;
+    } catch (Exception e) {
+      log.error("Unexpected exception while cleaning uploaded YBA backup: {}", e.getMessage());
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public Set<String> getRemoteReleaseVersions(CustomerConfigData configData, String backupDir) {
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    CloudLocationInfoAzure cLInfo =
+        (CloudLocationInfoAzure)
+            getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+    String azureUrl = cLInfo.azureUrl;
+    String container = cLInfo.bucket;
+    String sasToken = azData.azureSasToken;
+    try {
+      BlobContainerClient blobContainerClient =
+          createBlobContainerClient(azureUrl, sasToken, container);
+
+      // List all blobs in the specified directory
+      String prefix =
+          Stream.of(stripSlash(cLInfo.cloudPath), backupDir, YBDB_RELEASES)
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.joining("/"));
+      Iterable<BlobItem> releases =
+          blobContainerClient.listBlobs(
+              new ListBlobsOptions().setPrefix(prefix), Duration.ofMinutes(5));
+
+      Set<String> releaseVersions = new HashSet<>();
+      for (BlobItem release : releases) {
+        String version = extractReleaseVersion(release.getName(), backupDir);
+        if (version != null) {
+          releaseVersions.add(version);
+        }
+      }
+
+      return releaseVersions;
+    } catch (Exception e) {
+      log.error(
+          "Unexpected exception while listing remote release versions in Azure: {}",
+          e.getMessage());
+    }
+    return new HashSet<>();
+  }
+
+  @Override
+  public boolean uploadYBDBRelease(
+      CustomerConfigData configData, File release, String backupDir, String version) {
+    try {
+      CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+
+      CloudLocationInfoAzure cLInfo =
+          (CloudLocationInfoAzure)
+              getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+
+      String azureUrl = cLInfo.azureUrl; // Azure blob service endpoint URL
+      String container = cLInfo.bucket; // Azure container name
+      String sasToken = azData.azureSasToken; // SAS token for authentication
+
+      // Create BlobContainerClient
+      BlobContainerClient blobContainerClient =
+          createBlobContainerClient(azureUrl, sasToken, container);
+
+      // Generate the blob name
+      String blobName =
+          Stream.of(
+                  stripSlash(cLInfo.cloudPath),
+                  backupDir,
+                  YBDB_RELEASES,
+                  version,
+                  release.getName())
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.joining("/"));
+
+      BlobClient blobClient = blobContainerClient.getBlobClient(blobName);
+
+      long startTime = System.nanoTime();
+
+      // Upload the file
+      try (InputStream inputStream = new FileInputStream(release)) {
+        blobClient.upload(BinaryData.fromStream(inputStream));
+      }
+
+      long endTime = System.nanoTime();
+      // Calculate duration in seconds
+      double durationInSeconds = (endTime - startTime) / 1_000_000_000.0;
+      log.info(
+          "Upload of {} to Azure Blob Storage path {}/{} completed in {} seconds",
+          release.getName(),
+          container,
+          blobName,
+          durationInSeconds);
+
+    } catch (BlobStorageException e) {
+      log.error("Azure exception uploading {}: {}", release.getName(), e.getServiceMessage(), e);
+      return false;
+    } catch (IOException e) {
+      log.error("Error accessing file for upload {}: {}", release.getName(), e.getMessage(), e);
+      return false;
+    } catch (Exception e) {
+      log.error(
+          "Unexpected exception uploading YBDB release {}: {}",
+          release.getName(),
+          e.getMessage(),
+          e);
+    }
+    return true;
+  }
+
+  @Override
+  public File downloadYbaBackup(CustomerConfigData configData, String backupDir, Path localDir) {
+    try {
+      CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+
+      CloudLocationInfoAzure cLInfo =
+          (CloudLocationInfoAzure)
+              getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+
+      String azureUrl = cLInfo.azureUrl;
+      String container = cLInfo.bucket;
+      String sasToken = azData.azureSasToken;
+      log.info(
+          "Downloading most recent backup in Azure container {}/{}{}",
+          container,
+          StringUtils.isBlank(cLInfo.cloudPath) ? "" : stripSlash(cLInfo.cloudPath) + "/",
+          backupDir);
+
+      // Create BlobContainerClient
+      BlobContainerClient blobContainerClient =
+          createBlobContainerClient(azureUrl, sasToken, container);
+
+      // List all blobs in the specified backup directory
+      Pattern backupPattern = Pattern.compile("backup_.*\\.tgz");
+      BlobItem mostRecentBackup = null;
+      String mostRecentBackupName = null;
+      long mostRecentBackupTime = 0;
+      String prefix =
+          Stream.of(stripSlash(cLInfo.cloudPath), backupDir)
+              .filter(s -> !s.isEmpty())
+              .collect(Collectors.joining("/"));
+      for (BlobItem blobItem :
+          blobContainerClient.listBlobs(
+              new ListBlobsOptions().setPrefix(prefix), Duration.ofMinutes(5))) {
+        // Match the blob name against the regex
+        Matcher matcher = backupPattern.matcher(blobItem.getName());
+        if (matcher.find()) {
+          OffsetDateTime lastModified = blobItem.getProperties().getLastModified();
+          long updateTime = lastModified != null ? lastModified.toInstant().toEpochMilli() : 0;
+          // Find the most recent backup based on last modified time
+          if (mostRecentBackup == null || updateTime > mostRecentBackupTime) {
+            mostRecentBackup = blobItem;
+            mostRecentBackupName = matcher.group();
+            mostRecentBackupTime = updateTime;
+          }
+        }
+      }
+
+      if (mostRecentBackup == null) {
+        log.warn("Could not find YB Anywhere backup in Azure container {}", container);
+        return null;
+      }
+
+      log.info("Downloading backup {}/{}", container, mostRecentBackup.getName());
+      File localFile = localDir.resolve(mostRecentBackupName).toFile();
+      Files.createDirectories(localFile.getParentFile().toPath());
+
+      // Download the most recent backup to the local directory
+      BlobClient blobClient = blobContainerClient.getBlobClient(mostRecentBackup.getName());
+      blobClient.downloadToFile(localFile.getAbsolutePath());
+
+      return localFile;
+
+    } catch (BlobStorageException e) {
+      log.error("Azure error downloading YB Anywhere backup: {}", e.getMessage(), e);
+    } catch (Exception e) {
+      log.error("Unexpected exception downloading YB Anywhere backup: {}", e.getMessage(), e);
+    }
+    return null;
+  }
+
+  @Override
+  public boolean downloadRemoteReleases(
+      CustomerConfigData configData,
+      Set<String> releaseVersions,
+      String releasesPath,
+      String backupDir) {
+    for (String version : releaseVersions) {
+      Path versionPath;
+      try {
+        versionPath = Files.createDirectories(Path.of(releasesPath, version));
+      } catch (Exception e) {
+        log.error(
+            "Error creating local releases directory for version {}: {}", version, e.getMessage());
+        return false;
+      }
+
+      // Find and download all file paths that match the version (x86 and aarch64)
+      try {
+        CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+        CloudLocationInfoAzure cLInfo =
+            (CloudLocationInfoAzure)
+                getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, null);
+
+        String azureUrl = cLInfo.azureUrl;
+        String container = cLInfo.bucket;
+        String sasToken = azData.azureSasToken;
+
+        // Create BlobContainerClient
+        BlobContainerClient blobContainerClient =
+            createBlobContainerClient(azureUrl, sasToken, container);
+
+        // List all blobs in the specified Azure directory
+        String prefix =
+            Stream.of(stripSlash(cLInfo.cloudPath), backupDir, YBDB_RELEASES, version)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.joining("/"));
+        PagedIterable<BlobItem> releases =
+            blobContainerClient.listBlobs(
+                new ListBlobsOptions().setPrefix(prefix), Duration.ofMinutes(5));
+
+        for (BlobItem release : releases) {
+          // Name the local file same as Azure blob basename (e.g., yugabyte-version-arch.tar.gz)
+          String blobName = release.getName();
+          Path localRelease =
+              versionPath.resolve(blobName.substring(blobName.lastIndexOf('/') + 1));
+
+          log.info(
+              "Attempting to download release from Azure container {}/{} to {}",
+              container,
+              blobName,
+              localRelease);
+
+          // Download the blob to the local file
+          BlobClient blobClient = blobContainerClient.getBlobClient(blobName);
+          blobClient.downloadToFile(localRelease.toAbsolutePath().toString());
+        }
+
+      } catch (BlobStorageException e) {
+        log.error("Azure error occurred while downloading releases: {}", e.getMessage(), e);
+        return false;
+      } catch (Exception e) {
+        log.error(
+            "Unexpected exception while downloading releases from Azure: {}", e.getMessage(), e);
+        return false;
+      }
+    }
+
+    return true;
   }
 }

@@ -45,16 +45,28 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Status::OK();
   }
 
+  size_t Size() const override {
+    return std::accumulate(
+        indexes_.begin(), indexes_.end(), static_cast<size_t>(0),
+        [](size_t sum, const auto& index) { return sum + index->Size(); });
+  }
+
+  size_t Capacity() const override {
+    return std::accumulate(
+        indexes_.begin(), indexes_.end(), static_cast<size_t>(0),
+        [](size_t sum, const auto& index) { return sum + index->Capacity(); });
+  }
+
   // Insert a vector into the current shard using round-robin.
-  Status Insert(VertexId vertex_id, const Vector& vector) override {
+  Status Insert(VectorId vector_id, const Vector& vector) override {
     size_t current_index = round_robin_counter_.fetch_add(1) % indexes_.size();
-    return indexes_[current_index]->Insert(vertex_id, vector);
+    return indexes_[current_index]->Insert(vector_id, vector);
   }
 
   // Retrieve a vector from any shard.
-  Result<Vector> GetVector(VertexId vertex_id) const override {
+  Result<Vector> GetVector(VectorId vector_id) const override {
     for (const auto& index : indexes_) {
-      auto v = VERIFY_RESULT(index->GetVector(vertex_id));
+      auto v = VERIFY_RESULT(index->GetVector(vector_id));
       if (!v.empty()) {
         return v;
       }
@@ -62,23 +74,23 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Vector();  // Return an empty vector if not found.
   }
 
-  // Define begin and end methods to return iterators
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
+  // TODO(vector_index): define begin and end methods to iterate over all shareded indexes.
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->BeginImpl();
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
     CHECK(!indexes_.empty());
     return indexes_[0]->EndImpl();
   }
 
   // Search for the closest vectors across all shards.
   Result<typename Base::SearchResult> Search(
-      const Vector& query_vector, size_t max_num_results) const override {
-    std::vector<VertexWithDistance<DistanceResult>> all_results;
+      const Vector& query_vector, const SearchOptions& options) const override {
+    std::vector<VectorWithDistance<DistanceResult>> all_results;
     for (const auto& index : indexes_) {
-      auto results = VERIFY_RESULT(index->Search(query_vector, max_num_results));
+      auto results = VERIFY_RESULT(index->Search(query_vector, options));
       all_results.insert(all_results.end(), results.begin(), results.end());
     }
 
@@ -87,8 +99,8 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
       return a.distance < b.distance;
     });
 
-    if (all_results.size() > max_num_results) {
-      all_results.resize(max_num_results);
+    if (all_results.size() > options.max_num_results) {
+      all_results.resize(options.max_num_results);
     }
 
     return all_results;
@@ -98,8 +110,13 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return STATUS(NotSupported, "Saving to file is not implemented for ShardedVectorIndex");
   }
 
-  Status LoadFromFile(const std::string& path) override {
+  Status LoadFromFile(const std::string& path, size_t) override {
     return STATUS(NotSupported, "Loading from file is not implemented for ShardedVectorIndex");
+  }
+
+  std::shared_ptr<void> Attach(std::shared_ptr<void> obj) override {
+    CHECK(!indexes_.empty());
+    return indexes_[0]->Attach(std::move(obj));
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {

@@ -87,8 +87,15 @@ od_attribute_noreturn() void od_system_shutdown(od_system_t *system,
 	od_worker_pool_t *worker_pool;
 
 	worker_pool = system->global->worker_pool;
+#ifdef YB_SUPPORT_FOUND
+	// Connection manager process shuts down gracefully on receiving
+	// SIGINT signal, but logging it makes some tests fail.
+	od_log(&instance->logger, "system", NULL, NULL,
+	       "Signal received for shutting down");
+#else
 	od_log(&instance->logger, "system", NULL, NULL,
 	       "SIGINT received, shutting down");
+#endif
 
 	yb_stats_shmem_cleanup(instance);
 
@@ -148,18 +155,17 @@ void od_system_signal_handler(void *arg)
 			od_system_config_reload(system);
 			break;
 		case OD_SIG_LOG_ROTATE:
-			if (instance->config.log_file) {
+			if (instance->config.log_dir) {
 				od_log(&instance->logger, "system", NULL, NULL,
 				       "SIGUSR1 received, reopening log");
 				rc = od_logger_reopen(
-					&instance->logger,
-					instance->config.log_file);
+					&instance->logger);
 				if (rc == -1) {
 					od_error(
 						&instance->logger, "system",
 						NULL, NULL,
-						"failed to reopen log file '%s'",
-						instance->config.log_file);
+						"failed to reopen log file in the dir '%s'",
+						instance->config.log_dir);
 				}
 			}
 			break;

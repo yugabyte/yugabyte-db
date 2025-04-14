@@ -23,6 +23,7 @@ export interface DBUpgradePayload {
   nodePrefix: string;
   enableYbc: boolean;
   rollMaxBatchSize?: RollMaxBatchSize;
+  runOnlyPrechecks?: boolean;
 }
 
 export interface DBRollbackFormFields {
@@ -43,6 +44,7 @@ export interface GetInfoPayload {
 export interface GetInfoResponse {
   finalizeRequired: boolean;
   affectedXClsuterUniversesList?: Universe[];
+  ysqlMajorVersionUpgrade?: boolean;
 }
 
 export interface TaskObject {
@@ -52,7 +54,8 @@ export interface TaskObject {
   createTime: string;
   id: string;
   percentComplete: 10;
-  retryable: true;
+  retryable: boolean;
+  canRollback: boolean;
   status: string;
   target: string;
   targetUUID: string;

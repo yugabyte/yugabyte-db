@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -23,6 +23,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/cluster_balance_activity_info.h"
 #include "yb/master/ts_descriptor.h"
 
 DECLARE_int32(leader_balance_threshold);
@@ -275,6 +276,8 @@ class GlobalLoadState {
       }
     }
     out += "]}, total_starting_tablets: " + std::to_string(total_starting_tablets_) + " }";
+    // Intentionally not printing out errors_ as it can be very long and cause us to hit the glog
+    // line length limit.
     return out;
   }
 
@@ -292,6 +295,8 @@ class GlobalLoadState {
   // List of tablet server ids that have pending deletes.
   std::unordered_map<TabletServerId, std::set<TabletId>> pending_deletes_;
 
+  ClusterBalancerActivityInfo activity_info_;
+
  private:
   // Map from tablet server ids to the global metadata we store for each.
   std::unordered_map<TabletServerId, CBTabletServerLoadCounts> per_ts_global_meta_;
@@ -307,17 +312,23 @@ class PerTableLoadState {
   virtual ~PerTableLoadState();
 
   // Comparators used for sorting by load.
-  bool CompareByUuid(const TabletServerId& a, const TabletServerId& b);
+  bool CompareLoad(
+      const TabletServerId& a, const TabletServerId& b,
+      optional_ref<const TabletId> tablet_id);
 
   // Comparator functor to be able to wrap around the public but non-static compare methods that
   // end up using internal state of the class.
-  struct Comparator {
-    explicit Comparator(PerTableLoadState* state) : state_(state) {}
-    bool operator()(const TabletServerId& a, const TabletServerId& b) {
-      return state_->CompareByUuid(a, b);
+  struct LoadComparator {
+    LoadComparator(
+        PerTableLoadState* state, optional_ref<const TabletId> tablet_id)
+        : state_(state), tablet_id_(tablet_id) {}
+
+    bool operator()(const TabletServerId& a, const TabletServerId& b) const {
+      return state_->CompareLoad(a, b, tablet_id_);
     }
 
     PerTableLoadState* state_;
+    optional_ref<const TabletId> tablet_id_;
   };
 
   // Comparator to sort tablet servers' leader load.
@@ -332,6 +343,7 @@ class PerTableLoadState {
 
   // Get the load for a certain TS.
   size_t GetLoad(const TabletServerId& ts_uuid) const;
+  size_t GetTabletDriveLoad(const TabletServerId& ts_uuid, const TabletId& tablet_id) const;
 
   // Get the load for a certain TS.
   size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
@@ -340,7 +352,9 @@ class PerTableLoadState {
     return ts_desc->placement_uuid() == options_->live_placement_uuid;
   }
 
-  // Update the per-tablet information for this tablet.
+  // Method called when initially analyzing tablets, to build up load and usage information.
+  // Returns an OK status if the method succeeded or an error if there are transient errors in
+  // updating the internal state.
   Status UpdateTablet(TabletInfo* tablet);
 
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
@@ -350,21 +364,18 @@ class PerTableLoadState {
     initialized_ = true;
   }
 
-  Result<bool> CanAddTabletToTabletServer(
-    const TabletId& tablet_id, const TabletServerId& to_ts, const PlacementInfoPB* placement_info);
+  Result<bool> CanAddTabletToTabletServer(const TabletId& tablet_id, const TabletServerId& to_ts);
 
   // For a TS specified by ts_uuid, this function checks if there is a placement
   // block in placement_info where this TS can be placed. If there doesn't exist
-  // any, it returns boost::none. On the other hand if there is a placement block
+  // any, it returns std::nullopt. On the other hand if there is a placement block
   // that satisfies the criteria then it returns the cloud info of that block.
   // If there wasn't any placement information passed in placement_info then
   // it returns the cloud info of the TS itself.
-  boost::optional<CloudInfoPB> GetValidPlacement(const TabletServerId& ts_uuid,
-                                                 const PlacementInfoPB* placement_info);
+  std::optional<CloudInfoPB> GetValidPlacement(const TabletServerId& ts_uuid);
 
   Result<bool> CanSelectWrongPlacementReplicaToMove(
-    const TabletId& tablet_id, const PlacementInfoPB& placement_info, TabletServerId* out_from_ts,
-    TabletServerId* out_to_ts);
+    const TabletId& tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   Status AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts);
 
@@ -417,12 +428,9 @@ class PerTableLoadState {
     for (const auto& ts_meta : per_ts_meta_) {
       out << " " + ts_meta.first + ": " + ts_meta.second.ToString();
     }
-    out << " ], placement_by_table: [";
-    for (const auto& table_placement : placement_by_table_) {
-      out << " " + table_placement.first + ": " + table_placement.second.ShortDebugString();
-    }
     out << " ], ";
 
+    out << Format("placement: $0, ", placement_.ShortDebugString());
     out << Format("total_running: $0, ", total_running_);
     out << Format("total_starting: $0, ", total_starting_);
     out << Format("sorted_load: $0, ", sorted_load_);
@@ -457,10 +465,10 @@ class PerTableLoadState {
   // Map from tablet server ids to the metadata we store for each.
   std::unordered_map<TabletServerId, CBTabletServerMetadata> per_ts_meta_;
 
-  // Map from table id to placement information for this table. This will be used for both
+  // Placement information for this table. This will be used for both
   // determining over-replication, by checking num_replicas, but also for az awareness, by keeping
   // track of the placement block policies between cluster and table level.
-  std::unordered_map<TableId, PlacementInfoPB> placement_by_table_;
+  PlacementInfoPB placement_;
 
   // Total number of running tablets in the clusters (including replicas).
   int total_running_ = 0;

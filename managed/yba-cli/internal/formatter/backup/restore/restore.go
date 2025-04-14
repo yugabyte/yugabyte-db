@@ -102,7 +102,7 @@ func (r *Context) startSubsection(format string) (*template.Template, error) {
 }
 
 func (r *Context) subSection(name string) {
-	r.Output.Write([]byte("\n\n"))
+	r.Output.Write([]byte("\n"))
 	r.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	r.Output.Write([]byte("\n"))
 }
@@ -116,7 +116,7 @@ func NewRestoreContext() *Context {
 		"SourceUniverse": sourceUniverseHeader,
 		"BackupType":     backup.BackupTypeHeader,
 		"State":          backup.StateHeader,
-		"CreateTime":     backup.CreateTimeHeader,
+		"CreateTime":     formatter.CreateTimeHeader,
 		"CompletionTime": backup.CompletionTimeHeader,
 	}
 	return &restoreCtx

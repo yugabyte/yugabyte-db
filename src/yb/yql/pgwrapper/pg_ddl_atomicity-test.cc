@@ -63,6 +63,7 @@ using yb::tserver::ListTabletsForTabletServerResponsePB;
 DECLARE_bool(TEST_hang_on_ddl_verification_progress);
 DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
+DECLARE_double(TEST_ysql_ddl_transaction_verification_failure_probability);
 
 namespace yb {
 namespace pgwrapper {
@@ -305,7 +306,6 @@ class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // TODO (#19975): Enable read committed isolation
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
-    options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=5,ysql_transaction_ddl=5");
   }
 };
 
@@ -1423,7 +1423,6 @@ TEST_F(PgDdlAtomicitySnapshotTest, DdlRollbackListSnapshotTest) {
 class PgLibPqMatviewTest: public PgDdlAtomicitySanityTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=3,ysql_transaction_ddl=3");
   }
  protected:
   void MatviewTest();
@@ -1776,7 +1775,7 @@ TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
       "report_ysql_ddl_txn_status_to_master", "false"));
   // Create a parent partitioned table.
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE test_parent (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
+      "CREATE TABLE test_parent (key INT, value TEXT, num real, serialcol SERIAL) "
       "PARTITION BY LIST(key)"));
   // Create a child partition.
   ASSERT_OK(conn.ExecuteFormat(
@@ -1785,22 +1784,23 @@ TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
   // Perform an unsuccessful alter table operation.
   ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_parent DROP COLUMN value"));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
-  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl=true"));
   // Perform an unsuccessful alter table rewrite operation.
-  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 SERIAL"));
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE test_parent ADD PRIMARY KEY (key)"));
 
-  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 1);
-  // Verify that the failed alter table rewrite operation created an orphaned child table.
+  // Verify that the failed alter table rewrite operation created orphaned tables.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 2);
   ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 2);
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
-  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=false"));
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-      return VERIFY_RESULT(client->ListTables("test_child")).size() == 1;
+      return VERIFY_RESULT(client->ListTables("test_child")).size() == 1 &&
+        VERIFY_RESULT(client->ListTables("test_parent")).size() == 1;
   }, MonoDelta::FromSeconds(60), "Wait for orphaned child table to be cleaned up."));
 
   // Perform a successful alter table operation.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 int"));
-  // Perform a successful alter table rewrite operation.
+  // Perform successful alter table rewrite operations.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD PRIMARY KEY (key)"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col2 SERIAL"));
 
   // Perform a successful drop table operation.
@@ -1878,6 +1878,43 @@ TEST_F(PgDdlAtomicityTest, TestAlterTableAddCheckConstraint) {
   ASSERT_OK(client->GetTableSchemaById(bar_table_id, bar_table_info, sync.AsStatusCallback()));
   ASSERT_OK(sync.Wait());
   ASSERT_EQ(bar_table_info->schema.version(), 2);
+}
+
+// Issue https://github.com/yugabyte/yugabyte-db/issues/25708
+TEST_F(PgDdlAtomicityTest, TestPollTransactionFuilure) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_ddl_transaction_wait_for_ddl_verification", "false"));
+  // Setting transaction polling delay to 1000ms.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "1000"));
+  // Inject transaction polling failure with 100% probability. This used to
+  // cause the verification task to fail and end. However we should not end the
+  // verification task on a transaction polling failure.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_ysql_ddl_transaction_verification_failure_probability", "100.0"));
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD CONSTRAINT id_check CHECK (id > 5)"));
+  // Sleep enough to simulate several transaction polling failures, each with a delay of 1000ms.
+  SleepFor(5s);
+  // Disable new verification task auto-spawning.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_ddl_transaction_wait_for_ddl_verification", "true"));
+  // The ADD CONSTRAINT is stucked because of the error injection. Therefore this
+  // following DDL fails.
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("ALTER TABLE foo ADD COLUMN id2 INT"),
+                          "is undergoing DDL transaction verification");
+  // Now stop doing error injection so that the stucked DDL can complete.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_ysql_ddl_transaction_verification_failure_probability", "0.0"));
+  // Wait for the stucked ADD CONSTRAINT DDL to complete.
+  SleepFor(5s);
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "false"));
+  // Now a new DDL on table foo can succeed.
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN id3 INT"));
 }
 
 } // namespace pgwrapper

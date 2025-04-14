@@ -171,12 +171,12 @@ Result<YBqlWriteOpPtr> Increment(
   auto* column_value = req->add_column_values();
   column_value->set_column_id(value_column_id);
   auto* bfcall = column_value->mutable_expr()->mutable_bfcall();
-  bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI64ToI32_18));
+  bfcall->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_ConvertI64ToI32_18));
   bfcall = bfcall->add_operands()->mutable_bfcall();
 
-  bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
+  bfcall->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
   auto column_op = bfcall->add_operands()->mutable_bfcall();
-  column_op->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI32ToI64_13));
+  column_op->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_ConvertI32ToI64_13));
   column_op->add_operands()->set_column_id(value_column_id);
   bfcall->add_operands()->mutable_value()->set_int64_value(delta);
 

@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static com.yugabyte.yw.models.TaskInfo.State.Aborted;
@@ -15,19 +14,21 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -35,14 +36,13 @@ import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -50,12 +50,19 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.jboss.logging.MDC;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.DeleteUniverseReplicationResponse;
@@ -67,16 +74,14 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import play.libs.Json;
 
-@RunWith(MockitoJUnitRunner.class)
-public class DestroyUniverseTest extends CommissionerBaseTest {
+@RunWith(JUnitParamsRunner.class)
+public class DestroyUniverseTest extends UniverseModifyBaseTest {
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private CustomerConfig s3StorageConfig;
 
   private MetricService metricService;
-
-  private Users defaultUser;
-
-  private Universe defaultUniverse;
 
   private CertificateInfo certInfo;
 
@@ -88,8 +93,6 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     UniverseDefinitionTaskParams.UserIntent userIntent;
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
@@ -98,7 +101,9 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = 3;
-    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.regionList =
+        defaultProvider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
+    userIntent.useSystemd = true;
 
     String caFile = createTempFile("destroy_universe_test", "ca.crt", "test content");
     certFolder = new File(caFile).getParentFile();
@@ -107,18 +112,17 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
           ModelFactory.createCertificateInfo(
               defaultCustomer.getUuid(), caFile, CertConfigType.SelfSigned);
     } catch (Exception e) {
-
+      fail(e.getMessage());
     }
 
     metricService = app.injector().instanceOf(MetricService.class);
-    defaultUser = ModelFactory.testUser(defaultCustomer);
-    defaultUniverse = createUniverse(defaultCustomer.getId(), certInfo.getUuid());
-    Universe.saveDetails(
-        defaultUniverse.getUniverseUUID(),
-        ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
-    ShellResponse dummyShellResponse = new ShellResponse();
-    dummyShellResponse.message = "true";
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */).run(u);
+              u.getUniverseDetails().rootCA = certInfo.getUuid();
+            });
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
@@ -162,11 +166,10 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
       mockLocaleCheckResponse(mockNodeUniverseManager);
       doAnswer(inv -> Json.newObject())
           .when(mockYsqlQueryExecutor)
-          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
+          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
       ShellResponse successResponse = new ShellResponse();
       successResponse.message = "Command output:\nCREATE TABLE";
-      when(mockNodeUniverseManager.runYsqlCommand(
-              any(), any(), any(), (any()), anyBoolean(), anyInt()))
+      when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any()), anyBoolean()))
           .thenReturn(successResponse);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
@@ -187,6 +190,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
               primaryCluster.userIntent.enableYSQLAuth = true;
               primaryCluster.userIntent.enableYEDIS = false;
               primaryCluster.userIntent.ysqlPassword = "Admin@123";
+              primaryCluster.userIntent.useSystemd = true;
               for (NodeDetails node : universeDetails.nodeDetailsSet) {
                 // Reset for creation.
                 node.state = NodeDetails.NodeState.ToBeAdded;
@@ -396,13 +400,13 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteAssociatedCerts = true;
     UUID destroyTaskUuid = commissioner.submit(TaskType.DestroyUniverse, taskParams);
     try {
+      // Resume the create universe task.
+      MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
+      commissioner.resumeTask(createTaskUuid);
       // Wait for the destroy task to start running.
       waitForTaskRunning(destroyTaskUuid);
     } catch (InterruptedException e) {
       fail();
-    } finally {
-      MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
-      commissioner.resumeTask(createTaskUuid);
     }
     try {
       waitForTask(createTaskUuid);
@@ -445,5 +449,57 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     TaskInfo destroyTaskInfo = TaskInfo.getOrBadRequest(destroyTaskUuid);
     assertEquals(Aborted, createTaskInfo.getTaskState());
     assertEquals(Success, destroyTaskInfo.getTaskState());
+  }
+
+  // @formatter:off
+  @Parameters({
+    "onprem, false, false",
+    "onprem, true, false",
+    "onprem, false, true",
+    "onprem, true, true"
+  })
+  // @formatter:on
+  @Test
+  public void testOnpremDecommissionTest(
+      CloudType cloudType, boolean setPrivateIp, boolean failDestroy) {
+    if (failDestroy) {
+      reset(mockNodeManager);
+      when(mockNodeManager.nodeCommand(eq(NodeCommandType.Destroy), any()))
+          .thenThrow(RuntimeException.class);
+    }
+    Set<UUID> nodeInstances = new HashSet<>();
+    onPremUniverse =
+        Universe.saveDetails(
+            onPremUniverse.getUniverseUUID(),
+            u -> {
+              u.getNodes()
+                  .forEach(
+                      n -> {
+                        if (setPrivateIp) {
+                          n.cloudInfo.private_ip =
+                              NodeInstance.getOrBadRequest(n.getNodeUuid()).getDetails().ip;
+                          nodeInstances.add(n.getNodeUuid());
+                        } else {
+                          n.cloudInfo.private_ip = null;
+                        }
+                      });
+            });
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.setUniverseUUID(onPremUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.isForceDelete = true;
+    taskParams.isDeleteBackups = false;
+    taskParams.isDeleteAssociatedCerts = true;
+    submitTask(taskParams, -1);
+    for (UUID uuid : nodeInstances) {
+      NodeInstance instance = NodeInstance.getOrBadRequest(uuid);
+      if (setPrivateIp) {
+        assertEquals(
+            failDestroy ? NodeInstance.State.DECOMMISSIONED : NodeInstance.State.FREE,
+            instance.getState());
+      } else {
+        assertEquals(NodeInstance.State.FREE, instance.getState());
+      }
+    }
   }
 }

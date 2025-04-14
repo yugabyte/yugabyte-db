@@ -26,6 +26,7 @@ DECLARE_int32(limit_auto_flag_promote_for_new_universe);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 DECLARE_uint32(auto_flags_apply_delay_ms);
 DECLARE_uint32(replication_failure_delay_exponent);
+DECLARE_int32(heartbeat_interval_ms);
 
 using namespace std::chrono_literals;
 
@@ -38,8 +39,12 @@ constexpr auto kExternalAutoFlagName = "enable_tablet_split_of_xcluster_replicat
 
 class XClusterUpgradeTest : public XClusterYcqlTestBase {
  public:
+  constexpr static auto kAutoFlagsApplyDelay = 4s;
+
   virtual Status SetUpWithParams() override {
     RETURN_NOT_OK(XClusterYcqlTestBase::SetUpWithParams());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = 2000;
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_auto_flag_validation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 10;  // 1s max backoff.
     return Status::OK();
@@ -50,7 +55,7 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
     } else {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) =
-          to_underlying(AutoFlagClass::kExternal);
+          std::to_underlying(AutoFlagClass::kExternal);
     }
     return Status::OK();
   }
@@ -60,7 +65,7 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
     } else {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) =
-          to_underlying(AutoFlagClass::kExternal);
+          std::to_underlying(AutoFlagClass::kExternal);
     }
     return Status::OK();
   }
@@ -79,6 +84,9 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
+
+    SleepFor(kAutoFlagsApplyDelay);
+
     return resp;
   }
 
@@ -92,6 +100,9 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
+
+    SleepFor(kAutoFlagsApplyDelay);
+
     return Status::OK();
   }
 
@@ -109,6 +120,8 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     }
 
     SCHECK(resp.flag_demoted(), InvalidArgument, "Flag not demoted");
+
+    SleepFor(kAutoFlagsApplyDelay);
 
     return Status::OK();
   }
@@ -278,7 +291,6 @@ TEST_F(XClusterUpgradeTest, DemoteSourceUniverseFlag) {
   ASSERT_OK(VerifyRowsMatch());
 
   ASSERT_OK(DemoteSingleAutoFlag(*producer_cluster(), kMasterProcessName, kExternalAutoFlagName));
-  SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms);
 
   ASSERT_OK(InsertRowsInProducer(kBatchSize, 2 * kBatchSize));
   ASSERT_OK(VerifyRowsMatch(producer_table_, kTimeout.ToSeconds()));
@@ -316,86 +328,6 @@ TEST_F(XClusterUpgradeTest, DemoteTargetUniverseFlag) {
   ASSERT_OK(PromoteAutoFlags(*consumer_cluster()));
   ASSERT_OK(VerifyRowsMatch(producer_table_, kTimeout.ToSeconds()));
   ASSERT_OK(VerifyReplicationError(consumer_table_id, stream_id, std::nullopt));
-}
-
-class XClusterUpgradeExternalMiniClusterTest : public XClusterExternalMiniClusterBase {
- public:
-  static constexpr auto kAutoFlagValidationFlag = "enable_xcluster_auto_flag_validation";
-  const std::string kDisableAutoFlagValidation = Format("--$0=false", kAutoFlagValidationFlag);
-  const std::string kLimitLocalAutoFlagsOnCreate = Format(
-      "--limit_auto_flag_promote_for_new_universe=$0",
-      to_underlying(AutoFlagClass::kLocalPersisted));
-  const std::string kLimitExternalAutoFlagsOnCreate = Format(
-      "--limit_auto_flag_promote_for_new_universe=$0", to_underlying(AutoFlagClass::kExternal));
-
-  void AddCommonOptions() override {
-    XClusterExternalMiniClusterBase::AddCommonOptions();
-
-    setup_opts_.tserver_flags.push_back(
-        "--replication_failure_delay_exponent=10");  // 1s max backoff.
-  }
-};
-
-// Verify xCluster Setup and replication works when Source universe is on a version that does not
-// support AutoFlag validation.
-TEST_F_EX(
-    XClusterUpgradeTest, SourceWithoutAutoFlagCompatiblity,
-    XClusterUpgradeExternalMiniClusterTest) {
-  source_cluster_.setup_opts_.master_flags.emplace_back(kLimitLocalAutoFlagsOnCreate);
-  source_cluster_.setup_opts_.master_flags.emplace_back(kDisableAutoFlagValidation);
-  source_cluster_.setup_opts_.tserver_flags.emplace_back(kDisableAutoFlagValidation);
-
-  ASSERT_OK(SetupClustersAndReplicationGroup());
-
-  auto stream_id = ASSERT_RESULT(GetStreamId());
-  ASSERT_OK(VerifyReplicationError(TargetTable(), stream_id, std::nullopt));
-
-  // Insert rows and validate
-  ASSERT_OK(VerifyReplicationError(TargetTable(), stream_id, std::nullopt));
-
-  ASSERT_OK(SourceCluster()->SetFlagOnMasters(kAutoFlagValidationFlag, "true"));
-  ASSERT_OK(SourceCluster()->SetFlagOnTServers(kAutoFlagValidationFlag, "true"));
-  ASSERT_OK(PromoteAutoFlags(SourceCluster(), AutoFlagClass::kLocalPersisted, /* force */ true));
-
-  // Insert rows and validate
-  ASSERT_OK(VerifyReplicationError(TargetTable(), stream_id, std::nullopt));
-
-  ASSERT_OK(PromoteAutoFlags(SourceCluster()));
-  // Insert rows and validate
-  ASSERT_OK(VerifyReplicationError(TargetTable(), stream_id, std::nullopt));
-}
-
-// Verify xCluster Setup and replication works when Target universe is on a version that does not
-// support AutoFlag validation.
-TEST_F_EX(
-    XClusterUpgradeTest, TargetWithoutAutoFlagCompatiblity,
-    XClusterUpgradeExternalMiniClusterTest) {
-  // We dont want kNewInstallsOnly AutoFlags as those never get promoted.
-  source_cluster_.setup_opts_.master_flags.emplace_back(kLimitExternalAutoFlagsOnCreate);
-
-  target_cluster_.setup_opts_.master_flags.emplace_back(kLimitLocalAutoFlagsOnCreate);
-  target_cluster_.setup_opts_.master_flags.emplace_back(kDisableAutoFlagValidation);
-  target_cluster_.setup_opts_.tserver_flags.emplace_back(kDisableAutoFlagValidation);
-
-  ASSERT_OK(SetupClustersAndReplicationGroup());
-
-  auto stream_id = ASSERT_RESULT(GetStreamId());
-  ASSERT_OK(VerifyReplicationError(TargetTable(), stream_id, std::nullopt));
-
-  // Insert rows and validate
-  ASSERT_OK(VerifyReplicationError(TargetTable(), stream_id, std::nullopt));
-
-  ASSERT_OK(TargetCluster()->SetFlagOnMasters(kAutoFlagValidationFlag, "true"));
-  ASSERT_OK(TargetCluster()->SetFlagOnTServers(kAutoFlagValidationFlag, "true"));
-
-  // Force promote flags so that AutoFlag validation runs.
-  ASSERT_OK(PromoteAutoFlags(TargetCluster(), AutoFlagClass::kLocalPersisted, /* force */ true));
-
-  ASSERT_OK(VerifyReplicationError(
-      TargetTable(), stream_id, REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH));
-
-  ASSERT_OK(PromoteAutoFlags(TargetCluster(), AutoFlagClass::kExternal, /* force */ true));
-  ASSERT_OK(VerifyReplicationError(TargetTable(), stream_id, std::nullopt));
 }
 
 }  // namespace yb

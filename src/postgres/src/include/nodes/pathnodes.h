@@ -130,6 +130,25 @@ typedef struct PlannerGlobal
 	char		maxParallelHazard;	/* worst PROPARALLEL hazard level */
 
 	PartitionDirectory partition_directory; /* partition descriptors */
+
+	/* count of base rels across all blocks */
+	int			ybBaseRelCnt;
+
+	/* hint aliases - alias can be found using rel->ybUniqueBaseId as index */
+	List	   *ybPlanHintsAliasMapping;
+
+	/* count of number of blocks */
+	int			ybBlockCnt;
+
+	/*
+	 * list of unique ids, e.g. used to uniquely indentify Path/Plan nodes, or
+	 * messages written when yb_enable_planner_trace is enabled
+	 */
+	uint32		ybNextUid;
+
+	uint32		ybNextNodeUid;
+
+	List	   *ybHintedUids;
 } PlannerGlobal;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -383,8 +402,8 @@ struct PlannerInfo
 	 * These are used to transfer information about batching in createplan.c
 	 * and indxpath.c
 	 */
-	Relids		yb_cur_batched_relids; /* valid if we are processing a batched
-								  	    * NL join */
+	Relids		yb_cur_batched_relids;	/* valid if we are processing a
+										 * batched NL join */
 	Relids		yb_cur_unbatched_relids;
 
 	/*
@@ -392,16 +411,34 @@ struct PlannerInfo
 	 * available from the outer path of a particular Batched Nested Loop join
 	 * node.
 	 */
-	List		*yb_availBatchedRelids;
+	List	   *yb_availBatchedRelids;
 
-	int yb_cur_batch_no;		/* Used in replace_nestloop_params to keep
-								 * track of current batch */
+	int			yb_cur_batch_no;	/* Used in replace_nestloop_params to keep
+									 * track of current batch */
 
 	/*
 	 * Number of relations that are still referenced by the plan after
 	 * constraint exclusion and partition pruning.
 	 */
-	int     yb_num_referenced_relations;
+	int			yb_num_referenced_relations;
+
+	/* id of block this instance represents */
+	int			ybBlockId;
+
+	/* outer relids for each hinted join. i.e. joins in Leading hint */
+	List	   *ybHintedJoinsOuter;
+
+	/* parallel relid list of inner relids for each hinted join */
+	List	   *ybHintedJoinsInner;
+
+	/*
+	 * If a join appears in a leading hint but has a 'negated' join method
+	 * hint then the type of the join is stored in this list.
+	 */
+	List	   *ybProhibitedJoinTypes;
+
+	/* parallel list of relids of 'prohibited joins */
+	List	   *ybProhibitedJoins;
 };
 
 
@@ -801,6 +838,24 @@ typedef struct RelOptInfo
 
 	/* used for YB relations */
 	bool		is_yb_relation;	/* Is a YbRelation */
+
+	/* unique identifer (across all blocks) for a base rel - starting at '1' */
+	uint32		ybUniqueBaseId;
+
+	/* alias to use for hinting - unique across all blocks/entire query */
+	char	   *ybHintAlias;
+
+	/* id of the block this rel is in */
+	uint32		ybBlockId;
+
+	/* list to store initially populated 'indexlist' member above.
+	 * The hint code can prune 'indexlist' but the optimizer uses
+	 * indexes to prove uniqueness.
+	 */
+	List	   *ybHintsOrigIndexlist;
+
+	PlannerInfo
+			   *ybRoot;
 } RelOptInfo;
 
 /*
@@ -917,10 +972,12 @@ struct IndexOptInfo
 	/* Rather than include amapi.h here, we declare amcostestimate like this */
 	void		(*amcostestimate) ();	/* AM's cost estimator */
 
-	bool		yb_amhasgetbitmap; /* does AM have yb_amgetbitmap interface? */
+	bool		yb_amhasgetbitmap;	/* does AM have yb_amgetbitmap interface? */
+
+	bool		yb_amiscopartitioned; /* is AM for YB a copartitioned index? */
 
 	/* Used for YB base scans cost model */
-	int32_t 	yb_cached_ybctid_size;
+	int32_t		yb_cached_ybctid_size;
 };
 
 /*
@@ -1178,7 +1235,7 @@ typedef struct ParamPathInfo
 	List	   *ppi_clauses;	/* join clauses available from outer rels */
 
 	/* Yugabyte attributes */
-	Relids		yb_ppi_req_outer_batched; /* outer rels that can be batched */
+	Relids		yb_ppi_req_outer_batched;	/* outer rels that can be batched */
 } ParamPathInfo;
 
 
@@ -1190,8 +1247,8 @@ typedef struct ParamPathInfo
  */
 typedef enum YbLockMechanism
 {
-	YB_NO_SCAN_LOCK,		/* no locks taken in this scan */
-	YB_LOCK_CLAUSE_ON_PK,	/* may take locks on PK for locking clause */
+	YB_NO_SCAN_LOCK,			/* no locks taken in this scan */
+	YB_LOCK_CLAUSE_ON_PK,		/* may take locks on PK for locking clause */
 } YbLockMechanism;
 
 /*
@@ -1200,14 +1257,16 @@ typedef enum YbLockMechanism
  * 'yb_uniqkeys' Set of exprs that the path is distinct on. NIL by default.
  * NIL signifies that the set is indeterminate.
  */
-typedef struct YbPathInfo {
-	List		   *yb_uniqkeys;		/* list keys that are distinct */
+typedef struct YbPathInfo
+{
+	List	   *yb_uniqkeys;	/* list keys that are distinct */
 } YbPathInfo;
 
-typedef struct YbPlanInfo {
+typedef struct YbPlanInfo
+{
 	double		estimated_num_nexts;
 	double		estimated_num_seeks;
-	int 		estimated_docdb_result_width;
+	int			estimated_docdb_result_width;
 } YbPlanInfo;
 
 /*
@@ -1218,7 +1277,7 @@ typedef struct YbPlanInfo {
  */
 typedef struct YbIndexPathInfo
 {
-	int				yb_distinct_prefixlen;
+	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
 } YbIndexPathInfo;
 
@@ -1279,6 +1338,9 @@ typedef struct Path
 
 	YbPlanInfo	yb_plan_info;
 	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
+	uint32		ybUniqueId;		/* unique id of Path */
+	bool		ybIsHinted;	/* does this represent a hint path? */
+	bool		ybHasHintedUid;	/* force this path using UID? */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
@@ -1353,7 +1415,7 @@ typedef struct IndexPath
 	Selectivity indexselectivity;
 	int			ybctid_width;
 	YbPlanInfo	yb_plan_info;
-	YbIndexPathInfo yb_index_path_info;	/* fields used for YugabyteDB */
+	YbIndexPathInfo yb_index_path_info; /* fields used for YugabyteDB */
 } IndexPath;
 
 /*
@@ -1532,15 +1594,18 @@ typedef struct ForeignPath
 } ForeignPath;
 
 /*
- * CustomPath represents a table scan done by some out-of-core extension.
+ * CustomPath represents a table scan or a table join done by some out-of-core
+ * extension.
  *
  * We provide a set of hooks here - which the provider must take care to set
  * up correctly - to allow extensions to supply their own methods of scanning
- * a relation.  For example, a provider might provide GPU acceleration, a
- * cache-based scan, or some other kind of logic we haven't dreamed up yet.
+ * a relation or joing relations.  For example, a provider might provide GPU
+ * acceleration, a cache-based scan, or some other kind of logic we haven't
+ * dreamed up yet.
  *
- * CustomPaths can be injected into the planning process for a relation by
- * set_rel_pathlist_hook functions.
+ * CustomPaths can be injected into the planning process for a base or join
+ * relation by set_rel_pathlist_hook or set_join_pathlist_hook functions,
+ * respectively.
  *
  * Core code must avoid assuming that the CustomPath is only as large as
  * the structure declared here; providers are allowed to make it the first
@@ -2021,7 +2086,7 @@ typedef struct ModifyTablePath
 	CmdType		operation;		/* INSERT, UPDATE, DELETE, or MERGE */
 	bool		canSetTag;		/* do we set the command tag/es_processed? */
 	Index		nominalRelation;	/* Parent RT index for use of EXPLAIN */
-	Index		rootRelation;	/* Root RT index, if target is partitioned */
+	Index		rootRelation;	/* Root RT index, if partitioned/inherited */
 	bool		partColsUpdated;	/* some part key in hierarchy updated? */
 	List	   *resultRelations;	/* integer list of RT indexes */
 	List	   *updateColnosLists;	/* per-target-table update_colnos lists */
@@ -2267,9 +2332,9 @@ typedef struct RestrictInfo
 	/* Yugabyte attributes */
 	bool		yb_pushable;	/* true if can be pushed down to DocDB */
 
-	List *yb_batched_rinfo; /* If there is a batched version of
-							 * this clause, this is a pointer to
-							 * a list of possible batched versions. */
+	List	   *yb_batched_rinfo;	/* If there is a batched version of this
+									 * clause, this is a pointer to a list of
+									 * possible batched versions. */
 } RestrictInfo;
 
 /*
@@ -2340,8 +2405,8 @@ typedef struct PlaceHolderVar
  */
 typedef struct YbBatchedExpr
 {
-	Expr xpr;
-	Expr *orig_expr; /* Original Var this is a batched version of. */
+	Expr		xpr;
+	Expr	   *orig_expr;		/* Original Var this is a batched version of. */
 } YbBatchedExpr;
 
 /*

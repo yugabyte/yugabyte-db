@@ -29,6 +29,11 @@ DECLARE_int32(ysql_max_connections);
 DECLARE_string(ysql_conn_mgr_warmup_db);
 DECLARE_string(TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 DECLARE_bool(ysql_conn_mgr_superuser_sticky);
+DECLARE_bool(ysql_conn_mgr_version_matching);
+DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
+DECLARE_int32(ysql_conn_mgr_max_query_size);
+DECLARE_int32(ysql_conn_mgr_wait_timeout_ms);
+DECLARE_int32(ysql_conn_mgr_max_pools);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -36,11 +41,6 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
     "the Ysql Connection Manager. If a database connection remains idle without serving a "
     "client connection for a duration equal to or exceeding the value provided, "
     "it will be automatically closed by the Ysql Connection Manager.");
-
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_client_connections, 10000,
-    "Total number of concurrent client connections that the Ysql Connection Manager allows.");
-
-DEFINE_validator(ysql_conn_mgr_max_client_connections, FLAG_GT_VALUE_VALIDATOR(1));
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_num_workers, 0,
   "Number of worker threads used by Ysql Connection Manager. If set as 0 (default value), "
@@ -91,6 +91,49 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_log_settings, "",
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
     "Enable the use of the auth-backend for authentication of logical connections. "
     "When false, the older auth-passthrough implementation is used."
+    );
+
+DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_max_size, 0,
+    "Max ysql connection manager log size(in bytes) after which the log file gets rolled over");
+
+DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_rotate_interval, 0,
+    "Duration(in secs) after which ysql connection manager log will get rolled over");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_readahead_buffer_size, 8192,
+    "Set size of per-connection buffer used for io readahead operations in "
+    "Ysql Connection Manager");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
+    "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 75,
+    "TCP keepalive interval in Ysql Connection Manager. This is applicable if "
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 9,
+    "TCP keepalive probes in Ysql Connection Manager. This is applicable if "
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout, 0,
+    "TCP user timeout in Ysql Connection Manager. This is applicable if "
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_control_connection_pool_size, 0,
+    "Maximum number of concurrent control connections in Ysql Connection Manager. "
+    "If the value is zero, the default value is 0.1 * ysql_max_connections");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
+    "Server pool wait timeout(in ms) in Ysql Connection Manager. Time to wait in "
+    "milliseconds for an available server. Disconnect client on timeout reach. "
+    "If the value is set to zero, the client waits for the server connection indefinitely");
+
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
+    "Enable optimized extended query protocol in Ysql Connection Manager. "
+    "If set to false, extended query protocol handling is fully correct but unoptimized.");
+
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
+    "Enable the use of the dynamic multi-route pooling. "
+    "When false, the older static pool sizes are used."
     );
 
 namespace {
@@ -174,6 +217,22 @@ Status YsqlConnMgrWrapper::Start() {
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE",
                 FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_VERSION_MATCHING", FLAGS_ysql_conn_mgr_version_matching ? "true" : "false");
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_VERSION_MATCHING_CONNECT_HIGHER_VERSION",
+      FLAGS_ysql_conn_mgr_version_matching_connect_higher_version ? "true" : "false");
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_MAX_QUERY_SIZE", std::to_string(FLAGS_ysql_conn_mgr_max_query_size));
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_WAIT_TIMEOUT_MS", std::to_string(FLAGS_ysql_conn_mgr_wait_timeout_ms));
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_MAX_POOLS", std::to_string(FLAGS_ysql_conn_mgr_max_pools));
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats) {

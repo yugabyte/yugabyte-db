@@ -21,7 +21,6 @@
 #include "catalog/pg_type.h"
 #include "executor/functions.h"
 #include "lib/stringinfo.h"
-#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -33,7 +32,10 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
 #include <pthread.h>
 
 /*
@@ -53,7 +55,7 @@ typedef struct
 	ItemPointerData fn_tid;
 	PGFunction	user_fn;		/* the function's address */
 	const Pg_finfo_record *inforec; /* address of its info record */
-	uint64 yb_catalog_version; /* catalog version at function load time */
+	uint64		yb_catalog_version; /* catalog version at function load time */
 } CFuncHashTabEntry;
 
 static HTAB *CFuncHash = NULL;
@@ -74,13 +76,13 @@ extern void int2send_direct(StringInfo buf, Datum value);
 extern void int4send_direct(StringInfo buf, Datum value);
 extern void int8send_direct(StringInfo buf, Datum value);
 
-typedef void (*SendDirectFn)(StringInfo, Datum);
+typedef void (*YbSendDirectFn) (StringInfo, Datum);
 
 /*
  * Initialize direct send function with specified oid with specified func.
  */
 static void
-fmgr_init_direct_send_func(Oid oid, SendDirectFn func)
+fmgr_init_direct_send_func(Oid oid, YbSendDirectFn func)
 {
 	fmgr_builtins[fmgr_builtin_oid_index[oid]].alt_func = func;
 }
@@ -88,15 +90,12 @@ fmgr_init_direct_send_func(Oid oid, SendDirectFn func)
 /*
  * Initialize all direct send functions.
  */
-#define PG_PROC_INT2SEND_OID 2405
-#define PG_PROC_INT4SEND_OID 2407
-#define PG_PROC_INT8SEND_OID 2409
 static void
 fmgr_init_direct_send()
 {
-	fmgr_init_direct_send_func(PG_PROC_INT2SEND_OID, int2send_direct);
-	fmgr_init_direct_send_func(PG_PROC_INT4SEND_OID, int4send_direct);
-	fmgr_init_direct_send_func(PG_PROC_INT8SEND_OID, int8send_direct);
+	fmgr_init_direct_send_func(F_INT2SEND, int2send_direct);
+	fmgr_init_direct_send_func(F_INT4SEND, int4send_direct);
+	fmgr_init_direct_send_func(F_INT8SEND, int8send_direct);
 }
 
 /*
@@ -114,6 +113,7 @@ fmgr_isbuiltin(Oid id)
 		return NULL;
 
 	static pthread_once_t initialized = PTHREAD_ONCE_INIT;
+
 	pthread_once(&initialized, &fmgr_init_direct_send);
 
 	/*
@@ -155,7 +155,7 @@ is_builtin_func(Oid id)
  * This routine fills a FmgrInfo struct, given the OID
  * of the function to be called.
  *
- * The caller's GetCurrentMemoryContext() is used as the fn_mcxt of the info
+ * The caller's CurrentMemoryContext is used as the fn_mcxt of the info
  * struct; this means that any subsidiary data attached to the info struct
  * (either by fmgr_info itself, or later on by a function call handler)
  * will be allocated in that context.  The caller must ensure that this
@@ -167,7 +167,7 @@ is_builtin_func(Oid id)
 void
 fmgr_info(Oid functionId, FmgrInfo *finfo)
 {
-	fmgr_info_cxt_security(functionId, finfo, GetCurrentMemoryContext(), false);
+	fmgr_info_cxt_security(functionId, finfo, CurrentMemoryContext, false);
 }
 
 /*
@@ -492,7 +492,7 @@ fmgr_info_other_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 	 * to get back a bare pointer to the actual C-language function.
 	 */
 	fmgr_info_cxt_security(languageStruct->lanplcallfoid, &plfinfo,
-						   GetCurrentMemoryContext(), true);
+						   CurrentMemoryContext, true);
 	finfo->fn_addr = plfinfo.fn_addr;
 
 	ReleaseSysCache(languageTuple);
@@ -1677,16 +1677,21 @@ SendFunctionCall(FmgrInfo *flinfo, Datum val)
 void
 StringInfoSendFunctionCall(StringInfo buf, FmgrInfo *flinfo, Datum val)
 {
-	void (*alt)(StringInfo, Datum) = flinfo->fn_alt;
-	if (alt) {
-		// There is function to send value directly to buf, w/o intermediate
-		// conversion to bytea.
+	void		(*alt) (StringInfo, Datum) = flinfo->fn_alt;
+
+	if (alt)
+	{
+		/*
+		 * There is function to send value directly to buf, w/o intermediate
+		 * conversion to bytea.
+		 */
 		alt(buf, val);
 		return;
 	}
 
-	bytea *outputbytes = SendFunctionCall(flinfo, val);
-	uint32 size = VARSIZE(outputbytes) - VARHDRSZ;
+	bytea	   *outputbytes = SendFunctionCall(flinfo, val);
+	uint32		size = VARSIZE(outputbytes) - VARHDRSZ;
+
 	pq_sendint32(buf, size);
 	pq_sendbytes(buf, VARDATA(outputbytes), size);
 	pfree(outputbytes);

@@ -75,6 +75,7 @@ using std::shared_ptr;
 
 DECLARE_bool(use_priority_thread_pool_for_compactions);
 DECLARE_bool(use_priority_thread_pool_for_flushes);
+DECLARE_bool(TEST_allow_table_option_compressed_block_cache);
 
 namespace rocksdb {
 
@@ -2025,6 +2026,7 @@ TEST_F(DBTest, CompressedCache) {
   if (!Snappy_Supported()) {
     return;
   }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_table_option_compressed_block_cache) = true;
   int num_iter = 80;
 
   // Run this test three iterations.
@@ -4575,6 +4577,12 @@ class ModelDB: public DB {
     return nullptr;
   }
 
+  std::unique_ptr<DataBlockAwareIndexIterator> NewDataBlockAwareIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family) override {
+    return nullptr;
+  }
+
   void ReleaseSnapshot(const Snapshot* snapshot) override {
     delete reinterpret_cast<const ModelSnapshot*>(snapshot);
   }
@@ -4798,6 +4806,8 @@ class ModelDB: public DB {
       };
       return entry_;
     }
+
+    void UpdateFilterKey(Slice user_key_for_filter) override {}
 
     Status status() const override { return Status::OK(); }
 

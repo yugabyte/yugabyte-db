@@ -1594,6 +1594,17 @@ my %tests = (
 		},
 	},
 
+	'CREATE DATABASE regression_invalid...' => {
+		create_order => 1,
+		create_sql => q(
+		    CREATE DATABASE regression_invalid;
+			UPDATE pg_database SET datconnlimit = -2 WHERE datname = 'regression_invalid'),
+		regexp => qr/^CREATE DATABASE regression_invalid/m,
+
+		# invalid databases should never be dumped
+		like => {},
+	},
+
 	'CREATE ACCESS METHOD gist2' => {
 		create_order => 52,
 		create_sql =>
@@ -2114,6 +2125,27 @@ my %tests = (
 		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	'Check ordering of a function that depends on a primary key' => {
+		create_order => 41,
+		create_sql => '
+			CREATE TABLE dump_test.ordering_table (id int primary key, data int);
+			CREATE FUNCTION dump_test.ordering_func ()
+			RETURNS SETOF dump_test.ordering_table
+			LANGUAGE sql BEGIN ATOMIC
+			SELECT * FROM dump_test.ordering_table GROUP BY id; END;',
+		regexp => qr/^
+			\QALTER TABLE ONLY dump_test.ordering_table\E
+			\n\s+\QADD CONSTRAINT ordering_table_pkey PRIMARY KEY (id);\E
+			.*^
+			\QCREATE FUNCTION dump_test.ordering_func\E/xms,
+		like =>
+		  { %full_runs, %dump_test_schema_runs, section_post_data => 1, },
+		unlike => {
+			exclude_dump_test_schema => 1,
+			only_dump_measurement => 1,
+		},
+	},
+
 	'CREATE PROCEDURE dump_test.ptest1' => {
 		create_order => 41,
 		create_sql   => 'CREATE PROCEDURE dump_test.ptest1(a int)
@@ -2324,6 +2356,25 @@ my %tests = (
 		  { %full_runs, %dump_test_schema_runs, section_pre_data => 1, },
 		unlike =>
 		  { exclude_dump_test_schema => 1, no_toast_compression => 1, },
+	},
+
+	'Check ordering of a matview that depends on a primary key' => {
+		create_order => 42,
+		create_sql => '
+			CREATE MATERIALIZED VIEW dump_test.ordering_view AS
+				SELECT * FROM dump_test.ordering_table GROUP BY id;',
+		regexp => qr/^
+			\QALTER TABLE ONLY dump_test.ordering_table\E
+			\n\s+\QADD CONSTRAINT ordering_table_pkey PRIMARY KEY (id);\E
+			.*^
+			\QCREATE MATERIALIZED VIEW dump_test.ordering_view AS\E
+			\n\s+\QSELECT ordering_table.id,\E/xms,
+		like =>
+		  { %full_runs, %dump_test_schema_runs, section_post_data => 1, },
+		unlike => {
+			exclude_dump_test_schema => 1,
+			only_dump_measurement => 1,
+		},
 	},
 
 	'CREATE POLICY p1 ON test_table' => {
@@ -3104,13 +3155,13 @@ my %tests = (
 	'CREATE STATISTICS extended_stats_no_options' => {
 		create_order => 97,
 		create_sql   => 'CREATE STATISTICS dump_test.test_ext_stats_no_options
-							ON col1, col2 FROM dump_test.test_fifth_table',
+							ON col1, col2 FROM dump_test.test_table',
 		regexp => qr/^
-			\QCREATE STATISTICS dump_test.test_ext_stats_no_options ON col1, col2 FROM dump_test.test_fifth_table;\E
+			\QCREATE STATISTICS dump_test.test_ext_stats_no_options ON col1, col2 FROM dump_test.test_table;\E
 		    /xms,
 		like =>
 		  { %full_runs, %dump_test_schema_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
+		unlike => { exclude_dump_test_schema => 1, exclude_test_table => 1, },
 	},
 
 	'CREATE STATISTICS extended_stats_options' => {
@@ -3554,11 +3605,13 @@ my %tests = (
 
 	'GRANT SELECT ON TABLE measurement' => {
 		create_order => 91,
-		create_sql   => 'GRANT SELECT ON
-						   TABLE dump_test.measurement
-						   TO regress_dump_test_role;',
+		create_sql => 'GRANT SELECT ON TABLE dump_test.measurement
+						   TO regress_dump_test_role;
+					   GRANT SELECT(city_id) ON TABLE dump_test.measurement
+						   TO "regress_quoted  \"" role";',
 		regexp =>
-		  qr/^\QGRANT SELECT ON TABLE dump_test.measurement TO regress_dump_test_role;\E/m,
+		  qr/^\QGRANT SELECT ON TABLE dump_test.measurement TO regress_dump_test_role;\E\n.*
+			 ^\QGRANT SELECT(city_id) ON TABLE dump_test.measurement TO "regress_quoted  \"" role";\E/xms,
 		like =>
 		  { %full_runs, %dump_test_schema_runs, section_pre_data => 1, },
 		unlike => {
@@ -4006,6 +4059,14 @@ command_fails_like(
 	[ 'pg_dump', '-p', "$port", 'qqq' ],
 	qr/pg_dump: error: connection to server .* failed: FATAL:  database "qqq" does not exist/,
 	'connecting to a non-existent database');
+
+#########################################
+# Test connecting to an invalid database
+
+$node->command_fails_like(
+	[ 'pg_dump', '-d', 'regression_invalid' ],
+	qr/pg_dump: error: connection to server .* failed: FATAL:  cannot connect to invalid database "regression_invalid"/,
+	'connecting to an invalid database');
 
 #########################################
 # Test connecting with an unprivileged user

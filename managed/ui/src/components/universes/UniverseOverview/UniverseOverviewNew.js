@@ -25,7 +25,7 @@ import {
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
 import {
-  isKubernetesUniverse,
+  getIsKubernetesUniverse,
   getPrimaryCluster,
   isDedicatedNodePlacement
 } from '../../../utils/UniverseUtils';
@@ -246,20 +246,10 @@ class HealthInfoPanel extends PureComponent {
 
   render() {
     const { healthCheck, universeInfo } = this.props;
-    let disabledUntilStr = '';
     if (getPromiseState(healthCheck).isSuccess()) {
       const healthCheckData = [...healthCheck.data].reverse()[0];
       const lastUpdateDate = moment.utc(healthCheckData.timestamp).local();
-      if (universeInfo.universeConfig && 'disableAlertsUntilSecs' in universeInfo.universeConfig) {
-        const disabledUntilSecs = Number(universeInfo.universeConfig.disableAlertsUntilSecs);
-        const now = Date.now() / 1000;
-        if (!Number.isSafeInteger(disabledUntilSecs)) {
-          disabledUntilStr = ' Alerts are snoozed';
-        } else if (disabledUntilSecs > now) {
-          disabledUntilStr =
-            ' Alerts are snoozed until ' + moment.unix(disabledUntilSecs).format('MMM DD hh:mm a');
-        }
-      }
+
       const totalNodesCounter = healthCheckData.data.length;
       let errorNodesCounter = 0;
 
@@ -308,14 +298,6 @@ class HealthInfoPanel extends PureComponent {
               <span className={'text-dark text-normal'}>
                 <FormattedRelative value={lastUpdateDate} unit="day" />
               </span>
-            </span>
-          ) : null
-        },
-        {
-          name: '',
-          data: disabledUntilStr ? (
-            <span className="text-light">
-              <i className={'fa fa-exclamation-triangle'}>{disabledUntilStr}</i>
             </span>
           ) : null
         }
@@ -520,6 +502,8 @@ export default class UniverseOverviewNew extends Component {
       <Col lg={3} sm={6} md={6} xs={12}>
         <ClusterInfoPanelContainer
           type={'read-replica'}
+          // In case of dedicated nodes, the read replica cluster can have only TServer nodes.
+          isDedicatedNodes={false}
           universeInfo={currentUniverse}
           runtimeConfigs={this.props.runtimeConfigs}
         />
@@ -564,9 +548,6 @@ export default class UniverseOverviewNew extends Component {
             <FlexGrow>
               <YBResourceCount size={numCassandraTables} kind="YCQL" />
             </FlexGrow>
-            <FlexGrow>
-              <YBResourceCount size={numRedisTables} kind="YEDIS" />
-            </FlexGrow>
           </FlexContainer>
         }
       />
@@ -594,7 +575,7 @@ export default class UniverseOverviewNew extends Component {
 
   getDiskUsageWidget = (universeInfo) => {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
-    const isKubernetes = isKubernetesUniverse(universeInfo);
+    const isKubernetes = getIsKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const subTab = isKubernetes ? 'container' : 'server';
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
@@ -649,7 +630,7 @@ export default class UniverseOverviewNew extends Component {
 
   getCPUWidget = (universeInfo, isRollBackFeatureEnabled) => {
     // For kubernetes the CPU usage would be in container tab, rest it would be server tab.
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const hasReadReplicaCluster = this.hasReadReplica(universeInfo);
     const subTab = isItKubernetesUniverse ? 'container' : 'server';
@@ -699,7 +680,7 @@ export default class UniverseOverviewNew extends Component {
   };
 
   getRegionMapWidget = (universeInfo) => {
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const {
       modal: { showModal, visibleModal },
       showUniverseOverviewMapModal,
@@ -844,11 +825,12 @@ export default class UniverseOverviewNew extends Component {
       tasks,
       currentCustomer,
       runtimeConfigs,
-      universeLbState
+      universeLbState,
+      featureFlags
     } = this.props;
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
-    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isItKubernetesUniverse = getIsKubernetesUniverse(universeInfo);
     const universeDetails = universeInfo.universeDetails;
     const clusters = universeDetails?.clusters;
     const primaryCluster = getPrimaryCluster(clusters);
@@ -872,6 +854,9 @@ export default class UniverseOverviewNew extends Component {
       )?.value === 'true';
 
     const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
+    const isNewTaskDetailsUIEnabled =
+      featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
+
     return (
       <Fragment>
         {isRollBackFeatureEnabled &&
@@ -879,6 +864,7 @@ export default class UniverseOverviewNew extends Component {
             <Row className="p-16">{<PreFinalizeBanner universeData={universeInfo} />}</Row>
           )}
         {isRollBackFeatureEnabled &&
+          !isNewTaskDetailsUIEnabled &&
           [SoftwareUpgradeState.ROLLBACK_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
             ybSoftwareUpgradeState
           ) &&

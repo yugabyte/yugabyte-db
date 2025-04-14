@@ -34,7 +34,7 @@ class PgAnalyzeReadTimeTest : public PgMiniTestBase {
     // ANALYZE is a beta feature.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_beta_features) = true;
     // Easier debugging.
-    // ASSERT_OK(SET_FLAG(vmodule, "read_query=1"));
+    // google::SetVLOGLevel("read_query", 1);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_log_statement) = "all";
     PgMiniTestBase::SetUp();
   }
@@ -51,7 +51,7 @@ class PgAnalyzeNoReadRestartsTest : public PgAnalyzeReadTimeTest {
 };
 
 TEST_F_EX(PgAnalyzeReadTimeTest, InsertRowsConcurrentlyWithAnalyze, PgAnalyzeNoReadRestartsTest) {
-  constexpr auto kNumInitialRows = 100000;
+  constexpr auto kNumInitialRows = RegularBuildVsSanitizers(100000, 10000);
 
   // Create table with keys from 1 to kNumInitialRows.
   auto setup_conn = ASSERT_RESULT(Connect());
@@ -103,7 +103,7 @@ class PgAnalyzeMultiTableTest : public PgAnalyzeReadTimeTest {
 };
 
 TEST_F_EX(PgAnalyzeReadTimeTest, AnalyzeMultipleTables, PgAnalyzeMultiTableTest) {
-  constexpr auto kNumInitialRows = 10000;
+  constexpr auto kNumInitialRows = RegularBuildVsSanitizers(10000, 1000);
 
   // Create table with keys from 1 to kNumInitialRows.
   auto setup_conn = ASSERT_RESULT(Connect());

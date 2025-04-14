@@ -62,7 +62,7 @@ func ConfigWithName(configPath string) (*Config, error) {
 	// Create config directory if not exists.
 	err := os.MkdirAll(configDir, os.ModePerm)
 	if err != nil {
-		fmt.Errorf("Error while creating config - %s", err.Error())
+		err = fmt.Errorf("Error while creating config - %s", err.Error())
 		return nil, err
 	}
 	// Create config file if not exists.
@@ -70,12 +70,12 @@ func ConfigWithName(configPath string) (*Config, error) {
 	if _, err = os.Stat(filename); os.IsNotExist(err) {
 		file, err := os.Create(filename)
 		if err != nil {
-			fmt.Errorf("Error while creating config file - %s", err.Error())
+			err = fmt.Errorf("Error while creating config file - %s", err.Error())
 			return nil, err
 		}
 		file.Close()
 	} else if err != nil {
-		fmt.Errorf("Error while creating config - %s", err.Error())
+		err = fmt.Errorf("Error while creating config - %s", err.Error())
 		return nil, err
 	}
 	config.viperInstance = viper.New()
@@ -84,7 +84,7 @@ func ConfigWithName(configPath string) (*Config, error) {
 	config.viperInstance.SetConfigName(configName)
 	err = config.viperInstance.ReadInConfig()
 	if err != nil {
-		fmt.Errorf("Error reading the config file - %s", err.Error())
+		err = fmt.Errorf("Error reading the config file - %s", err.Error())
 		return nil, err
 	}
 	syncMap.Store(configPath, config)
@@ -230,6 +230,19 @@ func (config *Config) StoreCommandFlagString(
 		}
 	}
 	return value, nil
+}
+
+// Dump dumps the config values into a JSON string.
+func (config *Config) Dump(ctx context.Context) (string, error) {
+	if config == nil || config.viperInstance == nil {
+		return "", nil
+	}
+	ba, err := json.Marshal(config.viperInstance.AllSettings())
+	if err != nil {
+		FileLogger().Errorf(ctx, "Error in dumping config %s", err.Error())
+		return "", err
+	}
+	return string(ba), nil
 }
 
 func MustVersion() string {

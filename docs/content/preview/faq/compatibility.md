@@ -32,7 +32,7 @@ API
 
 [YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys).
 
-{{<lead link="/preview/quick-start/explore/ysql/">}}
+{{<lead link="../../explore/">}}
 Explore YSQL features
 {{</lead>}}
 
@@ -40,7 +40,7 @@ Explore YSQL features
 
 [YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
 
-{{<lead link="/preview/quick-start/explore/ycql/">}}
+{{<lead link="../../explore/">}}
 Explore YCQL features
 {{</lead>}}
 
@@ -95,7 +95,7 @@ The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means Postgr
 
 ### What is the extent of compatibility with PostgreSQL?
 
-As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-query-layer/), YSQL reuses the open source PostgreSQL query layer (written in C) as much as possible and as a result is wire-compatible with PostgreSQL dialect and client drivers. Specifically, YSQL is based on PostgreSQL v11.2. Following are some of the currently supported features:
+As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-query-layer/), YSQL reuses the open source PostgreSQL query layer (written in C) as much as possible and as a result is wire-compatible with PostgreSQL dialect and client drivers. Specifically, YSQL in v2.25 is based on PostgreSQL version 15, and versions prior to v2.25 are based on PostgreSQL version 11.2. Following are some of the currently supported features:
 
 - DDL statements: CREATE, DROP, and TRUNCATE tables
 - Data types: All primitive types including numeric types (integers and floats), text data types, byte arrays, date-time types, UUID, SERIAL, as well as JSONB

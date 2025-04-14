@@ -83,7 +83,6 @@ class PgBackendsTest : public LibPqTestBase {
           options->extra_master_flags.end(),
           {
             "--log_ysql_catalog_versions=true",
-            "--vmodule=ysql_backends_manager=2"
             ",master_heartbeat_service=2"
             ",transaction_coordinator=2"
             ",transaction_participant=2",
@@ -92,7 +91,6 @@ class PgBackendsTest : public LibPqTestBase {
           options->extra_tserver_flags.end(),
           {
             "--log_ysql_catalog_versions=true",
-            "--vmodule=tablet_service=2",
           });
     }
   }
@@ -777,7 +775,7 @@ TEST_F_EX(PgBackendsTest, RenameDatabase, PgBackendsTestRf3) {
   ASSERT_EQ(1, num_backends);
 }
 
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(Stress), PgBackendsTestRf3) {
+TEST_F_EX(PgBackendsTest, YB_RELEASE_ONLY_TEST(Stress), PgBackendsTestRf3) {
   constexpr auto kBumpPeriod = 1s;
   constexpr auto kMaxSleep = 3s;
   constexpr auto kTestDuration = 45s;
@@ -900,7 +898,7 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3) {
 
   PGConn conn_user = ASSERT_RESULT(PGConnBuilder({
         .host = ts->bind_host(),
-        .port = ts->pgsql_rpc_port(),
+        .port = ts->ysql_port(),
         .user = kUser,
       }).Connect());
 
@@ -925,7 +923,7 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   ExternalTabletServer* ts = cluster_->tserver_daemons()[ts_idx];
   PGConn conn_user = VERIFY_RESULT(PGConnBuilder({
         .host = ts->bind_host(),
-        .port = ts->pgsql_rpc_port(),
+        .port = ts->ysql_port(),
         .user = kUser,
       }).Connect());
 
@@ -948,7 +946,7 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   LOG(INFO) << "Verify the revoke is in effect";
   PGConn conn_user2 = VERIFY_RESULT(PGConnBuilder({
         .host = ts->bind_host(),
-        .port = ts->pgsql_rpc_port(),
+        .port = ts->ysql_port(),
         .user = kUser,
       }).Connect());
   auto res = conn_user2.FetchFormat("SELECT * FROM $0tab", kUser);

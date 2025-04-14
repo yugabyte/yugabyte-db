@@ -100,7 +100,7 @@ insert into account values
   ('kevin','checking', 500);
 ```
 
-Next, connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2.
+Next, connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2.
 
 <table>
   <tr>
@@ -238,7 +238,7 @@ CREATE TABLE IF NOT EXISTS example (k INT PRIMARY KEY);
 TRUNCATE TABLE example;
 ```
 
-Next, connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2:
+Next, connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2:
 
 <table>
   <tr>
@@ -352,13 +352,7 @@ SELECT * FROM example;
 
 ## Read committed isolation
 
-{{< note >}}
-
-Read Committed is [Tech Preview](/preview/releases/versioning/#feature-maturity).
-
-{{</note >}}
-
-Read committed isolation is the same as Snapshot isolation, except that every statement in the transaction is aware of all data that has been committed before it has been issued (this implicitly means that the statement will see a consistent snapshot). In other words, each statement works on a new snapshot of the database that includes everything that has been committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
+{{<tags/feature/ea>}}Read committed isolation is the same as Snapshot isolation, except that every statement in the transaction is aware of all data that has been committed before it has been issued (this implicitly means that the statement will see a consistent snapshot). In other words, each statement works on a new snapshot of the database that includes everything that has been committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
 
 Consider an example of transactions' behavior under the Read committed isolation level.
 
@@ -369,7 +363,7 @@ CREATE TABLE test (k int PRIMARY KEY, v int);
 INSERT INTO test VALUES (1, 2);
 ```
 
-Connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2:
+Connect to the universe using two independent ysqlsh instances, referred to as session #1 and session #2:
 
 <table>
   <tr>

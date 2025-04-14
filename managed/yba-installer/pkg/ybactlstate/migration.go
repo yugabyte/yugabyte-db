@@ -33,6 +33,7 @@ func handleMigration(state *State) error {
 	}
 	nextSchema := 0
 	endSchema := getSchemaVersion()
+	updateMade := false
 	for nextSchema < endSchema {
 		nextSchema++
 		if slices.Contains(state._internalFields.RunSchemas, nextSchema) {
@@ -43,10 +44,15 @@ func handleMigration(state *State) error {
 			log.Debug("skipping migration " + strconv.Itoa(nextSchema) + " as it is not defined")
 			continue
 		}
+		updateMade = true
 		if err := migrate(state); err != nil {
 			return err
 		}
 		state._internalFields.RunSchemas = append(state._internalFields.RunSchemas, nextSchema)
+	}
+	if !updateMade {
+		log.DebugLF("no migrations run")
+		return nil
 	}
 	// StoreState in order to persist migration SchemaVersion
 	return StoreState(state)
@@ -58,11 +64,19 @@ func handleMigration(state *State) error {
 // mark them as run.
 func updateSchemaTracking(state *State) error {
 	if state._internalFields.RunSchemas != nil {
+		log.DebugLF("schema tracking already updated")
 		return nil
 	}
 	// allSchemaSlice returns the list for the current max schema, but we need specifically those
 	// that have already been run - tracked previously by the state SchemaVersion
-	state._internalFields.RunSchemas = allSchemaSlice()[:state._internalFields.SchemaVersion]
+	state._internalFields.RunSchemas = make([]int, 0)
+	for _, schemaVersion := range allSchemaSlice() {
+		if schemaVersion > state._internalFields.SchemaVersion {
+			log.DebugLF(fmt.Sprintf("skipping schema %d as it is not yet run", schemaVersion))
+			continue
+		}
+		state._internalFields.RunSchemas = append(state._internalFields.RunSchemas, schemaVersion)
+	}
 	log.DebugLF(fmt.Sprintf("updating schema tracking with run schemas of %v",
 		state._internalFields.RunSchemas))
 	return nil

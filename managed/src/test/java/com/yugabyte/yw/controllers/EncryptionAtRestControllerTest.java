@@ -260,7 +260,8 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(recoverKeyResult));
     String expectedErrorMsg =
         String.format(
-            "No universe key found for universe %s", universe.getUniverseUUID().toString());
+            "No KMS History found for universe '%s' and config '%s' with given key ref.",
+            universe.getUniverseUUID().toString(), configUUID.toString());
     assertErrorNodeValue(json, expectedErrorMsg);
     assertAuditEntry(0, customer.getUuid());
   }

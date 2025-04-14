@@ -1,9 +1,9 @@
 ---
-title: Configure the VMware Tanzu cloud provider
+title: Configure the VMware Tanzu provider configuration
 headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the VMware Tanzu provider configuration
-headContent: For deploying universes on VMware Tanzu
+headContent: For deploying universes on Kubernetes
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /preview/deploy/pivotal-cloud-foundry/
@@ -44,7 +44,7 @@ Before you can deploy universes to VMware Tanzu using YugabyteDB Anywhere (YBA),
 
 ## Prerequisites
 
-Before you start, ensure that you have created the [kubeconfig file](../../prepare/cloud-permissions/cloud-permissions-nodes/#create-a-kubeconfig-file) so YBA can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
+Before you start, ensure that you have created the [kubeconfig file](../../prepare/cloud-permissions/cloud-permissions-nodes-k8s/#create-a-kubeconfig-file) so YBA can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
 ## Configure TKG
 

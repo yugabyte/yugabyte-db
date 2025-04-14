@@ -93,7 +93,7 @@ func (ce *ConfigEntryContext) startSubsection(format string) (*template.Template
 }
 
 func (ce *ConfigEntryContext) subSection(name string) {
-	ce.Output.Write([]byte("\n\n"))
+	ce.Output.Write([]byte("\n"))
 	ce.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	ce.Output.Write([]byte("\n"))
 }

@@ -204,7 +204,7 @@ char	   *namespace_search_path = NULL;
 
 typedef struct YbTempNamespaceSuffixBuffer
 {
-	char data[UUID_LEN * 2 + 2];
+	char		data[UUID_LEN * 2 + 2];
 } YbTempNamespaceSuffixBuffer;
 
 /* Local functions */
@@ -3408,8 +3408,8 @@ SetTempNamespaceState(Oid tempNamespaceId, Oid tempToastNamespaceId)
  * used by PushOverrideSearchPath.
  *
  * The result structure is allocated in the specified memory context
- * (which might or might not be equal to GetCurrentMemoryContext()); but any
- * junk created by revalidation calculations will be in GetCurrentMemoryContext().
+ * (which might or might not be equal to CurrentMemoryContext); but any
+ * junk created by revalidation calculations will be in CurrentMemoryContext.
  */
 OverrideSearchPath *
 GetOverrideSearchPath(MemoryContext context)
@@ -3446,7 +3446,7 @@ GetOverrideSearchPath(MemoryContext context)
 /*
  * CopyOverrideSearchPath - copy the specified OverrideSearchPath.
  *
- * The result structure is allocated in GetCurrentMemoryContext().
+ * The result structure is allocated in CurrentMemoryContext.
  */
 OverrideSearchPath *
 CopyOverrideSearchPath(OverrideSearchPath *path)
@@ -4007,6 +4007,9 @@ InitTempTableNamespace(void)
 
 	Assert(!OidIsValid(myTempNamespace));
 
+	if (IsYugaByteEnabled())
+		YBCDdlEnableForceCatalogModification();
+
 	/*
 	 * First, do permission check to see if we are authorized to make temp
 	 * tables.  We use a nonstandard error message here since "databasename:
@@ -4056,8 +4059,9 @@ InitTempTableNamespace(void)
 	 * pg_toast_temp_<tserver_uuid>_<backend_id>.
 	 */
 	YbTempNamespaceSuffixBuffer ybSuffixBuf;
-	const char *yb_temp_namespace_suffix = IsYugaByteEnabled() ?
-		YbBuildTempNameSuffix(&ybSuffixBuf) : "";
+	const char *yb_temp_namespace_suffix = (IsYugaByteEnabled() ?
+											YbBuildTempNameSuffix(&ybSuffixBuf) :
+											"");
 
 	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%s%d",
 			 yb_temp_namespace_suffix, MyBackendId);
@@ -4303,14 +4307,22 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectId = tempNamespaceId;
 	object.objectSubId = 0;
 
+	bool yb_use_regular_txn_block =
+		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
 	if (IsYugaByteEnabled())
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
+	{
+		if (yb_use_regular_txn_block)
+			YBSetDdlState(YB_DDL_MODE_SILENT_ALTERING);
+		else
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
+		YBCDdlEnableForceCatalogModification();
+	}
 	performDeletion(&object, DROP_CASCADE,
 					PERFORM_DELETION_INTERNAL |
 					PERFORM_DELETION_QUIETLY |
 					PERFORM_DELETION_SKIP_ORIGINAL |
 					PERFORM_DELETION_SKIP_EXTENSIONS);
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && !yb_use_regular_txn_block)
 		YBDecrementDdlNestingLevel();
 }
 
@@ -4427,9 +4439,13 @@ InitializeSearchPath(void)
 	{
 		/*
 		 * In normal mode, arrange for a callback on any syscache invalidation
-		 * of pg_namespace rows.
+		 * of pg_namespace or pg_authid rows. (Changing a role name may affect
+		 * the meaning of the special string $user.)
 		 */
 		CacheRegisterSyscacheCallback(NAMESPACEOID,
+									  NamespaceCallback,
+									  (Datum) 0);
+		CacheRegisterSyscacheCallback(AUTHOID,
 									  NamespaceCallback,
 									  (Datum) 0);
 		/* Force search path to be recomputed on next use */
@@ -4697,10 +4713,12 @@ static char *
 YbConvertToHex(const unsigned char *src, size_t len, char *dest)
 {
 	static const char hex_chars[] = "0123456789abcdef";
+
 	for (size_t i = 0; i < len; ++i)
 	{
-		const int high = src[i] >> 4;
-		const int low = src[i] & 0x0F;
+		const int	high = src[i] >> 4;
+		const int	low = src[i] & 0x0F;
+
 		*(dest++) = hex_chars[high];
 		*(dest++) = hex_chars[low];
 	}
@@ -4715,7 +4733,8 @@ YbConvertToHex(const unsigned char *src, size_t len, char *dest)
 static char *
 YbBuildTempNameSuffix(YbTempNamespaceSuffixBuffer *buf)
 {
-	char *tail = YbConvertToHex(YBCGetLocalTserverUuid(), UUID_LEN, buf->data);
+	char	   *tail = YbConvertToHex(YBCGetLocalTserverUuid(), UUID_LEN, buf->data);
+
 	*(tail++) = '_';
 	*tail = 0;
 	return buf->data;

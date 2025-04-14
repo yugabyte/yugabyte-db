@@ -5,7 +5,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -30,6 +29,7 @@ import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.pac4j.play.LogoutController;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 
@@ -40,6 +40,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   protected NodeUniverseManager mockNodeUniverseManager;
   protected GFlagsValidation mockGFlagsValidation;
   protected HealthChecker healthChecker;
+  protected LogoutController mockLogoutController;
 
   @Override
   protected Application provideApplication() {
@@ -47,12 +48,14 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
     healthChecker = mock(HealthChecker.class);
+    mockLogoutController = mock(LogoutController.class);
     return new GuiceApplicationBuilder()
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
         .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
+        .overrides(bind(LogoutController.class).toInstance(mockLogoutController))
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockRuntimeConfig)))
@@ -124,7 +127,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void createUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -141,7 +144,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void createRestrictedUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -163,7 +166,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
 
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =

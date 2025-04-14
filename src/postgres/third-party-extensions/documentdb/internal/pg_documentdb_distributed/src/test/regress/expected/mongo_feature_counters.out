@@ -1,0 +1,628 @@
+SET search_path TO documentdb_api_catalog, documentdb_core, documentdb_api, public;
+SET citus.next_shard_id TO 6750000;
+SET documentdb.next_collection_id TO 67500;
+SET documentdb.next_collection_index_id TO 67500;
+-- Reset the counters by making a call to the counter and discarding the results
+select count(*)*0 as count from documentdb_api_internal.command_feature_counter_stats(true);
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+-- vector index creation error
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "a": "cosmosSearch"}, "name": "foo_1"  } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1" } :: caused by :: Index type 'CosmosSearch' was requested, but the 'cosmosSearch' options were not provided.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "a": 1 }, "name": "foo_1", "cosmosSearchOptions": { } } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "foo_1", "cosmosSearchOptions" : {  } } :: caused by :: cosmosSearch index kind must be specified
+-- create collection
+SELECT documentdb_api.create_collection_view('db', '{ "create": "mongo_feature_counter" }');
+NOTICE:  creating collection
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- create view
+SELECT documentdb_api.create_collection_view('db', '{ "create": "mongo_feature_counter_view", "viewOn": "mongo_feature_counter" }');
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- now collMod it
+SELECT documentdb_api.coll_mod('db', 'mongo_feature_counter_view', '{ "collMod": "mongo_feature_counter_view", "viewOn": "mongo_feature_counter", "pipeline": [ { "$limit": 10 } ] }');
+             coll_mod              
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create a valid indexes
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "b": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 200, "similarity": "IP", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "c": "cosmosSearch" }, "name": "foo_3", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 300, "similarity": "L2", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "f": "text" }, "name": "a_text" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "uniq": 1 }, "name": "uniq_1", "unique": true } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                                                                                                                                                            get_feature_counter_pretty                                                                                                                                                                            
+---------------------------------------------------------------------
+ {"Feature_usage":[{"command_collmod" : 1}, {"command_create_collection" : 1}, {"command_create_view" : 1}, {"collMod_view" : 1}, {"create_index_text" : 1}, {"create_index_unique" : 1}, {"create_index_vector" : 4}, {"create_index_vector_cos" : 1}, {"create_index_vector_ip" : 1}, {"create_index_vector_l2" : 1}, {"create_index_vector_type_ivfflat" : 3}, {"limit" : 1}]}
+(1 row)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'mongo_feature_counter') ORDER BY documentdb_api_internal.bson_extract_vector(document, 'elem') <=> '[10, 1, 2]';
+ ?column? 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'mongo_feature_counter') ORDER BY documentdb_api_internal.bson_extract_vector(document, 'elem') <=> '[10, 1, 2]';
+ ?column? 
+---------------------------------------------------------------------
+(0 rows)
+
+-- bad queries 
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0], "limit": 1, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+ERROR:  Similarity index was not found for a vector similarity search query.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0], "limit": 1, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+ERROR:  Similarity index was not found for a vector similarity search query.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter", "pipeline": [{ "$vectorSearch": { "limit": 1, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+ERROR:  $path, $queryVector, and $limit are all required fields for using a vector index.
+-- Use unwind, lookup 
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku" } } ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } }, { "$addFields": { "newField2": "someOtherField" } } ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$project": { "_id" : 1, "a.b": 1 } } ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- add $unset
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$unset": "_id" }, { "$set": { "newField2": "someOtherField" } }], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- add skip + limit
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$project": { "_id" : 1, "a.b": 1 } }, { "$limit": 1 }, { "$skip": 1 }], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- match + project + match
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$match": { "_id": { "$gt": "1" } } }, { "$project": { "a.b": 1, "c": "$_id", "_id": 0 } }, { "$match": { "c": { "$gt": "2" } } }], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- replaceRoot
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$addFields": { "e": {  "f": "$a.b" } } }, { "$replaceRoot": { "newRoot": "$e" } } ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- replaceWith
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$addFields": { "e": {  "f": "$a.b" } } }, { "$replaceWith": "$e" } ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- sort + match
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$sort": { "_id": 1 } }, { "$match": { "_id": { "$gt": "1" } } } ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- match + sort
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$match": { "_id": { "$gt": "1" } } }, { "$sort": { "_id": 1 } } ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- sortByCount
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$sortByCount": { "$eq": [ { "$mod": [ { "$toInt": "$_id" }, 2 ] }, 0  ] } }, { "$sort": { "_id": 1 } }], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- $group
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$group": { "_id": { "$mod": [ { "$toInt": "$_id" }, 2 ] }, "d": { "$max": "$_id" }, "e": { "$count": 1 } } }], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- $group with first/last
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$group": { "_id": { "$mod": [ { "$toInt": "$_id" }, 2 ] }, "d": { "$first": "$_id" }, "e": { "$last":  "$_id" } } }], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- $group with firstN/lastN
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$group": { "_id": { "$mod": [ { "$toInt": "$_id" }, 2 ] }, "d": { "$firstN": { "input":"$_id", "n":5 } }, "e": { "$lastN": { "input":"$_id", "n":5 } } } }], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- $group with firstN/lastN w N>10
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter2", "pipeline": [ { "$group": { "_id": { "$mod": [ { "$toInt": "$_id" }, 2 ] }, "d": { "$firstN": { "input":"$_id", "n":15 } }, "e": { "$lastN": { "input":"$_id", "n":15 } } } }], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- collation
+SET documentdb_core.enablecollation TO on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "mongo_feature_counter2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "mongo_feature_counter2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 10, "collation": { "locale": "fr_CA", "strength" : 3 } }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+RESET documentdb_core.enablecollation;
+-- Create TTL index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "mongo_feature_counter2", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5}]}', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Run validate command
+SELECT documentdb_api.validate('db', '{ "validate" : "validatecoll", "repair" : true }' );
+ERROR:  Running the validate command with { repair: true } is not supported yet.
+-- Print without resetting the counters
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(false);
+                                                                                                                                                                                                                                                 get_feature_counter_pretty                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ {"Feature_usage":[{"agg_operator_eq" : 1}, {"agg_operator_mod" : 5}, {"agg_operator_toint" : 5}, {"collation" : 2}, {"validate_repair" : 1}, {"create_index_ttl" : 1}, {"add_fields" : 5}, {"count" : 1}, {"group" : 5}, {"firstN_acc" : 2}, {"firstN_acc_GT10" : 1}, {"lastN_acc" : 2}, {"lastN_acc_GT10" : 1}, {"limit" : 3}, {"lookup" : 2}, {"match" : 6}, {"project" : 3}, {"replace_root" : 2}, {"replace_with" : 1}, {"skip" : 3}, {"sort" : 6}, {"sort_by_count" : 1}, {"sort_by_id" : 5}, {"unset" : 1}, {"vector_search_mongo" : 3}]}
+(1 row)
+
+-- print and reset the counters
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                                                                                                                                                                                                                                 get_feature_counter_pretty                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ {"Feature_usage":[{"agg_operator_eq" : 1}, {"agg_operator_mod" : 5}, {"agg_operator_toint" : 5}, {"collation" : 2}, {"validate_repair" : 1}, {"create_index_ttl" : 1}, {"add_fields" : 5}, {"count" : 1}, {"group" : 5}, {"firstN_acc" : 2}, {"firstN_acc_GT10" : 1}, {"lastN_acc" : 2}, {"lastN_acc_GT10" : 1}, {"limit" : 3}, {"lookup" : 2}, {"match" : 6}, {"project" : 3}, {"replace_root" : 2}, {"replace_with" : 1}, {"skip" : 3}, {"sort" : 6}, {"sort_by_count" : 1}, {"sort_by_id" : 5}, {"unset" : 1}, {"vector_search_mongo" : 3}]}
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+ get_feature_counter_pretty 
+---------------------------------------------------------------------
+ {"Feature_usage":[]}
+(1 row)
+
+-- check other two vector indexes
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexCollFC", "indexes": [ { "key": { "myvector3": "cosmosSearch" }, "name": "foo_3_ip", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "IP", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexCollFC", "indexes": [ { "key": { "myvector4": "cosmosSearch" }, "name": "foo_4_l2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "L2", "dimensions": 4 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT documentdb_api.insert_one('db', 'vectorIndexCollFC', '{ "elem": "some sentence3", "myvector3": [8.0, 1.0, 9.0 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexCollFC', '{ "elem": "some sentence3", "myvector4": [8.0, 1.0, 8.0, 8 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexCollFC", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9.0], "limit": 1, "path": "myvector3", "numCandidates": 10 } }, { "$project": { "myvector3": 1, "_id": 0 }} ]}');
+                                                  document                                                   
+---------------------------------------------------------------------
+ { "myvector3" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexCollFC", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 8.0, 7], "limit": 1, "path": "myvector4", "numCandidates": 10 } }, { "$project": { "myvector4": 1, "_id": 0 }} ]}');
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "myvector4" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "8.0" }, { "$numberInt" : "8" } ] }
+(1 row)
+
+-- Query on a non-existent collection
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorCollNonExistent", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 8.0, 7], "limit": 1, "path": "myvector4", "numCandidates": 10 } }, { "$project": { "myvector4": 1, "_id": 0 }} ]}');
+ERROR:  $vectorSearch must be the first stage in the pipeline
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                                                                                                   get_feature_counter_pretty                                                                                                                   
+---------------------------------------------------------------------
+ {"Feature_usage":[{"command_insert" : 2}, {"create_index_vector" : 2}, {"create_index_vector_ip" : 1}, {"create_index_vector_l2" : 1}, {"create_index_vector_type_ivfflat" : 2}, {"project" : 2}, {"search_vector_ivfflat" : 2}, {"vector_search_mongo" : 2}]}
+(1 row)
+
+-- check vector indexes
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexCollFC", "indexes": [ { "key": { "vector_ivf": "cosmosSearch" }, "name": "ivf_index", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "L2", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexCollFC", "indexes": [ { "key": { "vector_hnsw": "cosmosSearch" }, "name": "hnsw_index", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "COS", "dimensions": 4 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexCollFC", "indexes": [ { "key": { "elem": 1 }, "name": "elem_index" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT documentdb_api.insert_one('db', 'vectorIndexCollFC', '{ "_id": 1, "elem": "some sentence ivf", "vector_ivf": [8.0, 1.0, 9.0 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexCollFC', '{ "_id": 2, "elem": "some sentence hnsw", "vector_hnsw": [8.0, 1.0, 8.0, 8 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+ANALYZE;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexCollFC", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "vector_ivf", "nProbes": 10}  } } ], "cursor": {} }');
+                                                                                                                          document                                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "elem" : "some sentence ivf", "vector_ivf" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "10.208329887130052072" } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexCollFC", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0, 1.0 ], "k": 2, "path": "vector_hnsw", "efSearch": 5 }  } } ], "cursor": {} }');
+                                                                                                                                        document                                                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "elem" : "some sentence hnsw", "vector_hnsw" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "8.0" }, { "$numberInt" : "8" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.54622507455841007307" } } }
+(1 row)
+
+BEGIN;
+SET LOCAL documentdb.enableVectorPreFilter = on;
+SET local enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexCollFC", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "vector_ivf", "nProbes": 10, "filter": { "elem": { "$gt": "some p" } }  }}} ], "cursor": {} }');
+                                                                                                                          document                                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "elem" : "some sentence ivf", "vector_ivf" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "10.208329887130052072" } } }
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL documentdb.enableVectorPreFilter = on;
+SET local enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexCollFC", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0, 1.0 ], "k": 2, "path": "vector_hnsw", "efSearch": 5, "filter": { "elem": { "$gt": "some p" } }  }}} ], "cursor": {} }');
+                                                                                                                                        document                                                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "elem" : "some sentence hnsw", "vector_hnsw" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "8.0" }, { "$numberInt" : "8" } ], "__cosmos_meta__" : { "score" : { "$numberDouble" : "0.54622507455841007307" } } }
+(1 row)
+
+ROLLBACK;
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                                                                                                                                              get_feature_counter_pretty                                                                                                                                                               
+---------------------------------------------------------------------
+ {"Feature_usage":[{"command_insert" : 2}, {"create_index_vector" : 2}, {"create_index_vector_cos" : 1}, {"create_index_vector_l2" : 1}, {"create_index_vector_type_hnsw" : 1}, {"create_index_vector_type_ivfflat" : 1}, {"match" : 2}, {"search" : 4}, {"search_vector_hnsw" : 2}, {"search_vector_ivfflat" : 2}, {"search_vector_pre_filter" : 2}]}
+(1 row)
+
+-- aggregation operators counters
+SELECT documentdb_api.insert_one('db', 'mongo_feature_counter3', '{"a": 1}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'mongo_feature_counter3', '{"a": 2}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'mongo_feature_counter3', '{"a": 1}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should only count once per query, not once per document
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter3", "pipeline": [ {"$project": {"_id": 0, "result": { "$add": ["$a", 1]}}}], "cursor": {} }');
+               document                
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "2" } }
+ { "result" : { "$numberInt" : "3" } }
+ { "result" : { "$numberInt" : "2" } }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(false);
+                              get_feature_counter_pretty                               
+---------------------------------------------------------------------
+ {"Feature_usage":[{"agg_operator_add" : 1}, {"command_insert" : 3}, {"project" : 1}]}
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter3", "pipeline": [ {"$project": {"_id": 0, "result": { "$add": ["$a", 1]}}}], "cursor": {} }');
+               document                
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "2" } }
+ { "result" : { "$numberInt" : "3" } }
+ { "result" : { "$numberInt" : "2" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter3", "pipeline": [ {"$project": {"_id": 0, "result": { "$multiply": ["$a", 1]}}}], "cursor": {} }');
+               document                
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+ { "result" : { "$numberInt" : "2" } }
+ { "result" : { "$numberInt" : "1" } }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                              get_feature_counter_pretty                                              
+---------------------------------------------------------------------
+ {"Feature_usage":[{"agg_operator_add" : 2}, {"agg_operator_multiply" : 1}, {"command_insert" : 3}, {"project" : 3}]}
+(1 row)
+
+-- nested should be counted
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter3", "pipeline": [ {"$project": {"_id": 0, "result": { "$filter": {"input": [1, 2, 3, 4], "cond": {"$eq": ["$$this", 3]}}}}}], "cursor": {} }');
+                 document                  
+---------------------------------------------------------------------
+ { "result" : [ { "$numberInt" : "3" } ] }
+ { "result" : [ { "$numberInt" : "3" } ] }
+ { "result" : [ { "$numberInt" : "3" } ] }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter3", "pipeline": [ {"$project": {"_id": 0, "result": { "$filter": {"input": [1, 2, 3, 4], "cond": {"$gt": ["$$this", 3]}}}}}], "cursor": {} }');
+                 document                  
+---------------------------------------------------------------------
+ { "result" : [ { "$numberInt" : "4" } ] }
+ { "result" : [ { "$numberInt" : "4" } ] }
+ { "result" : [ { "$numberInt" : "4" } ] }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                             get_feature_counter_pretty                                             
+---------------------------------------------------------------------
+ {"Feature_usage":[{"agg_operator_eq" : 1}, {"agg_operator_filter" : 2}, {"agg_operator_gt" : 1}, {"project" : 2}]}
+(1 row)
+
+-- should not count for non-existent operators
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "mongo_feature_counter3", "pipeline": [ {"$project": {"result": { "$nonExistent": {"input": [1, 2, 3, 4], "cond": {"$eq": ["$$this", 3]}}}}}], "cursor": {} }');
+ERROR:  Unknown expression $nonExistent
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+     get_feature_counter_pretty      
+---------------------------------------------------------------------
+ {"Feature_usage":[{"project" : 1}]}
+(1 row)
+
+-- Test feature counters for geospatial
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "2dkey": "2d"}, "name": "my_2d_idx"  } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter", "indexes": [ { "key": { "2dspherekey": "2dsphere"}, "name": "my_2dsphere_idx"  } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                         get_feature_counter_pretty                         
+---------------------------------------------------------------------
+ {"Feature_usage":[{"create_index_2d" : 1}, {"create_index_2dsphere" : 1}]}
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'mongo_feature_counter3', '{"2dkey": [1, 1]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'mongo_feature_counter3', '{"2dspherekey": [1, 1]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document -> '2dkey' FROM documentdb_api.collection('db', 'mongo_feature_counter3') WHERE document @@ '{"2dkey": {"$geoWithin": {"$box": [[0, 0], [1, 1]]}}}';
+                          ?column?                           
+---------------------------------------------------------------------
+ { "" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT document -> '2dkey' FROM documentdb_api.collection('db', 'mongo_feature_counter3') WHERE document @@ '{"2dkey": {"$within": {"$box": [[0, 0], [1, 1]]}}}';
+                          ?column?                           
+---------------------------------------------------------------------
+ { "" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT document -> '2dspherekey' FROM documentdb_api.collection('db', 'mongo_feature_counter3') WHERE document @@ '{"2dspherekey": {"$geoWithin": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0,0]]] } }}}';
+                          ?column?                           
+---------------------------------------------------------------------
+ { "" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT document -> '2dspherekey' FROM documentdb_api.collection('db', 'mongo_feature_counter3') WHERE document @@ '{"2dspherekey": {"$geoIntersects": {"$geometry": { "type": "Point", "coordinates": [1, 1] } }}}';
+                          ?column?                           
+---------------------------------------------------------------------
+ { "" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                             get_feature_counter_pretty                                             
+---------------------------------------------------------------------
+ {"Feature_usage":[{"command_insert" : 2}, {"query_operator_geointersects" : 1}, {"query_operator_geowithin" : 3}]}
+(1 row)
+
+-- Test feature counter for $text
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "mongo_feature_counter3", "indexes": [ { "key": { "textkey": "text" }, "name": "my_txt_idx" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'mongo_feature_counter3', '{ "textkey": "this is a cat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document -> 'textkey' FROM documentdb_api.collection('db', 'mongo_feature_counter3') WHERE document @@ '{ "$text": { "$search": "cat" } }';
+         ?column?         
+---------------------------------------------------------------------
+ { "" : "this is a cat" }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                     get_feature_counter_pretty                                     
+---------------------------------------------------------------------
+ {"Feature_usage":[{"command_insert" : 1}, {"create_index_text" : 1}, {"query_operator_text" : 1}]}
+(1 row)
+
+-- TTL index usage tests
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 0, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "100" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date older than when the test was written
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 3, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date way in future
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 4, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date array
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 5, "ttl" : [{ "$date": { "$numberLong": "100" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date array, should be deleted based on min timestamp
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 6, "ttl" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 7, "ttl" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 8, "ttl" : true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT documentdb_api.insert_one('db','feature_usage_ttlcoll', '{ "_id" : 9, "ttl" : "would not expire" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- 1. Create TTL Index --
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "feature_usage_ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- 2. List All indexes --
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "feature_usage_ttlcoll" }') ORDER BY 1;
+                                                                                                                                     bson_dollar_unwind                                                                                                                                     
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.feature_usage_ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.feature_usage_ttlcoll", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+(2 rows)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'feature_usage_ttlcoll') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                                index_spec_as_bson                                                                 | index_is_valid 
+---------------------------------------------------------------------
+         67505 |    67518 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                     | t
+         67505 |    67519 | { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "expireAfterSeconds" : { "$numberInt" : "5" } } | t
+(2 rows)
+
+-- 4. Call ttl purge procedure with a batch size of 2
+CALL documentdb_api_internal.delete_expired_rows(3);
+CALL documentdb_api_internal.delete_expired_rows(3);
+CALL documentdb_api_internal.delete_expired_rows(3);
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                   get_feature_counter_pretty                                    
+---------------------------------------------------------------------
+ {"Feature_usage":[{"command_insert" : 10}, {"create_index_ttl" : 1}, {"ttl_purger_calls" : 3}]}
+(1 row)
+

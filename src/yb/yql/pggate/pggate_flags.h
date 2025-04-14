@@ -18,7 +18,7 @@
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_master_addresses);
-DECLARE_int32(pggate_tserver_shm_fd);
+DECLARE_string(pggate_tserver_shared_memory_uuid);
 DECLARE_int32(ysql_request_limit);
 DECLARE_uint64(ysql_prefetch_limit);
 DECLARE_double(ysql_backward_prefetch_scale_factor);
@@ -31,6 +31,8 @@ DECLARE_int32(ysql_output_buffer_size);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode);
+DECLARE_string(ysql_sequence_cache_method);
+DECLARE_string(ysql_conn_mgr_sequence_support_mode);
 
 DECLARE_bool(ysql_suppress_unsupported_error);
 DECLARE_bool(ysql_suppress_unsafe_alter_notice);
@@ -45,3 +47,4 @@ DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
 DECLARE_bool(ysql_use_relcache_file);
+DECLARE_bool(ysql_use_optimized_relcache_update);

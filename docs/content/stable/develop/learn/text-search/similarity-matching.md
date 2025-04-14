@@ -4,6 +4,8 @@ headerTitle: Similarity search
 linkTitle: Similarity search
 headcontent: Learn how to do similarity search in YSQL
 description: Learn how to do similarity search in YSQL
+tags:
+  other: ysql
 menu:
   stable:
     identifier: similarity-search
@@ -33,7 +35,7 @@ CREATE TABLE words (
 Load some sample words into the table as follows:
 
 ```sql
-INSERT INTO words(word) VALUES 
+INSERT INTO words(word) VALUES
   ('anopisthographic'),('ambassadorship'),('ambuscader'),('ambiguity'),('ampycides'),
   ('anapaestically'),('anapests'),('anapsidan'),('unpsychic'),('anapsid'),
   ('unpessimistic'),('unepistolary'),('inabstracted'),('anapaest'),('unobstinate'),
@@ -42,7 +44,7 @@ INSERT INTO words(word) VALUES
 
 ## Levenshtein
 
-The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits (insertions, deletions, and substitutions) needed for one string to be transformed into another. This is particularly well suited to spell-checks. This function is provided by the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
+The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits (insertions, deletions, and substitutions) needed for one string to be transformed into another. This is particularly well suited to spell-checks. This function is provided by the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html).
 
 To enable the Levenshtein function, activate the `fuzzystrmatch` extension as follows:
 

@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< tip title="Regard the PostgreSQL documentation as the canonical definitional reference for SQL syntax." >}}
-In particular, see the section [SQL Syntax](https://www.postgresql.org/docs/11/sql-syntax.html) within the enclosing section [The SQL Language](https://www.postgresql.org/docs/11/sql.html). The discussion of name resolution in top-level SQL statements rests on the notions that the [SQL Syntax](https://www.postgresql.org/docs/11/sql-syntax.html) section explains.
+In particular, see the section [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) within the enclosing section [The SQL Language](https://www.postgresql.org/docs/15/sql.html). The discussion of name resolution in top-level SQL statements rests on the notions that the [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) section explains.
 {{< /tip >}}
 
 This section deals mainly with name resolution for the schema-objects that a SQL statement references and how this depends critically on the _search_path_. Name resolution for secondary objects, like columns in relations, is sketched briefly, at the end.
@@ -28,7 +28,7 @@ Unqualified identifiers for schema-objects are resolved according to what the _s
 ### The "search_path" run-time parameter
 
 {{< tip title="Treat the PostgreSQL documentation as the canonical reference for 'search_path'." >}}
-The PostgreSQL documentation describes the semantics of the _search_path_ run-time parameter in the section [Client Connection Defaults](https://www.postgresql.org/docs/11/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-STATEMENT). Notice this:
+The PostgreSQL documentation describes the semantics of the _search_path_ run-time parameter in the section [Client Connection Defaults](https://www.postgresql.org/docs/15/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-STATEMENT). Notice this:
 
 > ...the temporary schema is only searched for relation (table, view, sequence, etc) and data type names. _It is never searched for function or operator names_.
 {{< /tip >}}
@@ -405,6 +405,6 @@ select a.v from s.t as a;
 
 But the example, as presented, _is_ legal; and in the presence of a matching schema _s_ and a relation _t_ with a column _v_, it executes without error and produces the expected result. The use of the alias _a_ is interesting in its own right. A "keyhole" inspection of _a.v_ tells you that it might mean the column _v_ in the schema-level table _a_ (but not the function _v()_ in the schema _a_). However, analysis of the _from_ list tells the parser that _a_ in the _select_ list can only be the alias _a_ that is defined, privately, for the present statement.
 
-Of course, the engineers who implement Postgres's SQL processing code need to understand all the rules that govern name-resolution for secondary objects in complete and exact detail. But anecdotal evidence tells us that ordinary application programmers who write practical SQL (especially when everything has a sensible name) are able easily to express their meaning without being able to rehearse these rules precisely.
+Of course, the engineers who implement the PostgreSQL SQL processing code need to understand all the rules that govern name-resolution for secondary objects in complete and exact detail. But anecdotal evidence tells us that ordinary application programmers who write practical SQL (especially when everything has a sensible name) are able easily to express their meaning without being able to rehearse these rules precisely.
 
 The essential pedagogy of this current section is the explanation of the critical role that the _search_path_ plays in the name resolution of schema-objects.

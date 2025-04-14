@@ -1,0 +1,489 @@
+SET citus.next_shard_id TO 1600000;
+SET documentdb.next_collection_id TO 16000;
+SET documentdb.next_collection_index_id TO 16000;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
+-- supported "partialFilterExpression" operators --
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_i",
+     "indexes": [
+       {
+         "key": {"a.$**": 1}, "name": "my_idx_1",
+         "partialFilterExpression":
+         {
+           "b": {"$gte": 10}
+         }
+       }
+     ]
+   }',
+   true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_i', 'my_idx_1');
+                                                                                                       mongo_index_get_pg_def                                                                                                        
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_16001 ON documentdb_data.documents_16000 USING documentdb_rum (document bson_rum_single_path_ops (path=a, iswildcard='true', tl='2699')) WHERE (document #>= '{ "b" : { "$numberInt" : "10" } }'::bsonquery)
+(1 row)
+
+-- not the same index since this doesn't specify partialFilterExpression
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_i",
+     "indexes": [
+       {
+         "key": {"a.$**": 1}, "name": "my_idx_1"
+       }
+     ]
+   }',
+   true
+);
+ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 2, "key" : { "a.$**" : 1 }, "name" : "my_idx_1" }, existing index: { "v" : 2, "key" : { "a.$**" : 1 }, "name" : "my_idx_1", "partialFilterExpression" : { "b" : { "$gte" : 10 } } }
+-- but this is the same index, so should not return an error
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_i",
+     "indexes": [
+       {
+         "key": {"a.$**": 1}, "name": "my_idx_1",
+         "partialFilterExpression":
+         {
+           "b": {"$gte": 10}
+         }
+       }
+     ]
+   }',
+   true
+);
+                                                                                                                      create_indexes_non_concurrently                                                                                                                       
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_i",
+     "indexes": [
+       {
+         "key": {"z.$**": 1}, "name": "my_idx_3",
+         "partialFilterExpression":
+         {
+           "c": {"$type": "number" }
+         }
+       }
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('mydb','{ "listIndexes": "collection_i" }') ORDER BY 1;
+                                                                                                                                                                                                                                                                                                                                list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""mydb.collection_i"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a.$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""my_idx_1"", ""partialFilterExpression"" : { ""b"" : { ""$gte"" : { ""$numberInt"" : ""10"" } } } }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""z.$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""my_idx_3"", ""partialFilterExpression"" : { ""c"" : { ""$type"" : ""number"" } } } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+-- force using my_idx_1 when possible
+SELECT documentdb_distributed_test_helpers.drop_primary_key('mydb', 'collection_i');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT SUM(1) FROM documentdb_api.insert_one('mydb','collection_i', '{"a":"foo"}'), generate_series(1, 10);
+ sum 
+---------------------------------------------------------------------
+  10
+(1 row)
+
+BEGIN;
+  set local enable_seqscan TO OFF;
+  SET seq_page_cost TO 10000000;
+  -- even if filter exactly matches the partialFilterExpression of my_idx_1,
+  -- cannot use the index since the index key is "a.$**"
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb', 'collection_i')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "b": {"$gte": 10} }
+    ]
+  }
+  ';
+                                                         QUERY PLAN                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Seq Scan on documents_16000_1600000 collection
+                     Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "b" : { "$numberInt" : "10" } }'::documentdb_core.bson)
+(8 rows)
+
+  -- can use the index since it filters on the index key as well
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb', 'collection_i')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "b": {"$gte": 10} },
+      { "a": 4 }
+    ]
+  }
+  ';
+                                                                                                                 QUERY PLAN                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_16000_1600000 collection
+                     Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "b" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery))
+                     Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "b" : { "$numberInt" : "10" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on my_idx_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson)
+(11 rows)
+
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb', 'collection_i')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "b": {"$gte": 11} },
+      { "a": 4 }
+    ]
+  }
+  ';
+                                                                                                                 QUERY PLAN                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_16000_1600000 collection
+                     Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "b" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery))
+                     Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "b" : { "$numberInt" : "11" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on my_idx_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson)
+(11 rows)
+
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb', 'collection_i')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "b": {"$gt": 12} },
+      { "a": 4 }
+    ]
+  }
+  ';
+                                                                                                                 QUERY PLAN                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_16000_1600000 collection
+                     Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "b" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery))
+                     Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "b" : { "$numberInt" : "12" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on my_idx_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson)
+(11 rows)
+
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb', 'collection_i')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "b": {"$eq": 13} },
+      { "a": 4 }
+    ]
+  }
+  ';
+                                                                                                                 QUERY PLAN                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_16000_1600000 collection
+                     Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "b" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery))
+                     Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$numberInt" : "13" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on my_idx_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson)
+(11 rows)
+
+ -- cannot use index (no PFE)
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb', 'collection_i')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "z": {"$eq": 13} },
+      { "c": { "$type": "string" } }
+    ]
+  }
+  ';
+                                                                                                    QUERY PLAN                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Seq Scan on documents_16000_1600000 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "z" : { "$numberInt" : "13" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@#) '{ "c" : "string" }'::documentdb_core.bson))
+(8 rows)
+
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb', 'collection_i')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "z": {"$eq": 13} },
+      { "a": 4 }
+    ]
+  }
+  ';
+                                                                                                           QUERY PLAN                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Seq Scan on documents_16000_1600000 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "z" : { "$numberInt" : "13" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson))
+(8 rows)
+
+  -- can use index
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb', 'collection_i')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "z": {"$eq": 13} },
+      { "c": { "$type": "number" } }
+    ]
+  }
+  ';
+                                                                                                         QUERY PLAN                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_16000_1600000 collection
+                     Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "z" : { "$numberInt" : "13" } }'::documentdb_core.bson) AND documentdb_api_catalog.bson_dollar_type(document, '{ "c" : "number" }'::documentdb_core.bson))
+                     Filter: (document OPERATOR(documentdb_api_catalog.@#) '{ "c" : "number" }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on my_idx_3
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "z" : { "$numberInt" : "13" } }'::documentdb_core.bson)
+(11 rows)
+
+COMMIT;
+-- unsupported "partialFilterExpression" operators --
+CREATE FUNCTION create_index_arg_using_pfe(p_pfe documentdb_core.bson)
+RETURNS documentdb_core.bson
+AS $$
+BEGIN
+	RETURN format(
+    '{
+      "createIndexes": "collection_5",
+      "indexes": [
+        {
+          "key": {"c.d": 1},
+          "name": "new_idx",
+          "partialFilterExpression": %s
+        }
+      ]
+    }',
+    p_pfe
+  )::documentdb_core.bson;
+END;
+$$ LANGUAGE plpgsql;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [
+    {"$or": [{"a": 1}]}
+  ]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "$or" : [ { "a" : 1 } ] } ] } } :: caused by :: unsupported expression in partial index: $or
+    a $eq 1
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$nor": [{"a": 1}]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$nor" : [ { "a" : 1 } ] } } :: caused by :: unsupported expression in partial index: $not
+    $or
+        a $eq 1
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$nor": [{"a": 1}, {"b": 1}]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$nor" : [ { "a" : 1 }, { "b" : 1 } ] } } :: caused by :: unsupported expression in partial index: $not
+    $or
+        a $eq 1
+        b $eq 1
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [
+    {"b": 3}, {"a": {"$in": [2]}}, {"c": 4}
+  ]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "b" : 3 }, { "a" : { "$in" : [ 2 ] } }, { "c" : 4 } ] } } :: caused by :: unsupported expression in partial index: a $in [ 2 ]
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$ne": 1
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$ne" : 1 } } :: caused by :: unknown top level operator: $ne. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "a": {"$ne": 1}
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$ne" : 1 } } } :: caused by :: unsupported expression in partial index: a $ne 1
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "a": {"$nin": [1,2,3]}
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$nin" : [ 1, 2, 3 ] } } } :: caused by :: unsupported expression in partial index: a $nin [ 1, 2, 3 ]
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [
+    {"b": 3}, {"a": {"$in": 2}}, {"c": 4}
+  ]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "b" : 3 }, { "a" : { "$in" : 2 } }, { "c" : 4 } ] } } :: caused by :: $in needs an array
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [
+    {"$and": [{"a": 1}, {"b": 3}]}
+  ]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "$and" : [ { "a" : 1 }, { "b" : 3 } ] } ] } } :: caused by :: $and only supported in partialFilterExpression at top level
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "a": 1, "$and": [{"c": 1}]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : 1, "$and" : [ { "c" : 1 } ] } } :: caused by :: $and only supported in partialFilterExpression at top level
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "a": 1, "b": {"$and": [{"d": 1}]}
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : 1, "b" : { "$and" : [ { "d" : 1 } ] } } } :: caused by :: unknown operator: $and
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "a": {"$not": {"$eq": [1,2,3]}}
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$not" : { "$eq" : [ 1, 2, 3 ] } } } } :: caused by :: unsupported expression in partial index: $not
+    a $eq [ 1, 2, 3 ]
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [{"a": {"$not": {"$eq": [1,2,3]}}}]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "a" : { "$not" : { "$eq" : [ 1, 2, 3 ] } } } ] } } :: caused by :: unsupported expression in partial index: $not
+    a $eq [ 1, 2, 3 ]
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [
+    {"a": {"$exists": true}},
+    {"a": {"$size": 5}}
+  ]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "a" : { "$exists" : true } }, { "a" : { "$size" : 5 } } ] } } :: caused by :: unsupported expression in partial index: a $size 5
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [{"b": 55}, {"a": {"$exists": false}}]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "b" : 55 }, { "a" : { "$exists" : false } } ] } } :: caused by :: unsupported expression in partial index: a $exists false
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "a": "b",
+  "item": {"$exists": 1, "$text": {"$search": "coffee"}},
+  "c": "d"
+}
+'), true);
+ERROR:  $text operator is not yet implemented
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "a": {"$and": [{"a": 1}, {"b": 3}]}
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$and" : [ { "a" : 1 }, { "b" : 3 } ] } } } :: caused by :: unknown operator: $and
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [{"p": 1}, {"q": 2}],
+  "b": [{"z": 1}, {"t": 2}],
+  "$and": [{"p": 1}, {"q": 2}]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "p" : 1 }, { "q" : 2 } ], "b" : [ { "z" : 1 }, { "t" : 2 } ] } } :: caused by :: $and only supported in partialFilterExpression at top level
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$and": [
+    {"b": {"$gte": 1, "$lte": 3}}
+  ]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$and" : [ { "b" : { "$gte" : 1, "$lte" : 3 } } ] } } :: caused by :: $and only supported in partialFilterExpression at top level
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "a": {"$unknown_operator": 1}
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$unknown_operator" : 1 } } } :: caused by :: unknown operator: $unknown_operator
+SELECT documentdb_api_internal.create_indexes_non_concurrently('my_db', create_index_arg_using_pfe('
+{
+  "$unknown_operator": [{"a": 1}]
+}
+'), true);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "$unknown_operator" : [ { "a" : 1 } ] } } :: caused by :: unknown top level operator: $unknown_operator. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.

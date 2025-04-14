@@ -307,6 +307,8 @@ class Env {
   // Symlink new_symlink to pointed_to. Unlinks new_symlink if it's already linked.
   virtual Status SymlinkPath(const std::string& pointed_to, const std::string& new_symlink) = 0;
 
+  virtual Status DeleteSymlinkIfExists(const std::string& path) = 0;
+
   // Read link's actual target
   virtual Result<std::string> ReadLink(const std::string& link) = 0;
 
@@ -723,6 +725,7 @@ class EnvWrapper : public Env {
   Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& f) override;
   Status LinkFile(const std::string& s, const std::string& t) override;
   Status SymlinkPath(const std::string& pointed_to, const std::string& new_symlink) override;
+  Status DeleteSymlinkIfExists(const std::string& path) override;
   Result<std::string> ReadLink(const std::string& s) override;
   Status RenameFile(const std::string& s, const std::string& t) override;
   Status LockFile(const std::string& f, FileLock** l, bool r) override;

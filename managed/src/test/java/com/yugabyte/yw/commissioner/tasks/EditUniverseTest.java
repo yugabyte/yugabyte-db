@@ -64,6 +64,7 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
@@ -80,8 +81,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks,
-          TaskType.AnsibleSetupServer,
+          TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -132,8 +135,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
           TaskType.RunHooks,
-          TaskType.AnsibleSetupServer,
+          TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
@@ -182,7 +187,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     for (TaskType taskType : sequence) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertTrue(tasks.size() > 0);
-      assertEquals(taskType, tasks.get(0).getTaskType());
+      assertEquals("at position " + position, taskType, tasks.get(0).getTaskType());
       position++;
     }
   }
@@ -218,9 +223,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
-
       when(mockClient.getLoadMoveCompletion())
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+      ListLiveTabletServersResponse mockListLiveTabletServersResponse =
+          mock(ListLiveTabletServersResponse.class);
+      when(mockListLiveTabletServersResponse.getTabletServers()).thenReturn(new ArrayList<>());
+      when(mockClient.listLiveTabletServers()).thenReturn(mockListLiveTabletServersResponse);
     } catch (Exception e) {
       fail();
     }
@@ -385,6 +393,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.EditUniverse,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
     universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     taskParams = performShrink(universe);
     // It may not be a master but works as long as it in the universe.
@@ -403,6 +412,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.EditUniverse,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   @Test

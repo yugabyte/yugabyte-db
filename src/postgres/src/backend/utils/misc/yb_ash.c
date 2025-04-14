@@ -24,7 +24,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "yb_ash.h"
+#include "postgres.h"
 
 #include <arpa/inet.h>
 
@@ -35,6 +35,7 @@
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
@@ -49,17 +50,17 @@
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
-
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
 /* The number of columns in different versions of the view */
 #define ACTIVE_SESSION_HISTORY_COLS_V1 12
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
+#define ACTIVE_SESSION_HISTORY_COLS_V4 15
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
@@ -67,11 +68,10 @@
 	(yb_ash_track_nested_queries != NULL && yb_ash_track_nested_queries()))
 
 /* GUC variables */
-bool yb_ash_enable_infra;
-bool yb_enable_ash;
-int yb_ash_circular_buffer_size;
-int yb_ash_sampling_interval_ms;
-int yb_ash_sample_size;
+bool		yb_enable_ash;
+int			yb_ash_circular_buffer_size;
+int			yb_ash_sampling_interval_ms;
+int			yb_ash_sample_size;
 
 /* Saved hook values in case of unload */
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
@@ -87,7 +87,7 @@ typedef struct YbAsh
 	LWLock		lock;			/* Protects the circular buffer */
 	int			index;			/* Index to insert new buffer entry */
 	int			max_entries;	/* Maximum # of entries in the buffer */
-	YBCAshSample circular_buffer[FLEXIBLE_ARRAY_MEMBER];
+	YbcAshSample circular_buffer[FLEXIBLE_ARRAY_MEMBER];
 } YbAsh;
 
 typedef struct YbAshNestedQueryIdStack
@@ -100,10 +100,10 @@ typedef struct YbAshNestedQueryIdStack
 
 static YbAsh *yb_ash = NULL;
 static YbAshNestedQueryIdStack query_id_stack;
-static int nested_level = 0;
+static int	nested_level = 0;
 
 static void YbAshInstallHooks(void);
-static int yb_ash_cb_max_entries(void);
+static int	yb_ash_cb_max_entries(void);
 static void YbAshSetQueryId(uint64 query_id);
 static void YbAshResetQueryId(uint64 query_id);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
@@ -128,37 +128,26 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 									int samples_considered);
-static YBCWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
+static YbcWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
 static void copy_pgproc_sample_fields(PGPROC *proc, int index);
 static void copy_non_pgproc_sample_fields(TimestampTz sample_time, int index);
 static void YbAshIncrementCircularBufferIndex(void);
-static YBCAshSample *YbAshGetNextCircularBufferSlot(void);
+static YbcAshSample *YbAshGetNextCircularBufferSlot(void);
 
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 								uint8_t addr_family, char *client_ip);
 static void PrintUuidToBuffer(StringInfo buffer, unsigned char *uuid);
-static int BinarySearchAshIndex(TimestampTz target_time, int left, int right);
+static int	BinarySearchAshIndex(TimestampTz target_time, int left, int right);
 static void GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
 							   int *start_index, int *end_index, char *description);
-static void FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
+static void FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 								 StringInfo buffer);
-static YBCAshSample *ExtractAshDataFromRange(int start_index, int end_index,
+static YbcAshSample *ExtractAshDataFromRange(int start_index, int end_index,
 											 int *total_elements_to_dump);
-void GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
-										 int64 query_id, StringInfo output_buffer,
-										 char *description);
-
-bool
-yb_enable_ash_check_hook(bool *newval, void **extra, GucSource source)
-{
-	if (*newval && !yb_ash_enable_infra)
-	{
-		GUC_check_errdetail("ysql_yb_ash_enable_infra must be enabled.");
-		return false;
-	}
-	return true;
-}
+void		GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
+												int64 query_id, StringInfo output_buffer,
+												char *description);
 
 bool
 yb_ash_circular_buffer_size_check_hook(int *newval, void **extra, GucSource source)
@@ -174,6 +163,7 @@ void
 YbAshRegister(void)
 {
 	BackgroundWorker worker;
+
 	memset(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "yb_ash collector");
 	sprintf(worker.bgw_type, "yb_ash collector");
@@ -194,7 +184,9 @@ YbAshInit(void)
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] = YBCGetQueryIdForCatalogRequests();
+	query_id_stack.query_ids[0] = MyProc->isBackgroundWorker
+		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
+		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	query_id_stack.num_query_ids_not_pushed = 0;
 }
 
@@ -217,19 +209,22 @@ YbAshInstallHooks(void)
 	ProcessUtility_hook = yb_ash_ProcessUtility;
 }
 
+/*
+ * This function doesn't need locks, check the comments of
+ * YbAshSetOneTimeMetadata.
+ */
 void
 YbAshSetDatabaseId(Oid database_id)
 {
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+	Assert(MyProc->yb_is_ash_metadata_set == false);
 	MyProc->yb_ash_metadata.database_id = database_id;
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
 static int
 yb_ash_cb_max_entries(void)
 {
 	Assert(yb_ash_circular_buffer_size != 0);
-	return yb_ash_circular_buffer_size * 1024 / sizeof(YBCAshSample);
+	return yb_ash_circular_buffer_size * 1024 / sizeof(YbcAshSample);
 }
 
 /*
@@ -287,7 +282,7 @@ YbAshShmemSize(void)
 
 	size = offsetof(YbAsh, circular_buffer);
 	size = add_size(size, mul_size(yb_ash_cb_max_entries(),
-								   sizeof(YBCAshSample)));
+								   sizeof(YbcAshSample)));
 
 	return size;
 }
@@ -310,23 +305,23 @@ YbAshShmemInit(void)
 		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
-		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YBCAshSample));
+		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbcAshSample));
 	}
 }
 
 static void
 yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	uint64 query_id;
+	uint64		query_id;
 
 	if (yb_enable_ash)
 	{
 		/* Query id can be zero here only if pg_stat_statements is disabled */
-		query_id = queryDesc->plannedstmt->queryId != 0
-				   ? queryDesc->plannedstmt->queryId
-				   : yb_ash_utility_query_id(queryDesc->sourceText,
-											 queryDesc->plannedstmt->stmt_len,
-											 queryDesc->plannedstmt->stmt_location);
+		query_id = (queryDesc->plannedstmt->queryId != 0 ?
+					queryDesc->plannedstmt->queryId :
+					yb_ash_utility_query_id(queryDesc->sourceText,
+											queryDesc->plannedstmt->stmt_len,
+											queryDesc->plannedstmt->stmt_location));
 		YbAshSetQueryId(query_id);
 	}
 
@@ -435,18 +430,19 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	 * DEALLOCATE because pg_stat_statements also doesn't do it. Check
 	 * comments in pgss_ProcessUtility for more info.
 	 */
-	skip_nested_level = IsA(parsetree, PrepareStmt) || IsA(parsetree, ExecuteStmt) ||
-						IsA(parsetree, DeallocateStmt);
+	skip_nested_level = (IsA(parsetree, PrepareStmt) ||
+						 IsA(parsetree, ExecuteStmt) ||
+						 IsA(parsetree, DeallocateStmt));
 
 	if (!skip_nested_level)
 	{
 		if (yb_enable_ash)
 		{
-			query_id = pstmt->queryId != 0
-					   ? pstmt->queryId
-					   : yb_ash_utility_query_id(queryString,
-												 pstmt->stmt_len,
-												 pstmt->stmt_location);
+			query_id = (pstmt->queryId != 0 ?
+						pstmt->queryId :
+						yb_ash_utility_query_id(queryString,
+												pstmt->stmt_len,
+												pstmt->stmt_location));
 			YbAshSetQueryId(query_id);
 		}
 		++nested_level;
@@ -503,7 +499,8 @@ YbAshResetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
-		uint64 prev_query_id = YbAshNestedQueryIdStackPop(query_id);
+		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id);
+
 		if (prev_query_id != 0)
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
@@ -513,15 +510,18 @@ YbAshResetQueryId(uint64 query_id)
 	}
 }
 
+/*
+ * This function doesn't need locks, check the comments of
+ * YbAshSetOneTimeMetadata.
+ */
 void
 YbAshSetMetadata(void)
 {
 	/* The stack should have the default query id at the start of a request */
 	Assert(query_id_stack.top_index == 0);
+	Assert(MyProc->yb_is_ash_metadata_set == false);
 
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
 void
@@ -537,7 +537,7 @@ YbAshUnsetMetadata(void)
 
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
-		sizeof(MyProc->yb_ash_metadata.root_request_id));
+		   sizeof(MyProc->yb_ash_metadata.root_request_id));
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
@@ -549,26 +549,29 @@ YbAshUnsetMetadata(void)
  * code and ASH keeps working without client address and port for the current PG
  * backend.
  *
- * ASH samples only normal backends and this excludes background workers.
- * So it's fine in that case to not set the client address.
+ * Until MyProc->yb_is_ash_metadata_set is set to true, the backend won't be sampled,
+ * that means there will be no readers or writers of the fields proctected by the lock,
+ * that's why this function is safe without locks.
  */
 void
 YbAshSetOneTimeMetadata()
 {
-	/* Background workers which creates a postgres backend may have null MyProcPort. */
+	Assert(MyProc->yb_is_ash_metadata_set == false);
+
+	/* Set the address family, pid and null the client_addr and client_port */
+	MyProc->yb_ash_metadata.pid = MyProcPid;
+	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
+	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
+	MyProc->yb_ash_metadata.client_port = 0;
+
+	/* Background workers and bootstrap processing may have null MyProcPort */
 	if (MyProcPort == NULL)
 	{
 		Assert(MyProc->isBackgroundWorker == true);
 		return;
 	}
 
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-
-	/* Set the address family and null the client_addr and client_port */
 	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
-	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
-	MyProc->yb_ash_metadata.client_port = 0;
-	MyProc->yb_ash_metadata.pid = MyProcPid;
 
 	switch (MyProcPort->raddr.addr.ss_family)
 	{
@@ -578,7 +581,6 @@ YbAshSetOneTimeMetadata()
 #endif
 			break;
 		default:
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
 			return;
 	}
 
@@ -597,8 +599,6 @@ YbAshSetOneTimeMetadata()
 				 errdetail("%s\naddress family: %u",
 						   gai_strerror(ret),
 						   MyProcPort->raddr.addr.ss_family)));
-
-		LWLockRelease(&MyProc->yb_ash_metadata_lock);
 		return;
 	}
 
@@ -610,8 +610,15 @@ YbAshSetOneTimeMetadata()
 
 	/* Setting port */
 	MyProc->yb_ash_metadata.client_port = atoi(MyProcPort->remote_port);
+}
 
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+void
+YbAshSetMetadataForBgworkers(void)
+{
+	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
+	MyProc->yb_ash_metadata.query_id =
+		YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER);
+	MyProc->yb_is_ash_metadata_set = true;
 }
 
 /*
@@ -690,12 +697,16 @@ YbAshMain(Datum main_arg)
 
 	BackgroundWorkerInitializeConnection(NULL, NULL, 0);
 
+	/* We will always get CPU events in ASH, so don't sample ASH collector */
+	MyProc->yb_is_ash_metadata_set = false;
+
 	pgstat_report_appname("yb_ash collector");
 
 	while (true)
 	{
-		TimestampTz	sample_time;
-		int 		rc;
+		TimestampTz sample_time;
+		int			rc;
+
 		/* Wait necessary amount of time */
 		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
 					   yb_ash_sampling_interval_ms, WAIT_EVENT_YB_ASH_MAIN);
@@ -731,6 +742,7 @@ static const unsigned char *
 get_top_level_node_id()
 {
 	static const unsigned char *local_tserver_uuid = NULL;
+
 	if (!local_tserver_uuid && IsYugaByteEnabled())
 		local_tserver_uuid = YBCGetLocalTserverUuid();
 	return local_tserver_uuid;
@@ -788,7 +800,7 @@ YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time, int index
 	YbAshIncrementCircularBufferIndex();
 }
 
-static YBCWaitEventInfo
+static YbcWaitEventInfo
 YbGetWaitEventInfo(const PGPROC *proc)
 {
 	static uint32 waiting_on_tserver_code = -1;
@@ -796,7 +808,7 @@ YbGetWaitEventInfo(const PGPROC *proc)
 	if (waiting_on_tserver_code == -1)
 		waiting_on_tserver_code = YBCWaitEventForWaitingOnTServer();
 
-	YBCWaitEventInfo info = {waiting_on_tserver_code, 0};
+	YbcWaitEventInfo info = {waiting_on_tserver_code, 0};
 
 	for (size_t attempt = 0; attempt < 32; ++attempt)
 	{
@@ -822,13 +834,14 @@ YbGetWaitEventInfo(const PGPROC *proc)
 static void
 copy_pgproc_sample_fields(PGPROC *proc, int index)
 {
-	YBCAshSample *cb_sample = &yb_ash->circular_buffer[index];
+	YbcAshSample *cb_sample = &yb_ash->circular_buffer[index];
 
 	LWLockAcquire(&proc->yb_ash_metadata_lock, LW_SHARED);
-	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
+	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YbcAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
 
-	YBCWaitEventInfo info = YbGetWaitEventInfo(proc);
+	YbcWaitEventInfo info = YbGetWaitEventInfo(proc);
+
 	cb_sample->encoded_wait_event_code = info.wait_event;
 	cb_sample->aux_info[0] = info.rpc_code;
 	cb_sample->aux_info[1] = '\0';
@@ -838,7 +851,7 @@ copy_pgproc_sample_fields(PGPROC *proc, int index)
 static void
 copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 {
-	YBCAshSample *cb_sample = &yb_ash->circular_buffer[index];
+	YbcAshSample *cb_sample = &yb_ash->circular_buffer[index];
 
 	/* top_level_node_id is constant for all PG samples */
 	if (get_top_level_node_id())
@@ -880,10 +893,11 @@ YbAshFillSampleWeight(int samples_considered)
  * Returns a pointer to the circular buffer slot where the sample should be
  * inserted and increments the index.
  */
-static YBCAshSample *
+static YbcAshSample *
 YbAshGetNextCircularBufferSlot(void)
 {
-	YBCAshSample *slot = &yb_ash->circular_buffer[yb_ash->index];
+	YbcAshSample *slot = &yb_ash->circular_buffer[yb_ash->index];
+
 	YbAshIncrementCircularBufferIndex();
 	return slot;
 }
@@ -897,16 +911,16 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
 	int			i;
-	static int  ncols = 0;
+	static int	ncols = 0;
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V3)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V4)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
 	if (!yb_ash)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("ysql_yb_ash_enable_infra gflag must be enabled")));
+				 errmsg("ysql_yb_enable_ash gflag must be enabled")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -936,7 +950,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	YbAshAcquireBufferLock(false /* exclusive */);
+	YbAshAcquireBufferLock(false /* exclusive */ );
 
 	for (i = 0; i < yb_ash->max_entries; ++i)
 	{
@@ -945,19 +959,23 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		int			j = 0;
 		pg_uuid_t	root_request_id;
 		pg_uuid_t	top_level_node_id;
-		/* 22 bytes required for ipv4 and 48 for ipv6 (including null character) */
+
+		/*
+		 * 22 bytes required for ipv4 and 48 for ipv6 (including null
+		 * character)
+		 */
 		char		client_node_ip[48];
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		YBCAshSample *sample = &yb_ash->circular_buffer[i];
-		YBCAshMetadata *metadata = &sample->metadata;
+		YbcAshSample *sample = &yb_ash->circular_buffer[i];
+		YbcAshMetadata *metadata = &sample->metadata;
 
 		if (sample->sample_time != 0)
 			values[j++] = TimestampTzGetDatum(sample->sample_time);
 		else
-			break; /* The circular buffer is not fully filled yet */
+			break;				/* The circular buffer is not fully filled yet */
 
 		uchar_to_uuid(metadata->root_request_id, &root_request_id);
 		values[j++] = UUIDPGetDatum(&root_request_id);
@@ -967,12 +985,12 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		else
 			nulls[j++] = true;
 
-		values[j++] = CStringGetTextDatum(
-			YBCGetWaitEventComponent(sample->encoded_wait_event_code));
-		values[j++] = CStringGetTextDatum(
-			YBCGetWaitEventClass(sample->encoded_wait_event_code));
-		values[j++] = CStringGetTextDatum(
-			pgstat_get_wait_event(sample->encoded_wait_event_code));
+		values[j++] =
+			CStringGetTextDatum(YBCGetWaitEventComponent(sample->encoded_wait_event_code));
+		values[j++] =
+			CStringGetTextDatum(YBCGetWaitEventClass(sample->encoded_wait_event_code));
+		values[j++] =
+			CStringGetTextDatum(pgstat_get_wait_event(sample->encoded_wait_event_code));
 
 		uchar_to_uuid(sample->top_level_node_id, &top_level_node_id);
 		values[j++] = UUIDPGetDatum(&top_level_node_id);
@@ -1012,11 +1030,15 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		values[j++] = Float4GetDatum(sample->sample_weight);
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V2)
-			values[j++] = CStringGetTextDatum(
-				pgstat_get_wait_event_type(sample->encoded_wait_event_code));
+			values[j++] =
+				CStringGetTextDatum(pgstat_get_wait_event_type(sample->encoded_wait_event_code));
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V3)
 			values[j++] = ObjectIdGetDatum(metadata->database_id);
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V4)
+			values[j++] =
+				UInt32GetDatum(YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
@@ -1083,14 +1105,14 @@ GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time
 									int64 query_id, StringInfo output_buffer,
 									char *description)
 {
-	YBCAshSample *ash_data_buffer = NULL;
+	YbcAshSample *ash_data_buffer = NULL;
 	int			total_elements_to_dump = 0;
 	int			start_index = -1;
 	int			end_index = -1;
 
 	Assert(start_time < end_time);
 
-	YbAshAcquireBufferLock(false /* exclusive*/);
+	YbAshAcquireBufferLock(false /* exclusive */ );
 
 	GetAshRangeIndexes(start_time, end_time, query_id, &start_index,
 					   &end_index, description);
@@ -1155,8 +1177,7 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
 				   int *start_index, int *end_index, char *description)
 {
 	int			max_time_index = (yb_ash->index - 1 + yb_ash->max_entries) % yb_ash->max_entries;
-	int			min_time_index = yb_ash->circular_buffer[yb_ash->index].sample_time ?
-								 yb_ash->index : 0;
+	int			min_time_index = yb_ash->circular_buffer[yb_ash->index].sample_time ? yb_ash->index : 0;
 	TimestampTz buffer_min_time = yb_ash->circular_buffer[min_time_index].sample_time;
 	TimestampTz buffer_max_time = yb_ash->circular_buffer[max_time_index].sample_time;
 	TimestampTz buffer_first_entry_time = yb_ash->circular_buffer[0].sample_time;
@@ -1167,9 +1188,10 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
 	/* Time range is not there in the buffer */
 	if (start_time > buffer_max_time || end_time < buffer_min_time)
 	{
-		AppendToDescription(description, (end_time < buffer_min_time) ?
-							"ASH circular buffer has wrapped around, unable to fetch ASH data;" :
-							"No data available in ASH for the given time range;");
+		YbQueryDiagnosticsAppendToDescription(description,
+											  (end_time < buffer_min_time ?
+											   "ASH circular buffer has wrapped around, unable to fetch ASH data;" :
+											   "No data available in ASH for the given time range;"));
 		return;
 	}
 
@@ -1205,10 +1227,10 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
  * Returns:
  * 		Pointer to the extracted ASH data buffer
  */
-static YBCAshSample *
+static YbcAshSample *
 ExtractAshDataFromRange(int start_index, int end_index, int *total_elements_to_dump)
 {
-	YBCAshSample *ash_data_buffer;
+	YbcAshSample *ash_data_buffer;
 
 	if (start_index > end_index)
 	{
@@ -1219,49 +1241,50 @@ ExtractAshDataFromRange(int start_index, int end_index, int *total_elements_to_d
 		*total_elements_to_dump = head_segment_size + tail_segment_size;
 		Assert(*total_elements_to_dump > 0);
 
-		ash_data_buffer = (YBCAshSample *) palloc((*total_elements_to_dump) *
-												  sizeof(YBCAshSample));
+		ash_data_buffer = (YbcAshSample *) palloc((*total_elements_to_dump) *
+												  sizeof(YbcAshSample));
 		Assert(ash_data_buffer != NULL);
 
 		memcpy(ash_data_buffer, &yb_ash->circular_buffer[start_index],
-			   tail_segment_size * sizeof(YBCAshSample));
+			   tail_segment_size * sizeof(YbcAshSample));
 		memcpy(ash_data_buffer + tail_segment_size, yb_ash->circular_buffer,
-			   head_segment_size * sizeof(YBCAshSample));
+			   head_segment_size * sizeof(YbcAshSample));
 	}
 	else
 	{
 		*total_elements_to_dump = end_index - start_index + 1;
 		Assert(*total_elements_to_dump > 0);
 
-		ash_data_buffer = (YBCAshSample *) palloc((*total_elements_to_dump) *
-												  sizeof(YBCAshSample));
+		ash_data_buffer = (YbcAshSample *) palloc((*total_elements_to_dump) *
+												  sizeof(YbcAshSample));
 		Assert(ash_data_buffer != NULL);
 
 		memcpy(ash_data_buffer, &yb_ash->circular_buffer[start_index],
-			   (*total_elements_to_dump) * sizeof(YBCAshSample));
+			   (*total_elements_to_dump) * sizeof(YbcAshSample));
 	}
 
 	return ash_data_buffer;
 }
 
 static void
-FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
+FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 					 StringInfo output_buffer)
 {
 	Assert(output_buffer != NULL);
 	Assert(total_elements_to_dump > 0);
 
 	if (total_elements_to_dump)
-		appendStringInfoString(output_buffer, "sample_time,root_request_id,rpc_request_id,"
-												"wait_event_component,wait_event_class,wait_event,"
-												"top_level_node_id,query_id,pid,"
-												"client_node_ip,wait_event_aux,sample_weight,"
-												"wait_event_type,ysql_dbid\n");
+		appendStringInfoString(output_buffer,
+							   "sample_time,root_request_id,rpc_request_id,"
+							   "wait_event_component,wait_event_class,wait_event,"
+							   "top_level_node_id,query_id,pid,"
+							   "client_node_ip,wait_event_aux,sample_weight,"
+							   "wait_event_type,ysql_dbid,wait_event_code\n");
 
 	for (int i = 0; i < total_elements_to_dump; ++i)
 	{
 		char		client_node_ip[48];
-		YBCAshSample *sample = &ash_data_buffer[i];
+		YbcAshSample *sample = &ash_data_buffer[i];
 
 		if (sample->metadata.addr_family == AF_INET || sample->metadata.addr_family == AF_INET6)
 			client_ip_to_string(sample->metadata.client_addr,
@@ -1284,13 +1307,14 @@ FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
 
 		/* Top level node id */
 		PrintUuidToBuffer(output_buffer, sample->top_level_node_id);
-		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d\n",
+		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d,%d\n",
 						 (int64) sample->metadata.query_id,
 						 sample->metadata.pid,
 						 client_node_ip,
 						 sample->aux_info,
 						 sample->sample_weight,
 						 pgstat_get_wait_event_type(sample->encoded_wait_event_code),
-						 sample->metadata.database_id);
+						 sample->metadata.database_id,
+						 YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
 	}
 }

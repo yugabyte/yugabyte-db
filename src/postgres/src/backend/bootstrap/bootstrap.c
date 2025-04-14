@@ -45,11 +45,13 @@
 #include "utils/rel.h"
 #include "utils/relmapper.h"
 
-#include "bootstrap/ybcbootstrap.h"
+/* YB includes */
+#include "bootstrap/yb_bootstrap.h"
 #include "catalog/pg_database.h"
-#include "commands/ybccmds.h"
-#include "executor/ybcModifyTable.h"
+#include "commands/yb_cmds.h"
+#include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
+#include "storage/pg_shmem.h"
 
 uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
 
@@ -381,9 +383,9 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 						  "template1",
 						  InvalidOid,
 						  FirstGenbkiObjectId,
-						  false /* colocated */,
-						  NULL /* retry_on_oid_collision */,
-						  NULL /* yb_clone_info */);
+						  false /* colocated */ ,
+						  NULL /* retry_on_oid_collision */ ,
+						  NULL /* yb_clone_info */ );
 	}
 
 	/*
@@ -431,6 +433,8 @@ bootstrap_signals(void)
 	pqsignal(SIGINT, SIG_DFL);
 	pqsignal(SIGTERM, SIG_DFL);
 	pqsignal(SIGQUIT, SIG_DFL);
+	if (YBIsEnabledInPostgresEnvVar() || YBIsLocalInitdbEnvVar())
+		pqsignal(SIGABRT, YbRemoveSharedMemory);
 }
 
 /* ----------------------------------------------------------------
@@ -650,6 +654,7 @@ InsertOneTuple(void)
 	{
 		TupleTableSlot *slot = MakeSingleTupleTableSlot(tupDesc,
 														&TTSOpsHeapTuple);
+
 		ExecStoreHeapTuple(tuple, slot, false);
 		YBCExecuteInsert(boot_reldesc, slot, ONCONFLICT_NONE);
 		ExecDropSingleTupleTableSlot(slot);

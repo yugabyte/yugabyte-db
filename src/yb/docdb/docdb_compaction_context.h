@@ -28,6 +28,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/expiration.h"
 
+#include "yb/dockv/value_type.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/rocksdb/compaction_filter.h"
@@ -57,13 +58,23 @@ std::optional<dockv::PackedRowVersion> PackedRowVersion(TableType table_type, bo
 struct HistoryCutoff {
   // Set only on the master and applies to cotables.
   HybridTime cotables_cutoff_ht;
+
   // Used everywhere else i.e. for the sys catalog table on the master,
   // colocated tables on tservers and non-colocated tables on tservers.
   HybridTime primary_cutoff_ht;
 
+  void MakeAtLeast(const HistoryCutoff& rhs) {
+    cotables_cutoff_ht.MakeAtLeast(rhs.cotables_cutoff_ht);
+    primary_cutoff_ht.MakeAtLeast(rhs.primary_cutoff_ht);
+  }
+
+  void MakeAtMost(const HistoryCutoff& rhs) {
+    cotables_cutoff_ht.MakeAtMost(rhs.cotables_cutoff_ht);
+    primary_cutoff_ht.MakeAtMost(rhs.primary_cutoff_ht);
+  }
+
   std::string ToString() const {
-    return Format("{ cotables cutoff: $0, primary cutoff: $1 }",
-                  cotables_cutoff_ht, primary_cutoff_ht);
+    return YB_STRUCT_TO_STRING(cotables_cutoff_ht, primary_cutoff_ht);
   }
 };
 

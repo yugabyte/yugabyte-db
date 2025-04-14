@@ -33,7 +33,7 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*
@@ -491,7 +491,7 @@ check_transaction_read_only(bool *newval, void **extra, GucSource source)
 	if (*newval == false && XactReadOnly && IsTransactionState() && !InitializingParallelWorker)
 	{
 		/* Can't go to r/w mode inside a r/o transaction */
-		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		if (IsSubTransaction())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("cannot set transaction read-write mode inside a read-only transaction");
@@ -546,7 +546,7 @@ check_XactIsoLevel(int *newval, void **extra, GucSource source)
 		ereport(WARNING,
 				(errmsg("read committed isolation is disabled"),
 				 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
-						 "committed falls back to using repeatable read isolation.")));
+						   "committed falls back to using repeatable read isolation.")));
 	}
 
 	if (newXactIsoLevel != XactIsoLevel && IsTransactionState())
@@ -559,20 +559,7 @@ check_XactIsoLevel(int *newval, void **extra, GucSource source)
 		}
 
 		/* We ignore a subtransaction setting it to the existing value. */
-		/*
-		 * YB: For READ COMMITTED isolation in YB, IsSubTransaction() is true even if SET TRANSACTION
-		 * ISOLATION LEVEL is called before any other query because of the fact that every statement
-		 * starts a new sub transaction in YSQL's READ COMMITTED isolation level. Each statement is
-		 * executed after registering an internal savepoint so that if the statement faces serialization
-		 * or read restart errors, the statement can be retried after cleaning up any work it has done
-		 * (the cleanup is done by rolling back to the internal savepoint). But we still need to block
-		 * SET TRANSACTION ISOLATION LEVEL if a non-internal subtransaction has been started by a user
-		 * savepoint.
-		 *
-		 * To acheive this, we don't error out if there are only sub transactions which have
-		 * ybIsInternalRcSubTransaction=true.
-		 */
-		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		if (IsSubTransaction())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction");
@@ -596,10 +583,7 @@ yb_assign_XactIsoLevel(int newval, void *extra)
 {
 	XactIsoLevel = newval;
 	if (YBTransactionsEnabled())
-	{
-		HandleYBStatus(
-			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-	}
+		HandleYBStatus(YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 }
 
 bool
@@ -609,9 +593,9 @@ check_yb_default_xact_isolation(int *newval, void **extra, GucSource source)
 		!YBIsReadCommittedSupported())
 	{
 		ereport(WARNING,
-					(errmsg("read committed isolation is disabled"),
-					 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
-							 "committed falls back to using repeatable read isolation.")));
+				(errmsg("read committed isolation is disabled"),
+				 errdetail("Set yb_enable_read_committed_isolation to enable. When disabled, read "
+						   "committed falls back to using repeatable read isolation.")));
 	}
 	return true;
 }
@@ -622,11 +606,11 @@ yb_fetch_effective_transaction_isolation_level(void)
 	switch (XactIsoLevel)
 	{
 		case XACT_READ_UNCOMMITTED:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case XACT_READ_COMMITTED:
 			if (IsYBReadCommitted())
 				return "read committed";
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case XACT_REPEATABLE_READ:
 			return "repeatable read";
 		case XACT_SERIALIZABLE:
@@ -636,29 +620,35 @@ yb_fetch_effective_transaction_isolation_level(void)
 	}
 }
 
-bool is_staleness_acceptable(int32_t staleness_ms) {
-	int32_t max_clock_skew_usec = YBGetMaxClockSkewUsec();
-	const int kMargin = 2;
-	if (staleness_ms * 1000 < kMargin * max_clock_skew_usec) {
+bool
+is_staleness_acceptable(int32_t staleness_ms)
+{
+	int32_t		max_clock_skew_usec = YBGetMaxClockSkewUsec();
+	const int	kMargin = 2;
+
+	if (staleness_ms * 1000 < kMargin * max_clock_skew_usec)
+	{
 		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
 		GUC_check_errmsg("cannot enable yb_read_from_followers with a staleness of less than "
-						"%d * (max_clock_skew = %d usec)", kMargin, max_clock_skew_usec);
+						 "%d * (max_clock_skew = %d usec)", kMargin, max_clock_skew_usec);
 		return false;
 	}
 	return true;
 }
 
 bool
-check_follower_reads(bool *newval, void **extra, GucSource source) {
+check_follower_reads(bool *newval, void **extra, GucSource source)
+{
 	if (YBFollowerReadsBehaviorBefore20482())
 	{
-		if (*newval == false) {
+		if (*newval == false)
+		{
 			return true;
 		}
 		return is_staleness_acceptable(yb_follower_read_staleness_ms);
 	}
 
-	if (IsTransactionState())
+	if (XactReadOnly && IsTransactionState())
 	{
 		if (FirstSnapshotSet)
 		{
@@ -666,7 +656,7 @@ check_follower_reads(bool *newval, void **extra, GucSource source) {
 			GUC_check_errmsg("SET yb_read_from_followers must be called before any query");
 			return false;
 		}
-		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		if (IsSubTransaction())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("SET yb_read_from_followers must not be called in a subtransaction");
@@ -693,22 +683,22 @@ assign_follower_reads(bool newval, void *extra)
 
 	yb_read_from_followers = newval;
 	if (YBTransactionsEnabled())
-	{
-		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
-			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
-	}
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(YBReadFromFollowersEnabled(),
+													  YBFollowerReadStalenessMs()));
 }
 
 bool
-check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source) {
+check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source)
+{
 	if (YBFollowerReadsBehaviorBefore20482())
 	{
-		if (!YBReadFromFollowersEnabled()) {
+		if (!YBReadFromFollowersEnabled())
+		{
 			return true;
 		}
 		return is_staleness_acceptable(*newval);
 	}
-	if (YBTransactionsEnabled())
+	if (XactReadOnly && YBTransactionsEnabled())
 	{
 		if (FirstSnapshotSet)
 		{
@@ -716,7 +706,7 @@ check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source
 			GUC_check_errmsg("SET yb_follower_read_staleness_ms must be called before any query");
 			return false;
 		}
-		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		if (IsSubTransaction())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("SET yb_follower_read_staleness_ms must not be called in a subtransaction");
@@ -733,14 +723,13 @@ check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source
 	return is_staleness_acceptable(*newval);
 }
 
-void assign_follower_read_staleness_ms(int32_t newval, void *extra)
+void
+assign_follower_read_staleness_ms(int32_t newval, void *extra)
 {
 	yb_follower_read_staleness_ms = newval;
 	if (YBTransactionsEnabled() && !YBFollowerReadsBehaviorBefore20482())
-	{
-		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
-			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
-	}
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(YBReadFromFollowersEnabled(),
+													  YBFollowerReadStalenessMs()));
 }
 
 /*
@@ -750,7 +739,7 @@ void assign_follower_read_staleness_ms(int32_t newval, void *extra)
 bool
 check_transaction_deferrable(bool *newval, void **extra, GucSource source)
 {
-	if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+	if (IsSubTransaction())
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 		GUC_check_errmsg("SET TRANSACTION [NOT] DEFERRABLE cannot be called within a subtransaction");
@@ -769,7 +758,7 @@ check_transaction_deferrable(bool *newval, void **extra, GucSource source)
 void
 assign_transaction_deferrable(bool newval, void *extra)
 {
-  XactDeferrable = newval;
+	XactDeferrable = newval;
 	if (YBTransactionsEnabled())
 	{
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
@@ -952,40 +941,83 @@ check_session_authorization(char **newval, void **extra, GucSource source)
 	if (*newval == NULL)
 		return true;
 
-	if (!IsTransactionState())
+	if (InitializingParallelWorker)
 	{
 		/*
-		 * Can't do catalog lookups, so fail.  The result of this is that
-		 * session_authorization cannot be set in postgresql.conf, which seems
-		 * like a good thing anyway, so we don't work hard to avoid it.
+		 * In parallel worker initialization, we want to copy the leader's
+		 * state even if it no longer matches the catalogs. ParallelWorkerMain
+		 * already installed the correct role OID and superuser state.
 		 */
-		return false;
+		roleid = GetSessionUserId();
+		is_superuser = GetSessionUserIsSuperuser();
 	}
-
-	/* Look up the username */
-	roleTup = SearchSysCache1(AUTHNAME, PointerGetDatum(*newval));
-	if (!HeapTupleIsValid(roleTup))
+	else
 	{
+		if (!IsTransactionState())
+		{
+			/*
+			 * Can't do catalog lookups, so fail.  The result of this is that
+			 * session_authorization cannot be set in postgresql.conf, which
+			 * seems like a good thing anyway, so we don't work hard to avoid
+			 * it.
+			 */
+			return false;
+		}
+
 		/*
 		 * When source == PGC_S_TEST, we don't throw a hard error for a
-		 * nonexistent user name, only a NOTICE.  See comments in guc.h.
+		 * nonexistent user name or insufficient privileges, only a NOTICE.
+		 * See comments in guc.h.
 		 */
-		if (source == PGC_S_TEST)
+
+		/* Look up the username */
+		roleTup = SearchSysCache1(AUTHNAME, PointerGetDatum(*newval));
+		if (!HeapTupleIsValid(roleTup))
 		{
-			ereport(NOTICE,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("role \"%s\" does not exist", *newval)));
-			return true;
+			if (source == PGC_S_TEST)
+			{
+				ereport(NOTICE,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("role \"%s\" does not exist", *newval)));
+				return true;
+			}
+			GUC_check_errmsg("role \"%s\" does not exist", *newval);
+			return false;
 		}
-		GUC_check_errmsg("role \"%s\" does not exist", *newval);
-		return false;
+
+		roleform = (Form_pg_authid) GETSTRUCT(roleTup);
+		roleid = roleform->oid;
+		is_superuser = roleform->rolsuper;
+
+		ReleaseSysCache(roleTup);
+
+		/*
+		 * Only superusers may SET SESSION AUTHORIZATION a role other than
+		 * itself. Note that in case of multiple SETs in a single session, the
+		 * original authenticated user's superuserness is what matters.
+		 *
+		 * YB: further allow yb_db_admin users as long as they are not trying
+		 * to SET SESSION AUTHORIZATION to superuser.
+		 */
+		if (roleid != GetAuthenticatedUserId() &&
+			!GetAuthenticatedUserIsSuperuser() &&
+			!(IsYbDbAdminUserNosuper(GetAuthenticatedUserId()) &&
+			  !superuser_arg(roleid)))
+		{
+			if (source == PGC_S_TEST)
+			{
+				ereport(NOTICE,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("permission will be denied to set session authorization \"%s\"",
+								*newval)));
+				return true;
+			}
+			GUC_check_errcode(ERRCODE_INSUFFICIENT_PRIVILEGE);
+			GUC_check_errmsg("permission denied to set session authorization \"%s\"",
+							 *newval);
+			return false;
+		}
 	}
-
-	roleform = (Form_pg_authid) GETSTRUCT(roleTup);
-	roleid = roleform->oid;
-	is_superuser = roleform->rolsuper;
-
-	ReleaseSysCache(roleTup);
 
 	/* Set up "extra" struct for assign_session_authorization to use */
 	myextra = (role_auth_extra *) malloc(sizeof(role_auth_extra));
@@ -1035,6 +1067,16 @@ check_role(char **newval, void **extra, GucSource source)
 		roleid = InvalidOid;
 		is_superuser = false;
 	}
+	else if (InitializingParallelWorker)
+	{
+		/*
+		 * In parallel worker initialization, we want to copy the leader's
+		 * state even if it no longer matches the catalogs. ParallelWorkerMain
+		 * already installed the correct role OID and superuser state.
+		 */
+		roleid = GetCurrentRoleId();
+		is_superuser = session_auth_is_superuser;
+	}
 	else
 	{
 		if (!IsTransactionState())
@@ -1074,13 +1116,8 @@ check_role(char **newval, void **extra, GucSource source)
 
 		ReleaseSysCache(roleTup);
 
-		/*
-		 * Verify that session user is allowed to become this role, but skip
-		 * this in parallel mode, where we must blindly recreate the parallel
-		 * leader's state.
-		 */
-		if (!InitializingParallelWorker &&
-			!is_member_of_role(GetSessionUserId(), roleid))
+		/* Verify that session user is allowed to become this role */
+		if (!is_member_of_role(GetSessionUserId(), roleid))
 		{
 			if (source == PGC_S_TEST)
 			{

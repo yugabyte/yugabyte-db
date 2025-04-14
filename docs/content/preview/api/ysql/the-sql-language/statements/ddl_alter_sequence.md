@@ -71,6 +71,28 @@ If `CYCLE` is specified, the sequence will wrap around once it has reached `minv
 
 It gives ownership of the sequence to the specified column (if any). This means that if the column (or the table to which it belongs to) is dropped, the sequence will be automatically dropped. If `NONE` is specified, any previous ownership will be deleted.
 
+#### SET LOGGED | UNLOGGED
+
+Change the sequence from unlogged to logged or vice-versa. Cannot be applied to a temporary sequence.
+
+Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default persistence.
+
+#### SET SCHEMA *schema_name*
+
+Change the schema of the sequence.
+
+#### OWNER TO  *new_owner* | *CURRENT_USER* | *SESSION_USER*
+
+Change the owner of the schema.
+
+CURRENT_USER - username of current execution context.
+
+SESSION_USER - username of current session.
+
+#### RENAME TO *new_name*
+
+Rename the sequence to the specified sequence name.
+
 ## Examples
 
 Create a simple sequence.
@@ -79,7 +101,7 @@ Create a simple sequence.
 yugabyte=# CREATE SEQUENCE s;
 ```
 
-```
+```output
 CEATE SEQUENCE
 ```
 
@@ -89,7 +111,7 @@ Modify the increment value.
 yugabyte=# ALTER SEQUENCE s INCREMENT BY 5;
 ```
 
-```
+```output
 ALTER SEQUENCE
 ```
 
@@ -97,7 +119,7 @@ ALTER SEQUENCE
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -108,7 +130,7 @@ yugabyte=# SELECT nextval('s');
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        6
@@ -121,7 +143,7 @@ Modify the starting value.
 yugabyte=# ALTER SEQUENCE s RESTART WITH 2;
 ```
 
-```
+```output
 ALTER SEQUENCE
 ```
 
@@ -129,7 +151,7 @@ ALTER SEQUENCE
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        2
@@ -140,7 +162,7 @@ yugabyte=# SELECT nextval('s');
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        7
@@ -149,8 +171,8 @@ yugabyte=# SELECT nextval('s');
 
 ## See also
 
-- [`CREATE SEQUENCE`](../ddl_create_sequence)
-- [`DROP SEQUENCE`](../ddl_drop_sequence)
-- [`currval()`](../../../exprs/func_currval)
-- [`lastval()`](../../../exprs/func_lastval)
-- [`nextval()`](../../../exprs/func_nextval)
+- [CREATE SEQUENCE](../ddl_create_sequence)
+- [DROP SEQUENCE](../ddl_drop_sequence)
+- [currval()](../../../exprs/sequence_functions/func_currval)
+- [lastval()](../../../exprs/sequence_functions/func_lastval)
+- [nextval()](../../../exprs/sequence_functions/func_nextval)

@@ -25,6 +25,7 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_util.h"
 
+#include "yb/master/ts_manager.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -59,6 +60,8 @@ DEFINE_test_flag(bool, wait_for_ysql_backends_catalog_version_take_leader_lock, 
     "Take leader lock in WaitForYsqlBackendsCatalogVersion.");
 DEFINE_test_flag(bool, ysql_backends_catalog_version_disable_abort_all_jobs, false,
     "Make YsqlBackendsManager::AbortAllJobs a no-op.");
+DEFINE_test_flag(bool, skip_wait_for_ysql_backends_catalog_version, false,
+    "Set WaitForYsqlBackendsCatalogVersion to immediately return success.");
 
 namespace yb {
 namespace master {
@@ -129,6 +132,10 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     WaitForYsqlBackendsCatalogVersionResponsePB* resp,
     rpc::RpcContext* rpc) {
   LOG_WITH_FUNC(INFO) << req->ShortDebugString();
+  if (FLAGS_TEST_skip_wait_for_ysql_backends_catalog_version) {
+    resp->set_num_lagging_backends(0);
+    return Status::OK();
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_block_wait_for_ysql_backends_catalog_version)) {
     TestDoBlock(1 /* id */, __func__, __LINE__);
@@ -474,7 +481,8 @@ std::string BackendsCatalogVersionJob::description() const {
                                                                      num_lagging_backends));
 }
 
-MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(const Status& status) {
+MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(
+    const Status& status, bool call_task_finisher) {
   // At the time of writing D19621, there is no code path that reaches here.  This function is
   // implemented because it is needed for the superclass.
   LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "should not reach here";
@@ -759,10 +767,6 @@ MonoTime BackendsCatalogVersionTS::ComputeDeadline() {
   return MonoTime::Earliest(timeout, deadline_);
 }
 
-TabletServerId BackendsCatalogVersionTS::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
-}
-
 bool BackendsCatalogVersionTS::SendRequest(int attempt) {
   tserver::WaitForYsqlBackendsCatalogVersionRequestPB req;
   if (auto job = job_.lock()) {
@@ -787,7 +791,7 @@ void BackendsCatalogVersionTS::HandleResponse(int attempt) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << resp_.ShortDebugString();
 
   // First, check if the tserver's lease expired.
-  if (!target_ts_desc_->HasYsqlCatalogLease()) {
+  if (!target_ts_desc()->HasYsqlCatalogLease()) {
     // A similar check is done in RetryingTSRpcTask::DoRpcCallback.  That check is hit when this RPC
     // failed and tserver's leaes expired.  This check is hit when this RPC succeeded and tserver's
     // lease expired.
@@ -911,7 +915,7 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
   if (auto job = job_.lock()) {
     if (indirectly_resolved) {
       // There are four cases of indirectly resolved tservers, outlined in a comment above.
-      if (found_lease_expired_ || !target_ts_desc_->HasYsqlCatalogLease()) {
+      if (found_lease_expired_ || !target_ts_desc()->HasYsqlCatalogLease()) {
         // The two tserver-lease-expired cases.
         LOG_WITH_PREFIX(INFO)
             << "tserver catalog lease expired, so assuming its backends are at latest catalog"
@@ -939,6 +943,23 @@ std::string BackendsCatalogVersionTS::LogPrefix() const {
   } else {
     return Format("[no job, TS $0]: ", permanent_uuid());
   }
+}
+
+bool BackendsCatalogVersionTS::RetryTaskAfterRPCFailure(const Status& status) {
+  auto ts = target_ts_desc();
+  if (status.IsRemoteError() &&
+      rpc_.status().message().ToBuffer().find("invalid method name:") != std::string::npos) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
+                             << " is on an older version that doesn't"
+                             << " support backends catalog version RPC. Ignoring.";
+    return false;
+  } else if (!ts->HasYsqlCatalogLease()) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
+                             << " catalog lease expired. Assume backends"
+                             << " on that TS will be resolved to sufficient catalog version";
+    return false;
+  }
+  return true;
 }
 
 }  // namespace master

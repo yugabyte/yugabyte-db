@@ -18,6 +18,10 @@
 
 namespace yb::dockv {
 
+bool ProjectedColumn::is_vector() const {
+  return data_type == DataType::VECTOR;
+}
+
 std::string ProjectedColumn::ToString() const {
   return YB_STRUCT_TO_STRING(id, data_type);
 }
@@ -35,10 +39,11 @@ void ReaderProjection::AddColumn(
   if (!schema.is_key_column(idx) && column_id < *first_non_key_column) {
     *first_non_key_column = column_id;
   }
+  const auto& column_schema = schema.column(idx);
   columns.push_back({
     .id = column_id,
     .subkey = dockv::KeyEntryValue::MakeColumnId(column_id),
-    .data_type = schema.column(idx).type()->main()
+    .data_type = column_schema.type()->main()
   });
 }
 

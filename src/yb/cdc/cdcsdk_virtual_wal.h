@@ -31,7 +31,8 @@ namespace cdc {
 class CDCSDKVirtualWAL {
  public:
   explicit CDCSDKVirtualWAL(
-      CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id);
+      CDCServiceImpl* cdc_service, const xrepl::StreamId& stream_id, const uint64_t session_id,
+      ReplicationSlotLsnType lsn_type, const uint64_t consistent_snapshot_time);
 
   using RecordInfo =
       std::pair<std::shared_ptr<CDCSDKUniqueRecordID>, std::shared_ptr<CDCSDKProtoRecordPB>>;
@@ -40,7 +41,7 @@ class CDCSDKVirtualWAL {
 
   Status InitVirtualWALInternal(
       const std::unordered_set<TableId>& table_list, const HostPort hostport,
-      const CoarseTimePoint deadline);
+      const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range);
 
   Status GetConsistentChangesInternal(
       GetConsistentChangesResponsePB* resp, const HostPort hostport,
@@ -48,11 +49,16 @@ class CDCSDKVirtualWAL {
 
   // Returns the actually persisted restart_lsn.
   Result<uint64_t> UpdateAndPersistLSNInternal(
-      const uint64_t confirmed_flush_lsn, const uint64_t restart_lsn_hint);
+      const uint64_t confirmed_flush_lsn, const uint64_t restart_lsn_hint,
+      const bool use_vwal_safe_time = false);
 
   Status UpdatePublicationTableListInternal(
       const std::unordered_set<TableId>& new_tables, const HostPort hostport,
       const CoarseTimePoint deadline);
+
+  xrepl::StreamId GetStreamId();
+
+  std::vector<TabletId> GetTabletIdsFromVirtualWAL();
 
  private:
   struct GetChangesRequestInfo {
@@ -105,6 +111,7 @@ class CDCSDKVirtualWAL {
     uint64_t max_lsn = 0;
     bool is_last_txn_fully_sent = false;
     bool contains_publication_refresh_record = false;
+    std::map<uint32_t, std::pair<uint64_t, int>> txn_id_to_ct_records_map_;
   };
 
   using TabletRecordPriorityQueue = std::priority_queue<
@@ -139,7 +146,7 @@ class CDCSDKVirtualWAL {
       TabletRecordPriorityQueue* sorted_records, std::vector<TabletId>* empty_tablet_queues,
       const HostPort hostport, const CoarseTimePoint deadline);
 
-  Status InitLSNAndTxnIDGenerators();
+  Status InitLSNAndTxnIDGenerators(const CDCStateTableEntry& slot_entry);
 
   Result<uint64_t> GetRecordLSN(const std::shared_ptr<CDCSDKUniqueRecordID>& curr_unique_record_id);
 
@@ -151,7 +158,8 @@ class CDCSDKVirtualWAL {
   Status TruncateMetaMap(const uint64_t restart_lsn);
 
   Status UpdateSlotEntryInCDCState(
-      const uint64_t confirmed_flush_lsn, const CommitRecordMetadata& record_metadata);
+      const uint64_t confirmed_flush_lsn, const CommitRecordMetadata& record_metadata,
+      const bool use_vwal_safe_time = false, const uint64_t last_trimmed_pub_refresh_time = 0);
 
   void ResetCommitDecisionVariables();
 
@@ -178,6 +186,15 @@ class CDCSDKVirtualWAL {
       const std::unordered_set<TableId>& tables_to_be_added, const CoarseTimePoint deadline);
 
   std::string LogPrefix() const;
+
+  bool IsTabletEligibleForVWAL(
+      const std::string& tablet_id, const PartitionPB& tablet_partition_pb);
+
+  Status CheckHashRangeConstraints(const CDCStateTableEntry& slot_entry);
+
+  Status ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordID& popped_record);
+
+  Status UpdateRestartTimeIfRequired();
 
   CDCServiceImpl* cdc_service_;
 
@@ -217,6 +234,10 @@ class CDCSDKVirtualWAL {
   // This will hold the restart_lsn value received in the UpdateAndPersistLSN RPC call. It will
   // initialised by the restart_lsn stores in the cdc_state's entry for slot.
   uint64_t last_received_restart_lsn;
+
+  // This will hold the confirmed_flush_lsn value received in the UpdateAndPersistLSN RPC call. It
+  // will initialised by the confirmed_flush_lsn stores in the cdc_state's entry for slot.
+  uint64_t last_received_confirmed_flush_lsn_;
 
   // Set to true when a BEGIN record is shipped. Reset to false after we ship the commit record for
   // the pg_txn.
@@ -280,6 +301,25 @@ class CDCSDKVirtualWAL {
 
   // ordered map in increasing order of LSN of commit record.
   std::map<uint64_t, CommitMetadataAndLastSentRequest> commit_meta_and_last_req_map_;
+
+  // Store the LSN type the replication slot is created with.
+  ReplicationSlotLsnType slot_lsn_type_;
+
+  // Slot's hash range for tablets with end range being exclusive. Tablets whose start hash range
+  // falls within these ranges will be polled.
+  std::unique_ptr<ReplicationSlotHashRange> slot_hash_range_;
+
+  uint64_t consistent_snapshot_time_;
+
+  // The Virtual WAL safe time is a threshold time, whereby the records having commit time lesser
+  // than this will be filtered out. LSN will not be generated for such records. It is calculated as
+  // the commit time of the last commit record or the safepoint record popped from the priority
+  // queue.
+  HybridTime virtual_wal_safe_time_ = HybridTime::kInvalid;
+
+  // The time at which slot entry was last read to compare restart lsn with the last shipped lsn.
+  HybridTime last_restart_lsn_read_time_ = HybridTime::kInvalid;
+
 };
 
 }  // namespace cdc

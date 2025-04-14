@@ -21,6 +21,7 @@
 #include <atomic>
 #include <string>
 
+#include "yb/util/hash_util.h"
 #include "yb/util/slice.h"
 
 namespace yb {

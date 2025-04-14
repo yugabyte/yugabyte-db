@@ -36,7 +36,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 
 You can run examples using a universe set up on your local machine or in a cloud, assuming you have performed one of the following:
 
-- [Installed](/preview/quick-start/linux/) YugabyteDB.
+- [Installed](/preview/tutorials/quick-start/linux/) YugabyteDB.
 - [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Aeon.
 - [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
@@ -97,7 +97,7 @@ To check the status of a running single-node universe, run the following command
 ./bin/yugabyted status
 ```
 
-For more information, refer to [Quick Start](/preview/quick-start/linux/#create-a-local-cluster).
+For more information, refer to [Quick Start](/preview/tutorials/quick-start/linux/#create-a-local-cluster).
 
   {{% /tab %}}
 
@@ -120,7 +120,7 @@ You can start ysqlsh as follows:
 ```
 
 ```output
-ysqlsh (11.2-YB-2.0.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -149,7 +149,7 @@ To run the examples in YugabyteDB Aeon, create a single- or multi-node universe 
 
   {{% tab header="Single-node cluster" lang="YBM Single" %}}
 
-Examples requiring a single-node cluster can be run using the free [Sandbox](../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
+Examples requiring a single-node cluster can be run using the free [Sandbox](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
 
 If you haven't already created your sandbox cluster, log in to YugabyteDB Aeon, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
@@ -157,9 +157,9 @@ If you haven't already created your sandbox cluster, log in to YugabyteDB Aeon, 
 
   {{% tab header="Multi-node cluster" lang="YBM Multi" %}}
 
-Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
 
-To create a single region three-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
+To create a single region three-node cluster, refer to [Create a single-region cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
 
   {{% /tab %}}
 

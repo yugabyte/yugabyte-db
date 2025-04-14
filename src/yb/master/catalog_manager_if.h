@@ -15,11 +15,7 @@
 
 #include "yb/cdc/xrepl_types.h"
 
-#include "yb/common/common_fwd.h"
-#include "yb/common/schema.h"
-
 #include "yb/common/snapshot.h"
-#include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -34,12 +30,11 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/server/monitored_task.h"
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tablet_peer_lookup.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -66,7 +61,7 @@ YB_STRONGLY_TYPED_BOOL(HideOnly);
 YB_STRONGLY_TYPED_BOOL(KeepData);
 YB_STRONGLY_TYPED_BOOL(PrimaryTablesOnly);
 
-class CatalogManagerIf {
+class CatalogManagerIf : public tserver::TabletPeerLookupIf {
  public:
   virtual void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
 
@@ -89,6 +84,8 @@ class CatalogManagerIf {
 
   virtual Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const = 0;
+
+  virtual Status InvalidateTserverOidCaches() = 0;
 
   virtual Result<uint64_t> IncrementYsqlCatalogVersion() = 0;
 
@@ -121,14 +118,13 @@ class CatalogManagerIf {
     return GetReplicationFactor();
   }
 
-  virtual const NodeInstancePB& NodeInstance() const = 0;
-
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
   virtual Status GetYsqlAllDBCatalogVersions(
       bool use_cache,
       DbOidToCatalogVersionMap* versions,
       uint64_t* fingerprint) = 0;
+  virtual Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 
@@ -141,11 +137,7 @@ class CatalogManagerIf {
 
   virtual void AssertLeaderLockAcquiredForReading() const = 0;
 
-  virtual bool IsUserTable(const TableInfo& table) const = 0;
-
   virtual NamespaceName GetNamespaceName(const NamespaceId& id) const = 0;
-
-  virtual bool IsUserIndex(const TableInfo& table) const = 0;
 
   virtual TableInfoPtr GetTableInfo(const TableId& table_id) const = 0;
 
@@ -158,8 +150,6 @@ class CatalogManagerIf {
   virtual Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
-
-  virtual bool IsSystemTable(const TableInfo& table) const = 0;
 
   virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(const NamespaceId& id) const = 0;
 
@@ -181,8 +171,6 @@ class CatalogManagerIf {
   virtual Status IsLoadBalanced(
       const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp) = 0;
 
-  virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
-
   virtual Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) = 0;
 
   virtual Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const = 0;
@@ -192,12 +180,12 @@ class CatalogManagerIf {
   virtual Status GetTabletLocations(
       const TabletId& tablet_id,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual Status GetTabletLocations(
       const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
+      IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
   virtual TSDescriptorVector GetAllLiveNotBlacklistedTServers() const = 0;
 
@@ -263,7 +251,7 @@ class CatalogManagerIf {
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
 
   virtual Result<scoped_refptr<TableInfo>> FindTable(
-      const TableIdentifierPB& table_identifier) const = 0;
+      const TableIdentifierPB& table_identifier, bool include_deleted = true) const = 0;
 
   virtual Status IsInitDbDone(
       const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) = 0;

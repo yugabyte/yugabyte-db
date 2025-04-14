@@ -435,7 +435,7 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
 
     // Verify that for each of the table's tablets, a new row in cdc_state table with the
     // returned id was inserted.
-    cdc::CDCStateTable cdc_state_table(producer_client());
+    auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
     Status s;
     auto table_range = VERIFY_RESULT(
         cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -1372,7 +1372,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
               tablet_id, table,
               // TODO(tablet splitting + xCluster): After splitting integration is working (+
               // metrics support), then set this to kTrue.
-              master::IncludeInactive::kFalse, master::IncludeDeleted::kFalse,
+              master::IncludeHidden::kFalse, master::IncludeDeleted::kFalse,
               CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
               [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
                 if (result.ok()) {
@@ -1805,7 +1805,7 @@ TEST_P(XClusterTest, BiDirectionalWrites) {
 
 TEST_P(XClusterTest, BiDirectionalWritesWithLargeBatches) {
   // Simulate large batches by dropping FLAGS_consensus_max_batch_size_bytes to limit the size of
-  // the batches we read in GetChanges / ReadReplicatedMessagesForCDC.
+  // the batches we read in GetChanges / ReadReplicatedMessagesForXCluster.
   // We want to test that we don't get stuck if an entire batch messages read are all filtered out
   // (currently we only filter out external writes) and the checkpoint isn't updated.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 1_KB;

@@ -95,11 +95,7 @@ Result<string> PgWrapperTestBase::RunYbAdminCommand(const string& cmd) {
     " --master_addresses " + cluster_->GetMasterAddresses() +
     " " + cmd;
   LOG(INFO) << "Running " << command;
-  string output;
-  if (RunShellProcess(command, &output)) {
-    return output;
-  }
-  return STATUS_FORMAT(RuntimeError, "Failed to execute $0 command", yb_admin);
+  return RunShellProcess(command);
 }
 
 namespace {
@@ -111,7 +107,7 @@ string TrimSqlOutput(string output) {
 } // namespace
 
 Result<std::string> PgCommandTestBase::RunPsqlCommand(
-    const std::string& statement, TuplesOnly tuples_only) {
+    const std::string& statement, TuplesOnly tuples_only, CheckErrorString check_error_string) {
   string tmp_dir;
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
@@ -125,7 +121,7 @@ Result<std::string> PgCommandTestBase::RunPsqlCommand(
   vector<string> argv{
       GetPostgresInstallRoot() + "/bin/ysqlsh",
       "-h", pg_ts->bind_host(),
-      "-p", std::to_string(pg_ts->pgsql_rpc_port()),
+      "-p", std::to_string(pg_ts->ysql_port()),
       "-U", "yugabyte",
       "-f", tmp_file_name
   };
@@ -145,26 +141,52 @@ Result<std::string> PgCommandTestBase::RunPsqlCommand(
     argv.push_back("-t");
   }
 
-  LOG(INFO) << "Run tool: " << yb::ToString(argv);
-  Subprocess proc(argv.front(), argv);
-  if (use_auth_) {
-    proc.SetEnv("PGPASSWORD", "yugabyte");
-  }
-
-  string psql_stdout;
+  std::string psql_stdout;
+  std::string psql_stderr;
   LOG(INFO) << "Executing statement: " << statement;
-  RETURN_NOT_OK(proc.Call(&psql_stdout));
+  // Postgres might not yet be ready, so retry a few times.
+  for (int retry = 0;;) {
+    LOG(INFO) << "Retry: " << retry << ", run tool: " << AsString(argv);
+    Subprocess proc(argv.front(), argv);
+    if (use_auth_) {
+      proc.SetEnv("PGPASSWORD", "yugabyte");
+    }
+
+    psql_stdout.clear();
+    auto status = proc.Call(&psql_stdout, &psql_stderr);
+    if (status.ok()) {
+      break;
+    }
+    if (++retry < 10 && status.IsRuntimeError() &&
+        (psql_stderr.find("Connection refused") != std::string::npos ||
+         psql_stderr.find("the database system is starting up") != std::string::npos ||
+         psql_stderr.find(
+             "the database system is not yet accepting connections") != std::string::npos)) {
+      std::this_thread::sleep_for(250ms * kTimeMultiplier);
+      continue;
+    }
+    LOG(WARNING) << "Stderr: " << psql_stderr;
+    return status;
+  }
   LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
             << psql_stdout;
 
+  if (psql_stdout.empty() && check_error_string) {
+    return TrimSqlOutput(psql_stderr);
+  }
   return TrimSqlOutput(psql_stdout);
 }
 
 void PgCommandTestBase::RunPsqlCommand(
-    const string& statement, const string& expected_output, bool tuples_only) {
+    const string& statement, const string& expected_output, bool tuples_only,
+    CheckErrorString check_error_string) {
   string psql_stdout = ASSERT_RESULT(
-      RunPsqlCommand(statement, tuples_only ? TuplesOnly::kTrue : TuplesOnly::kFalse));
-  ASSERT_EQ(TrimSqlOutput(expected_output), TrimSqlOutput(psql_stdout));
+      RunPsqlCommand(statement, tuples_only ? TuplesOnly::kTrue : TuplesOnly::kFalse,
+          check_error_string));
+  if (check_error_string)
+    ASSERT_STR_CONTAINS(psql_stdout, TrimSqlOutput(expected_output));
+  else
+    ASSERT_EQ(TrimSqlOutput(expected_output), TrimSqlOutput(psql_stdout));
 }
 
 void PgCommandTestBase::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {

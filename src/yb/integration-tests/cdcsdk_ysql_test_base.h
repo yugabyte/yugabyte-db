@@ -27,6 +27,8 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -128,6 +130,11 @@ DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
 DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
 DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
 DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
+DECLARE_bool(cdc_disable_sending_composite_values);
+DECLARE_bool(cdc_use_byte_threshold_for_vwal_changes);
+DECLARE_bool(ysql_enable_pg_export_snapshot);
+DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
+DECLARE_uint64(cdcsdk_update_restart_time_interval_secs);
 
 namespace yb {
 
@@ -239,12 +246,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
-  Status WriteRows(
+  static Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       const vector<string>& optional_cols_name = {},
       pgwrapper::PGConn* conn = nullptr);
 
-  Status WriteRowsWithConn(
+  static Status WriteRowsWithConn(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       pgwrapper::PGConn* conn = nullptr,
       const vector<string>& optional_cols_name = {});
@@ -514,7 +521,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id = kVWALSessionId1);
+      const uint64_t session_id = kVWALSessionId1,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -528,7 +536,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetAllPendingChangesResponse> GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
       bool init_virtual_wal, const uint64_t session_id = kVWALSessionId1,
-      bool allow_sending_feedback = true);
+      bool allow_sending_feedback = true,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -669,7 +678,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CDCSDKAlterWithSysCatalogCompaction(bool packed_row);
   void CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row);
 
-  void WaitForCompaction(YBTableName table);
+  void WaitForCompaction(YBTableName table, bool expect_equal_entries_after_compaction = false);
   void VerifySnapshotOnColocatedTables(
       xrepl::StreamId stream_id,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
@@ -803,6 +812,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestCreateReplicationSlotWithLsnType(const std::string lsn_type);
 
+  void TestCreateReplicationSlotWithLsnTypeParam(const std::string lsn_type);
+
+  void TestCreateReplicationSlotWithOrderingMode(const std::string ordering_mode);
+
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 
   void VerifyTableIdAndPkInCDCRecords(
@@ -836,6 +849,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
 
+  void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
+
   Status CreateTables(
       const size_t num_tables, std::vector<YBTableName>* tables,
       vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>* tablets,
@@ -850,6 +865,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status GetIntentEntriesAndSSTFileCountForTablet(
       const TabletId& tablet_id, std::unordered_map<std::string, std::pair<int64_t, int64_t>>*
                                         initial_intents_and_intent_sst_file_count);
+
+  void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
 };
 
 }  // namespace cdc

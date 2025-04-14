@@ -17,25 +17,25 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
-TabletScopedRWOperationPauses TabletComponent::StartShutdownRocksDBs(
+TabletScopedRWOperationPauses TabletComponent::StartShutdownStorages(
     const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
-  return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown, abort_ops);
+  return tablet_.StartShutdownStorages(disable_flush_on_shutdown, abort_ops);
 }
 
-std::vector<std::string> TabletComponent::CompleteShutdownRocksDBs(
+std::vector<std::string> TabletComponent::CompleteShutdownStorages(
     const TabletScopedRWOperationPauses& ops_pauses) {
-  return tablet_.CompleteShutdownRocksDBs(ops_pauses);
+  return tablet_.CompleteShutdownStorages(ops_pauses);
 }
 
-Status TabletComponent::DeleteRocksDBs(const std::vector<std::string>& db_paths) {
-  return tablet_.DeleteRocksDBs(db_paths);
+Status TabletComponent::DeleteStorages(const std::vector<std::string>& db_paths) {
+  return tablet_.DeleteStorages(db_paths);
 }
 
-Status TabletComponent::OpenRocksDBs() {
+Status TabletComponent::OpenStorages() {
   return tablet_.OpenKeyValueTablet();
 }
 
@@ -49,6 +49,10 @@ RaftGroupMetadata& TabletComponent::metadata() const {
 
 RWOperationCounter& TabletComponent::pending_op_counter_blocking_rocksdb_shutdown_start() const {
   return tablet_.pending_op_counter_blocking_rocksdb_shutdown_start_;
+}
+
+const TabletId& TabletComponent::tablet_id() const {
+  return tablet_.tablet_id();
 }
 
 rocksdb::DB& TabletComponent::regular_db() const {
@@ -67,6 +71,10 @@ bool TabletComponent::has_intents_db() const {
   return tablet_.intents_db_ != nullptr;
 }
 
+docdb::DocDB TabletComponent::doc_db(TabletMetrics* metrics) const {
+  return tablet_.doc_db(metrics);
+}
+
 std::mutex& TabletComponent::create_checkpoint_lock() const {
   return tablet_.create_checkpoint_lock_;
 }
@@ -81,5 +89,12 @@ void TabletComponent::RefreshYBMetaDataCache() {
   tablet_.ResetYBMetaDataCache();
 }
 
-} // namespace tablet
-} // namespace yb
+docdb::DocVectorIndexesPtr TabletComponent::VectorIndexesList() const {
+  return tablet_.vector_indexes().List();
+}
+
+Status TabletComponent::Flush(FlushMode mode, FlushFlags flags) {
+  return tablet_.Flush(mode, flags);
+}
+
+} // namespace yb::tablet

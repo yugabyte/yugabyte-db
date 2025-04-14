@@ -24,26 +24,35 @@
 
 namespace yb::vector_index {
 
+struct SearchOptions {
+  size_t max_num_results;
+  VectorFilter filter = [](const auto&) { return true; };
+};
+
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf;
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf {
  public:
-  using SearchResult = std::vector<VertexWithDistance<DistanceResult>>;
-  using IteratorValueType = std::pair<Vector, VertexId>;
-  using Iterator = yb::PolymorphicIterator<IteratorValueType>;
+  using SearchResult  = std::vector<VectorWithDistance<DistanceResult>>;
+  using IteratorValue = std::pair<VectorId, Vector>;
+  using Iterator      = PolymorphicIterator<IteratorValue>;
 
   virtual ~VectorIndexReaderIf() = default;
   virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
-  virtual Result<SearchResult> Search(const Vector& query_vector, size_t max_num_results) const = 0;
+  virtual Result<SearchResult> Search(
+      const Vector& query_vector, const SearchOptions& options) const = 0;
 
-  virtual std::unique_ptr<yb::AbstractIterator<IteratorValueType>> BeginImpl() const = 0;
-  virtual std::unique_ptr<yb::AbstractIterator<IteratorValueType>> EndImpl() const = 0;
+  // Returns the vector with the given id or NotFound error when vector is not found.
+  virtual Result<Vector> GetVector(VectorId vector_id) const = 0;
+
+  virtual std::unique_ptr<AbstractIterator<IteratorValue>> BeginImpl() const = 0;
+  virtual std::unique_ptr<AbstractIterator<IteratorValue>> EndImpl()   const = 0;
   virtual std::string IndexStatsStr() const { return "N/A"; }
 
   Iterator begin() const { return Iterator(BeginImpl()); }
-  Iterator end() const { return Iterator(EndImpl()); }
+  Iterator end()   const { return Iterator(EndImpl()); }
 };
 
 template<IndexableVectorType Vector>
@@ -55,11 +64,13 @@ class VectorIndexWriterIf {
   virtual Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) = 0;
 
-  virtual Status Insert(VertexId vertex_id, const Vector& vector) = 0;
+  // Returns current number of vectors.
+  virtual size_t Size() const = 0;
 
-  // Returns the vector with the given id, an empty vector if such VertexId does not exist, or
-  // a non-OK status if an error occurred.
-  virtual Result<Vector> GetVector(VertexId vertex_id) const = 0;
+  // Returns the number of reserved vectors
+  virtual size_t Capacity() const = 0;
+
+  virtual Status Insert(VectorId vector_id, const Vector& vector) = 0;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -75,7 +86,13 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
 
   // Loads index from the file in immutable state.
   // Implementation could load index partially, fetching data on demand and unload it if necessary.
-  virtual Status LoadFromFile(const std::string& path) = 0;
+  // max_concurrent_reads - max number of concurrent reads that could be run against this index.
+  virtual Status LoadFromFile(const std::string& path, size_t max_concurrent_reads) = 0;
+
+  // Allows to attach a custom object that will be destroyed when the vector index does. Only one
+  // object can be attached. Returns previously attached object or nullptr if nothing was attached.
+  // Could be considered as a variation of cleanup paradigm rocskdb::Cleanable.
+  virtual std::shared_ptr<void> Attach(std::shared_ptr<void>) = 0;
 
   virtual ~VectorIndexIf() = default;
 };

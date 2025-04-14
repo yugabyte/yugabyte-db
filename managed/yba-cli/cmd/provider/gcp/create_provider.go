@@ -259,7 +259,8 @@ func init() {
 	createGCPProviderCmd.Flags().String("project-id", "",
 		"[Optional] Project ID that hosts universe nodes in GCP.")
 	createGCPProviderCmd.Flags().String("shared-vpc-project-id", "",
-		"[Optional] Shared VPC project ID in GCP.")
+		"[Optional] Shared VPC project ID in GCP. Set if you want use Shared VPC"+
+			" to connect resources from multiple projects to a common VPC.")
 
 	createGCPProviderCmd.Flags().StringArray("region", []string{},
 		"[Required] Region associated with the GCP provider. Minimum number of required "+
@@ -385,7 +386,8 @@ func buildGCPImageBundles(imageBundles []string) []ybaclient.ImageBundle {
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
 		if err != nil {
-			errMessage := err.Error() + " Using SSH Port as 22\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -394,7 +396,8 @@ func buildGCPImageBundles(imageBundles []string) []ybaclient.ImageBundle {
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

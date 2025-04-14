@@ -59,6 +59,7 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
@@ -66,9 +67,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -106,7 +107,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         .configure(testDatabase())
         .overrides(bind(ShellKubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(SessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }
@@ -237,7 +238,18 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       }
       if (defaultUserIntent.deviceInfo.storageClass != null) {
         tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
-        masterDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+      }
+
+      // For master
+      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
+      }
+      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put(
+            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
+      }
+      if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
+        masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
       }
       storageOverrides.put("tserver", tserverDiskSpecs);
       storageOverrides.put("master", masterDiskSpecs);
@@ -1390,7 +1402,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   private void testPodInfoMultiAZBase(boolean setNamespace) {
-    Region r1 = Region.create(defaultProvider, "region-1", "region-1", "yb-image-1");
+    Optional<Region> optional =
+        defaultProvider.getAllRegions().stream()
+            .filter(r -> r.getCode().equals("region-1"))
+            .findFirst();
+    Region r1 =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(defaultProvider, "region-1", "region-1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "region-2", "yb-image-1");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r1, "az-" + 1, "az-" + 1, "subnet-" + 1);
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r1, "az-" + 2, "az-" + 2, "subnet-" + 2);

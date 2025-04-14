@@ -24,11 +24,16 @@
 - name: Configure | Add yb server ctl script
   vars:
     mount_paths: "{{ _mount_points | join(' ') }}"
+    systemd_option: "{{ systemd_option }}"  # Pass systemd_option to the template
   template:
     src: yb-server-ctl.sh.j2
     dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
     owner: "{{ user_name }}"
     mode: 0755
+  tags:
+    - install-software
+    - systemd_upgrade
+
 
 - name: Configure | Add clock sync script
   vars:
@@ -78,6 +83,19 @@
     dest: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
     owner: "{{ user_name }}"
     mode: 0755
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
+
+- name: Configure | Find current yb_metrics_dir
+  shell: "systemctl show node_exporter | grep -oE \"collector.textfile.directory={{ yb_metrics_dir_old }}\" | if [ $(wc -c) -eq \"0\" ]; then echo {{ yb_metrics_dir_new }}; else echo {{ yb_metrics_dir_old }}; fi"
+  register: yb_metrics_dir_out
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
+
+- set_fact:
+    yb_metrics_dir: "{{ yb_metrics_dir_out.stdout }}"
   tags:
     - yb-prebuilt-ami
     - systemd_upgrade
@@ -299,24 +317,32 @@
   when: systemd_option and ansible_distribution_major_version >= "9"
 
 - block:
-  # Remove old cron jobs that clean cores, purge logs and collect metrics
-  - name: Remove old cron job that cleans cores (for upgrades)
-    cron:
-      name: "cleanup core files every 5 minutes"
-      user: "{{ user_name }}"
-      state: absent
+  - name: Check if crontab is available
+    command: which crontab
+    register: crontab_exists
+    changed_when: false
+    ignore_errors: yes
 
-  - name: Remove old cron job that purges logs (for upgrades)
-    cron:
-      name: "cleanup yb log files every 5 minutes"
-      user: "{{ user_name }}"
-      state: absent
+  - name: Remove old cron jobs
+    when: crontab_exists.rc == 0
+    block:
+      - name: Remove old cron job that cleans cores (for upgrades)
+        cron:
+          name: "cleanup core files every 5 minutes"
+          user: "{{ user_name }}"
+          state: absent
 
-  - name: Remove old cron job that collects metrics (for upgrades)
-    cron:
-      name: "metric collection every minute"
-      user: "{{ user_name }}"
-      state: absent
+      - name: Remove old cron job that purges logs (for upgrades)
+        cron:
+          name: "cleanup yb log files every 5 minutes"
+          user: "{{ user_name }}"
+          state: absent
+
+      - name: Remove old cron job that collects metrics (for upgrades)
+        cron:
+          name: "metric collection every minute"
+          user: "{{ user_name }}"
+          state: absent
 
   - name: Determine system or user scope
     stat:

@@ -32,8 +32,9 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-#include "utils/catcache.h"
+/* YB includes */
 #include "pg_yb_utils.h"
+#include "utils/catcache.h"
 
 /*
  * Entry of a hash table used in find_all_inheritors. See below.
@@ -267,7 +268,7 @@ find_all_inheritors(Oid parentrelId, LOCKMODE lockmode, List **numparents)
 
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(SeenRelsEntry);
-	ctl.hcxt = GetCurrentMemoryContext();
+	ctl.hcxt = CurrentMemoryContext;
 
 	seen_rels = hash_create("find_all_inheritors temporary table",
 							32, /* start small and extend */

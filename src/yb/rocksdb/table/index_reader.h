@@ -41,7 +41,7 @@ class IndexReader {
   explicit IndexReader(const ComparatorPtr& comparator)
       : comparator_(comparator) {}
 
-  virtual ~IndexReader() {}
+  virtual ~IndexReader() = default;
 
   // Create an iterator for index access.
   // If not null iter is passed in, implementation was able to update it and it should be used by
@@ -53,9 +53,26 @@ class IndexReader {
   // but return semantic is the same - the whole index iterator is returned.
   // - index_iterator_state is used to create secondary iterators on index.
   virtual InternalIterator* NewIterator(
-      BlockIter* iter = nullptr,
-      std::unique_ptr<TwoLevelIteratorState> index_iterator_state = nullptr,
-      bool total_order_seek = true) = 0;
+      BlockIter* iter,
+      std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+      bool total_order_seek) = 0;
+
+  // Version of NewIterator that creates an index iterator allowing to get more info from the data
+  // block this index iterator is pointing to. See DataBlockAwareIndexInternalIterator API
+  // description regarding exact functionality.
+  // We don't always return DataBlockAwareIndexInternalIterator from IndexReader because:
+  // 1) In most cases we don't care about data block content at this level.
+  // As of 2024-11 we only use this for improved YSQL ANALYZE query sampling algorithm.
+  // 2) For kBinarySearch and kHashSearch index types this enhanced functionality is provided via
+  // wrapping usual InternalIterator of an index block into enhanced wrapper which is less
+  // performant and requires more memory.
+  // So IndexReader::NewDataBlockAwareIterator API should only be used when you need to get index
+  // iterator which allows data block info access. In other cases use IndexReader::NewIterator.
+  virtual DataBlockAwareIndexInternalIterator* NewDataBlockAwareIterator(
+      BlockIter* iter,
+      std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+      std::unique_ptr<TwoLevelIteratorState> data_iterator_state,
+      bool total_order_seek) = 0;
 
   // Returns approximate middle key from the index. Key from the index might not match any key
   // actually written to SST file, because keys could be shortened and substituted before them are
@@ -84,19 +101,29 @@ class BinarySearchIndexReader : public IndexReader {
   // `BinarySearchIndexReader`.
   // On success, index_reader will be populated; otherwise it will remain
   // unmodified.
-  static Status Create(
+  static Result<std::unique_ptr<BinarySearchIndexReader>> Create(
       RandomAccessFileReader* file, const Footer& footer, const BlockHandle& index_handle, Env* env,
-      const ComparatorPtr& comparator, std::unique_ptr<IndexReader>* index_reader,
-      const std::shared_ptr<yb::MemTracker>& mem_tracker);
+      const ComparatorPtr& comparator, const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
   InternalIterator* NewIterator(
-      BlockIter* iter = nullptr,
+      BlockIter* iter,
       // Rest of parameters are ignored by BinarySearchIndexReader.
-      std::unique_ptr<TwoLevelIteratorState> state = nullptr,
-      bool total_order_seek = true) override {
-    auto new_iter = index_block_->NewIndexIterator(comparator_.get(), iter, true);
+      std::unique_ptr<TwoLevelIteratorState>,
+      bool) override {
+    auto new_iter =
+        index_block_->NewIndexBlockIterator(comparator_.get(), iter, /* total_order_seek = */ true);
     return iter ? nullptr : new_iter;
   }
+
+  void NewIterator(BlockIter* iter) {
+    index_block_->NewIndexBlockIterator(comparator_.get(), iter, /* total_order_seek = */ true);
+  }
+
+  DataBlockAwareIndexInternalIterator* NewDataBlockAwareIterator(
+      BlockIter* iter,
+      std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+      std::unique_ptr<TwoLevelIteratorState> data_iterator_state,
+      bool total_order_seek) override;
 
   size_t size() const override {
     DCHECK(index_block_);
@@ -122,8 +149,6 @@ class BinarySearchIndexReader : public IndexReader {
     DCHECK(index_block_);
   }
 
-  ~BinarySearchIndexReader() {}
-
   const std::unique_ptr<Block> index_block_;
 };
 
@@ -131,18 +156,24 @@ class BinarySearchIndexReader : public IndexReader {
 // key.
 class HashIndexReader : public IndexReader {
  public:
-  static Status Create(
+  static yb::Result<std::unique_ptr<IndexReader>> Create(
       const SliceTransform* hash_key_extractor, const Footer& footer, RandomAccessFileReader* file,
       Env* env, const ComparatorPtr& comparator, const BlockHandle& index_handle,
-      InternalIterator* meta_index_iter, std::unique_ptr<IndexReader>* index_reader,
-      bool hash_index_allow_collision, const std::shared_ptr<yb::MemTracker>& mem_tracker);
+      InternalIterator* meta_index_iter, bool hash_index_allow_collision,
+      const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
   InternalIterator* NewIterator(
       BlockIter* iter = nullptr, std::unique_ptr<TwoLevelIteratorState> state = nullptr,
       bool total_order_seek = true) override {
-    auto new_iter = index_block_->NewIndexIterator(comparator_.get(), iter, total_order_seek);
+    auto new_iter = index_block_->NewIndexBlockIterator(comparator_.get(), iter, total_order_seek);
     return iter ? nullptr : new_iter;
   }
+
+  DataBlockAwareIndexInternalIterator* NewDataBlockAwareIterator(
+      BlockIter* iter,
+      std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+      std::unique_ptr<TwoLevelIteratorState> data_iterator_state,
+      bool total_order_seek) override;
 
   size_t size() const override {
     DCHECK(index_block_);
@@ -166,8 +197,6 @@ class HashIndexReader : public IndexReader {
       : IndexReader(comparator), index_block_(std::move(index_block)) {
     DCHECK(index_block_);
   }
-
-  ~HashIndexReader() {}
 
   void OwnPrefixesContents(BlockContents&& prefixes_contents) {
     prefixes_contents_ = std::move(prefixes_contents);
@@ -198,7 +227,16 @@ class MultiLevelIndexReader : public IndexReader {
   ~MultiLevelIndexReader() {}
 
   InternalIterator* NewIterator(
-      BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state, bool) override;
+      BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+      // MultiLevelIndexReader ignores total_order_seek and always uses total order seek instead of
+      // prefix/hash seek (which is used only by HashIndexBuilder/Reader).
+      bool /* total_order_seek */) override;
+
+  DataBlockAwareIndexInternalIterator* NewDataBlockAwareIterator(
+      BlockIter* iter,
+      std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+      std::unique_ptr<TwoLevelIteratorState> data_iterator_state,
+      bool) override;
 
   Result<std::string> GetMiddleKey() const override;
 

@@ -235,7 +235,7 @@ func (r *RegionContext) startSubsection(format string) (*template.Template, erro
 }
 
 func (r *RegionContext) subSection(name string) {
-	r.Output.Write([]byte("\n\n"))
+	r.Output.Write([]byte("\n"))
 	r.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	r.Output.Write([]byte("\n"))
 }
@@ -271,12 +271,12 @@ func (r *RegionContext) Code() string {
 
 // Latitude fetches Region Latitude
 func (r *RegionContext) Latitude() string {
-	return fmt.Sprintf("%f", r.r.GetLatitude())
+	return fmt.Sprintf("%0.2f", r.r.GetLatitude())
 }
 
 // Longitude fetches Region Longitude
 func (r *RegionContext) Longitude() string {
-	return fmt.Sprintf("%f", r.r.GetLongitude())
+	return fmt.Sprintf("%0.2f", r.r.GetLongitude())
 }
 
 // MarshalJSON function

@@ -56,7 +56,7 @@
 #include "yb/qlexpr/index.h"
 #include "yb/common/common_util.h"
 #include "yb/common/redis_constants_common.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 
@@ -203,7 +203,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
                          const rpc::ResponseCallback& callback) {
         (proxy->*func)(req, resp, controller, callback);
       });
-  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+  RETURN_NOT_OK(rpcs_.RegisterAndStartStatus(rpc, rpc->RpcHandle()));
   auto result = rpc->synchronizer().Wait();
   if (attempts) {
     *attempts = rpc->num_attempts();
@@ -234,6 +234,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(AlterNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(BackfillIndex);
 YB_CLIENT_SPECIALIZE_SIMPLE(ChangeMasterClusterConfig);
+YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateTablegroup);
@@ -246,6 +247,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(FlushTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetBackfillStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTablegroupSchema);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetColocatedTabletSchema);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetCompactionStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetMasterClusterConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetNamespaceInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTableSchema);
@@ -256,7 +258,6 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
-YB_CLIENT_SPECIALIZE_SIMPLE(GetCompactionStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListClones);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
@@ -265,7 +266,6 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
-YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Encryption, GetFullUniverseKeyRegistry);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AreNodesSafeToTakeDown);
@@ -312,6 +312,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, InsertHistoricalColocatedSchemaPacking);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, InsertPackedSchemaForXClusterTarget);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, BootstrapProducer);
@@ -351,6 +352,34 @@ bool SyncClientMasterRpc<master::MasterAdminProxy,
                          WaitForYsqlBackendsCatalogVersionResponsePB>::ShouldRetry(
     const Status& status) {
   return status.IsTryAgain();
+}
+
+// Checks if the Tablet locations are valid - Partition keys are sorted with no overlaps.
+Status CheckTabletLocations(
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+    tserver::AllowSplitTablet allow_split_tablets) {
+  const std::string* prev_partition_end = nullptr;
+  for (const master::TabletLocationsPB& loc : locations) {
+    LOG_IF(DFATAL, !allow_split_tablets && loc.split_tablet_ids().size() > 0)
+        << "Processing remote tablet location with split children id set: "
+        << loc.ShortDebugString() << " when allow_split_tablets was set to false.";
+    if (prev_partition_end && *prev_partition_end > loc.partition().partition_key_start()) {
+      LOG(DFATAL) << "There should be no overlaps in tablet partitions and they should be sorted "
+                  << "by partition_key_start. Prev partition end: "
+                  << Slice(*prev_partition_end).ToDebugHexString() << ", current partition start: "
+                  << Slice(loc.partition().partition_key_start()).ToDebugHexString()
+                  << ". Tablet locations: " << [&locations] {
+                       std::string result;
+                       for (auto& loc : locations) {
+                         result += "\n  " + AsString(loc);
+                       }
+                       return result;
+                     }();
+      return STATUS(IllegalState, "Wrong order or overlaps in partitions");
+    }
+    prev_partition_end = &loc.partition().partition_key_end();
+  }
+  return Status::OK();
 }
 
 YBClient::Data::Data()
@@ -1551,10 +1580,11 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
       table_identifier_(table_identifier),
-      info_(DCHECK_NOTNULL(info)),
+      info_(info),
       resp_copy_(resp_copy) {
   req_.mutable_table()->CopyFrom(table_identifier_);
   req_.set_include_hidden(include_hidden);
+  req_.set_check_exists_only(info == nullptr);
 }
 
 GetTableSchemaRpc::~GetTableSchemaRpc() {
@@ -1567,14 +1597,16 @@ void GetTableSchemaRpc::CallRemoteMethod() {
 }
 
 string GetTableSchemaRpc::ToString() const {
-  return Substitute("GetTableSchemaRpc(table_identifier: $0, num_attempts: $1)",
-                    table_identifier_.ShortDebugString(), num_attempts());
+  return Substitute("GetTableSchemaRpc(table_identifier: $0, num_attempts: $1, check_only: $2)",
+                    table_identifier_.ShortDebugString(), num_attempts(), info_ == nullptr);
 }
 
 void GetTableSchemaRpc::ProcessResponse(const Status& status) {
   auto new_status = status;
   if (new_status.ok()) {
-    new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
+    if (info_) {
+      new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
+    }
     if (resp_copy_) {
       resp_copy_->Swap(&resp_);
     }
@@ -2276,6 +2308,96 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
   std::function<void(Result<bool>)> user_cb_;
 };
 
+class AcquireObjectLocksGlobalRpc
+    : public ClientMasterRpc<
+          master::AcquireObjectLocksGlobalRequestPB, master::AcquireObjectLocksGlobalResponsePB> {
+ public:
+  AcquireObjectLocksGlobalRpc(
+      YBClient* client, master::AcquireObjectLocksGlobalRequestPB request,
+      StdStatusCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.CopyFrom(request);
+  }
+
+  string ToString() const override {
+    return Format(
+        "AcquireObjectLocksGlobal (request: $0, num_attempts: $1)", req_.DebugString(),
+        num_attempts());
+  }
+
+  virtual ~AcquireObjectLocksGlobalRpc() {}
+
+ private:
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
+  }
+
+  bool ShouldRetry(const Status& status) override {
+    return status.IsTryAgain();
+  }
+
+  void CallRemoteMethod() override {
+    VLOG(2) << "Calling AcquireObjectLocksGlobal with request: " << req_.DebugString();
+    master_ddl_proxy()->AcquireObjectLocksGlobalAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&AcquireObjectLocksGlobalRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  StdStatusCallback user_cb_;
+};
+
+class ReleaseObjectLocksGlobalRpc
+    : public ClientMasterRpc<
+          master::ReleaseObjectLocksGlobalRequestPB, master::ReleaseObjectLocksGlobalResponsePB> {
+ public:
+  ReleaseObjectLocksGlobalRpc(
+      YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request,
+      StdStatusCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.CopyFrom(request);
+  }
+
+  string ToString() const override {
+    return Format(
+        "ReleaseObjectLocksGlobal (request: $0, num_attempts: $1)", req_.DebugString(),
+        num_attempts());
+  }
+
+  virtual ~ReleaseObjectLocksGlobalRpc() {}
+
+ private:
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
+  }
+
+  bool ShouldRetry(const Status& status) override {
+    return status.IsTryAgain();
+  }
+
+  void CallRemoteMethod() override {
+    VLOG(2) << "Calling ReleaseObjectLocksGlobalAsync with request: " << req_.DebugString();
+    master_ddl_proxy()->ReleaseObjectLocksGlobalAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&ReleaseObjectLocksGlobalRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  StdStatusCallback user_cb_;
+};
+
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
@@ -2535,6 +2657,18 @@ void YBClient::Data::DeleteNotServingTablet(
     StdStatusCallback callback) {
   auto rpc = StartRpc<internal::DeleteNotServingTabletRpc>(
       client, tablet_id, callback, deadline);
+}
+
+void YBClient::Data::AcquireObjectLocksGlobalAsync(
+    YBClient* client, master::AcquireObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = StartRpc<internal::AcquireObjectLocksGlobalRpc>(client, request, callback, deadline);
+}
+
+void YBClient::Data::ReleaseObjectLocksGlobalAsync(
+    YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = StartRpc<internal::ReleaseObjectLocksGlobalRpc>(client, request, callback, deadline);
 }
 
 void YBClient::Data::GetTableLocations(
@@ -2805,7 +2939,7 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
 }
 
 Status YBClient::Data::SetReplicationInfo(
-    YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
+    YBClient* client, const ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
     bool* retry) {
   // If retry was not set, we'll wrap around in a retryable function.
   if (!retry) {
@@ -2844,7 +2978,7 @@ Status YBClient::Data::SetReplicationInfo(
 }
 
 Status YBClient::Data::ValidateReplicationInfo(
-    const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline) {
+    const ReplicationInfoPB& replication_info, CoarseTimePoint deadline) {
   // Validate the request config.
   ValidateReplicationInfoRequestPB req;
   ValidateReplicationInfoResponsePB resp;

@@ -65,7 +65,7 @@ class PgCancelTransactionTest : public PgLocksTestBase {
     auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(2 * kTimeMultiplier);
     auto remote_ts_or_status_future = MakeFuture<Result<RemoteTabletPtr>>([&](auto callback) {
       client_->LookupTabletById(
-          tablet_id, /* table =*/ nullptr, master::IncludeInactive::kFalse,
+          tablet_id, /* table =*/ nullptr, master::IncludeHidden::kFalse,
           master::IncludeDeleted::kFalse, ToCoarse(deadline),
           [callback] (const auto& lookup_result) {
             callback(lookup_result);

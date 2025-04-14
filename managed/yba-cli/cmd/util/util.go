@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -19,6 +21,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"gopkg.in/yaml.v2"
@@ -134,6 +137,38 @@ func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }
 
+// GetPrintableList returns a string representation of a list
+func GetPrintableList(in []string) string {
+	out := "["
+	for i, v := range in {
+		if i == 0 {
+			out = fmt.Sprintf("%s%s", out, v)
+		} else {
+			out = fmt.Sprintf("%s, %s", out, v)
+		}
+	}
+	out = fmt.Sprintf("%s]", out)
+	return out
+}
+
+// FindCommonStringElements finds common elements in two string slices
+func FindCommonStringElements(list1, list2 []string) []string {
+	// Create a map to store elements from list1
+	elementMap := make(map[string]bool)
+	for _, val := range list1 {
+		elementMap[val] = true
+	}
+
+	// Find common elements
+	var common []string
+	for _, val := range list2 {
+		if elementMap[val] {
+			common = append(common, val)
+		}
+	}
+	return common
+}
+
 // GetFloat64SliceFromString returns a slice of float64 from a string
 func GetFloat64SliceFromString(in string) ([]float64, error) {
 	if in == "" {
@@ -177,11 +212,11 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entityName,
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		logrus.Debug("There was an error reading the response from the API\n")
-		return errorTag
+		return fmt.Errorf("%w: %w", errorTag, err)
 	}
 	if err = json.Unmarshal(body, &errorBlock); err != nil {
 		logrus.Debugf("There was an error unmarshalling the response from the API\n")
-		return errorTag
+		return fmt.Errorf("%w: %w", errorTag, err)
 	}
 	errorString := ErrorFromResponseBody(errorBlock)
 	return fmt.Errorf("%w: %s", errorTag, errorString)
@@ -195,26 +230,14 @@ func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 	}
 
 	errorMap := (*errorBlock.Error).(map[string]interface{})
-	for k, v := range errorMap {
-		if k != "" {
-			errorString = fmt.Sprintf("Field: %s, Error:", k)
-		}
-		var checkType []interface{}
-		var checkTypeMap map[string]interface{}
-		if reflect.TypeOf(v) == reflect.TypeOf(checkType) {
-			for _, s := range *StringSlice(v.([]interface{})) {
-				errorString = fmt.Sprintf("%s %s", errorString, s)
-			}
-		} else if reflect.TypeOf(v) == reflect.TypeOf(checkTypeMap) {
-			for _, s := range *StringMap(v.(map[string]interface{})) {
-				errorString = fmt.Sprintf("%s %s", errorString, s)
-			}
-			errorString = fmt.Sprintf("%s %v", errorString, v)
-		} else {
-			errorString = fmt.Sprintf("%s %s", errorString, v.(string))
-		}
 
+	bytes, err := json.Marshal(errorMap)
+	if err != nil {
+		errorString = fmt.Sprintf("%s %v", errorString, errorMap)
+	} else {
+		errorString = fmt.Sprintf("%s %s", errorString, string(bytes))
 	}
+
 	return errorString
 }
 
@@ -364,7 +387,33 @@ func YAMLtoString(filePath string) string {
 				formatter.RedColor))
 	}
 	return string(contentBytes)
+}
 
+// StringToYAMLFile converts a string to a yaml file
+func StringToYAMLFile(contentString string, filePath string, perms fs.FileMode) (bool, error) {
+	logrus.Debug("YAML File Path: ", filePath)
+
+	var data yaml.MapSlice
+
+	// Unmarshal the YAML string into MapSlice
+	err := yaml.Unmarshal([]byte(contentString), &data)
+	if err != nil {
+		return false, fmt.Errorf("Error unmarshalling YAML string: " + err.Error())
+	}
+
+	// Marshal it again to ensure proper formatting (optional)
+	contentBytes, err := yaml.Marshal(data)
+	if err != nil {
+		return false, fmt.Errorf("Error marshalling YAML string: " + err.Error())
+	}
+
+	// Write YAML content to file
+	err = os.WriteFile(filePath, contentBytes, perms)
+	if err != nil {
+		return false, fmt.Errorf("Error writing YAML to file: " + err.Error())
+	}
+
+	return true, nil
 }
 
 // IsOutputType check if the output type is t
@@ -448,4 +497,145 @@ func FromEpochMilli(millis int64) time.Time {
 	seconds := millis / 1000
 	nanos := (millis % 1000) * int64(time.Millisecond)
 	return time.Unix(seconds, nanos)
+}
+
+// // PrintFlagGroup Helper function to print grouped flags
+// func PrintFlagGroup(flagSet *pflag.FlagSet) {
+//     flagSet.VisitAll(func(flag *pflag.Flag) {
+//         shorthand := ""
+//         if flag.Shorthand != "" {
+//             shorthand = fmt.Sprintf("-%s, ", flag.Shorthand) // Format shorthand properly
+//         }
+//         fmt.Printf("  %s--%s    %s (default: %s)\n",
+//             shorthand, flag.Name, flag.Usage, flag.DefValue)
+//     })
+// }
+
+// MustGetFlagString returns the value of the string flag with the given name
+func MustGetFlagString(cmd *cobra.Command, name string) string {
+	value, err := cmd.Flags().GetString(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	if len(strings.TrimSpace(value)) == 0 {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetFlagInt64 returns the value of the int64 flag with the given name
+func MustGetFlagInt64(cmd *cobra.Command, name string) int64 {
+	value, err := cmd.Flags().GetInt64(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetFlagBool returns the value of the bool flag with the given name
+func MustGetFlagBool(cmd *cobra.Command, name string) bool {
+	value, err := cmd.Flags().GetBool(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetFlagStringSlice returns the value of the string slice flag with the given name
+func MustGetFlagStringSlice(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringSlice(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	// Check if the slice is empty
+	if len(value) == 0 {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetStringArray returns the value of the string array flag with the given name
+// If the flag is set but empty, it returns an error
+func MustGetStringArray(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringArray(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	// Check if the array is empty
+	if len(value) == 0 {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagString returns the value of the string flag with the given name
+// If the flag is not set, it returns an empty string
+func MaybeGetFlagString(cmd *cobra.Command, name string) string {
+	value, err := cmd.Flags().GetString(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagStringSlice returns the value of the string slice flag with the given name
+// If the flag is not set, it returns an empty slice
+func MaybeGetFlagStringSlice(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringSlice(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagStringArray returns the value of the string array flag with the given name
+func MaybeGetFlagStringArray(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringArray(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MissingKeyFromStringDeclaration for complex structures in flags
+func MissingKeyFromStringDeclaration(key, flag string) {
+	logrus.Fatalln(
+		formatter.Colorize(
+			fmt.Sprintf("%s not specified in %s.\n", key, flag),
+			formatter.RedColor))
+}
+
+// GetCLIConfigDirectoryPath returns the CLI config directory path
+func GetCLIConfigDirectoryPath() (string, fs.FileMode, error) {
+	configFileUsed := viper.GetViper().ConfigFileUsed()
+	directory := filepath.Dir(configFileUsed)
+
+	info, err := os.Stat(directory)
+	if err != nil {
+		return "", 0644, err
+	}
+	return directory, info.Mode(), nil
+}
+
+// GetCLIOutputFormat returns the output format for the CLI
+func GetCLIOutputFormat(outputType string) string {
+	outputFormat := strings.TrimPrefix(outputType, "cli-")
+	if outputFormat == "flags" || outputFormat == "" {
+		outputFormat = "flag"
+	}
+	if outputFormat == "yml" {
+		outputFormat = "yaml"
+	}
+	return outputFormat
 }

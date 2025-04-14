@@ -46,11 +46,11 @@ The following table describes how the data flows through each of these component
 
 You have multiple options to [install or deploy YugabyteDB](../../../deploy/).
 
-If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](../../../quick-start/docker/).
+If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](/preview/tutorials/quick-start/docker/).
 
 ### Install and set up Redpanda
 
-Follow the Redpanda [Quick Start](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) to spin up the Redpanda cluster using single- or multi-broker configuration using docker-compose or using a Redpanda cloud account.
+Follow the Redpanda [Quick Start](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) to spin up the Redpanda cluster using single- or multi-broker configuration using Docker Compose or using a Redpanda cloud account.
 
 Post installation and setup using the docker option, you can see docker containers are up and running. The following illustration shows two docker containers (Redpanda-Console and Redpanda Broker):
 

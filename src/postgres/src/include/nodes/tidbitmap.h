@@ -22,9 +22,11 @@
 #ifndef TIDBITMAP_H
 #define TIDBITMAP_H
 
-#include "nodes/ybtidbitmap.h"
 #include "storage/itemptr.h"
 #include "utils/dsa.h"
+
+/* YB includes */
+#include "nodes/ybtidbitmap.h"
 
 
 /*
@@ -33,10 +35,11 @@
  */
 typedef struct TIDBitmap TIDBitmap;
 
-typedef union {
-	TIDBitmap *tbm;
+typedef union
+{
+	TIDBitmap  *tbm;
 	YbTIDBitmap *ybtbm;
-} TupleBitmap;
+} YbTupleBitmap;
 
 /* Likewise, TBMIterator is private */
 typedef struct TBMIterator TBMIterator;

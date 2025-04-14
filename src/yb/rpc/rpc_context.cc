@@ -78,7 +78,7 @@ class PbTracer : public debug::ConvertableToTraceFormat {
   void AppendAsTraceFormat(std::string* out) const override {
     pb_util::TruncateFields(msg_.get(), kMaxFieldLengthToTrace);
     std::stringstream ss;
-    JsonWriter jw(&ss, JsonWriter::COMPACT);
+    JsonWriter jw(&ss, JsonWriter::COMPACT_ESCAPE_STR);
     jw.Protobuf(*msg_);
     out->append(ss.str());
   }
@@ -92,14 +92,14 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 
 }  // anonymous namespace
 
-Result<size_t> RpcCallPBParams::ParseRequest(Slice param, const RefCntBuffer& buffer) {
+Status RpcCallPBParams::ParseRequest(Slice param, const RefCntBuffer& buffer) {
   google::protobuf::io::CodedInputStream in(param.data(), narrow_cast<int>(param.size()));
   SetupLimit(&in);
   auto& message = request();
   if (PREDICT_FALSE(!message.ParseFromCodedStream(&in))) {
     return STATUS(InvalidArgument, message.InitializationErrorString());
   }
-  return message.SpaceUsedLong();
+  return Status::OK();
 }
 
 AnyMessageConstPtr RpcCallPBParams::SerializableResponse() {
@@ -114,10 +114,9 @@ const google::protobuf::Message* RpcCallPBParams::CastMessage(const AnyMessageCo
   return msg.protobuf();
 }
 
-Result<size_t> RpcCallLWParams::ParseRequest(Slice param, const RefCntBuffer& buffer) {
+Status RpcCallLWParams::ParseRequest(Slice param, const RefCntBuffer& buffer) {
   buffer_ = buffer;
-  RETURN_NOT_OK(request().ParseFromSlice(param));
-  return 0;
+  return request().ParseFromSlice(param);
 }
 
 AnyMessageConstPtr RpcCallLWParams::SerializableResponse() {

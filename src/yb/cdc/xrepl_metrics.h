@@ -107,6 +107,8 @@ class CDCSDKTabletMetrics {
   scoped_refptr<AtomicGauge<uint64_t>> cdcsdk_expiry_time_ms;
   // Last sent physical time is used for calculating sent lag micros
   scoped_refptr<AtomicGauge<uint64_t>> cdcsdk_last_sent_physicaltime;
+  // Lag between last committed record in the WAL and replication slot's restart time.
+  scoped_refptr<AtomicGauge<uint64_t>> cdcsdk_flush_lag;
 
   Result<std::string> TEST_GetAttribute(const std::string& key) const;
 

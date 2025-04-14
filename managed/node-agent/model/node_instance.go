@@ -32,8 +32,12 @@ type Provider struct {
 // ProviderDetails contains the details object within a provider.
 // Only the required fields are added here.
 type ProviderDetails struct {
-	NodeExporterPort int  `json:"nodeExporterPort"`
-	SkipProvisioning bool `json:"skipProvisioning"`
+	AirGapInstall       bool     `json:"airGapInstall"`
+	InstallNodeExporter bool     `json:"installNodeExporter"`
+	NodeExporterPort    int      `json:"nodeExporterPort"`
+	NodeExporterUser    string   `json:"nodeExporterUser"`
+	NtpServers          []string `json:"ntpServers"`
+	SkipProvisioning    bool     `json:"skipProvisioning"`
 }
 
 // yyyy-MM-dd HH:mm:ss
@@ -46,46 +50,6 @@ func (date *Date) UnmarshalJSON(b []byte) error {
 	}
 	*date = Date(t)
 	return nil
-}
-
-type AccessKeyInfo struct {
-	SshUser                string   `json:"sshUser"`
-	SshPort                int      `json:"sshPort"`
-	AirGapInstall          bool     `json:"airGapInstall"`
-	PasswordlessSudoAccess bool     `json:"passwordlessSudoAccess"`
-	InstallNodeExporter    bool     `json:"installNodeExporter"`
-	NodeExporterPort       int      `json:"nodeExporterPort"`
-	NodeExporterUser       string   `json:"nodeExporterUser"`
-	SetUpChrony            bool     `json:"setUpChrony"`
-	NtpServers             []string `json:"ntpServers"`
-	CreationDate           Date     `json:"creationDate"`
-	SkipProvisioning       bool     `json:"skipProvisioning"`
-}
-
-type AccessKey struct {
-	KeyInfo AccessKeyInfo `json:"keyInfo"`
-}
-
-type AccessKeys []AccessKey
-
-// Implement sort.Interface.
-func (keys AccessKeys) Len() int {
-	return len(keys)
-}
-
-// Implement sort.Interface in descending order of
-// creation time.
-func (keys AccessKeys) Less(i, j int) bool {
-	keyInfo1 := keys[i].KeyInfo
-	keyInfo2 := keys[j].KeyInfo
-	cTime1 := time.Time(keyInfo1.CreationDate)
-	cTime2 := time.Time(keyInfo2.CreationDate)
-	return cTime1.Before(cTime2)
-}
-
-// Implement sort.Interface.
-func (keys AccessKeys) Swap(i, j int) {
-	keys[i], keys[j] = keys[j], keys[i]
 }
 
 type Region struct {

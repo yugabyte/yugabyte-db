@@ -150,6 +150,10 @@ class PgTableRow {
   Result<const char*> DecodeComparableString(
       size_t column_idx, const char* input, const char* end, bool append_zero,
       SortOrder sort_order);
+
+  Result<const char*> DecodeComparableBson(
+      size_t column_idx, const char* input, const char* end, SortOrder sort_order);
+
   void SetBinary(size_t column_idx, Slice value, bool append_zero);
 
   static PackedColumnDecoderEntry GetPackedColumnDecoderV1(

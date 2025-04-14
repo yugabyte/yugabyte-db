@@ -56,8 +56,9 @@ typedef enum relopt_kind
 	RELOPT_KIND_YB_LSM = (1 << 13),
 	/* if you add a new kind, make sure you update "last_default" too */
 	RELOPT_KIND_LAST_DEFAULT = RELOPT_KIND_YB_LSM,
-	RELOPT_KIND_INDEX = RELOPT_KIND_BTREE | RELOPT_KIND_HASH | RELOPT_KIND_GIN | RELOPT_KIND_SPGIST |
-						RELOPT_KIND_YB_LSM,
+	RELOPT_KIND_INDEX = (RELOPT_KIND_BTREE | RELOPT_KIND_HASH |
+						 RELOPT_KIND_GIN | RELOPT_KIND_SPGIST |
+						 RELOPT_KIND_YB_LSM),
 	/* some compilers treat enums as signed ints, so we can't use 1 << 31 */
 	RELOPT_KIND_MAX = (1 << 30)
 } relopt_kind;
@@ -116,13 +117,13 @@ typedef struct relopt_real
 	double		max;
 } relopt_real;
 
-typedef struct relopt_oid
+typedef struct yb_relopt_oid
 {
 	relopt_gen	gen;
 	Oid			default_val;
 	Oid			min;
 	Oid			max;
-} relopt_oid;
+} yb_relopt_oid;
 
 /*
  * relopt_enum_elt_def -- One member of the array of acceptable values
@@ -180,7 +181,7 @@ typedef struct local_relopt
 		if (option.isset)										\
 			var = option.values.oid_val;						\
 		else													\
-			var = ((relopt_oid *) option.gen)->default_val;		\
+			var = ((yb_relopt_oid *) option.gen)->default_val;		\
 		(wasset) != NULL ? *(wasset) = option.isset : (dummyret)NULL; \
 	} while (0)
 

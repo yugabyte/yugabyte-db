@@ -4,7 +4,6 @@ headerTitle: Integrations
 linkTitle: Integrations
 description: Integrate popular third party tools with YugabyteDB, including Presto, Prisma, Sequelize, Spring, Flyway, Django, Hasura, Kafka.
 headcontent: Use YugabyteDB with popular third-party integrations
-image: /images/section_icons/develop/api-icon.png
 type: indexpage
 cascade:
   unversioned: true
@@ -51,12 +50,12 @@ Version refers to the latest tested version of the integration.
 | Apache Beam    | 2.49.0  | Partial | [Apache Beam](apache-beam/) |
 | Apache Flink   | 1.17.1  | Partial | [Apache Flink](apache-flink/) |
 | Akka Persistence | 1.0.1 | Partial | [Akka Persistence](akka-ysql/) |
-| Confluent      | 7.4.0   | Full | [Confluent Cloud](../tutorials/cdc-tutorials/cdc-confluent-cloud/) |
+| Confluent      | 7.4.0   | Full | [Confluent Cloud](/preview/tutorials/cdc-tutorials/cdc-confluent-cloud/) |
 | Debezium       | 1.9.5   | Full | [Debezium](cdc/debezium/) |
 | Hevo Data      | 1.66    | Partial | [Hevo Data](hevodata/) |
 | Kinesis Data Streams |   | Full | [Kinesis](kinesis/) |
 | RabbitMQ       | 3.11.21 | Partial | [RabbitMQ](rabbitmq/) |
-| Synapse        |         | Full | [Synapse](../tutorials/cdc-tutorials/cdc-azure-event-hub/) |
+| Synapse        |         | Full | [Synapse](/preview/tutorials/cdc-tutorials/cdc-azure-event-hub/) |
 
 ### GUI clients
 
@@ -120,6 +119,7 @@ Version refers to the latest tested version of the integration.
 | Tool        | Tutorial |
 | :------     | :------- |
 | Nutanix AHV | [Nutanix AHV](nutanix-ahv/) |
+| Cohesity    | [Cohesity](cohesity/) |
 | Commvault   | [Commvault](commvault/) |
 | Delphix     | [Delphix](delphix/) |
 
@@ -129,7 +129,7 @@ Version refers to the latest tested version of the integration.
 | :----------- | :------ | :------ | :------- |
 | Apache Atlas | 2.3.0   | Partial | [Apache Atlas](atlas-ycql/) |
 | Apache Hudi  | 0.14.1  | Full    | [Apache Hudi](apache-hudi/) |
-| Apache Spark | 3.3.0   | Full    | [Apache Spark](apache-spark/) |
+| Apache Spark | 3.5.4   | Full    | [Apache Spark](apache-spark/) |
 | Jaeger       | 1.43.0  | Full    | [Jaeger](jaeger/) |
 | JanusGraph   | 0.6.2   | Full    | [JanusGraph](janusgraph/) |
 | KairosDB     | 1.3.0   | Full    | [KairosDB](kairosdb/) |

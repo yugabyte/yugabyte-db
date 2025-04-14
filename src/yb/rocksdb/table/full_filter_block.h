@@ -104,11 +104,9 @@ class FullFilterBlockReader : public FilterBlockReader {
   // directly. and be deleted here
   ~FullFilterBlockReader() {}
 
-  virtual bool KeyMayMatch(const Slice& key,
-                           uint64_t block_offset = kNotValid) override;
-  virtual bool PrefixMayMatch(const Slice& prefix,
-                              uint64_t block_offset = kNotValid) override;
-  virtual size_t ApproximateMemoryUsage() const override;
+  bool KeyMayMatch(Slice key, uint64_t block_offset = kNotValid) override;
+  bool PrefixMayMatch(const Slice& prefix, uint64_t block_offset = kNotValid) override;
+  size_t ApproximateMemoryUsage() const override;
 
  private:
   const SliceTransform* prefix_extractor_;

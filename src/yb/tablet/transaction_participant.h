@@ -31,6 +31,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/storage_set.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -70,12 +71,14 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
-  SubtxnSet aborted;
+  SubtxnSet aborted = {};
   OpId op_id;
   HybridTime commit_ht;
-  HybridTime log_ht;
+  HybridTime log_ht = {};
   bool sealed = false;
-  TabletId status_tablet;
+  TabletId status_tablet = {};
+  docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
+
   // Owned by running transaction if non-null.
   const docdb::ApplyTransactionState* apply_state = nullptr;
 
@@ -159,7 +162,7 @@ class TransactionParticipant : public TransactionStatusManager {
     const OpId& op_id;
     HybridTime hybrid_time;
     bool sealed = false;
-    AlreadyAppliedToRegularDB already_applied_to_regular_db;
+    docdb::StorageSet apply_to_storages;
 
     std::string ToString() const;
   };
@@ -264,12 +267,14 @@ class TransactionParticipant : public TransactionStatusManager {
 
   Status ProcessRecentlyAppliedTransactions();
 
+  void ForceRefreshWaitersForBlocker(const TransactionId& txn_id);
+
  private:
   Result<int64_t> RegisterRequest() override;
   void UnregisterRequest(int64_t request) override;
 
   class Impl;
-  std::unique_ptr<Impl> impl_;
+  std::shared_ptr<Impl> impl_;
 };
 
 } // namespace tablet

@@ -68,7 +68,7 @@ After the YugabyteDB Aeon cluster is started, go ahead and connect the YugaPlus 
 
 First, rebuild the YugaPlus backend image to remove one of the database migration files created in the previous chapter:
 
-1. Use `Ctrl+C` or run `{yugaplus-project-dir}/docker-compose stop` to stop the YugaPlus application containers.
+1. Use `Ctrl+C` or run `{yugaplus-project-dir}/docker compose stop` to stop the YugaPlus application containers.
 
 1. Rename the `V2__create_geo_partitioned_user_library.sql` file to `skip_create_geo_partitioned_user_library.sql` making sure it's not applied during the database migration phase. The YugabyteDB Aeon sandbox instance can't be used for the geo-partitioning use case that explored in chapter 4.
 
@@ -86,7 +86,7 @@ First, rebuild the YugaPlus backend image to remove one of the database migratio
 1. Rebuild the Docker images:
 
     ```shell
-    docker-compose build
+    docker compose build
     ```
 
 Next, start the application connecting to your YugabyteDB Aeon cluster:
@@ -109,7 +109,7 @@ Next, start the application connecting to your YugabyteDB Aeon cluster:
 1. Start the application:
 
     ```shell
-    docker-compose up
+    docker compose up
     ```
 
 As soon as the `yugaplus-backend` container starts, it applies the database migration files to your cloud database instance. You can view the created tables in the **Tables** tab of the YugabyteDB Aeon dashboard.
@@ -169,4 +169,4 @@ Let's recap!
 * You used the latency-optimized [geo-partitioning design pattern](../../../develop/build-global-apps/latency-optimized-geo-partition/) to scale both reads and writes across various locations.
 * You learned how to offload the management and operations of your database cluster by migrating to [YugabyteDB Aeon](/preview/yugabyte-cloud/).
 
-With that said, good luck building applications that scale and never fail! And don't forget to [join our community](https://communityinviter.com/apps/yugabyte-db/register), where you can get your questions answered and learn about the latest updates from the world of YugabyteDB.
+With that said, good luck building applications that scale and never fail! And don't forget to [join our community](https://inviter.co/yugabytedb), where you can get your questions answered and learn about the latest updates from the world of YugabyteDB.

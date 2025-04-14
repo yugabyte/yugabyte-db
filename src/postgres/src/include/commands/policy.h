@@ -19,7 +19,10 @@
 #include "nodes/parsenodes.h"
 #include "utils/relcache.h"
 
-extern void RelationBuildRowSecurity(Relation relation);
+/* YB includes */
+#include "utils/yb_tuplecache.h"
+
+extern void RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cache);
 
 extern void RemovePolicyById(Oid policy_id);
 

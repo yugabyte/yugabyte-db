@@ -554,6 +554,13 @@ class DependencyGraphTest(unittest.TestCase):
         yb_master = self.get_yb_master_target()
         self.assert_all_unaffected_by([yb_master], 'tablet_server_main.cc')
 
+    def test_yb_admin(self) -> None:
+        self.assert_all_affected_by(['yb-admin'], 'yb-admin_cli.cc')
+
+        self.assert_all_unaffected_by(['yb-admin'], 'tablet_server.cc')
+        self.assert_all_unaffected_by(['yb-admin'], 'pggate.cc')
+        self.assert_all_unaffected_by(['yb-admin'], 'catalog_manager.cc')
+
     def test_call_home(self) -> None:
         yb_master = self.get_yb_master_target()
         yb_tserver = self.get_yb_tserver_target()

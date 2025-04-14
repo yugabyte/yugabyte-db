@@ -61,6 +61,7 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -91,6 +92,7 @@ DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
+DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
@@ -717,42 +719,56 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   const std::vector<std::tuple<int32_t, int32_t>> kRows = {{1, 10}, {2, 20}};
   ASSERT_OK(source_conn_->ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[0]), std::get<1>(kRows[0])));
-
   // Write a second row after recording the hybrid time.
-  auto ht = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  auto timestamp = ASSERT_RESULT(GetCurrentTime());
   ASSERT_OK(source_conn_->ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[1]), std::get<1>(kRows[1])));
 
-  // Perform the first clone operation to ht.
+  // Clone to ht and verify clone only has the first row.
   ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName, ht));
-
-  // Perform the second clone operation to clone the source DB using the current timestamp (AS OF is
-  // not specified)
-  ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
-
-  // Verify source rows are unchanged.
-  auto rows = ASSERT_RESULT((source_conn_->FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_VECTORS_EQ(rows, kRows);
-
-  // Verify first clone only has the first row.
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      timestamp.ToInt64()));
   // Use a scope here and below so we can drop the cloned databases after.
   {
     auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
     auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
     ASSERT_EQ(row, kRows[0]);
   }
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
 
-  // Verify second clone has both rows.
+  // Clone using the current timestamp (AS OF is not specified) and check that it has both rows.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
   {
     auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
-    rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+    auto rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
     ASSERT_VECTORS_EQ(rows, kRows);
   }
-
-  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
+
+  // Clone using a timestamp in PG's timestamptz format. It should only have the first row.
+  const auto kTargetNamespaceName3 = "testdb_clone3";
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF '$2'", kTargetNamespaceName3, kSourceNamespaceName,
+      timestamp.ToHumanReadableTime()));
+  {
+    auto target_conn3 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName3));
+    auto row = ASSERT_RESULT((target_conn3.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, kRows[0]);
+  }
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName3));
+
+  // Cloning using a timestamp in Unix seconds should not work.
+  const auto kTargetNamespaceName4 = "testdb_clone4";
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName4, kSourceNamespaceName,
+      timestamp.ToInt64() / 1000000);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "invalid clone time type");
+
+  // Verify source rows are unchanged.
+  auto rows = ASSERT_RESULT((source_conn_->FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_VECTORS_EQ(rows, kRows);
 }
 
 class TsDataSizeMetricsTest : public PgCloneTest {
@@ -870,6 +886,21 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "fail_clone_pg_schema");
 }
 
+TEST_F(PgCloneTest, CloneTimeoutExceeded) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 10;
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
+  ASSERT_NOK(status);
+
+  // The clone should be aborted, and the error message should mention that it timed out.
+  auto row = ASSERT_RESULT((source_conn_->FetchRowAsString(
+      "SELECT db_name, parent_db_name, state FROM yb_database_clones()")));
+  ASSERT_EQ(row, Format("$0, $1, ABORTED", kTargetNamespaceName1, kSourceNamespaceName));
+  auto error_msg = ASSERT_RESULT((source_conn_->FetchRowAsString(
+      "SELECT failure_reason FROM yb_database_clones()")));
+  ASSERT_STR_CONTAINS(error_msg, "timed out");
+}
+
 // The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
 // inherited from pg_dump.
 TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
@@ -975,6 +1006,23 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithS
   ASSERT_EQ(row, kRows[3]);
 }
 
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithSequencesAndDdl)) {
+  auto seq_table_name = "table_with_sequence";
+  ASSERT_OK(
+      source_conn_->ExecuteFormat("CREATE TABLE $0 (id INT, i2 SERIAL, c1 INT)", seq_table_name));
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO $0 (id,c1) VALUES (11,22)", seq_table_name));
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  // Run a DDL that increments the last_breaking_version of pg_yb_catalog.
+  ASSERT_OK(source_conn_->ExecuteFormat("ALTER TABLE $0 RENAME COLUMN c1 TO c2", seq_table_name));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_to_time));
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto row = ASSERT_RESULT(
+      (target_conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", seq_table_name))));
+  ASSERT_EQ(row, 1);
+}
+
 // Test yb_database_clones (ysql function to list clones)
 TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(YsqlListClonesAPI)) {
   std::string list_clones_query =
@@ -1031,7 +1079,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
   // Wait for the split to complete on master.
   // The parent should still be running because we have cleanup is still disabled.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(source_table->GetTablets(IncludeInactive::kTrue)).size() == 5;
+    return VERIFY_RESULT(source_table->GetTabletsIncludeInactive()).size() == 5;
   }, 30s, "Wait for master split."));
   auto after_master_split_timestamp = ASSERT_RESULT(GetCurrentTime()).ToInt64();
 
@@ -1042,7 +1090,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
   // Enable cleanup of split parents and wait for the split parent to be deleted.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto tablets = VERIFY_RESULT(source_table->GetTablets(IncludeInactive::kTrue));
+    auto tablets = VERIFY_RESULT(source_table->GetTabletsIncludeInactive());
     for (auto& tablet : tablets) {
       if (tablet->id() == split_tablet_id) {
         return tablet->LockForRead()->is_hidden();

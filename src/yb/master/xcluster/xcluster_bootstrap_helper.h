@@ -16,10 +16,12 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
-#include "yb/util/cow_object.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
+
+template<class State>
+class CowWriteLock;
 
 namespace rpc {
 class RpcContext;
@@ -77,7 +79,7 @@ class SetupUniverseReplicationWithBootstrapHelper
   // mutation to the sys catalog.
   void SetReplicationBootstrapState(
       scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info,
-      const SysUniverseReplicationBootstrapEntryPB::State& state);
+      const SysUniverseReplicationBootstrapEntryPB_State& state);
 
   // SetupReplicationWithBootstrap
   Status ValidateReplicationBootstrapRequest(

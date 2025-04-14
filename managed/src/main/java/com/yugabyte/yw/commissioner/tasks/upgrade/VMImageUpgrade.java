@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -14,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -22,12 +24,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -96,7 +100,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     Set<NodeDetails> nodeSet = fetchNodesForCluster();
     String newVersion = taskParams().ybSoftwareVersion;
     if (taskParams().isSoftwareUpdateViaVm) {
-      createCheckUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+      createCheckUpgradeTask(newVersion);
       if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
           && CommonUtils.isAutoFlagSupported(newVersion)) {
         createCheckSoftwareVersionTask(nodeSet, newVersion)
@@ -216,6 +220,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
     Universe universe = getUniverse();
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     for (NodeDetails node : imageSettingsMap.keySet()) {
       ImageSettings imageSettings = imageSettingsMap.get(node);
       final UUID imageBundleUUID = imageSettings.imageBundleUUID;
@@ -258,18 +263,37 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       node.ybPrebuiltAmi =
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
+      // Must use ansible provisioning for non-systemd universes
+      Customer customer = Customer.get(universe.getCustomerId());
+      boolean useAnsibleProvisioning =
+          confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
+              || !userIntent.useSystemd;
       // TODO This can be improved to skip already provisioned nodes as there are long running
       // subtasks.
-      createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      if (userIntent.providerType != CloudType.local) {
+        createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        if (!useAnsibleProvisioning) {
+          createYNPProvisioningTask(universe, nodeList)
+              .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        }
+      }
+      createInstallNodeAgentTasks(universe, nodeList)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
-      createSetupServerTasks(
-              nodeList,
-              p -> {
-                p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
-                p.rebootNodeAllowed = true;
-              })
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
+        createSetupServerTasks(
+                nodeList,
+                p -> {
+                  p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType;
+                  p.rebootNodeAllowed = true;
+                })
+            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      } else {
+        createSetNodeStatusTasks(
+                nodeList, NodeStatus.builder().nodeState(NodeState.ServerSetup).build())
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      }
       createHookProvisionTask(nodeList, TriggerType.PostNodeProvision);
       createLocaleCheckTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createCheckGlibcTask(

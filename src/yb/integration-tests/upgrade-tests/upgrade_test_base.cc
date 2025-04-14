@@ -23,7 +23,7 @@
 #include "yb/util/debug.h"
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/version_info.h"
+#include "yb/common/version_info.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/server/server_base.pb.h"
@@ -49,7 +49,10 @@ std::string GetRelevantUrl(const BuildInfo& info) {
   return kIsDebug ? info.darwin_debug_arm64_url : info.darwin_release_arm64_url;
 #elif defined(__linux__) && defined(__x86_64__)
   return kIsDebug ? info.linux_debug_x86_url : info.linux_release_x86_url;
+#elif defined(__linux__) && defined(__aarch64__)
+  return kIsDebug ? "" : info.linux_release_aarch64_url;
 #endif
+
   return "";
 }
 
@@ -84,6 +87,7 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
         build_info.build_number = GetXmlPathAsString(node, "build_number");
         build_info.linux_debug_x86_url = GetXmlPathAsString(node, "linux_debug_x86");
         build_info.linux_release_x86_url = GetXmlPathAsString(node, "linux_release_x86");
+        build_info.linux_release_aarch64_url = GetXmlPathAsString(node, "linux_release_aarch64");
         build_info.darwin_debug_arm64_url = GetXmlPathAsString(node, "darwin_debug_arm64");
         build_info.darwin_release_arm64_url = GetXmlPathAsString(node, "darwin_release_arm64");
         return build_info;
@@ -181,18 +185,6 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-void AppendCsvFlagValue(
-    std::vector<std::string>& flag_list, const std::string& flag_name,
-    const std::string& value_to_add) {
-  for (auto& flag : flag_list) {
-    if (flag.starts_with(Format("--$0=", flag_name))) {
-      flag += Format(",$0", value_to_add);
-      return;
-    }
-  }
-  flag_list.push_back(Format("--$0=$1", flag_name, value_to_add));
-}
-
 // Add the flag_name to undefok list, so that it can be set on all versions even if the version does
 // not contain the flag. If the flag_list already contains an undefok flag, append to it, else
 // insert a new entry.
@@ -227,6 +219,8 @@ bool IsUpgradeSupported(const std::string& from_version) {
 
 }  // namespace
 
+const MonoDelta UpgradeTestBase::kNoDelayBetweenNodes = 0s;
+
 UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
     : old_version_info_(CHECK_RESULT(GetBuildInfoForVersion(from_version))) {
   LOG(INFO) << "Old version: " << old_version_info_.version << ": "
@@ -235,24 +229,28 @@ UpgradeTestBase::UpgradeTestBase(const std::string& from_version)
 
 void UpgradeTestBase::SetUp() {
   if (IsSanitizer()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported with sanitizers";
   }
 
-  if (old_version_info_.version.empty()) {
-    test_skipped_ = true;
-    CHECK(false) << "Build info for old version not set";
-    return;
+// Disable mac tests in the lab since the lab runs multiple tests in parallel on the mac causing
+// these to timeout.
+#ifdef __APPLE__
+  if (getenv("YB_SPARK_COPY_MODE")) {
+    GTEST_SKIP() << "Upgrade testing not supported on mac spark machines";
+  }
+#endif
+
+  if (GetRelevantUrl(old_version_info_).empty()) {
+    GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
+                 << " for this OS architecture and build type";
   }
 
   if (GetRelevantUrl(old_version_info_).empty()) {
-    test_skipped_ = true;
     GTEST_SKIP() << "Upgrade testing not supported from version " << old_version_info_.version
                  << " for this OS architecture and build type";
   }
 
   if (!IsUpgradeSupported(old_version_info_.version)) {
-    test_skipped_ = true;
     GTEST_SKIP() << "PG15 upgrade not supported from version " << old_version_info_.version;
   }
 
@@ -298,6 +296,22 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   ExternalMiniClusterITestBase::SetUpOptions(opts);
 }
 
+uint32 UpgradeTestBase::UpgradeCompatibilityGucValue(MajorUpgradeCompatibilityType type) const {
+  return type == MajorUpgradeCompatibilityType::kBackwardsCompatible ? old_ysql_major_version_ : 0;
+}
+
+Status UpgradeTestBase::SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType type) {
+  if (!IsYsqlMajorVersionUpgrade()) {
+    return Status::OK();
+  }
+
+  auto version = UpgradeCompatibilityGucValue(type);
+
+  LOG(INFO) << "Setting ysql_yb_major_version_upgrade_compatibility to " << version;
+  return cluster_->AddAndSetExtraFlag(
+      "ysql_yb_major_version_upgrade_compatibility", ToString(version));
+}
+
 Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOptions& options) {
   LOG(INFO) << "Starting cluster in version: " << old_version_info_.version;
 
@@ -313,20 +327,18 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   current_version_tserver_bin_path_ = cluster_->GetTServerBinaryPath();
   cluster_->SetDaemonBinPath(old_version_bin_path_);
 
-  server::GetStatusRequestPB req;
-  server::GetStatusResponsePB resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(kRpcTimeout);
-  RETURN_NOT_OK(
-      cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
-  LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
+  if (cluster_->opts_.enable_ysql) {
+    server::GetStatusRequestPB req;
+    server::GetStatusResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kRpcTimeout);
+    RETURN_NOT_OK(
+        cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
+    LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
 
-  is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
-                                   current_version_info_.ysql_major_version();
-
-  if (IsYsqlMajorVersionUpgrade()) {
-    // YB_TODO: Remove when support for expression pushdown in mixed mode is implemented.
-    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_enable_expression_pushdown", "false"));
+    old_ysql_major_version_ = resp.status().version_info().ysql_major_version();
+    is_ysql_major_version_upgrade_ =
+        old_ysql_major_version_ != current_version_info_.ysql_major_version();
   }
 
   return Status::OK();
@@ -345,6 +357,8 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
   RETURN_NOT_OK_PREPEND(
       RestartAllTServersInCurrentVersion(delay_between_nodes), "Failed to restart tservers");
 
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
+
   RETURN_NOT_OK_PREPEND(
       PromoteAutoFlags(AutoFlagClass::kLocalVolatile), "Failed to promote volatile AutoFlags");
 
@@ -360,6 +374,9 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
 
 Status UpgradeTestBase::RestartAllMastersInCurrentVersion(MonoDelta delay_between_nodes) {
   LOG(INFO) << "Restarting all yb-masters in current version";
+
+  RETURN_NOT_OK(
+      SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kBackwardsCompatible));
 
   for (auto* master : cluster_->master_daemons()) {
     RETURN_NOT_OK(RestartMasterInCurrentVersion(*master, /*wait_for_cluster_to_stabilize=*/false));
@@ -420,6 +437,14 @@ Status UpgradeTestBase::PerformYsqlMajorCatalogUpgrade() {
     return Status::OK();
   }
 
+  RETURN_NOT_OK(StartYsqlMajorCatalogUpgrade());
+
+  return WaitForYsqlMajorCatalogUpgradeToFinish();
+}
+
+Status UpgradeTestBase::StartYsqlMajorCatalogUpgrade() {
+  LOG_WITH_FUNC(INFO) << "Starting ysql major upgrade";
+
   LOG(INFO) << "Running ysql major catalog version upgrade";
 
   master::StartYsqlMajorCatalogUpgradeRequestPB req;
@@ -432,7 +457,7 @@ Status UpgradeTestBase::PerformYsqlMajorCatalogUpgrade() {
     return StatusFromPB(resp.error().status());
   }
 
-  return WaitForYsqlMajorCatalogUpgradeToFinish();
+  return Status::OK();
 }
 
 Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {
@@ -451,7 +476,8 @@ Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {
   };
 
   return LoggedWaitFor(
-      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete");
+      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete",
+      /*initial_delay*/ 1s);
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
@@ -510,6 +536,10 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
 }
 
 Status UpgradeTestBase::PerformYsqlUpgrade() {
+  if (!cluster_->opts_.enable_ysql) {
+    return Status::OK();
+  }
+
   LOG(INFO) << "Running ysql upgrade";
 
   tserver::UpgradeYsqlRequestPB req;
@@ -529,6 +559,8 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
 
 Status UpgradeTestBase::FinalizeUpgrade() {
   LOG(INFO) << "Finalizing upgrade";
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
 
   RETURN_NOT_OK_PREPEND(
       FinalizeYsqlMajorCatalogUpgrade(), "Failed to run ysql major catalog upgrade");
@@ -595,6 +627,9 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
 Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_nodes) {
   LOG(INFO) << "Rolling back upgrade";
 
+  RETURN_NOT_OK(
+      SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kBackwardsCompatible));
+
   RETURN_NOT_OK_PREPEND(RollbackVolatileAutoFlags(), "Failed to rollback Volatile AutoFlags");
 
   RETURN_NOT_OK_PREPEND(
@@ -605,6 +640,8 @@ Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_node
 
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInOldVersion(delay_between_nodes), "Failed to restart masters");
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
 
   LOG(INFO) << "Cluster rolled back to old version";
   return Status::OK();

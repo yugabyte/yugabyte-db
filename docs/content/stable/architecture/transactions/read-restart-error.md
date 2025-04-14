@@ -16,6 +16,7 @@ rightNav:
 The distributed nature of YugabyteDB means that clock skew can be present between different physical nodes in the database cluster. Given that YugabyteDB is a multi-version concurrency control (MVCC) database, this clock skew can sometimes result in an unresolvable ambiguity of whether a version of data should, or not be part of a read in snapshot-based transaction isolations (that is, repeatable read and read committed). There are multiple solutions for this problem, [each with their own challenges](https://www.yugabyte.com/blog/evolving-clock-sync-for-distributed-databases/). PostgreSQL doesn't require defining semantics around read restart errors because it is a single-node database without clock skew.
 
 Read restart errors are raised to maintain the _read-after-commit-visibility_ guarantee: any read query should see all data that was committed before the read query was issued (even in the presence of clock skew between nodes). In other words, read restart errors prevent the following stale read anomaly:
+
 1. First, user X commits some data, for which the database picks a commit timestamp, say commit_time.
 2. Next, user X informs user Y about the commit via a channel outside the database, say a phone call.
 3. Then, user Y issues a read that picks a read time, which is less than the prior commit_time due to clock skew.
@@ -74,6 +75,7 @@ How does YugabyteDB prevent this clock skew anomaly?
 
 You can handle and mitigate read restart errors using the following techniques:
 
+- {{<tags/feature/tp idea="1807">}} Configure [highly accurate clocks](../../../deploy/manual-deployment/system-config#set-up-time-synchronization).
 - Implement retry logic in the application. Application retries can help mitigate read restart errors. Moreover, a statement or a transaction may fail in other ways such as transaction conflicts or infrastructure failures. Therefore, a retry mechanism is strongly recommended for a cloud-native, distributed database such as YugabyteDB.
 
   While implementing application retries is the best long-term approach, there are a few short-term solutions you can use in the interim.
@@ -100,3 +102,11 @@ You can handle and mitigate read restart errors using the following techniques:
   This will enable YugabyteDB to retry the query internally on behalf of the user. As long as the output of a statement hasn't crossed ysql_output_buffer_size to result in flushing partial data to the external client, the YSQL query layer retries read restart errors for all statements in a Read Committed transaction block, for the first statement in a Repeatable Read transaction block, and for any standalone statement outside a transaction block. As a tradeoff, increasing the buffer size also increases the memory consumed by the YSQL backend processes, resulting in a higher risk of out-of-memory errors.
 
   Be aware that increasing `ysql_output_buffer_size` is not a silver bullet. For example, the COPY command can still raise a read restart error even though the command has a one line output. Increasing `ysql_output_buffer_size` is not useful in this scenario. The application must retry the COPY command instead. Another example is DMLs such as INSERT/UPDATE/DELETE. These do not have enough output to overflow the buffer size. However, when these statements are executed in the middle of a REPEATABLE READ transaction (e.g. BEGIN ISOLATION LEVEL REPEATABLE READ; ... INSERT ... COMMIT;), a read restart error cannot be retried internally by YugabyteDB. The onus is on the application to ROLLBACK and retry the transaction.
+- In rare scenarios where neither latency nor memory can be compromised, but _read-after-commit-visibility_ guarantee is not a necessity, set `yb_read_after_commit_visibility` to `relaxed`. This option only affects pure reads.
+
+  ```sql
+  SET yb_read_after_commit_visibility TO relaxed;
+  SELECT * FROM large_table;
+  ```
+
+  Please exercise caution when using this option.

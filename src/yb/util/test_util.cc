@@ -32,6 +32,12 @@
 
 #include "yb/util/test_util.h"
 
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+#include <cstdlib>
+
 #include <gtest/gtest-spi.h>
 
 #include "yb/gutil/casts.h"
@@ -40,6 +46,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/crash_point.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -413,6 +420,35 @@ Status CorruptFile(
   RETURN_NOT_OK(file->Write(offset, data_read));
   RETURN_NOT_OK(file->Sync());
   return file->Close();
+}
+
+Status ForkAndRunToCompletion(const std::function<void(void)>& child,
+                              const std::function<void(void)>& parent) {
+  int pid = fork();
+  if (pid == 0) {
+    child();
+    std::exit(testing::Test::HasFailure());
+  } else {
+    if (parent) {
+      parent();
+    }
+    int wstatus;
+    waitpid(pid, &wstatus, 0 /* options */);
+    if (WEXITSTATUS(wstatus) != 0) {
+      return STATUS(RuntimeError, "Child process has test failures");
+    }
+    return Status::OK();
+  }
+}
+
+Status ForkAndRunToCrashPoint(const std::function<void(void)>& child,
+                              const std::function<void(void)>& parent,
+                              std::string_view crash_point) {
+  return ForkAndRunToCompletion([&child, crash_point] {
+    SetTestCrashPoint(crash_point);
+    child();
+    FAIL() << "Child process did not reach crash point";
+  }, parent);
 }
 
 } // namespace yb

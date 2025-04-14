@@ -562,8 +562,8 @@ public class MiniYBCluster implements AutoCloseable {
     String filenamePrefix = "initial_sys_catalog_snapshot_";
     String filename;
     switch (ver) {
-      case PG15_ALPHA:
-        filename = filenamePrefix + "2.25.0.0-pg15-alpha-2";
+      case PG15_12:
+        filename = filenamePrefix + "2025.1.0.0-pg15-12-2";
         break;
       case LATEST:
         throw new IllegalArgumentException("LATEST snapshot does not need a custom path");
@@ -722,7 +722,6 @@ public class MiniYBCluster implements AutoCloseable {
     if (clusterParameters.startYsqlConnMgr) {
       tsCmdLine.add("--ysql_conn_mgr_port=" + Integer.toString(ysqlConnMgrPort));
       tsCmdLine.add("--enable_ysql_conn_mgr=true");
-      tsCmdLine.add("--allowed_preview_flags_csv=enable_ysql_conn_mgr");
     }
 
     if (tserverFlags != null) {

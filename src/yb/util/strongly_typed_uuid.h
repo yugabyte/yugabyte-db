@@ -86,6 +86,8 @@ namespace yb {
 template <class Tag>
 class StronglyTypedUuid {
  public:
+  StronglyTypedUuid() = default;
+
   // This is public so that we can construct a strongly-typed UUID value out of a regular one.
   // In that case we'll have to spell out the class name, which will enforce readability.
   explicit StronglyTypedUuid(const Uuid& uuid) : uuid_(uuid) {}
@@ -188,33 +190,14 @@ std::ostream& operator << (std::ostream& out, const StronglyTypedUuid<Tag>& uuid
 }
 
 template <class Tag>
-bool operator == (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
+bool operator== (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
   return *lhs == *rhs;
 }
 
 template <class Tag>
-bool operator != (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return !(lhs == rhs);
-}
-
-template <class Tag>
-bool operator < (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return *lhs < *rhs;
-}
-
-template <class Tag>
-bool operator > (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return rhs < lhs;
-}
-
-template <class Tag>
-bool operator <= (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return !(rhs < lhs);
-}
-
-template <class Tag>
-bool operator >= (const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
-  return !(lhs < rhs);
+std::strong_ordering operator <=> (
+    const StronglyTypedUuid<Tag>& lhs, const StronglyTypedUuid<Tag>& rhs) noexcept {
+  return std::compare_strong_order_fallback(*lhs, *rhs);
 }
 
 template <class Tag>

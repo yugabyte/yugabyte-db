@@ -1,0 +1,17 @@
+# src/test/regress/yb_pg_misc_independent_1_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests - Part 1.
+# This includes miscellaneous tests that are not yet characterized to a proper testsuite.  Unlike
+# yb_pg_misc_serial_schedule, the tests in this schedule have no dependencies.
+####################################################################################################
+test: comments
+test: yb.port.index_including
+test: yb.port.create_function_sql
+test: create_cast
+test: yb.port.drop_if_exists
+test: yb.port.case
+test: yb.port.namespace
+test: security_label
+test: yb.port.lock
+test: yb.port.drop_operator

@@ -65,9 +65,11 @@
 #include "utils/numeric.h"
 #include "utils/xml.h"
 
+/* YB includes */
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
+
 
 /*
  * Location tracking support --- simpler than bison's default, since we only
@@ -319,9 +321,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	struct KeyActions *keyactions;
 	struct KeyAction *keyaction;
 
-	OptSplit *splitopt;
+	YbOptSplit *splitopt;
 	char *grpopt;
-	RowBounds *rowbounds;
+	YbRowBounds *rowbounds;
 }
 
 %type <node>	stmt toplevel_stmt schema_stmt routine_body_stmt
@@ -339,7 +341,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateDomainStmt CreateExtensionStmt CreateGroupStmt CreateOpClassStmt
 		CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
 		CreateSchemaStmt CreateSeqStmt CreateStmt CreateStatsStmt CreateTableSpaceStmt
-		CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt CreateTableGroupStmt
+		CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt YbCreateTableGroupStmt
 		CreateAssertionStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
 		CreateUserStmt CreateUserMappingStmt CreateRoleStmt CreatePolicyStmt
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt DoStmt
@@ -363,7 +365,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateMatViewStmt RefreshMatViewStmt CreateAmStmt
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
-		BackfillIndexStmt YbCreateProfileStmt YbDropProfileStmt
+		YbBackfillIndexStmt YbCreateProfileStmt YbDropProfileStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
@@ -656,7 +658,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <grpopt>	OptTableGroup
 %type <rolespec> OptTableGroupOwner
 
-%type <splitopt> OptSplit SplitClause
+%type <splitopt> YbOptSplit SplitClause
 
 %type <str>		opt_provider security_label
 
@@ -695,7 +697,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
-%type <rowbounds>	RowBounds
+%type <rowbounds>	YbRowBounds
 %type <str>		opt_for_bfinstr
 %type <str>		partition_key
 %type <str>		row_key row_key_end row_key_start
@@ -1035,9 +1037,11 @@ stmt:
 			| AlterRoleSetStmt
 			| AlterRoleStmt
 			| AlterSeqStmt
+			| AlterStatsStmt
 			| AlterTableStmt
 			| AlterTypeStmt
-			| BackfillIndexStmt
+			| AnalyzeStmt
+			| YbBackfillIndexStmt
 			| CallStmt
 			| ClosePortalStmt
 			| CommentStmt
@@ -1119,7 +1123,6 @@ stmt:
 				parser_ybc_beta_feature(@1, "alter text search configuration", false);
 			  }
 			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
 			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
@@ -1138,7 +1141,6 @@ stmt:
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1155,7 +1157,7 @@ stmt:
 			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
 
 			/* Deprecated statements */
-			| CreateTableGroupStmt
+			| YbCreateTableGroupStmt
 		;
 
 /*****************************************************************************
@@ -2908,7 +2910,11 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_AddInherit;
@@ -2918,7 +2924,11 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_DropInherit;
@@ -3658,7 +3668,7 @@ copy_generic_opt_arg_list_item:
 CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 			OptInherit OptPartitionSpec table_access_method_clause OptWith
 			OnCommitOption OptTableSpace
-			OptSplit OptTableGroup
+			YbOptSplit OptTableGroup
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3706,7 +3716,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '('
 			OptTableElementList ')' OptInherit OptPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
-			OptSplit OptTableGroup
+			YbOptSplit OptTableGroup
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3754,7 +3764,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 		| CREATE OptTemp TABLE qualified_name OF any_name
 			OptTypedTableElementList OptPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
-			OptSplit OptTableGroup
+			YbOptSplit OptTableGroup
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3803,7 +3813,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name
 			OptTypedTableElementList OptPartitionSpec table_access_method_clause
 			OptWith OnCommitOption OptTableSpace
-			OptSplit OptTableGroup
+			YbOptSplit OptTableGroup
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3852,7 +3862,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 		| CREATE OptTemp TABLE qualified_name PARTITION OF qualified_name
 			OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
 			table_access_method_clause OptWith OnCommitOption OptTableSpace
-			OptSplit
+			YbOptSplit
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -3880,7 +3890,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF
 			qualified_name OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
-			table_access_method_clause OptWith OnCommitOption OptTableSpace	OptSplit
+			table_access_method_clause OptWith OnCommitOption OptTableSpace	YbOptSplit
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -4506,7 +4516,15 @@ ConstraintElem:
 				}
 		;
 
-opt_no_inherit:	NO INHERIT { parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129); $$ = true; }
+opt_no_inherit:	NO INHERIT
+				{
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
+					$$ = true;
+				}
 			| /* EMPTY */							{  $$ = false; }
 		;
 
@@ -4688,7 +4706,11 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
+					if (!*YBCGetGFlags()->ysql_enable_inheritance)
+					{
+						parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
+					}
+					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = $3;
 				}
 			| /*EMPTY*/								{ $$ = NIL; }
@@ -4796,7 +4818,7 @@ OptConsTableSpace:
 ExistingIndex:   USING INDEX name					{ $$ = $3; }
 		;
 
-OptSplit:
+YbOptSplit:
 			SPLIT '(' SplitClause ')'
 				{
 					$$ = $3;
@@ -4807,21 +4829,21 @@ OptSplit:
         }
 			| /* EMPTY */
 				{
-					$$ = (OptSplit*) NULL;
+					$$ = (YbOptSplit*) NULL;
 				}
 		;
 
 SplitClause:
       INTO Iconst TABLETS
       	{
-      		$$ = makeNode(OptSplit);
+      		$$ = makeNode(YbOptSplit);
       		$$->split_type = NUM_TABLETS;
       		$$->num_tablets = $2;
       		$$->split_points = NULL;
       	}
       | AT VALUES '(' yb_split_points ')'
         {
-      	  $$ = makeNode(OptSplit);
+      	  $$ = makeNode(YbOptSplit);
       	  $$->split_type = SPLIT_POINTS;
       	  $$->num_tablets = -1;
       	  $$->split_points = $4;
@@ -5184,6 +5206,10 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("increment", (Node *) $3, @1);
 				}
+			| LOGGED
+				{
+					$$ = makeDefElem("logged", NULL, @1);
+				}
 			| MAXVALUE NumericOnly
 				{
 					$$ = makeDefElem("maxvalue", (Node *) $2, @1);
@@ -5206,7 +5232,6 @@ SeqOptElem: AS SimpleTypename
 				}
 			| SEQUENCE NAME_P any_name
 				{
-					/* not documented, only used by pg_dump */
 					$$ = makeDefElem("sequence_name", (Node *) $3, @1);
 				}
 			| START opt_with NumericOnly
@@ -5220,6 +5245,10 @@ SeqOptElem: AS SimpleTypename
 			| RESTART opt_with NumericOnly
 				{
 					$$ = makeDefElem("restart", (Node *) $3, @1);
+				}
+			| UNLOGGED
+				{
+					$$ = makeDefElem("unlogged", NULL, @1);
 				}
 		;
 
@@ -5332,13 +5361,13 @@ opt_procedural:
  *
  *****************************************************************************/
 
-CreateTableGroupStmt:
+YbCreateTableGroupStmt:
  		CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions OptTableSpace
  				{
 					parser_ybc_not_support_in_templates(@1, "Tablegroup");
  					parser_ybc_beta_feature(@1, "tablegroup", true);
 
- 					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
+ 					YbCreateTableGroupStmt *n = makeNode(YbCreateTableGroupStmt);
  					n->tablegroupname = $3;
  					n->owner = $4;
  					n->options = $5;
@@ -8501,7 +8530,7 @@ defacl_privilege_target:
 
 IndexStmt:	CREATE opt_unique INDEX yb_opt_concurrently_index opt_index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace OptSplit where_clause
+			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace YbOptSplit where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 
@@ -8534,7 +8563,7 @@ IndexStmt:	CREATE opt_unique INDEX yb_opt_concurrently_index opt_index_name
 				}
 			| CREATE opt_unique INDEX yb_opt_concurrently_index IF_P NOT EXISTS name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
-			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace OptSplit where_clause
+			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace YbOptSplit where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
 
@@ -8768,13 +8797,13 @@ opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
 			| /*EMPTY*/						{ $$ = SORTBY_NULLS_DEFAULT; }
 		;
 
-BackfillIndexStmt:
+YbBackfillIndexStmt:
 			BACKFILL INDEX oid_list opt_for_bfinstr
-				READ TIME read_time RowBounds
+				READ TIME read_time YbRowBounds
 				{
 					parser_ybc_not_support_in_templates(@1, "Index backfill");
 
-					BackfillIndexStmt *n = makeNode(BackfillIndexStmt);
+					YbBackfillIndexStmt *n = makeNode(YbBackfillIndexStmt);
 					n->oid_list = $3;
 
 					n->bfinfo = makeNode(YbBackfillInfo);
@@ -8831,9 +8860,9 @@ read_time:
 			}
 		;
 
-RowBounds:	PARTITION partition_key
+YbRowBounds:	PARTITION partition_key
 				{
-					$$ = makeNode(RowBounds);
+					$$ = makeNode(YbRowBounds);
 					/* Strip the leading 'x' */
 					$$->partition_key = $2 + 1;
 					$$->row_key_start = NULL;
@@ -8841,7 +8870,7 @@ RowBounds:	PARTITION partition_key
 				}
 			| PARTITION partition_key FROM row_key_start
 				{
-					$$ = makeNode(RowBounds);
+					$$ = makeNode(YbRowBounds);
 					/* Strip the leading 'x' */
 					$$->partition_key = $2 + 1;
 					$$->row_key_start = $4 + 1;
@@ -8849,7 +8878,7 @@ RowBounds:	PARTITION partition_key
 				}
 			| PARTITION partition_key FROM row_key_start TO row_key_end
 				{
-					$$ = makeNode(RowBounds);
+					$$ = makeNode(YbRowBounds);
 					/* Strip the leading 'x' */
 					$$->partition_key = $2 + 1;
 					$$->row_key_start = $4 + 1;
@@ -10477,7 +10506,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER STATISTICS any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER STATISTICS");
 					RenameStmt *n = makeNode(RenameStmt);
 
 					n->renameType = OBJECT_STATISTIC_EXT;
@@ -10786,7 +10814,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER STATISTICS any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER STATISTICS SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 
 					n->objectType = OBJECT_STATISTIC_EXT;
@@ -10919,7 +10946,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TYPE_P any_name SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE SET SCHEMA", 1893);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 
 					n->objectType = OBJECT_TYPE;
@@ -19510,7 +19536,7 @@ preprocess_pubobj_list(List *pubobjspec_list, core_yyscan_t yyscanner)
 			if (!pubobj->name && !pubobj->pubtable)
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("invalid table name at or near"),
+						errmsg("invalid table name"),
 						parser_errposition(pubobj->location));
 
 			if (pubobj->name)
@@ -19552,7 +19578,7 @@ preprocess_pubobj_list(List *pubobjspec_list, core_yyscan_t yyscanner)
 			else
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("invalid schema name at or near"),
+						errmsg("invalid schema name"),
 						parser_errposition(pubobj->location));
 		}
 

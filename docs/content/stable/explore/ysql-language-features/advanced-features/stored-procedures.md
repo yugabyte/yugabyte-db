@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: explore-ysql-language-features-stored-procedures
     parent: advanced-features
-    weight: 800
+    weight: 500
 type: docs
 ---
 

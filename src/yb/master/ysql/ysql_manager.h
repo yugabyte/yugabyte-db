@@ -57,7 +57,13 @@ class YsqlManager : public YsqlManagerIf {
 
   Status SetInitDbDone(const LeaderEpoch& epoch);
 
-  bool IsYsqlMajorCatalogUpgradeInProgress() const;
+  // Checks if a YSQL major upgrade is in progress. This is derived from the state of the local
+  // master and its Ysql config.
+  // This will return false until the yb master leader is on the new version, and it will return
+  // false as soon as the YsqlMajorCatalog has been finalized.
+  // Use IsYsqlMajorVersionUpgradeInProgress if a more comprehensive view of the upgrade state is
+  // required.
+  bool IsMajorUpgradeInProgress() const override;
 
   void HandleNewTableId(const TableId& table_id);
 
@@ -77,6 +83,10 @@ class YsqlManager : public YsqlManagerIf {
       const IsYsqlMajorCatalogUpgradeDoneRequestPB* req,
       IsYsqlMajorCatalogUpgradeDoneResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Returns the prior version's table if we are in the middle of a ysql major upgrade.
+  // In all other cases, returns the current version.
+  Result<TableId> GetVersionSpecificCatalogTableId(const TableId& current_table_id) const override;
+
   Status FinalizeYsqlMajorCatalogUpgrade(
       const FinalizeYsqlMajorCatalogUpgradeRequestPB* req,
       FinalizeYsqlMajorCatalogUpgradeResponsePB* resp, rpc::RpcContext* rpc,
@@ -91,6 +101,16 @@ class YsqlManager : public YsqlManagerIf {
       RollbackYsqlMajorCatalogVersionResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status GetYsqlMajorCatalogUpgradeState(
+      const GetYsqlMajorCatalogUpgradeStateRequestPB* req,
+      GetYsqlMajorCatalogUpgradeStateResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
+
+  Status ValidateWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
+
+  Status ValidateTServerVersion(const VersionInfoPB& version) const override;
+
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
 
@@ -104,6 +124,8 @@ class YsqlManager : public YsqlManagerIf {
 
   // This is used for tracking that initdb has started running previously.
   std::atomic<bool> pg_proc_exists_{false};
+
+  bool advisory_locks_table_created_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(YsqlManager);
 };

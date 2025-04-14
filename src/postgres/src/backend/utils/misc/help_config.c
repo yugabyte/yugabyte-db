@@ -33,7 +33,7 @@ typedef union
 	struct config_bool _bool;
 	struct config_real real;
 	struct config_int integer;
-	struct config_oid oid;
+	struct yb_config_oid oid;
 	struct config_string string;
 	struct config_enum _enum;
 } mixedStruct;

@@ -48,9 +48,9 @@ The following tutorial describes how to use Scala's Spark API [`spark-shell`](ht
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
-- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
+- [Apache Spark 3.5.4](https://spark.apache.org/downloads.html).
 
 ## Start Scala Spark shell with YugabyteDB driver
 
@@ -67,7 +67,7 @@ Welcome to
       ____              __
      / __/__  ___ _____/ /__
     _\ \/ _ \/ _ `/ __/  '_/
-   /___/ .__/\_,_/_/ /_/\_\   version 3.3.0
+   /___/ .__/\_,_/_/ /_/\_\   version 3.5.4
       /_/
 
 Using Scala version 2.12.15 (OpenJDK 64-Bit Server VM, Java 1.8.0_292)
@@ -309,6 +309,6 @@ To verify that the spark job is created,
 
 1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned when you started the [`spark-sql`](#start-scala-spark-shell-with-yugabytedb-driver) shell.
 
-1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following image:
+1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following illustration:
 
    ![Parallelism](/images/develop/ecosystem-integrations/parallelism.png)

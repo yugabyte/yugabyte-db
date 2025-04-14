@@ -21,7 +21,6 @@
 
 #include <signal.h>
 #include <unistd.h>
-#include <stdatomic.h>
 #include <sys/stat.h>
 
 #include "miscadmin.h"
@@ -32,19 +31,22 @@
 #include "storage/ipc.h"
 #include "tcop/tcopprot.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
+#include <stdatomic.h>
+
 
 /*
  * This flag is set during proc_exit() to change ereport()'s behavior,
  * so that an ereport() from an on_proc_exit routine cannot get us out
  * of the exit procedure.  We do NOT want to go back to the idle loop...
  */
-atomic_bool		proc_exit_inprogress = false;
+atomic_bool proc_exit_inprogress = false;
 
 /*
  * Set when shmem_exit() is in progress.
  */
-atomic_bool		shmem_exit_inprogress = false;
+atomic_bool shmem_exit_inprogress = false;
 
 /*
  * This flag tracks whether we've called atexit() in the current process
@@ -105,6 +107,10 @@ static int	on_proc_exit_index,
 void
 proc_exit(int code)
 {
+	/* not safe if forked by system(), etc. */
+	if (MyProcPid != (int) getpid())
+		elog(PANIC, "proc_exit() called in child process");
+
 	/* Clean up everything that must be cleaned up */
 	proc_exit_prepare(code);
 

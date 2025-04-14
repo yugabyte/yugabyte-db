@@ -15,14 +15,20 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
 
 @Slf4j
 public abstract class ServerSubTaskBase extends AbstractTaskBase {
+
+  private static final Long VALIDATE_PRECHECK_ADMIN_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
+  private static final Long VALIDATE_PRECHECK_SOCKET_READ_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(8);
+  private static final Long VALIDATE_PRECHECK_OPERATION_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(15);
 
   @Inject
   protected ServerSubTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -67,6 +73,16 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
+    if (taskParams().isRunOnlyPrechecks()) {
+      YbClientConfig ybClientConfig =
+          new YbClientConfig(
+              masterAddresses,
+              certificate,
+              TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_ADMIN_TIMEOUT_MS),
+              TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_SOCKET_READ_TIMEOUT_MS),
+              TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_OPERATION_TIMEOUT_MS));
+      return ybService.getClientWithConfig(ybClientConfig);
+    }
     return ybService.getClient(masterAddresses, certificate);
   }
 

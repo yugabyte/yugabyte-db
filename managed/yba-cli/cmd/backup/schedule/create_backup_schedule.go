@@ -27,9 +27,9 @@ var createBackupScheduleCmd = &cobra.Command{
 	Short: "Create a YugabyteDB Anywhere universe backup schedule",
 	Long:  "Create an universe backup schedule in YugabyteDB Anywhere",
 	Example: `yba backup schedule create -n <schedule-name> \
-	--schedule-frequency-in-secs <schedule-frequency-in-secs> \
-	--universe-name <universe-name> --storage-config-name <storage-config-name> \
-	--table-type <table-type>`,
+	  --schedule-frequency-in-secs <schedule-frequency-in-secs> \
+	  --universe-name <universe-name> --storage-config-name <storage-config-name> \
+	  --table-type <table-type>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		scheduleName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -38,7 +38,11 @@ var createBackupScheduleCmd = &cobra.Command{
 		if len(strings.TrimSpace(scheduleName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No schedule name specified to create a backup schedule\n", formatter.RedColor))
+				formatter.Colorize(
+					"No schedule name specified to create a backup schedule\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		universeNameFlag, err := cmd.Flags().GetString("universe-name")
@@ -48,7 +52,11 @@ var createBackupScheduleCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to create a backup schedule\n", formatter.RedColor))
+				formatter.Colorize(
+					"No universe name found to create a backup schedule\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		storageConfigNameFlag, err := cmd.Flags().GetString("storage-config-name")
@@ -58,7 +66,11 @@ var createBackupScheduleCmd = &cobra.Command{
 		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No storage config name found to create a backup schedule\n", formatter.RedColor))
+				formatter.Colorize(
+					"No storage config name found to create a backup schedule\n",
+					formatter.RedColor,
+				),
+			)
 		}
 
 		tableTypeFlag, err := cmd.Flags().GetString("table-type")
@@ -68,7 +80,11 @@ var createBackupScheduleCmd = &cobra.Command{
 		if len(strings.TrimSpace(tableTypeFlag)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("Table type not specified to create a backup schedule\n", formatter.RedColor))
+				formatter.Colorize(
+					"Table type not specified to create a backup schedule\n",
+					formatter.RedColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -210,8 +226,11 @@ var createBackupScheduleCmd = &cobra.Command{
 
 		if scheduleFrequencyInSecs == 0 && len(strings.TrimSpace(cronExpression)) == 0 {
 			logrus.Fatalln(
-				formatter.Colorize("Neither frequency of the schedule nor cron expression are provided",
-					formatter.RedColor))
+				formatter.Colorize(
+					"Neither frequency of the schedule nor cron expression are provided",
+					formatter.RedColor,
+				),
+			)
 		}
 		frequencyTimeUnit := "MINUTES"
 
@@ -230,30 +249,34 @@ var createBackupScheduleCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		enablePitr := util.MustGetFlagBool(cmd, "enable-pitr")
+
 		keyspaceTableList = buildKeyspaceTables(keyspaces)
 		requestBody := ybaclient.BackupRequestParams{
-			UniverseUUID:        universeUUID,
-			CustomerUUID:        util.GetStringPointer(authAPI.CustomerUUID),
-			ScheduleName:        util.GetStringPointer(scheduleName),
-			StorageConfigUUID:   storageUUID,
-			BackupType:          util.GetStringPointer(backupType),
-			KeyspaceTableList:   &keyspaceTableList,
-			UseTablespaces:      util.GetBoolPointer(useTablespaces),
-			Sse:                 util.GetBoolPointer(sse),
-			TimeBeforeDelete:    util.GetInt64Pointer(timeBeforeDeleteInMs),
-			SchedulingFrequency: util.GetInt64Pointer(scheduleFrequencyInSecs * 1000),
-			FrequencyTimeUnit:   util.GetStringPointer(frequencyTimeUnit),
-			ExpiryTimeUnit:      util.GetStringPointer("MILLISECONDS"),
-			EnableVerboseLogs:   util.GetBoolPointer(enableVerboseLogs),
-			Parallelism:         util.GetInt32Pointer(int32(parallelism)),
-			BackupCategory:      util.GetStringPointer(strings.ToUpper(category)),
+			UniverseUUID:             universeUUID,
+			CustomerUUID:             util.GetStringPointer(authAPI.CustomerUUID),
+			ScheduleName:             util.GetStringPointer(scheduleName),
+			StorageConfigUUID:        storageUUID,
+			BackupType:               util.GetStringPointer(backupType),
+			KeyspaceTableList:        &keyspaceTableList,
+			UseTablespaces:           util.GetBoolPointer(useTablespaces),
+			Sse:                      util.GetBoolPointer(sse),
+			TimeBeforeDelete:         util.GetInt64Pointer(timeBeforeDeleteInMs),
+			SchedulingFrequency:      util.GetInt64Pointer(scheduleFrequencyInSecs * 1000),
+			FrequencyTimeUnit:        util.GetStringPointer(frequencyTimeUnit),
+			ExpiryTimeUnit:           util.GetStringPointer("MILLISECONDS"),
+			EnableVerboseLogs:        util.GetBoolPointer(enableVerboseLogs),
+			Parallelism:              util.GetInt32Pointer(int32(parallelism)),
+			BackupCategory:           util.GetStringPointer(strings.ToUpper(category)),
+			EnablePointInTimeRestore: util.GetBoolPointer(enablePitr),
 		}
 
 		if (len(strings.TrimSpace(cronExpression))) > 0 {
 			requestBody.SetCronExpression(cronExpression)
 		}
 
-		incrementalBackupFrequencyInSecs, err := cmd.Flags().GetInt64("incremental-backup-frequency-in-secs")
+		incrementalBackupFrequencyInSecs, err := cmd.Flags().
+			GetInt64("incremental-backup-frequency-in-secs")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -279,7 +302,13 @@ var createBackupScheduleCmd = &cobra.Command{
 			if taskUUID != "" {
 				logrus.Info(fmt.Sprintf(
 					"\nWaiting for backup schedule %s creation on universe %s (%s) to be completed\n",
-					formatter.Colorize(scheduleName, formatter.GreenColor), universeNameFlag, universeUUID))
+					formatter.Colorize(
+						scheduleName,
+						formatter.GreenColor,
+					),
+					universeNameFlag,
+					universeUUID,
+				))
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -292,7 +321,7 @@ var createBackupScheduleCmd = &cobra.Command{
 			backupScheduleAPIFilter := ybaclient.ScheduleApiFilter{}
 
 			backupScheduleAPIFilter.SetUniverseUUIDList([]string{universeUUID})
-			backupScheduleAPIDirection := "DESC"
+			backupScheduleAPIDirection := util.DescSortDirection
 			backupScheduleAPISort := "scheduleUUID"
 
 			var limit int32 = 10
@@ -443,7 +472,7 @@ func init() {
 	createBackupScheduleCmd.Flags().Int64("time-before-delete-in-ms", 0,
 		"[Optional] Retention time of the backup in milliseconds")
 	createBackupScheduleCmd.Flags().StringArray("keyspace-info", []string{},
-		"[Optional] Keyspace info to perform backup operation."+
+		"[Optional] Keyspace info to perform backup operation. "+
 			"If no keyspace info is provided, then all the keyspaces of the table type "+
 			"specified are backed up. If the user wants to take backup of a subset of keyspaces, "+
 			"then the user has to specify the keyspace info. Provide the following double colon (::) "+
@@ -452,7 +481,7 @@ func init() {
 			"table-ids=<table-id1>,<table-id2>,<table-id3>\". The table-names and table-ids "+
 			"attributes have to be specified as comma separated values."+
 			formatter.Colorize("Keyspace name is required value. ", formatter.GreenColor)+
-			"Table names and Table ids are optional values and are needed only for YCQL."+
+			"Table names and Table IDs/UUIDs are optional values and are needed only for YCQL."+
 			"Example: --keyspace-info keyspace-name=cassandra::table-names=table1,table2::"+
 			"table-ids=1e683b86-7858-44d1-a1f6-406f50a4e56e,19a34a5e-3a19-4070-9d79-805ed713ce7d "+
 			"--keyspace-info keyspace-name=cassandra2::table-names=table3,table4::"+
@@ -462,12 +491,14 @@ func init() {
 	createBackupScheduleCmd.Flags().String("category", "",
 		"[Optional] Category of the backup. "+
 			"If a universe has YBC enabled, then default value of category is YB_CONTROLLER. "+
-			"Allowed values: YB_BACKUP_SCRIPT, YB_CONTROLLER")
+			"Allowed values: yb_backup_script, yb_controller")
 	createBackupScheduleCmd.Flags().Bool("sse", true,
 		"[Optional] Enable sse while persisting the data in AWS S3.")
 	createBackupScheduleCmd.Flags().Bool("enable-verbose-logs", false,
 		"[Optional] Enable verbose logging while taking backup via \"yb_backup\" script. (default false)")
 	createBackupScheduleCmd.Flags().Int("parallelism", 8,
 		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
+	createBackupScheduleCmd.Flags().Bool("enable-pitr", false,
+		"[Optional] Enable PITR for the backup schedule. (default false)")
 
 }

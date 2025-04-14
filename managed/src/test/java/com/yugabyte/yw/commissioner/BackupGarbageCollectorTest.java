@@ -16,6 +16,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -64,6 +65,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private YbcManager mockYbcManager;
   private CustomerConfig s3StorageConfig;
   private Users defaultUser;
+  private PlatformExecutorFactory platformExecutorFactory;
 
   @Before
   public void setUp() {
@@ -74,6 +76,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     mockBackupHelper = mock(BackupHelper.class);
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST0");
     defaultUser = ModelFactory.testUser(defaultCustomer);
+    platformExecutorFactory = app.injector().instanceOf(PlatformExecutorFactory.class);
     backupGC =
         new BackupGarbageCollector(
             mockPlatformScheduler,
@@ -84,7 +87,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
             mockYbcManager,
             mockTaskManager,
             mockCommissioner,
-            mockStorageUtilFactory);
+            mockStorageUtilFactory,
+            platformExecutorFactory);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.deleteExpiredBackupMaxGCSize)))
         .thenReturn(10);
     when(mockConfGetter.getConfForScope(defaultCustomer, CustomerConfKeys.backupGcNumberOfRetries))
@@ -499,6 +503,20 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     assertEquals(1, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
     verify(mockCommissioner, times(1)).submit(any(), any());
+  }
+
+  @Test
+  public void testHandleDeleteInProgressDuringAppInit() {
+    Backup backup =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID());
+    backup.setState(Backup.BackupState.DeleteInProgress);
+    backup.save();
+    backupGC.handleDeleteInProgressBackups();
+    backup.refresh();
+    assertEquals(Backup.BackupState.QueuedForDeletion, backup.getState());
   }
 
   public static void setUniversePaused(boolean value, Universe universe) {

@@ -18,7 +18,6 @@
 #define PG_YB_CATALOG_VERSION_H
 
 #include "catalog/genbki.h"
-
 #include "catalog/pg_yb_catalog_version_d.h"
 
 /* ----------------
@@ -32,13 +31,13 @@
 CATALOG(pg_yb_catalog_version,8010,YBCatalogVersionRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8011,YBCatalogVersionRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	/* Oid of the database this applies to. */
-	Oid        db_oid;
+	Oid			db_oid;
 
 	/* Current version of the catalog. */
-	int64      current_version;
+	int64		current_version;
 
 	/* Last version (change) that invalidated ongoing transactions. */
-	int64      last_breaking_version;
+	int64		last_breaking_version;
 
 } FormData_yb_pg_catalog_version;
 

@@ -40,12 +40,10 @@ consensus::LWHistoryCutoffPB* RequestTraits<consensus::LWHistoryCutoffPB>::Mutab
 }
 
 Status HistoryCutoffOperation::Apply(int64_t leader_term) {
-  auto primary_cutoff = request()->has_primary_cutoff_ht() ?
-      HybridTime(request()->primary_cutoff_ht()) : HybridTime();
-  auto cotables_cutoff = request()->has_cotables_cutoff_ht() ?
-      HybridTime(request()->cotables_cutoff_ht()) : HybridTime();
-  docdb::HistoryCutoff history_cutoff(
-      { cotables_cutoff, primary_cutoff });
+  docdb::HistoryCutoff history_cutoff = {
+    .cotables_cutoff_ht = HybridTime::FromPB(request()->cotables_cutoff_ht()),
+    .primary_cutoff_ht = HybridTime::FromPB(request()->primary_cutoff_ht())
+  };
 
   VLOG_WITH_PREFIX(2) << "History cutoff replicated " << op_id() << ": " << history_cutoff;
 

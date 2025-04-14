@@ -142,8 +142,8 @@ class PgExpr {
 
  protected:
   PgExpr(
-      Opcode opcode, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
-      const PgTypeAttrs *type_attrs = nullptr);
+      Opcode opcode, const YbcPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      const YbcPgTypeAttrs *type_attrs = nullptr);
   virtual ~PgExpr() = default;
 
   uint64_t YbToDatum(const void* data, int64_t len) {
@@ -152,24 +152,24 @@ class PgExpr {
 
   // Data members.
   Opcode opcode_;
-  const PgTypeEntity *type_entity_;
+  const YbcPgTypeEntity *type_entity_;
   bool collate_is_valid_non_c_;
-  const PgTypeAttrs type_attrs_;
+  const YbcPgTypeAttrs type_attrs_;
 };
 
 class PgConstant : public PgExpr {
  public:
   PgConstant(ThreadSafeArena* arena,
-             const YBCPgTypeEntity *type_entity,
+             const YbcPgTypeEntity *type_entity,
              bool collate_is_valid_non_c,
              const char* collation_sortkey,
              uint64_t datum,
              bool is_null,
              PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
   PgConstant(ThreadSafeArena* arena,
-             const YBCPgTypeEntity *type_entity,
+             const YbcPgTypeEntity *type_entity,
              bool collate_is_valid_non_c,
-             PgDatumKind datum_kind,
+             YbcPgDatumKind datum_kind,
              PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
 
   // Update numeric.
@@ -225,9 +225,9 @@ class PgColumnRef : public PgExpr, public PgFetchedTarget {
   static PgColumnRef* Create(
       ThreadSafeArena* arena,
       int attr_num,
-      const PgTypeEntity* type_entity,
+      const YbcPgTypeEntity* type_entity,
       bool collate_is_valid_non_c,
-      const PgTypeAttrs *type_attrs);
+      const YbcPgTypeAttrs *type_attrs);
 
  protected:
   template <class... Args>
@@ -242,7 +242,7 @@ class PgOperator : public PgExpr {
  public:
   PgOperator(ThreadSafeArena* arena,
              Opcode opcode,
-             const YBCPgTypeEntity *type_entity,
+             const YbcPgTypeEntity *type_entity,
              bool collate_is_valid_non_c);
 
   // Append arguments.
@@ -254,7 +254,7 @@ class PgOperator : public PgExpr {
   static PgOperator* Create(
       ThreadSafeArena* arena,
       const char *name,
-      const YBCPgTypeEntity *type_entity,
+      const YbcPgTypeEntity *type_entity,
       bool collate_is_valid_non_c);
 
  private:
@@ -287,8 +287,8 @@ class PgAggregateOperator : public PgOperator, public PgFetchedTarget {
 class PgTupleExpr : public PgExpr {
  public:
   PgTupleExpr(ThreadSafeArena* arena,
-              const YBCPgTypeEntity* type_entity,
-              const PgTypeAttrs *type_attrs,
+              const YbcPgTypeEntity* type_entity,
+              const YbcPgTypeAttrs *type_attrs,
               int num_elems,
               PgExpr *const *elems);
 

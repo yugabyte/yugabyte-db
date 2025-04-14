@@ -25,7 +25,6 @@
 #ifndef PG_YB_UTILS_H
 #define PG_YB_UTILS_H
 
-#include "c.h"
 #include "postgres.h"
 
 #include "access/reloptions.h"
@@ -38,12 +37,11 @@
 #include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
-
 #include "yb/yql/pggate/util/ybc_util.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
 /*
@@ -73,6 +71,13 @@
 #define IS_NON_EMPTY_STR_FLAG(flag) (flag != NULL && flag[0] != '\0')
 
 /*
+ * Must be kept the same as CatCacheMsgs and RelCacheMsgs in inval.c. YB has
+ * added static_assert to ensure that.
+ */
+#define YB_CATCACHE_MSGS (0)
+#define YB_RELCACHE_MSGS (1)
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -84,29 +89,35 @@
 extern uint64_t YBGetActiveCatalogCacheVersion();
 
 extern uint64_t YbGetCatalogCacheVersion();
+extern uint64_t YbGetNewCatalogVersion();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+extern void YbResetNewCatalogVersion();
+extern void YbSetNewCatalogVersion(uint64_t new_version);
 
 extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
+
+extern void SendLogicalClientCacheVersionToFrontend();
 
 extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
 
-extern YBCPgLastKnownCatalogVersionInfo
-YbGetCatalogCacheVersionForTablePrefetching();
+extern YbcPgLastKnownCatalogVersionInfo YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
-typedef enum GeolocationDistance {
+typedef enum YbGeolocationDistance
+{
 	ZONE_LOCAL,
 	REGION_LOCAL,
 	CLOUD_LOCAL,
 	INTER_CLOUD,
 	UNKNOWN_DISTANCE
-} GeolocationDistance;
+} YbGeolocationDistance;
 
-extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
+extern YbGeolocationDistance get_tablespace_distance(Oid tablespaceoid);
+
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
@@ -192,11 +203,11 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 
-extern int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum);
+extern int	YBAttnumToBmsIndex(Relation rel, AttrNumber attnum);
 
 extern AttrNumber YBBmsIndexToAttnum(Relation rel, int idx);
 
-extern int YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum);
+extern int	YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum);
 
 extern AttrNumber YBBmsIndexToAttnumWithMinAttr(AttrNumber minattr, int idx);
 
@@ -218,14 +229,6 @@ extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
  * whether database with oid dbid is a legacy colocated database.
  */
 extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
-
-/*
- * These functions return whether an index relation is "covered" by the main
- * table. A YB index is said to be covered if it shares the same YB storage
- * as the main table. Primary indexes are by default covered.
- */
-bool YBIsOidCoveredByMainTable(Oid index_oid);
-bool YBIsCoveredByMainTable(Relation rel);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -286,27 +289,25 @@ extern bool YbNeedAdditionalCatalogTables();
  * the same name. So in this case we just ignore the DocDB 'NotFound' error and
  * delete our metadata.
  */
-extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
+extern void HandleYBStatusIgnoreNotFound(YbcStatus status, bool *not_found);
 
 /*
  * Handle YBStatus while logging a custom error for DocDB 'NotFound' error.
  */
-extern void
-HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
-										 const char *message_for_not_found);
+extern void HandleYBStatusWithCustomErrorForNotFound(YbcStatus status,
+													 const char *message_for_not_found);
 
 /*
  * Same as HandleYBStatus but delete the table description first if the
  * status is not ok.
  */
-extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
+extern void HandleYBTableDescStatus(YbcStatus status, YbcPgTableDesc table);
+
 /*
  * YB initialization that needs to happen when a PostgreSQL backend process
  * is started. Reports errors using ereport.
  */
 extern void YBInitPostgresBackend(const char *program_name,
-								  const char *db_name,
-								  const char *user_name,
 								  uint64_t *session_id);
 
 /*
@@ -351,19 +352,19 @@ extern bool YBIsPgLockingEnabled();
  * Get the type ID of a real or virtual attribute (column).
  * Returns InvalidOid if the attribute number is invalid.
  */
-extern Oid GetTypeId(int attrNum, TupleDesc tupleDesc);
+extern Oid	GetTypeId(int attrNum, TupleDesc tupleDesc);
 
 /*
  * Return a string representation of the given type id, or say it is unknown.
  * What is returned is always a static C string constant.
  */
-extern const char* YBPgTypeOidToStr(Oid type_id);
+extern const char *YBPgTypeOidToStr(Oid type_id);
 
 /*
- * Return a string representation of the given PgDataType, or say it is unknown.
+ * Return a string representation of the given YbcPgDataType, or say it is unknown.
  * What is returned is always a static C string constant.
  */
-extern const char* YBCPgDataTypeToStr(YBCPgDataType yb_type);
+extern const char *YBCPgDataTypeToStr(YbcPgDataType yb_type);
 
 /*
  * Report an error saying the given type as not supported by YugaByte.
@@ -374,14 +375,6 @@ extern void YBReportTypeNotSupported(Oid type_id);
  * Log whether or not YugaByte is enabled.
  */
 extern void YBReportIfYugaByteEnabled();
-
-#define YB_REPORT_TYPE_NOT_SUPPORTED(type_id) do { \
-		Oid computed_type_id = type_id; \
-		ereport(ERROR, \
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
-					errmsg("Type not yet supported in YugaByte: %d (%s)", \
-						computed_type_id, YBPgTypeOidToStr(computed_type_id)))); \
-	} while (0)
 
 /*
  * Determines if PostgreSQL should restart all child processes if one of them
@@ -399,50 +392,50 @@ extern void YBReportIfYugaByteEnabled();
  * which could be created or deleted at run time, and its existence is always
  * checked.
  */
-bool YBShouldRestartAllChildrenIfOneCrashes();
+bool		YBShouldRestartAllChildrenIfOneCrashes();
 
 /*
  * These functions help indicating if we are connected to template0 or template1.
  */
-void YbSetConnectedToTemplateDb();
-bool YbIsConnectedToTemplateDb();
+void		YbSetConnectedToTemplateDb();
+bool		YbIsConnectedToTemplateDb();
 
 /*
  * Whether every ereport of the ERROR level and higher should log a stack trace.
  */
-bool YBShouldLogStackTraceOnError();
+bool		YBShouldLogStackTraceOnError();
 
 /*
  * Converts the PostgreSQL error level as listed in elog.h to a string. Always
  * returns a static const char string.
  */
-const char* YBPgErrorLevelToString(int elevel);
+const char *YBPgErrorLevelToString(int elevel);
 
 /*
  * Get the database name for a relation id (accounts for system databases and
  * shared relations)
  */
-const char* YBCGetDatabaseName(Oid relid);
+const char *YBCGetDatabaseName(Oid relid);
 
 /*
  * Get the schema name for a schema oid (accounts for system namespaces)
  */
-const char* YBCGetSchemaName(Oid schemaoid);
+const char *YBCGetSchemaName(Oid schemaoid);
 
 /*
  * Get the real database id of a relation. For shared relations
  * (which are meant to be accessible from all databases), it will be template1.
  */
-Oid YBCGetDatabaseOid(Relation rel);
-Oid YBCGetDatabaseOidByRelid(Oid relid);
-Oid YBCGetDatabaseOidFromShared(bool relisshared);
+Oid			YBCGetDatabaseOid(Relation rel);
+Oid			YBCGetDatabaseOidByRelid(Oid relid);
+Oid			YBCGetDatabaseOidFromShared(bool relisshared);
 
 /*
  * Raise an unsupported feature error with the given message and
  * linking to the referenced issue (if any).
  */
-void YBRaiseNotSupported(const char *msg, int issue_no);
-void YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
+void		YBRaiseNotSupported(const char *msg, int issue_no);
+void		YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
 
 /*
  * Return the value of (base ^ exponent) bounded by the upper limit.
@@ -452,25 +445,16 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 /*
  * Return whether to use wholerow junk attribute for YB relations.
  */
-extern bool YbUseWholeRowJunkAttribute(Relation relation,
-									   Bitmapset *updatedCols,
-									   CmdType operation,
-									   List *returningList);
-
-/*
- * Return whether to use scanned "old" tuple to reconstruct the new tuple during
- * UPDATE operations for YB relations. See function definition for details.
- */
-extern bool YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols, List *returningList);
+extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
 
 /*
  * Return whether the returning list for an UPDATE statement is a subset of the columns being
  * updated by the UPDATE query.
  */
-bool YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols, List *returningList);
+bool		YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols, List *returningList);
 
-//------------------------------------------------------------------------------
-// YB GUC variables.
+/* ------------------------------------------------------------------------------ */
+/* YB GUC variables. */
 
 /**
  * YSQL guc variables that can be used to toggle yugabyte features.
@@ -485,7 +469,7 @@ extern bool yb_enable_create_with_table_oid;
  * - indislive=true to indisready=true
  * - indisready=true to launching backfill
  */
-extern int yb_index_state_flags_update_delay;
+extern int	yb_index_state_flags_update_delay;
 
 /*
  * Enables expression pushdown.
@@ -565,7 +549,7 @@ extern bool yb_enable_base_scans_cost_model;
 /*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
-extern int yb_wait_for_backends_catalog_version_timeout;
+extern int	yb_wait_for_backends_catalog_version_timeout;
 
 /*
  * If true, we will always prefer batched nested loop join plans over nested
@@ -588,17 +572,17 @@ extern bool yb_enable_saop_pushdown;
 /*
  * Enables the use of TOAST compression for the Postgres catcache.
  */
-extern int yb_toast_catcache_threshold;
+extern int	yb_toast_catcache_threshold;
 
 /*
  * Configure size of the parallel range in requests for parallel keys.
  */
-extern int yb_parallel_range_size;
+extern int	yb_parallel_range_size;
 
 /*
  * INSERT ON CONFLICT batching read batch size.
  */
-extern int yb_insert_on_conflict_read_batch_size;
+extern int	yb_insert_on_conflict_read_batch_size;
 
 /*
  * Enable preloading of foreign key information into the relation cache.
@@ -610,12 +594,17 @@ extern bool yb_enable_fkey_catcache;
  */
 extern bool yb_enable_nop_alter_role_optimization;
 
-//------------------------------------------------------------------------------
-// GUC variables needed by YB via their YB pointers.
-extern int StatementTimeout;
+/*
+ * Compatibility option to ignore FREEZE with COPY FROM.
+ */
+extern bool yb_ignore_freeze_with_copy;
 
-//------------------------------------------------------------------------------
-// YB Debug utils.
+/* ------------------------------------------------------------------------------ */
+/* GUC variables needed by YB via their YB pointers. */
+extern int	StatementTimeout;
+
+/* ------------------------------------------------------------------------------ */
+/* YB Debug utils. */
 
 /**
  * YSQL guc variables that can be used to toggle yugabyte debug features.
@@ -646,6 +635,12 @@ extern bool yb_test_system_catalogs_creation;
  * resetting this back to false.
  */
 extern bool yb_test_fail_next_ddl;
+
+/*
+ * If set to true,the next DDL will update the catalog in force mode which
+ * allows it to operate even during ysql major catalog upgrades.
+ */
+extern bool yb_force_catalog_update_on_next_ddl;
 
 /* If set to true, all drop commands will fail. */
 extern bool yb_test_fail_all_drops;
@@ -680,7 +675,7 @@ extern char *yb_test_fail_index_state_change;
 /*
  * GUC variable that specifies default replica identity for tables at the time of creation.
  */
-extern char* yb_default_replica_identity ;
+extern char *yb_default_replica_identity;
 
 /*
  * If set to true, any DDLs that rewrite tables/indexes will fail after
@@ -698,14 +693,39 @@ extern bool yb_test_stay_in_global_catalog_version_mode;
 extern bool yb_test_table_rewrite_keep_old_table;
 
 /*
+ * If set to true, inject code to make psql output stable across linux and mac.
+ */
+extern bool yb_test_collation;
+
+/*
+ * If set to true, fill padding bytes with zeros when creating a shared
+ * invalidation message.
+ */
+extern bool yb_test_inval_message_portability;
+
+/*
+ * If > 0, add a delay after apply invalidation messages.
+ */
+extern int yb_test_delay_after_applying_inval_message_ms;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
 */
 extern bool yb_enable_ddl_atomicity_infra;
+
+/*
+ * Allow to return to the client SQL status codes defined by YugabyteDB (YBxxx).
+ * Those codes are used internally to determine if transparent retry is
+ * possible. If disabled, they are replaced with similar Postgres defined codes.
+ */
+extern bool yb_enable_extended_sql_codes;
+
 extern bool yb_ddl_rollback_enabled;
 static inline bool
-YbDdlRollbackEnabled () {
+YbDdlRollbackEnabled()
+{
 	return yb_enable_ddl_atomicity_infra && yb_ddl_rollback_enabled;
 }
 
@@ -717,22 +737,38 @@ extern bool yb_use_hash_splitting_by_default;
  */
 extern bool yb_enable_inplace_index_update;
 
+/*
+ * Enable the advisory lock feature.
+ */
+extern bool yb_enable_advisory_locks;
+
+/*
+ * Enable invalidation messages.
+ */
+extern bool yb_enable_invalidation_messages;
+extern int yb_invalidation_message_expiration_secs;
+extern int yb_max_num_invalidation_messages;
+
 typedef struct YBUpdateOptimizationOptions
 {
-	bool has_infra;
-	bool is_enabled;
-	int num_cols_to_compare;
-	int max_cols_size_to_compare;
+	bool		has_infra;
+	bool		is_enabled;
+	int			num_cols_to_compare;
+	int			max_cols_size_to_compare;
 } YBUpdateOptimizationOptions;
 
 /* GUC variables to control the behavior of optimizing update queries. */
 extern YBUpdateOptimizationOptions yb_update_optimization_options;
+
+extern bool yb_enable_docdb_vector_type;
 
 /*
  * GUC to allow user to silence the error saying that advisory locks are not
  * supported.
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
+
+extern bool yb_skip_data_insert_for_xcluster_target;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -743,12 +779,12 @@ extern bool yb_silence_advisory_locks_not_supported_error;
 /*
  * Get a string representation of a datum (given its type).
  */
-extern const char* YBDatumToString(Datum datum, Oid typid);
+extern const char *YBDatumToString(Datum datum, Oid typid);
 
 /*
  * Get a string representation of a tuple (row) given its tuple description (schema).
  */
-extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+extern const char *YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
 
 /*
  * Get a string representation of a tuple (row) given its tuple description
@@ -759,81 +795,96 @@ extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
  * indicates attributes which were omitted due to the value of the replica
  * identity.
  */
-extern const char* YbHeapTupleToStringWithIsOmitted(HeapTuple tuple,
+extern const char *YbHeapTupleToStringWithIsOmitted(HeapTuple tuple,
 													TupleDesc tupleDesc,
 													bool *is_omitted);
 
 /* Same as above except it takes slot instead of tuple. */
-extern const char* YbTupleTableSlotToString(TupleTableSlot *slot);
+extern const char *YbSlotToString(TupleTableSlot *slot);
 
-extern const char* YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot,
-														 bool *is_omitted);
+extern const char *YbSlotToStringWithIsOmitted(TupleTableSlot *slot,
+											   bool *is_omitted);
 
 /* Get a string representation of a bitmapset (for debug purposes only!) */
-extern const char* YbBitmapsetToString(Bitmapset *bms);
+extern const char *YbBitmapsetToString(Bitmapset *bms);
 
 /*
  * Checks if the master thinks initdb has already been done.
  */
-bool YBIsInitDbAlreadyDone();
+bool		YBIsInitDbAlreadyDone();
 
-int YBGetDdlNestingLevel();
-void YbSetIsGlobalDDL();
+extern int YBGetDdlNestingLevel();
+extern NodeTag YBGetDdlOriginalNodeTag();
+extern bool YBGetDdlUseRegularTransactionBlock();
+extern void YbSetIsGlobalDDL();
+extern void YbIncrementPgTxnsCommitted();
+extern bool YbTrackPgTxnInvalMessagesForAnalyze();
+extern void YbCheckNewLocalCatalogVersionOptimization();
+extern void YbTrackAlteredTableId(Oid relid);
+extern void YbInvalidateTableCacheForAlteredTables();
+
 
 typedef enum YbSysCatalogModificationAspect
 {
 	YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA = 1,
 	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
-	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4
+	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4,
+	YB_SYS_CAT_MOD_ASPECT_ONLINE_SCHEMA_CHANGE = 8,
 } YbSysCatalogModificationAspect;
 
 typedef enum YbDdlMode
 {
 	YB_DDL_MODE_NO_ALTERING = 0,
 
-	YB_DDL_MODE_SILENT_ALTERING =
-		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA,
+	YB_DDL_MODE_SILENT_ALTERING = YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA,
 
-	YB_DDL_MODE_VERSION_INCREMENT =
-		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
-		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT,
+	YB_DDL_MODE_VERSION_INCREMENT = (YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
+									 YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT),
 
-	YB_DDL_MODE_BREAKING_CHANGE =
-		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
-		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
-		YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE
+	YB_DDL_MODE_BREAKING_CHANGE = (YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
+								   YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
+								   YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE),
+
+	YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT =
+		(YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
+		 YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
+		 YB_SYS_CAT_MOD_ASPECT_ONLINE_SCHEMA_CHANGE),
 } YbDdlMode;
 
-void YBIncrementDdlNestingLevel(YbDdlMode mode);
-void YBDecrementDdlNestingLevel();
+void		YBIncrementDdlNestingLevel(YbDdlMode mode);
+void		YBDecrementDdlNestingLevel();
+
+extern void YBSetDdlState(YbDdlMode mode);
+extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
 {
-	bool has_value;
-	YbDdlMode value;
+	bool		has_value;
+	YbDdlMode	value;
 } YbDdlModeOptional;
 
-YbDdlModeOptional YbGetDdlMode(
-	PlannedStmt *pstmt, ProcessUtilityContext context);
-void YBAddModificationAspects(YbDdlMode mode);
+extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
+									  ProcessUtilityContext context);
+void		YBAddModificationAspects(YbDdlMode mode);
 
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
+extern void YBAdjustOperationsBuffering(int multiple);
 
-bool YBEnableTracing();
-bool YBReadFromFollowersEnabled();
-int32_t YBFollowerReadStalenessMs();
-bool YBFollowerReadsBehaviorBefore20482();
+bool		YBEnableTracing();
+bool		YBReadFromFollowersEnabled();
+int32_t		YBFollowerReadStalenessMs();
+bool		YBFollowerReadsBehaviorBefore20482();
 
 /*
- * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
+ * Allocates YbcPgYBTupleIdDescriptor with nattrs arguments by using palloc.
  * Resulted object can be released with pfree.
  */
-YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
-	int nattrs);
-void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
+YbcPgYBTupleIdDescriptor *YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
+													   int nattrs);
+void		YBCFillUniqueIndexNullAttribute(YbcPgYBTupleIdDescriptor *descr);
 
 /*
  * Lazily loads yb_table_properties field in Relation.
@@ -852,9 +903,9 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
  *    ScanPgRelation to do a custom RPC fetching YB properties as well.
  *    However, TableDesc cache makes this low-priority.
  */
-YbTableProperties YbGetTableProperties(Relation rel);
-YbTableProperties YbGetTablePropertiesById(Oid relid);
-YbTableProperties YbTryGetTableProperties(Relation rel);
+YbcTableProperties YbGetTableProperties(Relation rel);
+YbcTableProperties YbGetTablePropertiesById(Oid relid);
+YbcTableProperties YbTryGetTableProperties(Relation rel);
 
 typedef enum YbTableDistribution
 {
@@ -868,7 +919,12 @@ YbTableDistribution YbGetTableDistribution(Oid relid);
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
  */
-bool YBIsSupportedLibcLocale(const char *localebuf);
+extern bool YBIsSupportedLibcLocale(const char *localebuf);
+
+/*
+ * Check for unsupported libc locale in YugaByte mode.
+ */
+extern void YbCheckUnsupportedLibcLocale(const char *localebuf);
 
 /* Spin wait while test guc var actual equals expected. */
 extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
@@ -876,29 +932,34 @@ extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 
 extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
 
-extern int YbGetNumberOfFunctionOutputColumns(Oid func_oid);
+extern int	YbGetNumberOfFunctionOutputColumns(Oid func_oid);
 
-char *YBDetailSorted(char *input);
+char	   *YBDetailSorted(char *input);
 
 /*
  * For given collation, type and value, setup collation info.
  */
-void YBGetCollationInfo(
-	Oid collation_id,
-	const YBCPgTypeEntity *type_entity,
-	Datum datum,
-	bool is_null,
-	YBCPgCollationInfo *collation_info);
+extern void YBGetCollationInfo(Oid collation_id,
+							   const YbcPgTypeEntity *type_entity, Datum datum,
+							   bool is_null,
+							   YbcPgCollationInfo *collation_info);
 
 /*
  * Setup collation info in attr.
  */
-void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr, const YBCPgColumnInfo *column_info);
+extern void		YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.
  */
-bool YBIsCollationValidNonC(Oid collation_id);
+extern bool		YBIsCollationValidNonC(Oid collation_id);
+
+/*
+ * Check whether the DB collation is UTF-8.
+ */
+extern bool		YBIsDbLocaleDefault();
+
+extern bool		YBRequiresCacheToCheckLocale(Oid collation_id);
 
 /*
  * For the column 'attr_num' and its collation id, return the collation id that
@@ -907,17 +968,17 @@ bool YBIsCollationValidNonC(Oid collation_id);
  * this function will return InvalidOid which will disable collation encoding
  * for the column string value.
  */
-Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
+Oid			YBEncodingCollation(YbcPgStatement handle, int attr_num, Oid attcollation);
 
 /*
  * Check whether the user ID is of a user who has the yb_extension role.
  */
-bool IsYbExtensionUser(Oid member);
+bool		IsYbExtensionUser(Oid member);
 
 /*
  * Check whether the user ID is of a user who has the yb_fdw role.
  */
-bool IsYbFdwUser(Oid member);
+bool		IsYbFdwUser(Oid member);
 
 /*
  * Array of IDs of non-immutable functions that do not perform any database
@@ -935,14 +996,18 @@ extern const uint32 yb_funcs_safe_for_pushdown[];
 extern const uint32 yb_funcs_unsafe_for_pushdown[];
 
 /*
- * Number of functions in 'yb_funcs_safe_for_pushdown' above.
+ * These functions are some of the more commonly used functions, and are less
+ * likely to cause issues when run in mixed mode pushdown. This list is not
+ * exhaustive, but gives us a useful starting point.
  */
-extern const int yb_funcs_safe_for_pushdown_count;
+extern const uint32 yb_funcs_safe_for_mixed_mode_pushdown[];
 
 /*
- * Number of functions in 'yb_funcs_unsafe_for_pushdown' above.
+ * Number of functions in the lists above.
  */
+extern const int yb_funcs_safe_for_pushdown_count;
 extern const int yb_funcs_unsafe_for_pushdown_count;
+extern const int yb_funcs_safe_for_mixed_mode_pushdown_count;
 
 /**
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
@@ -950,45 +1015,46 @@ extern const int yb_funcs_unsafe_for_pushdown_count;
  * and can only be done from the child process (the postmaster process). The
  * parent process here is yb-master or yb-tserver.
  */
-void YBSetParentDeathSignal();
+void		YBSetParentDeathSignal();
 
 /**
  * Given a relation, return it's relfilenode OID. In YB, the relfilenode OID
  * maps to the relation's DocDB table ID. Note: if the table has not
  * previously been rewritten, this function returns the OID of the table.
  */
-Oid YbGetRelfileNodeId(Relation relation);
+Oid			YbGetRelfileNodeId(Relation relation);
 
 /**
  * Given a relation ID, return the relation's relfilenode OID.
  */
-Oid YbGetRelfileNodeIdFromRelId(Oid relationId);
+Oid			YbGetRelfileNodeIdFromRelId(Oid relationId);
+
 /*
  * Check whether the user ID is of a user who has the yb_db_admin role.
  */
-bool IsYbDbAdminUser(Oid member);
+bool		IsYbDbAdminUser(Oid member);
 
 /*
  * Check whether the user ID is of a user who has the yb_db_admin role
  * (excluding superusers).
  */
-bool IsYbDbAdminUserNosuper(Oid member);
+bool		IsYbDbAdminUserNosuper(Oid member);
 
 /*
  * Check unsupported system columns and report error.
  */
-void YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblEntry *rte);
+void		YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblEntry *rte);
 
 /*
  * Register system table for prefetching.
  */
-void YbRegisterSysTableForPrefetching(int sys_table_id);
-void YbTryRegisterCatalogVersionTableForPrefetching();
+void		YbRegisterSysTableForPrefetching(int sys_table_id);
+void		YbTryRegisterCatalogVersionTableForPrefetching();
 
 /*
  * Returns true if the relation is a non-system relation in the same region.
  */
-bool YBCIsRegionLocal(Relation rel);
+bool		YBCIsRegionLocal(Relation rel);
 
 /*
  * Return NULL for all non-range-partitioned tables.
@@ -1005,13 +1071,13 @@ extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
-												 void		*extra);
+												 void *extra);
 
 /*
  * Updates the session stats snapshot with the collected stats and copies the
  * difference to the query execution context's instrumentation.
  */
-void YbUpdateSessionStats(YbInstrumentation *yb_instr);
+void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
@@ -1023,24 +1089,25 @@ extern void yb_assign_max_replication_slots(int newval, void *extra);
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked before the query has started its execution.
  */
-void YbRefreshSessionStatsBeforeExecution();
+void		YbRefreshSessionStatsBeforeExecution();
 
 /*
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked when during/after query execution.
  */
-void YbRefreshSessionStatsDuringExecution();
+void		YbRefreshSessionStatsDuringExecution();
+
 /*
  * Updates the global flag indicating whether RPC requests to the underlying
  * storage layer need to be timed.
  */
-void YbToggleSessionStatsTimer(bool timing_on);
+void		YbToggleSessionStatsTimer(bool timing_on);
 
 /**
  * Update the global flag indicating what metric changes to capture and return
  * from the tserver to PG.
  */
-void YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture);
+void		YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture);
 
 /*
  * If the tserver gflag --ysql_disable_server_file_access is set to
@@ -1048,11 +1115,11 @@ void YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture);
  */
 extern void YBCheckServerAccessIsAllowed();
 
-void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
+void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 
-uint64_t YbGetSharedCatalogVersion();
-uint32_t YbGetNumberOfDatabases();
-bool YbCatalogVersionTableInPerdbMode();
+uint64_t	YbGetSharedCatalogVersion();
+uint32_t	YbGetNumberOfDatabases();
+bool		YbCatalogVersionTableInPerdbMode();
 
 /*
  * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
@@ -1086,19 +1153,21 @@ LockWaitPolicy YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy);
 
 const char *yb_fetch_current_transaction_priority(void);
 
-void GetStatusMsgAndArgumentsByCode(
-	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,
-	const char **msg_buf, size_t *msg_nargs, const char ***msg_args,
-	const char **detail_buf, size_t *detail_nargs, const char ***detail_args);
+void		GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
+										   const char **msg_buf, size_t *msg_nargs,
+										   const char ***msg_args,
+										   const char **detail_buf,
+										   size_t *detail_nargs,
+										   const char ***detail_args);
 
-bool YbIsBatchedExecution();
-void YbSetIsBatchedExecution(bool value);
+bool		YbIsBatchedExecution();
+void		YbSetIsBatchedExecution(bool value);
 
 /* Check if the given column is a part of the relation's key. */
-bool YbIsColumnPartOfKey(Relation rel, const char *column_name);
+bool		YbIsColumnPartOfKey(Relation rel, const char *column_name);
 
 /* Get a relation's split options. */
-OptSplit *YbGetSplitOptions(Relation rel);
+YbOptSplit *YbGetSplitOptions(Relation rel);
 
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)
@@ -1120,22 +1189,21 @@ OptSplit *YbGetSplitOptions(Relation rel);
 	do \
 	{ \
 		AssertMacro(!IsMultiThreadedMode()); \
-		YBCStatus _status = (status); \
+		YbcStatus _status = (status); \
 		if (_status) \
 		{ \
-			const int 		adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
-			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
-			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
-			const char	   *filename = YBCStatusFilename(_status); \
-			int				lineno = YBCStatusLineNumber(_status); \
-			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = NULL; \
-			const char	   *detail_buf = NULL; \
-			size_t		    msg_nargs = 0; \
-			size_t		    detail_nargs = 0; \
-			const char	  **msg_args = NULL; \
-			const char	  **detail_args = NULL; \
-			GetStatusMsgAndArgumentsByCode(pg_err_code, txn_err_code, _status, \
+			const int adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
+			const uint32_t pg_err_code = YBCStatusPgsqlError(_status); \
+			const char *filename = YBCStatusFilename(_status); \
+			int lineno = YBCStatusLineNumber(_status); \
+			const char *funcname = YBCStatusFuncname(_status); \
+			const char *msg_buf = NULL; \
+			const char *detail_buf = NULL; \
+			size_t msg_nargs = 0; \
+			size_t detail_nargs = 0; \
+			const char **msg_args = NULL; \
+			const char **detail_args = NULL; \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, \
 										   &msg_buf, &msg_nargs, &msg_args, \
 										   &detail_buf, &detail_nargs, \
 										   &detail_args); \
@@ -1148,7 +1216,6 @@ OptSplit *YbGetSplitOptions(Relation rel);
 					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
 				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
-				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
 				errfinish(NULL, \
 						  lineno > 0 ? lineno : __LINE__, \
@@ -1187,7 +1254,7 @@ extern bool YbIsStickyConnection(int *change);
 /*
  * Creates a shallow copy of the pointer list.
  */
-extern void** YbPtrListToArray(const List* str_list, size_t* length);
+extern void **YbPtrListToArray(const List *str_list, size_t *length);
 
 /*
  * Reads the contents of the given file assuming that the filename is an
@@ -1196,12 +1263,12 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  * The file contents are returned as a single palloc'd chunk with an extra \0
  * byte added to the end.
  */
-extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
+extern char *YbReadWholeFile(const char *filename, int *length, int elevel);
 
 extern bool yb_use_tserver_key_auth;
 
 extern bool yb_use_tserver_key_auth_check_hook(bool *newval,
-		void **extra, GucSource source);
+											   void **extra, GucSource source);
 
 extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 										   Relation pg_constraint,
@@ -1217,8 +1284,8 @@ extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
  */
 extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
 
-extern void YbGetRedactedQueryString(const char* query, int query_len,
-									 const char** redacted_query, int* redacted_query_len);
+extern void YbGetRedactedQueryString(const char *query, int query_len,
+									 const char **redacted_query, int *redacted_query_len);
 
 /* Check if optimizations for UPDATE queries have been enabled. */
 extern bool YbIsUpdateOptimizationEnabled();
@@ -1234,15 +1301,20 @@ extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
 extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
 
-static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
+static inline bool
+YbIsNormalDbOidReserved(Oid db_oid)
+{
 	return db_oid == kYBCPgSequencesDataDatabaseOid;
 }
 
-extern Oid YbGetSQLIncrementCatalogVersionsFunctionOid();
+extern Oid	YbGetSQLIncrementCatalogVersionsFunctionOid();
 
 extern bool YbIsReadCommittedTxn();
 
-extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
+extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
+extern void YbUseSnapshotReadTime(uint64_t read_time);
+extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
+
 
 extern bool YbUseFastBackwardScan();
 
@@ -1250,14 +1322,39 @@ extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 extern bool YbIsAuthBackend();
 
-bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
+bool		YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
-SortByDir YbGetIndexKeySortOrdering(Relation indexRel);
+SortByDir	YbGetIndexKeySortOrdering(Relation indexRel);
 
-bool YbUseUnsafeTruncate(Relation rel);
+typedef enum YbTruncateType
+{
+	YB_SAFE_TRUNCATE,
+	YB_UNSAFE_TRUNCATE_SYSTEM_RELATION,
+	YB_UNSAFE_TRUNCATE_TABLE_REWRITE_DISABLED,
+} YbTruncateType;
+
+extern YbTruncateType YbUseUnsafeTruncate(Relation rel);
 
 extern AttrNumber YbGetIndexAttnum(Relation index, AttrNumber table_attno);
 
 extern bool yb_ysql_conn_mgr_superuser_existed;
 
-#endif /* PG_YB_UTILS_H */
+extern Oid	YbGetDatabaseOidToIncrementCatalogVersion();
+
+extern bool yb_default_collation_resolved;
+
+extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
+
+extern bool YbInvalidationMessagesTableExists();
+
+extern bool yb_is_calling_internal_function_for_ddl;
+
+extern char *YbGetPotentiallyHiddenOidText(Oid oid);
+
+extern void YbWaitForSharedCatalogVersionToCatchup(uint64_t version);
+
+extern bool YbIsInvalidationMessageEnabled();
+
+extern bool YbRefreshMatviewInPlace();
+
+#endif							/* PG_YB_UTILS_H */

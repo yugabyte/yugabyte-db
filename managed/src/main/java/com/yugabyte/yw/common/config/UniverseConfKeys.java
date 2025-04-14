@@ -47,6 +47,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Integer> nodeCheckTimeoutDdlSec =
+      new ConfKeyInfo<>(
+          "yb.health.nodeCheckTimeoutDdlSec",
+          ScopeType.UNIVERSE,
+          "Node Checkout Time for DDL check",
+          "The timeout (in seconds) for node check operation as part of universe health check in"
+              + " case DDL atomicity check is performed",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
       new ConfKeyInfo<>(
           "yb.health.ddl_atomicity_check_enabled",
@@ -709,6 +719,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Postgres logs regex pattern in support bundle",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> connectionPoolingLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.connection_pooling_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "Connection Pooling logs regex pattern",
+          "Connection Pooling logs regex pattern in support bundle",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ysqlUpgradeTimeoutSec =
       new ConfKeyInfo<>(
           "yb.upgrade.ysql_upgrade_timeout_sec",
@@ -942,6 +960,44 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "to be created; otherwise, it will fail the operation",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> pitrClonePollDelay =
+      new ConfKeyInfo<>(
+          "yb.pitr.clone_poll_delay",
+          ScopeType.UNIVERSE,
+          "The delay before the next poll of the clone namespace creation status",
+          "It is the delay after which the clone namespace subtask rechecks the status of the"
+              + " clone namespace creation in each iteration",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> pitrCloneTimeout =
+      new ConfKeyInfo<>(
+          "yb.pitr.clone_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout for cloning a namespace",
+          "It is the maximum time that the clone namespace subtask waits for the clone "
+              + "to be created; otherwise, it will fail the operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> xClusterNetworkConnectivityCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.network_connectivity_check.enabled",
+          ScopeType.UNIVERSE,
+          "Enable network connectivity check for xCluster",
+          "If this flag is true on the source universe, a ping and port accessibility "
+              + "check from each node of the target universe to all the source universe nodes will "
+              + "be performed",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xClusterNetworkConnectivityCheckPingCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.network_connectivity_check.ping_command_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout used for network connectivity check for xCluster setup",
+          "The network connectivity check for xCluster ping all the source nodes from the "
+              + "target nodes; this is the timeout used to indicate how long the ping command "
+              + "should wait for the response",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
@@ -1115,6 +1171,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration>
+      xclusterDbScopedDeleteReplicationOnSourceTimeoutDuringFailover =
+          new ConfKeyInfo<>(
+              "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout",
+              ScopeType.UNIVERSE,
+              "Maximum timeout for yb client RPC call to delete the outbound replication on the"
+                  + " source universe during failover task execution",
+              "If the source universe is down, this RPC call will time out during failover"
+                  + " operation, increasing the failover task execution time; The lower the value,"
+                  + " the less time the failover task will take to complete. If it is set to zero,"
+                  + " this subtask during failover will be skipped providing a faster failover"
+                  + " execution time.",
+              ConfDataType.DurationType,
+              ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.creationEnabled",
@@ -1412,4 +1482,111 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable option for creating backup schedules that support off-cluster PITR",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useDBNodesIAMRoleForBackup =
+      new ConfKeyInfo<>(
+          "yb.backup.s3.use_db_nodes_iam_role_for_backup",
+          ScopeType.UNIVERSE,
+          "Use S3 IAM roles attached to DB node for Backup/Restore",
+          "Use S3 IAM roles attached to DB node for Backup/Restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> queuedTaskWaitTime =
+      new ConfKeyInfo<>(
+          "yb.task.queue_wait_time",
+          ScopeType.UNIVERSE,
+          "Queue Wait Time for Tasks",
+          "Wait time for a queued task before the running task can be evicted forcefully.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> certManagerCommonNameRequired =
+      new ConfKeyInfo<>(
+          "yb.tls.cert_manager.common_name_required",
+          ScopeType.UNIVERSE,
+          "Common Name Required for Certificates",
+          "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipOpentelemetryOperatorCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_otel_operator_check",
+          ScopeType.UNIVERSE,
+          "Skip OpenTelemetry Operator Check",
+          "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
+          ScopeType.UNIVERSE,
+          "Wait Attempts for major catalog upgrade",
+          "Wait Attempts for major catalog upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDisableDBApis =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.allow_disable",
+          ScopeType.UNIVERSE,
+          "Allow users to disable DB APIs",
+          "Allow users to disable DB APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockboundCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clockbound synchronization check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> clockboundCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.timeout",
+          ScopeType.UNIVERSE,
+          "Clockbound synchronization check timeout",
+          "Clockbound synchronization check timeout",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryDelay =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_delay",
+          ScopeType.UNIVERSE,
+          "Delay between failed create tablespaces operation retry",
+          "Delay between failed create tablespaces operation retry",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryTimeout =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for create tablespaces task retries",
+          "Timeout for create tablespaces task retries",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> createTablespacesMinRetries =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.min_retries",
+          ScopeType.UNIVERSE,
+          "Minimal number of retries for create tablespaces task",
+          "Minimal number of retries for create tablespaces task",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> unexpectedServersCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.health_checks.unexpected_servers_check_enabled",
+          ScopeType.UNIVERSE,
+          "Whether to alert for unexpected masters/tservers in universe",
+          "Whether to alert for unexpected masters/tservers in universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> verifyClusterUUIDOnStart =
+      new ConfKeyInfo<>(
+          "yb.checks.verify_cluster_uuid.enabled",
+          ScopeType.UNIVERSE,
+          "Check if process has correct gflag on start",
+          "Check if process has correct gflag on start",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

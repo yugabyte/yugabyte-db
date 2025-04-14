@@ -969,7 +969,7 @@ void TestRedisService::DoRedisTest(int line,
   VLOG(4) << "Testing with line: " << __FILE__ << ":" << line;
   client().Send(command, [this, line, reply_type, callback](const RedisReply& reply) {
     VLOG(4) << "Received response for line: " << __FILE__ << ":" << line << " : "
-            << reply.as_string() << ", of type: " << to_underlying(reply.get_type());
+            << reply.as_string() << ", of type: " << std::to_underlying(reply.get_type());
     num_callbacks_called_++;
     ASSERT_EQ(reply_type, reply.get_type())
         << "Originator: " << __FILE__ << ":" << line << ", reply: "
@@ -2546,6 +2546,7 @@ class TestRedisServiceExternal : public TestRedisService {
   void TestPubSub(LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype);
 
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.push_back("--start_redis_proxy=true");
     opts->extra_tserver_flags.push_back(
         "--redis_connection_soft_limit_grace_period_sec=" +
         AsString(static_cast<int>(kSoftLimitGracePeriod.ToSeconds())));

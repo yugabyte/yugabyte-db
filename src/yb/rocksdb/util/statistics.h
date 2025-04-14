@@ -28,6 +28,8 @@
 
 #include "yb/rocksdb/statistics.h"
 
+#include "yb/util/aggregate_stats.h"
+
 namespace yb {
 class MetricEntity;
 class EventStats;
@@ -104,6 +106,17 @@ inline void RecordTick(Statistics* statistics, uint32_t ticker_type,
                        uint64_t count = 1) {
   if (statistics) {
     statistics->recordTick(ticker_type, count);
+  }
+}
+
+inline void RecordTick(Statistics* statistics1, Statistics* statistics2, uint32_t ticker_type,
+                       uint64_t count = 1) {
+  if (statistics1) {
+    statistics1->recordTick(ticker_type, count);
+    return;
+  }
+  if (statistics2) {
+    statistics2->recordTick(ticker_type, count);
   }
 }
 

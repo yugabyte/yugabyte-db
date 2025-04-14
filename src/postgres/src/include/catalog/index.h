@@ -17,8 +17,9 @@
 #include "catalog/objectaddress.h"
 #include "nodes/execnodes.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/tableam.h"
+
 
 #define DEFAULT_INDEX_TYPE	"btree"
 
@@ -89,7 +90,7 @@ extern Oid	index_create(Relation heapRelation,
 						 bool allow_system_table_mods,
 						 bool is_internal,
 						 Oid *constraintId,
-						 OptSplit *split_options,
+						 YbOptSplit *split_options,
 						 const bool skip_index_backfill,
 						 bool is_colocated,
 						 Oid tablegroupId,

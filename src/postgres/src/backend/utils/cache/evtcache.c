@@ -31,6 +31,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 
 typedef enum
@@ -128,9 +129,9 @@ BuildEventTriggerCache(void)
 	/*
 	 * Prepare to scan pg_event_trigger in name order.
 	 */
-	rel  = relation_open(EventTriggerRelationId, AccessShareLock);
-	scan = systable_beginscan(rel, EventTriggerNameIndexId, true /* indexOK */,
-	                          NULL, 0, NULL);
+	rel = relation_open(EventTriggerRelationId, AccessShareLock);
+	scan = systable_beginscan(rel, EventTriggerNameIndexId, true /* indexOK */ ,
+							  NULL, 0, NULL);
 
 	/*
 	 * Build a cache item for each pg_event_trigger tuple, and append each one
@@ -138,15 +139,15 @@ BuildEventTriggerCache(void)
 	 */
 	for (;;)
 	{
-		HeapTuple              tup;
-		Form_pg_event_trigger  form;
-		char                   *evtevent;
-		EventTriggerEvent      event;
-		EventTriggerCacheItem  *item;
-		Datum                  evttags;
-		bool                   evttags_isnull;
+		HeapTuple	tup;
+		Form_pg_event_trigger form;
+		char	   *evtevent;
+		EventTriggerEvent event;
+		EventTriggerCacheItem *item;
+		Datum		evttags;
+		bool		evttags_isnull;
 		EventTriggerCacheEntry *entry;
-		bool                   found;
+		bool		found;
 
 		/* Get next tuple. */
 		tup = systable_getnext(scan);
@@ -159,7 +160,7 @@ BuildEventTriggerCache(void)
 			continue;
 
 		/* Decode event name. */
-		evtevent  = NameStr(form->evtevent);
+		evtevent = NameStr(form->evtevent);
 		if (strcmp(evtevent, "ddl_command_start") == 0)
 			event = EVT_DDLCommandStart;
 		else if (strcmp(evtevent, "ddl_command_end") == 0)
@@ -173,7 +174,7 @@ BuildEventTriggerCache(void)
 
 		/* Allocate new cache item. */
 		item = palloc0(sizeof(EventTriggerCacheItem));
-		item->fnoid   = form->evtfoid;
+		item->fnoid = form->evtfoid;
 		item->enabled = form->evtenabled;
 
 		/* Decode and sort tags array. */

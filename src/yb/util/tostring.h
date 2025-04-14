@@ -48,12 +48,12 @@ namespace yb_tostring {
 template <class T>
 concept TypeSupportsOutputToStream = requires (const T& t) {
   (*static_cast<std::ostream*>(nullptr)) << t;
-}; // NOLINT
+};
 
 template <class T>
 concept TypeWithFree_to_string = requires (const T& t) {
   to_string(t);
-}; // NOLINT
+};
 
 } // namespace yb_tostring
 
@@ -63,12 +63,12 @@ namespace yb {
 template <class T>
 concept TypeWith_ToString = requires (const T& t) {
   t.ToString();
-}; // NOLINT
+};
 
 template <class T>
 concept TypeWith_to_string = requires (const T& t) {
     t.to_string();
-}; // NOLINT
+};
 
 template <TypeWith_ToString T>
 decltype(auto) ToString(const T& value) {
@@ -84,7 +84,7 @@ decltype(auto) ToString(const T& value) {
 template <class T>
 concept TypeWith_ShortDebugString = requires (const T& t) {
   t.ShortDebugString();
-}; // NOLINT
+};
 
 template <TypeWith_ShortDebugString T>
 decltype(auto) ToString(const T& value) {
@@ -286,6 +286,11 @@ std::string CollectionToString(const Collection& collection, const Transform& tr
 template <class... T>
 decltype(auto) AsString(const T&... t) {
   return ToString(t...);
+}
+
+template <typename T1, typename T2>
+std::string AsDebugHexString(const std::pair<T1, T2>& value) {
+  return AsDebugHexString(value.first) + " - " + AsDebugHexString(value.second);
 }
 
 } // namespace yb

@@ -26,9 +26,10 @@
 #include "utils/pg_lsn.h"
 #include "utils/resowner.h"
 
-/* YB includes. */
-#include "commands/ybccmds.h"
+/* YB includes */
+#include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
+#include "replication/walsender.h"
 #include "utils/uuid.h"
 
 /*
@@ -48,8 +49,8 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(name, false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
-						  NULL /* yb_plugin_name */, CRS_NOEXPORT_SNAPSHOT,
-						  NULL, CRS_SEQUENCE);
+						  NULL /* yb_plugin_name */ , CRS_NOEXPORT_SNAPSHOT,
+						  NULL, CRS_SEQUENCE, YB_CRS_TRANSACTION);
 
 	if (immediately_reserve)
 	{
@@ -131,7 +132,8 @@ create_logical_replication_slot(char *name, char *plugin,
 								bool temporary, bool two_phase,
 								XLogRecPtr restart_lsn,
 								bool find_startpoint,
-								char *yb_lsn_type)
+								char *yb_lsn_type,
+								char *yb_ordering_mode)
 {
 	LogicalDecodingContext *ctx = NULL;
 
@@ -150,9 +152,10 @@ create_logical_replication_slot(char *name, char *plugin,
 	 * CreateInitDecodingContext call below where `need_full_snapshot` is passed
 	 * as false indicating that no snapshot should be built.
 	 */
-	ReplicationSlotCreate(name, true,
-						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase,
-						  plugin, CRS_NOEXPORT_SNAPSHOT, NULL, YBParseLsnType(yb_lsn_type));
+	ReplicationSlotCreate(name, true, temporary ? RS_TEMPORARY : RS_EPHEMERAL,
+						  two_phase, plugin, CRS_NOEXPORT_SNAPSHOT, NULL,
+						  YBParseLsnType(yb_lsn_type),
+						  YBParseOrderingMode(yb_ordering_mode));
 
 	if (!IsYugaByteEnabled())
 	{
@@ -195,15 +198,25 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreateReplicationSlot is unavailable"),
 				 errdetail("Creation of replication slot is only allowed with "
-				 		   "ysql_yb_enable_replication_commands and "
+						   "ysql_yb_enable_replication_commands and "
 						   "ysql_yb_enable_replica_identity set to true.")));
 
 	Name		name = PG_GETARG_NAME(0);
 	Name		plugin = PG_GETARG_NAME(1);
 	bool		temporary = PG_GETARG_BOOL(2);
 	bool		two_phase = PG_GETARG_BOOL(3);
-	char		*yb_lsn_type = "SEQUENCE";
-	
+
+	Name		yb_lsn_type_arg;
+	char	   *yb_lsn_type = "SEQUENCE";
+
+	char	   *yb_ordering_mode = "TRANSACTION";
+
+	if (!PG_ARGISNULL(4))
+	{
+		yb_lsn_type_arg = PG_GETARG_NAME(4);
+		yb_lsn_type = NameStr(*yb_lsn_type_arg);
+	}
+
 	Datum		result;
 	TupleDesc	tupdesc;
 	HeapTuple	tuple;
@@ -216,13 +229,13 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	if (IsYugaByteEnabled())
 	{
 		if (temporary)
-			ereport(ERROR, 
+			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Temporary replication slot is not yet supported"),
+					 errmsg("temporary replication slot is not yet supported"),
 					 errhint("See https://github.com/yugabyte/yugabyte-db/"
 							 "issues/19263. React with thumbs up to raise its "
-							 "priority")));
-	
+							 "priority.")));
+
 		/*
 		 * Validate output plugin requirement early so that we can avoid the
 		 * expensive call to yb-master.
@@ -235,6 +248,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 
 		YBValidateOutputPlugin(NameStr(*plugin));
 		YBValidateLsnType(yb_lsn_type);
+		YBValidateOrderingMode(yb_ordering_mode);
 	}
 
 	CheckSlotPermissions();
@@ -247,7 +261,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 									two_phase,
 									InvalidXLogRecPtr,
 									true,
-									yb_lsn_type);
+									yb_lsn_type,
+									yb_ordering_mode);
 
 	memset(nulls, 0, sizeof(nulls));
 
@@ -264,7 +279,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 		 * being set during the creation of the CDC stream in the
 		 * PopulateCDCStateTable function of xrepl_catalog_manager.cc.
 		 */
-		XLogRecPtr consistent_point = 2;
+		XLogRecPtr	consistent_point = 2;
+
 		values[1] = LSNGetDatum(consistent_point);
 	}
 	else
@@ -299,7 +315,7 @@ pg_drop_replication_slot(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("pg_drop_replication_slot is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	Name		name = PG_GETARG_NAME(0);
 
@@ -320,7 +336,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
 #define PG_GET_REPLICATION_SLOTS_COLS 14
 /* YB specific fields in pg_get_replication_slots */
-#define YB_PG_GET_REPLICATION_SLOTS_COLS 2
+#define YB_PG_GET_REPLICATION_SLOTS_COLS 3
 
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	XLogRecPtr	currlsn;
@@ -338,8 +354,8 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 	currlsn = GetXLogWriteRecPtr();
 
-	YBCReplicationSlotDescriptor *yb_replication_slots = NULL;
-	size_t yb_numreplicationslots = 0;
+	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
+	size_t		yb_numreplicationslots = 0;
 
 	/*
 	 * Fetch the replication slots from yb-master.
@@ -354,8 +370,8 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 	if (IsYugaByteEnabled() && yb_enable_replication_commands)
 		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
-	yb_totalslots = (IsYugaByteEnabled()) ? yb_numreplicationslots :
-										 max_replication_slots;
+	yb_totalslots =
+		IsYugaByteEnabled() ? yb_numreplicationslots : max_replication_slots;
 
 	LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
 	for (slotno = 0; slotno < yb_totalslots; slotno++)
@@ -369,24 +385,29 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		WALAvailability walstate;
 		int			i;
 
-		const char	*yb_stream_id;
+		const char *yb_stream_id;
 		bool		yb_stream_active;
-		uint64      yb_restart_commit_ht;
+		uint64		yb_restart_commit_ht;
+		const char *yb_lsn_type;
+		bool        yb_stream_expired;
 
 		if (IsYugaByteEnabled())
 		{
-			YBCReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+			YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
 
 			slot_contents.data.database = slot->database_oid;
 			namestrcpy(&slot_contents.data.name, slot->slot_name);
 			namestrcpy(&slot_contents.data.plugin, slot->output_plugin);
 			yb_stream_id = slot->stream_id;
 			yb_stream_active = slot->active;
+			yb_lsn_type = slot->yb_lsn_type;
+			yb_stream_expired = slot->expired;
 
 			slot_contents.data.restart_lsn = slot->restart_lsn;
 			slot_contents.data.confirmed_flush = slot->confirmed_flush;
 			yb_restart_commit_ht = slot->record_id_commit_time_ht;
 			slot_contents.data.xmin = slot->xmin;
+			slot_contents.active_pid = slot->active_pid;
 			/*
 			 * Set catalog_xmin as xmin to make the PG Debezium connector work.
 			 * It is not used in our implementation.
@@ -394,7 +415,6 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			slot_contents.data.catalog_xmin = slot->xmin;
 
 			/* Fill in the dummy/constant values. */
-			slot_contents.active_pid = 0;
 			slot_contents.data.persistency = RS_PERSISTENT;
 			slot_contents.data.invalidated_at = InvalidXLogRecPtr;
 			slot_contents.data.two_phase_at = InvalidXLogRecPtr;
@@ -402,7 +422,10 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			/* Copy slot contents while holding spinlock, then examine at leisure */
+			/*
+			 * Copy slot contents while holding spinlock, then examine at
+			 * leisure
+			 */
 			SpinLockAcquire(&slot->mutex);
 			slot_contents = *slot;
 			SpinLockRelease(&slot->mutex);
@@ -461,64 +484,80 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		else
 			nulls[i++] = true;
 
-		/*
-		 * If invalidated_at is valid and restart_lsn is invalid, we know for
-		 * certain that the slot has been invalidated.  Otherwise, test
-		 * availability from restart_lsn.
-		 */
-		if (XLogRecPtrIsInvalid(slot_contents.data.restart_lsn) &&
-			!XLogRecPtrIsInvalid(slot_contents.data.invalidated_at))
-			walstate = WALAVAIL_REMOVED;
-		else
-			walstate = GetWALAvailability(slot_contents.data.restart_lsn);
-
-		switch (walstate)
+		if (IsYugaByteEnabled())
 		{
-			case WALAVAIL_INVALID_LSN:
-				nulls[i++] = true;
-				break;
-
-			case WALAVAIL_RESERVED:
-				values[i++] = CStringGetTextDatum("reserved");
-				break;
-
-			case WALAVAIL_EXTENDED:
-				values[i++] = CStringGetTextDatum("extended");
-				break;
-
-			case WALAVAIL_UNRESERVED:
-				values[i++] = CStringGetTextDatum("unreserved");
-				break;
-
-			case WALAVAIL_REMOVED:
-
-				/*
-				 * If we read the restart_lsn long enough ago, maybe that file
-				 * has been removed by now.  However, the walsender could have
-				 * moved forward enough that it jumped to another file after
-				 * we looked.  If checkpointer signalled the process to
-				 * termination, then it's definitely lost; but if a process is
-				 * still alive, then "unreserved" seems more appropriate.
-				 *
-				 * If we do change it, save the state for safe_wal_size below.
-				 */
-				if (!XLogRecPtrIsInvalid(slot_contents.data.restart_lsn))
-				{
-					int			pid;
-
-					SpinLockAcquire(&slot->mutex);
-					pid = slot->active_pid;
-					slot_contents.data.restart_lsn = slot->data.restart_lsn;
-					SpinLockRelease(&slot->mutex);
-					if (pid != 0)
-					{
-						values[i++] = CStringGetTextDatum("unreserved");
-						walstate = WALAVAIL_UNRESERVED;
-						break;
-					}
-				}
+			if (yb_stream_expired)
+			{
 				values[i++] = CStringGetTextDatum("lost");
-				break;
+				walstate = WALAVAIL_REMOVED;
+			}
+			else
+			{
+				values[i++] = CStringGetTextDatum("reserved");
+				walstate = WALAVAIL_RESERVED;
+			}
+		}
+		else
+		{
+			/*
+			 * If invalidated_at is valid and restart_lsn is invalid, we know for
+			 * certain that the slot has been invalidated.  Otherwise, test
+			 * availability from restart_lsn.
+			 */
+			if (XLogRecPtrIsInvalid(slot_contents.data.restart_lsn) &&
+				!XLogRecPtrIsInvalid(slot_contents.data.invalidated_at))
+				walstate = WALAVAIL_REMOVED;
+			else
+				walstate = GetWALAvailability(slot_contents.data.restart_lsn);
+
+			switch (walstate)
+			{
+				case WALAVAIL_INVALID_LSN:
+					nulls[i++] = true;
+					break;
+
+				case WALAVAIL_RESERVED:
+					values[i++] = CStringGetTextDatum("reserved");
+					break;
+
+				case WALAVAIL_EXTENDED:
+					values[i++] = CStringGetTextDatum("extended");
+					break;
+
+				case WALAVAIL_UNRESERVED:
+					values[i++] = CStringGetTextDatum("unreserved");
+					break;
+
+				case WALAVAIL_REMOVED:
+
+					/*
+					 * If we read the restart_lsn long enough ago, maybe that file
+					 * has been removed by now.  However, the walsender could have
+					 * moved forward enough that it jumped to another file after
+					 * we looked.  If checkpointer signalled the process to
+					 * termination, then it's definitely lost; but if a process is
+					 * still alive, then "unreserved" seems more appropriate.
+					 *
+					 * If we do change it, save the state for safe_wal_size below.
+					 */
+					if (!XLogRecPtrIsInvalid(slot_contents.data.restart_lsn))
+					{
+						int			pid;
+
+						SpinLockAcquire(&slot->mutex);
+						pid = slot->active_pid;
+						slot_contents.data.restart_lsn = slot->data.restart_lsn;
+						SpinLockRelease(&slot->mutex);
+						if (pid != 0)
+						{
+							values[i++] = CStringGetTextDatum("unreserved");
+							walstate = WALAVAIL_UNRESERVED;
+							break;
+						}
+					}
+					values[i++] = CStringGetTextDatum("lost");
+					break;
+			}
 		}
 
 		/*
@@ -557,9 +596,11 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		{
 			values[i++] = CStringGetTextDatum(yb_stream_id);
 			values[i++] = Int64GetDatum(yb_restart_commit_ht);
+			values[i++] = CStringGetTextDatum(yb_lsn_type);
 		}
 		else
 		{
+			nulls[i++] = true;
 			nulls[i++] = true;
 			nulls[i++] = true;
 		}
@@ -828,12 +869,18 @@ pg_replication_slot_advance(PG_FUNCTION_ARGS)
 static Datum
 copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 {
+	ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("copy_replication_slot is unavailable."),
+			 errdetail("Copy of a replication slot is currently not supported.")));
+
 	Name		src_name = PG_GETARG_NAME(0);
 	Name		dst_name = PG_GETARG_NAME(1);
 	ReplicationSlot *src = NULL;
 	ReplicationSlot first_slot_contents;
 	ReplicationSlot second_slot_contents;
-	char		*yb_lsn_type = "SEQUENCE";
+	char	   *yb_lsn_type = "SEQUENCE";
+	char	   *yb_ordering_mode = "TRANSACTION";
 	XLogRecPtr	src_restart_lsn;
 	bool		src_islogical;
 	bool		temporary;
@@ -933,7 +980,8 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 										false,
 										src_restart_lsn,
 										false,
-										yb_lsn_type);
+										yb_lsn_type,
+										yb_ordering_mode);
 	}
 	else
 		create_physical_replication_slot(NameStr(*dst_name),

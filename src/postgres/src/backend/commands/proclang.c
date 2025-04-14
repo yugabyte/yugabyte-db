@@ -218,13 +218,6 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	return myself;
 }
 
-#ifdef NEIL
-/* Pg11 Interface */
-static PLTemplate *find_language_template(const char *languageName)
-bool PLTemplateExists(const char *languageName)
-void DropProceduralLanguageById(Oid langOid)
-#endif
-
 /*
  * get_language_oid - given a language name, look up the OID
  *

@@ -16,6 +16,9 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+#include "yb/common/colocated_util.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/xcluster_util.h"
 
@@ -23,11 +26,13 @@
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/result.h"
@@ -140,7 +145,7 @@ Result<bool> IsSafeTimeReady(
     return true;
   }
 
-  const auto safe_time_map = VERIFY_RESULT(xcluster_manager.GetXClusterNamespaceToSafeTimeMap());
+  const auto safe_time_map = xcluster_manager.GetXClusterNamespaceToSafeTimeMap();
   for (const auto& namespace_info : universe_pb.db_scoped_info().namespace_infos()) {
     const auto& namespace_id = namespace_info.consumer_namespace_id();
     auto* it = FindOrNull(safe_time_map, namespace_id);
@@ -198,6 +203,31 @@ Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
           << ", target universe version: " << local_config.config_version();
 
   return result;
+}
+
+Status HandleExtensionOnDropReplication(
+    CatalogManager& catalog_manager, const NamespaceId& namespace_id) {
+  bool is_switchover =
+      catalog_manager.GetXClusterManager()->IsNamespaceInAutomaticModeSource(namespace_id);
+  // Don't drop the extension for switchovers, instead transition to source role.
+  if (is_switchover) {
+    auto namespace_name = VERIFY_RESULT(catalog_manager.FindNamespaceById(namespace_id))->name();
+    LOG(INFO) << "Switchover detected for namespace " << namespace_name << " (" << namespace_id
+              << "), switching yb_xcluster_ddl_replication extension role to Source.";
+    Synchronizer sync;
+    RETURN_NOT_OK(master::SetupDDLReplicationExtension(
+        catalog_manager, namespace_name, XClusterDDLReplicationRole::kSource,
+        sync.AsStdStatusCallback()));
+    return sync.Wait();
+  }
+
+  // Need to drop the DDL Replication extension for automatic mode.
+  // We don't support N:1 replication or daisy-chaining, so we can safely drop on the target.
+  Synchronizer sync;
+  RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
+      catalog_manager, namespace_id,
+      [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
+  return sync.Wait();
 }
 
 }  // namespace
@@ -305,11 +335,12 @@ std::optional<NamespaceId> GetProducerNamespaceIdInternal(
 Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager) {
-  const auto& table_pb = table_info.old_pb();
-
   if (!IsTableEligibleForXClusterReplication(table_info)) {
     return false;
   }
+
+  auto table_lock = table_info.LockForRead();
+  const auto& table_pb = table_lock->pb;
 
   auto l = universe.LockForRead();
   const auto& universe_pb = l->pb;
@@ -477,6 +508,7 @@ Status RemoveNamespaceFromReplicationGroup(
 
   auto l = universe->LockForWrite();
   auto& universe_pb = l.mutable_data()->pb;
+  auto is_automatic_ddl_mode = IsAutomaticDdlMode(universe_pb);
 
   NamespaceId consumer_namespace_id;
   auto* namespace_infos = universe_pb.mutable_db_scoped_info()->mutable_namespace_infos();
@@ -509,8 +541,13 @@ Status RemoveNamespaceFromReplicationGroup(
 
   // For DB Scoped replication the streams will be cleaned up when the namespace is removed from
   // the outbound replication group on the source.
-  return RemoveTablesFromReplicationGroupInternal(
-      *universe, l, producer_table_ids, catalog_manager, epoch, /*cleanup_source_streams=*/false);
+  RETURN_NOT_OK(RemoveTablesFromReplicationGroupInternal(
+      *universe, l, producer_table_ids, catalog_manager, epoch, /*cleanup_source_streams=*/false));
+
+  if (is_automatic_ddl_mode) {
+    RETURN_NOT_OK(HandleExtensionOnDropReplication(catalog_manager, consumer_namespace_id));
+  }
+  return Status::OK();
 }
 
 Status RemoveTablesFromReplicationGroup(
@@ -734,6 +771,14 @@ Status DeleteUniverseReplication(
     }
   }
 
+  // For each namespace, also cleanup the DDL Replication extension if needed.
+  if (l->IsAutomaticDdlMode()) {
+    for (const auto& namespace_info : l->pb.db_scoped_info().namespace_infos()) {
+      RETURN_NOT_OK(HandleExtensionOnDropReplication(
+          catalog_manager, namespace_info.consumer_namespace_id()));
+    }
+  }
+
   if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_deleting)) {
     // Exit for testing services
     return Status::OK();
@@ -748,11 +793,141 @@ Status DeleteUniverseReplication(
     xcluster_manager->RemoveTableConsumerStream(table.second, universe.ReplicationGroupId());
   }
 
+  l.Commit();
+
   catalog_manager.RemoveUniverseReplicationFromMap(universe.ReplicationGroupId());
 
-  l.Commit();
   LOG(INFO) << "Processed delete universe replication of " << universe.ToString();
 
+  return Status::OK();
+}
+
+Result<uint32> AddHistoricalPackedSchemaForColocatedTable(
+    UniverseReplicationInfo& universe, const NamespaceId& namespace_id,
+    const TableId& parent_table_id, const ColocationId& colocation_id,
+    const SchemaVersion& source_schema_version, const SchemaPB& schema,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch) {
+  auto l = universe.LockForWrite();
+  auto sys_catalog = catalog_manager.sys_catalog();
+
+  SCHECK(
+      l->IsDbScoped() && l->IsAutomaticDdlMode(), IllegalState,
+      "Replication group is not in automatic DDL mode");
+
+  // Fetch the map for this colocation_id.
+  auto& universe_pb = l.mutable_data()->pb;
+  auto& db_scoped_info = *universe_pb.mutable_db_scoped_info();
+  auto& target_namespace_infos = *db_scoped_info.mutable_target_namespace_infos();
+  auto& historical_schema_packings =
+      (*target_namespace_infos[namespace_id]
+            .mutable_colocated_historical_schema_packings())[colocation_id];
+
+  // Go through the packed schemas and check if we already have a compatible schema.
+  Schema new_schema;
+  RETURN_NOT_OK(SchemaFromPB(schema, &new_schema));
+
+  dockv::SchemaPackingStorage old_packings(TableType::PGSQL_TABLE_TYPE);
+  RETURN_NOT_OK(old_packings.LoadFromPB(historical_schema_packings.old_schema_packings()));
+  const auto existing_version =
+      old_packings.GetSchemaPackingVersion(TableType::PGSQL_TABLE_TYPE, new_schema);
+  if (existing_version.ok()) {
+    LOG(INFO) << "Found compatible schema for colocation_id: " << colocation_id
+              << ", parent_table_id: " << parent_table_id
+              << ", schema_version: " << existing_version
+              << ", source_schema_version: " << source_schema_version
+              << ", schema: " << new_schema.ToString();
+    return existing_version;
+  }
+
+  // Add the new schema to the packed schemas.
+  auto new_schema_version =
+      static_cast<uint>(historical_schema_packings.old_schema_packings_size());
+  dockv::SchemaPacking new_packing(TableType::PGSQL_TABLE_TYPE, new_schema);
+  dockv::SchemaPackingPB new_packing_pb;
+  new_packing_pb.set_schema_version(new_schema_version);
+  new_packing.ToPB(&new_packing_pb);
+  historical_schema_packings.add_old_schema_packings()->CopyFrom(new_packing_pb);
+
+  LOG(INFO) << "Added historical packed schema for colocation_id: " << colocation_id
+            << ", parent_table_id: " << parent_table_id
+            << ", schema_version: " << new_schema_version
+            << ", source_schema_version: " << source_schema_version
+            << ", schema: " << new_schema.ToString();
+
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog->Upsert(epoch.leader_term, &universe),
+      "Updating replication info in sys-catalog");
+  l.Commit();
+  return new_schema_version;
+}
+
+Status UpdateColocatedTableWithHistoricalSchemaPackings(
+    UniverseReplicationInfo& universe, SysTablesEntryPB& table_pb, const TableId& table_id,
+    const NamespaceId& namespace_id, const ColocationId colocation_id) {
+  auto l = universe.LockForRead();
+  auto* colocation_id_map =
+      FindOrNull(l->pb.db_scoped_info().target_namespace_infos(), namespace_id);
+  SCHECK(
+      colocation_id_map, NotFound,
+      Format("Colocation ID map not found for namespace $0", namespace_id));
+  auto* historical_packed_schemas =
+      FindOrNull(colocation_id_map->colocated_historical_schema_packings(), colocation_id);
+  SCHECK(
+      historical_packed_schemas, NotFound,
+      Format("Historical packed schemas not found for colocation ID $0", colocation_id));
+  const auto& old_schema_packings = historical_packed_schemas->old_schema_packings();
+
+  // If we only have one schema packing then we can keep the existing schema.
+  if (old_schema_packings.size() <= 1) {
+    LOG(INFO) << old_schema_packings.size() << " old schema packings found for table " << table_id
+              << " (colocation_id " << colocation_id << ") in xCluster replication group "
+              << universe.id() << ". No need to update the table schema.";
+    return Status::OK();
+  }
+
+  auto last_schema_version =
+      old_schema_packings.Get(old_schema_packings.size() - 1).schema_version();
+
+  // Update the TableInfo with the old schema packings and update its schema version.
+  table_pb.mutable_xcluster_table_info()
+      ->mutable_xcluster_colocated_old_schema_packings()
+      ->CopyFrom(old_schema_packings);
+  table_pb.set_version(last_schema_version + 1);
+  LOG(INFO) << Format(
+      "Updated table $0 (colocation_id $1) with old schema packings and schema version $2 for "
+      "xCluster replication group $3",
+      table_id, colocation_id, last_schema_version + 1, universe.id());
+  return Status::OK();
+}
+
+Status CleanupColocatedTableHistoricalSchemaPackings(
+    UniverseReplicationInfo& universe, const NamespaceId& namespace_id,
+    const ColocationId& colocation_id, CatalogManager& catalog_manager, const LeaderEpoch& epoch) {
+  auto l = universe.LockForWrite();
+  auto sys_catalog = catalog_manager.sys_catalog();
+
+  SCHECK(
+      l->IsDbScoped() && l->IsAutomaticDdlMode(), IllegalState,
+      "Replication group is not in automatic DDL mode");
+
+  auto& universe_pb = l.mutable_data()->pb;
+  auto& db_scoped_info = *universe_pb.mutable_db_scoped_info();
+  auto& target_namespace_infos = *db_scoped_info.mutable_target_namespace_infos();
+  auto& historical_schema_packings =
+      *target_namespace_infos[namespace_id].mutable_colocated_historical_schema_packings();
+
+  // TODO(jhe) Need to handle cleanup of this field in cases where the colocated table create fails
+  // on the source (#25913).
+  bool erased = historical_schema_packings.erase(colocation_id);
+  if (!erased) {
+    LOG(INFO) << "No historical schema packings found for colocation_id: " << colocation_id;
+    return Status::OK();
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog->Upsert(epoch.leader_term, &universe),
+      "Updating replication info in sys-catalog");
+  l.Commit();
   return Status::OK();
 }
 

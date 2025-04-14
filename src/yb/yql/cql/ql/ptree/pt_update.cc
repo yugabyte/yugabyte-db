@@ -309,8 +309,9 @@ void PTUpdateStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
 ExplainPlanPB PTUpdateStmt::AnalysisResultToPB() {
   ExplainPlanPB explain_plan;
   UpdatePlanPB *update_plan = explain_plan.mutable_update_plan();
-  update_plan->set_update_type("Update on " + table_name().ToString());
-  update_plan->set_scan_type("  ->  Primary Key Lookup on " + table_name().ToString());
+  auto table_name = this->table_name().ToString(false);
+  update_plan->set_update_type("Update on " + table_name);
+  update_plan->set_scan_type("  ->  Primary Key Lookup on " + table_name);
   string key_conditions = "        Key Conditions: " +
       ConditionsToString<MCVector<ColumnOp>>(key_where_ops());
   update_plan->set_key_conditions(key_conditions);

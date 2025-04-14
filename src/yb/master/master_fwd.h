@@ -26,7 +26,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_backup.fwd.h"
-#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.fwd.h"
 #include "yb/master/tablet_split_fwd.h"
 
 #include "yb/util/enums.h"
@@ -47,7 +47,10 @@ typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
 class EncryptionManager;
 
+class AsyncAddServerTask;
 class AsyncDeleteReplica;
+class AsyncRemoveServerTask;
+class AsyncTryStepDown;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
@@ -80,8 +83,10 @@ class RetrySpecificTSRpcTaskWithTable;
 class SnapshotCoordinatorContext;
 class SnapshotState;
 class SysCatalogTable;
+class SysCatalogWriter;
 class SysConfigInfo;
 class SysRowEntries;
+class SystemTablet;
 class TablegroupInfo;
 class TestAsyncRpcManager;
 class TSDescriptor;
@@ -126,16 +131,25 @@ using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestorati
 
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
+// Used to indicate whether inactive tablets should be included in Rpcs such as GetTableLocations.
+// Inactive tablets are parents of split children, that may no longer be allowed to
+// server user read-write requests. Inactive tablets could be hidden.
+// Since include_inactive allows both parent and child tablets to be returned, the returned tablet
+// list could have overlapping partition key ranges.
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
+
+// Used to indicate whether hidden tables/tablets should be included.
+YB_STRONGLY_TYPED_BOOL(IncludeHidden);
+
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
 
-// Used to indicate whether hidden objects should be included.
-YB_STRONGLY_TYPED_BOOL(IncludeHidden);
 
 YB_DEFINE_ENUM(
     CollectFlag,
-    (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress)(kAddUDTypes));
+    (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress)(kAddUDTypes)
+    (kIncludeHiddenTables));
+
 using CollectFlags = EnumBitSet<CollectFlag>;
 
 using TableToTablespaceIdMap = std::unordered_map<TableId, boost::optional<TablespaceId>>;
@@ -155,6 +169,14 @@ using RetryingTSRpcTaskWithTablePtr = std::shared_ptr<RetryingTSRpcTaskWithTable
 // Use ordered map to make computing fingerprint of the map easier.
 struct PgCatalogVersion;
 using DbOidToCatalogVersionMap = std::map<uint32_t, PgCatalogVersion>;
+
+// This map represents pg_yb_invalidation_messages: (db_oid, current_version) => inval messages.
+// If the message value is nullopt, it means a SQL null value. If it is empty string, it means
+// there is no invalidation messages associated with this (db_oid, current_version). A PG
+// backend needs to do a catalog cache refresh on a SQL null value, but treats an empty string
+// as a noop because there is nothing in the catalog cache is invalidated.
+using DbOidVersionToMessageListMap = std::map<std::pair<uint32_t, uint64_t>,
+                                              std::optional<std::string>>;
 
 using RelIdToAttributesMap = std::unordered_map<uint32_t, std::vector<PgAttributePB>>;
 using RelTypeOIDMap = std::unordered_map<uint32_t, uint32_t>;

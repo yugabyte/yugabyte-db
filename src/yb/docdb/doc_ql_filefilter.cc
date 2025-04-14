@@ -17,6 +17,9 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/atomic.h"
+#include "yb/util/flags.h"
+
 #include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/rocksdb/db/compaction.h"

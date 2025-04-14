@@ -13,10 +13,15 @@
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/cdc/cdc_service.h"
+
+#include "yb/client/client.h"
 #include "yb/client/session.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/xcluster_util.h"
+
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/shared_lock.h"
 
 DECLARE_bool(ysql_yb_enable_replica_identity);
@@ -80,7 +85,7 @@ std::vector<xrepl::StreamTabletStats> StreamMetadata::GetAllStreamTabletStats(
     stat.stream_id_str = stream_id.ToString();
     stat.producer_tablet_id = tablet_id;
     stat.producer_table_id = table_ids.size() == 1 ? table_ids[0] : yb::AsString(table_ids);
-    stat.state = SysCDCStreamEntryPB_State_Name(state_);
+    stat.state = SysCDCStreamEntryPB_State_Name(state_.load());
     metadata->PopulateStats(&stat);
 
     result.emplace_back(std::move(stat));
@@ -124,6 +129,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<uint64> consistent_snapshot_time;
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
   std::optional<ReplicationSlotLsnType> replication_slot_lsn_type;
+  std::optional<ReplicationSlotOrderingMode> replication_slot_ordering_mode;
   std::optional<uint64> stream_creation_time;
   std::unordered_map<std::string, PgReplicaIdentity> replica_identity_map;
   std::optional<std::string> replication_slot_name;
@@ -133,7 +139,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
       &consistent_snapshot_option, &stream_creation_time, &replica_identity_map,
-      &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type));
+      &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type,
+      &replication_slot_ordering_mode));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -201,6 +208,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   consistent_snapshot_option_ = consistent_snapshot_option;
   replication_slot_name_ = replication_slot_name;
   replication_slot_lsn_type_ = replication_slot_lsn_type;
+  replication_slot_ordering_mode_ = replication_slot_ordering_mode;
 
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);
@@ -225,6 +233,17 @@ Result<std::optional<uint32_t>> StreamMetadata::GetDbOidToGetSequencesForUnlocke
   return GetPgsqlDatabaseOid(namespace_id);
 }
 
+void StreamMetadata::StreamTabletMetadata::ResetOnTermChange(int64_t term) {
+  if (term == term_) {
+    return;
+  }
+
+  term_ = term;
+  last_apply_safe_time_ = HybridTime::kInvalid;
+  last_apply_safe_time_update_time_ = MonoTime::kUninitialized;
+  apply_safe_time_checkpoint_op_id_ = 0;
+}
+
 void StreamMetadata::StreamTabletMetadata::UpdateStats(
     const MonoTime& start_time, const Status& status, int num_records, size_t bytes_sent,
     int64_t sent_index, int64_t latest_wal_index) {
@@ -234,6 +253,13 @@ void StreamMetadata::StreamTabletMetadata::UpdateStats(
 
 void StreamMetadata::StreamTabletMetadata::PopulateStats(xrepl::StreamTabletStats* stats) const {
   stats_history_.PopulateStats(stats);
+}
+
+std::string StreamMetadata::ToString() const {
+  std::lock_guard lock(mutex_);
+  return YB_CLASS_TO_STRING(
+      stream_id, namespace_id, (record_type, CDCRecordType_Name(record_type_)),
+      (source_type, CDCRequestSource_Name(source_type_)));
 }
 
 }  // namespace cdc

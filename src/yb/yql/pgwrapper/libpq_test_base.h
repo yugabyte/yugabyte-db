@@ -22,6 +22,25 @@
 namespace yb {
 namespace pgwrapper {
 
+struct YsqlMetric {
+  std::string name;
+  std::unordered_map<std::string, std::string> labels;
+  int64_t value;
+  int64_t time;
+  std::string type;
+  std::string description;
+
+  YsqlMetric(
+      std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
+      int64_t time, std::string type = "", std::string description = "")
+      : name(std::move(name)),
+        labels(std::move(labels)),
+        value(value),
+        time(time),
+        type(type),
+        description(description) {}
+};
+
 class LibPqTestBase : public PgWrapperTestBase {
  protected:
   void SetUp() override;
@@ -32,6 +51,9 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::string& user,
       bool simple_query_protocol = false);
   Result<PGConn> ConnectToTs(const ExternalTabletServer& pg_ts);
+  Result<PGConn> ConnectToTsAsUser(
+      const ExternalTabletServer& pg_ts,
+      const std::string& user);
   Result<PGConn> ConnectUsingString(
       const std::string& conn_str,
       CoarseTimePoint deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10),
@@ -42,6 +64,8 @@ class LibPqTestBase : public PgWrapperTestBase {
   static Status BumpCatalogVersion(int num_bumps, PGConn* conn,
                                    const std::string& alter_value = "");
   static void UpdateMiniClusterFailOnConflict(ExternalMiniClusterOptions* options);
+  static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics_output);
+  static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output);
 };
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name);

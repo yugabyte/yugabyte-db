@@ -1,8 +1,9 @@
 import { MetricMeasure, MetricTypes } from '../components/metrics/constants';
 import { MetricsPanel } from '../components/metrics';
-import { isKubernetesUniverse } from './UniverseUtils';
+import { getIsKubernetesUniverse } from './UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../components/common/indicators';
-import { isNonEmptyObject, isNonEmptyString } from './ObjectUtils';
+import { isEmptyString, isNonEmptyObject, isNonEmptyString } from './ObjectUtils';
+import { DEFAULT_TIMEZONE } from '../redesign/helpers/constants';
 
 export const getTabContent = (
   graph: any,
@@ -12,6 +13,7 @@ export const getTabContent = (
   title: string,
   currentUser: any,
   isGranularMetricsEnabled: boolean,
+  isMetricsTimezoneEnabled: boolean,
   updateTimestamp: (start: 'object' | number, end: 'object' | number) => void,
   printMode: boolean
 ) => {
@@ -31,6 +33,16 @@ export const getTabContent = (
   const { metrics, prometheusQueryEnabled } = graph;
   const { nodeName, metricMeasure } = graph.graphFilter;
 
+  const getUserTimezone = () => {
+    return currentUser?.data?.timezone;
+  };
+
+  const getMetricsSessionTimezone = () => {
+    const metricsTimezone = sessionStorage.getItem('metricsTimezone');
+    return metricsTimezone;
+  };
+
+  const timezone = isMetricsTimezoneEnabled ? getMetricsSessionTimezone() : getUserTimezone();
   if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
     /* Logic here is, since there will be multiple instances of GraphTab
       we basically would have metrics data keyed off tab type. So we
@@ -65,15 +77,17 @@ export const getTabContent = (
             metricMeasure={metricMeasure}
             operations={uniqueOperations}
             isGranularMetricsEnabled={isGranularMetricsEnabled}
+            isMetricsTimezoneEnabled={isMetricsTimezoneEnabled}
             updateTimestamp={updateTimestamp}
             printMode={printMode}
+            metricsTimezone={timezone}
           />
         ) : null;
       })
       .filter(Boolean);
   }
 
-  if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
+  if (selectedUniverse && getIsKubernetesUniverse(selectedUniverse)) {
     //Hide master related panels for tserver pods.
     // eslint-disable-next-line eqeqeq
     if (nodeName.match('yb-tserver-') != null) {
@@ -84,14 +98,7 @@ export const getTabContent = (
     //Hide empty panels for master pods.
     // eslint-disable-next-line eqeqeq
     if (nodeName.match('yb-master-') != null) {
-      const skipList = [
-        'Tablet Server',
-        'YSQL Ops',
-        'YCQL Ops',
-        'YEDIS Ops',
-        'YEDIS Advanced',
-        'Resource'
-      ];
+      const skipList = ['Tablet Server', 'YSQL Ops', 'YCQL Ops', 'Resource'];
       if (skipList.includes(title)) {
         return null;
       }

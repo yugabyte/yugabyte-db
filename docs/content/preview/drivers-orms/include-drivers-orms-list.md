@@ -1,6 +1,7 @@
 <!--
 +++
 private = true
+block_indexing = true
 +++
 -->
 
@@ -67,8 +68,9 @@ private = true
 | PostgreSQL node-postgres Driver | [8.7.3](https://www.npmjs.com/package/pg) | Full | [CRUD](/preview/drivers-orms/nodejs/postgres-node-driver/) |
 | YugabyteDB Node.js Driver for YCQL | [4.0.0](https://github.com/yugabyte/cassandra-nodejs-driver) | Full | [CRUD](/preview/drivers-orms/nodejs/ycql/) |
 | **ORMs** | | | |
-| Sequelize | 6.6.5 | Full | [CRUD](/preview/drivers-orms/nodejs/sequelize/) |
-| Prisma    | 3.14  | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |
+| Sequelize | 6.6.5  | Full | [CRUD](/preview/drivers-orms/nodejs/sequelize/) |
+| Prisma    | 3.14   | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |
+| TypeORM   | 0.3.21 | Full | [CRUD](/preview/drivers-orms/nodejs/typeorm/) |
 
   {{% /tab %}}
 
@@ -118,7 +120,8 @@ private = true
 |             | Version | Support Level | Example apps |
 | :---------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| Pg Gem Driver                   | [1.5.4](https://github.com/ged/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/ysql-pg/) |
+| YugabyteDB ruby-pg Smart Driver | [0.7](https://github.com/yugabyte/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/yb-ruby-pg/) |
+| Pg Gem Driver                   | [1.5.4](https://github.com/ged/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/ruby-pg/) |
 | YugabyteDB Ruby Driver for YCQL | [3.2.3.2](https://github.com/yugabyte/cassandra-ruby-driver) | Full | [CRUD](/preview/drivers-orms/ruby/ycql/) |
 | **ORM**     | | | |
 | Active Record                   | 7.0.4 | Full | [CRUD](/preview/drivers-orms/ruby/activerecord/) |
@@ -130,7 +133,7 @@ private = true
 | ORM        | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Driver** | | | |
-| Rust-postgres Driver | v0.19.7-yb-1-beta <br/> v0.7.10-yb-1-beta | Full | [CRUD](/preview/drivers-orms/rust/yb-rust-postgres/) |
+| Rust-postgres Driver | v0.19.7-yb-1-beta.3 <br/> v0.7.10-yb-1-beta | Full | [CRUD](/preview/drivers-orms/rust/yb-rust-postgres/) |
 | **ORM**    | | | |
 | Diesel     | 1.42    | Full          | [CRUD](/preview/drivers-orms/rust/diesel/) |
 

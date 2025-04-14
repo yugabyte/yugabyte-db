@@ -72,6 +72,10 @@ def parse_args() -> argparse.Namespace:
         help='Determine the third-party archive download URL for the combination of criteria, '
              'including the compiler type, and write it to the file specified by this argument.')
     parser.add_argument(
+        '--save-thirdparty-checksum-url-to-file',
+        help='Determine the third-party checksum download URL for the combination of criteria, '
+             'including the compiler type, and write it to the file specified by this argument.')
+    parser.add_argument(
         '--compiler-type',
         help='Compiler type, to help us decide which third-party archive to choose. '
              'The default value is determined by the YB_COMPILER_TYPE environment variable.',
@@ -116,6 +120,11 @@ def parse_args() -> argparse.Namespace:
         '--override-default-sha',
         type=arg_util.sha1_regex_arg_type,
         help='Use the given SHA at the top of the generated third-party archives file.')
+    parser.add_argument(
+        '--thirdparty-pr',
+        type=int,
+        help='Use artifacts from a yugabyte-db-thirdparty repository pull request instead of '
+             'scanning through releases.')
     parser.add_argument(
         '--sync-inline-thirdparty',
         action='store_true',
@@ -246,4 +255,4 @@ def update_thirdparty_dependencies(args: argparse.Namespace) -> None:
         tag_filter_regex_str=args.tag_filter_regex,
         also_use_commits=args.also_use_commit,
         override_default_sha=args.override_default_sha)
-    updater.update_archive_metadata_file()
+    updater.update_archive_metadata_file(args.thirdparty_pr)

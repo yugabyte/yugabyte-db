@@ -25,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/rocksdb/db.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -56,7 +57,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::VerifyCdcStateMatches(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
       const uint64_t term, const uint64_t index) {
-    CDCStateTable cdc_state_table(client);
+    auto cdc_state_table = MakeCDCStateTable(client);
 
     auto row = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
         {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
@@ -104,7 +105,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::VerifyStreamDeletedFromCdcState(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
       int timeout_secs) {
-    CDCStateTable cdc_state_table(client);
+    auto cdc_state_table = MakeCDCStateTable(client);
 
     // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
     // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
@@ -119,7 +120,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Result<OpId> CDCSDKYsqlTest::GetStreamCheckpointInCdcState(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id) {
-    CDCStateTable cdc_state_table(client);
+    auto cdc_state_table = MakeCDCStateTable(client);
     auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
         {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
     SCHECK(row, IllegalState, "Row not found in cdc_state table");
@@ -130,7 +131,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::VerifyStreamCheckpointInCdcState(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
       OpIdExpectedValue op_id_expected_value, int timeout_secs) {
-    CDCStateTable cdc_state_table(client);
+    auto cdc_state_table = MakeCDCStateTable(client);
 
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
@@ -1472,12 +1473,18 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Status CDCSDKYsqlTest::InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id) {
+      const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range) {
     InitVirtualWALForCDCRequestPB init_req;
     init_req.set_stream_id(stream_id.ToString());
     init_req.set_session_id(session_id);
     for (const auto& table_id : table_ids) {
       init_req.add_table_id(table_id);
+    }
+
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range) {
+      auto slot_hash_range_req = init_req.mutable_slot_hash_range();
+      slot_hash_range_req->set_start_range(slot_hash_range->start_range);
+      slot_hash_range_req->set_end_range(slot_hash_range->end_range);
     }
 
     RETURN_NOT_OK(WaitFor(
@@ -1976,7 +1983,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   Result<CDCSDKYsqlTest::GetAllPendingChangesResponse>
   CDCSDKYsqlTest::GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
-      bool init_virtual_wal, const uint64_t session_id, bool allow_sending_feedback) {
+      bool init_virtual_wal, const uint64_t session_id, bool allow_sending_feedback,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range) {
     // We will keep on consuming changes until we get the entire txn i.e COMMIT record of the
     // last txn. This indicates that even though we might have received the expecpted DML
     // records, we might still continue calling GetConsistentChanges until we receive the
@@ -1984,7 +1992,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     GetAllPendingChangesResponse resp;
     if (init_virtual_wal) {
-      Status s = InitVirtualWAL(stream_id, table_ids, session_id);
+      Status s = InitVirtualWAL(stream_id, table_ids, session_id, std::move(slot_hash_range));
       if (!s.ok()) {
         LOG(ERROR) << "Error while trying to initialize virtual WAL: " << s;
         RETURN_NOT_OK(s);
@@ -2026,7 +2034,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           commit_records = count[7];
           dml_records =
               count[1] + count[2] + count[3] + count[5];  // INSERT + UPDATE + DELETE + TRUNCATE
-          LOG(INFO) << "Total Received records for stream " << resp.records.size();
+          LOG(INFO) << "Total received records for stream " << resp.records.size()
+                    << " out of which DML records are: " << dml_records;
           uint64_t restart_lsn = 0;
           uint64_t confirmed_flush_lsn = 0;
           bool send_feedback = false;
@@ -2519,19 +2528,28 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   Status CDCSDKYsqlTest::StepDownLeader(size_t new_leader_index, const TabletId tablet_id) {
-    Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
-    if (!status.ok()) {
-      return status;
-    }
+    std::string error_message;
 
-    status = yb_admin_client_->LeaderStepDownWithNewLeader(
-        tablet_id,
-        test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
-    if (!status.ok()) {
-      return status;
-    }
-    SleepFor(MonoDelta::FromMilliseconds(500));
-    return Status::OK();
+    return WaitFor(
+        [&]() -> Result<bool> {
+          Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
+          if (!status.ok()) {
+            error_message = status.ToString();
+            return false;
+          }
+
+          status = yb_admin_client_->LeaderStepDownWithNewLeader(
+              tablet_id,
+              test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
+          if (!status.ok()) {
+            error_message = status.ToString();
+            return false;
+          }
+
+          SleepFor(MonoDelta::FromMilliseconds(500));
+          return true;
+        },
+        MonoDelta::FromSeconds(60), error_message);
   }
 
   Status CDCSDKYsqlTest::CreateSnapshot(const NamespaceName& ns) {
@@ -2684,7 +2702,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Result<int64_t> CDCSDKYsqlTest::GetLastActiveTimeFromCdcStateTable(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
-    CDCStateTable cdc_state_table(client);
+    auto cdc_state_table = MakeCDCStateTable(client);
 
     auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
         {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeActiveTime()));
@@ -2697,7 +2715,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Result<std::tuple<uint64, std::string>> CDCSDKYsqlTest::GetSnapshotDetailsFromCdcStateTable(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
-    CDCStateTable cdc_state_table(client);
+    auto cdc_state_table = MakeCDCStateTable(client);
     auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
         {tablet_id, stream_id},
         CDCStateTableEntrySelector().IncludeCDCSDKSafeTime().IncludeSnapshotKey()));
@@ -2716,7 +2734,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Result<int64_t> CDCSDKYsqlTest::GetSafeHybridTimeFromCdcStateTable(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
-    CDCStateTable cdc_state_table(client);
+    auto cdc_state_table = MakeCDCStateTable(client);
     auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
         {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCDCSDKSafeTime()));
 
@@ -2787,7 +2805,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
       const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
       const xrepl::StreamId& stream_id, const std::string timeout_msg) {
-    CDCStateTable cdc_state_table(test_client());
+    auto cdc_state_table = MakeCDCStateTable(test_client());
     Status s;
     auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
 
@@ -2802,7 +2820,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
               continue;
             }
 
-            if (row.checkpoint == OpId::Max()) {
+            if (*row.checkpoint == OpId::Max()) {
               continue;
             }
 
@@ -2820,7 +2838,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   Result<int> CDCSDKYsqlTest::GetStateTableRowCount() {
     int num = 0;
 
-    CDCStateTable cdc_state_table(test_client());
+    auto cdc_state_table = MakeCDCStateTable(test_client());
     Status s;
     auto table_range = VERIFY_RESULT(
         cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -3670,7 +3688,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ValidateColumnCounts(change_resp, 2);
   }
 
-  void CDCSDKYsqlTest::WaitForCompaction(YBTableName table) {
+  void CDCSDKYsqlTest::WaitForCompaction(
+      YBTableName table, bool expect_equal_entries_after_compaction) {
     auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
     int count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
     int count_after_compaction = 0;
@@ -3681,10 +3700,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           return false;
         }
         count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
-        if (count_after_compaction < count_before_compaction) {
-          return true;
-        }
-        return false;
+        return (expect_equal_entries_after_compaction &&
+                count_before_compaction == count_after_compaction) ||
+               count_after_compaction < count_before_compaction;
       },
       MonoDelta::FromSeconds(60), "Expected compaction did not happen"));
     LOG(INFO) << "count_before_compaction: " << count_before_compaction
@@ -3776,7 +3794,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       const xrepl::StreamId stream_id, const std::string& tablet_id) {
     // Read the cdc_state table safe should be set to valid value.
     CdcStateTableRow expected_row;
-    CDCStateTable cdc_state_table(test_client());
+    auto cdc_state_table = MakeCDCStateTable(test_client());
     Status s;
     auto table_range =
         VERIFY_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
@@ -3835,7 +3853,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   Result<std::optional<CDCSDKYsqlTest::CdcStateTableSlotRow>>
   CDCSDKYsqlTest::ReadSlotEntryFromStateTable(const xrepl::StreamId& stream_id) {
     std::optional<CdcStateTableSlotRow> slot_row = std::nullopt;
-    CDCStateTable cdc_state_table(test_client());
+    auto cdc_state_table = MakeCDCStateTable(test_client());
     Status s;
     auto table_range =
         VERIFY_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
@@ -3897,7 +3915,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     auto commit_record_txn_id = last_record.row_message().pg_transaction_id();
     auto commit_record_commit_time = last_record.row_message().commit_time();
 
-    CDCStateTable cdc_state_table(test_client());
+    auto cdc_state_table = MakeCDCStateTable(test_client());
     auto slot_entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
         {kCDCSDKSlotEntryTabletId, stream_id},
         CDCStateTableEntrySelector().IncludeData().IncludeCDCSDKSafeTime()));

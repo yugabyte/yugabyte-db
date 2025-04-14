@@ -36,6 +36,7 @@ class MetricRegistry;
 class MillisLag;
 class MillisLagPrototype;
 class NMSWriter;
+class MetricsAggregator;
 class PrometheusWriter;
 class StatsOnlyHistogram;
 

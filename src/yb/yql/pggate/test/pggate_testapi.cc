@@ -19,11 +19,11 @@
 namespace yb {
 namespace pggate {
 
-static const YBCPgTypeAttrs kYBCTestTypeAttrs = { 0 };
+static const YbcPgTypeAttrs kYBCTestTypeAttrs = { 0 };
 
-YBCStatus YBCTestCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
+YbcStatus YBCTestCreateTableAddColumn(YbcPgStatement handle, const char *attr_name, int attr_num,
                                       DataType yb_type, bool is_hash, bool is_range) {
-  int pg_type = 0;
+  auto pg_type = kInvalidOid;
   switch (yb_type) {
   case DataType::BOOL:
     pg_type = BOOLOID;
@@ -58,8 +58,8 @@ YBCStatus YBCTestCreateTableAddColumn(YBCPgStatement handle, const char *attr_na
 
 //--------------------------------------------------------------------------------------------------
 
-YBCStatus YBCTestNewColumnRef(YBCPgStatement stmt, int attr_num, DataType yb_type,
-                              YBCPgExpr *expr_handle) {
+YbcStatus YBCTestNewColumnRef(YbcPgStatement stmt, int attr_num, DataType yb_type,
+                              YbcPgExpr *expr_handle) {
   int pg_type = 0;
   switch (yb_type) {
   case DataType::BOOL:
@@ -96,65 +96,65 @@ YBCStatus YBCTestNewColumnRef(YBCPgStatement stmt, int attr_num, DataType yb_typ
 
 //--------------------------------------------------------------------------------------------------
 
-YBCStatus YBCTestNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
-                                 YBCPgExpr *expr_handle) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(BOOLOID);
+YbcStatus YBCTestNewConstantBool(YbcPgStatement stmt, bool value, bool is_null,
+                                 YbcPgExpr *expr_handle) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(BOOLOID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstant(stmt, type_entity, false, nullptr, datum, is_null, expr_handle);
 }
 
-YBCStatus YBCTestNewConstantInt1(YBCPgStatement stmt, int8_t value, bool is_null,
-                                 YBCPgExpr *expr_handle) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(CHAROID);
+YbcStatus YBCTestNewConstantInt1(YbcPgStatement stmt, int8_t value, bool is_null,
+                                 YbcPgExpr *expr_handle) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(CHAROID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstant(stmt, type_entity, false, nullptr, datum, is_null, expr_handle);
 }
 
-YBCStatus YBCTestNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
-                                 YBCPgExpr *expr_handle) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT2OID);
+YbcStatus YBCTestNewConstantInt2(YbcPgStatement stmt, int16_t value, bool is_null,
+                                 YbcPgExpr *expr_handle) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT2OID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstant(stmt, type_entity, false, nullptr, datum, is_null, expr_handle);
 }
 
-YBCStatus YBCTestNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
-                                 YBCPgExpr *expr_handle) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT4OID);
+YbcStatus YBCTestNewConstantInt4(YbcPgStatement stmt, int32_t value, bool is_null,
+                                 YbcPgExpr *expr_handle) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT4OID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstant(stmt, type_entity, false, nullptr, datum, is_null, expr_handle);
 }
 
-YBCStatus YBCTestNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
-                                 YBCPgExpr *expr_handle) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT8OID);
+YbcStatus YBCTestNewConstantInt8(YbcPgStatement stmt, int64_t value, bool is_null,
+                                 YbcPgExpr *expr_handle) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT8OID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstant(stmt, type_entity, false, nullptr, datum, is_null, expr_handle);
 }
 
-YBCStatus YBCTestNewConstantInt8Op(YBCPgStatement stmt, int64_t value, bool is_null,
-                                 YBCPgExpr *expr_handle, bool is_gt) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT8OID);
+YbcStatus YBCTestNewConstantInt8Op(YbcPgStatement stmt, int64_t value, bool is_null,
+                                 YbcPgExpr *expr_handle, bool is_gt) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT8OID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstantOp(stmt, type_entity, false, nullptr, datum, is_null, expr_handle, is_gt);
 }
 
-YBCStatus YBCTestNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
-                                   YBCPgExpr *expr_handle) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(FLOAT4OID);
+YbcStatus YBCTestNewConstantFloat4(YbcPgStatement stmt, float value, bool is_null,
+                                   YbcPgExpr *expr_handle) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(FLOAT4OID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstant(stmt, type_entity, false, nullptr, datum, is_null, expr_handle);
 }
 
-YBCStatus YBCTestNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,
-                                   YBCPgExpr *expr_handle) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(FLOAT8OID);
+YbcStatus YBCTestNewConstantFloat8(YbcPgStatement stmt, double value, bool is_null,
+                                   YbcPgExpr *expr_handle) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(FLOAT8OID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstant(stmt, type_entity, false, nullptr, datum, is_null, expr_handle);
 }
 
-YBCStatus YBCTestNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
-                                 YBCPgExpr *expr_handle) {
-  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(TEXTOID);
+YbcStatus YBCTestNewConstantText(YbcPgStatement stmt, const char *value, bool is_null,
+                                 YbcPgExpr *expr_handle) {
+  const YbcPgTypeEntity *type_entity = YBCPgFindTypeEntity(TEXTOID);
   Datum datum = type_entity->yb_to_datum(value, strlen(value), &kYBCTestTypeAttrs);
   return YBCPgNewConstant(stmt, type_entity, false, nullptr, datum, is_null, expr_handle);
 }

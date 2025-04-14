@@ -19,14 +19,15 @@ Unless otherwise noted, operating systems are supported by all supported version
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :---- |
-| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform<br>Default for YBA-deployed nodes |
-| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |       |
+| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} |       |
+| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} | Default for YugabyteDB Anywhere-deployed nodes |
 | Oracle Linux 8   | {{<icon/yes>}} |                | |
-| Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | Recommended for production |
+| Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | |
 | Red Hat Enterprise Linux 8 CIS Hardened | {{<icon/yes>}} |      | |
-| Red Hat Enterprise Linux&nbsp;9.3 and later | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<tags/feature/ea>}} |
-| Red Hat Enterprise Linux&nbsp;9 CIS Hardened | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<tags/feature/ea>}} |
-| SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<tags/feature/ea>}} |
+| Red Hat Enterprise Linux&nbsp;9.3 and later | {{<icon/yes>}} |  | |
+| Red Hat Enterprise Linux&nbsp;9 CIS Hardened | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<tags/feature/ea idea="1716">}} |
+| Rocky Linux 8    | {{<icon/yes>}} |                | Supported in v2.20.8, v2024.1.4, and v2024.2 and later. |
+| SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<tags/feature/ea idea="886">}} |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Ubuntu 22        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2.18.5, v2.20.1 |
 
@@ -36,9 +37,9 @@ The following table describes operating systems and architectures that are no lo
 | :--------------- | :------------- | :------------- | :---- |
 | Amazon Linux 2   | {{<icon/no>}}  | {{<icon/no>}}  | Supported in v2.18.0 and later<br>Deprecated in v2.20<br> Removed support in v2.21. |
 | CentOS 7         | {{<icon/no>}}  |                | Deprecated in v2.20<br> Removed support in v2.21. |
-| Oracle Linux 7   | {{<icon/no>}}  |                | Deprecated in v2.20<br> Removed support in v2024.1. |
-| Red Hat Enterprise Linux 7 | {{<icon/no>}} |       | Deprecated in v2.20<br> Removed support in v2024.1. |
-| Ubuntu 18        | {{<icon/no>}}  | {{<icon/no>}}  | Deprecated in v2.20<br> Removed support in v2024.1. |
+| Oracle Linux 7   | {{<icon/no>}}  |                | Deprecated in v2.20<br> Removed support in v2.21. |
+| Red Hat Enterprise Linux 7 | {{<icon/no>}} |       | Deprecated in v2.20<br> Removed support in v2.21. |
+| Ubuntu 18        | {{<icon/no>}}  | {{<icon/no>}}  | Deprecated in v2.20<br> Removed support in v2.21. |
 
 ## Using CIS hardened operating systems
 

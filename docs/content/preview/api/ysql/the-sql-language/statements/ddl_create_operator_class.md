@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE OPERATOR CLASS` statement to create an operator class.
+Use the CREATE OPERATOR CLASS statement to create an operator class.
 
 ## Syntax
 
@@ -43,6 +43,7 @@ yugabyte=# CREATE OPERATOR CLASS my_op_class
 
 ## See also
 
-- [`DROP OPERATOR CLASS`](../ddl_drop_operator_class)
-- [postgresql-docs-create-op-class](https://www.postgresql.org/docs/current/sql-createopclass.html)
-- [postgresql-docs-xindex](https://www.postgresql.org/docs/current/xindex.html)
+- [DROP OPERATOR CLASS](../ddl_drop_operator_class)
+
+[postgresql-docs-create-op-class]: https://www.postgresql.org/docs/15/sql-createopclass.html
+[postgresql-docs-xindex]: https://www.postgresql.org/docs/15/xindex.html

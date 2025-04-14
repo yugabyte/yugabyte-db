@@ -69,7 +69,6 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
-#include "catalog/pg_type_d.h"
 #include "commands/comment.h"
 #include "commands/seclabel.h"
 #include "commands/tablecmds.h"
@@ -89,11 +88,13 @@
 #include "utils/rel.h"
 #include "utils/varlena.h"
 
-/* Yugabyte includes */
-#include <string.h>
+/* YB includes */
+#include "catalog/pg_type_d.h"
+#include "commands/yb_cmds.h"
+#include "pg_yb_utils.h"
 #include "utils/jsonfuncs.h"
 #include "utils/syscache.h"
-#include "pg_yb_utils.h"
+#include <string.h>
 
 /* GUC variables */
 char	   *default_tablespace = NULL;
@@ -115,118 +116,12 @@ static bool destroy_tablespace_directories(Oid tablespaceoid, bool redo);
 void
 validatePlacementConfiguration(const char *value)
 {
-	if (value == NULL)
-	{
-		ereport(ERROR,(errmsg("Placement configuration cannot be empty")));
-		return;
-	}
-
-	text *placement_info = cstring_to_text(value);
-	text *json_array = json_get_value(placement_info, "placement_blocks");
-	if (json_array == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Required key \"placement_blocks\" not found")));
-	}
-
-	const int length = get_json_array_length(json_array);
-	if (length < 1) {
-		ereport(ERROR,
-				(errmsg("Invalid number of placement blocks %d", length)));
-		return;
-	}
-
-	bool* visited_priority = (bool*) alloca(sizeof(bool) * length);
-	memset(visited_priority, false, sizeof(bool) * length);
-	bool has_priority = false;
-
-	char *required_keys[4] = {"cloud", "region", "zone", "min_num_replicas"};
-	char *optional_keys[1] = {"leader_preference"};
-	int sum_min_replicas = 0;
-	for (int i = 0; i < length; ++i) {
-		text *json_element = get_json_array_element(json_array, i);
-
-		/*
-		*  Each element in the array is a placement configuration. Verify that
-		*  each such configuration contains all the keys in 'keys' and
-		*  contains no extraneous keys.
-		*/
-		validate_json_object_keys(json_element, required_keys, 4, optional_keys, 1);
-
-		/*
-		* Find the aggregate of min_num_replicas.
-		*/
-		const int min_replicas = json_get_int_value(json_element, required_keys[3]);
-		sum_min_replicas += min_replicas;
-
-		/*
-		* Make sure leader_preference is an integer greater than 0
-		*/
-		if (json_get_value(json_element, optional_keys[0]) != NULL)
-		{
-			int priority = json_get_int_value(json_element, optional_keys[0]);
-			/* Verify that priority is valid. */
-			if (priority < 1 || priority > length)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Invalid value for \"leader_preference\" key"),
-						errdetail("The set of leader_preference values should "
-								  "consist of contiguous integers starting at 1."
-								  " Preference value %d is invalid. ",
-							priority)));
-			}
-			has_priority = true;
-			visited_priority[priority - 1] = true;
-		}
-	}
-
-	/* Find the total replication factor */
-	int num_replicas = json_get_int_value(placement_info, "num_replicas");
-
-	/* Verify that num_replicas is valid. */
-	if (sum_min_replicas > num_replicas)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("Invalid value for \"num_replicas\" key"),
-				errdetail("num_replicas: %d is lesser than the total of "
-						"min_num_replicas fields %d", num_replicas,
-						sum_min_replicas)));
-	}
-	if (sum_min_replicas < num_replicas)
-	{
-		ereport(NOTICE,
-				(errmsg("num_replicas is %d, and the total min_num_replicas "
-						"fields is %d. The location of the additional %d "
-						"replicas among the specified zones will be decided "
-						"dynamically based on the cluster load", num_replicas,
-						sum_min_replicas, num_replicas - sum_min_replicas)));
-	}
-
-	/* Verify priority values are contiguous. */
-	if (has_priority)
-	{
-		bool reached_end = false;
-		for (int i = 0; i < length; ++i)
-		{
-			if (!visited_priority[i])
-			{
-				reached_end = true;
-			}
-			else if (reached_end)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("Invalid value for \"leader_preference\" key"),
-						errdetail("The set of leader_preference values should "
-								  "consist of contiguous integers starting at 1."
-								  " Preference value %d is missing.",
-								  i)));
-			}
-		}
-	}
+	/*
+	 * Do not validate that the current set of tservers can satisfy the placement
+	 * because some users add tservers after creating a tablespace (but
+	 * before creating any associated table).
+	 */
+	YBCValidatePlacement(value, /* check_satisfiable */ false);
 }
 
 /*
@@ -363,7 +258,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				 errmsg("permission denied to create tablespace \"%s\"",
 						stmt->tablespacename),
 				 errhint("Must be superuser or a member of the yb_db_admin "
-				 		 "role to create a tablespace.")));
+						 "role to create a tablespace.")));
 
 	/* However, the eventual owner of the tablespace need not be */
 	if (stmt->owner)
@@ -520,7 +415,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 
 			XLogBeginInsert();
 			XLogRegisterData((char *) &xlrec,
-					 offsetof(xl_tblspc_create_rec, ts_path));
+							 offsetof(xl_tblspc_create_rec, ts_path));
 			XLogRegisterData((char *) location, strlen(location) + 1);
 
 			(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_CREATE);
@@ -534,7 +429,9 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		ForceSyncCommit();
 
 		pfree(location);
-	} else {
+	}
+	else
+	{
 		ForceSyncCommit();
 	}
 
@@ -630,20 +527,19 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 				 errdetail_log("%s", detail_log)));
 	}
 
-  /* Check if there are snapshot schedules, disallow dropping in such cases */
+	/* Check if there are snapshot schedules, disallow dropping in such cases */
 	if (IsYugaByteEnabled())
 	{
-		bool is_active;
-    HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
-    if (is_active)
-    {
-      ereport(ERROR,
-			    (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-				   errmsg("tablespace \"%s\" cannot be dropped. "
-					   "Dropping tablespaces is not allowed on clusters "
-						 "with Point in Time Restore activated.",
-             tablespacename)));
-    }
+		bool		is_active;
+
+		HandleYBStatus(YBCPgCheckIfPitrActive(&is_active));
+		if (is_active)
+			ereport(ERROR,
+					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+					 errmsg("tablespace \"%s\" cannot be dropped. "
+							"Dropping tablespaces is not allowed on clusters "
+							"with Point in Time Restore activated.",
+							tablespacename)));
 	}
 
 	/* DROP hook for the tablespace being removed */
@@ -995,8 +891,7 @@ destroy_tablespace_directories(Oid tablespaceoid, bool redo)
 	/*
 	 * Try to remove the symlink.  We must however deal with the possibility
 	 * that it's a directory instead of a symlink --- this could happen during
-	 * WAL replay (see TablespaceCreateDbspace), and it is also the case on
-	 * Windows where junction points lstat() as directories.
+	 * WAL replay (see TablespaceCreateDbspace).
 	 *
 	 * Note: in the redo case, we'll return true if this final step fails;
 	 * there's no point in retrying it.  Also, ENOENT should provoke no more
@@ -1026,7 +921,6 @@ remove_symlink:
 							linkloc)));
 		}
 	}
-#ifdef S_ISLNK
 	else if (S_ISLNK(st.st_mode))
 	{
 		if (unlink(linkloc) < 0)
@@ -1039,7 +933,6 @@ remove_symlink:
 							linkloc)));
 		}
 	}
-#endif
 	else
 	{
 		/* Refuse to remove anything that's not a directory or symlink */
@@ -1117,7 +1010,6 @@ remove_tablespace_symlink(const char *linkloc)
 					 errmsg("could not remove directory \"%s\": %m",
 							linkloc)));
 	}
-#ifdef S_ISLNK
 	else if (S_ISLNK(st.st_mode))
 	{
 		if (unlink(linkloc) < 0 && errno != ENOENT)
@@ -1126,7 +1018,6 @@ remove_tablespace_symlink(const char *linkloc)
 					 errmsg("could not remove symbolic link \"%s\": %m",
 							linkloc)));
 	}
-#endif
 	else
 	{
 		/* Refuse to remove anything that's not a directory or symlink */
@@ -1342,7 +1233,10 @@ check_default_tablespace(char **newval, void **extra, GucSource source)
 	 * If Connection Manager is enabled, make the connection sticky.
 	 */
 	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Setting sticky connection for default_tablespace");
 		yb_ysql_conn_mgr_sticky_guc = true;
+	}
 
 	return true;
 }
@@ -1526,7 +1420,10 @@ check_temp_tablespaces(char **newval, void **extra, GucSource source)
 	 * If Connection Manager is enabled, make the connection sticky.
 	 */
 	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Setting sticky connection for temp_tablespaces");
 		yb_ysql_conn_mgr_sticky_guc = true;
+	}
 
 	return true;
 }
@@ -1742,8 +1639,8 @@ get_tablespace_name(Oid spc_oid)
 void
 yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
 {
-	bool isnull;
-	Datum datum;
+	bool		isnull;
+	Datum		datum;
 	HeapTuple	tuple;
 
 	/*
@@ -1759,6 +1656,7 @@ yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
 		{
 			Assert(PointerIsValid(DatumGetPointer(datum)));
 			ArrayType  *array = DatumGetArrayTypeP(datum);
+
 			deconstruct_array(array, TEXTOID, -1, false, 'i',
 							  options, NULL, num_options);
 		}

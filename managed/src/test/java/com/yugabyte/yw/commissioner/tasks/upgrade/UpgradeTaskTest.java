@@ -183,6 +183,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.deviceInfo = new DeviceInfo();
     userIntent.deviceInfo.volumeSize = 100;
     userIntent.deviceInfo.numVolumes = 2;
+    userIntent.useSystemd = true;
 
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId(), certUUID);
 
@@ -255,7 +256,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
                 return res;
               })
           .when(mockYsqlQueryExecutor)
-          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
+          .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
     } catch (Exception ignored) {
       fail();
     }

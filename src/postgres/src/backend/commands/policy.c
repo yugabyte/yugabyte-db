@@ -48,10 +48,15 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "utils/yb_tuplecache.h"
+
 static void RangeVarCallbackForPolicy(const RangeVar *rv,
 									  Oid relid, Oid oldrelid, void *arg);
 static char parse_policy_command(const char *cmd_name);
 static Datum *policy_role_list_to_array(List *roles, int *num_roles);
+static int	YbPolicyNameCmp(const void *a, const void *b);
 
 /*
  * Callback to RangeVarGetRelidExtended().
@@ -193,15 +198,16 @@ policy_role_list_to_array(List *roles, int *num_roles)
  * is true for this relation.
  */
 void
-RelationBuildRowSecurity(Relation relation)
+RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cache)
 {
 	MemoryContext rscxt;
-	MemoryContext oldcxt = GetCurrentMemoryContext();
+	MemoryContext oldcxt = CurrentMemoryContext;
 	RowSecurityDesc *rsdesc;
 	Relation	catalog;
 	ScanKeyData skey;
 	SysScanDesc sscan;
 	HeapTuple	tuple;
+	YbTupleCacheIterator iter;
 
 	/*
 	 * Create a memory context to hold everything associated with this
@@ -209,7 +215,7 @@ RelationBuildRowSecurity(Relation relation)
 	 * a relcache flush.  However, to cover the possibility of an error
 	 * partway through, we don't make the context long-lived till we're done.
 	 */
-	rscxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	rscxt = AllocSetContextCreate(CurrentMemoryContext,
 								  "row security descriptor",
 								  ALLOCSET_SMALL_SIZES);
 	MemoryContextCopyAndSetIdentifier(rscxt,
@@ -223,18 +229,37 @@ RelationBuildRowSecurity(Relation relation)
 	 * Because we use the index on (polrelid, polname), we should consistently
 	 * visit the rel's policies in name order, at least when system indexes
 	 * aren't disabled.  This simplifies equalRSDesc().
+	 *
+	 * YB note: We load the policies from the YB tuple cache, which doesn't
+	 * guarantee any order. We instead sort the policies at the end of this
+	 * function to match vanilla PG behavior.
 	 */
 	catalog = table_open(PolicyRelationId, AccessShareLock);
 
-	ScanKeyInit(&skey,
-				Anum_pg_policy_polrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(relation)));
+	bool		use_yb_cache = (IsYugaByteEnabled() &&
+								*YBCGetGFlags()->ysql_use_optimized_relcache_update &&
+								yb_pg_policy_cache);
 
-	sscan = systable_beginscan(catalog, PolicyPolrelidPolnameIndexId, true,
-							   NULL, 1, &skey);
+	if (use_yb_cache)
+	{
+		Oid			relid = RelationGetRelid(relation);
 
-	while (HeapTupleIsValid(tuple = systable_getnext(sscan)))
+		iter = YbTupleCacheIteratorBegin(yb_pg_policy_cache, &relid);
+	}
+	else
+	{
+		ScanKeyInit(&skey,
+					Anum_pg_policy_polrelid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(RelationGetRelid(relation)));
+
+		sscan = systable_beginscan(catalog, PolicyPolrelidPolnameIndexId, true,
+								   NULL, 1, &skey);
+	}
+
+	while (HeapTupleIsValid(tuple = use_yb_cache ?
+							YbTupleCacheIteratorGetNext(iter) :
+							systable_getnext(sscan)))
 	{
 		Form_pg_policy policy_form = (Form_pg_policy) GETSTRUCT(tuple);
 		RowSecurityPolicy *policy;
@@ -311,7 +336,16 @@ RelationBuildRowSecurity(Relation relation)
 		MemoryContextSwitchTo(oldcxt);
 	}
 
-	systable_endscan(sscan);
+	if (use_yb_cache)
+	{
+		YbTupleCacheIteratorEnd(iter);
+		/* Sort policies by name to match vanilla PG behavior */
+		qsort(rsdesc->policies, list_length(rsdesc->policies),
+			  sizeof(RowSecurityPolicy), YbPolicyNameCmp);
+	}
+	else
+		systable_endscan(sscan);
+
 	table_close(catalog, AccessShareLock);
 
 	/*
@@ -1282,4 +1316,17 @@ relation_has_policies(Relation rel)
 	table_close(catalog, AccessShareLock);
 
 	return ret;
+}
+
+/*
+ * Used to sort policies in RelationBuildRowSecurity() to match vanilla
+ * PG behavior.
+ */
+static int
+YbPolicyNameCmp(const void *a, const void *b)
+{
+	const RowSecurityPolicy *pa = (const RowSecurityPolicy *) a;
+	const RowSecurityPolicy *pb = (const RowSecurityPolicy *) b;
+
+	return strcmp(pa->policy_name, pb->policy_name);
 }

@@ -20,6 +20,7 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/util/clone_ptr.h"
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -36,6 +37,7 @@ class DocOperation;
 class DocPgsqlScanSpec;
 class DocQLScanSpec;
 class DocRowwiseIterator;
+class DocVectorIndex;
 class DocWriteBatch;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
@@ -50,9 +52,9 @@ class RedisWriteOperation;
 class ScanChoices;
 class SchemaPackingProvider;
 class SharedLockManager;
+class StorageSet;
 class TableInfoProvider;
 class TransactionStatusCache;
-class VectorIndex;
 class WaitQueue;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
@@ -60,40 +62,42 @@ class YQLStorageIf;
 struct ApplyTransactionState;
 struct DocDB;
 struct DocReadContext;
+struct DocVectorIndexInsertEntry;
+struct DocVectorIndexSearchResultEntry;
 struct FetchedEntry;
 struct HistoryRetentionDirective;
 struct IntentKeyValueForCDC;
 struct KeyBounds;
 template <typename T>
 struct LockBatchEntry;
+struct ObjectLockOwner;
 struct ObjectLockPrefix;
 struct PgsqlReadOperationData;
 struct ReadOperationData;
-struct VectorIndexInsertEntry;
-struct VectorIndexSearchResultEntry;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
-template <typename T>
-using LockBatchEntries = std::vector<LockBatchEntry<T>>;
+template <typename LockManager>
+using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
 // Lock state stores the number of locks acquired for each intent type.
 // The count for each intent type resides in sequential bits (block) in lock state.
 // For example the count of locks on a particular intent type could be received as:
-// (lock_state >> (to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
+// (lock_state >> (std::to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
 // Refer shared_lock_manager.cc for further details.
 using LockState = uint64_t;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
-using SessionIDHostPair = std::pair<const uint64_t, const std::string>;
 
+using ConsensusFrontierPtr = clone_ptr<ConsensusFrontier>;
 using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
-using VectorIndexPtr = std::shared_ptr<VectorIndex>;
-using VectorIndexes = std::vector<VectorIndexPtr>;
-using VectorIndexesPtr = std::shared_ptr<VectorIndexes>;
-using VectorIndexInsertEntries = std::vector<VectorIndexInsertEntry>;
-using VectorIndexSearchResult = std::vector<VectorIndexSearchResultEntry>;
+using DocVectorIndexPtr = std::shared_ptr<DocVectorIndex>;
+using DocVectorIndexes = std::vector<DocVectorIndexPtr>;
+using DocVectorIndexesPtr = std::shared_ptr<DocVectorIndexes>;
+using DocVectorIndexInsertEntries = std::vector<DocVectorIndexInsertEntry>;
+using DocVectorIndexSearchResult = std::vector<DocVectorIndexSearchResultEntry>;
 
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
 YB_STRONGLY_TYPED_BOOL(FastBackwardScan);
+YB_STRONGLY_TYPED_BOOL(UseVariableBloomFilter);
 
 }  // namespace yb::docdb

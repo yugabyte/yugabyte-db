@@ -19,11 +19,12 @@
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/result.h"
-#include "yb/util/metrics.h"
 
 namespace yb {
 
+class JsonWriter;
 struct XClusterPollerStats;
 
 namespace cdc {

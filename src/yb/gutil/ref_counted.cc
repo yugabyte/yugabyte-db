@@ -74,6 +74,10 @@ bool RefCountedThreadSafeBase::HasOneRef() const {
   return ref_count_.load(std::memory_order_acquire) == 1;
 }
 
+bool RefCountedThreadSafeBase::HasTwoRef() const {
+  return ref_count_.load(std::memory_order_acquire) == 2;
+}
+
 RefCountedThreadSafeBase::~RefCountedThreadSafeBase() {
 #ifndef NDEBUG
   DCHECK(in_dtor_) << "RefCountedThreadSafe object deleted without "

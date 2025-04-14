@@ -1,0 +1,7 @@
+# YB list of filename patterns to exclude from pgindent runs
+#
+# Third party extensions don't necessarily conform to PG's style.
+third-party-extensions/
+#
+# For some reason, this file gets oddly formatted over multiple iterations.
+src/interfaces/ecpg/include/sqlca.h

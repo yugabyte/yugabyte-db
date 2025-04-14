@@ -37,8 +37,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/catalog.h"
+#include "catalog/yb_oid_assignment.h"
 #include "pg_yb_utils.h"
 
 static char *makeUniqueTypeName(const char *typeName, Oid typeNamespace,
@@ -132,7 +133,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 	nulls[Anum_pg_type_typacl - 1] = true;
 
 	/* Use binary-upgrade override for pg_type.oid? */
-	if (IsBinaryUpgrade || yb_binary_restore)
+	if ((IsBinaryUpgrade || yb_binary_restore) && !yb_extension_upgrade)
 	{
 		if (!OidIsValid(binary_upgrade_next_pg_type_oid))
 			ereport(ERROR,
@@ -141,6 +142,11 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 
 		typoid = binary_upgrade_next_pg_type_oid;
 		binary_upgrade_next_pg_type_oid = InvalidOid;
+	}
+	else if (YbUsingTypeOidAssignment())
+	{
+		typoid = YbLookupOidAssignmentForType(get_namespace_name(typeNamespace),
+											  typeName);
 	}
 	else
 	{
@@ -174,7 +180,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 								 true,	/* make extension dependency */
 								 false,
 								 false, /* ybRelationIsSystem */
-								 false /* ybRelationIsShared */);
+								 false /* ybRelationIsShared */ );
 
 	/* Post creation hook for new shell type */
 	InvokeObjectPostCreateHook(TypeRelationId, typoid, 0);
@@ -238,7 +244,7 @@ TypeCreate(Oid newTypeOid,
 		   int32 typNDims,		/* Array dimensions for baseType */
 		   bool typeNotNull,
 		   Oid typeCollation,
-		   bool ybRelationIsShared	/* only for relation rowtypes */)
+		   bool ybRelationIsShared /* only for relation rowtypes */ )
 {
 	Relation	pg_type_desc;
 	Oid			typeObjectId;
@@ -496,7 +502,8 @@ TypeCreate(Oid newTypeOid,
 		else if (ybRelationIsShared && IsYsqlUpgrade)
 			elog(ERROR, "shared relations must have an explicit type OID");
 		/* Use binary-upgrade override for pg_type.oid, if supplied. */
-		else if (IsBinaryUpgrade || yb_binary_restore)
+		else if ((IsBinaryUpgrade || yb_binary_restore) &&
+				 !yb_extension_upgrade)
 		{
 			if (!OidIsValid(binary_upgrade_next_pg_type_oid))
 				ereport(ERROR,
@@ -522,6 +529,11 @@ TypeCreate(Oid newTypeOid,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("system relations must have an explicit type OID!")));
+		}
+		else if (YbUsingTypeOidAssignment())
+		{
+			typeObjectId = YbLookupOidAssignmentForType(get_namespace_name(typeNamespace),
+														typeName);
 		}
 		/* else allow system to assign oid */
 		else

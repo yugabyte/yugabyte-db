@@ -130,10 +130,11 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
         local_commit_aborted_subtxn_set = last_known_aborted_subtxn_set_;
       }
       auto last_known_deadlock_status = last_known_deadlock_status_;
+      auto last_known_pg_session_req_version = last_known_pg_session_req_version_;
       lock->unlock();
       request.callback(TransactionStatusResult{
           *transaction_status, last_known_status_hybrid_time, local_commit_aborted_subtxn_set,
-          last_known_deadlock_status});
+          last_known_deadlock_status, last_known_pg_session_req_version});
       return;
     }
   }
@@ -181,6 +182,7 @@ void RunningTransaction::Abort(client::YBClient* client,
   abort_waiters_.push_back(std::move(callback));
   auto status_tablet = this->status_tablet();
   abort_request_in_progress_ = true;
+  auto shared_self = shared_from_this();
   lock->unlock();
   VLOG_WITH_PREFIX(3) << "Abort request: " << was_empty;
   if (!was_empty) {
@@ -196,18 +198,26 @@ void RunningTransaction::Abort(client::YBClient* client,
           nullptr /* tablet */,
           client,
           &req,
-          std::bind(&RunningTransaction::AbortReceived, this, status_tablet,
-                    _1, _2, shared_from_this())),
+          [status_tablet, shared_self, weak_context = context_.RetainWeak()](
+              const Status& status, const tserver::AbortTransactionResponsePB& response) {
+            auto context_lock = weak_context.lock();
+            if (!context_lock) {
+              return;
+            }
+            shared_self->AbortReceived(status_tablet, status, response);
+          }),
       &abort_handle_);
 }
 
 std::string RunningTransaction::ToString() const {
   return Format(
       "{ metadata: $0 last_batch_data: $1 replicated_batches: $2 local_commit_time: $3 "
-      "last_known_status: $4 last_known_status_hybrid_time: $5 status_waiters_size: $6 "
-      "outstanding_status_requests: $7}",
+      "last_known_status: $4 last_known_status_hybrid_time: $5 last_known_deadlock_status: $6 "
+      "last_known_pg_session_req_version: $7 status_waiters_size: $8 "
+      "outstanding_status_requests: $9}",
       metadata_, last_batch_data_, replicated_batches_, local_commit_time_,
       TransactionStatus_Name(last_known_status_), last_known_status_hybrid_time_,
+      last_known_deadlock_status_, last_known_pg_session_req_version_,
       status_waiters_.size(), outstanding_status_requests_.load(std::memory_order_relaxed));
 }
 
@@ -302,7 +312,7 @@ void RunningTransaction::StatusReceived(
 bool RunningTransaction::UpdateStatus(
     const TabletId& status_tablet, TransactionStatus transaction_status, HybridTime time_of_status,
     HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set,
-    const Status& expected_deadlock_status) {
+    const Status& expected_deadlock_status, PgSessionRequestVersion pg_session_req_version) {
   if (status_tablet != this->status_tablet()) {
     // Can happen in case of transaction promotion, should be okay to return an existing older
     // status as the subsequent requests would return the latest status.
@@ -332,6 +342,10 @@ bool RunningTransaction::UpdateStatus(
   // used in wait-queues alone and shouldn't cause any correctness issues.
   DCHECK(expected_deadlock_status.ok() || transaction_status == TransactionStatus::ABORTED);
   last_known_deadlock_status_ = expected_deadlock_status;
+
+  if (pg_session_req_version) {
+    last_known_pg_session_req_version_ = pg_session_req_version;
+  }
 
   if (transaction_status == last_known_status_) {
     return false;
@@ -363,6 +377,7 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
   HybridTime time_of_status = HybridTime::kMin;
   TransactionStatus transaction_status = TransactionStatus::PENDING;
   Status expected_deadlock_status = Status::OK();
+  PgSessionRequestVersion pg_session_req_version = 0;
   SubtxnSet aborted_subtxn_set;
   const bool ok = status.ok();
   int64_t new_request_id = -1;
@@ -402,6 +417,9 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
           // response contains a deadlock specific error.
           expected_deadlock_status = StatusFromPB(response.deadlock_reason(0));
         }
+        if (!response.pg_session_req_version().empty() && response.pg_session_req_version(0)) {
+          pg_session_req_version = response.pg_session_req_version(0);
+        }
       } else {
         LOG_WITH_PREFIX(DFATAL)
             << "Could not deserialize SubtxnSet: "
@@ -417,7 +435,7 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
         ? HybridTime::FromPB(response.coordinator_safe_time(0)) : HybridTime();
     did_abort_txn = UpdateStatus(
         status_tablet, transaction_status, time_of_status, coordinator_safe_time,
-        aborted_subtxn_set, expected_deadlock_status);
+        aborted_subtxn_set, expected_deadlock_status, pg_session_req_version);
     if (did_abort_txn) {
       context_.NotifyAbortedTransactionIncrement(id());
       context_.EnqueueRemoveUnlocked(
@@ -441,7 +459,7 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
   }
   NotifyWaiters(
       serial_no, time_of_status, transaction_status, aborted_subtxn_set, status_waiters,
-      expected_deadlock_status);
+      expected_deadlock_status, pg_session_req_version);
   if (did_abort_txn) {
     context_.SignalAborted(id());
   }
@@ -475,7 +493,8 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
                                        TransactionStatus transaction_status,
                                        const SubtxnSet& aborted_subtxn_set,
                                        const std::vector<StatusRequest>& status_waiters,
-                                       const Status& expected_deadlock_status) {
+                                       const Status& expected_deadlock_status,
+                                       PgSessionRequestVersion pg_session_req_version) {
   for (const auto& waiter : status_waiters) {
     auto status_for_waiter =
         GetStatusAt(waiter.global_limit_ht, time_of_status, transaction_status);
@@ -487,6 +506,7 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
         result.aborted_subtxn_set = aborted_subtxn_set;
       }
       result.expected_deadlock_status = expected_deadlock_status;
+      result.pg_session_req_version = pg_session_req_version;
       waiter.callback(std::move(result));
     } else if (time_of_status >= waiter.read_ht) {
       // It means that between read_ht and global_limit_ht transaction was pending.
@@ -497,13 +517,16 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
           << waiter.serial_no << " vs " << serial_no;
       waiter.callback(TransactionStatusResult{
           TransactionStatus::PENDING, time_of_status, aborted_subtxn_set,
-          expected_deadlock_status});
+          expected_deadlock_status, pg_session_req_version});
     } else {
-      waiter.callback(STATUS(TryAgain,
-          Format("Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
-                 "last known: $2 at $3", waiter.read_ht, waiter.global_limit_ht,
-                 TransactionStatus_Name(transaction_status), time_of_status), Slice(),
-          PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) ));
+      waiter.callback(STATUS(
+          TryAgain,
+          Format(
+              "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
+              "last known: $2 at $3",
+              waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
+              time_of_status),
+          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_CONFLICT)));
     }
   }
 }
@@ -523,8 +546,7 @@ Result<TransactionStatusResult> RunningTransaction::MakeAbortResult(
 
 void RunningTransaction::AbortReceived(const TabletId& status_tablet,
                                        const Status& status,
-                                       const tserver::AbortTransactionResponsePB& response,
-                                       const RunningTransactionPtr& shared_self) {
+                                       const tserver::AbortTransactionResponsePB& response) {
   if (response.has_propagated_hybrid_time()) {
     context_.participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
   }
@@ -532,7 +554,7 @@ void RunningTransaction::AbortReceived(const TabletId& status_tablet,
   decltype(abort_waiters_) abort_waiters;
   auto result = MakeAbortResult(status, response);
 
-  VLOG_WITH_PREFIX(3) << "AbortReceived: " << yb::ToString(result);
+  VLOG_WITH_PREFIX(3) << "AbortReceived: " << AsString(result);
 
   bool did_abort_txn = false;
   {
@@ -543,7 +565,7 @@ void RunningTransaction::AbortReceived(const TabletId& status_tablet,
         << "inconsistentcy issues in case of Geo-Partition workloads.";
     abort_request_in_progress_ = false;
 
-    LOG_IF(DFATAL, status_tablet != shared_self->status_tablet())
+    LOG_IF(DFATAL, status_tablet != this->status_tablet())
         << "Status Tablet switched while Abort txn request was in progress. This might lead "
         << "to data consistency issues.";
 
@@ -555,7 +577,8 @@ void RunningTransaction::AbortReceived(const TabletId& status_tablet,
       auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
       did_abort_txn = UpdateStatus(
           status_tablet, result->status, result->status_time, coordinator_safe_time,
-          result->aborted_subtxn_set, result->expected_deadlock_status);
+          result->aborted_subtxn_set, result->expected_deadlock_status,
+          result->pg_session_req_version);
       if (did_abort_txn) {
         context_.NotifyAbortedTransactionIncrement(id());
         context_.EnqueueRemoveUnlocked(
@@ -580,7 +603,7 @@ std::string RunningTransaction::LogPrefix() const {
 Status MakeAbortedStatus(const TransactionId& id) {
   return STATUS(
       TryAgain, Format("Transaction aborted: $0", id), Slice(),
-      PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
 }
 
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,7 +27,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/clone/clone_state_entity.h"
@@ -51,7 +50,9 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-DEFINE_RUNTIME_PREVIEW_bool(enable_db_clone, false, "Enable DB cloning.");
+DEFINE_RUNTIME_bool(enable_db_clone, false, "Enable DB cloning.");
+TAG_FLAG(enable_db_clone, advanced);
+
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DEFINE_test_flag(bool, fail_clone_pg_schema, false, "Fail clone pg schema operation for testing");
 DEFINE_test_flag(bool, fail_clone_tablets, false, "Fail StartTabletsCloning for testing");
@@ -168,14 +169,9 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
         deadline);
   }
 
-  // Pick tserver to execute ClonePgSchema operation
-  // TODO(Yamen): modify to choose the tserver the closest to the master leader.
-  Result<TSDescriptorPtr> PickTserver() override {
-    const auto& tservers = catalog_manager_->GetAllLiveNotBlacklistedTServers();
-    if (tservers.empty()) {
-      return STATUS_FORMAT(RuntimeError, "No live tservers available");
-    }
-    return tservers[0];
+  // Pick tserver to execute PG operations.
+  Result<TSDescriptorPtr> GetClosestLiveTserver() override {
+    return catalog_manager_->GetClosestLiveTserver();
   }
 
   TSDescriptorVector GetTservers() override {
@@ -340,10 +336,10 @@ Status CloneStateManager::StartTabletsCloning(
   }
 
   // Export snapshot info.
+  HybridTime restore_ht(clone_state->LockForRead()->pb.restore_time());
   auto [snapshot_info, not_snapshotted_tablets] = VERIFY_RESULT(
       external_funcs_->GenerateSnapshotInfoFromScheduleForClone(
-          snapshot_schedule_id, HybridTime(clone_state->LockForRead()->pb.restore_time()),
-          deadline));
+          snapshot_schedule_id, restore_ht, deadline));
   auto source_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_info.id()));
   VLOG(2) << Format(
       "The generated SnapshotInfoPB as of time: $0, snapshot_info: $1 ",
@@ -366,7 +362,6 @@ Status CloneStateManager::StartTabletsCloning(
   lock.Commit();
 
   // Generate a new snapshot.
-  // All indexes already are in the request. Do not add them twice.
   // It is safe to trigger the clone op immediately after this since imported snapshots are created
   // synchronously.
   CreateSnapshotRequestPB create_snapshot_req;
@@ -380,6 +375,7 @@ Status CloneStateManager::StartTabletsCloning(
 
     create_snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
   }
+  // All indexes already are in the request. Do not add them twice.
   create_snapshot_req.set_add_indexes(false);
   create_snapshot_req.set_imported(true);
   RETURN_NOT_OK(external_funcs_->DoCreateSnapshot(
@@ -410,7 +406,7 @@ Status CloneStateManager::ClonePgSchemaObjects(
   }
 
   // Pick one of the live tservers to send ysql_dump and ysqlsh requests to.
-  auto ts = VERIFY_RESULT(external_funcs_->PickTserver());
+  auto ts = VERIFY_RESULT(external_funcs_->GetClosestLiveTserver());
   // Deadline passed to the ClonePgSchemaTask (including rpc time and callback execution deadline)
   auto deadline = MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms;
   RETURN_NOT_OK(external_funcs_->ScheduleClonePgSchemaTask(
@@ -479,13 +475,21 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
     }
   }
 
+  auto clone_state = std::make_shared<CloneStateInfo>(GenerateObjectId());
+  clone_state->SetEpoch(epoch);
+
+  if (clone_state->id() < source_namespace->id()) {
+    clone_state->mutable_metadata()->StartMutation();
+  }
+
   auto namespace_lock = source_namespace->LockForWrite();
   auto seq_no = namespace_lock->pb.clone_request_seq_no() + 1;
   namespace_lock.mutable_data()->pb.set_clone_request_seq_no(seq_no);
 
-  auto clone_state = std::make_shared<CloneStateInfo>(GenerateObjectId());
-  clone_state->SetEpoch(epoch);
-  clone_state->mutable_metadata()->StartMutation();
+  if (!clone_state->mutable_metadata()->HasWriteLock()) {
+    clone_state->mutable_metadata()->StartMutation();
+  }
+
   auto* pb = &clone_state->mutable_metadata()->mutable_dirty()->pb;
   pb->set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
   pb->set_clone_request_seq_no(seq_no);
@@ -622,12 +626,7 @@ AsyncClonePgSchema::ClonePgSchemaCallbackType CloneStateManager::MakeDoneClonePg
 }
 
 Status CloneStateManager::HandleCreatingState(const CloneStateInfoPtr& clone_state) {
-  auto lock = clone_state->LockForWrite();
-  SCHECK_EQ(lock->pb.aggregate_state(), SysCloneStatePB::CREATING, IllegalState,
-      "Expected clone to be in creating state");
-
   bool all_tablets_running = true;
-  auto& pb = lock.mutable_data()->pb;
   for (auto& tablet_data : clone_state->GetTabletData()) {
     // Check to see if the tablet is done cloning (i.e. it is RUNNING).
     auto tablet = VERIFY_RESULT(external_funcs_->GetTabletInfo(tablet_data.target_tablet_id));
@@ -639,6 +638,11 @@ Status CloneStateManager::HandleCreatingState(const CloneStateInfoPtr& clone_sta
   if (!all_tablets_running) {
     return Status::OK();
   }
+
+  auto lock = clone_state->LockForWrite();
+  auto& pb = lock.mutable_data()->pb;
+  SCHECK_EQ(lock->pb.aggregate_state(), SysCloneStatePB::CREATING, IllegalState,
+      "Expected clone to be in creating state");
 
   LOG(INFO) << Format("All tablets for cloned namespace $0 with seq_no $1 are running. "
       "Triggering restore.",
@@ -696,7 +700,7 @@ Status CloneStateManager::EnableDbConnections(const CloneStateInfoPtr& clone_sta
     }
     return Status::OK();
   };
-  auto ts = VERIFY_RESULT(external_funcs_->PickTserver());
+  auto ts = VERIFY_RESULT(external_funcs_->GetClosestLiveTserver());
   LOG(INFO) << Format(
       "Scheduling enable DB Connections Task for database:$0 ",
       clone_state->LockForRead()->pb.target_namespace_name());

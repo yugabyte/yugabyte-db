@@ -39,7 +39,8 @@ export const mockProps = {
               yqlServerRpcPort: 9042,
               ysqlServerHttpPort: 13000,
               ysqlServerRpcPort: 5433,
-              nodeExporterPort: 9300
+              nodeExporterPort: 9300,
+              ybControllerrRpcPort: 18018
             },
             extraDependencies: {
               installNodeExporter: true
@@ -73,7 +74,6 @@ export const mockProps = {
                   enableYSQLAuth: false,
                   enableYCQLAuth: false,
                   enableYSQL: true,
-                  enableYEDIS: false,
                   enableNodeToNodeEncrypt: true,
                   enableClientToNodeEncrypt: true,
                   enableVolumeEncryption: false,

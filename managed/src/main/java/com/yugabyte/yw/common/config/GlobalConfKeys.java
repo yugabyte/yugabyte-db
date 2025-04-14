@@ -345,12 +345,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for admin operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Integer> bootstrapProducerTimeoutMs =
+  public static final ConfKeyInfo<Integer> xclusterDbSyncTimeoutMs =
       new ConfKeyInfo<>(
-          "yb.xcluster.bootstrap_producer_timeout_ms",
+          "yb.xcluster.db_sync_timeout_ms",
           ScopeType.GLOBAL,
-          "Bootstrap producer timeout",
-          "Bootstrap producer timeout in milliseconds",
+          "XCluster config DB sync timeout",
+          "XCluster config background DB sync timeout in milliseconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> xclusterGetApiTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.xcluster.get_api_timeout_ms",
+          ScopeType.GLOBAL,
+          "XCluster/DR config GET API timeout",
+          "XCluster/DR config GET API timeout in milliseconds",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
@@ -460,6 +468,23 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "KMS Refresh Interval",
           "Default refresh interval for the KMS providers.",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> kmsAllowCiphertrust =
+      new ConfKeyInfo<>(
+          "yb.kms.allow_ciphertrust",
+          ScopeType.GLOBAL,
+          "Allow CipherTrust KMS",
+          "Allow the usage of CipherTrust KMS.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
+      new ConfKeyInfo<>(
+          "yb.kms.hcv_token_renew_percent",
+          ScopeType.GLOBAL,
+          "Percentage of Hashicorp vault TTL to renew the token after",
+          "HashiCorp Vault tokens expire when their TTL is reached. This setting renews the token"
+              + " after it has used the specified percentage of its original TTL. Default: 70%.",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   // TODO() Add metadata
   public static final ConfKeyInfo<Boolean> startMasterOnStopNode =
@@ -794,6 +819,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " operations",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> xClusterTableStatusLoggingEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.table_status_logging_enabled",
+          ScopeType.GLOBAL,
+          "Whether to log information about gathering table statuses in xCluster",
+          "Whether to log information about gathering bad table statuses in xCluster; the logs can"
+              + " be huge and this gives you a leverage to disable it",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
       new ConfKeyInfo<>(
           "yb.xcluster.use_ybc",
@@ -886,6 +920,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Cooldown after disk resize in aws (in hours)",
           "Cooldown after disk resize in aws (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> gcpHyperdiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.gcp.hyperdisk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          "Cooldown after hyperdisk resize in gcp (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
@@ -1080,7 +1122,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth enabled",
           "Enables basic authentication for Prometheus web UI/APIs access",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> metricsAuthUsername =
       new ConfKeyInfo<>(
           "yb.metrics.auth_username",
@@ -1088,7 +1130,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth username",
           "Username, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> metricsAuthPassword =
       new ConfKeyInfo<>(
           "yb.metrics.auth_password",
@@ -1096,7 +1138,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth password",
           "Password, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> forceYbcShutdownDuringUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.force_shutdown",
@@ -1510,6 +1552,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " than main Prometheus scrape period to complete",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> clusterConsistencyCheckParallelism =
+      new ConfKeyInfo<>(
+          "yb.health.consistency_check_parallelism",
+          ScopeType.GLOBAL,
+          "Max Number of Parallel cluster consistency checks",
+          "Max Number of Parallel cluster consistency checks",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcGroupClaim =
       new ConfKeyInfo<>(
           "yb.security.oidc_group_claim",
@@ -1544,4 +1594,54 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait for GFlag Sync in K8s universe",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableMetricsTimezone =
+      new ConfKeyInfo<>(
+          "yb.ui.metrics.enable_timezone",
+          ScopeType.GLOBAL,
+          "Enable viewing metrics in timezone selected at the metrics page",
+          "Enable viewing metrics in timezone selected at the metrics page and will be preserved at"
+              + " session level",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipYbaMinVersionCheck =
+      new ConfKeyInfo<>(
+          "yb.skip_yba_min_version_check",
+          ScopeType.GLOBAL,
+          "Skip YBA Minimum Version Check",
+          "Skip YBA Minimum Version Check when adding a new YugabyteDB Release.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disableNodeAgentOnProviderCreation =
+      new ConfKeyInfo<>(
+          "yb.internal.disable_node_agent_on_provider_creation",
+          ScopeType.GLOBAL,
+          "Disable Node Agent on Provider Creation",
+          "Disable node agent on provider creation by setting the internal flag in the provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_path_style_access",
+          ScopeType.GLOBAL,
+          "Enable Path Access Style for Amazon S3",
+          "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible"
+              + " storage.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> k8sYbaRestoreSkipDumpFileDelete =
+      new ConfKeyInfo<>(
+          "yb.ha.k8s_restore_skip_dump_file_delete",
+          ScopeType.GLOBAL,
+          "Restore YBA postgres metadata during Yugaware container restart",
+          "Restore YBA postgres metadata during Yugaware container restart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentServerCertExpiryNotice =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server_cert_expiry_notice",
+          ScopeType.GLOBAL,
+          "Node Agent Server Cert Expiry Notice",
+          "Duration to start notifying about expiry before node agent server cert actually expires",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -145,7 +145,7 @@ func (fb *FullBackupContext) startSubsection(format string) (*template.Template,
 }
 
 func (fb *FullBackupContext) subSection(name string) {
-	fb.Output.Write([]byte("\n\n"))
+	fb.Output.Write([]byte("\n"))
 	fb.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fb.Output.Write([]byte("\n"))
 }

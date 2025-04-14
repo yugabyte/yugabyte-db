@@ -4,15 +4,19 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
@@ -25,7 +29,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
+@Abortable
+@Retryable
 public class TlsToggle extends UpgradeTaskBase {
 
   @Inject
@@ -66,8 +74,12 @@ public class TlsToggle extends UpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    addBasicPrecheckTasks();
-    if (taskParams().enableNodeToNodeEncrypt || taskParams().enableClientToNodeEncrypt) {
+    // Skip running prechecks if Node2Node certs has expired
+    if (!CertificateHelper.checkNode2NodeCertsExpiry(universe)) {
+      addBasicPrecheckTasks();
+    }
+    if (isFirstTry()
+        && (taskParams().enableNodeToNodeEncrypt || taskParams().enableClientToNodeEncrypt)) {
       createCheckCertificateConfigTask();
     }
   }
@@ -92,12 +104,29 @@ public class TlsToggle extends UpgradeTaskBase {
           createUniverseSetTlsParamsTask();
           // Round 2 gflags upgrade
           createRound2GFlagUpdateTasks(nodes);
+        },
+        u -> {
+          // 1: If task is to enable node-to-node encryption.
+          // -1: If task is to disable node-to-node encryption.
+          // 0: If there is no change in node-to-node encryption.
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          taskParams().nodeToNodeChange =
+              userIntent.enableNodeToNodeEncrypt != taskParams().enableNodeToNodeEncrypt
+                  ? (taskParams().enableNodeToNodeEncrypt ? 1 : -1)
+                  : 0;
+          // Persist this setting in the DB.
+          updateTaskDetailsInDB(taskParams());
         });
   }
 
   private void createRound1GFlagUpdateTasks(MastersAndTservers nodes) {
-    if (getNodeToNodeChange() < 0) {
-      // Setting allow_insecure to true can be done in non-restart way
+    if (taskParams().nodeToNodeChange < 0) {
+      // Skip running round1 if Node2Node certs have expired because the DB call will fail.
+      if (CertificateHelper.checkNode2NodeCertsExpiry(getUniverse())) {
+        log.debug("Skipping round 1 because the cert has expired");
+        return;
+      }
+      // Setting allow_insecure to true can be done in non-restart way.
       createNonRestartUpgradeTaskFlow(
           (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
             createGFlagUpdateTasks(1, nodeList, getSingle(processTypes));
@@ -135,7 +164,7 @@ public class TlsToggle extends UpgradeTaskBase {
 
   private void createRound2GFlagUpdateTasks(MastersAndTservers nodes) {
     // Second round upgrade not needed when there is no change in node-to-node
-    if (getNodeToNodeChange() > 0) {
+    if (taskParams().nodeToNodeChange > 0) {
       // Setting allow_insecure can be done in non-restart way
       createNonRestartUpgradeTaskFlow(
           (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
@@ -154,7 +183,7 @@ public class TlsToggle extends UpgradeTaskBase {
           },
           nodes,
           DEFAULT_CONTEXT);
-    } else if (getNodeToNodeChange() < 0) {
+    } else if (taskParams().nodeToNodeChange < 0) {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(
             (nodeList, processTypes) ->
@@ -185,7 +214,7 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   protected void updateUniverseHttpsEnabledUI() {
-    int nodeToNodeChange = getNodeToNodeChange();
+    int nodeToNodeChange = taskParams().nodeToNodeChange;
     boolean isNodeUIHttpsEnabled =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.nodeUIHttpsEnabled);
     // HTTPS_ENABLED_UI will piggyback node-to-node encryption.
@@ -282,7 +311,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.rootCA = taskParams().rootCA;
     params.setClientRootCA(taskParams().getClientRootCA());
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-    params.nodeToNodeChange = getNodeToNodeChange();
+    params.nodeToNodeChange = taskParams().nodeToNodeChange;
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
@@ -302,17 +331,11 @@ public class TlsToggle extends UpgradeTaskBase {
     params.rootCA = taskParams().rootCA;
     params.setClientRootCA(taskParams().getClientRootCA());
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-    params.nodeToNodeChange = getNodeToNodeChange();
+    params.nodeToNodeChange = taskParams().nodeToNodeChange;
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
     return task;
-  }
-
-  private int getNodeToNodeChange() {
-    return getUserIntent().enableNodeToNodeEncrypt != taskParams().enableNodeToNodeEncrypt
-        ? (taskParams().enableNodeToNodeEncrypt ? 1 : -1)
-        : 0;
   }
 
   public void createCheckCertificateConfigTask() {

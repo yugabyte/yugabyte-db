@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -76,6 +77,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                   taskParams().enableYSQL,
                   taskParams().enableYSQLAuth,
                   taskParams().enableConnectionPooling,
+                  taskParams().connectionPoolingGflags,
                   taskParams().enableYCQL,
                   taskParams().enableYCQLAuth)
               .setSubTaskGroupType(getTaskSubGroupType());
@@ -88,14 +90,32 @@ public class ConfigureDBApis extends UpgradeTaskBase {
   private void createTaskToConfigureApiThroughRollingGFlagsUpgrade(Universe universe) {
     List<UniverseDefinitionTaskParams.Cluster> currClusters =
         universe.getUniverseDetails().clusters;
+    Universe targetUniverseState = getUniverse();
     for (UniverseDefinitionTaskParams.Cluster currentCluster :
         universe.getUniverseDetails().clusters) {
+      // Update each cluster's user intent in the target universe state.
       UserIntent userIntent = currentCluster.userIntent.clone();
       userIntent.enableYSQL = taskParams().enableYSQL;
       userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
       userIntent.enableConnectionPooling = taskParams().enableConnectionPooling;
       userIntent.enableYCQL = taskParams().enableYCQL;
       userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
+      currentCluster.userIntent.specificGFlags =
+          SpecificGFlags.combine(
+              userIntent.specificGFlags,
+              taskParams()
+                  .connectionPoolingGflags
+                  .getOrDefault(currentCluster.uuid, new SpecificGFlags()));
+      targetUniverseState.getUniverseDetails().getClusterByUuid(currentCluster.uuid).userIntent =
+          userIntent;
+      // Update the communication ports in the universe details.
+      targetUniverseState.getUniverseDetails().communicationPorts = taskParams().communicationPorts;
+      targetUniverseState
+          .getNodes()
+          .forEach(
+              node ->
+                  CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node));
+
       List<NodeDetails> masterNodes =
           universe.getMasters().stream()
               .filter(n -> n.placementUuid.equals(currentCluster.uuid))
@@ -104,9 +124,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           universe.getTServers().stream()
               .filter(n -> n.placementUuid.equals(currentCluster.uuid))
               .collect(Collectors.toList());
-      Universe targetUniverseState = getUniverse();
-      targetUniverseState.getUniverseDetails().getClusterByUuid(currentCluster.uuid).userIntent =
-          userIntent;
       createRollingUpgradeTaskFlow(
           (nodes, processTypes) -> {
             // In case of rolling restart, we only deal with one node at a time.
@@ -119,14 +136,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 currentCluster,
                 currClusters,
                 taskParams().communicationPorts);
-            NodeDetails node = nodes.iterator().next();
-            node.isYqlServer = taskParams().enableYCQL;
-            node.isYsqlServer = taskParams().enableYSQL;
-            CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
-            createNodeDetailsUpdateTask(node, false);
-            // Also updating targetUniverseState
-            CommunicationPorts.setCommunicationPorts(
-                taskParams().communicationPorts, targetUniverseState.getNode(node.getNodeName()));
+            if (processTypes.size() == 1 && processTypes.contains(ServerType.TSERVER)) {
+              NodeDetails node = nodes.iterator().next();
+              node.isYqlServer = taskParams().enableYCQL;
+              node.isYsqlServer = taskParams().enableYSQL;
+              CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
+              createNodeDetailsUpdateTask(node, false);
+            }
           },
           masterNodes,
           tserverNodes,

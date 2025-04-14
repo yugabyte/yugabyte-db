@@ -28,6 +28,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/redis_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/flags.h"
@@ -546,17 +547,20 @@ void GetNormalizedBounds(int64 low_idx, int64 high_idx, int64 card, bool reverse
 
 void RedisWriteOperation::InitializeIterator(const DocOperationApplyData& data) {
   auto subdoc_key = SubDocKey(DocKey::FromRedisKey(
-      request_.key_value().hash_code(), request_.key_value().key()));
+      request_.key_value().hash_code(), request_.key_value().key())).Encode();
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
-      BloomFilterMode::USE_BLOOM_FILTER, subdoc_key.Encode().AsSlice(),
+      BloomFilterOptions::Fixed(subdoc_key.AsSlice()),
       redis_query_id(), TransactionOperationContext(), data.read_operation_data);
 
   iterator_ = std::move(iter);
 }
 
 Status RedisWriteOperation::Apply(const DocOperationApplyData& data) {
+  auto se = ScopeExit([this] {
+    iterator_.reset();
+  });
   switch (request_.request_case()) {
     case RedisWriteRequestPB::kSetRequest:
       return ApplySet(data);
@@ -1376,14 +1380,13 @@ Status RedisReadOperation::Execute() {
   SimulateTimeoutIfTesting(const_cast<CoarseTimePoint*>(&read_operation_data_.deadline));
   // If we have a KEYS command, we don't specify any key for the iterator. Therefore, don't use
   // bloom filters for this command.
-  SubDocKey doc_key(
-      DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
-  auto bloom_filter_mode = request_.has_keys_request() ?
-      BloomFilterMode::DONT_USE_BLOOM_FILTER : BloomFilterMode::USE_BLOOM_FILTER;
+  auto doc_key = SubDocKey(
+      DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key())).Encode();
+  auto bloom_filter = request_.has_keys_request()
+      ? BloomFilterOptions::Inactive()
+      : BloomFilterOptions::Fixed(doc_key.AsSlice());
   auto iter = yb::docdb::CreateIntentAwareIterator(
-      doc_db_, bloom_filter_mode,
-      doc_key.Encode().AsSlice(),
-      redis_query_id(), TransactionOperationContext(), read_operation_data_);
+      doc_db_, bloom_filter, redis_query_id(), TransactionOperationContext(), read_operation_data_);
   iterator_ = std::move(iter);
   deadline_info_.emplace(read_operation_data_.deadline);
 
@@ -1448,8 +1451,9 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueEntryType value_type,
 
   RETURN_NOT_OK(GetRedisSubDocument(iterator_.get(), data, /* projection */ nullptr,
                                SeekFwdSuffices::kFalse));
-  if (return_array_response)
+  if (return_array_response) {
     response_.set_allocated_array_response(new RedisArrayPB());
+  }
 
   if (!doc_found) {
     response_.set_code(RedisResponsePB::OK);

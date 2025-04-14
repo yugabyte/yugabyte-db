@@ -13,14 +13,16 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -36,6 +38,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -45,22 +48,23 @@ import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
+import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -78,17 +82,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   private static final String DELETE_FINALIZER_THREAD_NAME_PREFIX = "universe-delete-finalizer-";
 
-  private final OperatorWorkQueue workqueue;
-  private final SharedIndexInformer<YBUniverse> ybUniverseInformer;
-  private final String namespace;
-  private final Lister<YBUniverse> ybUniverseLister;
-  // Resource here has full class name since it conflicts with
-  // ybuniversespec.kubernetesoverrides.Resource
-  private final MixedOperation<
-          YBUniverse,
-          KubernetesResourceList<YBUniverse>,
-          io.fabric8.kubernetes.client.dsl.Resource<YBUniverse>>
-      ybUniverseClient;
+  private final SharedIndexInformer<Release> releaseInformer;
   public static final String APP_LABEL = "app";
   private final UniverseCRUDHandler universeCRUDHandler;
   private final UpgradeUniverseHandler upgradeUniverseHandler;
@@ -96,13 +90,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final TaskExecutor taskExecutor;
   private final RuntimeConfGetter confGetter;
   private final CustomerTaskManager customerTaskManager;
+  private final UniverseActionsHandler universeActionsHandler;
+  private final YbcManager ybcManager;
   private final Set<UUID> universeReadySet;
   private final Map<String, String> universeDeletionReferenceMap;
   private final Map<String, UUID> universeTaskMap;
   private Customer customer;
-  private OperatorUtils operatorUtils;
-
-  private final Integer reconcileExceptionBackoffMS = 5000;
 
   KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
 
@@ -117,12 +110,14 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
       CustomerTaskManager customerTaskManager,
-      OperatorUtils operatorUtils) {
+      OperatorUtils operatorUtils,
+      UniverseActionsHandler universeActionsHandler,
+      YbcManager ybcManager) {
     this(
         client,
         informerFactory,
         namespace,
-        new OperatorWorkQueue(),
+        new OperatorWorkQueue("Universe" /* resourceType */),
         universeCRUDHandler,
         upgradeUniverseHandler,
         cloudProviderHandler,
@@ -130,7 +125,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         kubernetesStatusUpdater,
         confGetter,
         customerTaskManager,
-        operatorUtils);
+        operatorUtils,
+        universeActionsHandler,
+        ybcManager);
   }
 
   @VisibleForTesting
@@ -146,14 +143,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
       CustomerTaskManager customerTaskManager,
-      OperatorUtils operatorUtils) {
+      OperatorUtils operatorUtils,
+      UniverseActionsHandler universeActionsHandler,
+      YbcManager ybcManager) {
 
-    super(client, informerFactory);
-    this.ybUniverseClient = client.resources(YBUniverse.class);
-    this.ybUniverseInformer = informerFactory.getSharedIndexInformer(YBUniverse.class, client);
-    this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer());
-    this.namespace = namespace;
-    this.workqueue = workqueue;
+    super(client, informerFactory, YBUniverse.class, operatorUtils, namespace);
+    this.releaseInformer = informerFactory.getSharedIndexInformer(Release.class, client);
     this.universeCRUDHandler = universeCRUDHandler;
     this.upgradeUniverseHandler = upgradeUniverseHandler;
     this.cloudProviderHandler = cloudProviderHandler;
@@ -161,29 +156,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     this.taskExecutor = taskExecutor;
     this.confGetter = confGetter;
     this.customerTaskManager = customerTaskManager;
-    this.ybUniverseInformer.addEventHandler(this);
     this.universeReadySet = ConcurrentHashMap.newKeySet();
     this.universeDeletionReferenceMap = new HashMap<>();
     this.universeTaskMap = new HashMap<>();
-    this.operatorUtils = operatorUtils;
-  }
-
-  private static String getWorkQueueKey(YBUniverse ybUniverse) {
-    String name = ybUniverse.getMetadata().getName();
-    String namespace = ybUniverse.getMetadata().getNamespace();
-    String uid = ybUniverse.getMetadata().getUid();
-    return String.format("%s/%s/%s", namespace, name, uid);
-  }
-
-  private static String getListerKeyFromWorkQueueKey(String workQueueKey) {
-    String[] splitValues = workQueueKey.split("/");
-    String namespace = splitValues[0];
-    String name = splitValues[1];
-    return String.format("%s/%s", namespace, name);
-  }
-
-  private static String getResourceUidFromWorkQueueKey(String workQueueKey) {
-    return workQueueKey.split("/")[2];
+    this.universeActionsHandler = universeActionsHandler;
+    this.ybcManager = ybcManager;
   }
 
   @VisibleForTesting
@@ -192,200 +169,88 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   }
 
   @Override
-  public void onAdd(YBUniverse universe) {
-    enqueueYBUniverse(universe, OperatorWorkQueue.ResourceAction.CREATE);
-  }
-
-  @Override
-  public void onUpdate(YBUniverse oldUniverse, YBUniverse newUniverse) {
-    // Handle the delete workflow first, as we get a this call before onDelete is called
-    if (newUniverse.getMetadata().getDeletionTimestamp() != null) {
-      enqueueYBUniverse(newUniverse, OperatorWorkQueue.ResourceAction.DELETE);
-      return;
-    }
-    // Treat this as no-op action enqueue
-    enqueueYBUniverse(newUniverse, OperatorWorkQueue.ResourceAction.NO_OP);
-  }
-
-  @Override
-  public void onDelete(YBUniverse universe, boolean b) {
-    enqueueYBUniverse(universe, OperatorWorkQueue.ResourceAction.DELETE);
-  }
-
-  public void run() {
-    log.info("Starting YBUniverse controller thread");
-    // Wait for the informer to "sync" for the first time. Syncing here roughly means the informer
-    // has gotten data from the k8s api.
-    while (!Thread.currentThread().isInterrupted()) {
-      if (ybUniverseInformer.hasSynced()) {
-        break;
-      }
-    }
-
-    while (true) {
-      try {
-        log.info("trying to fetch universe actions from workqueue...");
-        if (workqueue.isEmpty()) {
-          log.debug("Work Queue is empty");
-        }
-        Pair<String, OperatorWorkQueue.ResourceAction> pair = workqueue.pop();
-        String key = pair.getFirst();
-        OperatorWorkQueue.ResourceAction action = pair.getSecond();
-        Objects.requireNonNull(key, "The workqueue item key can't be null.");
-        log.debug("Found work item: {} {}", key, action);
-        if ((!key.contains("/"))) {
-          log.warn("Invalid resource key: {}", key);
-          continue;
-        }
-
-        // Get the YBUniverse resource's name
-        // from workqueue key which is in format namespace/name/uid.
-        // Fisrt get key namespace/name format
-        String listerKey = getListerKeyFromWorkQueueKey(key);
-        YBUniverse ybUniverse = ybUniverseLister.get(listerKey);
-        log.info("Processing YbUniverse name: {}, Object: {}", listerKey, ybUniverse);
-
-        // Handle new calls that can happen from removing the finalizer or any other minor status
-        // updates.
-        if (ybUniverse == null) {
-          if (action == OperatorWorkQueue.ResourceAction.DELETE) {
-            log.info("Tried to delete ybUniverse but it's no longer in Lister");
-          }
-          // Clear any state of the non-existing universe from In-memory maps
-          workqueue.clearState(key);
-          continue;
-        }
-        if (ybUniverse.getMetadata().getUid().equals(getResourceUidFromWorkQueueKey(key))) {
-          reconcile(ybUniverse, action);
-        } else {
-          workqueue.clearState(key);
-          log.debug("Lister referencing older Universe with same name {}, ignoring", listerKey);
-          continue;
-        }
-
-      } catch (Exception e) {
-        log.error("Got Exception {}", e);
-        try {
-          Thread.sleep(reconcileExceptionBackoffMS);
-          log.info("continue ybuniverse reconcile loop after failure backoff");
-        } catch (InterruptedException e1) {
-          log.info("caught interrupt, stopping reconciler", e);
-          break;
-        }
-      }
-    }
-  }
-
-  /**
-   * Tries to achieve the desired state for ybUniverse.
-   *
-   * @param ybUniverse specified ybUniverse
-   */
-  protected void reconcile(YBUniverse ybUniverse, OperatorWorkQueue.ResourceAction action) {
-    String mapKey = getWorkQueueKey(ybUniverse);
-    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
+  protected void handleResourceDeletion(
+      YBUniverse ybUniverse, Customer cust, OperatorWorkQueue.ResourceAction action)
+      throws Exception {
+    String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
+    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
-    log.info(
-        "Reconcile for YbUniverse metadata: Name = {}, Namespace = {}",
-        resourceName,
-        resourceNamespace);
+    log.info("deleting universe {}", ybaUniverseName);
+    UniverseResp universeResp =
+        universeCRUDHandler.findByName(cust, ybaUniverseName).stream().findFirst().orElse(null);
 
-    try {
-      Customer cust = operatorUtils.getOperatorCustomer();
-      // checking to see if the universe was deleted.
-      if (action == OperatorWorkQueue.ResourceAction.DELETE
-          || ybUniverse.getMetadata().getDeletionTimestamp() != null) {
-        log.info("deleting universe {}", ybaUniverseName);
-        UniverseResp universeResp =
-            universeCRUDHandler.findByName(cust, ybaUniverseName).stream().findFirst().orElse(null);
-
-        if (universeResp == null) {
-          log.debug("universe {} already deleted in YBA, cleaning up", ybaUniverseName);
-          // Check delete finalizer thread does not exist already
-          String deleteFinalizerThread = DELETE_FINALIZER_THREAD_NAME_PREFIX + ybaUniverseName;
-          // Finalizer remove thread exists if deletion reference map contains resource key
-          // and value is equal to the deletion thread name.
-          boolean deleteFinalizerThreadExists =
-              universeDeletionReferenceMap.containsKey(mapKey)
-                  ? (universeDeletionReferenceMap.get(mapKey).equals(deleteFinalizerThread))
-                  : false;
-          // Add thread to delete provider and remove finalizer
-          ObjectMeta objectMeta = ybUniverse.getMetadata();
-          if (objectMeta != null
-              && CollectionUtils.isNotEmpty(objectMeta.getFinalizers())
-              && !deleteFinalizerThreadExists) {
-            String dTaskUUIDString = universeDeletionReferenceMap.remove(mapKey);
-            universeDeletionReferenceMap.put(mapKey, deleteFinalizerThread);
-            UUID customerUUID = cust.getUuid();
-            Thread universeDeletionFinalizeThread =
-                new Thread(
-                    () -> {
+    if (universeResp == null) {
+      log.debug("universe {} already deleted in YBA, cleaning up", ybaUniverseName);
+      // Check delete finalizer thread does not exist already
+      String deleteFinalizerThread = DELETE_FINALIZER_THREAD_NAME_PREFIX + ybaUniverseName;
+      // Finalizer remove thread exists if deletion reference map contains resource key
+      // and value is equal to the deletion thread name.
+      boolean deleteFinalizerThreadExists =
+          universeDeletionReferenceMap.containsKey(mapKey)
+              ? (universeDeletionReferenceMap.get(mapKey).equals(deleteFinalizerThread))
+              : false;
+      // Add thread to delete provider and remove finalizer
+      ObjectMeta objectMeta = ybUniverse.getMetadata();
+      if (objectMeta != null
+          && CollectionUtils.isNotEmpty(objectMeta.getFinalizers())
+          && !deleteFinalizerThreadExists) {
+        String dTaskUUIDString = universeDeletionReferenceMap.remove(mapKey);
+        universeDeletionReferenceMap.put(mapKey, deleteFinalizerThread);
+        UUID customerUUID = cust.getUuid();
+        Thread universeDeletionFinalizeThread =
+            new Thread(
+                () -> {
+                  try {
+                    // Wait for deletion task to finish, release In-use provider lock
+                    if (dTaskUUIDString != null) {
+                      log.debug("Waiting for deletion task to complete...");
+                      taskExecutor.waitForTask(UUID.fromString(dTaskUUIDString));
+                      log.debug("Deletion task complete");
+                    }
+                    if (canDeleteProvider(cust, ybaUniverseName)) {
                       try {
-                        // Wait for deletion task to finish, release In-use provider lock
-                        if (dTaskUUIDString != null) {
-                          log.debug("Waiting for deletion task to complete...");
-                          taskExecutor.waitForTask(UUID.fromString(dTaskUUIDString));
-                          log.debug("Deletion task complete");
-                        }
-                        if (canDeleteProvider(cust, ybaUniverseName)) {
-                          try {
-                            UUID deleteProviderTaskUUID =
-                                deleteProvider(customerUUID, ybaUniverseName);
-                            taskExecutor.waitForTask(deleteProviderTaskUUID);
-                          } catch (Exception e) {
-                            log.error("Got error in deleting provider", e);
-                          }
-                        }
-                        log.info("Removing finalizers...");
-                        if (ybUniverse.getMetadata() != null) {
-                          objectMeta.setFinalizers(Collections.emptyList());
-                          ybUniverseClient
-                              .inNamespace(resourceNamespace)
-                              .withName(resourceName)
-                              .patch(ybUniverse);
-                        }
+                        UUID deleteProviderTaskUUID = deleteProvider(customerUUID, ybaUniverseName);
+                        taskExecutor.waitForTask(deleteProviderTaskUUID);
                       } catch (Exception e) {
-                        log.error(
-                            "Got error in finalizing YbUniverse object name: {}, namespace: {}"
-                                + " delete",
-                            resourceName,
-                            resourceNamespace,
-                            e);
-                      } finally {
-                        universeDeletionReferenceMap.remove(mapKey);
+                        log.error("Got error in deleting provider", e);
                       }
-                    },
-                    deleteFinalizerThread);
-            universeDeletionFinalizeThread.start();
-          }
-        } else {
-          log.debug("deleting universe {} in yba", ybaUniverseName);
-          Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
-          UUID universeUUID = universe.getUniverseUUID();
-          universeReadySet.remove(universeUUID);
-          universeTaskMap.remove(mapKey);
-          workqueue.resetRetries(mapKey);
-          // Add check if universe deletion is in progress
-          UUID dTaskUUID = deleteUniverse(cust.getUuid(), universeUUID, ybUniverse);
-          if (dTaskUUID != null) {
-            log.info("Deleted Universe using KubernetesOperator");
-            universeDeletionReferenceMap.put(mapKey, dTaskUUID.toString());
-            log.info("YBA Universe {} deletion task {} launched", ybaUniverseName, dTaskUUID);
-          }
-          if (action.equals(OperatorWorkQueue.ResourceAction.NO_OP)) {
-            workqueue.requeue(mapKey, OperatorWorkQueue.ResourceAction.NO_OP, false);
-          }
-        }
-      } else if (action == OperatorWorkQueue.ResourceAction.CREATE) {
-        createActionReconcile(ybUniverse, cust);
-      } else if (action == OperatorWorkQueue.ResourceAction.UPDATE) {
-        updateActionReconcile(ybUniverse, cust);
-      } else if (action == OperatorWorkQueue.ResourceAction.NO_OP) {
-        noOpActionReconcile(ybUniverse, cust);
+                    }
+                    // If the release is marked for deletion then remove that as well
+                    maybeDeleteRelease(ybUniverse);
+                    log.info("Removing finalizers...");
+                    operatorUtils.removeFinalizer(ybUniverse, resourceClient);
+                  } catch (Exception e) {
+                    log.error(
+                        "Got error in finalizing YbUniverse object name: {}, namespace: {}"
+                            + " delete",
+                        resourceName,
+                        resourceNamespace,
+                        e);
+                  } finally {
+                    universeDeletionReferenceMap.remove(mapKey);
+                  }
+                },
+                deleteFinalizerThread);
+        universeDeletionFinalizeThread.start();
       }
-    } catch (Exception e) {
-      log.error("Got Exception in Operator Action", e);
+    } else {
+      log.debug("deleting universe {} in yba", ybaUniverseName);
+      Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
+      UUID universeUUID = universe.getUniverseUUID();
+      universeReadySet.remove(universeUUID);
+      universeTaskMap.remove(mapKey);
+      workqueue.resetRetries(mapKey);
+      // Add check if universe deletion is in progress
+      UUID dTaskUUID = deleteUniverse(cust.getUuid(), universeUUID, ybUniverse);
+      if (dTaskUUID != null) {
+        log.info("Deleted Universe using KubernetesOperator");
+        universeDeletionReferenceMap.put(mapKey, dTaskUUID.toString());
+        log.info("YBA Universe {} deletion task {} launched", ybaUniverseName, dTaskUUID);
+      }
+      if (action.equals(OperatorWorkQueue.ResourceAction.NO_OP)) {
+        workqueue.requeue(mapKey, OperatorWorkQueue.ResourceAction.NO_OP, false);
+      }
     }
   }
 
@@ -394,9 +259,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   // 2. YBA Restart - All existing resources receive CREATE calls
   // 3. NO_OP or UPDATE actions sees that the universe is not created - Requeues CREATE
   // Universe creation will be retried until successful
-  private void createActionReconcile(YBUniverse ybUniverse, Customer cust) throws Exception {
-    String mapKey = getWorkQueueKey(ybUniverse);
-    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
+  @Override
+  protected void createActionReconcile(YBUniverse ybUniverse, Customer cust) throws Exception {
+    String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
+    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
@@ -406,8 +272,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       // Allowing us to update the status of the ybUniverse
       // Setting finalizer to prevent out-of-operator deletes of custom resources
       ObjectMeta objectMeta = ybUniverse.getMetadata();
-      objectMeta.setFinalizers(Collections.singletonList("finalizer.k8soperator.yugabyte.com"));
-      ybUniverseClient.inNamespace(resourceNamespace).withName(resourceName).patch(ybUniverse);
+      objectMeta.setFinalizers(Collections.singletonList(OperatorUtils.YB_FINALIZER));
+      resourceClient.inNamespace(resourceNamespace).withName(resourceName).patch(ybUniverse);
       UniverseConfigureTaskParams taskParams = createTaskParams(ybUniverse, cust.getUuid());
       Result task = createUniverse(cust.getUuid(), taskParams, ybUniverse);
       log.info("Created Universe KubernetesOperator " + task.toString());
@@ -437,9 +303,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private void updateActionReconcile(YBUniverse ybUniverse, Customer cust) {
-    String mapKey = getWorkQueueKey(ybUniverse);
-    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
+  @Override
+  protected void updateActionReconcile(YBUniverse ybUniverse, Customer cust) {
+    String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
+    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
@@ -474,9 +341,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private void noOpActionReconcile(YBUniverse ybUniverse, Customer cust) {
-    String mapKey = getWorkQueueKey(ybUniverse);
-    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
+  @Override
+  protected void noOpActionReconcile(YBUniverse ybUniverse, Customer cust) {
+    String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
+    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
@@ -530,6 +398,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
+  // Helper methods
   private State universeCreateTaskState(UUID customerUUID, UUID universeUUID) {
     if (universeReadySet.contains(universeUUID)) {
       return State.Success;
@@ -554,7 +423,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   }
 
   private boolean universeTaskInProgress(YBUniverse ybUniverse) {
-    String mapKey = getWorkQueueKey(ybUniverse);
+    String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
     UUID currTaskUUID = universeTaskMap.getOrDefault(mapKey, null);
     if (currTaskUUID != null) {
       CustomerTask cTask = CustomerTask.findByTaskUUID(currTaskUUID);
@@ -596,7 +465,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   }
 
   private void retryOrRerunLastTask(UUID customerUUID, YBUniverse ybUniverse, TaskInfo taskInfo) {
-    String ybaUniverseName = OperatorUtils.getYbaUniverseName(ybUniverse);
+    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
     Customer cust = Customer.getOrBadRequest(customerUUID);
     UniverseState state =
         taskInfo.getTaskType().equals(TaskType.CreateKubernetesUniverse)
@@ -626,7 +495,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         log.debug("Previous {} Universe task failed, retrying", ybaUniverseName);
         CustomerTask cTask =
             customerTaskManager.retryCustomerTask(customerUUID, taskInfo.getUuid());
-        universeTaskMap.put(getWorkQueueKey(ybUniverse), cTask.getTaskUUID());
+        universeTaskMap.put(
+            OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), cTask.getTaskUUID());
       }
     } catch (Exception e) {
       state =
@@ -664,7 +534,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
 
       UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
-      universeTaskMap.put(getWorkQueueKey(ybUniverse), universeResp.taskUUID);
+      universeTaskMap.put(
+          OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), universeResp.taskUUID);
       log.info("Done creating universe through CRUD Handler");
       return new YBPTask(universeResp.taskUUID, universeResp.universeUUID).asResult();
     } catch (Exception e) {
@@ -694,14 +565,28 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
     UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid(), false);
 
+    // Handle previously unset masterDeviceInfo
+    if (currentUserIntent.masterDeviceInfo == null) {
+      currentUserIntent.masterDeviceInfo = operatorUtils.defaultMasterDeviceInfo();
+    }
+
     // Fix non-changeable values to current.
     incomingIntent.accessKeyCode = currentUserIntent.accessKeyCode;
     incomingIntent.enableExposingService = currentUserIntent.enableExposingService;
 
     KubernetesResourceDetails k8ResourceDetails =
         KubernetesResourceDetails.fromResource(ybUniverse);
-    UUID taskUUID = null;
 
+    // If the universe is paused, and we aren't unpausing, requeue the task.
+    if (ybUniverse.getSpec().getPaused() && universeDetails.universePaused) {
+      log.debug("Universe {} is paused, requeuing", ybUniverse.getMetadata().getName());
+      workqueue.requeue(
+          OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()),
+          OperatorWorkQueue.ResourceAction.NO_OP,
+          false);
+    }
+
+    UUID taskUUID = null;
     try {
       if (specificTaskTypeToRerun != null) {
         // For cases when we want to do a re-run of same task type
@@ -717,6 +602,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
             currentUserIntent.numNodes = incomingIntent.numNodes;
             currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
+            currentUserIntent.masterDeviceInfo.volumeSize =
+                incomingIntent.masterDeviceInfo.volumeSize;
             taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
             break;
           case KubernetesOverridesUpgrade:
@@ -748,8 +635,52 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             throw new RuntimeException("Unexpected task tried for re-run");
         }
       } else {
-        // Case with new edits
-        if (!StringUtils.equals(
+        // Handle Pause
+        if (!universeDetails.universePaused && ybUniverse.getSpec().getPaused()) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.PauseUniverse.name());
+          taskUUID =
+              universeActionsHandler.pause(
+                  cust, universe, KubernetesResourceDetails.fromResource(ybUniverse));
+          // Handle Resume
+        } else if (universeDetails.universePaused && !ybUniverse.getSpec().getPaused()) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.ResumeUniverse.name());
+          taskUUID = resumeYbUniverse(cust, universe, ybUniverse);
+          // Rare case where creating the Resume task will raise IOException and return null.
+          // Handle and requeue.
+          if (taskUUID == null) {
+            log.error("failed to create universe resume task");
+            kubernetesStatusUpdater.updateUniverseState(
+                KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_UPDATING);
+            workqueue.requeue(
+                OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()),
+                OperatorWorkQueue.ResourceAction.NO_OP,
+                false);
+            return;
+          }
+          // Handle updating throttle params.
+        } else if (operatorUtils.isThrottleParamUpdate(universe, ybUniverse)) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          // TODO: We should probably update the universe status better here, but the
+          // KubernetesOperatorStatusUpdater currently doesn't have a good way to do this - all
+          // action updates are task based right now
+          updateThrottleParams(universe, ybUniverse);
+          kubernetesStatusUpdater.updateUniverseState(
+              KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.READY);
+          // Case with new edits
+        } else if (!StringUtils.equals(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
           log.info("Updating Kubernetes Overrides");
           kubernetesStatusUpdater.createYBUniverseEventStatus(
@@ -788,10 +719,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               upgradeYBUniverse(
                   universeDetails, cust, ybUniverse, incomingIntent.ybSoftwareVersion);
         } else if (operatorUtils.shouldUpdateYbUniverse(
-            currentUserIntent, incomingIntent.numNodes, incomingIntent.deviceInfo)) {
+            currentUserIntent,
+            incomingIntent.numNodes,
+            incomingIntent.deviceInfo,
+            incomingIntent.masterDeviceInfo)) {
           log.info("Calling Edit Universe");
           currentUserIntent.numNodes = incomingIntent.numNodes;
           currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
+          currentUserIntent.masterDeviceInfo.volumeSize =
+              incomingIntent.masterDeviceInfo.volumeSize;
           kubernetesStatusUpdater.createYBUniverseEventStatus(
               universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
           if (checkAndHandleUniverseLock(
@@ -805,7 +741,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         }
       }
       if (taskUUID != null) {
-        universeTaskMap.put(getWorkQueueKey(ybUniverse), taskUUID);
+        universeTaskMap.put(OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), taskUUID);
       }
     } catch (Exception e) {
       kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.ERROR_UPDATING);
@@ -835,7 +771,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     requestParams.universeOverrides = universeOverrides;
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
+        Universe.maybeGetUniverseByName(
+                cust.getId(), OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()))
             .orElse(null);
 
     log.info("Upgrade universe overrides with new overrides");
@@ -864,7 +801,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
+        Universe.maybeGetUniverseByName(
+                cust.getId(), OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()))
             .orElse(null);
 
     log.info("Upgrade universe with new GFlags");
@@ -891,7 +829,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
+        Universe.maybeGetUniverseByName(
+                cust.getId(), OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()))
             .orElse(null);
 
     requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
@@ -919,11 +858,22 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskConfigParams.currentClusterType = ClusterType.PRIMARY;
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), OperatorUtils.getYbaUniverseName(ybUniverse))
+        Universe.maybeGetUniverseByName(
+                cust.getId(), OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()))
             .orElse(null);
     log.info("Updating universe with new info now");
     universeCRUDHandler.configure(cust, taskConfigParams);
     return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
+  }
+
+  private UUID resumeYbUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
+    try {
+      return universeActionsHandler.resume(
+          cust, universe, KubernetesResourceDetails.fromResource(ybUniverse));
+    } catch (IOException e) {
+      log.error("Failed to resume universe", e);
+      return null;
+    }
   }
 
   @VisibleForTesting
@@ -955,7 +905,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       UserIntent userIntent = new UserIntent();
       // Needed for the UI fix because all k8s universes have this now..
       userIntent.dedicatedNodes = true;
-      userIntent.universeName = OperatorUtils.getYbaUniverseName(ybUniverse);
+      userIntent.universeName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
       if (ybUniverse.getSpec().getKubernetesOverrides() != null) {
         userIntent.universeOverrides =
             operatorUtils.getKubernetesOverridesString(
@@ -984,8 +934,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       userIntent.accessKeyCode = "";
 
       userIntent.deviceInfo = operatorUtils.mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-      log.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
-      log.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
+      userIntent.masterDeviceInfo =
+          operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
       userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
@@ -1033,6 +983,174 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
+  private void updateThrottleParams(Universe universe, YBUniverse ybUniverse) {
+    YbcThrottleParameters specParams = ybUniverse.getSpec().getYbcThrottleParameters();
+    Map<String, ThrottleParamValue> currentParamsMap =
+        ybcManager.getThrottleParams(universe.getUniverseUUID()).getThrottleParamsMap();
+    if (specParams == null) {
+      // create default spec params
+      specParams = new YbcThrottleParameters();
+    }
+    if (specParams.getMaxConcurrentDownloads() == null)
+      specParams.setMaxConcurrentDownloads(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getMaxConcurrentUploads() == null)
+      specParams.setMaxConcurrentUploads(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getPerDownloadNumObjects() == null)
+      specParams.setPerDownloadNumObjects(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    if (specParams.getPerUploadNumObjects() == null)
+      specParams.setPerUploadNumObjects(
+          (long)
+              currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getDefaultValue());
+    validateThrottleParams(specParams, currentParamsMap);
+    com.yugabyte.yw.forms.YbcThrottleParameters newParams =
+        new com.yugabyte.yw.forms.YbcThrottleParameters();
+    // We are casting a Long to an int, but this is only because the java code generated from the
+    // CRD uses Longs.
+    newParams.maxConcurrentDownloads = specParams.getMaxConcurrentDownloads().intValue();
+    newParams.maxConcurrentUploads = specParams.getMaxConcurrentUploads().intValue();
+    newParams.perDownloadNumObjects = specParams.getPerDownloadNumObjects().intValue();
+    newParams.perUploadNumObjects = specParams.getPerUploadNumObjects().intValue();
+    ybcManager.setThrottleParams(universe.getUniverseUUID(), newParams);
+  }
+
+  /**
+   * Validate the throttle parameters.
+   *
+   * <p>This method will validate the throttle parameters with the preset values from YBC. If any of
+   * the throttle parameters are out of the preset range, an error message will be added to the
+   * errors list.
+   *
+   * @param specParams the throttle parameters to validate
+   * @param currentParamsMap the map of current throttle parameters and their preset values
+   * @return a list of error messages
+   */
+  private void validateThrottleParams(
+      YbcThrottleParameters specParams, Map<String, ThrottleParamValue> currentParamsMap) {
+    List<String> errors = new ArrayList<>();
+    if (specParams.getMaxConcurrentDownloads() != null
+        && specParams.getMaxConcurrentDownloads()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Max concurrent downloads cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getMaxConcurrentDownloads() != null
+        && specParams.getMaxConcurrentDownloads()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Max concurrent downloads cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getMaxConcurrentUploads() != null
+        && specParams.getMaxConcurrentUploads()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Max concurrent uploads cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getMaxConcurrentUploads() != null
+        && specParams.getMaxConcurrentUploads()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Max concurrent uploads cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_MAX_CONCURRENT_UPLOADS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getPerDownloadNumObjects() != null
+        && specParams.getPerDownloadNumObjects()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Per download objects cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getPerDownloadNumObjects() != null
+        && specParams.getPerDownloadNumObjects()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Per download objects cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_DOWNLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (specParams.getPerUploadNumObjects() != null
+        && specParams.getPerUploadNumObjects()
+            > currentParamsMap
+                .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                .getPresetValues()
+                .getMaxValue()) {
+      errors.add(
+          "Per upload objects cannot be greater than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMaxValue());
+    } else if (specParams.getPerUploadNumObjects() != null
+        && specParams.getPerUploadNumObjects()
+            < currentParamsMap
+                .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                .getPresetValues()
+                .getMinValue()) {
+      errors.add(
+          "Per upload objects cannot be less than "
+              + currentParamsMap
+                  .get(GFlagsUtil.YBC_PER_UPLOAD_OBJECTS)
+                  .getPresetValues()
+                  .getMinValue());
+    }
+    if (!errors.isEmpty()) {
+      log.error("found errors: {}", errors);
+      throw new IllegalArgumentException(String.join("\n", errors));
+    }
+  }
+
   // getSecret find a secret in the namespace an operator is listening on.
   private Secret getSecret(String name) {
     if (StringUtils.isNotBlank(namespace)) {
@@ -1077,7 +1195,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                           .map(
                               z -> {
                                 HashMap<String, String> tempMap = new HashMap<>(z.config);
-                                tempMap.put("STORAGE_CLASS", storageClass);
+                                if (StringUtils.isNotBlank(storageClass)) {
+                                  tempMap.put("STORAGE_CLASS", storageClass);
+                                }
                                 tempMap.put("KUBENAMESPACE", kubeNamespace);
                                 z.config = tempMap;
                                 return z;
@@ -1114,7 +1234,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
     } else {
       // Case when provider name is not available in spec
-      providerName = getProviderName(OperatorUtils.getYbaUniverseName(ybUniverse));
+      providerName = getProviderName(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()));
       provider = Provider.get(customerUUID, providerName, CloudType.kubernetes);
       if (provider != null) {
         // If auto-provider with the same name found return it.
@@ -1137,22 +1257,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private void enqueueYBUniverse(YBUniverse ybUniverse, OperatorWorkQueue.ResourceAction action) {
-    String mapKey = getWorkQueueKey(ybUniverse);
-    String listerName = getListerKeyFromWorkQueueKey(mapKey);
-    log.debug("Enqueue universe {} with action {}", listerName, action.toString());
-    if (action.equals(OperatorWorkQueue.ResourceAction.NO_OP)) {
-      workqueue.requeue(mapKey, action, false);
-    } else {
-      workqueue.add(new Pair<String, OperatorWorkQueue.ResourceAction>(mapKey, action));
-      if (action.needsNoOpAction()) {
-        workqueue.add(
-            new Pair<String, OperatorWorkQueue.ResourceAction>(
-                mapKey, OperatorWorkQueue.ResourceAction.NO_OP));
-      }
-    }
-  }
-
   private boolean isRunningInKubernetes() {
     String kubernetesServiceHost = KubernetesEnvironmentVariables.getServiceHost();
     String kubernetesServicePort = KubernetesEnvironmentVariables.getServicePort();
@@ -1171,11 +1275,36 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     if (universe.universeIsLocked()) {
       log.warn(
           "universe {} is locked, requeue update and try again later",
-          OperatorUtils.getYbaUniverseName(ybUniverse));
-      workqueue.requeue(getWorkQueueKey(ybUniverse), action, false);
+          OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()));
+      workqueue.requeue(OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), action, false);
       log.debug("scheduled universe update for requeue");
       return true;
     }
     return false;
+  }
+
+  private Release maybeGetReleaseCr(String releaseVersion) {
+    Lister<Release> releaseLister = new Lister<>(this.releaseInformer.getIndexer());
+    List<Release> releases = releaseLister.list();
+    for (Release release : releases) {
+      if (release.getSpec().getConfig().getVersion().equals(releaseVersion)) {
+        return release;
+      }
+    }
+    log.info("Unable to find release cr for version {}", releaseVersion);
+    return null;
+  }
+
+  private void maybeDeleteRelease(YBUniverse ybUniverse) {
+    try {
+      String releaseVersion = ybUniverse.getSpec().getYbSoftwareVersion();
+      Release release = maybeGetReleaseCr(releaseVersion);
+      if (release != null && release.getMetadata().getDeletionTimestamp() != null) {
+        log.info("Cleaning up release - {}", release.getMetadata().getName());
+        operatorUtils.deleteReleaseCr(release);
+      }
+    } catch (Exception e) {
+      log.error("Error deleting release cr", e);
+    }
   }
 }

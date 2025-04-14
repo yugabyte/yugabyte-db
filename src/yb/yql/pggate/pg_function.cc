@@ -27,6 +27,7 @@
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/debug-util.h"
 
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_function_helpers.h"
@@ -41,13 +42,14 @@ using dockv::PgValue;
 using dockv::ReaderProjection;
 using util::GetValue;
 using util::SetColumnValue;
+using util::TrySetColumnValue;
 using util::SetColumnArrayValue;
 //--------------------------------------------------------------------------------------------------
 // PgFunctionParams
 //--------------------------------------------------------------------------------------------------
 
 Status PgFunctionParams::AddParam(
-    const std::string& name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
+    const std::string& name, const YbcPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
   auto value = std::make_shared<QLValuePB>();
   RETURN_NOT_OK(PgValueToPB(type_entity, datum, is_null, value.get()));
   params_by_name_.emplace(name, std::make_pair(value, type_entity));
@@ -60,7 +62,7 @@ Result<ParamAndIsNullPair<T>> PgFunctionParams::GetParamValue(const std::string&
   return GetValue<T>(*value, type);
 }
 
-Result<std::pair<std::shared_ptr<const QLValuePB>, const YBCPgTypeEntity*>>
+Result<std::pair<std::shared_ptr<const QLValuePB>, const YbcPgTypeEntity*>>
 PgFunctionParams::GetValueAndType(const std::string& name) const {
   auto it = params_by_name_.find(name);
   if (it == params_by_name_.end()) {
@@ -74,12 +76,12 @@ PgFunctionParams::GetValueAndType(const std::string& name) const {
 //--------------------------------------------------------------------------------------------------
 
 Status PgFunction::AddParam(
-    const std::string& name, const YBCPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
+    const std::string& name, const YbcPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
   return params_.AddParam(name, type_entity, datum, is_null);
 }
 
 Status PgFunction::AddTarget(
-    const std::string& name, const YBCPgTypeEntity* type_entity, const YBCPgTypeAttrs type_attrs) {
+    const std::string& name, const YbcPgTypeEntity* type_entity, const YbcPgTypeAttrs type_attrs) {
   RETURN_NOT_OK(schema_builder_.AddColumn(name, ToLW(PersistentDataType(type_entity->yb_type))));
   RETURN_NOT_OK(schema_builder_.SetColumnPGType(name, type_entity->type_oid));
   return schema_builder_.SetColumnPGTypmod(name, type_attrs.typmod);
@@ -108,8 +110,8 @@ Status PgFunction::WritePgTuple(const PgTableRow& table_row, uint64_t* values, b
     const ColumnSchema column = schema_.column(index);
 
     uint32_t oid = column.pg_type_oid();
-    const PgTypeEntity* type_entity = YBCPgFindTypeEntity(oid);
-    const YBCPgTypeAttrs type_attrs = {.typmod = column.pg_typmod()};
+    const YbcPgTypeEntity* type_entity = YBCPgFindTypeEntity(oid);
+    const YbcPgTypeAttrs type_attrs = {.typmod = column.pg_typmod()};
 
     is_nulls[index] = false;
     RETURN_NOT_OK(PgValueToDatum(type_entity, type_attrs, *val, &values[index]));
@@ -137,6 +139,14 @@ Status PgFunction::GetNext(uint64_t* values, bool* is_nulls, bool* has_data) {
   return Status::OK();
 }
 
+std::vector<std::string> LockModesToString(const yb::LockInfoPB& lock) {
+  std::vector<std::string> modes(lock.modes().size());
+  std::transform(lock.modes().begin(), lock.modes().end(), modes.begin(), [](const auto& mode) {
+    return LockMode_Name(static_cast<LockMode>(mode));
+  });
+  return modes;
+}
+
 //--------------------------------------------------------------------------------------------------
 // PgLockStatusRequestor
 //--------------------------------------------------------------------------------------------------
@@ -144,7 +154,8 @@ Status PgFunction::GetNext(uint64_t* values, bool* is_nulls, bool* has_data) {
 Result<PgTableRow> AddLock(
     const ReaderProjection& projection, const Schema& schema, const std::string& node_id,
     const TableId& parent_pg_table_id, const std::string& tablet_id, const yb::LockInfoPB& lock,
-    const TransactionId& transaction_id, HybridTime wait_start_ht = HybridTime::kMin,
+    const TransactionId& transaction_id, bool is_advisory_lock_tablet,
+    HybridTime wait_start_ht = HybridTime::kMin,
     const std::vector<TransactionId>& blocking_txn_ids = {}) {
   DCHECK_NE(lock.has_wait_end_ht(), wait_start_ht != HybridTime::kMin);
   PgTableRow row(projection);
@@ -157,32 +168,63 @@ Result<PgTableRow> AddLock(
     locktype = "keyrange";
   } else if (lock.has_column_id()) {
     locktype = "column";
+  } else if (is_advisory_lock_tablet) {
+    locktype = "advisory";
   } else {
     locktype = "row";
   }
 
   RETURN_NOT_OK(SetColumnValue("locktype", locktype, schema, &row));
 
-  RSTATUS_DCHECK(
-      lock.has_pg_table_id() == parent_pg_table_id.empty(), IllegalState,
-      "Response must contain exactly one among LockInfoPB::table_id or TabletLockInfoPB::table_id");
-  // If the lock belongs to a colocated table, use the table id populated in the lock.
-  const auto table_id = lock.has_pg_table_id() ? lock.pg_table_id() : parent_pg_table_id;
-  PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_id));
-  RETURN_NOT_OK(SetColumnValue("database", database_oid, schema, &row));
+  if (is_advisory_lock_tablet) {
+    RETURN_NOT_OK(SetColumnValue("database",
+        static_cast<PgOid>(std::stoul(lock.hash_cols()[0])), schema, &row));
 
-  PgOid relation_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-  RETURN_NOT_OK(SetColumnValue("relation", relation_oid, schema, &row));
+    const auto& range_cols = lock.range_cols();
+    SCHECK_EQ(range_cols.size(), 3, IllegalState,
+        Format("Expected 3 values for classid, objid, and objsubid for advisory locks, "
+               "but received $0 values", range_cols.size()));
+    RETURN_NOT_OK(TrySetColumnValue(
+        "classid", static_cast<PgOid>(std::stoul(range_cols[0])), schema, &row));
+    RETURN_NOT_OK(TrySetColumnValue(
+        "objid", static_cast<PgOid>(std::stoul(range_cols[1])), schema, &row));
+    RETURN_NOT_OK(TrySetColumnValue(
+        "objsubid", static_cast<int32_t>(std::stoul(range_cols[2])), schema, &row));
+
+    const auto& modes = lock.modes();
+    if (modes.size() == 1 && modes[0] == STRONG_READ) {
+      RETURN_NOT_OK(SetColumnArrayValue(
+          "mode", std::vector<std::string>{"ShareLock"}, schema, &row));
+    } else if (modes.size() == 2 && modes[0] == STRONG_READ && modes[1] == STRONG_WRITE) {
+      RETURN_NOT_OK(SetColumnArrayValue(
+          "mode", std::vector<std::string>{"ExclusiveLock"}, schema, &row));
+    } else {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Expected modes for advisory lock to be either [STRONG_READ] or "
+          "[STRONG_READ, STRONG_WRITE], but received $0",
+          LockModesToString(lock));
+    }
+  } else {
+    RSTATUS_DCHECK(
+        lock.has_pg_table_id() == parent_pg_table_id.empty(), IllegalState,
+        "Response must contain exactly one among LockInfoPB::table_id or "
+        "TabletLockInfoPB::table_id");
+    // If the lock belongs to a colocated table, use the table id populated in the lock.
+    const auto table_id = lock.has_pg_table_id() ? lock.pg_table_id() : parent_pg_table_id;
+    PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_id));
+    RETURN_NOT_OK(SetColumnValue("database", database_oid, schema, &row));
+
+    PgOid relation_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    RETURN_NOT_OK(SetColumnValue("relation", relation_oid, schema, &row));
+
+    if (lock.modes().size() > 0) {
+      RETURN_NOT_OK(SetColumnArrayValue("mode", LockModesToString(lock), schema, &row));
+    }
+  }
 
   // TODO: how to associate the pid?
   // RETURN_NOT_OK(SetColumnValue("pid", YBCGetPid(l.transaction_id()), schema, &row));
-
-  std::vector<std::string> modes(lock.modes().size());
-
-  std::transform(lock.modes().begin(), lock.modes().end(), modes.begin(), [](const auto& mode) {
-    return LockMode_Name(static_cast<LockMode>(mode));
-  });
-  if (modes.size() > 0) RETURN_NOT_OK(SetColumnArrayValue("mode", modes, schema, &row));
 
   RETURN_NOT_OK(SetColumnValue("granted", lock.has_wait_end_ht() ? true : false, schema, &row));
 
@@ -283,6 +325,7 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
 
   for (const auto& node : lock_status.node_locks()) {
     for (const auto& tab : node.tablet_lock_infos()) {
+      bool is_advisory_lock_tablet = tab.is_advisory_lock_tablet();
       for (const auto& transaction_locks : tab.transaction_locks()) {
         auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_locks.id()));
         auto node_iter = node_by_transaction.find(transaction_id);
@@ -299,7 +342,7 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
         for (const auto& lock : transaction_locks.granted_locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
               projection, schema, node_id, tab.pg_table_id(), tab.tablet_id(), lock,
-              transaction_id));
+              transaction_id, is_advisory_lock_tablet));
           data.emplace_back(row);
         }
 
@@ -309,7 +352,7 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
         for (const auto& lock : transaction_locks.waiting_locks().locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
               projection, schema, node_id, tab.pg_table_id(), tab.tablet_id(), lock, transaction_id,
-              wait_start_ht, blocking_txn_ids));
+              is_advisory_lock_tablet, wait_start_ht, blocking_txn_ids));
           data.emplace_back(row);
         }
       }
@@ -321,7 +364,7 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
         for (const auto& lock : waiter.locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
               projection, schema, "", tab.pg_table_id(), tab.tablet_id(), lock,
-              TransactionId::Nil(), wait_start_ht, blocking_txn_ids));
+              TransactionId::Nil(), is_advisory_lock_tablet, wait_start_ht, blocking_txn_ids));
           data.emplace_back(row);
         }
       }

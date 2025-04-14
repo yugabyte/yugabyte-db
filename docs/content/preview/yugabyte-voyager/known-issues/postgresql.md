@@ -49,6 +49,13 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Advisory locks is not yet implemented](#advisory-locks-is-not-yet-implemented)
 - [System columns is not yet supported](#system-columns-is-not-yet-supported)
 - [XML functions is not yet supported](#xml-functions-is-not-yet-supported)
+- [Large Objects and its functions are currently not supported](#large-objects-and-its-functions-are-currently-not-supported)
+- [PostgreSQL 12 and later features](#postgresql-12-and-later-features)
+- [MERGE command](#merge-command)
+- [JSONB subscripting](#jsonb-subscripting)
+- [Events Listen / Notify](#events-listen-notify)
+- [Two-Phase Commit](#two-phase-commit)
+- [DDL operations within the Transaction](#ddl-operations-within-the-transaction)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -61,6 +68,8 @@ ERROR: adding primary key to a partitioned table is not yet implemented (SQLSTAT
 ```
 
 **Workaround**: Manual intervention needed. Add primary key in the `CREATE TABLE` statement.
+
+**Fixed In**: {{<release "2024.1.0.0, 2024.2.0.0, 2.23.0.0, 2.25">}}.
 
 **Example**
 
@@ -99,7 +108,7 @@ PARTITION BY LIST (region);
 
 **Description**: If you have a partitioned table with indexes on it, the migration will fail with an error for YugabyteDB `2.15` or `2.16` due to a regression.
 
-Note that this is fixed in release [2.17.1.0](../../../releases/ybdb-releases/v2.17/#v2.17.1.0).
+Note that this is fixed in release [2.17.1.0](../../../releases/ybdb-releases/end-of-life/v2.17/#v2.17.1.0).
 
 **Workaround**: N/A
 
@@ -204,6 +213,8 @@ ERROR: syntax error at or near "(" (SQLSTATE 42601)
 ```
 
 **Workaround**: Create a trigger on this table that updates its value on any INSERT/UPDATE operation, and set a default value for this column. This provides functionality similar to PostgreSQL's GENERATED ALWAYS AS STORED columns using a trigger.
+
+**Fixed In**: {{<release "2.25">}}.
 
 **Example**
 
@@ -901,6 +912,8 @@ ERROR:  UNLOGGED database object not supported yet
 
 **Workaround**: Convert it to a LOGGED table.
 
+**Fixed In**: {{<release "2024.2.0.0, 2.25">}}
+
 **Example**
 
 An example schema on the source database is as follows:
@@ -1051,9 +1064,9 @@ CREATE TABLE public.locations (
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, the migration skips databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
+**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
 
-For live migration with fall-forward/fall-back, the migration skips databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
+For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column: `HSTORE`, `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
 
 **Workaround**: None.
 
@@ -1153,6 +1166,8 @@ ERROR: Partitioned tables cannot have BEFORE / FOR EACH ROW triggers.
 
 **Workaround**: Create this trigger on the individual partitions.
 
+**Fixed In**: {{<release "2.25">}}.
+
 **Example**
 
 An example schema on the source database is as follows:
@@ -1243,8 +1258,8 @@ yugabyte=# SELECT pg_advisory_lock(100), COUNT(*) FROM cars;
 ```
 
 ```output
-ERROR:  advisory locks are not yet implemented
-HINT:  If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details
+ERROR:  advisory locks feature is currently in preview
+HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_locks to true and add it to the list of allowed preview flags i.e. GFlag allowed_preview_flags_csv. If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details
 ```
 
 **Workaround**: Implement a custom locking mechanism in the application to coordinate actions without relying on database-level advisory locks.
@@ -1288,3 +1303,232 @@ HINT:  You need to rebuild PostgreSQL using --with-libxml.
 **Workaround**: Convert XML data to JSON format for compatibility with YugabyteDB, or handle XML processing at the application layer before inserting data.
 
 ---
+
+### Large Objects and its functions are currently not supported
+
+
+**GitHub**: Issue [#25318](https://github.com/yugabyte/yugabyte-db/issues/25318)
+
+**Description**: If you have large objects (datatype `lo`) in the source schema and are using large object functions in queries, the migration will fail during import-schema, as large object is not supported in YugabyteDB.
+
+```sql
+SELECT lo_create('<OID>');
+```
+
+```output
+ERROR: Transaction for catalog table write operation 'pg_largeobject_metadata' not found
+```
+
+**Workaround**: No workaround is available.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE image (id int, raster lo); 
+
+CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
+    FOR EACH ROW EXECUTE FUNCTION lo_manage(raster);
+```
+
+### PostgreSQL 12 and later features
+
+**GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
+
+**Description**: If any of these PostgreSQL features for version 12 and later are present in the source schema, the import schema step on the target YugabyteDB will fail as YugabyteDB is currently PG11 compatible.
+
+- [JSON Constructor functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`, `JSON_OBJECT`, `JSON_OBJECT_AGG`.
+- [JSON query functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
+- [IS JSON predicate clause](https://www.postgresql.org/about/featurematrix/detail/396/).
+- Any Value [Aggregate function](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `any_value`.
+- [COPY FROM command with ON_ERROR](https://www.postgresql.org/about/featurematrix/detail/433/) option.
+- [Non-decimal integer literals](https://www.postgresql.org/about/featurematrix/detail/407/).
+- [Non-deterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC).
+- [COMPRESSION clause](https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-PARMS-COMPRESSION) in TABLE Column for TOASTing method.
+- [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy, and oid related).
+
+Apart from these, the following issues are supported in YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25), which supports PostgreSQL 15.
+
+- [Multirange datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
+- [UNIQUE NULLS NOT DISTINCT clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
+- [Range Aggregate functions](https://www.postgresql.org/docs/16/functions-aggregate.html#id-1.5.8.27.5.2.4.1.1.1.1) - `range_agg`, `range_intersect_agg`.
+- [FETCH FIRST … WITH TIES in select](https://www.postgresql.org/docs/13/sql-select.html#SQL-LIMIT) statement.
+- [Regex functions](https://www.postgresql.org/about/featurematrix/detail/367/) - `regexp_count`, `regexp_instr`, `regexp_like`.
+- [Foreign key references](https://www.postgresql.org/about/featurematrix/detail/319/) to partitioned table.
+- [Security invoker views](https://www.postgresql.org/about/featurematrix/detail/389/).
+- COPY FROM command with WHERE [clause](https://www.postgresql.org/about/featurematrix/detail/330/).
+- [Deterministic attribute](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC) in COLLATION objects.
+- [SQL Body in Create function](https://www.postgresql.org/docs/15/sql-createfunction.html#:~:text=a%20new%20session.-,sql_body,-The%20body%20of).
+- [Common Table Expressions (With queries) with MATERIALIZED clause](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-CTE-MATERIALIZATION).
+
+### MERGE command
+
+**GitHub**: Issue [#25574](https://github.com/yugabyte/yugabyte-db/issues/25574)
+
+**Description**: If you are using a Merge query to conditionally insert, update, or delete rows on a table on your source database, then this query will fail once you migrate your apps to YugabyteDB as it is a PostgreSQL 15 feature, and not supported yet.
+
+```output
+ERROR:  syntax error at or near "MERGE"
+```
+
+**Workaround**: Use the PL/pgSQL function to implement similar functionality on the database.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE customer_account (
+    customer_id INT PRIMARY KEY,
+    balance NUMERIC(10, 2) NOT NULL
+);
+
+INSERT INTO customer_account (customer_id, balance)
+VALUES
+    (1, 100.00),
+    (2, 200.00),
+    (3, 300.00);
+
+CREATE TABLE recent_transactions (
+    transaction_id SERIAL PRIMARY KEY,
+    customer_id INT NOT NULL,
+    transaction_value NUMERIC(10, 2) NOT NULL
+);
+INSERT INTO recent_transactions (customer_id, transaction_value)
+VALUES
+    (1, 50.00),
+    (3, -25.00),
+    (4, 150.00);
+
+MERGE INTO customer_account ca
+USING recent_transactions t
+ON t.customer_id = ca.customer_id
+WHEN MATCHED THEN
+  UPDATE SET balance = balance + transaction_value
+WHEN NOT MATCHED THEN
+  INSERT (customer_id, balance)
+  VALUES (t.customer_id, t.transaction_value);
+```
+
+Suggested schema change is to replace the MERGE command with a PL/pgSQL function similar to the following:
+
+```sql
+CREATE OR REPLACE FUNCTION merge_customer_account()
+RETURNS void AS $$
+BEGIN
+    -- Insert new rows or update existing rows in customer_account
+    INSERT INTO customer_account (customer_id, balance)
+    SELECT customer_id, transaction_value
+    FROM recent_transactions
+    ON CONFLICT (customer_id) 
+    DO UPDATE
+    SET balance = customer_account.balance + EXCLUDED.balance;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+### JSONB subscripting
+
+**GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
+
+**Description**: If you are using the JSONB subscripting in app queries and in the schema (constraints or default expression) on your source database, then the app query will fail once you migrate your apps to YugabyteDB, and import-schema will fail if any DDL has this feature, as it's a PostgreSQL 15 feature.
+
+```output
+ERROR: cannot subscript type jsonb because it is not an array
+```
+
+**Workaround**: You can use the Arrow ( `-> / ->>` ) operators to access JSONB fields.
+
+**Fixed In**: {{<release "2.25">}}.
+
+**Example**
+
+An example query / DDL on the source database is as follows:
+
+```sql
+SELECT ('{"a": {"b": {"c": "some text"}}}'::jsonb)['a']['b']['c'];
+
+CREATE TABLE test_jsonb_chk (
+    id int,
+    data1 jsonb,
+    CHECK (data1['key']<>'{}')
+);
+```
+
+Suggested change in query to get it working-
+
+```sql
+SELECT ((('{"a": {"b": {"c": "some text"}}}'::jsonb)->'a')->'b')->>'c';
+
+CREATE TABLE test_jsonb_chk (
+    id int,
+    data1 jsonb,
+    CHECK (data1->'key'<>'{}')
+);
+```
+
+### Events Listen / Notify
+
+**GitHub**: Issue [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872)
+
+**Description**: If your application queries or PL/pgSQL objects rely on **LISTEN/NOTIFY events** in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, LISTEN/NOTIFY events are a no-op in YugabyteDB, and any attempt to use them will trigger a warning instead of performing the expected event-driven operations:
+
+```sql
+WARNING:  LISTEN not supported yet and will be ignored
+```
+
+**Workaround**: Currently, there is no workaround.
+
+**Example:**
+
+```sql
+LISTEN my_table_changes;
+INSERT INTO my_table (name) VALUES ('Charlie');
+NOTIFY my_table_changes, 'New row added with name: Charlie';
+```
+
+### Two-Phase Commit
+
+**GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
+
+**Description**: If your application queries or PL/pgSQL objects rely on [Two-Phase Commit protocol](https://www.postgresql.org/docs/11/two-phase.html) that allows multiple distributed systems to work together in a transactional manner in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in YugabyteDB and will throw the following error when you attempt to execute the commands:
+
+```sql
+ERROR:  PREPARE TRANSACTION not supported yet
+```
+
+**Workaround**: Currently, there is no workaround.
+
+### DDL operations within the Transaction
+
+**GitHub**:  Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404)
+
+**Description**: If your application queries or PL/pgSQL objects runs DDL operations inside transactions in the source PostgreSQL database, this functionality will not work after migrating to YugabyteDB. Currently, DDL operations in a transaction in YugabyteDB is not supported and will not work as expected.
+
+**Workaround**: Currently, there is no workaround.
+
+**Example:**
+
+```sql
+yugabyte=# \d test
+Did not find any relation named "test".
+yugabyte=# BEGIN;
+BEGIN
+yugabyte=*# CREATE TABLE test(id int, val text);
+CREATE TABLE
+yugabyte=*# \d test
+                Table "public.test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ val    | text    |           |          | 
+yugabyte=*# ROLLBACK;
+ROLLBACK
+yugabyte=# \d test
+                Table "public.test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ val    | text    |           |          | 
+```

@@ -232,6 +232,8 @@ class ColumnSchema {
 
   bool is_collection() const;
 
+  bool is_vector() const;
+
   int32_t order() const {
     return order_;
   }
@@ -545,7 +547,6 @@ class Schema : public MissingValueProvider {
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)),
-      has_nullables_(false),
       cotable_id_(Uuid::Nil()),
       colocation_id_(kColocationIdNotSet),
       pgschema_name_("") {
@@ -611,6 +612,14 @@ class Schema : public MissingValueProvider {
   // Return the number of columns in this schema
   size_t num_columns() const {
     return cols_.size();
+  }
+
+  bool has_vectors() const {
+    return !vector_column_ids_.empty();
+  }
+
+  const std::vector<ColumnId>& vector_column_ids() const {
+    return vector_column_ids_;
   }
 
   // Return the length of the key prefix in this schema.
@@ -1102,10 +1111,12 @@ class Schema : public MissingValueProvider {
   IdMapping id_to_index_;
 
   // Cached indicator whether any columns are nullable.
-  bool has_nullables_;
+  bool has_nullables_ = false;
 
   // Cached indicator whether any columns are static.
   bool has_statics_ = false;
+
+  std::vector<ColumnId> vector_column_ids_;
 
   TableProperties table_properties_;
 
@@ -1255,12 +1266,3 @@ ColumnKind SortingTypeToColumnKind(SortingType sorting_type);
 
 } // namespace yb
 
-// Specialize std::hash for ColumnId
-namespace std {
-template<>
-struct hash<yb::ColumnId> {
-  int operator()(const yb::ColumnId& col_id) const {
-    return col_id;
-  }
-};
-} // namespace std

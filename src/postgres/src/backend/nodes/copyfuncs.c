@@ -32,6 +32,7 @@
 /* YB includes */
 #include "nodes/ybbitmatrix.h"
 
+
 /*
  * Macros to simplify copying of different kinds of fields.  Use these
  * wherever possible to reduce the chance for silly typos.  Note that these
@@ -140,6 +141,11 @@ CopyPlanFields(const Plan *from, Plan *newnode)
 	COPY_NODE_FIELD(initPlan);
 	COPY_BITMAPSET_FIELD(extParam);
 	COPY_BITMAPSET_FIELD(allParam);
+	COPY_STRING_FIELD(ybHintAlias);
+	COPY_SCALAR_FIELD(ybUniqueId);
+	COPY_STRING_FIELD(ybInheritedHintAlias);
+	COPY_SCALAR_FIELD(ybIsHinted);
+	COPY_SCALAR_FIELD(ybHasHintedUid);
 }
 
 /*
@@ -240,8 +246,6 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(yb_skip_entities);
 	COPY_NODE_FIELD(yb_update_affected_entities);
 	COPY_SCALAR_FIELD(no_row_trigger);
-	COPY_SCALAR_FIELD(ybUseScanTupleInUpdate);
-	COPY_SCALAR_FIELD(ybHasWholeRowAttribute);
 
 	return newnode;
 }
@@ -473,7 +477,7 @@ _copySeqScan(const SeqScan *from)
 static YbSeqScan *
 _copyYbSeqScan(const YbSeqScan *from)
 {
-	YbSeqScan    *newnode = makeNode(YbSeqScan);
+	YbSeqScan  *newnode = makeNode(YbSeqScan);
 
 	/*
 	 * copy node superclass fields
@@ -990,7 +994,7 @@ _copyNestLoop(const NestLoop *from)
 static YbBatchedNestLoop *
 _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 {
-	YbBatchedNestLoop   *newnode = makeNode(YbBatchedNestLoop);
+	YbBatchedNestLoop *newnode = makeNode(YbBatchedNestLoop);
 
 	/*
 	 * copy node superclass fields
@@ -1004,9 +1008,9 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	COPY_SCALAR_FIELD(num_hashClauseInfos);
 
 	if (from->num_hashClauseInfos > 0)
-		COPY_POINTER_FIELD(
-			hashClauseInfos,
-			from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+		COPY_POINTER_FIELD(hashClauseInfos,
+						   (from->num_hashClauseInfos *
+							sizeof(YbBNLHashClauseInfo)));
 
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
 		newnode->hashClauseInfos[i].outerParamExpr = (Expr *)
@@ -1482,10 +1486,10 @@ _copyPartitionPruneStepCombine(const PartitionPruneStepCombine *from)
 	return newnode;
 }
 
-static PartitionPruneStepFuncOp *
-_copyPartitionPruneStepFuncOp(const PartitionPruneStepFuncOp *from)
+static YbPartitionPruneStepFuncOp *
+_copyYbPartitionPruneStepFuncOp(const YbPartitionPruneStepFuncOp *from)
 {
-	PartitionPruneStepFuncOp *newnode = makeNode(PartitionPruneStepFuncOp);
+	YbPartitionPruneStepFuncOp *newnode = makeNode(YbPartitionPruneStepFuncOp);
 
 	COPY_SCALAR_FIELD(step.step_id);
 	COPY_NODE_FIELD(exprs);
@@ -3730,10 +3734,10 @@ _copyCopyStmt(const CopyStmt *from)
 	return newnode;
 }
 
-static OptSplit *
-_copyOptSplit(const OptSplit *from)
+static YbOptSplit *
+_copyYbOptSplit(const YbOptSplit *from)
 {
-	OptSplit *newnode = makeNode(OptSplit);
+	YbOptSplit *newnode = makeNode(YbOptSplit);
 
 	COPY_SCALAR_FIELD(split_type);
 	COPY_SCALAR_FIELD(num_tablets);
@@ -4480,10 +4484,10 @@ _copyDropProfileStmt(const YbDropProfileStmt *from)
 	return newnode;
 }
 
-static CreateTableGroupStmt *
-_copyCreateTableGroupStmt(const CreateTableGroupStmt *from)
+static YbCreateTableGroupStmt *
+_copyYbCreateTableGroupStmt(const YbCreateTableGroupStmt *from)
 {
-	CreateTableGroupStmt *newnode = makeNode(CreateTableGroupStmt);
+	YbCreateTableGroupStmt *newnode = makeNode(YbCreateTableGroupStmt);
 
 	COPY_STRING_FIELD(tablegroupname);
 	COPY_STRING_FIELD(tablespacename);
@@ -5269,14 +5273,15 @@ _copyForeignKeyCacheInfo(const ForeignKeyCacheInfo *from)
 	COPY_ARRAY_FIELD(conkey);
 	COPY_ARRAY_FIELD(confkey);
 	COPY_ARRAY_FIELD(conpfeqop);
+	COPY_SCALAR_FIELD(ybconindid);
 
 	return newnode;
 }
 
-static BackfillIndexStmt *
-_copyBackfillIndexStmt(const BackfillIndexStmt *from)
+static YbBackfillIndexStmt *
+_copyYbBackfillIndexStmt(const YbBackfillIndexStmt *from)
 {
-	BackfillIndexStmt *newnode = makeNode(BackfillIndexStmt);
+	YbBackfillIndexStmt *newnode = makeNode(YbBackfillIndexStmt);
 
 	COPY_SCALAR_FIELD(oid_list);
 	COPY_NODE_FIELD(bfinfo);
@@ -5296,10 +5301,10 @@ _copyYbBackfillInfo(const YbBackfillInfo *from)
 	return newnode;
 }
 
-static RowBounds *
-_copyRowBounds(const RowBounds *from)
+static YbRowBounds *
+_copyYbRowBounds(const YbRowBounds *from)
 {
-	RowBounds *newnode = makeNode(RowBounds);
+	YbRowBounds *newnode = makeNode(YbRowBounds);
 
 	COPY_STRING_FIELD(partition_key);
 	COPY_STRING_FIELD(row_key_start);
@@ -5325,6 +5330,7 @@ static YbBatchedExpr *
 _copyYbBatchedExpr(const YbBatchedExpr *from)
 {
 	YbBatchedExpr *newnode = makeNode(YbBatchedExpr);
+
 	COPY_NODE_FIELD(orig_expr);
 
 	return newnode;
@@ -6006,8 +6012,8 @@ copyObjectImpl(const void *from)
 		case T_YbDropProfileStmt:
 			retval = _copyDropProfileStmt(from);
 			break;
-		case T_CreateTableGroupStmt:
-			retval = _copyCreateTableGroupStmt(from);
+		case T_YbCreateTableGroupStmt:
+			retval = _copyYbCreateTableGroupStmt(from);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _copyCreateTableSpaceStmt(from);
@@ -6315,8 +6321,8 @@ copyObjectImpl(const void *from)
 		case T_PublicationTable:
 			retval = _copyPublicationTable(from);
 			break;
-		case T_OptSplit:
-			retval = _copyOptSplit(from);
+		case T_YbOptSplit:
+			retval = _copyYbOptSplit(from);
 			break;
 
 			/*
@@ -6326,16 +6332,16 @@ copyObjectImpl(const void *from)
 			retval = _copyForeignKeyCacheInfo(from);
 			break;
 
-		case T_BackfillIndexStmt:
-			retval = _copyBackfillIndexStmt(from);
+		case T_YbBackfillIndexStmt:
+			retval = _copyYbBackfillIndexStmt(from);
 			break;
 
 		case T_YbBackfillInfo:
 			retval = _copyYbBackfillInfo(from);
 			break;
 
-		case T_RowBounds:
-			retval = _copyRowBounds(from);
+		case T_YbRowBounds:
+			retval = _copyYbRowBounds(from);
 			break;
 
 		case T_YbExprColrefDesc:

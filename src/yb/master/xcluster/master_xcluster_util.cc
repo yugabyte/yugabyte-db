@@ -19,6 +19,8 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 
+DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+
 namespace yb::master {
 
 static const auto kXClusterDDLExtensionName = xcluster::kDDLQueuePgSchemaName;
@@ -47,7 +49,7 @@ bool IsTableEligibleForXClusterReplication(const master::TableInfo& table) {
     return false;
   }
 
-  if (table.IsColocatedUserTable()) {
+  if (table.IsSecondaryTable()) {
     // Only the colocated parent table needs to be replicated.
     return false;
   }
@@ -113,8 +115,14 @@ Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
   if (include_sequences_data) {
     auto sequence_table_info = catalog_manager.GetTableInfo(kPgSequencesDataTableId);
     if (sequence_table_info) {
-      table_designators.emplace_back(
-          TableDesignator::CreateSequenceTableDesignator(sequence_table_info, namespace_id));
+      // Due to a bug with the CreateTable code, it is possible for GetTableInfo to return a
+      // TableInfo for a table being created still in-state UNKNOWN.  If we see this, just ignore
+      // the table as it is still being created and we can pretend we looked before it started being
+      // created.
+      if (sequence_table_info.get()->LockForRead()->pb.state() != SysTablesEntryPB::UNKNOWN) {
+        table_designators.emplace_back(
+            TableDesignator::CreateSequenceTableDesignator(sequence_table_info, namespace_id));
+      }
     }
   }
   return table_designators;
@@ -132,27 +140,40 @@ bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info) {
 
 Status SetupDDLReplicationExtension(
     CatalogManagerIf& catalog_manager, const std::string& database_name,
-    XClusterDDLReplicationRole role, CoarseTimePoint deadline, StdStatusCallback callback) {
+    XClusterDDLReplicationRole role, StdStatusCallback callback) {
   std::vector<std::string> statements;
-  if (role == XClusterDDLReplicationRole::kSource) {
-    // In 1:N replication the source universe will already have the extension created.
-    statements.push_back(Format("CREATE EXTENSION IF NOT EXISTS $0", kXClusterDDLExtensionName));
-  } else {
-    // We could have older data in the table due to a backup restore from the source universe.
-    // So, we drop the extension and recreate it so that we start with empty tables.
-    // TODO(#19185) Revisit this GUC disabling when we implement proper extension shutdown.
-    statements.push_back(Format("SET $0.replication_role = DISABLED", kXClusterDDLExtensionName));
-    statements.push_back(Format("DROP EXTENSION IF EXISTS $0", kXClusterDDLExtensionName));
-    statements.push_back(Format("CREATE EXTENSION $0", kXClusterDDLExtensionName));
-  }
 
+  statements.push_back(Format("CREATE EXTENSION IF NOT EXISTS $0", kXClusterDDLExtensionName));
   statements.push_back(Format(
       "ALTER DATABASE \"$0\" SET $1.replication_role = $2", database_name,
       kXClusterDDLExtensionName,
       role == XClusterDDLReplicationRole::kSource ? "SOURCE" : "TARGET"));
 
   return ExecutePgsqlStatements(
-      database_name, statements, catalog_manager, deadline, std::move(callback));
+      database_name, statements, catalog_manager,
+      CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
+      std::move(callback));
+}
+
+Status DropDDLReplicationExtensionIfExists(
+    CatalogManagerIf& catalog_manager, const NamespaceId& namespace_id,
+    StdStatusCallback callback) {
+  auto namespace_name = VERIFY_RESULT(catalog_manager.FindNamespaceById(namespace_id))->name();
+  LOG(INFO) << "Dropping " << kXClusterDDLExtensionName << " extension for namespace "
+            << namespace_id << " (" << namespace_name << ")";
+  std::vector<std::string> statements;
+  // Disable the extension first to prevent any conflicts with later setups.
+  statements.push_back(Format(
+      "ALTER DATABASE \"$0\" SET $1.replication_role = DISABLED", namespace_name,
+      kXClusterDDLExtensionName));
+  // Also disable for the current session.
+  statements.push_back(Format("SET $0.replication_role = DISABLED", kXClusterDDLExtensionName));
+  statements.push_back(Format("DROP EXTENSION IF EXISTS $0", kXClusterDDLExtensionName));
+
+  return ExecutePgsqlStatements(
+      namespace_name, statements, catalog_manager,
+      CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
+      std::move(callback));
 }
 
 }  // namespace yb::master

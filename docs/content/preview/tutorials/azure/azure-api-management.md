@@ -1,10 +1,10 @@
 ---
-title: How to Develop Centralized APIs With Azure API Management and YugaybteDB
-headerTitle: Develop centralized APIs using Azure API Management and YugaybteDB
+title: How to Develop Centralized APIs With Azure API Management and YugabyteDB
+headerTitle: Develop centralized APIs using Azure API Management and YugabyteDB
 linkTitle: Azure API Management
 description: Learn to deploy APIs using Azure API Management and YugabyteDB, covering geo-partitioned clusters and Azure Function development.
 image: /images/tutorials/azure/icons/API-Management-Icon.svg
-headcontent: Use YugaybteDB as the database backend for your API
+headcontent: Use YugabyteDB as the database backend for your API
 menu:
   preview_tutorials:
     identifier: tutorials-azure-api-management
@@ -40,7 +40,7 @@ Begin by deploying a multi-region, [geo-partitioned cluster](../../../yugabyte-c
 1. Enable public access on the cluster and add 0.0.0.0/0 to the cluster [IP Allow List](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/). This setup allows connections to the cluster from all IP addresses.
 
     {{< note title="Note" >}}
-In a production application, [Azure Private Link](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) can be used with [private service endpoints](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
+In a production application, [Azure Private Link](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) can be used with [private service endpoints](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-aeon) to create a secure connection between your application and database VPCs.
     {{< /note >}}
 
 1. Upon creation, save the credentials and [download the CA certificate](../../build-apps/cloud-add-ip/#download-your-cluster-certificate) once everything is up and running. This is essential for secure connections using the Node.js Smart Client.

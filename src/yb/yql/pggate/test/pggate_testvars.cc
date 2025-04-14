@@ -12,10 +12,12 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/pggate/test/pggate_test.h"
 
-namespace yb {
-namespace pggate {
+#include <initializer_list>
+
+namespace yb::pggate {
 
 /***************************************************************************************************
  * Conversion Functions.
@@ -29,7 +31,7 @@ void YBCTestDatumToBool(Datum datum, void *void_data, int64 *bytes) {
   *data = static_cast<bool>((datum & 0x000000ff) != 0);
 }
 
-Datum YBCTestBoolToDatum(const void *void_data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCTestBoolToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
   const bool *data = reinterpret_cast<const bool*>(void_data);
   return (static_cast<Datum>(*data)) & 0x000000ff;
 }
@@ -43,7 +45,7 @@ void YBCTestDatumToChar(Datum datum, void *void_data, int64 *bytes) {
   *data = static_cast<char>(datum & 0x000000ff);
 }
 
-Datum YBCTestCharToDatum(const void *void_data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCTestCharToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
   const char *data = reinterpret_cast<const char*>(void_data);
   return (static_cast<Datum>(*data)) & 0x000000ff;
 }
@@ -57,7 +59,7 @@ void YBCTestDatumToStr(Datum datum, void *void_data, int64 *bytes) {
   *bytes = strlen(*data);
 }
 
-Datum YBCTestStrToDatum(const void *void_data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCTestStrToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
   int64 len = type_attrs->typmod > 0 ? type_attrs->typmod : bytes + 1;
   char *str = static_cast<char *>(PggateTestAlloc(len));
 
@@ -75,7 +77,7 @@ void YBCTestDatumToInt16(Datum datum, void *void_data, int64 *bytes) {
   *data = static_cast<int16>(datum & 0x0000ffff);
 }
 
-Datum YBCTestInt16ToDatum(const void *void_data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCTestInt16ToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
   const int16* data = reinterpret_cast<const int16*>(void_data);
   return (static_cast<Datum>(*data)) & 0x0000ffff;
 }
@@ -85,7 +87,7 @@ void YBCTestDatumToInt32(Datum datum, void *void_data, int64 *bytes) {
   *data = static_cast<int32>(datum & 0xffffffff);
 }
 
-Datum YBCTestInt32ToDatum(const void *void_data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCTestInt32ToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
   const int32 *data = reinterpret_cast<const int32*>(void_data);
   return (static_cast<Datum>(*data)) & 0xffffffff;
 }
@@ -95,7 +97,7 @@ void YBCTestDatumToInt64(Datum datum, void *void_data, int64 *bytes) {
   *data = static_cast<int64>(datum);
 }
 
-Datum YBCTestInt64ToDatum(const void *void_data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCTestInt64ToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
   const int64 *data = reinterpret_cast<const int64*>(void_data);
   return *reinterpret_cast<const Datum*>(data);
 }
@@ -108,7 +110,7 @@ void YBCTestDatumToFloat4(Datum datum, void *void_data, int64 *bytes) {
   *data = *reinterpret_cast<float *>(&datum);
 }
 
-Datum YBCTestFloat4ToDatum(const void *void_data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCTestFloat4ToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
   return YBCTestInt32ToDatum(void_data, 0, nullptr);
 }
 
@@ -117,51 +119,62 @@ void YBCTestDatumToFloat8(Datum datum, void *void_data, int64 *bytes) {
   *data = *reinterpret_cast<double*>(&datum);
 }
 
-Datum YBCTestFloat8ToDatum(const void *void_data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+Datum YBCTestFloat8ToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
   return YBCTestInt64ToDatum(void_data, 0, nullptr);
+}
+
+void YBCTestDatumToBinary(Datum datum, void *void_data, int64 *bytes) {
+  CHECK(false) << "Not implemented yet";
+}
+
+Datum YBCTestBinaryToDatum(const void *void_data, int64 bytes, const YbcPgTypeAttrs *type_attrs) {
+  CHECK(false) << "Not implemented yet";
+  return 0;
 }
 
 /***************************************************************************************************
  * Conversion Table
  **************************************************************************************************/
-static const YBCPgTypeEntity YBCTestTypeEntityTable[] = {
+constexpr std::initializer_list<YbcPgTypeEntity> kTypeEntityTable = {
   { BOOLOID, YB_YQL_DATA_TYPE_BOOL, true, 1, false,
-    (YBCPgDatumToData)YBCTestDatumToBool,
-    (YBCPgDatumFromData)YBCTestBoolToDatum },
+    (YbcPgDatumToData)YBCTestDatumToBool,
+    (YbcPgDatumFromData)YBCTestBoolToDatum },
 
   { INT2OID, YB_YQL_DATA_TYPE_INT16, true, 2, false,
-    (YBCPgDatumToData)YBCTestDatumToInt16,
-    (YBCPgDatumFromData)YBCTestInt16ToDatum },
+    (YbcPgDatumToData)YBCTestDatumToInt16,
+    (YbcPgDatumFromData)YBCTestInt16ToDatum },
 
   { INT4OID, YB_YQL_DATA_TYPE_INT32, true, 4, false,
-    (YBCPgDatumToData)YBCTestDatumToInt32,
-    (YBCPgDatumFromData)YBCTestInt32ToDatum },
+    (YbcPgDatumToData)YBCTestDatumToInt32,
+    (YbcPgDatumFromData)YBCTestInt32ToDatum },
 
   { INT8OID, YB_YQL_DATA_TYPE_INT64, true, 8, false,
-    (YBCPgDatumToData)YBCTestDatumToInt64,
-    (YBCPgDatumFromData)YBCTestInt64ToDatum },
+    (YbcPgDatumToData)YBCTestDatumToInt64,
+    (YbcPgDatumFromData)YBCTestInt64ToDatum },
 
   { TEXTOID, YB_YQL_DATA_TYPE_STRING, true, -1, false,
-    (YBCPgDatumToData)YBCTestDatumToStr,
-    (YBCPgDatumFromData)YBCTestStrToDatum },
+    (YbcPgDatumToData)YBCTestDatumToStr,
+    (YbcPgDatumFromData)YBCTestStrToDatum },
 
   { OIDOID, YB_YQL_DATA_TYPE_INT32, true, 4, false,
-    (YBCPgDatumToData)YBCTestDatumToInt32,
-    (YBCPgDatumFromData)YBCTestInt32ToDatum },
+    (YbcPgDatumToData)YBCTestDatumToInt32,
+    (YbcPgDatumFromData)YBCTestInt32ToDatum },
 
   { FLOAT4OID, YB_YQL_DATA_TYPE_FLOAT, true, 8, false,
-    (YBCPgDatumToData)YBCTestDatumToFloat4,
-    (YBCPgDatumFromData)YBCTestFloat4ToDatum },
+    (YbcPgDatumToData)YBCTestDatumToFloat4,
+    (YbcPgDatumFromData)YBCTestFloat4ToDatum },
 
   { FLOAT8OID, YB_YQL_DATA_TYPE_DOUBLE, true, 8, false,
-    (YBCPgDatumToData)YBCTestDatumToFloat8,
-    (YBCPgDatumFromData)YBCTestFloat8ToDatum },
+    (YbcPgDatumToData)YBCTestDatumToFloat8,
+    (YbcPgDatumFromData)YBCTestFloat8ToDatum },
+
+	{ BYTEAOID, YB_YQL_DATA_TYPE_BINARY, true, -1, false,
+		(YbcPgDatumToData)YBCTestDatumToBinary,
+		(YbcPgDatumFromData)YBCTestBinaryToDatum }
 };
 
-void YBCTestGetTypeTable(const YBCPgTypeEntity **type_table, int *count) {
-  *type_table = YBCTestTypeEntityTable;
-  *count = sizeof(YBCTestTypeEntityTable)/sizeof(YBCPgTypeEntity);
+YbcPgTypeEntities YBCTestGetTypeTable() {
+  return YbcPgTypeEntities{.data = &*kTypeEntityTable.begin(), .count = kTypeEntityTable.size()};
 }
 
-} // namespace pggate
-} // namespace yb
+} // namespace yb::pggate

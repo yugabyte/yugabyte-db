@@ -328,9 +328,8 @@ DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
-
 DECLARE_int32(retryable_request_timeout_secs);
-
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
 namespace yb::tserver {
@@ -629,6 +628,11 @@ Status TSTabletManager::Init() {
     tablet_options_.rate_limiter = docdb::CreateRocksDBRateLimiter();
   }
 
+  rate_limiter_flag_callback_ = CHECK_RESULT(RegisterFlagUpdateCallback(
+      &FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec,
+      "RocksDBCompactFlushRateLimiter",
+      [this] { UpdateCompactFlushRateLimitBytesPerSec(); }));
+
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
   // FsManager isn't initialized until this point.
@@ -656,7 +660,7 @@ Status TSTabletManager::Init() {
   CleanupCheckpoints();
 
   // Search for tablets in the metadata dir.
-  vector<string> tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds());
+  auto tablet_ids = VERIFY_RESULT(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
   InitLocalRaftPeerPB();
 
@@ -982,7 +986,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   RETURN_NOT_OK_PREPEND(create_result, "Couldn't create tablet metadata")
   RaftGroupMetadataPtr meta = std::move(*create_result);
   LOG(INFO) << TabletLogPrefix(tablet_id)
-            << "Created tablet metadata for table: " << table_info->table_id;
+            << "Created tablet metadata for table: " << table_info->table_id << ", key bounds: " <<
+            meta->MakeKeyBounds().ToString();
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
@@ -1229,8 +1234,8 @@ Status TSTabletManager::ApplyTabletSplit(
     tcmeta.raft_group_metadata = VERIFY_RESULT(tablet->CreateSubtablet(
         new_tablet_id, tcmeta.partition, tcmeta.key_bounds, split_op_id,
         operation->hybrid_time()));
-    LOG_WITH_PREFIX(INFO) << "Created raft group metadata for table: " << table_id
-                          << " tablet: " << new_tablet_id;
+    LOG(INFO) << TabletLogPrefix(new_tablet_id) << "Created raft group metadata for table: "
+              << table_id << ", key bounds: " << tcmeta.key_bounds.ToString();
 
     // Store consensus metadata.
     // Here we reuse the same cmeta instance for both new tablets. This is safe, because:
@@ -1381,6 +1386,8 @@ Status TSTabletManager::DoApplyCloneTablet(
       std::move(target_table_index_info),
       source_table->schema_version, /* fixed by restore */
       target_partition_schema,
+      operation->op_id(),
+      operation->hybrid_time(),
       target_pg_table_id,
       tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
   std::vector<tablet::TableInfoPtr> colocated_tables_infos;
@@ -2081,7 +2088,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .get_min_xcluster_schema_version =
             std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2),
         .messenger = server_->messenger(),
-        .vector_index_thread_pool_provider = [this] { return VectorIndexThreadPool(); },
+        .vector_index_thread_pool_provider = [this](auto type) {
+          return VectorIndexThreadPool(type);
+        },
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -2189,31 +2198,35 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   tablet_metadata_validator_->ScheduleValidation(*tablet->metadata());
 }
 
-Status TSTabletManager::TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait) {
+Status TSTabletManager::TriggerAdminCompaction(
+  const TabletPtrs& tablets, const AdminCompactionOptions& options) {
   CountDownLatch latch(tablets.size());
   std::vector<TabletId> tablet_ids;
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
+
+  tablet::AdminCompactionOptions tablet_compaction_options {
+      .compaction_completion_callback =
+          options.should_wait ? latch.CountDownCallback() : std::function<void()>{},
+      .vector_index_ids = options.vector_index_ids,
+  };
+
   for (auto tablet : tablets) {
-    Status status;
-    if (should_wait) {
-      status = tablet->TriggerAdminFullCompactionWithCallbackIfNeeded(latch.CountDownCallback());
-    } else {
-      status = tablet->TriggerAdminFullCompactionIfNeeded();
-    }
-    RETURN_NOT_OK(status);
+    RETURN_NOT_OK(tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options));
     tablet_ids.push_back(tablet->tablet_id());
     total_size += tablet->GetCurrentVersionSstFilesSize();
   }
+
   VLOG(1) << yb::Format(
       "Beginning batch admin compaction for tablets $0, $1 bytes", tablet_ids, total_size);
 
-  if (should_wait) {
+  if (options.should_wait) {
     latch.Wait();
     LOG(INFO) << yb::Format(
         "Admin compaction finished for tablets $0, $1 bytes took $2 seconds", tablet_ids,
         total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
   }
+
   return Status::OK();
 }
 
@@ -2241,6 +2254,8 @@ void TSTabletManager::StartShutdown() {
     }
   }
 
+  rate_limiter_flag_callback_.Deregister();
+
   {
     std::lock_guard lock(service_registration_mutex_);
     service_consensus_change_cb_.clear();
@@ -2250,7 +2265,7 @@ void TSTabletManager::StartShutdown() {
 
   verify_tablet_data_poller_->Shutdown();
 
-  tablet_metadata_validator_->Shutdown();
+  tablet_metadata_validator_->StartShutdown();
 
   data_size_metric_updater_->Shutdown();
 
@@ -2286,20 +2301,28 @@ void TSTabletManager::StartShutdown() {
   if (waiting_txn_registry_) {
     waiting_txn_registry_->StartShutdown();
   }
+
+  if (superblock_flush_bg_task_) {
+    superblock_flush_bg_task_->StartShutdown();
+  }
 }
 
 void TSTabletManager::CompleteShutdown() {
+  tablet_metadata_validator_->CompleteShutdown();
+
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
     peer->CompleteShutdown(
         tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
         tablet::AbortOps::kFalse);
   }
 
-  auto vector_index_thread_pool = vector_index_thread_pool_.get();
-  if (vector_index_thread_pool) {
-    std::lock_guard mutex(vector_index_thread_pool_mutex_);
-    vector_index_thread_pool->Shutdown();
-    vector_index_thread_pool_.reset();
+  for (auto& vector_index_thread_pool_ref : vector_index_thread_pools_) {
+    auto vector_index_thread_pool = vector_index_thread_pool_ref.get();
+    if (vector_index_thread_pool) {
+      std::lock_guard mutex(vector_index_thread_pool_mutex_);
+      vector_index_thread_pool->Shutdown();
+      vector_index_thread_pool_ref.reset();
+    }
   }
 
   // Shut down the apply pool.
@@ -2324,7 +2347,7 @@ void TSTabletManager::CompleteShutdown() {
     admin_triggered_compaction_pool_->Shutdown();
   }
   if (superblock_flush_bg_task_) {
-    superblock_flush_bg_task_->Shutdown();
+    superblock_flush_bg_task_->CompleteShutdown();
   }
   if (full_compaction_pool_) {
     full_compaction_pool_->Shutdown();
@@ -3253,8 +3276,7 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   return Status::OK();
 }
 
-docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
-    tablet::RaftGroupMetadata* metadata) {
+docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
   HybridTime result = HybridTime::kMax;
   // CDC SDK safe time
   if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
@@ -3280,25 +3302,16 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
     result.MakeAtMost(*opt_xcluster_safe_time);
   }
 
+  // This logic in required to cleanup snapshot schedules that were removed at master.
   auto schedules = metadata->SnapshotSchedules();
   if (!schedules.empty()) {
     std::vector<SnapshotScheduleId> schedules_to_remove;
-    auto se = ScopeExit([&schedules_to_remove, metadata]() {
-      if (schedules_to_remove.empty()) {
-        return;
-      }
-      bool any_removed = false;
-      for (const auto& schedule_id : schedules_to_remove) {
-        any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
-      }
-      if (any_removed) {
-        WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
-      }
-    });
-    std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
-    for (const auto& schedule_id : schedules) {
-      auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
-      if (it == snapshot_schedule_allowed_history_cutoff_.end()) {
+    {
+      std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+      for (const auto& schedule_id : schedules) {
+        if (snapshot_schedule_allowed_history_cutoff_.contains(schedule_id)) {
+          continue;
+        }
         // We don't know this schedule.
         auto emplace_result =
             missing_snapshot_schedules_.emplace(schedule_id, snapshot_schedules_version_);
@@ -3310,18 +3323,18 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
           // One round is not enough, because schedule could be added after heartbeat processed on
           // master, but response not yet received on TServer.
           schedules_to_remove.push_back(schedule_id);
-          continue;
         }
-        return { HybridTime::kInvalid, HybridTime::kMin };
       }
-      if (!it->second) {
-        // Schedules does not have snapshots yet.
-        return { HybridTime::kInvalid, HybridTime::kMin };
-      }
-      result.MakeAtMost(it->second);
+    }
+    bool any_removed = false;
+    for (const auto& schedule_id : schedules_to_remove) {
+      any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
+    }
+    if (any_removed) {
+      WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
     }
   }
-  VLOG(1) << "Setting the allowed historycutoff: " << result
+  VLOG(1) << "Setting the allowed history cutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
   return { HybridTime::kInvalid, result };
 }
@@ -3460,25 +3473,75 @@ client::YBMetaDataCache* TSTabletManager::YBMetaDataCache() const {
   return metadata_cache_.load(std::memory_order_acquire);
 }
 
-rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool() {
-  auto result = vector_index_thread_pool_.get();
+void TSTabletManager::UpdateCompactFlushRateLimitBytesPerSec() {
+  const auto sharing_mode = docdb::GetRocksDBRateLimiterSharingMode();
+  const auto rate_limit_bps = FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec;
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "Compact flush rate limiter: "
+      "sharing mode = " << sharing_mode << ", rate limit bytes per second = " << rate_limit_bps;
+
+  if (tablet_options_.rate_limiter) {
+    // Sanity check to make sure sharing_mode has expected value. That should not happen, but
+    // even if that happens, it has no effect on the system and the system is in the stable state
+    // as the sharing mode is used only during startup.
+    LOG_IF_WITH_PREFIX(WARNING, (sharing_mode != docdb::RateLimiterSharingMode::TSERVER))
+        << "Shared compact flush rate limiter should not exist in non-sharing mode";
+
+    auto ret = tablet_options_.rate_limiter->SetBytesPerSecond(rate_limit_bps);
+    if (!ret.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Shared rate compact flush limiter: set bytes_per_second failed: " << ret.status();
+    } else if (*ret) {
+      LOG_WITH_PREFIX(INFO) << "Shared compact flush rate limiter: "
+                            << "set bytes_per_second to " << rate_limit_bps;
+    }
+  } else {
+    // Sanity check to make sure sharing_mode has expected value. That should not happen, but
+    // even if that happens, it has no effect on the system and the system is in the stable state
+    // as the sharing mode is used only during startup.
+    LOG_IF_WITH_PREFIX(WARNING, (sharing_mode != docdb::RateLimiterSharingMode::NONE))
+        << "Shared compact flush rate limiter should exist in sharing mode";
+
+    for (const TabletPeerPtr& peer : GetTabletPeers()) {
+      if (peer->state() != RUNNING) {
+        // It is not safe to access tablet's rocksdb while the tablet is not yet running.
+        // In this case we skip rate limiter update here, but it is covered by the tablet
+        // startup, when the one is being changed into running state.
+        continue;
+      }
+
+      auto tablet_result = peer->shared_tablet_safe();
+      if (!tablet_result.ok()) {
+        LOG(WARNING) << peer->LogPrefix()
+                     << "Compact flush rate limiter update failed: " << tablet_result.status();
+        continue;
+      }
+
+      (*tablet_result)->SetCompactFlushRateLimitBytesPerSec(rate_limit_bps);
+    }
+  }
+}
+
+rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type) {
+  auto& thread_pool_ptr = vector_index_thread_pools_[std::to_underlying(type)];
+  auto result = thread_pool_ptr.get();
   if (result) {
     return result;
   }
   std::lock_guard lock(vector_index_thread_pool_mutex_);
-  result = vector_index_thread_pool_.get();
+  result = thread_pool_ptr.get();
   if (result) {
     return result;
   }
   rpc::ThreadPoolOptions options = {
-    .name = "vector_index_tp",
-    .max_workers = FLAGS_vector_index_concurrent_writes,
+    .name = Format("vi_$0_tp", type),
+    .max_workers = type == tablet::VectorIndexThreadPoolType::kInsert
+        ? FLAGS_vector_index_concurrent_writes : 0,
   };
   if (options.max_workers == 0) {
     options.max_workers = std::thread::hardware_concurrency();
   }
-  LOG(INFO) << "Use " << options.max_workers << " for vector index thread pool";
-  vector_index_thread_pool_.reset(result = new rpc::ThreadPool(std::move(options)));
+  LOG(INFO) << "Use " << options.max_workers << " for vector index " << type << " thread pool";
+  thread_pool_ptr.reset(result = new rpc::ThreadPool(std::move(options)));
   return result;
 }
 

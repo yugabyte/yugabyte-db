@@ -68,10 +68,12 @@ public class XClusterTableConfig extends Model {
   @ApiModelProperty(
       value = "Stream ID if replication is setup; bootstrap ID if the table is bootstrapped",
       example = "a9d2470786694dc4b34e0e58e592da9e")
+  @ToString.Include
   private String streamId;
 
   @ApiModelProperty(value = "YbaApi Internal. Whether replication is set up for this table")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
+  @ToString.Include
   private boolean replicationSetupDone;
 
   @ApiModelProperty(
@@ -114,6 +116,7 @@ public class XClusterTableConfig extends Model {
       value = "Status",
       allowableValues =
           "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
+  @ToString.Include
   private Status status;
 
   @Transient
@@ -139,11 +142,10 @@ public class XClusterTableConfig extends Model {
     DroppedFromSource("DroppedFromSource", -5), // Not stored in YBA DB.
     DroppedFromTarget("DroppedFromTarget", -6), // Not stored in YBA DB.
     ExtraTableOnSource("ExtraTableOnSource", -7), // Not stored in YBA DB.
-    ExtraTableOnTarget("ExtraTableOnTarget", -8), // Not stored in YBA DB.
-    ReplicationError("ReplicationError", -9); // Not stored in YBA DB.
+    ExtraTableOnTarget("ExtraTableOnTarget", -8); // Not stored in YBA DB.
 
     private final String status;
-    private final int code;
+    @Getter private final int code;
 
     Status(String status, int code) {
       this.status = status;
@@ -154,10 +156,6 @@ public class XClusterTableConfig extends Model {
     @DbEnumValue
     public String toString() {
       return this.status;
-    }
-
-    public int getCode() {
-      return this.code;
     }
   }
 

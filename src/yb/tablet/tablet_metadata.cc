@@ -49,8 +49,10 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/pgsql_operation.h"
+#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/reader_projection.h"
 
@@ -115,7 +117,6 @@ using util::DereferencedEqual;
 using util::MapsEqual;
 using qlexpr::IndexInfo;
 using qlexpr::IndexMap;
-using docdb::SkipTableTombstoneCheck;
 
 namespace {
 
@@ -131,9 +132,8 @@ std::string MakeTableInfoLogPrefix(
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kIntentsSubdir = "intents";
-const std::string kIntentsDBSuffix = ".intents";
-const std::string kSnapshotsDirSuffix = ".snapshots";
+const std::string kIntentsDirName = "intents";
+const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -144,8 +144,7 @@ TableInfo::TableInfo(const std::string& log_prefix_,
                      SkipTableTombstoneCheck skip_table_tombstone_check,
                      PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(
-          log_prefix, table_type, docdb::Index::kFalse, skip_table_tombstone_check)),
+      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
       index_map(std::make_shared<IndexMap>()),
       skip_table_tombstone_check(skip_table_tombstone_check) {
   CompleteInit();
@@ -162,6 +161,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      const std::optional<IndexInfo>& index_info,
                      const SchemaVersion schema_version,
                      dockv::PartitionSchema partition_schema,
+                     const OpId& op_id_,
+                     HybridTime ht,
                      TableId pg_table_id_,
                      SkipTableTombstoneCheck skip_table_tombstone_check_)
     : table_id(std::move(table_id_)),
@@ -172,11 +173,13 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
           log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
-          schema_version, skip_table_tombstone_check_)),
+          schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(std::move(partition_schema)),
+      op_id(op_id_),
+      hybrid_time(ht),
       pg_table_id(std::move(pg_table_id_)),
       skip_table_tombstone_check(skip_table_tombstone_check_) {
   CompleteInit();
@@ -196,12 +199,13 @@ TableInfo::TableInfo(const TableInfo& other,
       doc_read_context(schema_version != other.schema_version
           ? std::make_shared<docdb::DocReadContext>(
               *other.doc_read_context, schema, schema_version)
-          : std::make_shared<docdb::DocReadContext>(
-              *other.doc_read_context)),
+          : std::make_shared<docdb::DocReadContext>(*other.doc_read_context)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(other.partition_schema),
+      op_id(other.op_id),
+      hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
@@ -219,12 +223,13 @@ TableInfo::TableInfo(const TableInfo& other,
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
-      doc_read_context(std::make_shared<docdb::DocReadContext>(
-          *other.doc_read_context, schema)),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(*other.doc_read_context, schema)),
       index_map(std::make_shared<IndexMap>(*other.index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
+      op_id(other.op_id),
+      hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
@@ -244,6 +249,8 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
+      op_id(other.op_id),
+      hybrid_time(other.hybrid_time),
       pg_table_id(other.pg_table_id),
       skip_table_tombstone_check(other.skip_table_tombstone_check),
       deleted_cols(other.deleted_cols) {
@@ -253,8 +260,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
-  if (index_info && index_info->is_vector_idx()) {
-    CHECK_EQ(index_info->vector_idx_options().idx_type(), PgVectorIndexType::HNSW);
+  if (index_info && index_info->is_vector_index()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
@@ -283,12 +289,12 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   table_name = pb.table_name();
   table_type = pb.table_type();
   cotable_id = VERIFY_RESULT(ParseCotableId(primary, table_id));
+  op_id = OpId::FromPB(pb.op_id());
+  hybrid_time = HybridTime::FromPB(pb.hybrid_time());
   pg_table_id = pb.pg_table_id();
   skip_table_tombstone_check = SkipTableTombstoneCheck(pb.skip_table_tombstone_check());
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
-  doc_read_context->set_skip_table_tombstone_check(skip_table_tombstone_check);
-
   if (pb.has_index_info()) {
     index_info.reset(new IndexInfo(pb.index_info()));
   }
@@ -365,6 +371,8 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
   }
+  pb->set_hybrid_time(hybrid_time.ToPB());
+  op_id.ToPB(pb->mutable_op_id());
   pb->set_pg_table_id(pg_table_id);
   pb->set_skip_table_tombstone_check(skip_table_tombstone_check);
 }
@@ -442,6 +450,26 @@ bool TableInfo::TEST_Equals(const TableInfo& lhs, const TableInfo& rhs) {
          lhs.partition_schema.Equals(rhs.partition_schema);
 }
 
+TableInfoPtr TableInfo::TEST_CreateWithLogPrefix(
+    std::string log_prefix,
+    std::string table_id,
+    std::string namespace_name,
+    std::string table_name,
+    TableType table_type,
+    const Schema& schema,
+    dockv::PartitionSchema partition_schema) {
+  return std::make_shared<TableInfo>(
+      std::move(log_prefix), Primary::kTrue, std::move(table_id), std::move(namespace_name),
+      std::move(table_name), table_type, schema, qlexpr::IndexMap(),
+      std::nullopt /* index_info */, 0 /* schema_version */, partition_schema, OpId{}, HybridTime{},
+      "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
+}
+
+bool TableInfo::NeedVectorIndex() const {
+  return index_info && index_info->is_vector_index() &&
+         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
+}
+
 Status KvStoreInfo::LoadTablesFromPB(
     const std::string& tablet_log_prefix,
     const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id) {
@@ -514,18 +542,34 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
-    SCHECK(
-        snapshot_kvstoreinfo.tables_size() == 1 && tables.size() == 1, Corruption,
-        Format(
-            "Unexpected table counts during schema merge. Snapshot tables and restored tables "
-            "should both be non-colocated (singular). Snapshot table count: $0, restored table "
-            "count: $1",
-            snapshot_kvstoreinfo.tables_size(), tables.size()));
-    auto schema = tables.begin()->second->doc_read_context->mutable_schema();
-    if (overwrite) {
-      schema->UpdateMissingValuesFrom(snapshot_kvstoreinfo.tables(0).schema().columns());
+    RSTATUS_DCHECK_GE(
+        snapshot_kvstoreinfo.tables_size(), 1, Corruption, "Unexpected snapshot tables count");
+    const TableInfoPB* primary_table_info = nullptr;
+    for (const auto& table_info : snapshot_kvstoreinfo.tables()) {
+      if (table_info.index_info().has_vector_idx_options()) {
+        continue;
+      }
+      RSTATUS_DCHECK(
+          !primary_table_info, Corruption,
+          "Only vector indexes could be colocated to the non colocated table");
+      primary_table_info = &table_info;
     }
-    return tables.begin()->second->MergeSchemaPackings(snapshot_kvstoreinfo.tables(0), overwrite);
+    RSTATUS_DCHECK(primary_table_info != nullptr, Corruption, "Primary table info is missing");
+    RSTATUS_DCHECK_GE(tables.size(), 1ULL, Corruption, "Unexpected restored tables count");
+    for (const auto& [table_id, table_info] : tables) {
+      if (table_id == primary_table_id) {
+        RETURN_NOT_OK(table_info->MergeSchemaPackings(*primary_table_info, overwrite));
+        continue;
+      }
+      RSTATUS_DCHECK(
+          table_info->index_info && table_info->index_info->is_vector_index(), Corruption,
+          "Only vector indexes could be colocated to the non colocated table");
+    }
+    if (overwrite) {
+      auto schema = tables.begin()->second->doc_read_context->mutable_schema();
+      schema->UpdateMissingValuesFrom(primary_table_info->schema().columns());
+    }
+    return Status::OK();
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
@@ -889,7 +933,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
   std::lock_guard lock(data_mutex_);
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
-  const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
+  const auto intents_dir = docdb::GetStorageDir(rocksdb_dir, kIntentsDirName);
   return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
       !fs_manager_->env()->FileExists(rocksdb_dir) &&
       !fs_manager_->env()->FileExists(intents_dir);
@@ -1390,12 +1434,13 @@ void RaftGroupMetadata::SetSchemaAndTableName(
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
-Status RaftGroupMetadata::AddTable(
+Result<TableInfoPtr> RaftGroupMetadata::AddTable(
     const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
     const TableType table_type, const Schema& schema, const IndexMap& index_map,
     const dockv::PartitionSchema& partition_schema, const std::optional<IndexInfo>& index_info,
-    const SchemaVersion schema_version, const OpId& op_id, const TableId& pg_table_id,
-    const SkipTableTombstoneCheck skip_table_tombstone_check) {
+    const SchemaVersion schema_version, const OpId& op_id, HybridTime ht,
+    const TableId& pg_table_id, const SkipTableTombstoneCheck skip_table_tombstone_check,
+    const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings) {
   DCHECK(schema.has_column_ids());
   std::lock_guard lock(data_mutex_);
   Primary primary(table_id == primary_table_id_);
@@ -1410,6 +1455,8 @@ Status RaftGroupMetadata::AddTable(
                                                             index_info,
                                                             schema_version,
                                                             partition_schema,
+                                                            op_id,
+                                                            ht,
                                                             pg_table_id,
                                                             skip_table_tombstone_check);
   if (!primary) {
@@ -1419,6 +1466,11 @@ Status RaftGroupMetadata::AddTable(
       new_table_info->doc_read_context->SetCotableId(new_table_info->cotable_id);
     }
   }
+  if (!old_schema_packings.empty()) {
+    RETURN_NOT_OK(new_table_info->doc_read_context->schema_packing_storage.InsertSchemas(
+        old_schema_packings, /* could_be_present */ false, dockv::OverwriteSchemaPacking::kFalse));
+  }
+
   auto& tables = kv_store_.tables;
   auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   OnChangeMetadataOperationAppliedUnlocked(op_id);
@@ -1426,7 +1478,7 @@ Status RaftGroupMetadata::AddTable(
     VLOG_WITH_PREFIX(1) << "Added table with schema version " << schema_version << "\n"
                         << AsString(new_table_info);
     kv_store_.UpdateColocationMap(new_table_info);
-    return Status::OK();
+    return new_table_info;
   }
 
   const auto& existing_table = *iter->second;
@@ -1438,7 +1490,7 @@ Status RaftGroupMetadata::AddTable(
       schema.table_properties().is_ysql_catalog_table()) {
     // This must be the one-time migration with transactional DDL being turned on for the first
     // time on this cluster.
-    return Status::OK();
+    return iter->second;
   }
 
   // We never expect colocation IDs to mismatch.
@@ -1457,7 +1509,7 @@ Status RaftGroupMetadata::AddTable(
         schema.colocation_id(), kv_store_.colocation_to_table);
   }
 
-  return Status::OK();
+  return iter->second;
 }
 
 void RaftGroupMetadata::RemoveTable(const TableId& table_id, const OpId& op_id) {
@@ -1864,7 +1916,7 @@ void RaftGroupMetadata::EnableSchemaGC() {
 }
 
 Status RaftGroupMetadata::OldSchemaGC(
-    const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions) {
+    const std::unordered_map<Uuid, SchemaVersion>& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
@@ -1976,24 +2028,28 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
     const NO_THREAD_SAFETY_ANALYSIS {
   RaftGroupReplicaSuperBlockPB superblock;
   ToSuperBlock(&superblock);
+
+  superblock.set_raft_group_id(raft_group_id);
+  superblock.set_wal_dir(GetSubRaftGroupWalDir(raft_group_id));
+  superblock.set_tablet_data_state(TABLET_DATA_INIT_STARTED);
+  superblock.clear_split_op_id();
+
+  auto& kv_store = *superblock.mutable_kv_store();
+  kv_store.set_kv_store_id(KvStoreId(raft_group_id).ToString());
+  kv_store.set_lower_bound_key(lower_bound_key);
+  kv_store.set_upper_bound_key(upper_bound_key);
+  kv_store.set_rocksdb_dir(GetSubRaftGroupDataDir(raft_group_id));
+  kv_store.set_parent_data_compacted(false);
+  kv_store.set_last_full_compaction_time(kNoLastFullCompactionTime);
+  kv_store.clear_post_split_compaction_file_number_upper_bound();
+
+  partition.ToPB(superblock.mutable_partition());
+
   fs_manager_->SetTabletPathByDataPath(raft_group_id,
-                                         DirName(DirName(DirName(kv_store_.rocksdb_dir))));
-  RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
+                                       DirName(DirName(DirName(kv_store_.rocksdb_dir))));
+  RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock, /* local_superblock = */ true));
-  metadata->raft_group_id_ = raft_group_id;
-  metadata->log_prefix_ = consensus::MakeTabletLogPrefix(raft_group_id, fs_manager_->uuid());
-  metadata->wal_dir_ = GetSubRaftGroupWalDir(raft_group_id);
-  metadata->kv_store_.kv_store_id = KvStoreId(raft_group_id);
-  metadata->kv_store_.lower_bound_key = lower_bound_key;
-  metadata->kv_store_.upper_bound_key = upper_bound_key;
-  metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
-  metadata->kv_store_.parent_data_compacted = false;
-  metadata->kv_store_.last_full_compaction_time = kNoLastFullCompactionTime;
-  metadata->kv_store_.post_split_compaction_file_number_upper_bound.reset();
-  *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
-  metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
-  metadata->split_op_id_ = OpId();
   RETURN_NOT_OK(metadata->Flush());
   return metadata;
 }
@@ -2237,6 +2293,16 @@ RaftGroupMetadata::GetAllColocatedTablesWithColocationId() const {
   return table_colocation_id_map;
 }
 
+std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedTableInfos() const {
+  std::lock_guard lock(data_mutex_);
+  std::vector<TableInfoPtr> result;
+  result.reserve(kv_store_.tables.size());
+  for (const auto& [id, info] : kv_store_.tables) {
+    result.push_back(info);
+  }
+  return result;
+}
+
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
   auto data_state = metadata.tablet_data_state();
   if (!CanServeTabletData(data_state)) {
@@ -2373,6 +2439,29 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   }
 
   return updated;
+}
+
+std::string RaftGroupMetadata::intents_rocksdb_dir() const {
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kIntentsDirName);
+}
+
+std::string RaftGroupMetadata::snapshots_dir() const {
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kSnapshotsDirName);
+}
+
+docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {
+  return docdb::KeyBounds(kv_store_.lower_bound_key, kv_store_.upper_bound_key);
+}
+
+Result<docdb::EncodedPartitionBounds> RaftGroupMetadata::MakeEncodedPartitionBounds() const {
+  const auto partition_schema = RaftGroupMetadata::partition_schema();
+  const auto partition = RaftGroupMetadata::partition();
+  return docdb::EncodedPartitionBounds{
+      .start_key = KeyBuffer(VERIFY_RESULT(
+          partition_schema->GetEncodedPartitionKey(partition->partition_key_start()))),
+      .end_key = KeyBuffer(
+          VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_end()))),
+  };
 }
 
 } // namespace yb::tablet

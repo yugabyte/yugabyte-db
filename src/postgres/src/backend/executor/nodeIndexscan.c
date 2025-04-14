@@ -33,9 +33,6 @@
 #include "access/relscan.h"
 #include "access/tableam.h"
 #include "catalog/pg_am.h"
-#include "catalog/pg_opfamily.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "lib/pairingheap.h"
@@ -47,11 +44,15 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "optimizer/clauses.h"
+#include "utils/fmgroids.h"
 
 /*
  * When an ordering operator is used, tuples fetched from the index that
@@ -110,7 +111,11 @@ IndexNext(IndexScanState *node)
 		else if (ScanDirectionIsBackward(direction))
 			direction = ForwardScanDirection;
 	}
-	/* YB relation scans are optimized for the "Don't care about order" direction. */
+
+	/*
+	 * YB relation scans are optimized for the "Don't care about order"
+	 * direction.
+	 */
 	if (IsYBRelation(node->ss.ss_currentRelation) &&
 		ScanDirectionIsNoMovement(((IndexScan *) node->ss.ps.plan)->indexorderdir))
 	{
@@ -155,12 +160,14 @@ IndexNext(IndexScanState *node)
 	/*
 	 * Set up any locking that happens at the time of the scan.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		IndexScan  *plan;
+
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_exec_params->rowmark = -1;
 
-		// Add row marks.
+		/* Add row marks. */
 		plan = castNode(IndexScan, node->ss.ps.plan);
 		if (IsolationIsSerializable() || plan->yb_lock_mechanism == YB_LOCK_CLAUSE_ON_PK)
 		{
@@ -176,6 +183,7 @@ IndexNext(IndexScanState *node)
 				 estate->es_rowmarks && i < estate->es_range_table_size; i++)
 			{
 				ExecRowMark *erm = estate->es_rowmarks[i];
+
 				/*
 				 * YB_TODO: This block of code is broken on master (GH #20704).
 				 * With PG commit f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
@@ -186,8 +194,9 @@ IndexNext(IndexScanState *node)
 				 */
 				if (!erm)
 					continue;
-				// Do not propogate non-row-locking row marks.
-				if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY) {
+				/* Do not propogate non-row-locking row marks. */
+				if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
+				{
 					scandesc->yb_exec_params->rowmark = erm->markType;
 					scandesc->yb_exec_params->pg_wait_policy = erm->waitPolicy;
 					scandesc->yb_exec_params->docdb_wait_policy =
@@ -214,8 +223,7 @@ IndexNext(IndexScanState *node)
 	 * in per-tuple memory context.
 	 */
 	if (IsYBRelation(node->ss.ss_currentRelation))
-		oldcontext = MemoryContextSwitchTo(
-			node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
+		oldcontext = MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 
 	while (index_getnext_slot(scandesc, direction, slot))
 	{
@@ -920,7 +928,12 @@ ExecEndIndexScan(IndexScanState *node)
 	if (indexScanDesc)
 		index_endscan(indexScanDesc);
 	if (indexRelationDesc)
+	{
+		if (node->ss.ps.state->yb_exec_params.yb_index_check)
+			yb_free_dummy_baserel_index(indexRelationDesc);
+
 		index_close(indexRelationDesc, NoLock);
+	}
 }
 
 /* ----------------------------------------------------------------
@@ -1081,8 +1094,12 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 
 	/* Open the index relation. */
 	lockmode = exec_rt_fetch(node->scan.scanrelid, estate)->rellockmode;
-	indexstate->iss_RelationDesc = index_open(node->indexid, lockmode);
 
+	if (!estate->yb_exec_params.yb_index_check)
+		indexstate->iss_RelationDesc = index_open(node->indexid, lockmode);
+	else
+		indexstate->iss_RelationDesc =
+			yb_dummy_baserel_index_open(node->indexid, lockmode);
 	/*
 	 * Initialize index-specific scan state
 	 */
@@ -1116,12 +1133,12 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 		indexstate->yb_iss_might_recheck =
 			yb_index_might_recheck(currentRelation,
 								   indexstate->iss_RelationDesc,
-								   false /* xs_want_itup */,
+								   false /* xs_want_itup */ ,
 								   indexstate->iss_ScanKeys,
 								   indexstate->iss_NumScanKeys);
 
 		/* Got the info for aggregate pushdown.  EXPLAIN can return now. */
-		if  (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+		if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 			return indexstate;
 	}
 
@@ -1169,7 +1186,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 			SortSupport orderbysort = &indexstate->iss_SortSupport[i];
 
 			/* Initialize sort support */
-			orderbysort->ssup_cxt = GetCurrentMemoryContext();
+			orderbysort->ssup_cxt = CurrentMemoryContext;
 			orderbysort->ssup_collation = orderbyColl;
 			/* See cmp_orderbyvals() comments on NULLS LAST */
 			orderbysort->ssup_nulls_first = false;
@@ -1367,14 +1384,14 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			Assert(leftop != NULL);
 
 			if (IsA(leftop, FuncExpr)
-				&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+				&& ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE)
 			{
 				flags |= YB_SK_IS_HASHED;
 			}
 
 			if (!(IsA(leftop, Var) &&
 				  ((Var *) leftop)->varno == INDEX_VAR)
-				  && ((flags & YB_SK_IS_HASHED) == 0))
+				&& ((flags & YB_SK_IS_HASHED) == 0))
 				elog(ERROR, "indexqual doesn't have key on left side");
 
 
@@ -1382,7 +1399,9 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			{
 				varattno = InvalidAttrNumber;
 				opfamily = INTEGER_LSM_FAM_OID;
-			} else {
+			}
+			else
+			{
 				varattno = ((Var *) leftop)->varattno;
 				if (varattno < 1 || varattno > indnkeyatts)
 					elog(ERROR, "bogus index qualification");
@@ -1502,11 +1521,11 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				 * Check for yb_hash_code() and set flag if present.
 				 */
 				if (IsA(leftop, FuncExpr)
-					&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+					&& ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE)
 					flags |= YB_SK_IS_HASHED;
 
 				if (!(IsA(leftop, Var) &&
-					((Var *) leftop)->varno == INDEX_VAR)
+					  ((Var *) leftop)->varno == INDEX_VAR)
 					&& ((flags & YB_SK_IS_HASHED) == 0))
 					elog(ERROR, "indexqual doesn't have key on left side");
 
@@ -1522,7 +1541,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 						elog(ERROR, "bogus index qualification");
 
 					if ((index->rd_rel->relam != BTREE_AM_OID && index->rd_rel->relam != LSM_AM_OID) ||
-					varattno < 1 || varattno > indnkeyatts)
+						varattno < 1 || varattno > indnkeyatts)
 						elog(ERROR, "bogus RowCompare index qualification");
 
 					/*
@@ -1777,7 +1796,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				op_strategy = BTEqualStrategyNumber;
 				op_righttype = InvalidOid;
 				opno = list_nth_oid(rcexpr->opnos, n_sub_key);
-				Oid inputcollid = list_nth_oid(rcexpr->inputcollids, n_sub_key);
+				Oid			inputcollid = list_nth_oid(rcexpr->inputcollids, n_sub_key);
 
 				if (varattno < 1 || varattno > indnkeyatts)
 					elog(ERROR, "bogus index qualification");
@@ -1882,10 +1901,11 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				 */
 				ScanKeyEntryInitialize(this_key,
 									   flags,
-									   varattno,  /* attribute number to scan */
+									   varattno,	/* attribute number to
+													 * scan */
 									   op_strategy, /* op's strategy */
 									   op_righttype,	/* strategy subtype */
-									   inputcollid,	/* collation */
+									   inputcollid, /* collation */
 									   opfuncid,	/* reg proc to use */
 									   scanvalue);	/* constant */
 				n_sub_key++;
@@ -2007,8 +2027,9 @@ yb_init_index_scandesc(IndexScanState *node)
 	if (IsYugaByteEnabled())
 	{
 		IndexScanDesc scandesc = node->iss_ScanDesc;
-		EState *estate = node->ss.ps.state;
-		IndexScan *plan = (IndexScan *) node->ss.ps.plan;
+		EState	   *estate = node->ss.ps.state;
+		IndexScan  *plan = (IndexScan *) node->ss.ps.plan;
+
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
@@ -2143,7 +2164,7 @@ yb_agg_pushdown_init_scan_slot(IndexScanState *node)
 	 * up a dummy scan slot to hold as many attributes as there are
 	 * pushed aggregates.
 	 */
-	TupleDesc tupdesc =
-		CreateTemplateTupleDesc(list_length(node->yb_iss_aggrefs));
+	TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_iss_aggrefs));
+
 	ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
 }

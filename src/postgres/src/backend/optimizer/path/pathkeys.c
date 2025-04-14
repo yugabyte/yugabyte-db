@@ -18,7 +18,6 @@
 #include "postgres.h"
 
 #include "access/stratnum.h"
-#include "access/sysattr.h"
 #include "catalog/pg_opfamily.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -28,6 +27,9 @@
 #include "optimizer/paths.h"
 #include "partitioning/partbounds.h"
 #include "utils/lsyscache.h"
+
+/* YB includes */
+#include "access/sysattr.h"
 
 
 static bool pathkey_is_redundant(PathKey *new_pathkey, List *pathkeys);
@@ -193,10 +195,16 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 	List	   *opfamilies;
 	EquivalenceClass *eclass;
 
-	if (is_hash_index) {
-		/* We are picking a hash index. The strategy can only be BTEqualStrategyNumber */
+	if (is_hash_index)
+	{
+		/*
+		 * We are picking a hash index. The strategy can only be
+		 * BTEqualStrategyNumber
+		 */
 		strategy = BTEqualStrategyNumber;
-	} else {
+	}
+	else
+	{
 		strategy = reverse_sort ? BTGreaterStrategyNumber : BTLessStrategyNumber;
 	}
 
@@ -227,10 +235,12 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 	if (!eclass)
 		return NULL;
 
-	/* This "eclass" is either a "=" or "sort" operator, and for hash_columns, we allow equality
-	 * condition but not ASC or DESC sorting.
+	/*
+	 * This "eclass" is either a "=" or "sort" operator, and for hash_columns,
+	 * we allow equality condition but not ASC or DESC sorting.
 	 */
-	if (is_hash_index && eclass->ec_sortref != 0) {
+	if (is_hash_index && eclass->ec_sortref != 0)
+	{
 		return NULL;
 	}
 
@@ -437,6 +447,11 @@ get_cheapest_path_for_pathkeys(List *paths, List *pathkeys,
 			continue;
 
 		if (require_parallel_safe && !path->parallel_safe)
+			continue;
+
+		if (matched_path != NULL && yb_prefer_bnl &&
+			YB_PATH_NEEDS_BATCHED_RELS(matched_path)
+			&& !YB_PATH_NEEDS_BATCHED_RELS(path))
 			continue;
 
 		if (pathkeys_contained_in(pathkeys, path->pathkeys) &&
@@ -664,8 +679,13 @@ build_index_pathkeys(PlannerInfo *root,
 	 * be some duplicate values of h1 in the result.
 	 */
 	if (i < index->nhashcolumns)
-		/* All hash columns must have EQ pathkeys. Otherwise, we cannot use the index */
+	{
+		/*
+		 * All hash columns must have EQ pathkeys. Otherwise, we cannot use
+		 * the index
+		 */
 		return NULL;
+	}
 	return retval;
 }
 
@@ -2009,8 +2029,8 @@ has_useful_pathkeys(PlannerInfo *root, RelOptInfo *rel)
 List *
 yb_get_ecs_for_query_uniqkeys(PlannerInfo *root)
 {
-	ListCell *lc;
-	List	 *ecs = NIL;
+	ListCell   *lc;
+	List	   *ecs = NIL;
 
 	foreach(lc, root->parse->distinctClause)
 	{

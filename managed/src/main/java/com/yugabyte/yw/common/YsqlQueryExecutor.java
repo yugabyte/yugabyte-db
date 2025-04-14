@@ -60,14 +60,21 @@ public class YsqlQueryExecutor {
           "pg_read_all_stats",
           "pg_stat_scan_tables",
           "pg_signal_backend",
+          "pg_checkpoint",
           "pg_read_server_files",
           "pg_write_server_files",
           "pg_execute_server_program",
+          "pg_database_owner",
+          "pg_read_all_data",
+          "pg_write_all_data",
           "yb_extension",
           "yb_fdw",
           "yb_db_admin",
           "yugabyte",
           "yb_superuser");
+
+  private static final ImmutableSet<String> ADDITIONAL_ROLES_FOR_PRECREATED_DB_ADMIN =
+      ImmutableSet.of("pg_monitor");
 
   private static final String DEL_PG_ROLES_CMD_1 =
       "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
@@ -217,8 +224,7 @@ public class YsqlQueryExecutor {
         node,
         timeoutSec,
         authEnabled,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
-        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
   }
 
   public JsonNode executeQueryInNodeShell(
@@ -226,16 +232,14 @@ public class YsqlQueryExecutor {
       RunQueryFormData queryParams,
       NodeDetails node,
       boolean authEnabled,
-      boolean enableConnectionPooling,
-      int internalYsqlServerRpcPort) {
+      boolean cpEnabled) {
     return executeQueryInNodeShell(
         universe,
         queryParams,
         node,
         runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
         authEnabled,
-        enableConnectionPooling,
-        internalYsqlServerRpcPort);
+        cpEnabled);
   }
 
   public JsonNode executeQueryInNodeShell(
@@ -244,8 +248,7 @@ public class YsqlQueryExecutor {
       NodeDetails node,
       long timeoutSec,
       boolean authEnabled,
-      boolean enableConnectionPooling,
-      int internalYsqlServerRpcPort) {
+      boolean cpEnabled) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.getQuery());
@@ -262,8 +265,7 @@ public class YsqlQueryExecutor {
                   queryString,
                   timeoutSec,
                   authEnabled,
-                  enableConnectionPooling,
-                  internalYsqlServerRpcPort)
+                  cpEnabled)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
@@ -478,6 +480,16 @@ public class YsqlQueryExecutor {
       }
 
       allQueries.setLength(0);
+      if (universeYSQLVersion.isPresent() && universeYSQLVersion.get() >= 15) {
+        query =
+            String.format(
+                "GRANT %s TO %s WITH ADMIN OPTION",
+                String.join(", ", ADDITIONAL_ROLES_FOR_PRECREATED_DB_ADMIN), DB_ADMIN_ROLE_NAME);
+        allQueries.append(String.format("%s; ", query));
+        query =
+            String.format("GRANT CREATE ON SCHEMA PUBLIC TO %s WITH GRANT OPTION", data.username);
+        allQueries.append(String.format("%s; ", query));
+      }
 
       versionMatch =
           universe.getVersions().stream()
@@ -583,9 +595,14 @@ public class YsqlQueryExecutor {
       if (response.get("error").asText().contains(match)) {
         throw new RecoverableException("consistency_check table does not exist");
       }
-      node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
-      retries += 1;
-      response = executeQueryInNodeShell(universe, ysqlQuery, node);
+      try {
+        node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
+        retries += 1;
+        response = executeQueryInNodeShell(universe, ysqlQuery, node);
+      } catch (IllegalStateException e) {
+        LOG.warn("Could not find valid tserver querying consistency info.");
+        return null;
+      }
     }
     if (response != null && response.has("result")) {
       ObjectMapper mapper = new ObjectMapper();

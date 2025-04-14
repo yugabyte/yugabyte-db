@@ -5,13 +5,13 @@
 #   This testsuite walks through the syntax rules and quickly checks
 #   whether or not a feature is supported.
 ####################################################################################################
-test: yb_feature_types
-test: yb_feature_insert
-test: yb_feature_delete
-test: yb_feature_update
-test: yb_feature_select
-test: yb_feature_config
-test: yb_feature_copy
-test: yb_feature_copyselect
-test: yb_feature_alter_table
-test: yb_feature_temp
+test: yb.orig.feature_types
+test: yb.orig.feature_insert
+test: yb.orig.feature_delete
+test: yb.orig.feature_update
+test: yb.orig.feature_select
+test: yb.orig.feature_config
+test: yb.orig.feature_copy
+test: yb.orig.feature_copyselect
+test: yb.orig.feature_alter_table
+test: yb.orig.feature_temp

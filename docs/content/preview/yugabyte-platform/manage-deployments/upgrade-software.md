@@ -12,13 +12,30 @@ menu:
 type: docs
 ---
 
-The YugabyteDB release that is powering a universe can be upgraded to get new features and fixes included in the release.
+{{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../manage/upgrade-deployment/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+{{< /page-finder/head >}}
+
+You can upgrade the YugabyteDB release that is powering a universe to get new features and fixes included in the release.
 
 {{< note title="Upgrading YugabyteDB on deprecated operating systems" >}}
 
 If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you will need to update your OS before you can upgrade to the next major YugabyteDB release. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
 
 {{< /note >}}
+
+{{< note title="Upgrading universes in xCluster deployments" >}}
+When upgrading universes in [xCluster Replication](../../manage-deployments/xcluster-replication/xcluster-replication-setup/#upgrading-the-database-version) or [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/#upgrading-universes-in-dr):
+
+- Use the same version of YugabyteDB on both the source/DR primary and target/DR replica.
+- Upgrade and finalize the target/DR replica before upgrading and finalizing the source/DR primary.
+{{< /note >}}
+
+{{< warning title="Upgrading YugabyteDB to v2.25" >}}
+Upgrading universes to YugabyteDB v2.25 from previous preview versions is not yet available.
+{{< /warning >}}
 
 When performing a database upgrade, do the following:
 

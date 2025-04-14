@@ -26,7 +26,7 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static void recompute_limits(LimitState *node);
@@ -60,7 +60,8 @@ ExecLimit(PlanState *pstate)
 	/*
 	 * Initialize LIMIT count and offset.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
 		pstate->state->yb_exec_params.limit_count = node->count;
 		pstate->state->yb_exec_params.limit_offset = node->offset;
 	}
@@ -82,11 +83,12 @@ ExecLimit(PlanState *pstate)
 			/*
 			 * Update LIMIT count and offset after recomputing.
 			 */
-			if (IsYugaByteEnabled()) {
+			if (IsYugaByteEnabled())
+			{
 				pstate->state->yb_exec_params.limit_count = node->count;
 				pstate->state->yb_exec_params.limit_offset = node->offset;
 			}
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case LIMIT_RESCAN:
 			/*
@@ -239,7 +241,7 @@ ExecLimit(PlanState *pstate)
 			}
 
 			Assert(node->lstate == LIMIT_WINDOWEND_TIES);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case LIMIT_WINDOWEND_TIES:
 			if (ScanDirectionIsForward(direction))

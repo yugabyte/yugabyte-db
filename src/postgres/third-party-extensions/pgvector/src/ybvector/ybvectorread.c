@@ -24,25 +24,29 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
-
 #include "access/genam.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "catalog/pg_type.h"
-
 #include "pgstat.h"
-#include "pg_yb_utils.h"
 #include "utils/memutils.h"
+#include "ybvector.h"
 
 /*
  * Bind search keys to the ANN scan. These include
  * - the query vector
  * - the prefetch size (how many nearest neighbours we expect to return)
  */
-static void bindAnnSearchKeys(IndexScanDesc scan, Relation rel, int nkeys,
-							  int norderbys, YbVectorScanOpaque so)
+static void bindAnnSearchKeys(YbScanDesc yb_scan, IndexScanDesc scan,
+							  Relation rel, int nkeys, int norderbys,
+							  YbVectorScanOpaque so)
 {
+	if (scan->orderByData->sk_flags & SK_ISNULL)
+	{
+		yb_scan->quit_scan = true;
+		return;
+	}
+
 	int ind_dim = TupleDescAttr(scan->indexRelation->rd_att, 0)->atttypmod;
 	int vec_dim = ((Vector*) scan->orderByData->sk_argument)->dim;
 	if (ind_dim != vec_dim)
@@ -51,15 +55,11 @@ static void bindAnnSearchKeys(IndexScanDesc scan, Relation rel, int nkeys,
 					errmsg("different vector dimensions %d and %d", ind_dim, vec_dim)));
 
 	so->query_vector = scan->orderByData->sk_argument;
-	YBCPgExpr vec_handle = YBCNewConstant(
+	YbcPgExpr vec_handle = YBCNewConstant(
 		so->yb_scan_desc->handle, BYTEAOID, InvalidOid /* collation_id */,
 		so->query_vector, false);
 
-	int vec_attno = scan->indexRelation->rd_att->natts;
-	if (YBIsCoveredByMainTable(scan->indexRelation))
-		vec_attno = scan->indexRelation->rd_index->indkey.values[0];
-
-	YBCPgDmlANNBindVector(so->yb_scan_desc->handle, vec_attno, vec_handle);
+	YBCPgDmlANNBindVector(so->yb_scan_desc->handle, vec_handle);
 	YBCPgDmlANNSetPrefetchSize(so->yb_scan_desc->handle, so->limit);
 }
 
@@ -105,6 +105,8 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 									false /* is_internal_scan */,
 									scan->fetch_ybctids_only);
 	so->yb_scan_desc = ybScan;
+	if (scan->yb_exec_params->limit_count > 0)
+		so->limit = scan->yb_exec_params->limit_count;
 
 	if (scankeys && scan->numberOfKeys > 0)
 		memmove(&scan->keyData, scankeys, scan->numberOfKeys * sizeof(ScanKeyData));
@@ -113,7 +115,8 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 		memmove(scan->orderByData, orderbys, scan->numberOfOrderBys * sizeof(ScanKeyData));
 
 	if (norderbys > 0)
-		bindAnnSearchKeys(scan, scan->heapRelation, nscankeys, norderbys, so);
+		bindAnnSearchKeys(ybScan, scan, scan->heapRelation, nscankeys,
+						  norderbys, so);
 
 	so->first = true;
 }

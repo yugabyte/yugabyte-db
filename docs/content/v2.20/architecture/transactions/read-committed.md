@@ -9,7 +9,7 @@ menu:
   v2.20:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
-    weight: 50
+    weight: 800
 type: docs
 rightNav:
   hideH4: true

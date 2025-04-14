@@ -118,7 +118,7 @@ class CatalogManagerUtil {
 
   template<class LoadState>
   static Status FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
-    auto tablets = VERIFY_RESULT(table_info->GetTablets(IncludeInactive::kTrue));
+    auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
 
     for (const auto& tablet : tablets) {
       // Ignore if tablet is not running.

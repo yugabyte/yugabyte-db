@@ -43,7 +43,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
@@ -441,12 +443,14 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testValidNodeAction() {
-    for (NodeActionType nodeActionType : NodeActionType.values()) {
-      // Skip QUERY b/c it is UI-only flag.
-      // Skip DELETE - tested in another test (testDisableStopRemove).
-      if ((nodeActionType == NodeActionType.QUERY) || (nodeActionType == NodeActionType.DELETE)) {
-        continue;
-      }
+    Set<NodeActionType> nodeActionsToTest = new HashSet<NodeActionType>();
+    nodeActionsToTest.addAll(Arrays.asList(NodeActionType.values()));
+    // Skip QUERY b/c it is UI-only flag.
+    // Skip DELETE - tested in another test (testDisableStopRemove).
+    nodeActionsToTest.removeAll(
+        Arrays.asList(NodeActionType.QUERY, NodeActionType.DECOMMISSION, NodeActionType.DELETE));
+
+    for (NodeActionType nodeActionType : nodeActionsToTest) {
       UUID fakeTaskUUID = buildTaskInfo(null, TaskType.AddNodeToUniverse);
       when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
           .thenReturn(fakeTaskUUID);
@@ -467,7 +471,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       assertEquals("host-n1", ct.getTargetName());
       Mockito.reset(mockCommissioner);
     }
-    assertAuditEntry(NodeActionType.values().length - 2, customer.getUuid());
+    assertAuditEntry(nodeActionsToTest.size(), customer.getUuid());
   }
 
   @Test

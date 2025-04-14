@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -59,6 +60,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -221,7 +223,9 @@ public class UniverseCRUDHandler {
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
             || areCommunicationPortsChanged(taskParams, universe)
-            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP;
+            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP
+            || !Objects.equals(
+                currentCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID);
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -652,6 +656,9 @@ public class UniverseCRUDHandler {
         if (installNodeExporter) {
           taskParams.nodeExporterUser = nodeExporterUser;
         }
+      } else {
+        // Setting dedicatedNodes to true for k8s universes.
+        c.userIntent.dedicatedNodes = true;
       }
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
@@ -995,16 +1002,18 @@ public class UniverseCRUDHandler {
         // TODO: (Daniel) - Move this out to an async task
         if (primaryCluster.userIntent.enableVolumeEncryption
             && primaryCluster.userIntent.providerType.equals(Common.CloudType.aws)) {
-          byte[] cmkArnBytes =
+          EncryptionKey cmkArnBytes =
               keyManager.generateUniverseKey(
                   taskParams.encryptionAtRestConfig.kmsConfigUUID,
                   universe.getUniverseUUID(),
                   taskParams.encryptionAtRestConfig);
-          if (cmkArnBytes == null || cmkArnBytes.length == 0) {
+          if (cmkArnBytes == null
+              || cmkArnBytes.getKeyBytes() == null
+              || cmkArnBytes.getKeyBytes().length == 0) {
             primaryCluster.userIntent.enableVolumeEncryption = false;
           } else {
             // TODO: (Daniel) - Update this to be inside of encryptionAtRestConfig
-            taskParams.setCmkArn(new String(cmkArnBytes));
+            taskParams.setCmkArn(new String(cmkArnBytes.getKeyBytes()));
           }
         }
 
@@ -1201,15 +1210,8 @@ public class UniverseCRUDHandler {
     // Set the node exporter config based on the provider
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
-    int nodeExporterPort = universeDetails.communicationPorts.nodeExporterPort;
     String nodeExporterUser = universeDetails.nodeExporterUser;
     taskParams.extraDependencies.installNodeExporter = installNodeExporter;
-    taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
-
-    for (NodeDetails node : taskParams.nodeDetailsSet) {
-      node.nodeExporterPort = nodeExporterPort;
-    }
-
     if (installNodeExporter) {
       taskParams.nodeExporterUser = nodeExporterUser;
     }
@@ -1241,7 +1243,8 @@ public class UniverseCRUDHandler {
         taskUUID,
         targetType,
         CustomerTask.TaskType.Update,
-        u.getName());
+        u.getName(),
+        CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, taskParams, null));
     LOG.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",
         taskUUID,
@@ -1639,6 +1642,11 @@ public class UniverseCRUDHandler {
   public static void validateConsistency(Cluster primaryCluster, Cluster cluster) {
     checkEquals(c -> c.userIntent.enableYSQL, primaryCluster, cluster, "Ysql setting");
     checkEquals(c -> c.userIntent.enableYSQLAuth, primaryCluster, cluster, "Ysql auth setting");
+    checkEquals(
+        c -> c.userIntent.enableConnectionPooling,
+        primaryCluster,
+        cluster,
+        "Connection Pooling setting");
     checkEquals(c -> c.userIntent.enableYCQL, primaryCluster, cluster, "Ycql setting");
     checkEquals(c -> c.userIntent.enableYCQLAuth, primaryCluster, cluster, "Ycql auth setting");
     checkEquals(c -> c.userIntent.enableYEDIS, primaryCluster, cluster, "Yedis setting");
@@ -2371,6 +2379,19 @@ public class UniverseCRUDHandler {
       }
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
+      if (!Objects.equals(newIntent.imageBundleUUID, curIntent.imageBundleUUID)) {
+        Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+        ImageBundle newBundle =
+            ImageBundle.getOrBadRequest(provider.getUuid(), newIntent.imageBundleUUID);
+        if (newBundle.getDetails().getArch() != universe.getUniverseDetails().arch) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot change arch from "
+                  + universe.getUniverseDetails().arch
+                  + " to "
+                  + newBundle.getDetails().getArch());
+        }
+      }
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
       for (NodeDetails nodeDetails : nodeDetailsSet) {
         if (nodeDetails.state != NodeState.ToBeAdded
@@ -2493,7 +2514,7 @@ public class UniverseCRUDHandler {
     if (null == primaryCluster
         || runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
         || Util.compareYBVersions(
-                primaryCluster.userIntent.ybSoftwareVersion, "2024.1.0.0", "2.23.0.0", true)
+                primaryCluster.userIntent.ybSoftwareVersion, "2024.2.0.0", "2.25.0.0", true)
             < 0
         || !primaryCluster.userIntent.providerType.isVM()
         || primaryCluster.userIntent.dedicatedNodes) {

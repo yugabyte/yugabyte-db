@@ -258,7 +258,7 @@ Steps for configuring the JDBC client for server authentication are as follows:
 1. Convert the client certificate to DER format.
 
     ```sh
-    $ openssl x509 –in yugabytedb.crt -out yugabytedb.crt.der -outform der
+    $ openssl x509 -in yugabytedb.crt -out yugabytedb.crt.der -outform der
     ```
 
 1. Convert the client key to pk8 format.
@@ -271,7 +271,7 @@ Steps for configuring the JDBC client for server authentication are as follows:
 
 Steps for configuring the JDBC client for server authentication in a Kubernetes cluster are as follows:
 
-1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](../../../quick-start/kubernetes/).
+1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](/preview/tutorials/quick-start/kubernetes/).
 
    ```sh
    $ kubectl create namespace yb-demo
@@ -282,14 +282,14 @@ Steps for configuring the JDBC client for server authentication in a Kubernetes 
    replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo
    ```
 
-1. Verify that SSL is enabled using `ysqlsh`.
+1. Verify that SSL is enabled using ysqlsh.
 
    ```sh
     $ ysqlsh
     ```
 
     ```output
-    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
     SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
     Type "help" for help.
     ```

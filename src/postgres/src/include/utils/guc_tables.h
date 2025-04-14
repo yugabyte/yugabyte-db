@@ -213,7 +213,7 @@ struct config_int
 	void	   *reset_extra;
 };
 
-struct config_oid
+struct yb_config_oid
 {
 	struct config_generic gen;
 	/* constant fields, must be set correctly in initial value: */
@@ -221,8 +221,8 @@ struct config_oid
 	Oid			boot_val;
 	Oid			min;
 	Oid			max;
-	GucOidCheckHook check_hook;
-	GucOidAssignHook assign_hook;
+	YbGucOidCheckHook check_hook;
+	YbGucOidAssignHook assign_hook;
 	GucShowHook show_hook;
 	/* variable fields, initialized at runtime: */
 	Oid			reset_val;
@@ -245,6 +245,16 @@ struct config_real
 	void	   *reset_extra;
 };
 
+/*
+ * A note about string GUCs: the boot_val is allowed to be NULL, which leads
+ * to the reset_val and the actual variable value (*variable) also being NULL.
+ * However, there is no way to set a NULL value subsequently using
+ * set_config_option or any other GUC API.  Also, GUC APIs such as SHOW will
+ * display a NULL value as an empty string.  Callers that choose to use a NULL
+ * boot_val should overwrite the setting later in startup, or else be careful
+ * that NULL doesn't have semantics that are visibly different from an empty
+ * string.
+ */
 struct config_string
 {
 	struct config_generic gen;

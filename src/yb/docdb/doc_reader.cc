@@ -51,6 +51,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
+DECLARE_int32(max_prevs_to_avoid_seek);
+
 namespace yb::docdb {
 
 using dockv::Expiration;
@@ -218,8 +220,8 @@ Result<DocHybridTime> GetTableTombstoneTime(
   table_id = table_id_buf.AsSlice();
 
   auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id, rocksdb::kDefaultQueryId, txn_op_context,
-      read_operation_data);
+      doc_db, BloomFilterOptions::Fixed(table_id), rocksdb::kDefaultQueryId, txn_op_context,
+      read_operation_data.WithStatistics(nullptr));
   iter->Seek(table_id, SeekFilter::kAll);
   const auto& entry_data = VERIFY_RESULT_REF(iter->Fetch());
   if (!entry_data || !entry_data.value.FirstByteIs(dockv::ValueEntryTypeAsChar::kTombstone) ||
@@ -248,7 +250,7 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
     const ReadOperationData& read_operation_data,
     const dockv::ReaderProjection* projection) {
   auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, sub_doc_key, query_id,
+      doc_db, BloomFilterOptions::Fixed(sub_doc_key), query_id,
       txn_op_context, read_operation_data);
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", sub_doc_key.ToDebugHexString(),
                   iter->read_time().ToString());
@@ -778,7 +780,7 @@ class GetHelperBase : public PackedRowContext {
   static constexpr bool kYsql = ysql;
   static constexpr bool kCheckExistOnly = check_exists_only;
 
-  // TODO(#22371): fast backward scan is supported for the flat doc reader only as of now.
+  // TODO(#22371) fast-backward-scan is supported for the flat doc reader only as of now.
   static_assert(!kFastBackward || kIsFlatDoc,
                 "Fast backward scan supported for flat doc reader only");
 
@@ -836,7 +838,10 @@ class GetHelperBase : public PackedRowContext {
     auto& fetched_key = VERIFY_RESULT_REF(Prepare(prefetched_key, root_write_time));
 
     if constexpr (kCheckExistOnly) {
-      if (found_) {
+      // In case of fast backward scan enabled, row reading happens in the reverse order,
+      // from the overy oldest to very newest record, which mean it is required to scan all
+      // the records to understand if the row exists.
+      if (found_ && !kFastBackward) {
         return FoundResult(/* iter_valid= */ true);
       }
       auto iter_valid = VERIFY_RESULT(Scan(&fetched_key, root_write_time));
@@ -899,6 +904,7 @@ class GetHelperBase : public PackedRowContext {
 
     // Skip too old root records.
     if (key_result.write_time < root_write_time->encoded()) {
+      DVLOG_WITH_PREFIX_AND_FUNC(4) << "record is too old, skipping";
       Move<kFastBackward>(data_.iter);
       return true; // Continue scanning.
     }
@@ -909,11 +915,13 @@ class GetHelperBase : public PackedRowContext {
       auto has_row_update = data_.packed_row->HasUpdatesAfter(key_result.write_time);
       if (has_row_update.value_or(true)) {
         // Delete record is too old, just skip it.
+        DVLOG_WITH_PREFIX_AND_FUNC(4) << "tombstoned record is too old, skipping";
         Move<kFastBackward>(data_.iter);
         return true; // Continue scanning.
       }
 
       // This is a more recent delete, need to be taken it into account.
+      DVLOG_WITH_PREFIX_AND_FUNC(4) << "read tombstoned record, row is considered deleted";
       found_ = false;
     }
 
@@ -940,11 +948,36 @@ class GetHelperBase : public PackedRowContext {
     return Status::OK();
   }
 
+  // It is expected that the given key starts with root_doc_key_. It is an engineer's
+  // responsibility to check and guarantee that expectation.
+  inline Slice GetSubKeys(const FetchedEntry& fetched_entry) const {
+    return fetched_entry.key.WithoutPrefix(root_doc_key_.size());
+  }
+
+  // It is expected that the given entry's key starts with root_doc_key_. It is an engineer's
+  // responsibility to check and guarantee that expectation.
+  inline bool IsEntrySubKeysSame(const FetchedEntry& fetched_entry, Slice subkeys) const {
+    return fetched_entry.valid && (subkeys.compare(GetSubKeys(fetched_entry)) == 0);
+  }
+
+  Result<bool> FetchEntryAndCheckSubKeysSame(Slice subkeys) const {
+    const auto& fetched_entry = VERIFY_RESULT_REF(data_.iter->Fetch());
+    DVLOG_WITH_PREFIX_AND_FUNC(4)
+          << "current position: "
+          << (fetched_entry.valid ? dockv::SubDocKey::DebugSliceToString(fetched_entry.key)
+                                  : "<invalid>")
+          << ", value: "
+          << (fetched_entry.valid ? fetched_entry.value.ToDebugHexString()
+                                  : "<invalid>");
+    return IsEntrySubKeysSame(fetched_entry, subkeys);
+  }
+
   Result<bool> HandleRecord(const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
     DVLOG_WITH_PREFIX_AND_FUNC(4)
-        << "key: " << dockv::SubDocKey::DebugSliceToString(key_result.key) << ", write time: "
-        << key_result.write_time.ToString() << ", value: "
-        << key_result.value.ToDebugHexString();
+        << "key: " << dockv::SubDocKey::DebugSliceToString(key_result.key)
+        << ", write time: " << key_result.write_time.ToString()
+        << ", value: " << key_result.value.ToDebugHexString()
+        << ", root write time: " << root_write_time->ToString();
     DCHECK(key_result.key.starts_with(root_doc_key_));
 
     // With the fast backward scan, the full packed row may be not the first record met during
@@ -957,12 +990,113 @@ class GetHelperBase : public PackedRowContext {
       }
     }
 
-    auto subkeys = key_result.key.WithoutPrefix(root_doc_key_.size());
-    return DoHandleRecord(key_result, subkeys);
+    return DoHandleRecord(key_result, GetSubKeys(key_result));
   }
 
-  Result<bool> DoHandleRecord(
-      const FetchedEntry& key_result, Slice subkeys) {
+  template <bool kBackwardRead>
+  Result<bool> DoReadColumn(const FetchedEntry& fetched_entry, Slice subkeys) {
+    if constexpr (kBackwardRead) {
+      return DoReadColumnBackward(fetched_entry, subkeys);
+    } else {
+      return DoReadColumnForward(fetched_entry, subkeys);
+    }
+  }
+
+  Result<bool> DoReadColumnForward(const FetchedEntry& fetched_entry, Slice subkeys) {
+    // Sanity check to make sure we are on a desired subkey.
+    DCHECK(!(!kCheckExistOnly && data_.projection) ||
+            (subkeys.compare_prefix(CurrentEncodedProjection()) == 0));
+
+    // Forward direction, we should be positioned to the latest column already.
+    RETURN_NOT_OK(ProcessEntry(subkeys, fetched_entry.value, fetched_entry.write_time));
+    if (kCheckExistOnly && found_) {
+      return false;
+    }
+    data_.iter->SeekPastSubKey(fetched_entry.key);
+    return true;
+  }
+
+  Result<bool> DoReadColumnBackward(const FetchedEntry& fetched_entry, Slice fetched_subkeys) {
+    // It is required to find the lastest enrty for the given SubDocKey. It is expected that the
+    // iterator points to the oldest entry with multiple updates at this point. This expectation
+    // comes from a way how a hybrid time is encoded (all the records are ordered from the newest
+    // to the oldest) and the implementation of fast backward scan. Thus, a number of Prev calls
+    // should be triggered to reach the latest column update. But it might be ineffective and
+    // expensive to use Prev calls only. The better strategy would be to call Prev for several
+    // times and if the iterator still points to the given SubDockey then just trigger a Seek call
+    // to jump to the latest entry for the given column (positioning to the latest entry happens
+    // naturally for the iterator's Seek call in accordance with its implementation).
+
+    // It is used only for the fast backward scan path.
+    CHECK(kFastBackward);
+
+    // Keep subkeys as source of fetched_subkeys is unknown and may be changed during iteration.
+    dockv::KeyBytes subkeys { fetched_subkeys };
+
+    // Sanity check to make sure we are on a desired subkey.
+    DCHECK(!(!kCheckExistOnly && data_.projection) ||
+            (subkeys.AsSlice().compare_prefix(CurrentEncodedProjection()) == 0));
+
+    // Max number of Prev calls which can be triggered to move out the current column. At least
+    // one Prev is triggered even if the flag's value is less than 1. It happens in such a way
+    // because the method has an entry to decode already and in most cases it would be a column's
+    // latest update. Thus, that's not optimal to make a Seek() without trying to decode and to
+    // move out the give entry.
+    const auto max_prevs = FLAGS_max_prevs_to_avoid_seek;
+    auto num_prevs_done = 0;
+    bool seek_done = false;
+
+    const auto* current_entry = &fetched_entry;
+    for (;;) {
+      // TODO(fast-backward-scan) estimate max number of iterations instead of infinite loop.
+      DVLOG_WITH_PREFIX_AND_FUNC(4)
+          << "current position: " << dockv::SubDocKey::DebugSliceToString(current_entry->key)
+          << ", value: " << current_entry->value.ToDebugHexString();
+      RETURN_NOT_OK(ProcessEntry(subkeys, current_entry->value, current_entry->write_time));
+
+      data_.packed_row->TrackColumnUpdate(current_column_->id, current_entry->write_time);
+
+      if (seek_done) {
+        // Seek out of the current column in backward direction.
+        root_key_entry_->AppendRawBytes(subkeys);
+        data_.iter->SeekBeforeSubKey(*root_key_entry_);
+        root_key_entry_->Truncate(root_doc_key_.size());
+
+        // Sanity check to make sure the iterator moved out the current column after
+        // the combination of Seek() + Prev(): it is expected Seek() moves the iterator
+        // to the latest record for the given column and subsequent Prev() moves it out.
+        CHECK(!VERIFY_RESULT(FetchEntryAndCheckSubKeysSame(subkeys)));
+        break;
+      }
+
+      // Move to the previous entry to make sure all the records for the given column are covered.
+      data_.iter->Prev();
+
+      // Check if the iterator moved out the current column after the Prev().
+      current_entry = &VERIFY_RESULT_REF(data_.iter->Fetch());
+      if (!IsEntrySubKeysSame(*current_entry, subkeys)) {
+        // No more entries for the given root doc key or the iterator moved out the given column.
+        break;
+      }
+
+      // We are still on the same column. Check the number of Prev() done and do Seek() if required.
+      if (++num_prevs_done >= max_prevs) {
+        DVLOG_WITH_PREFIX_AND_FUNC(4)
+            << "too many prevs done (" << num_prevs_done << "), doing a seek"
+            << "; pre-seek position: " << dockv::SubDocKey::DebugSliceToString(current_entry->key)
+            << ", value: " << current_entry->value.ToDebugHexString();
+        data_.iter->Seek(current_entry->key, SeekFilter::kAll);
+        seek_done = true;
+        current_entry = &VERIFY_RESULT_REF(data_.iter->Fetch());
+        CHECK(IsEntrySubKeysSame(*current_entry, subkeys));
+      }
+    }
+
+    return true;
+  }
+
+  // NB! Agrument subkeys might be a part of
+  Result<bool> DoHandleRecord(const FetchedEntry& key_result, Slice subkeys) {
     if (!kCheckExistOnly && data_.projection) {
       auto projection_column_encoded_key_prefix = CurrentEncodedProjection();
       int compare_result = subkeys.compare_prefix(projection_column_encoded_key_prefix);
@@ -998,24 +1132,7 @@ class GetHelperBase : public PackedRowContext {
       }
     }
 
-    RETURN_NOT_OK(ProcessEntry(subkeys, key_result.value, key_result.write_time));
-    if (kCheckExistOnly && found_) {
-      return false;
-    }
-
-    if constexpr (!kFastBackward) {
-      data_.iter->SeekPastSubKey(key_result.key);
-    } else {
-      data_.packed_row->TrackColumnUpdate(current_column_->id, key_result.write_time);
-
-      // It is required to scan through all entries for the given SubDocKey, hence using Prev().
-      // TODO(#22373): It might be too expensive to use Prev only. The better strategy is to try
-      // Prev for several times and if the cursor is still on the current SubDockey, then use the
-      // standard approach for SubDocKey: Seek to the very first record and do forward read to
-      // build the SubDocKey value.
-      data_.iter->Prev();
-    }
-    return true;
+    return DoReadColumn<kFastBackward>(key_result, subkeys);
   }
 
   // We are not yet reached next projection subkey, seek to it.
@@ -1129,7 +1246,6 @@ class GetHelperBase : public PackedRowContext {
 
   DocDBTableReaderData& data_;
   KeyBuffer* root_doc_key_buffer_;
-  Slice old_upperbound_;
   Slice root_doc_key_;
   // Pointer to root key entry that is owned by subclass. Can't be nullptr.
   dockv::KeyBytes* root_key_entry_;
@@ -1253,6 +1369,14 @@ struct MakePackedRowDecoderV2Visitor {
 
   dockv::PackedColumnDecoderV2 Decimal() const {
     return Apply<0>();
+  }
+
+  dockv::PackedColumnDecoderV2 Vector() const {
+    return Binary();
+  }
+
+  dockv::PackedColumnDecoderV2 Bson() const {
+    return Binary();
   }
 
  private:

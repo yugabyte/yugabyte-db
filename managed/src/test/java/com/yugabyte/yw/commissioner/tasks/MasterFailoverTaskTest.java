@@ -153,5 +153,6 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.MasterFailover,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

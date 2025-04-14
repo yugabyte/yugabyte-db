@@ -29,10 +29,10 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
-#include "utils/typcache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "utils/builtins.h"
+#include "utils/typcache.h"
 
 typedef struct BTSortArrayContext
 {
@@ -249,7 +249,7 @@ _bt_preprocess_array_keys(IndexScanDesc scan)
 	 * if we already have one from a previous rescan cycle.
 	 */
 	if (so->arrayContext == NULL)
-		so->arrayContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+		so->arrayContext = AllocSetContextCreate(CurrentMemoryContext,
 												 "BTree array context",
 												 ALLOCSET_SMALL_SIZES);
 	else
@@ -493,8 +493,9 @@ _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 		 * support that in YB yet. Until then, it's ok to fallback to the
 		 * column data-type specific comparator.
 		 */
-		TypeCacheEntry *typentry =
-			lookup_type_cache(elemtype, TYPECACHE_CMP_PROC);
+		TypeCacheEntry *typentry = lookup_type_cache(elemtype,
+													 TYPECACHE_CMP_PROC);
+
 		cmp_proc = typentry->cmp_proc;
 	}
 	if (!RegProcedureIsValid(cmp_proc))
@@ -557,6 +558,8 @@ _bt_start_array_keys(IndexScanDesc scan, ScanDirection dir)
 			curArrayKey->cur_elem = 0;
 		skey->sk_argument = curArrayKey->elem_values[curArrayKey->cur_elem];
 	}
+
+	so->arraysStarted = true;
 }
 
 /*
@@ -616,6 +619,14 @@ _bt_advance_array_keys(IndexScanDesc scan, ScanDirection dir)
 	if (scan->parallel_scan != NULL)
 		_bt_parallel_advance_array_keys(scan);
 
+	/*
+	 * When no new array keys were found, the scan is "past the end" of the
+	 * array keys.  _bt_start_array_keys can still "restart" the array keys if
+	 * a rescan is required.
+	 */
+	if (!found)
+		so->arraysStarted = false;
+
 	return found;
 }
 
@@ -669,8 +680,13 @@ _bt_restore_array_keys(IndexScanDesc scan)
 	 * If we changed any keys, we must redo _bt_preprocess_keys.  That might
 	 * sound like overkill, but in cases with multiple keys per index column
 	 * it seems necessary to do the full set of pushups.
+	 *
+	 * Also do this whenever the scan's set of array keys "wrapped around" at
+	 * the end of the last primitive index scan.  There won't have been a call
+	 * to _bt_preprocess_keys from some other place following wrap around, so
+	 * we do it for ourselves.
 	 */
-	if (changed)
+	if (changed || !so->arraysStarted)
 	{
 		_bt_preprocess_keys(scan);
 		/* The mark should have been set on a consistent set of keys... */

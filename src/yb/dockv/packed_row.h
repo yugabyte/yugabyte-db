@@ -26,10 +26,13 @@
 
 #include "yb/dockv/dockv_fwd.h"
 
+#include "yb/dockv/value_type.h"
 #include "yb/util/byte_buffer.h"
 #include "yb/util/kv_util.h"
 
 namespace yb::dockv {
+
+class DocVectorValue;
 
 // The packed row V1 is encoded in the following format.
 // Row packing/unpacking is accompanied by SchemaPacking class that is built from schema.
@@ -168,6 +171,7 @@ class RowPackerV1 : public RowPackerBase {
   Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, Slice control_fields, const QLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
+  Result<bool> AddValue(ColumnId column_id, const DocVectorValue& value);
 
   Result<Slice> Complete();
 
@@ -210,6 +214,7 @@ class RowPackerV2 : public RowPackerBase {
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value, ssize_t tail_size = 0);
   Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
+  Result<bool> AddValue(ColumnId column_id, const DocVectorValue& value);
 
   Result<Slice> Complete();
 

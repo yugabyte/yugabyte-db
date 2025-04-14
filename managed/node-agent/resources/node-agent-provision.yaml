@@ -13,7 +13,7 @@ ynp:
   # User ID for the 'yugabyte' user.
   # Specifies the UID to ensure consistency across nodes.
   yb_user_id: 994
-
+  no_proxy_list: []
   # Indicates if the node is in an air-gapped environment (no internet access).
   # Set to 'true' if the node cannot access external networks.
   # Airgapped
@@ -34,6 +34,22 @@ ynp:
   # Install node_agent as part of provisioning.
   is_install_node_agent: true
 
+  # node_agent_port defaults to 9070
+  # needs to also be updated in YBA using runtime config.
+  # Validate all nodes are consistent for this port
+  node_agent_port: 9070
+
+  # node_exporter_port defaults to 9300
+  # needs to also be updated in YBA during universe port mapping as well.
+  # Validate all nodes are consistent for this port
+  node_exporter_port: 9300
+
+  # Configure clockbound as part of provisioning.
+  # Clockbound in sync with a reliable NTP server reduces read-restart errors.
+  # Ref: https://github.com/aws/clock-bound
+  is_configure_clockbound: false
+
+  configure_thp_settings: true
 yba:
   # The base URL of the Yugabyte Anywhere instance.
   # Example: 'https://yba.example.com'.
@@ -90,8 +106,7 @@ yba:
 
     # List of mount points for data storage.
     # Data directories should be mounted here.
-    mount_points:
-      - /mnt/d1
+    mount_points: []
 
 logging:
   # Logging level for the application.

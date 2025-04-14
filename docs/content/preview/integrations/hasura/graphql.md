@@ -24,7 +24,7 @@ For information on Hasura, see the following:
 
 Before using Hasura with YugabyteDB, perform the following:
 
-- Install and start YugabyteDB, as described in [Quick Start Guide](../../../quick-start/).
+- Install and start YugabyteDB, as described in [Quick Start Guide](/preview/tutorials/quick-start/macos/).
 - Familiarize yourself with information on how to install and start Hasura on an existing database by reading [Run Hasura GraphQL Engine on Kubernetes](https://hasura.io/docs/latest/graphql/core/deployment/deployment-guides/kubernetes.html).
 
 To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL, except that the port should be `5433`.
@@ -147,7 +147,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
 
 ### Prepare the database with table schema
 
-- Open `ysqlsh`, specify the Yugabyte user, and trigger the password prompt by executing the following command:
+- Open ysqlsh, specify the Yugabyte user, and trigger the password prompt by executing the following command:
 
   ```shell
   $ ./ysqlsh -U yugabyte -W
@@ -156,7 +156,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
 - When prompted for password, enter the Yugabyte password (the default password is yugabyte). Expect the following output:
 
   ```sh
-  ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+  ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
   Type "help" for help.
 
   yugabyte=#

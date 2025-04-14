@@ -105,8 +105,6 @@ public class XClusterUtil {
     switch (namespaceStatus) {
       case Failed:
         return XClusterTableConfig.Status.Failed;
-      case Error:
-        return XClusterTableConfig.Status.Error;
       case Warning:
         return XClusterTableConfig.Status.Warning;
       case Updating:
@@ -118,7 +116,26 @@ public class XClusterUtil {
       case Running:
         return XClusterTableConfig.Status.Running;
       default:
-        return XClusterTableConfig.Status.ReplicationError;
+        return XClusterTableConfig.Status.Error;
+    }
+  }
+
+  public static void ensureYsqlMajorUpgradeIsComplete(
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      Universe sourceUniverse,
+      Universe targetUniverse) {
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(sourceUniverse)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
+              + " universe is in progress.");
+    }
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(targetUniverse)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot configure XCluster/DR config because YSQL major version upgrade on target"
+              + " universe is in progress.");
     }
   }
 }

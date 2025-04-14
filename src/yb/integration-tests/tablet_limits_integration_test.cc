@@ -184,6 +184,7 @@ TEST_F(CreateTableLimitTestRF1, BlacklistTServer) {
   const std::string final_table_ddl = DDLToCreateNTabletTable("t");
   conn = ASSERT_RESULT(PgConnect());
   ASSERT_OK(IsTabletLimitErrorStatus(conn.Execute(final_table_ddl)));
+  // need to fix this. AddTabletServer.
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(conn.Execute(final_table_ddl));
   ASSERT_OK(conn.Execute("DROP TABLE t"));
@@ -338,7 +339,9 @@ Result<pgwrapper::PGConn> CreateTableLimitTestBase::PgConnect(const std::string&
   auto* ts =
       cluster_->tablet_server(RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
   return pgwrapper::PGConnBuilder(
-             {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
+             {.host = ts->bind_host(),
+              .port = ts->ysql_port(),
+              .dbname = db_name})
       .Connect();
 }
 

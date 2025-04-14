@@ -4,11 +4,11 @@
 # LARGE TABLE Testsuite
 # Test for table of 50K rows.
 ####################################################################################################
-test: yb_create_large_table
-test: yb_large_copy
-test: yb_select_large
-test: yb_large_copy_abort
-test: yb_select_large_abort
-test: yb_large_copy_ddl
-test: yb_select_large_ddl
-test: yb_update_large
+test: yb.orig.create_large_table
+test: yb.orig.large_copy
+test: yb.orig.select_large
+test: yb.orig.large_copy_abort
+test: yb.orig.select_large_abort
+test: yb.orig.large_copy_ddl
+test: yb.orig.select_large_ddl
+test: yb.orig.update_large

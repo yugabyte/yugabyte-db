@@ -35,7 +35,8 @@
 typedef struct IndexTupleData
 {
 	ItemPointerData t_tid;		/* reference TID to heap tuple */
-	Datum 			t_ybctid;	/* virtual column ybctid */
+	Datum		t_ybctid;		/* system column ybidxbasectid */
+	Datum		t_ybuniqueidxkeysuffix;	/* system column ybuniqueidxkeysuffix */
 
 	/* ---------------
 	 * t_info is laid out in the following fashion:
@@ -48,7 +49,7 @@ typedef struct IndexTupleData
 	 * ---------------
 	 */
 
-	uint32	t_info;				/* various info about tuple */
+	uint32		t_info;			/* various info about tuple */
 
 } IndexTupleData;				/* MORE DATA FOLLOWS AT END OF STRUCT */
 
@@ -67,7 +68,7 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 #define INDEX_SIZE_MASK 0x1FFF	/* 8 KB */
 #define YB_INDEX_SIZE_MASK 0x1FFFFFF	/* 32 MB */
 #define INDEX_AM_RESERVED_BIT 0x20000000	/* reserved for index-AM specific
-										 	 * usage */
+											 * usage */
 #define INDEX_VAR_MASK	0x40000000
 #define INDEX_NULL_MASK 0x80000000
 

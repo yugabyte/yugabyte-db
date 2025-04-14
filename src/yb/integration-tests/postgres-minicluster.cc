@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
+
 #include "yb/integration-tests/postgres-minicluster.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -24,13 +26,20 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 namespace yb {
 
 Status PostgresMiniCluster::InitPostgres() {
-  auto pg_ts = RandomElement(mini_cluster_->mini_tablet_servers());
-  auto port = mini_cluster_->AllocateFreePort();
+  auto pg_ts_idx = RandomUniformInt<size_t>(0, mini_cluster_->num_tablet_servers() - 1);
+  auto pg_port = mini_cluster_->AllocateFreePort();
+  return InitPostgres(pg_ts_idx, pg_port);
+}
+
+Status PostgresMiniCluster::InitPostgres(size_t pg_ts_idx, uint16_t pg_port) {
+  pg_ts_idx_ = pg_ts_idx;
+  pg_port_ = pg_port;
+
+  auto pg_ts = mini_cluster_->mini_tablet_server(pg_ts_idx_);
   pgwrapper::PgProcessConf pg_process_conf =
       VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-          AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-          pg_ts->server()->GetSharedMemoryFd()));
+          AsString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
+          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = mini_cluster_->AllocateFreePort();
@@ -39,11 +48,19 @@ Status PostgresMiniCluster::InitPostgres() {
             << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
   pg_supervisor_ =
-      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
   RETURN_NOT_OK(pg_supervisor_->Start());
+
+  pg_ts->SetPgServerHandlers(
+      [this] { return InitPostgres(pg_ts_idx_, pg_port_); },
+      [this] { ShutdownPostgres(); });
 
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
   return Status::OK();
+}
+
+void PostgresMiniCluster::ShutdownPostgres() {
+  pg_supervisor_->Stop();
 }
 
 Result<pgwrapper::PGConn> PostgresMiniCluster::Connect() {

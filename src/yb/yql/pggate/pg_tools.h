@@ -19,8 +19,10 @@
 
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -39,13 +41,12 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-struct PgExecParameters;
-
 namespace yb::pggate {
 
 class PgSession;
+class PgTypeInfo;
 
-RowMarkType GetRowMarkType(const PgExecParameters* exec_params);
+RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params);
 
 struct Bound {
   uint16_t value;
@@ -57,7 +58,7 @@ struct Bound {
 // when it goes out of scope.
 class PgWaitEventWatcher {
  public:
-  using Starter = YBCWaitEventInfo (*)(YBCWaitEventInfo info);
+  using Starter = YbcWaitEventInfo (*)(YbcWaitEventInfo info);
 
   PgWaitEventWatcher(
       Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc);
@@ -65,7 +66,7 @@ class PgWaitEventWatcher {
 
  private:
   const Starter starter_;
-  const YBCWaitEventInfo prev_wait_event_;
+  const YbcWaitEventInfo prev_wait_event_;
 
   DISALLOW_COPY_AND_ASSIGN(PgWaitEventWatcher);
 };
@@ -149,38 +150,75 @@ using TableYbctidVector = std::vector<TableYbctid>;
 template <class U>
 using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, TableYbctidComparator>;
 
-class TableYbctidVectorProvider {
- public:
-  class Accessor {
-   public:
-    ~Accessor() { container_.clear(); }
-    TableYbctidVector* operator->() { return &container_; }
-    TableYbctidVector& operator*() { return container_; }
-    operator TableYbctidVector&() { return container_; }
+using ExecParametersMutator = LWFunction<void(YbcPgExecParameters&)>;
 
-   private:
-    explicit Accessor(TableYbctidVector* container) : container_(*container) {}
+struct YbctidBatch {
+  YbctidBatch(std::reference_wrapper<const std::vector<Slice>> ybctids_, bool keep_order_)
+      : ybctids(ybctids_), keep_order(keep_order_) {}
 
-    friend class TableYbctidVectorProvider;
-
-    TableYbctidVector& container_;
-
-    DISALLOW_COPY_AND_ASSIGN(Accessor);
-  };
-
-  [[nodiscard]] Accessor Get() { return Accessor(&container_); }
-
- private:
-  TableYbctidVector container_;
+  const std::vector<Slice>& ybctids;
+  bool keep_order;
 };
 
-using ExecParametersMutator = LWFunction<void(PgExecParameters&)>;
+Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid);
 
-using YbctidReader =
-    std::function<Status(PgOid, TableYbctidVector&, const OidSet&, const ExecParametersMutator&)>;
+struct BufferingSettings {
+  size_t max_batch_size;
+  size_t max_in_flight_operations;
+  int multiple;
+};
 
-Status FetchExistingYbctids(
-    const scoped_refptr<PgSession>& session, PgOid database_id, TableYbctidVector& ybctids,
-    const OidSet& region_local_tables, const ExecParametersMutator& exec_params_mutator);
+class YbctidReaderProvider {
+  using PgSessionPtr = scoped_refptr<PgSession>;
+
+ public:
+  class Reader {
+   public:
+    ~Reader() { ybctids_.clear(); }
+    void Reserve(size_t capacity) {
+      DCHECK(!read_called_);
+      ybctids_.reserve(capacity);
+    }
+    void Add(TableYbctid&& ybctid) {
+      DCHECK(!read_called_);
+      ybctids_.push_back(std::move(ybctid));
+    }
+
+    auto Read(PgOid database_id, const OidSet& region_local_tables,
+              const ExecParametersMutator& exec_params_mutator) {
+      DCHECK(!read_called_);
+      read_called_ = true;
+      return DoRead(database_id, region_local_tables, exec_params_mutator);
+    }
+
+   private:
+    friend class YbctidReaderProvider;
+
+    Reader(const PgSessionPtr& session, TableYbctidVector& ybctids)
+        : session_(session), ybctids_(ybctids) {}
+
+    Result<std::span<TableYbctid>> DoRead(
+      PgOid database_id, const OidSet& region_local_tables,
+      const ExecParametersMutator& exec_params_mutator);
+
+    const PgSessionPtr& session_;
+    TableYbctidVector& ybctids_;
+    bool read_called_ = false;
+
+    DISALLOW_COPY_AND_ASSIGN(Reader);
+  };
+
+  explicit YbctidReaderProvider(std::reference_wrapper<const PgSessionPtr> session)
+      : session_(session) {}
+
+  Reader operator()() { return Reader(session_, container_); }
+
+ private:
+  const PgSessionPtr& session_;
+  TableYbctidVector container_;
+  bool read_done_ = false;
+
+  DISALLOW_COPY_AND_ASSIGN(YbctidReaderProvider);
+};
 
 } // namespace yb::pggate

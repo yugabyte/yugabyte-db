@@ -38,11 +38,18 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("invalid reconfigure: " + err.Error())
 		}
 
-		isSelfSigned := state.Config.SelfSignedCert ||
-			(viper.GetString("server_cert_path") == "" && viper.GetString("server_key_path") == "")
-		if state.Config.Hostname != viper.GetString("host") && isSelfSigned {
-			log.Info("Detected hostname change for self signed certs, regenerating the certs")
-			serverCertPath, serverKeyPath := common.RegenerateSelfSignedCerts()
+		// Regenerate self signed certs if hostname has changed or if certs are missing from the config.
+		var serverCertPath, serverKeyPath string = "", ""
+		if viper.GetString("server_cert_path") == "" || viper.GetString("server_key_path") == "" {
+			log.Info("Generating new self-signed server certificates")
+			serverCertPath, serverKeyPath = common.GenerateSelfSignedCerts()
+		} else if state.Config.Hostname != viper.GetString("host") && state.Config.SelfSignedCert {
+			log.Info("Regenerating self signed certs for hostname change")
+			serverCertPath, serverKeyPath = common.RegenerateSelfSignedCerts()
+		}
+		if serverCertPath != "" || serverKeyPath != "" {
+			log.Debug("Populating new self signed certs in yba-ctl.yml: " +
+				serverCertPath + ", " + serverKeyPath)
 			common.SetYamlValue(common.InputFile(), "server_cert_path", serverCertPath)
 			common.SetYamlValue(common.InputFile(), "server_key_path", serverKeyPath)
 			common.InitViper()
@@ -117,6 +124,14 @@ var configGenCmd = &cobra.Command{
 	Short:   "Create the default config file.",
 	Aliases: []string{"gen-config", "create-config"},
 	Run: func(cmd *cobra.Command, args []string) {
+		if _, err := os.Stat(common.InputFile()); err == nil {
+			prompt := fmt.Sprintf("Config file '%s' already exists, do you want to overwrite with a "+
+				"default config?", common.InputFile())
+			if !common.UserConfirm(prompt, common.DefaultNo) {
+				log.Info("skipping generate-config")
+				return
+			}
+		}
 		config.WriteDefaultConfig()
 	},
 }

@@ -22,8 +22,8 @@ import (
 )
 
 const SLOW_QUERY_STATS_SQL string = "SELECT a.rolname, t.datname, t.queryid, " +
-    "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, " +
-    "t.stddev_time, t.local_blks_hit, t.local_blks_written FROM " +
+    "t.query, t.calls, t.total_exec_time, t.rows, t.min_exec_time, t.max_exec_time, " +
+    "t.mean_exec_time, t.stddev_exec_time, t.local_blks_hit, t.local_blks_written FROM " +
     "pg_authid a JOIN (SELECT * FROM " +
     "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid"
 
@@ -66,9 +66,9 @@ var WARNING_MSGS = map[string]string{
     "insecure" :"Cluster started in an insecure mode without " +
         "authentication and encryption enabled. For non-production use only, " +
         "not to be used without firewalls blocking the internet traffic.",
-    "clockbound": "Clockbound is recommended on AWS clusters. It can reduce read restart errors" +
-        " significantly in concurrent workloads." +
-        " Relevant flag: --enhance_time_sync_via_clockbound.",
+    "clockbound": "Clockbound is recommended on AWS/Azure/GCP clusters. " +
+        "It can reduce read restart errors significantly in concurrent workloads. " +
+        "Please run configure_clockbound.sh script to install and configure clockbound.",
 }
 
 type SlowQueriesFuture struct {
@@ -1458,10 +1458,9 @@ func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
         for _, master := range mastersResponse.Masters {
             if len(master.Registration.PrivateRpcAddresses) > 0 {
                 masters[master.Registration.PrivateRpcAddresses[0].Host] = master
-                csvMasterAddresses += fmt.Sprintf(
-                    "%s:%d,",
+                csvMasterAddresses += net.JoinHostPort(
                     master.Registration.PrivateRpcAddresses[0].Host,
-                    master.Registration.PrivateRpcAddresses[0].Port)
+                    strconv.FormatUint(uint64(master.Registration.PrivateRpcAddresses[0].Port), 10))
             }
         }
     }
@@ -1645,7 +1644,7 @@ func (c *Container) GetClusterAlerts(ctx echo.Context) error {
         httpClient := &http.Client{
             Timeout: time.Second * 10,
         }
-        url := fmt.Sprintf("http://%s:%s/api/alerts", nodeHost, c.serverPort)
+        url := fmt.Sprintf("http://%s/api/alerts", net.JoinHostPort(nodeHost, c.serverPort))
         resp, err := httpClient.Get(url)
         if err != nil {
             c.logger.Errorf("Failed to get alerts from node %s: %s", nodeHost, err.Error())

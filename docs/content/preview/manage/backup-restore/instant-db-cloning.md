@@ -4,7 +4,7 @@ headerTitle: Instant database cloning
 linkTitle: Instant database cloning
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   preview:
     identifier: instant-db-clone
@@ -27,18 +27,17 @@ Cloning has two main use cases:
 
 ## Enable database cloning
 
-To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true. Because cloning is in {{<tags/feature/tp>}}, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
+To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true.
 
-For example, to set these flags when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
+For example, to set the flag when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
 
 ```sh
---master_flags "allowed_preview_flags_csv={enable_db_clone},enable_db_clone=true"
+--master_flags "enable_db_clone=true"
 ```
 
 You can also set the runtime flags while the yb-master process is running using the yb-ts-cli [set_flag](../../../admin/yb-ts-cli/#set-flag) command as follows:
 
 ```sh
-./bin/yb-ts-cli --server-address=master_host:7100 set_flag allowed_preview_flags_csv enable_db_clone
 ./bin/yb-ts-cli --server-address=127.0.0.1:7100 set_flag enable_db_clone true
 ```
 
@@ -72,10 +71,12 @@ CREATE DATABASE clone_db TEMPLATE original_db;
 
 In this example, `clone_db` is created as a clone of `original_db`, and contains the latest schema and data of `original_db` as of current time.
 
-To create a clone of the original database at a specific point in time (within the history retention period specified when creating the snapshot schedule), you can specify the [Unix timestamp](https://www.unixtimestamp.com/) in microseconds using the `AS OF` option as follows:
+To create a clone of the original database at a specific point in time (within the history retention period specified when creating the snapshot schedule), you can specify a timestamp using the `AS OF` option. The timestamp may be either a [Unix timestamp](https://www.unixtimestamp.com/) in microseconds (as below), or a [PostgreSQL TIMESTAMP](https://www.postgresql.org/docs/current/datatype-datetime.html) in single quotes.
 
 ```sql
 CREATE DATABASE clone_db TEMPLATE original_db AS OF 1723146703674480;
+# Alternatively:
+CREATE DATABASE clone_db TEMPLATE original_db AS OF '2024-08-08 19:51:43.674480';
 ```
 
 ### Clone a YCQL keyspace
@@ -287,5 +288,4 @@ Although creating a clone database is quick and initially doesn't take up much a
 
 ## Limitations
 
-- Cloning is not currently supported for databases that use sequences. See GitHub issue [21467](https://github.com/yugabyte/yugabyte-db/issues/21467) for tracking.
 - Cloning to a time before dropping Materialized views is not currently supported. See GitHub issue [23740](https://github.com/yugabyte/yugabyte-db/issues/23740) for tracking.

@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
@@ -96,11 +97,13 @@ import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.mapstruct.ap.internal.util.Strings;
+import org.slf4j.MDC;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
@@ -186,8 +189,8 @@ public class NodeAgentClient {
 
   @Builder
   public static class NodeAgentUpgradeParam {
-    private String certDir;
-    private Path packagePath;
+    @NonNull private String certDir;
+    @Nullable private Path packagePath;
   }
 
   /** This class intercepts the client request to add the authorization token header. */
@@ -208,10 +211,17 @@ public class NodeAgentClient {
 
         @Override
         public void start(ClientCall.Listener<RespT> responseListener, Metadata headers) {
-          log.trace("Setting authorizaton token in header for node agent {}", nodeAgentUuid);
+          log.trace("Setting custom headers for node agent {}", nodeAgentUuid);
+          String correlationId = MDC.get(LogUtil.CORRELATION_ID);
+          if (StringUtils.isEmpty(correlationId)) {
+            correlationId = UUID.randomUUID().toString();
+            log.debug("Using correlation ID {} for node agent {}", correlationId, nodeAgentUuid);
+          }
           Duration tokenLifetime = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentTokenLifetime);
           String token = NodeAgentClient.getNodeAgentJWT(nodeAgentUuid, tokenLifetime);
           headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), token);
+          headers.put(
+              Metadata.Key.of("x-correlation-id", Metadata.ASCII_STRING_MARSHALLER), correlationId);
           super.start(responseListener, headers);
         }
       };
@@ -234,7 +244,7 @@ public class NodeAgentClient {
       if (config.isEnableTls()) {
         try {
           String certPath = config.getCertPath().toString();
-          log.debug("Using cert path {} for node agent {}", certPath, config.nodeAgent.getUuid());
+          log.trace("Using cert path {} for node agent {}", certPath, config.nodeAgent);
           SslContext sslcontext =
               GrpcSslContexts.forClient()
                   .trustManager(CertificateHelper.getCertsFromFile(certPath))
@@ -242,7 +252,11 @@ public class NodeAgentClient {
           channelBuilder = channelBuilder.sslContext(sslcontext);
           channelBuilder.intercept(interceptor);
         } catch (SSLException e) {
-          throw new RuntimeException("SSL context creation for gRPC client failed", e);
+          String errMsg =
+              String.format(
+                  "SSL context creation for gRPC client failed for node agent %s", nodeAgent);
+          log.error(errMsg);
+          throw new RuntimeException(errMsg, e);
         }
       } else {
         channelBuilder = channelBuilder.usePlaintext();
@@ -332,25 +346,36 @@ public class NodeAgentClient {
 
     @Override
     public String toString() {
-      return String.format("NodeAgent{uuid: %s, ip: %s}", nodeAgent.getUuid(), nodeAgent.getIp());
+      return nodeAgent.toString();
     }
   }
 
   @Slf4j
   static class BaseResponseObserver<T> implements StreamObserver<T> {
     private final String id;
+    private final String correlationId;
     private final CountDownLatch latch = new CountDownLatch(1);
     private Throwable throwable;
 
     BaseResponseObserver(String id) {
       this.id = id;
+      this.correlationId = MDC.get(LogUtil.CORRELATION_ID);
+    }
+
+    private void setCorrelationId() {
+      if (!StringUtils.isBlank(correlationId)) {
+        MDC.put(LogUtil.CORRELATION_ID, correlationId);
+      }
     }
 
     @Override
-    public void onNext(T response) {}
+    public void onNext(T response) {
+      setCorrelationId();
+    }
 
     @Override
     public void onError(Throwable throwable) {
+      setCorrelationId();
       this.throwable = throwable;
       latch.countDown();
       log.error("Error encountered for {} - {}", getId(), throwable.getMessage());
@@ -358,6 +383,7 @@ public class NodeAgentClient {
 
     @Override
     public void onCompleted() {
+      setCorrelationId();
       latch.countDown();
       log.info("Completed for {}", getId());
     }
@@ -402,6 +428,7 @@ public class NodeAgentClient {
 
     @Override
     public void onNext(ExecuteCommandResponse response) {
+      super.onNext(response);
       Marker fileMarker = MarkerFactory.getMarker("fileOnly");
       if (response.hasError()) {
         exitCode.set(response.getError().getCode());
@@ -463,6 +490,7 @@ public class NodeAgentClient {
     @Override
     public void onNext(DownloadFileResponse response) {
       try {
+        super.onNext(response);
         outputStream.write(response.getChunkData().toByteArray());
       } catch (IOException e) {
         onError(e);
@@ -488,6 +516,7 @@ public class NodeAgentClient {
     @Override
     public void onNext(DescribeTaskResponse response) {
       try {
+        super.onNext(response);
         if (response.hasError()) {
           com.yugabyte.yw.nodeagent.Server.Error error = response.getError();
           onError(
@@ -630,10 +659,10 @@ public class NodeAgentClient {
         nodeAgent.updateLastError(new YBAError(YBAError.Code.CONNECTION_ERROR, e.getMessage()));
         if (e.getStatus().getCode() != Code.UNAVAILABLE
             && e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
-          log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getStatus());
+          log.error("Error in connecting to Node agent {} - {}", nodeAgent, e.getStatus());
           throw e;
         }
-        log.warn("Node agent {} is not reachable", nodeAgent.getIp());
+        log.warn("Node agent {} is not reachable", nodeAgent);
         if (stopwatch.elapsed().compareTo(timeout) > 0) {
           throw e;
         }
@@ -642,9 +671,9 @@ public class NodeAgentClient {
         } catch (InterruptedException ex) {
           throw new RuntimeException(ex);
         }
-        log.info("Retrying connection validation to node agent {}", nodeAgent.getIp());
+        log.info("Retrying connection validation to node agent {}", nodeAgent);
       } catch (RuntimeException e) {
-        log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getMessage());
+        log.error("Error in connecting to node agent {} - {}", nodeAgent, e.getMessage());
         throw e;
       }
     }
@@ -810,14 +839,14 @@ public class NodeAgentClient {
   public void startUpgrade(NodeAgent nodeAgent, NodeAgentUpgradeParam param) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
+    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder().setCertDir(param.certDir);
+    if (param.packagePath != null) {
+      builder.setPackagePath(param.packagePath.toString());
+    }
     stub.update(
         UpdateRequest.newBuilder()
             .setState(State.UPGRADE.name())
-            .setUpgradeInfo(
-                UpgradeInfo.newBuilder()
-                    .setPackagePath(param.packagePath.toString())
-                    .setCertDir(param.certDir)
-                    .build())
+            .setUpgradeInfo(builder.build())
             .build());
   }
 
@@ -854,7 +883,7 @@ public class NodeAgentClient {
     try {
       cachedChannels.cleanUp();
     } catch (RuntimeException e) {
-      log.error("Client cache cleanup failed {}", e);
+      log.error("Client cache cleanup failed {}", e.getMessage());
     }
   }
 
@@ -879,11 +908,10 @@ public class NodeAgentClient {
         if (e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
           // Best effort to abort.
           abortTask(nodeAgent, taskId);
-          log.error(
-              "Error in describing task for node agent {} - {}", nodeAgent.getIp(), e.getStatus());
+          log.error("Error in describing task for node agent {} - {}", nodeAgent, e.getStatus());
           throw e;
         } else {
-          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent.getIp(), taskId);
+          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
         }
       }
     }

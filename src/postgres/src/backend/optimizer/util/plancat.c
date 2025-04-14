@@ -24,7 +24,6 @@
 #include "access/table.h"
 #include "access/tableam.h"
 #include "access/transam.h"
-#include "access/yb_scan.h"
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -48,6 +47,7 @@
 #include "rewrite/rewriteManip.h"
 #include "statistics/statistics.h"
 #include "storage/bufmgr.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/partcache.h"
@@ -55,6 +55,8 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "access/yb_scan.h"
 #include "pg_yb_utils.h"
 
 /* GUC parameter */
@@ -302,6 +304,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->amcanmarkpos = (amroutine->ammarkpos != NULL &&
 								  amroutine->amrestrpos != NULL);
 			info->amcostestimate = amroutine->amcostestimate;
+			info->yb_amiscopartitioned = amroutine->yb_amiscopartitioned;
 			info->yb_cached_ybctid_size = 0;
 			Assert(info->amcostestimate != NULL);
 
@@ -364,7 +367,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 						info->nhashcolumns++;
 						info->reverse_sort[i] = false;
 						info->nulls_first[i] = false;
-					} else {
+					}
+					else
+					{
 						info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
 						info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 					}
@@ -478,6 +483,17 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	/* Grab foreign-table info using the relcache, while we have it */
 	if (relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 	{
+		/* Check if the access to foreign tables is restricted */
+		if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_FOREIGN_TABLE) != 0))
+		{
+			/* there must not be built-in foreign tables */
+			Assert(RelationGetRelid(relation) >= FirstNormalObjectId);
+
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("access to non-system foreign table is restricted")));
+		}
+
 		rel->serverid = GetForeignServerIdByRelId(RelationGetRelid(relation));
 		rel->fdwroutine = GetFdwRoutineForRelation(relation, true);
 	}
@@ -645,6 +661,7 @@ infer_arbiter_indexes(PlannerInfo *root)
 	OnConflictExpr *onconflict = root->parse->onConflict;
 
 	/* Iteration state */
+	Index		varno;
 	RangeTblEntry *rte;
 	Relation	relation;
 	Oid			indexOidFromConstraint = InvalidOid;
@@ -673,7 +690,8 @@ infer_arbiter_indexes(PlannerInfo *root)
 	 * the rewriter or when expand_inherited_rtentry() added it to the query's
 	 * rangetable.
 	 */
-	rte = rt_fetch(root->parse->resultRelation, root->parse->rtable);
+	varno = root->parse->resultRelation;
+	rte = rt_fetch(varno, root->parse->rtable);
 
 	relation = table_open(rte->relid, NoLock);
 
@@ -807,6 +825,9 @@ infer_arbiter_indexes(PlannerInfo *root)
 
 		/* Expression attributes (if any) must match */
 		idxExprs = RelationGetIndexExpressions(idxRel);
+		if (idxExprs && varno != 1)
+			ChangeVarNodes((Node *) idxExprs, 1, varno, 0);
+
 		foreach(el, onconflict->arbiterElems)
 		{
 			InferenceElem *elem = (InferenceElem *) lfirst(el);
@@ -858,6 +879,8 @@ infer_arbiter_indexes(PlannerInfo *root)
 		 * CONFLICT's WHERE clause.
 		 */
 		predExprs = RelationGetIndexPredicate(idxRel);
+		if (predExprs && varno != 1)
+			ChangeVarNodes((Node *) predExprs, 1, varno, 0);
 
 		if (!predicate_implied_by(predExprs, (List *) onconflict->arbiterWhere, false))
 			goto next;
@@ -1422,10 +1445,6 @@ get_relation_statistics(RelOptInfo *rel, Relation relation)
 	List	   *statoidlist;
 	List	   *stainfos = NIL;
 	ListCell   *l;
-
-	/* YugaByte does not support forwarding statistics to Postgres yet */
-	if (IsYugaByteEnabled())
-		return NIL;
 
 	statoidlist = RelationGetStatExtList(relation);
 
@@ -2264,10 +2283,15 @@ has_stored_generated_columns(PlannerInfo *root, Index rti)
  * that depend on any column listed in target_cols.  Both the input and
  * result bitmapsets contain column numbers offset by
  * FirstLowInvalidHeapAttributeNumber.
+ *
+ * YB note: The out param yb_generated_cols_source contains a set of columns
+ * that the returned generated columns depend on. These independent columns may
+ * not be a part of target_cols.
  */
 Bitmapset *
 get_dependent_generated_columns(PlannerInfo *root, Index rti,
-								Bitmapset *target_cols)
+								Bitmapset *target_cols,
+								Bitmapset **yb_generated_cols_source)
 {
 	Bitmapset  *dependentCols = NULL;
 	RangeTblEntry *rte = planner_rt_fetch(rti, root);
@@ -2300,8 +2324,14 @@ get_dependent_generated_columns(PlannerInfo *root, Index rti,
 			pull_varattnos_min_attr(expr, 1, &attrs_used, min_attr + 1);
 
 			if (bms_overlap(target_cols, attrs_used))
+			{
 				dependentCols = bms_add_member(dependentCols,
 											   defval->adnum - min_attr);
+
+				if (yb_generated_cols_source)
+					*yb_generated_cols_source = bms_add_members(*yb_generated_cols_source,
+																attrs_used);
+			}
 		}
 	}
 
@@ -2327,7 +2357,7 @@ set_relation_partition_info(PlannerInfo *root, RelOptInfo *rel,
 	if (root->glob->partition_directory == NULL)
 	{
 		root->glob->partition_directory =
-			CreatePartitionDirectory(GetCurrentMemoryContext(), true);
+			CreatePartitionDirectory(CurrentMemoryContext, true);
 	}
 
 	partdesc = PartitionDirectoryLookup(root->glob->partition_directory,
@@ -2438,7 +2468,7 @@ find_partition_scheme(PlannerInfo *root, Relation relation)
 		palloc(sizeof(FmgrInfo) * partnatts);
 	for (i = 0; i < partnatts; i++)
 		fmgr_info_copy(&part_scheme->partsupfunc[i], &partkey->partsupfunc[i],
-					   GetCurrentMemoryContext());
+					   CurrentMemoryContext);
 
 	/* Add the partitioning scheme to PlannerInfo. */
 	root->part_schemes = lappend(root->part_schemes, part_scheme);

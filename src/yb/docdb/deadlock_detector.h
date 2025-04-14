@@ -19,13 +19,12 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
-#include "yb/client/client.h"
-
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/wait_queue.h"
+
+#include "yb/tserver/tserver_service.pb.h"
 
 namespace yb {
 namespace tablet {
@@ -151,6 +150,10 @@ class WaiterInfoEntry {
     return tserver_uuid_;
   }
 
+  boost::optional<PgSessionRequestVersion> pg_session_req_version() const {
+    return pg_session_req_version_;
+  }
+
   std::pair<const TransactionId, const std::string> txn_id_tserver_uuid_pair() const {
     return std::pair<const TransactionId, const std::string>(txn_id_, tserver_uuid_);
   }
@@ -166,12 +169,13 @@ class WaiterInfoEntry {
   void UpdateBlockingData(const BlockingDataPtr& old_blocking_data);
 
   std::string ToString() const {
-    return YB_CLASS_TO_STRING(txn_id, tserver_uuid, *blocking_data);
+    return YB_CLASS_TO_STRING(txn_id, tserver_uuid, *blocking_data, pg_session_req_version);
   }
 
   const TransactionId txn_id_;
   const std::string tserver_uuid_;
   BlockingDataPtr blocking_data_;
+  boost::optional<PgSessionRequestVersion> pg_session_req_version_ = boost::none;
 };
 
 // Waiters is a multi-indexed container storing WaiterInfoEntry records. The records are indexed
@@ -219,11 +223,19 @@ typedef boost::multi_index_container<WaiterInfoEntry,
 class TransactionStatusController {
  public:
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
+  struct TransactionInfo {
+    MicrosTime start_us;
+    boost::optional<PgSessionRequestVersion> pg_session_req_version = boost::none;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(start_us, pg_session_req_version);
+    }
+  };
   // Returns Aborted status if the blocking probe isn't active anymore, and need not be forwarded.
-  // Else, returns Status::OK().
-  virtual Status CheckProbeActive(
+  virtual Result<TransactionInfo> CheckProbeActive(
       const TransactionId& transaction_id, const SubtxnSet& subtxn_set) = 0;
-  virtual std::optional<MicrosTime> GetTxnStart(const TransactionId& transaction_id) = 0;
+  virtual boost::optional<TransactionInfo> GetTransactionInfo(
+      const TransactionId& transaction_id) = 0;
   virtual const std::string& LogPrefix() = 0;
   virtual ~TransactionStatusController() = default;
 };

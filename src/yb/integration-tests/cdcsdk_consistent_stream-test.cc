@@ -1107,8 +1107,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   ASSERT_EQ(2020, get_changes_resp.records.size());
 }
 
-// TODO(#24374): Enable the test in TSAN once the tsan race regression is fixed in master.
-TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(TestReadingOfWALSegmentBySegment)) {
+TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALSegmentBySegment) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 10_KB;
 
@@ -1138,8 +1137,7 @@ TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(TestReadingOfWALSegme
   }
 }
 
-// TODO(#24374): Enable the test in TSAN once the tsan race regression is fixed in master.
-TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(TestReadingOfWALWithUncommittedTxn)) {
+TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALWithUncommittedTxn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 10_KB;
 
@@ -1173,10 +1171,7 @@ TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(TestReadingOfWALWithU
   }
 }
 
-// TODO(#24374): Enable the test in TSAN once the tsan race regression is fixed in master.
-TEST_F(
-    CDCSDKConsistentStreamTest,
-    YB_DISABLE_TEST_IN_TSAN(TestConsumptionContinuationAfterSegmentGC)) {
+TEST_F(CDCSDKConsistentStreamTest, TestConsumptionContinuationAfterSegmentGC) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;

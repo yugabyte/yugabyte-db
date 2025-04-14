@@ -47,6 +47,9 @@
 #include "utils/elog.h"
 #include "utils/palloc.h"
 
+/* YB includes */
+#include "tcop/cmdtag.h"
+
 /* ----------------------------------------------------------------
  *				Section 1:	variable-length datatypes (TOAST support)
  * ----------------------------------------------------------------
@@ -789,7 +792,8 @@ extern Datum Float8GetDatum(float8 X);
  * the the keyword "PASSWORD" exists in the text, redact the portion following it.
  * The logic is refactored from the LOGSTMT_DDL statement case of pgaudit extension.
  */
-const char* RedactPasswordIfExists(const char* queryStr);
+const char *YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag);
+CommandTag	YbParseCommandTag(const char *query_string);
 
 /*
  * Int64GetDatumFast

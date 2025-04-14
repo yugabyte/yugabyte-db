@@ -148,7 +148,7 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
     pb->mutable_where_predicate_spec()->CopyFrom(*where_predicate_spec_);
   }
 
-  if (is_vector_idx()) {
+  if (is_vector_index()) {
     *pb->mutable_vector_idx_options() = vector_idx_options();
   }
 }
@@ -282,7 +282,7 @@ size_t IndexInfo::DynamicMemoryUsage() const {
   return size;
 }
 
-bool IndexInfo::is_vector_idx() const {
+bool IndexInfo::is_vector_index() const {
   return vector_idx_options_.has_value();
 }
 

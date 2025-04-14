@@ -23,16 +23,16 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
-#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/extension.h"
+#include "miscadmin.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
-/* YB includes. */
-#include "utils/syscache.h"
+/* YB includes */
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "pg_yb_utils.h"
-#include "miscadmin.h"
+#include "utils/syscache.h"
 
 static bool isObjectPinned(const ObjectAddress *object);
 
@@ -144,7 +144,7 @@ recordMultipleDependencies(const ObjectAddress *depender,
 				indstate = CatalogOpenIndexes(dependDesc);
 
 			CatalogTuplesMultiInsertWithInfo(dependDesc, slot, slot_stored_count,
-											 indstate, false /* yb_shared_insert */);
+											 indstate, false /* yb_shared_insert */ );
 			slot_stored_count = 0;
 		}
 	}
@@ -157,7 +157,7 @@ recordMultipleDependencies(const ObjectAddress *depender,
 			indstate = CatalogOpenIndexes(dependDesc);
 
 		CatalogTuplesMultiInsertWithInfo(dependDesc, slot, slot_stored_count,
-										 indstate, false /* yb_shared_insert */);
+										 indstate, false /* yb_shared_insert */ );
 	}
 
 	if (indstate != NULL)

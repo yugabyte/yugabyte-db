@@ -261,7 +261,8 @@ constexpr Oid TIMESTAMPTZOID = 1184;
 constexpr Oid CSTRINGOID = 2275;
 constexpr Oid UUIDOID = 2950;
 constexpr Oid JSONBOID = 3802;
-constexpr Oid VECTOROID = 16385;
+constexpr Oid VECTOROID = 8078;
+constexpr Oid BSONOID = 8095;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {
@@ -272,6 +273,7 @@ bool IsValidType(Oid pg_type) {
       case BPCHAROID: [[fallthrough]];
       case VARCHAROID: [[fallthrough]];
       case JSONBOID: [[fallthrough]];
+      case BSONOID: [[fallthrough]];
       case CSTRINGOID: return true;
     }
     return false;
@@ -384,6 +386,13 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
                 << "), time taken: "
                 << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
+    }
+    if (status == CONNECTION_BAD) {
+      auto msg = GetPQErrorMessage(result.get());
+      if (msg.ends_with("\" does not exist") &&
+          msg.find("FATAL:  database \"") != std::string::npos) {
+        break;
+      }
     }
   } while (waiter.Wait());
   const MonoDelta duration(CoarseMonoClock::now() - start);
@@ -505,20 +514,23 @@ Result<std::string> PGConn::FetchRowAsString(const std::string& command, const s
   return RowToString(res.get(), 0, sep);
 }
 
-Result<std::string> PGConn::FetchAllAsString(
-    const std::string& command, const std::string& column_sep, const std::string& row_sep) {
-  auto res = VERIFY_RESULT(Fetch(command));
-
+Result<std::string> ResultAsString(
+    PGresult* res, const std::string& column_sep, const std::string& row_sep) {
   std::string result;
-  auto fetched_rows = PQntuples(res.get());
+  auto fetched_rows = PQntuples(res);
   for (int i = 0; i != fetched_rows; ++i) {
     if (i) {
       result += row_sep;
     }
-    result += VERIFY_RESULT(RowToString(res.get(), i, column_sep));
+    result += VERIFY_RESULT(RowToString(res, i, column_sep));
   }
 
   return result;
+}
+
+Result<std::string> PGConn::FetchAllAsString(
+    const std::string& command, const std::string& column_sep, const std::string& row_sep) {
+  return ResultAsString(VERIFY_RESULT(Fetch(command)).get(), column_sep, row_sep);
 }
 
 Status PGConn::StartTransaction(IsolationLevel isolation_level) {
@@ -678,12 +690,19 @@ Result<PGResultPtr> PGConn::CopyEnd() {
   if (!CopyFlushBuffer()) {
     return copy_data_->error;
   }
-  int res = PQputCopyEnd(impl_.get(), 0);
+  int res = PQputCopyEnd(impl_.get(), nullptr);
   if (res <= 0) {
     return STATUS_FORMAT(NetworkError, "Put copy end failed: $0", res);
   }
 
-  return PGResultPtr(PQgetResult(impl_.get()));
+  PGResultPtr result(PQgetResult(impl_.get()));
+  auto status = PQresultStatus(result.get());
+  if (status == ExecStatusType::PGRES_COPY_BOTH || status == ExecStatusType::PGRES_COPY_IN ||
+      status == ExecStatusType::PGRES_COPY_OUT || status == ExecStatusType::PGRES_COMMAND_OK) {
+    return result;
+  }
+  auto msg = GetPQErrorMessage(result.get());
+  return STATUS_FORMAT(NetworkError, "Copy end failed, status: $0, message: $1", status, msg);
 }
 
 Result<std::string> ToString(const PGresult* result, int row, int column) {
@@ -832,7 +851,7 @@ PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
 
 PGConnPerf::~PGConnPerf() {
   CHECK_OK(process_.Kill(SIGINT));
-  LOG(INFO) << "Perf exec code: " << CHECK_RESULT(process_.Wait());
+  CHECK_OK(process_.Wait());
 }
 
 PGConnBuilder CreateInternalPGConnBuilder(

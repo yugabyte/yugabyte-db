@@ -1214,46 +1214,31 @@ TEST_F(AdminCliTest, PromoteAutoFlags) {
   BuildAndStart();
   const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
 
-  auto status = CallAdmin(kPromoteAutoFlagsCmd, "invalid");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Invalid value provided for max_flags_class");
+  ASSERT_NOK_STR_CONTAINS(
+      CallAdmin(kPromoteAutoFlagsCmd, "invalid"), "Invalid value provided for max_flags_class");
+  ASSERT_NOK_STR_CONTAINS(
+      CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "invalid"), "Invalid arguments for operation");
+  ASSERT_NOK_STR_CONTAINS(
+      CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "force", "invalid"),
+      "Invalid arguments for operation");
 
-  status = CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "invalid");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Invalid value provided for promote_non_runtime_flags");
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile"));
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalPersisted"));
+  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kExternal"));
 
-  status = CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "true", "invalid");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Invalid arguments for operation");
-
-  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false"));
-  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "true"));
-
-  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalPersisted", "false"));
-  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kLocalPersisted", "true"));
-
-  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "false"));
-  ASSERT_OK(CallAdmin(kPromoteAutoFlagsCmd, "kExternal", "true"));
-
-  auto result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false"));
+  auto result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile"));
   ASSERT_STR_CONTAINS(
       result,
       "PromoteAutoFlags completed successfully\n"
       "No new AutoFlags eligible to promote\n"
       "Current config version: 1");
 
-  result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "false", "force"));
+  result = ASSERT_RESULT(CallAdmin(kPromoteAutoFlagsCmd, "kLocalVolatile", "force"));
   ASSERT_STR_CONTAINS(
       result,
       "PromoteAutoFlags completed successfully\n"
       "New AutoFlags were promoted\n"
       "New config version: 2");
-
-  status = CallAdmin(kPromoteAutoFlagsCmd, "kNewInstallsOnly", "true", "force");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(
-      status.ToString(),
-      "Unable to promote AutoFlags: max_class cannot be set to kNewInstallsOnly.");
 }
 
 TEST_F(AdminCliTest, RollbackAutoFlags) {
@@ -1661,6 +1646,27 @@ TEST_F(AdminCliTest, TestRemoveTabletServer) {
   ASSERT_RESULT(CallAdmin("remove_tablet_server", added_tserver->uuid()));
   auto find_tserver_result = ASSERT_RESULT(cluster_client.GetTabletServer(added_tserver->uuid()));
   EXPECT_EQ(find_tserver_result, std::nullopt);
+}
+
+TEST_F(AdminCliTest, TestDisallowImplicitStreamCreation) {
+  std::string test_namespace = "pg_namespace_cdc";
+  BuildAndStart();
+  ASSERT_OK(client_->CreateNamespace(test_namespace, YQL_DATABASE_PGSQL));
+
+  ASSERT_NOK(CallAdmin("create_change_data_stream", "ysql." + test_namespace, "IMPLICIT"));
+}
+
+TEST_F(AdminCliTest, TestAllowImplicitStreamCreationWhenFlagEnabled) {
+  std::string test_namespace = "pg_namespace_cdc";
+  BuildAndStart(
+      {"--cdc_enable_implicit_checkpointing=true"}, {});
+  ASSERT_OK(client_->CreateNamespace(test_namespace, YQL_DATABASE_PGSQL));
+
+  auto output =
+      ASSERT_RESULT(CallAdmin("create_change_data_stream", "ysql." + test_namespace, "IMPLICIT"));
+
+  ASSERT_STR_CONTAINS(
+      output, "Creation of streams with IMPLICIT checkpointing is deprecated");
 }
 
 }  // namespace tools

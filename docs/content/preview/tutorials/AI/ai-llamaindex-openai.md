@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-This tutorial demonstrates how use LlamaIndex to build RAG (Retrieval-Augmented Generation) applications. By using the LlamaIndex [SQLJoinQueryEngine](https://docs.llamaindex.ai/en/stable/examples/query_engine/SQLJoinQueryEngine.html), the application can query a [PostgreSQL-compatible](https://www.yugabyte.com/postgresql/postgresql-compatibility/) YugabyteDB database from natural language. It can then infer whether to query a secondary vector index to fetch documents. In this case, the secondary index contains the Wikipedia pages of S&P 500 companies.
+This tutorial demonstrates how use LlamaIndex to build Retrieval-Augmented Generation (RAG) applications. By using the [LlamaIndex SQLJoinQueryEngine](https://docs.llamaindex.ai/en/stable/examples/query_engine/SQLJoinQueryEngine.html), the application can query a [PostgreSQL-compatible](https://www.yugabyte.com/postgresql/postgresql-compatibility/) YugabyteDB database from natural language. It can then infer whether to query a secondary vector index to fetch documents. In this case, the secondary index contains the Wikipedia pages of S&P 500 companies.
 
 ## Prerequisites
 
@@ -42,6 +42,7 @@ Download the application and provide settings specific to your deployment:
         pip install -r requirements.txt
         # NOTE: Users with M1 Mac machines should use requirements-m1.txt instead:
         # pip install -r requirements-m1.txt
+        python -m pip install --upgrade yfinance
         ```
 
     * Option 2: Install Dependencies Globally.
@@ -101,20 +102,20 @@ This application requires a database table with financial information for compan
 1. Copy the schema to the first node's Docker container.
 
     ```sh
-    docker cp {project_dir}/sql/schema.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/schema_extended.sql yugabytedb-node1:/home
     ```
 
 1. Copy the seed data file to the Docker container.
 
     ```sh
-    docker cp {project_dir}/sql/data.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/data_extended.sql yugabytedb-node1:/home
     ```
 
 1. Execute the SQL files against the database.
 
     ```sh
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/schema.sql
-    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/data.sql
+    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/schema_extended.sql
+    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/data_extended.sql
     ```
 
 ## Start the application
@@ -127,15 +128,15 @@ This command-line application takes an input in natural language and returns a r
     python3 index.py
     ```
 
+    The first time the application runs, it loads the S&P 500 data. When finished, you should see the following prompt:
+
     ```output
     What is your question?
     ```
 
 1. Provide a relevant question. For instance:
 
-    ```output
-    What is your question? 
-
+    ```sh
     Provide a detailed company history for the company with the highest marketcap.
     ```
 

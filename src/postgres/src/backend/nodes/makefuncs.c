@@ -21,8 +21,10 @@
 #include "nodes/nodeFuncs.h"
 #include "utils/lsyscache.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/sysattr.h"
+#include "pg_yb_utils.h"
+
 
 /*
  * makeA_Expr -
@@ -786,7 +788,7 @@ makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid, List *expressions,
 	/* set up for possible use by index AM */
 	n->ii_Am = amoid;
 	n->ii_AmCache = NULL;
-	n->ii_Context = GetCurrentMemoryContext();
+	n->ii_Context = CurrentMemoryContext;
 
 	return n;
 }

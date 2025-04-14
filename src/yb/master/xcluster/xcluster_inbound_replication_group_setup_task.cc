@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_inbound_replication_group_setup_task.h"
 
+#include "yb/client/client.h"
 #include "yb/client/table_info.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
@@ -25,6 +26,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
@@ -61,12 +63,7 @@ DEFINE_test_flag(bool, fail_universe_replication_merge, false,
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
 
-DEFINE_test_flag(bool, skip_schema_validation, false,
-    "Skip schema validation during xCluster replication setup.");
-
 DECLARE_bool(enable_xcluster_auto_flag_validation);
-
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
@@ -201,12 +198,15 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateInputArguments() {
 
   SCHECK(!data_.source_table_ids.empty(), InvalidArgument, "No tables provided");
 
+  std::unordered_set<TableId> source_table_ids;
   for (const auto& source_table_id : data_.source_table_ids) {
     SCHECK(!source_table_id.empty(), InvalidArgument, "Invalid Table Id");
     SCHECK_FORMAT(
         !IsColocatedDbParentTableId(source_table_id), NotSupported,
         "Pre GA colocated databases are not supported with xCluster replication: $0",
         source_table_id);
+    SCHECK(source_table_ids.insert(source_table_id).second, InvalidArgument,
+           "Duplicate table source table id: $0", data_.source_table_ids);
   }
 
   if (data_.TargetTableIdsProvided()) {
@@ -259,14 +259,13 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
     RETURN_NOT_OK(GetAutoFlagConfigVersionIfCompatible());
   }
 
-  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
-      !is_alter_replication_) {
+  if (data_.automatic_ddl_mode && !is_alter_replication_) {
     // Ensure sequences_data table has been created.
     // Skip for alter replication as the table should already have been created on initial setup.
     auto local_client = master_.client_future();
     RETURN_NOT_OK(tserver::CreateSequencesDataTable(
         local_client.get(), CoarseMonoClock::now() +
-        MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
+                                MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
   }
 
   ScheduleNextStep(
@@ -282,20 +281,28 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
   if (data_.automatic_ddl_mode) {
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
-      Synchronizer sync;
+      bool is_switchover = xcluster_manager_.IsNamespaceInAutomaticModeSource(namespace_id);
+
       LOG_WITH_PREFIX(INFO) << "Setting up DDL replication extension for namespace " << namespace_id
-                            << " (" << namespace_name << ")";
+                            << " (" << namespace_name << ")"
+                            << (is_switchover ? " as part of a switchover" : "");
+      if (!is_switchover) {
+        // For regular setup cases, we want to clean up any existing state.
+        Synchronizer sync;
+        RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
+            catalog_manager_, namespace_id, sync.AsStdStatusCallback()));
+        RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to drop xCluster DDL replication extension");
+      }
+      // Set up the extension and set our role as a target to prevent writes.
+      Synchronizer sync;
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
           catalog_manager_, namespace_name, XClusterDDLReplicationRole::kTarget,
-          CoarseMonoClock::now() +
-              MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
           sync.AsStdStatusCallback()));
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
     }
   }
 
-  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
-      !is_alter_replication_) {
+  if (data_.automatic_ddl_mode && !is_alter_replication_) {
     ScheduleNextStep(
         std::bind(
             &XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData, shared_from(this)),
@@ -326,8 +333,8 @@ Status XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData() {
 Status XClusterInboundReplicationGroupSetupTask::CreateTableTasks() {
   LOG_WITH_PREFIX(INFO) << "Started schema validation for " << data_.source_table_ids.size()
                         << " table(s)";
+  VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(data_.source_table_ids);
 
-  std::vector<std::shared_ptr<MultiStepMonitoredTask>> child_tasks;
   for (size_t i = 0; i < data_.source_table_ids.size(); i++) {
     const auto target_table_id_opt =
         data_.TargetTableIdsProvided() ? std::optional(data_.target_table_ids[i]) : std::nullopt;
@@ -353,13 +360,13 @@ void XClusterInboundReplicationGroupSetupTask::TableTaskCompletionCallback(
 
   {
     std::lock_guard l(mutex_);
-    if (source_table_infos_.contains(source_table_id)) {
+    auto [it, inserted] = source_table_infos_.emplace(source_table_id, *table_setup_result);
+    if (!inserted) {
       LOG_WITH_PREFIX(DFATAL) << "TableTaskCompletionCallback called multiple times for table "
-                              << source_table_id;
+                              << source_table_id << ", existing: " << AsString(it->second)
+                              << ", new: " << AsString(*table_setup_result);
       return;
     }
-
-    source_table_infos_[source_table_id] = std::move(*table_setup_result);
 
     VLOG_WITH_PREFIX(1) << "Processed " << source_table_infos_.size() << " tables out of "
                         << data_.source_table_ids.size();
@@ -516,6 +523,14 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   LOG_WITH_PREFIX(INFO) << "Replication Map: "
                         << cluster_config_producer_map.at(original_id.ToString()).DebugString();
 
+  cluster_config_l.Commit();
+
+  if (universe_lock) {
+    universe_lock->Commit();
+  } else {
+    universe->mutable_metadata()->CommitMutation();
+  }
+
   // Update the in-memory states now that data is persistent in sys catalog.
   if (!is_alter_replication_) {
     catalog_manager_.InsertNewUniverseReplication(*universe);
@@ -528,13 +543,6 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   }
 
   xcluster_manager_.SyncConsumerReplicationStatusMap(original_id, cluster_config_producer_map);
-  cluster_config_l.Commit();
-
-  if (universe_lock) {
-    universe_lock->Commit();
-  } else {
-    universe->mutable_metadata()->CommitMutation();
-  }
 
   xcluster_manager_.CreateXClusterSafeTimeTableAndStartService();
 
@@ -606,7 +614,7 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateTableListForDbScoped() 
     auto table_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
         catalog_manager_, namespace_id,
         /*include_sequences_data=*/
-        (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication)));
+        data_.automatic_ddl_mode));
 
     std::vector<TableId> missing_tables;
 
@@ -689,8 +697,8 @@ XClusterTableSetupTask::XClusterTableSetupTask(
       target_table_id_(target_table_id) {
   table_setup_info_.stream_id = stream_id;
   log_prefix_ = Format(
-      "xCluster InboundReplicationGroup [$0] Source Table [$1]: ",
-      parent_task_->data_.replication_group_id, source_table_id_);
+      "[$0] xCluster InboundReplicationGroup [$1] Source Table [$2]: ",
+      static_cast<void*>(this), parent_task_->data_.replication_group_id, source_table_id_);
 }
 
 Status XClusterTableSetupTask::RegisterTask() {
@@ -943,9 +951,6 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     RETURN_NOT_OK(SchemaFromPB(table_schema_resp.schema(), &target_schema));
 
     // We now have a table match. Validate the schema.
-    if (FLAGS_TEST_skip_schema_validation) {
-      break;  // TODO(#23078): Will replace this with better checks.
-    }
     SCHECK(
         target_schema.EquivalentForDataCopy(source_schema), IllegalState,
         Format(

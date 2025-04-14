@@ -21,8 +21,10 @@
 #include "access/tupconvert.h"
 #include "executor/tuptable.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/sysattr.h"
+#include "pg_yb_utils.h"
+
 
 /*
  * The conversion setup routines have the following common API:

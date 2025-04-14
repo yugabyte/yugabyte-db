@@ -18,6 +18,7 @@
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_util.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
@@ -249,22 +250,25 @@ Status AlterUniverseReplicationHelper::AddTablesToReplication(
   // Only add new tables.  Ignore tables that are currently being replicated.
   std::unordered_set<std::string> new_tables(
       add_table_data.source_table_ids_to_add.begin(), add_table_data.source_table_ids_to_add.end());
-  auto original_universe_l = universe->LockForRead();
-  auto& original_universe_pb = original_universe_l->pb;
-
-  for (const auto& table_id : original_universe_pb.tables()) {
-    new_tables.erase(table_id);
-  }
-  SCHECK(
-      !new_tables.empty(), InvalidArgument,
-      "xCluster ReplicationGroup already contains all requested tables", add_table_data.ToString());
-
-  // 1. Create an ALTER table request that mirrors the original 'setup_replication'.
   XClusterSetupUniverseReplicationData setup_data;
-  setup_data.replication_group_id = alter_replication_group_id;
-  setup_data.source_masters.CopyFrom(original_universe_pb.producer_master_addresses());
-  setup_data.transactional = original_universe_pb.transactional();
-  setup_data.automatic_ddl_mode = original_universe_pb.db_scoped_info().automatic_ddl_mode();
+  {
+    auto original_universe_l = universe->LockForRead();
+    auto& original_universe_pb = original_universe_l->pb;
+
+    for (const auto& table_id : original_universe_pb.tables()) {
+      new_tables.erase(table_id);
+    }
+    SCHECK(
+        !new_tables.empty(), InvalidArgument,
+        "xCluster ReplicationGroup already contains all requested tables",
+        add_table_data.ToString());
+
+    // 1. Create an ALTER table request that mirrors the original 'setup_replication'.
+    setup_data.replication_group_id = alter_replication_group_id;
+    setup_data.source_masters.CopyFrom(original_universe_pb.producer_master_addresses());
+    setup_data.transactional = original_universe_pb.transactional();
+    setup_data.automatic_ddl_mode = original_universe_pb.db_scoped_info().automatic_ddl_mode();
+  }
 
   if (add_table_data.HasSourceNamespaceToAdd()) {
     setup_data.source_namespace_ids.push_back(add_table_data.source_namespace_to_add.id());

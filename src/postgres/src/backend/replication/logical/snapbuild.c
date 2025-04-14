@@ -139,6 +139,9 @@
 #include "utils/snapmgr.h"
 #include "utils/snapshot.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * This struct contains the current state of the snapshot building
  * machinery. Besides a forward declaration in the header, it is not exposed
@@ -301,6 +304,17 @@ static void SnapBuildSerialize(SnapBuild *builder, XLogRecPtr lsn);
 static bool SnapBuildRestore(SnapBuild *builder, XLogRecPtr lsn);
 
 /*
+ * Memory context reset callback for clearing the array of running transactions
+ * and subtransactions.
+ */
+static void
+SnapBuildResetRunningXactsCallback(void *arg)
+{
+	NInitialRunningXacts = 0;
+	InitialRunningXacts = NULL;
+}
+
+/*
  * Allocate a new snapshot builder.
  *
  * xmin_horizon is the xid >= which we can be sure no catalog rows have been
@@ -316,9 +330,10 @@ AllocateSnapshotBuilder(ReorderBuffer *reorder,
 	MemoryContext context;
 	MemoryContext oldcontext;
 	SnapBuild  *builder;
+	MemoryContextCallback *mcallback;
 
 	/* allocate memory in own context, to have better accountability */
-	context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	context = AllocSetContextCreate(CurrentMemoryContext,
 									"snapshot builder context",
 									ALLOCSET_DEFAULT_SIZES);
 	oldcontext = MemoryContextSwitchTo(context);
@@ -340,6 +355,10 @@ AllocateSnapshotBuilder(ReorderBuffer *reorder,
 	builder->start_decoding_at = start_lsn;
 	builder->building_full_snapshot = need_full_snapshot;
 	builder->two_phase_at = two_phase_at;
+
+	mcallback = palloc0(sizeof(MemoryContextCallback));
+	mcallback->func = SnapBuildResetRunningXactsCallback;
+	MemoryContextRegisterResetCallback(CurrentMemoryContext, mcallback);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -366,10 +385,6 @@ FreeSnapshotBuilder(SnapBuild *builder)
 
 	/* other resources are deallocated via memory context reset */
 	MemoryContextDelete(context);
-
-	/* InitialRunningXacts is freed along with the context */
-	NInitialRunningXacts = 0;
-	InitialRunningXacts = NULL;
 }
 
 /*
@@ -654,9 +669,11 @@ SnapBuildInitialSnapshot(SnapBuild *builder)
  * For that we need to start a transaction in the current backend as the
  * importing side checks whether the source transaction is still open to make
  * sure the xmin horizon hasn't advanced since then.
+ *
+ * YB Note: yb_read_time is used to build snapshot with associated read time.
  */
-const char *
-SnapBuildExportSnapshot(SnapBuild *builder)
+static const char *
+SnapBuildExportSnapshotImpl(SnapBuild *builder, const uint64_t *yb_read_time)
 {
 	Snapshot	snap;
 	char	   *snapname;
@@ -676,7 +693,20 @@ SnapBuildExportSnapshot(SnapBuild *builder)
 	XactIsoLevel = XACT_REPEATABLE_READ;
 	XactReadOnly = true;
 
-	snap = SnapBuildInitialSnapshot(builder);
+	SnapshotData yb_snap = {};
+
+	if (builder)
+	{
+		Assert(!yb_read_time);
+		snap = SnapBuildInitialSnapshot(builder);
+	}
+	else
+	{
+		Assert(yb_read_time);
+		snap = &yb_snap;
+		YbInitSnapshot(snap);
+		snap->yb_read_point_handle = YbRegisterSnapshotReadTime(*yb_read_time);
+	}
 
 	/*
 	 * now that we've built a plain snapshot, make it active and use the
@@ -690,6 +720,18 @@ SnapBuildExportSnapshot(SnapBuild *builder)
 						   snap->xcnt,
 						   snapname, snap->xcnt)));
 	return snapname;
+}
+
+const char *
+SnapBuildExportSnapshot(SnapBuild *builder)
+{
+	return SnapBuildExportSnapshotImpl(builder, NULL /* yb_read_time */ );
+}
+
+const char *
+YbSnapBuildExportSnapshotWithReadTime(uint64_t read_time)
+{
+	return SnapBuildExportSnapshotImpl(NULL /* builder */ , &read_time);
 }
 
 /*
@@ -1293,6 +1335,8 @@ SnapBuildProcessRunningXacts(SnapBuild *builder, XLogRecPtr lsn, xl_running_xact
 static bool
 SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *running)
 {
+	LogicalDecodingContext *ctx = (LogicalDecodingContext *) builder->reorder->private_data;
+
 	/* ---
 	 * Build catalog decoding snapshot incrementally using information about
 	 * the currently running transactions. There are several ways to do that:
@@ -1302,10 +1346,12 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 	 *	  state while waiting on c)'s sub-states.
 	 *
 	 * b) This (in a previous run) or another decoding slot serialized a
-	 *	  snapshot to disk that we can use.  Can't use this method for the
-	 *	  initial snapshot when slot is being created and needs full snapshot
-	 *	  for export or direct use, as that snapshot will only contain catalog
-	 *	  modifying transactions.
+	 *	  snapshot to disk that we can use. Can't use this method while finding
+	 *	  the start point for decoding changes as the restart LSN would be an
+	 *	  arbitrary LSN but we need to find the start point to extract changes
+	 *	  where we won't see the data for partial transactions. Also, we cannot
+	 *	  use this method when a slot needs a full snapshot for export or direct
+	 *	  use, as that snapshot will only contain catalog modifying transactions.
 	 *
 	 * c) First incrementally build a snapshot for catalog tuples
 	 *	  (BUILDING_SNAPSHOT), that requires all, already in-progress,
@@ -1370,8 +1416,13 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 
 		return false;
 	}
-	/* b) valid on disk state and not building full snapshot */
+
+	/*
+	 * b) valid on disk state and while neither building full snapshot nor
+	 * creating a slot.
+	 */
 	else if (!builder->building_full_snapshot &&
+			 !ctx->in_create &&
 			 SnapBuildRestore(builder, lsn))
 	{
 		int			nxacts = running->subxcnt + running->xcnt;
@@ -2114,11 +2165,13 @@ SnapBuildXidSetCatalogChanges(SnapBuild *builder, TransactionId xid, int subxcnt
 							  TransactionId *subxacts, XLogRecPtr lsn)
 {
 	/*
-	 * Skip if there is no initial running xacts information or the
-	 * transaction is already marked as containing catalog changes.
+	 * Skip if there is no initial running xacts information.
+	 *
+	 * Even if the transaction has been marked as containing catalog
+	 * changes, it cannot be skipped because its subtransactions that
+	 * modified the catalog may not be marked.
 	 */
-	if (NInitialRunningXacts == 0 ||
-		ReorderBufferXidHasCatalogChanges(builder->reorder, xid))
+	if (NInitialRunningXacts == 0)
 		return;
 
 	if (bsearch(&xid, InitialRunningXacts, NInitialRunningXacts,

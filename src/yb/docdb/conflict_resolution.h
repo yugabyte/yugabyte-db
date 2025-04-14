@@ -21,7 +21,6 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/dockv/intent.h"
-#include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/wait_queue.h"
 #include "yb/tablet/tablet_fwd.h"
 
@@ -59,7 +58,7 @@ using ResolutionCallback = boost::function<void(const Result<HybridTime>&)>;
 //
 // 3. Fail-on-Conflict:
 //    (a) In this mode, transactions are assigned random priorities (with some exceptions based on
-//        TxnPriorityRequirement).
+//        YbcTxnPriorityRequirement).
 //    (b) If T0 tries to write an intent or data that conflicts with data modififed by committed
 //        transactions, T0 fails (i.e., tserver returns a kConflict error back to YSQL).
 //    (c) If T0 tries to write an intent or data that conflicts with intents of pending
@@ -104,6 +103,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    tablet::TabletMetrics* tablet_metrics,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
+                                   bool is_advisory_lock_request,
                                    CoarseTimePoint deadline,
                                    ResolutionCallback callback);
 

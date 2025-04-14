@@ -101,6 +101,14 @@ const (
 	HashicorpVaultAuthNamespaceField = "HC_VAULT_AUTH_NAMESPACE"
 )
 
+// URL scheme
+const (
+	// HTTPURLScheme http scheme
+	HTTPURLScheme = "http"
+	// HTTPSURLScheme https scheme
+	HTTPSURLScheme = "https"
+)
+
 // Minimum YugabyteDB Anywhere versions to support operation
 const (
 
@@ -185,6 +193,18 @@ const (
 	DeleteInProgressBackupState = "DeleteInProgress"
 )
 
+// Scopes of runtime configuration
+const (
+	// UniverseScope scope
+	UniverseScope = "UNIVERSE"
+	// ProviderScope scope
+	ProviderScope = "PROVIDER"
+	// CustomerScope scope
+	CustomerScope = "CUSTOMER"
+	// GlobalScope scope
+	GlobalScope = "GLOBAL"
+)
+
 // ScheduleBackupStates
 const (
 	// DeletingScheduleBackupState state
@@ -249,6 +269,22 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Allowed states for XCluster Universe Lifecycle
+const (
+	// InitializedXClusterState indicates the XCluster universe is initialized
+	InitializedXClusterState = "Initialized"
+	// RunningXClusterState indicates the XCluster universe is running
+	RunningXClusterState = "Running"
+	// UpdatingXClusterState indicates the XCluster universe is updating
+	UpdatingXClusterState = "Updating"
+	// DeletedXClusterUniverseState indicates the XCluster universe has been deleted
+	DeletedXClusterUniverseState = "DeletedUniverse"
+	// DeletionFailedXClusterState indicates the XCluster universe deletion failed
+	DeletionFailedXClusterState = "DeletionFailed"
+	// FailedXClusterState indicates the XCluster universe encountered a failure
+	FailedXClusterState = "Failed"
+)
+
 // Node operations allowed on universe
 const (
 	// AddNode operation
@@ -261,6 +297,16 @@ const (
 	StopNode = "STOP"
 	// RemoveNode operation
 	RemoveNode = "REMOVE"
+	// DeleteNode operation
+	DeleteNode = "DELETE"
+	// ReplaceNode operation
+	ReplaceNode = "REPLACE"
+	// DecommissionNode operation
+	DecommissionNode = "DECOMMISSION"
+	// HardRebootNode operation
+	HardRebootNode = "HARD_REBOOT"
+	// StartMasterNode operation
+	StartMasterNode = "START_MASTER"
 	// ReprovisionNode operation
 	ReprovisionNode = "REPROVISION"
 	// ReleaseNode operation
@@ -270,6 +316,14 @@ const (
 const (
 	// StorageCustomerConfigType field name to denote in request bodies
 	StorageCustomerConfigType = "STORAGE"
+)
+
+// Cluster Type
+const (
+	// PrimaryCluster of universe
+	PrimaryCluster = "PRIMARY"
+	// ReadReplicaCluster of universe
+	ReadReplicaCluster = "ASYNC"
 )
 
 // Server Type values
@@ -290,6 +344,8 @@ const (
 	EditOperation = "Edit"
 	// SecurityOperation type
 	SecurityOperation = "Security"
+	// PITROperation type
+	PITROperation = "PITR"
 )
 
 // Different resource types that are supported in CLI
@@ -383,14 +439,142 @@ const (
 
 // KMSOpType
 const (
-	// EnableKMSOpType type
-	EnableKMSOpType = "ENABLE"
-	// DisableKMSOpType type
-	DisableKMSOpType = "DISABLE"
 	// RotateKMSConfigKMSOpType type
 	RotateKMSConfigKMSOpType = "ROTATE-KMS-CONFIG"
 	// RotateUniverseKeyKMSOpType type
 	RotateUniverseKeyKMSOpType = "ROTATE-UNIVERSE-KEY"
+)
+
+// OpType
+const (
+	// EnableOpType type
+	EnableOpType = "ENABLE"
+	// DisableOpType type
+	DisableOpType = "DISABLE"
+)
+
+// ResourceType
+const (
+	// UniverseResourceType type
+	UniverseResourceType = "UNIVERSE"
+	// RoleResourceType type
+	RoleResourceType = "ROLE"
+	// UserResourceType type
+	UserResourceType = "USER"
+	// OtherResourceType type
+	OtherResourceType = "OTHER"
+)
+
+// RoleType
+const (
+	// SystemRoleType type
+	SystemRoleType = "System"
+	// CustomRoleType type
+	CustomRoleType = "Custom"
+)
+
+// WorkloadType
+const (
+	// YSQLWorkloadType type
+	YSQLWorkloadType = "YSQL"
+	// YCQLWorkloadType type
+	YCQLWorkloadType = "YCQL"
+)
+
+// ExposingServiceState
+const (
+	// ExposedServiceState type
+	ExposedServiceState = "EXPOSED"
+	// UnexposedServiceState type
+	UnexposedServiceState = "UNEXPOSED"
+	// NoneServiceState type
+	NoneServiceState = "NONE"
+)
+
+// AlertState type
+const (
+	// ActiveAlertState type
+	ActiveAlertState = "ACTIVE"
+	// AcknowledgedAlertState type
+	AcknowledgedAlertState = "ACKNOWLEDGED"
+	// SuspendedAlertState type
+	SuspendedAlertState = "SUSPENDED"
+	// ResolvedAlertState type
+	ResolvedAlertState = "RESOLVED"
+)
+
+// AlertSeverity type
+const (
+	// SevereAlertSeverity type
+	SevereAlertSeverity = "SEVERE"
+	// WarningAlertSeverity type
+	WarningAlertSeverity = "WARNING"
+)
+
+// AlertConfigurationTargetType
+const (
+	// UniverseAlertConfigurationTargetType type
+	UniverseAlertConfigurationTargetType = "UNIVERSE"
+	// PlatformAlertConfigurationTargetType type
+	PlatformAlertConfigurationTargetType = "PLATFORM"
+)
+
+// AlertConfigurationDestinationType
+const (
+	// NoDestinationAlertConfigurationDestinationType type
+	NoDestinationAlertConfigurationDestinationType = "NO_DESTINATION"
+	// DefaultDestinationAlertConfigurationDestinationType type
+	DefaultDestinationAlertConfigurationDestinationType = "DEFAULT_DESTINATION"
+	// SelectedDestinationAlertConfigurationDestinationType type
+	SelectedDestinationAlertConfigurationDestinationType = "SELECTED_DESTINATION"
+)
+
+// XClusterConfigType
+const (
+	// BasicXClusterConfigType type
+	BasicXClusterConfigType = "Basic"
+	// TxnXClusterConfigType type
+	TxnXClusterConfigType = "Txn"
+	// DBXClusterConfigType type
+	DBXClusterConfigType = "Db"
+)
+
+// HttpAuthType
+const (
+	// NoAuthHttpAuthType type
+	NoAuthHttpAuthType = "NONE"
+	// BasicHttpAuthType type
+	BasicHttpAuthType = "BASIC"
+	// TokenHttpAuthType type
+	TokenHttpAuthType = "TOKEN"
+)
+
+// AlertChannelTypes
+const (
+	// EmailAlertChannelType type
+	EmailAlertChannelType = "Email"
+	// PagerDutyAlertChannelType type
+	PagerDutyAlertChannelType = "PagerDuty"
+	// SlackAlertChannelType type
+	SlackAlertChannelType = "Slack"
+	// WebhookAlertChannelType type
+	WebhookAlertChannelType = "WebHook"
+)
+
+// SortDirection
+const (
+	// DescSortDirection
+	DescSortDirection = "DESC"
+	// AscSortDirection
+	AscSortDirection = "ASC"
+)
+
+// Group MappingTypes
+const (
+	// OIDCGroupMappingType type
+	OIDCGroupMappingType = "OIDC"
+	// LDAPGroupMappingType type
+	LDAPGroupMappingType = "LDAP"
 )
 
 // CompletedTaskStates returns set of states that mark the task as completed
@@ -455,6 +639,11 @@ func AwsInstanceTypesWithEphemeralStorageOnly(instanceType string) bool {
 	// instance types with a 'd' in the first part of their name
 	match, _ = regexp.MatchString("[^.]*d[^.]*\\..*", instanceType)
 	return match
+}
+
+// ValidExposingServiceStates returns set of valid exposing service states
+func ValidExposingServiceStates() []string {
+	return []string{ExposedServiceState, UnexposedServiceState, NoneServiceState}
 }
 
 // IsCloudBasedProvider returns true if the provider is AWS, Azure or GCP

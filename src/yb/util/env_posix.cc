@@ -1165,14 +1165,20 @@ class PosixEnv : public Env {
 
   Status SymlinkPath(const std::string& pointed_to, const std::string& new_symlink) override {
     // Unlink if already linked.
-    if (unlink(new_symlink.c_str()) != 0) {
-      // It's ok for the link not to exist already.
-      if (errno != ENOENT) {
-        return STATUS_IO_ERROR(Format("Unlink $0", new_symlink), errno);
-      }
-    }
+    RETURN_NOT_OK(DeleteSymlinkIfExists(new_symlink));
+
     if (symlink(pointed_to.c_str(), new_symlink.c_str()) != 0) {
       return STATUS_IO_ERROR(Format("Symlink $0 => $1", new_symlink, pointed_to), errno);
+    }
+    return Status::OK();
+  }
+
+  Status DeleteSymlinkIfExists(const std::string& path) override {
+    if (unlink(path.c_str()) != 0) {
+      // It's ok for the link not to exist already.
+      if (errno != ENOENT) {
+        return STATUS_IO_ERROR(Format("Unlink $0", path), errno);
+      }
     }
     return Status::OK();
   }

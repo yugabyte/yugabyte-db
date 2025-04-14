@@ -7,7 +7,7 @@ import RestartIcon from "@app/assets/restart2.svg";
 import BookIcon from "@app/assets/book.svg";
 import { SchemaAnalysisTabs } from "./SchemaAnalysisTabs";
 import type { Migration } from "../../MigrationOverview";
-import type { MigrateSchemaTaskInfo, RefactoringCount, UnsupportedSqlInfo } from "@app/api/src";
+import type { MigrateSchemaTaskInfo, RefactoringCount, SqlObjectsDetails } from "@app/api/src";
 export type SchemaAnalysisData = {
   completedOn?: string;
   manualRefactorObjectsCount: number | undefined;
@@ -15,9 +15,7 @@ export type SchemaAnalysisData = {
     graph: RefactoringCount[];
   };
   reviewRecomm: {
-    unsupportedDataTypes: UnsupportedSqlInfo[] | undefined;
-    unsupportedFeatures: UnsupportedSqlInfo[] | undefined;
-    unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
+    assessmentIssues: SqlObjectsDetails[] | undefined;
   };
 };
 const ANALYZE_SCHEMA_DOCS_URL =
@@ -75,15 +73,13 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
   const analysis: SchemaAnalysisData[] = [currentAnalysisReport, ...history].filter(Boolean)
     .map((analysisReport) => ({
       completedOn: "",
-      manualRefactorObjectsCount: analysisReport?.recommended_refactoring?.refactor_details
+      manualRefactorObjectsCount: analysisReport?.recommended_refactoring
         ?.reduce((acc, { manual }) => acc + (manual ?? 0), 0) || 0,
       summary: {
-        graph: analysisReport?.recommended_refactoring?.refactor_details ?? [],
+        graph: analysisReport?.recommended_refactoring ?? [],
       },
       reviewRecomm: {
-        unsupportedDataTypes: analysisReport?.unsupported_datatypes ?? [],
-        unsupportedFeatures: analysisReport?.unsupported_features ?? [],
-        unsupportedFunctions: analysisReport?.unsupported_functions ?? [],
+        assessmentIssues: analysisReport?.sql_objects ?? []
       },
     }));
 

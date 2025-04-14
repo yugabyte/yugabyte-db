@@ -59,6 +59,8 @@ class CDCSDKUniqueRecordID {
 
   uint64_t GetCommitTime() const;
 
+  RowMessage_Op GetOp() const;
+
   std::string ToString() const;
 
   bool IsPublicationRefreshRecord() const;

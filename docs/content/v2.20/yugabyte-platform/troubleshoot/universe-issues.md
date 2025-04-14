@@ -29,7 +29,7 @@ You can check the status of the YB-Master and YB-TServer on each YugabyteDB node
 
 ![Node Status](/images/yp/troubleshoot-node-status.png)
 
-If issues arise, additional information about each master and YB-TServer is available on their respective **Details** pages, or by accessing `<node_IP>:7000` for YB-Master servers and `<node_IP>:9000` for YB-TServers (unless the configuration of your on-premises data center or cloud-provider account prevents the access, in which case you may consult [Check YugabyteDB servers](../../../troubleshoot/nodes/check-processes/)).
+If issues arise, additional information about each master and YB-TServer is available on their respective **Details** pages, or by accessing `<node_IP>:7000` for YB-Master servers and `<node_IP>:9000` for YB-TServers (unless the configuration of your on-premises data center or cloud-provider account prevents the access, in which case you may consult [Check YugabyteDB servers](/preview/troubleshoot/nodes/check-processes/)).
 
 ## Check host resources on the nodes
 
@@ -123,7 +123,7 @@ If the YugabyteDB pods of your universe are crashing, you can debug them with th
 
 ### Collect core dumps in Kubernetes environments
 
-When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash in the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prepare-environment/kubernetes/#specify-ulimit-and-remember-the-location-of-core-dumps).
+When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash in the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../prepare/server-nodes-software/software-kubernetes/#specify-ulimit-and-remember-the-location-of-core-dumps).
 
 The process of collecting core dumps depends on the value of the sysctl `kernel.core_pattern`, which you can inspect in a Kubernetes pod or node by executing the following command:
 

@@ -82,8 +82,7 @@
 #include "utils/syscache.h"
 #include "utils/timeout.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_logical_client_version.h"
@@ -92,6 +91,7 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
+#include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
@@ -114,9 +114,10 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 bool load_session_libraries,
 							 bool override_allow_connections,
 							 char *out_dbname,
-							 uint64_t *session_id,
-							 bool* yb_sys_table_prefetching_started);
+							 uint64_t *yb_session_id,
+							 bool *yb_sys_table_prefetching_started);
 static void YbEnsureSysTablePrefetchingStopped();
+static void YbPresetDatabaseCollation(HeapTuple tuple);
 
 /*** InitPostgres support ***/
 
@@ -373,13 +374,13 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 	 * These checks are not enforced when in standalone mode, so that there is
 	 * a way to recover from disabling all access to all databases, for
 	 * example "UPDATE pg_database SET datallowconn = false;".
-	 *
-	 * We do not enforce them for autovacuum worker processes either.
 	 */
-	if (IsUnderPostmaster && !IsAutoVacuumWorkerProcess())
+	if (IsUnderPostmaster)
 	{
 		/*
 		 * Check that the database is currently allowing connections.
+		 * (Background processes can override this test and the next one by
+		 * setting override_allow_connections.)
 		 */
 		if (!dbform->datallowconn && !override_allow_connections)
 			ereport(FATAL,
@@ -392,7 +393,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		 * is redundant, but since we have the flag, might as well check it
 		 * and save a few cycles.)
 		 */
-		if (!am_superuser &&
+		if (!am_superuser && !override_allow_connections &&
 			pg_database_aclcheck(MyDatabaseId, GetUserId(),
 								 ACL_CONNECT) != ACLCHECK_OK)
 			ereport(FATAL,
@@ -401,7 +402,9 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 					 errdetail("User does not have CONNECT privilege.")));
 
 		/*
-		 * Check connection limit for this database.
+		 * Check connection limit for this database.  We enforce the limit
+		 * only for regular backends, since other process types have their own
+		 * PGPROC pools.
 		 *
 		 * There is a race condition here --- we create our PGPROC before
 		 * checking for other PGPROCs.  If two backends did this at about the
@@ -411,6 +414,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		 * just document that the connection limit is approximate.
 		 */
 		if (dbform->datconnlimit >= 0 &&
+			AmRegularBackendProcess() &&
 			!am_superuser &&
 			CountDBConnections(MyDatabaseId) > dbform->datconnlimit)
 			ereport(FATAL,
@@ -452,6 +456,20 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 				 errdetail("The database was initialized with LC_CTYPE \"%s\", "
 						   " which is not recognized by setlocale().", ctype),
 				 errhint("Recreate the database with another locale or install the missing locale.")));
+
+	if (strcmp(ctype, "C") == 0 ||
+		strcmp(ctype, "POSIX") == 0)
+		database_ctype_is_c = true;
+
+	/* YbPresetDatabaseCollation may have already populated default_locale */
+	if (IsYugaByteEnabled())
+	{
+		if (default_locale.info.icu.locale)
+			pfree((void *) default_locale.info.icu.locale);
+		if (default_locale.info.icu.ucol)
+			ucol_close(default_locale.info.icu.ucol);
+		default_locale = (struct pg_locale_struct){0};
+	}
 
 	if (dbform->datlocprovider == COLLPROVIDER_ICU)
 	{
@@ -690,7 +708,7 @@ BaseInit(void)
  * We expect that InitProcess() was already called, so we already have a
  * PGPROC struct ... but it's not completely filled in yet.
  *
- * YB extension: session_id. If greater than zero, connect local YbSession
+ * YB extension: yb_session_id. If greater than zero, connect local YbSession
  * to existing YBClientSession instance in TServer, rather than requesting new.
  * Helpful to initialize background worker backends that need to share state.
  *
@@ -698,25 +716,22 @@ BaseInit(void)
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
  */
-/* YB_TODO(neil) Double check the merged in this file.
- * Both Postgres and Yb refactor code, so merging mistakes are possible.
- * NOTE: Latest change in master might not be merged. Check "YB::master" code again for new changes.
- */
 void
 InitPostgres(const char *in_dbname, Oid dboid,
 			 const char *username, Oid useroid,
 			 bool load_session_libraries,
 			 bool override_allow_connections,
 			 char *out_dbname,
-			 uint64_t *session_id)
+			 uint64_t *yb_session_id)
 {
-	bool sys_table_prefetching_started = false;
+	bool		sys_table_prefetching_started = false;
+
 	PG_TRY();
 	{
-		InitPostgresImpl(
-			in_dbname, dboid, username, useroid, load_session_libraries,
-			override_allow_connections, out_dbname, session_id,
-			&sys_table_prefetching_started);
+		InitPostgresImpl(in_dbname, dboid, username, useroid,
+						 load_session_libraries, override_allow_connections,
+						 out_dbname, yb_session_id,
+						 &sys_table_prefetching_started);
 	}
 	PG_CATCH();
 	{
@@ -733,8 +748,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 bool load_session_libraries,
 				 bool override_allow_connections,
 				 char *out_dbname,
-				 uint64_t *session_id,
-				 bool* yb_sys_table_prefetching_started)
+				 uint64_t *yb_session_id,
+				 bool *yb_sys_table_prefetching_started)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		am_superuser;
@@ -843,9 +858,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
-		YBInitPostgresBackend("postgres", "", username, session_id);
+		YBInitPostgresBackend("postgres", yb_session_id);
 	else
-		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
+		YBInitPostgresBackend("postgres", yb_session_id);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
@@ -853,22 +868,21 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
 
-		/* TODO (dmitry): Next call of the YBIsDBCatalogVersionMode function is
-		 * kind of a hack and must be removed. This function is called before
-		 * starting prefetching because for now switching into DB catalog
-		 * version mode is impossible in case prefething is started.
+		/*
+		 * TODO (dmitry): Next call of the YBIsDBCatalogVersionMode function
+		 * is kind of a hack and must be removed. This function is called
+		 * before starting prefetching because for now switching into DB
+		 * catalog version mode is impossible in case prefething is started.
 		 */
 		YBIsDBCatalogVersionMode();
 		YBCStartSysTablePrefetchingNoCache();
-		YbRegisterSysTableForPrefetching(AuthIdRelationId);   // pg_authid
-		YbRegisterSysTableForPrefetching(DatabaseRelationId); // pg_database
+		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
+		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
-			YbRegisterSysTableForPrefetching(
-				YbProfileRelationId);     // pg_yb_profile
-			YbRegisterSysTableForPrefetching(
-				YbRoleProfileRelationId); // pg_yb_role_profile
+			YbRegisterSysTableForPrefetching(YbProfileRelationId);	/* pg_yb_profile */
+			YbRegisterSysTableForPrefetching(YbRoleProfileRelationId);	/* pg_yb_role_profile */
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
@@ -986,8 +1000,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * In YSQL upgrade mode (uses tserver auth method), we allow connecting to
 		 * databases with disabled connections (normally it's just template0).
 		 */
-		override_allow_connections = override_allow_connections ||
-									 MyProcPort->yb_is_tserver_auth_method;
+		if (IsYugaByteEnabled())
+			override_allow_connections = (override_allow_connections ||
+										  MyProcPort->yb_is_tserver_auth_method);
 	}
 
 	/*
@@ -1001,11 +1016,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	}
 
 	/*
-	 * The last few connection slots are reserved for superusers.  Replication
-	 * connections are drawn from slots reserved with max_wal_senders and not
-	 * limited by max_connections or superuser_reserved_connections.
+	 * The last few regular connection slots are reserved for superusers. We
+	 * do not apply this limit to background processes, since they all have
+	 * their own pools of PGPROC slots.
 	 */
-	if (!am_superuser && !am_walsender &&
+	if (AmRegularBackendProcess() && !am_superuser &&
 		ReservedBackends > 0 &&
 		!HaveNFreeProcs(ReservedBackends))
 		ereport(FATAL,
@@ -1060,7 +1075,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	if (bootstrap)
 	{
-		MyDatabaseId = Template1DbOid;
+		dboid = Template1DbOid;
 		MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
 	}
 	else if (in_dbname != NULL)
@@ -1074,36 +1089,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 					(errcode(ERRCODE_UNDEFINED_DATABASE),
 					 errmsg("database \"%s\" does not exist", in_dbname)));
 		dbform = (Form_pg_database) GETSTRUCT(tuple);
-		MyDatabaseId = dbform->oid;
-		MyDatabaseTableSpace = dbform->dattablespace;
-		/* take database name from the caller, just for paranoia */
-		strlcpy(dbname, in_dbname, sizeof(dbname));
-		if (IsYugaByteEnabled())
-			SetDatabaseEncoding(dbform->encoding);
+		dboid = dbform->oid;
 	}
-	else if (OidIsValid(dboid))
-	{
-		/* caller specified database by OID */
-		HeapTuple	tuple;
-		Form_pg_database dbform;
-
-		tuple = GetDatabaseTupleByOid(dboid);
-		if (!HeapTupleIsValid(tuple))
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database %u does not exist", dboid)));
-		dbform = (Form_pg_database) GETSTRUCT(tuple);
-		MyDatabaseId = dbform->oid;
-		MyDatabaseTableSpace = dbform->dattablespace;
-		Assert(MyDatabaseId == dboid);
-		strlcpy(dbname, NameStr(dbform->datname), sizeof(dbname));
-		/* pass the database name back to the caller */
-		if (out_dbname)
-			strcpy(out_dbname, dbname);
-		if (IsYugaByteEnabled())
-			SetDatabaseEncoding(dbform->encoding);
-	}
-	else
+	else if (!OidIsValid(dboid))
 	{
 		/*
 		 * If this is a background worker not bound to any particular
@@ -1117,19 +1105,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			CommitTransactionCommand();
 		}
 		return;
-	}
-
-	if (MyDatabaseId != Template1DbOid && YBIsDBCatalogVersionMode())
-	{
-		/*
-		 * Here we assume that the entire table pg_yb_catalog_version is
-		 * prefetched. Note that in this case YbGetMasterCatalogVersion()
-		 * returns the prefetched catalog version of MyDatabaseId which is
-		 * consistent with all the other tables that are prefetched.
-		 */
-		uint64_t master_catalog_version = YbGetMasterCatalogVersion();
-		Assert(master_catalog_version > YB_CATCACHE_VERSION_UNINITIALIZED);
-		YbUpdateCatalogCacheVersion(master_catalog_version);
 	}
 
 	/*
@@ -1154,8 +1129,64 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 * CREATE DATABASE.
 	 */
 	if (!bootstrap)
-		LockSharedObject(DatabaseRelationId, MyDatabaseId, 0,
-						 RowExclusiveLock);
+		LockSharedObject(DatabaseRelationId, dboid, 0, RowExclusiveLock);
+
+	/*
+	 * Recheck pg_database to make sure the target database hasn't gone away.
+	 * If there was a concurrent DROP DATABASE, this ensures we will die
+	 * cleanly without creating a mess.
+	 */
+	if (!bootstrap)
+	{
+		HeapTuple	tuple;
+		Form_pg_database datform;
+
+		tuple = GetDatabaseTupleByOid(dboid);
+		if (HeapTupleIsValid(tuple))
+			datform = (Form_pg_database) GETSTRUCT(tuple);
+
+		if (!HeapTupleIsValid(tuple) ||
+			(in_dbname && namestrcmp(&datform->datname, in_dbname)))
+		{
+			if (in_dbname)
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database \"%s\" does not exist", in_dbname),
+						 errdetail("It seems to have just been dropped or renamed.")));
+			else
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database %u does not exist", dboid)));
+		}
+
+		strlcpy(dbname, NameStr(datform->datname), sizeof(dbname));
+
+		if (database_is_invalid_form(datform))
+		{
+			ereport(FATAL,
+					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					errmsg("cannot connect to invalid database \"%s\"", dbname),
+					errhint("Use DROP DATABASE to drop invalid databases."));
+		}
+
+		MyDatabaseTableSpace = datform->dattablespace;
+		/* pass the database name back to the caller */
+		if (out_dbname)
+			strcpy(out_dbname, dbname);
+	}
+
+	/*
+	 * Now that we rechecked, we are certain to be connected to a database and
+	 * thus can set MyDatabaseId.
+	 *
+	 * It is important that MyDatabaseId only be set once we are sure that the
+	 * target database can no longer be concurrently dropped or renamed.  For
+	 * example, without this guarantee, pgstat_update_dbstats() could create
+	 * entries for databases that were just dropped in the pgstat shutdown
+	 * callback, which could confuse other code paths like the autovacuum
+	 * scheduler.
+	 */
+	MyDatabaseId = dboid;
 
 	/*
 	 * Now we can mark our PGPROC entry with the database ID.
@@ -1171,9 +1202,34 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	MyProc->databaseId = MyDatabaseId;
 
-	/* YB: Set the dbid in ASH metadata */
-	if (IsYugaByteEnabled() && yb_ash_enable_infra)
-		YbAshSetDatabaseId(MyDatabaseId);
+	if (MyDatabaseId != Template1DbOid && YBIsDBCatalogVersionMode())
+	{
+		/*
+		 * Here we assume that the entire table pg_yb_catalog_version is
+		 * prefetched. Note that in this case YbGetMasterCatalogVersion()
+		 * returns the prefetched catalog version of MyDatabaseId which is
+		 * consistent with all the other tables that are prefetched.
+		 */
+		uint64_t	master_catalog_version = YbGetMasterCatalogVersion();
+
+		Assert(master_catalog_version > YB_CATCACHE_VERSION_UNINITIALIZED);
+		YbUpdateCatalogCacheVersion(master_catalog_version);
+	}
+
+	if (IsYugaByteEnabled() && !bootstrap)
+	{
+		HeapTuple	tuple;
+		Form_pg_database datform;
+
+		tuple = GetDatabaseTupleByOid(dboid);
+		Assert(HeapTupleIsValid(tuple));
+		datform = (Form_pg_database) GETSTRUCT(tuple);
+
+		SetDatabaseEncoding(datform->encoding);
+		YbPresetDatabaseCollation(tuple);
+		if (yb_enable_ash)
+			YbAshSetDatabaseId(MyDatabaseId);
+	}
 
 	/*
 	 * We established a catalog snapshot while reading pg_authid and/or
@@ -1187,29 +1243,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	if (YBIsDBLogicalClientVersionMode())
 	{
-		int32_t logical_client_version = YbGetMasterLogicalClientVersion();
-		elog(LOG, "logical_client_version = %d", logical_client_version);
+		int32_t		logical_client_version = YbGetMasterLogicalClientVersion();
+
+		elog(DEBUG1, "logical_client_version = %d", logical_client_version);
 		YbSetLogicalClientCacheVersion(logical_client_version);
-	}
-
-	/*
-	 * Recheck pg_database to make sure the target database hasn't gone away.
-	 * If there was a concurrent DROP DATABASE, this ensures we will die
-	 * cleanly without creating a mess.
-	 * In YB mode DB existance is checked on cache load/refresh.
-	 */
-	if (!IsYugaByteEnabled() && !bootstrap)
-	{
-		HeapTuple	tuple;
-
-		tuple = GetDatabaseTuple(dbname);
-		if (!HeapTupleIsValid(tuple) ||
-			MyDatabaseId != ((Form_pg_database) GETSTRUCT(tuple))->oid ||
-			MyDatabaseTableSpace != ((Form_pg_database) GETSTRUCT(tuple))->dattablespace)
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database \"%s\" does not exist", dbname),
-					 errdetail("It seems to have just been dropped or renamed.")));
 	}
 
 	/* No local physical path for the database in YugaByte mode */
@@ -1252,10 +1289,14 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 * Load relcache entries for the system catalogs.  This must create at
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
-	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
+
+	/*
+	 * See if tablegroup catalog exists - needs to happen before cache fully
+	 * initialized.
+	 */
 	if (IsYugaByteEnabled() && !bootstrap)
-		HandleYBStatus(YBCPgTableExists(
-			MyDatabaseId, YbTablegroupRelationId, &YbTablegroupCatalogExists));
+		HandleYBStatus(YBCPgTableExists(MyDatabaseId, YbTablegroupRelationId,
+										&YbTablegroupCatalogExists));
 
 	RelationCacheInitializePhase3();
 
@@ -1300,6 +1341,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 */
 		if (MyProcPort != NULL)
 			process_startup_options(MyProcPort, am_superuser);
+
+		if (YBIsDBLogicalClientVersionMode())
+			SendLogicalClientCacheVersionToFrontend();
 
 		/* Process pg_db_role_setting options */
 		process_settings(MyDatabaseId, GetSessionUserId());
@@ -1367,6 +1411,49 @@ YbEnsureSysTablePrefetchingStopped()
 {
 	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
+}
+
+/*
+ * Check and set database collation once MyDatabaseId is resolved. In YB we
+ * need to do this earlier because of prefetching where we may need to
+ * compare text values with DEFAULT_COLLATION_OID. For example,
+ * CREATE TABLE t1 (a INT, region VARCHAR, c INT, PRIMARY KEY(a, region))
+ * PARTITION BY LIST (region), the column region has default collation,
+ * which is the collation of the database of t1. During prefetching
+ * partition_bounds_create is invoked on t1 to build a list of sorted
+ * regions which does text comparisons.
+ * This function is adapted from CheckMyDatabase and should be kept in sync.
+ */
+static void
+YbPresetDatabaseCollation(HeapTuple tuple)
+{
+	Form_pg_database dbform = (Form_pg_database) GETSTRUCT(tuple);
+	Datum		datum;
+	bool		isnull;
+	char	   *collate;
+
+	/* There is no dbform->datcollate, must get it from tuple */
+	datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_datcollate, &isnull);
+	Assert(!isnull);
+	collate = TextDatumGetCString(datum);
+	if (pg_perm_setlocale(LC_COLLATE, collate) == NULL)
+		ereport(FATAL,
+				(errmsg("database locale is incompatible with operating system"),
+				 errdetail("The database was initialized with LC_COLLATE \"%s\", "
+						   " which is not recognized by setlocale().", collate),
+				 errhint("Recreate the database with another locale or install the missing locale.")));
+	elog(DEBUG1, "LC_COLLATE of %u is set to %s", MyDatabaseId, collate);
+	if (dbform->datlocprovider == COLLPROVIDER_ICU)
+	{
+		datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_daticulocale, &isnull);
+		Assert(!isnull);
+		char	   *iculocale = TextDatumGetCString(datum);
+		make_icu_collator(iculocale, &default_locale);
+		elog(DEBUG1, "iculocale of %u is set to %s", MyDatabaseId, iculocale);
+	}
+	default_locale.provider = dbform->datlocprovider;
+	default_locale.deterministic = true;
+	yb_default_collation_resolved = true;
 }
 
 /*

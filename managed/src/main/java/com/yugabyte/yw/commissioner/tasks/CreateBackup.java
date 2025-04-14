@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -66,6 +67,7 @@ public class CreateBackup extends UniverseTaskBase {
   private final YbcManager ybcManager;
   private final StorageUtilFactory storageUtilFactory;
   private final OperatorStatusUpdater kubernetesStatus;
+  private final OperatorUtils operatorUtils;
 
   @Inject
   protected CreateBackup(
@@ -73,12 +75,14 @@ public class CreateBackup extends UniverseTaskBase {
       CustomerConfigService customerConfigService,
       YbcManager ybcManager,
       StorageUtilFactory storageUtilFactory,
-      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      OperatorUtils operatorUtils) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
     this.storageUtilFactory = storageUtilFactory;
     this.kubernetesStatus = operatorStatusUpdaterFactory.create();
+    this.operatorUtils = operatorUtils;
   }
 
   protected BackupRequestParams params() {
@@ -156,6 +160,13 @@ public class CreateBackup extends UniverseTaskBase {
                 ybcBackup,
                 tablesToBackup);
         log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
+        if (params().scheduleUUID != null && params().getKubernetesResourceDetails() != null) {
+          try {
+            operatorUtils.createBackupCr(backup);
+          } catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+        }
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
         createMarkUniverseUpdateSuccessTasks()
@@ -305,5 +316,8 @@ public class CreateBackup extends UniverseTaskBase {
     SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
+    // Update Kubernetes operator schedule status
+    kubernetesStatus.updateBackupScheduleStatus(
+        taskParams.getKubernetesResourceDetails(), schedule);
   }
 }

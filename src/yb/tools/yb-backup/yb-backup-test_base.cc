@@ -88,7 +88,7 @@ Status YBBackupTestBase::RunBackupCommand(const vector<string>& args, auto *clus
   }
 
   return tools::RunBackupCommand(
-      cluster->pgsql_hostport(0), cluster->GetMasterAddresses(),
+      cluster->ysql_hostport(0), cluster->GetMasterAddresses(),
       cluster->GetTabletServerHTTPAddresses(), *tmp_dir_, args);
 }
 

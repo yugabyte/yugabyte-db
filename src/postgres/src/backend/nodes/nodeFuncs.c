@@ -14,7 +14,6 @@
  */
 #include "postgres.h"
 
-#include "access/sysattr.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
@@ -24,6 +23,9 @@
 #include "nodes/pathnodes.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+
+/* YB includes */
+#include "access/sysattr.h"
 
 static bool expression_returns_set_walker(Node *node, void *context);
 static int	leftmostLoc(int loc1, int loc2);
@@ -67,7 +69,7 @@ exprType(const Node *expr)
 			type = ((const WindowFunc *) expr)->wintype;
 			break;
 		case T_YbBatchedExpr:
-			type = exprType((Node *)((const YbBatchedExpr *) expr)->orig_expr);
+			type = exprType((Node *) ((const YbBatchedExpr *) expr)->orig_expr);
 			break;
 		case T_SubscriptingRef:
 			type = ((const SubscriptingRef *) expr)->refrestype;
@@ -2186,6 +2188,8 @@ expression_tree_walker(Node *node,
 					return true;
 				if (walker(wc->endOffset, context))
 					return true;
+				if (walker(wc->runCondition, context))
+					return true;
 			}
 			break;
 		case T_CTECycleClause:
@@ -2289,10 +2293,10 @@ expression_tree_walker(Node *node,
 		case T_PartitionPruneStepCombine:
 			/* no expression subnodes */
 			break;
-		case T_PartitionPruneStepFuncOp:
+		case T_YbPartitionPruneStepFuncOp:
 			{
-				PartitionPruneStepFuncOp *fstep =
-					(PartitionPruneStepFuncOp *) node;
+				YbPartitionPruneStepFuncOp *fstep = (YbPartitionPruneStepFuncOp *) node;
+
 				if (walker((Node *) fstep->exprs, context))
 					return true;
 			}
@@ -2470,6 +2474,8 @@ query_tree_walker(Query *query,
 			if (walker(wc->startOffset, context))
 				return true;
 			if (walker(wc->endOffset, context))
+				return true;
+			if (walker(wc->runCondition, context))
 				return true;
 		}
 	}
@@ -3117,6 +3123,7 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->orderClause, wc->orderClause, List *);
 				MUTATE(newnode->startOffset, wc->startOffset, Node *);
 				MUTATE(newnode->endOffset, wc->endOffset, Node *);
+				MUTATE(newnode->runCondition, wc->runCondition, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3244,14 +3251,13 @@ expression_tree_mutator(Node *node,
 		case T_PartitionPruneStepCombine:
 			/* no expression sub-nodes */
 			return (Node *) copyObject(node);
-		case T_PartitionPruneStepFuncOp:
+		case T_YbPartitionPruneStepFuncOp:
 			{
-				PartitionPruneStepFuncOp *fstep =
-					(PartitionPruneStepFuncOp *) node;
-				PartitionPruneStepFuncOp *newnode;
+				YbPartitionPruneStepFuncOp *fstep = (YbPartitionPruneStepFuncOp *) node;
+				YbPartitionPruneStepFuncOp *newnode;
 
-				FLATCOPY(newnode, fstep, PartitionPruneStepFuncOp);
-				MUTATE(newnode->exprs,fstep->exprs, List *);
+				FLATCOPY(newnode, fstep, YbPartitionPruneStepFuncOp);
+				MUTATE(newnode->exprs, fstep->exprs, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3372,8 +3378,8 @@ expression_tree_mutator(Node *node,
 			break;
 		case T_RestrictInfo:
 			{
-				RestrictInfo   *rinfo = (RestrictInfo *) node;
-				RestrictInfo   *newnode;
+				RestrictInfo *rinfo = (RestrictInfo *) node;
+				RestrictInfo *newnode;
 
 				FLATCOPY(newnode, rinfo, RestrictInfo);
 				MUTATE(newnode->clause, rinfo->clause, Expr *);
@@ -3467,6 +3473,7 @@ query_tree_mutator(Query *query,
 			FLATCOPY(newnode, wc, WindowClause);
 			MUTATE(newnode->startOffset, wc->startOffset, Node *);
 			MUTATE(newnode->endOffset, wc->endOffset, Node *);
+			MUTATE(newnode->runCondition, wc->runCondition, List *);
 
 			resultlist = lappend(resultlist, (Node *) newnode);
 		}
@@ -4055,8 +4062,6 @@ raw_expression_tree_walker(Node *node,
 
 				if (walker(coldef->typeName, context))
 					return true;
-				if (walker(coldef->compression, context))
-					return true;
 				if (walker(coldef->raw_default, context))
 					return true;
 				if (walker(coldef->collClause, context))
@@ -4250,7 +4255,7 @@ planstate_walk_members(PlanState **planstates, int nplans,
  * Given PlanState, return pointer to aggrefs field if it exists, NULL
  * otherwise.
  */
-List **
+List	  **
 YbPlanStateTryGetAggrefs(PlanState *ps)
 {
 	switch (nodeTag(ps))
@@ -4276,21 +4281,23 @@ YbGetBitmapScanRecheckRequired(PlanState *ps)
 	switch (nodeTag(ps))
 	{
 		case T_BitmapOrState:
-		{
-			BitmapOrState *bos = castNode(BitmapOrState, ps);
-			for (int i = 0; i < bos->nplans; i++)
-				if (YbGetBitmapScanRecheckRequired(bos->bitmapplans[i]))
-					return true;
-			return false;
-		}
+			{
+				BitmapOrState *bos = castNode(BitmapOrState, ps);
+
+				for (int i = 0; i < bos->nplans; i++)
+					if (YbGetBitmapScanRecheckRequired(bos->bitmapplans[i]))
+						return true;
+				return false;
+			}
 		case T_BitmapAndState:
-		{
-			BitmapAndState *bas = castNode(BitmapAndState, ps);
-			for (int i = 0; i < bas->nplans; i++)
-				if (YbGetBitmapScanRecheckRequired(bas->bitmapplans[i]))
-					return true;
-			return false;
-		}
+			{
+				BitmapAndState *bas = castNode(BitmapAndState, ps);
+
+				for (int i = 0; i < bas->nplans; i++)
+					if (YbGetBitmapScanRecheckRequired(bas->bitmapplans[i]))
+						return true;
+				return false;
+			}
 		case T_YbBitmapIndexScanState:
 			return castNode(YbBitmapIndexScanState, ps)->biss_requires_recheck;
 		default:

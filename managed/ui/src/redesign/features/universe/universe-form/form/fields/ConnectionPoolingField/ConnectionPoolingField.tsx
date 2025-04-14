@@ -1,6 +1,6 @@
 import { FC } from 'react';
 import { useUpdateEffect } from 'react-use';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import { YBToggleField, YBLabel, YBTooltip, YBEarlyAccessTag } from '../../../../../../components';
@@ -11,8 +11,6 @@ import {
   YSQL_FIELD,
   SOFTWARE_VERSION_FIELD
 } from '../../../utils/constants';
-//icons
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
 
 interface ConnectionPoolFieldProps {
   disabled: boolean;
@@ -78,15 +76,16 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled 
           />
         </div>
       </YBTooltip>
-      <Box display={'flex'} flexDirection={'row'}>
+      <Box display={'flex'} flexDirection={'column'} width="100%">
         <YBLabel dataTestId="ConnectionPoolingField-Label" width="300px">
-          {t('universeForm.advancedConfig.enableConnectionPooling')} &nbsp;
-          <YBTooltip title={t('universeForm.advancedConfig.conPoolTooltip')}>
-            <img alt="Info" src={InfoMessageIcon} />
-          </YBTooltip>
-          &nbsp;&nbsp;
+          {t('universeForm.advancedConfig.enableConnectionPooling')}&nbsp;
           <YBEarlyAccessTag />
         </YBLabel>
+        <Box>
+          <Typography className={classes.subText}>
+            <Trans>{t('universeForm.advancedConfig.conPoolTooltip')}</Trans>
+          </Typography>
+        </Box>
       </Box>
     </Box>
   );

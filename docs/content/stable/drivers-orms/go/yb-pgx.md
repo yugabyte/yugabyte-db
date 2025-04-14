@@ -98,9 +98,13 @@ The following table describes the connection parameters required to connect, inc
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
 | dbname | Database name | yugabyte |
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300 |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| load_balance | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false |
+| topology_keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Specify comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `load_balance` is false. | Empty |
+| yb_servers_refresh_interval | The interval (in seconds) to refresh the servers list; ignored if `load_balance` is false | 300 |
+| fallback_to_topology_keys_only | If set to true and `topology_keys` are specified, the driver only tries to connect to nodes specified in `topology_keys` | false |
+| failed_host_reconnect_delay_secs | Time (in seconds) to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
+
+In v5.5.3-yb-4 and later, the `load_balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing:
 
@@ -133,7 +137,7 @@ url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1",
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load balances subsequent connection requests across these servers.
 
 #### Use multiple addresses
 
@@ -225,6 +229,10 @@ var baseUrl string = fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 func main() {
     // Create a table and insert a row
     url := fmt.Sprintf("%s?load_balance=true", baseUrl)
+    // If you have a read replica cluster and want to balance
+    // connections across only read replica nodes,
+    // set the load-balance property to 'only-rr' as follows:
+    // url := fmt.Sprintf("%s?load_balance=only-rr", baseUrl)
     fmt.Printf("Connection url: %s\n", url)
     createTable(url)
     printAZInfo()

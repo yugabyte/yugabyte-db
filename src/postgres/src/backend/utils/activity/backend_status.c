@@ -25,9 +25,10 @@
 #include "utils/guc.h"			/* for application_name */
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
+
 
 /* ----------
  * Total number of backends including auxiliary
@@ -198,8 +199,10 @@ CreateSharedBackendStatus(void)
 		}
 	}
 
-	if (YBIsEnabledInPostgresEnvVar()) {
-		Size DatabaseNameBufferSize;
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		Size		DatabaseNameBufferSize;
+
 		DatabaseNameBufferSize = mul_size(NAMEDATALEN, NumBackendStatSlots);
 		DatabaseNameBuffer = (char *)
 			ShmemInitStruct("Database Name Buffer", DatabaseNameBufferSize, &found);
@@ -293,9 +296,9 @@ pgstat_beinit(void)
 		 * Assign the MyBEEntry for an auxiliary process.  Since it doesn't
 		 * have a BackendId, the slot is statically allocated based on the
 		 * auxiliary process type (MyAuxProcType).  Backends use slots indexed
-		 * in the range from 1 to MaxBackends (inclusive), so we use
-		 * MaxBackends + AuxBackendType + 1 as the index of the slot for an
-		 * auxiliary process.
+		 * in the range from 0 to MaxBackends (exclusive), so we use
+		 * MaxBackends + AuxProcType as the index of the slot for an auxiliary
+		 * process.
 		 */
 		MyBEEntry = &BackendStatusArray[MaxBackends + MyAuxProcType];
 	}
@@ -374,10 +377,13 @@ pgstat_bestart(void)
 		 lbeentry.st_backendType == YB_YSQL_CONN_MGR))
 		(*yb_new_conn)++;
 
-	if (YBIsEnabledInPostgresEnvVar() && lbeentry.st_databaseid > 0) {
-		HeapTuple tuple;
+	if (YBIsEnabledInPostgresEnvVar() && lbeentry.st_databaseid > 0)
+	{
+		HeapTuple	tuple;
+
 		tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(lbeentry.st_databaseid));
 		Form_pg_database dbForm;
+
 		dbForm = (Form_pg_database) GETSTRUCT(tuple);
 		strcpy(lbeentry.st_databasename, dbForm->datname.data);
 		ReleaseSysCache(tuple);
@@ -814,7 +820,8 @@ pgstat_read_current_status(void)
 						   NAMEDATALEN * NumBackendStatSlots);
 	localactivity = (char *)
 		MemoryContextAllocHuge(backendStatusSnapContext,
-							   pgstat_track_activity_query_size * NumBackendStatSlots);
+							   (Size) pgstat_track_activity_query_size *
+							   (Size) NumBackendStatSlots);
 #ifdef USE_SSL
 	localsslstatus = (PgBackendSSLStatus *)
 		MemoryContextAlloc(backendStatusSnapContext,
@@ -839,7 +846,8 @@ pgstat_read_current_status(void)
 		 * the source backend is between increment steps.)	We use a volatile
 		 * pointer here to ensure the compiler doesn't try to get cute.
 		 */
-		int attempt = 1;
+		int			attempt = 1;
+
 		while (yb_pgstat_log_read_activity(beentry, ++attempt))
 		{
 			int			before_changecount;
@@ -966,7 +974,8 @@ pgstat_get_backend_current_activity(int pid, bool checkUser)
 		volatile PgBackendStatus *vbeentry = beentry;
 		bool		found;
 
-		int attempt = 1;
+		int			attempt = 1;
+
 		while (yb_pgstat_log_read_activity(vbeentry, ++attempt))
 		{
 			int			before_changecount;
@@ -1300,9 +1309,11 @@ yb_pgstat_add_session_info(uint64_t session_id)
 {
 	volatile PgBackendStatus *vbeentry = NULL;
 
-	/* This code could be invoked either in a regular backend or in an
+	/*
+	 * This code could be invoked either in a regular backend or in an
 	 * auxiliary process. In case of the latter, skip initializing shared
-	 * memory context. See note in pgstat_initalize() */
+	 * memory context. See note in pgstat_initalize()
+	 */
 	if (MyBEEntry == NULL)
 	{
 		/* Must be an auxiliary process */
@@ -1320,7 +1331,8 @@ yb_pgstat_add_session_info(uint64_t session_id)
 }
 
 bool
-yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt) {
+yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt)
+{
 	if (attempt >= YB_MAX_BEENTRIES_ATTEMPTS)
 	{
 		elog(WARNING, "backend status entry for pid %d required %d "
@@ -1338,5 +1350,5 @@ yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt) {
 PgBackendStatus *
 getBackendStatusArray(void)
 {
-  return BackendStatusArray;
+	return BackendStatusArray;
 }

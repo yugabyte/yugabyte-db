@@ -154,7 +154,9 @@ void DocRowwiseIteratorBase::InitForTableType(
   scan_choices_ = ScanChoices::CreateEmpty();
 }
 
-Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSeek skip_seek) {
+Status DocRowwiseIteratorBase::Init(
+    const qlexpr::YQLScanSpec& doc_spec, SkipSeek skip_seek,
+    UseVariableBloomFilter use_variable_bloom_filter) {
   table_type_ = doc_spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
                                                          : TableType::PGSQL_TABLE_TYPE;
   ignore_ttl_ = table_type_ == TableType::PGSQL_TABLE_TYPE;
@@ -172,8 +174,12 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
   const bool is_fixed_point_get =
       !bounds.lower.empty() &&
       VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(bounds.lower, bounds.upper));
-  const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
-                                       : BloomFilterMode::DONT_USE_BLOOM_FILTER;
+  auto bloom_filter = BloomFilterOptions::Inactive();
+  if (is_fixed_point_get) {
+    bloom_filter = BloomFilterOptions::Fixed(bounds.lower.AsSlice());
+  } else if (use_variable_bloom_filter) {
+    bloom_filter = BloomFilterOptions::Variable();
+  }
 
   if (is_forward_scan_) {
     has_bound_key_ = !bounds.upper.empty();
@@ -194,7 +200,7 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
     }
   }
 
-  InitIterator(mode, bounds.lower.AsSlice(), doc_spec.QueryId(), CreateFileFilter(doc_spec));
+  InitIterator(bloom_filter, doc_spec.QueryId(), CreateFileFilter(doc_spec));
 
   if (has_bound_key_) {
     if (is_forward_scan_) {
@@ -256,23 +262,34 @@ bool DocRowwiseIteratorBase::IsFetchedRowStatic() const {
   return fetched_row_static_;
 }
 
-Status DocRowwiseIteratorBase::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) {
+Result<dockv::SubDocKey> DocRowwiseIteratorBase::GetSubDocKey(ReadKey read_key) {
   if (!is_initialized_) {
     return STATUS(Corruption, "Iterator not initialized.");
   }
 
-  // There are no more rows to fetch, so no next SubDocKey to read.
-  auto res = table_type_ == TableType::PGSQL_TABLE_TYPE ? PgFetchNext(nullptr) : FetchNext(nullptr);
-  if (!VERIFY_RESULT(std::move(res))) {
-    DVLOG(3) << "No Next SubDocKey";
-    return Status::OK();
+  bool handled = false;
+  switch (read_key) {
+    case ReadKey::kNext:
+      if (!VERIFY_RESULT(table_type_ == TableType::PGSQL_TABLE_TYPE
+                           ? PgFetchNext(nullptr) : FetchNext(nullptr))) {
+        DVLOG(3) << "No Next SubDocKey";
+        return dockv::SubDocKey();
+      }
+      handled = true;
+      break;
+    case ReadKey::kCurrent:
+      handled = true;
+      break;
+  }
+  if (!handled) {
+    FATAL_INVALID_ENUM_VALUE(ReadKey, read_key);
   }
 
   DocKey doc_key;
   RETURN_NOT_OK(doc_key.FullyDecodeFrom(row_key_));
-  *sub_doc_key = dockv::SubDocKey(doc_key, read_operation_data_.read_time.read);
-  DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
-  return Status::OK();
+  auto sub_doc_key = dockv::SubDocKey(doc_key, read_operation_data_.read_time.read);
+  DVLOG(3) << "Next SubDocKey: " << sub_doc_key.ToString();
+  return sub_doc_key;
 }
 
 Slice DocRowwiseIteratorBase::GetTupleId() const {
@@ -312,10 +329,10 @@ void DocRowwiseIteratorBase::SeekTuple(Slice tuple_id) {
       tuple_key_->Truncate(1 + size);
     }
     tuple_key_->AppendRawBytes(tuple_id);
-    Seek(*tuple_key_);
-  } else {
-    Seek(tuple_id);
+    tuple_id = *tuple_key_;
   }
+  UpdateFilterKey(tuple_id);
+  Seek(tuple_id);
 
   row_key_.Clear();
 }

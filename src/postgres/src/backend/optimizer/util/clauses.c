@@ -368,6 +368,11 @@ contain_subplans_walker(Node *node, void *context)
  * mistakenly think that something like "WHERE random() < 0.5" can be treated
  * as a constant qualification.
  *
+ * This will give the right answer only for clauses that have been put
+ * through expression preprocessing.  Callers outside the planner typically
+ * should use contain_mutable_functions_after_planning() instead, for the
+ * reasons given there.
+ *
  * We will recursively look into Query nodes (i.e., SubLink sub-selects)
  * but not into SubPlans.  See comments for contain_volatile_functions().
  */
@@ -427,6 +432,34 @@ contain_mutable_functions_walker(Node *node, void *context)
 								  context);
 }
 
+/*
+ * contain_mutable_functions_after_planning
+ *	  Test whether given expression contains mutable functions.
+ *
+ * This is a wrapper for contain_mutable_functions() that is safe to use from
+ * outside the planner.  The difference is that it first runs the expression
+ * through expression_planner().  There are two key reasons why we need that:
+ *
+ * First, function default arguments will get inserted, which may affect
+ * volatility (consider "default now()").
+ *
+ * Second, inline-able functions will get inlined, which may allow us to
+ * conclude that the function is really less volatile than it's marked.
+ * As an example, polymorphic functions must be marked with the most volatile
+ * behavior that they have for any input type, but once we inline the
+ * function we may be able to conclude that it's not so volatile for the
+ * particular input type we're dealing with.
+ */
+bool
+contain_mutable_functions_after_planning(Expr *expr)
+{
+	/* We assume here that expression_planner() won't scribble on its input */
+	expr = expression_planner(expr);
+
+	/* Now we can search for non-immutable functions */
+	return contain_mutable_functions((Node *) expr);
+}
+
 
 /*****************************************************************************
  *		Check clauses for volatile functions
@@ -439,6 +472,11 @@ contain_mutable_functions_walker(Node *node, void *context)
  * Returns true if any volatile function (or operator implemented by a
  * volatile function) is found. This test prevents, for example,
  * invalid conversions of volatile expressions into indexscan quals.
+ *
+ * This will give the right answer only for clauses that have been put
+ * through expression preprocessing.  Callers outside the planner typically
+ * should use contain_volatile_functions_after_planning() instead, for the
+ * reasons given there.
  *
  * We will recursively look into Query nodes (i.e., SubLink sub-selects)
  * but not into SubPlans.  This is a bit odd, but intentional.  If we are
@@ -561,6 +599,34 @@ contain_volatile_functions_walker(Node *node, void *context)
 	}
 	return expression_tree_walker(node, contain_volatile_functions_walker,
 								  context);
+}
+
+/*
+ * contain_volatile_functions_after_planning
+ *	  Test whether given expression contains volatile functions.
+ *
+ * This is a wrapper for contain_volatile_functions() that is safe to use from
+ * outside the planner.  The difference is that it first runs the expression
+ * through expression_planner().  There are two key reasons why we need that:
+ *
+ * First, function default arguments will get inserted, which may affect
+ * volatility (consider "default random()").
+ *
+ * Second, inline-able functions will get inlined, which may allow us to
+ * conclude that the function is really less volatile than it's marked.
+ * As an example, polymorphic functions must be marked with the most volatile
+ * behavior that they have for any input type, but once we inline the
+ * function we may be able to conclude that it's not so volatile for the
+ * particular input type we're dealing with.
+ */
+bool
+contain_volatile_functions_after_planning(Expr *expr)
+{
+	/* We assume here that expression_planner() won't scribble on its input */
+	expr = expression_planner(expr);
+
+	/* Now we can search for volatile functions */
+	return contain_volatile_functions((Node *) expr);
 }
 
 /*
@@ -1204,8 +1270,8 @@ contain_leaked_vars_walker(Node *node, void *context)
 
 		case T_YbBatchedExpr:
 			{
-				contain_leaked_vars_walker(
-					(Node *) ((YbBatchedExpr*) node)->orig_expr, context);
+				contain_leaked_vars_walker((Node *) ((YbBatchedExpr *) node)->orig_expr,
+										   context);
 				break;
 			}
 		case T_FuncExpr:
@@ -1439,7 +1505,7 @@ find_nonnullable_rels_walker(Node *node, bool top_level)
 				 * the intersection of the sets of nonnullable rels, just as
 				 * for OR.  Fall through to share code.
 				 */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case OR_EXPR:
 
 				/*
@@ -1664,7 +1730,7 @@ find_nonnullable_vars_walker(Node *node, bool top_level)
 				 * the intersection of the sets of nonnullable vars, just as
 				 * for OR.  Fall through to share code.
 				 */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case OR_EXPR:
 
 				/*
@@ -2298,6 +2364,10 @@ static Node *
 eval_const_expressions_mutator(Node *node,
 							   eval_const_expressions_context *context)
 {
+
+	/* since this function recurses, it could be driven to stack overflow */
+	check_stack_depth();
+
 	if (node == NULL)
 		return NULL;
 	switch (nodeTag(node))
@@ -4270,12 +4340,11 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 	 * Can't simplify if it returns RECORD.  The immediate problem is that it
 	 * will be needing an expected tupdesc which we can't supply here.
 	 *
-	 * In the case where it has OUT parameters, it could get by without an
-	 * expected tupdesc, but we still have issues: get_expr_result_type()
-	 * doesn't know how to extract type info from a RECORD constant, and in
-	 * the case of a NULL function result there doesn't seem to be any clean
-	 * way to fix that.  In view of the likelihood of there being still other
-	 * gotchas, seems best to leave the function call unreduced.
+	 * In the case where it has OUT parameters, we could build an expected
+	 * tupdesc from those, but there may be other gotchas lurking.  In
+	 * particular, if the function were to return NULL, we would produce a
+	 * null constant with no remaining indication of which concrete record
+	 * type it is.  For now, seems best to leave the function call unreduced.
 	 */
 	if (funcform->prorettype == RECORDOID)
 		return NULL;
@@ -4430,7 +4499,7 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	 * Make a temporary memory context, so that we don't leak all the stuff
 	 * that parsing might create.
 	 */
-	mycxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	mycxt = AllocSetContextCreate(CurrentMemoryContext,
 								  "inline_function",
 								  ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(mycxt);
@@ -4569,9 +4638,10 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	 * needed; that's probably not important, but let's be careful.
 	 */
 	querytree_list = list_make1(querytree);
-	if (check_sql_fn_retval(list_make1(querytree_list),
-							result_type, rettupdesc,
-							false, NULL))
+	if (check_sql_fn_retval_ext(list_make1(querytree_list),
+								result_type, rettupdesc,
+								funcform->prokind,
+								false, NULL))
 		goto fail;				/* reject whole-tuple-result cases */
 
 	/*
@@ -5004,7 +5074,7 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	 * Make a temporary memory context, so that we don't leak all the stuff
 	 * that parsing might create.
 	 */
-	mycxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	mycxt = AllocSetContextCreate(CurrentMemoryContext,
 								  "inline_set_returning_function",
 								  ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(mycxt);
@@ -5085,16 +5155,20 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	}
 
 	/*
-	 * Also resolve the actual function result tupdesc, if composite.  If the
-	 * function is just declared to return RECORD, dig the info out of the AS
-	 * clause.
+	 * Also resolve the actual function result tupdesc, if composite.  If we
+	 * have a coldeflist, believe that; otherwise use get_expr_result_type.
+	 * (This logic should match ExecInitFunctionScan.)
 	 */
-	functypclass = get_expr_result_type((Node *) fexpr, NULL, &rettupdesc);
-	if (functypclass == TYPEFUNC_RECORD)
+	if (rtfunc->funccolnames != NIL)
+	{
+		functypclass = TYPEFUNC_RECORD;
 		rettupdesc = BuildDescFromLists(rtfunc->funccolnames,
 										rtfunc->funccoltypes,
 										rtfunc->funccoltypmods,
 										rtfunc->funccolcollations);
+	}
+	else
+		functypclass = get_expr_result_type((Node *) fexpr, NULL, &rettupdesc);
 
 	/*
 	 * The single command must be a plain SELECT.
@@ -5116,9 +5190,10 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	 * shows it's returning a whole tuple result; otherwise what it's
 	 * returning is a single composite column which is not what we need.
 	 */
-	if (!check_sql_fn_retval(list_make1(querytree_list),
-							 fexpr->funcresulttype, rettupdesc,
-							 true, NULL) &&
+	if (!check_sql_fn_retval_ext(list_make1(querytree_list),
+								 fexpr->funcresulttype, rettupdesc,
+								 funcform->prokind,
+								 true, NULL) &&
 		(functypclass == TYPEFUNC_COMPOSITE ||
 		 functypclass == TYPEFUNC_COMPOSITE_DOMAIN ||
 		 functypclass == TYPEFUNC_RECORD))
@@ -5271,24 +5346,27 @@ pull_paramids_walker(Node *node, Bitmapset **context)
 								  (void *) context);
 }
 
-typedef struct replace_varnos_context
+typedef struct
 {
-	Index oldvarno;
-	Index newvarno;
-} replace_varnos_context;
+	Index		oldvarno;
+	Index		newvarno;
+} yb_replace_varnos_context;
 
-static Node *yb_copy_replace_varnos_mutator(Node *node,
-											replace_varnos_context *context)
+static Node *
+yb_copy_replace_varnos_mutator(Node *node,
+							   yb_replace_varnos_context *context)
 {
 	if (node == NULL)
 		return NULL;
 
 	if (IsA(node, Var))
 	{
-		Var *var = (Var *) node;
+		Var		   *var = (Var *) node;
+
 		if (var->varno == context->oldvarno)
 		{
-			Var *newvar = copyObject(var);
+			Var		   *newvar = copyObject(var);
+
 			newvar->varno = context->newvarno;
 			return (Node *) newvar;
 		}
@@ -5299,9 +5377,11 @@ static Node *yb_copy_replace_varnos_mutator(Node *node,
 								   (void *) context);
 }
 
-Expr *yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno)
+Expr *
+yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno)
 {
-	replace_varnos_context ctx;
+	yb_replace_varnos_context ctx;
+
 	ctx.oldvarno = oldvarno;
 	ctx.newvarno = newvarno;
 	return (Expr *) yb_copy_replace_varnos_mutator((Node *) expr,

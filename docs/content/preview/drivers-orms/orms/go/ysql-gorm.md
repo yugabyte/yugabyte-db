@@ -28,7 +28,7 @@ The source for the above application can be found in the [repository](https://gi
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 - Go 1.21, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
 
 ## Clone the "orm-examples" repository
@@ -55,7 +55,7 @@ go mod tidy
 
 ## Build and run the application
 
-Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` command from the YugabyteDB home directory.
+Create the `ysql_gorm` database in YugabyteDB by running the following ysqlsh command from the YugabyteDB home directory.
 
 ```sh
 $ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
@@ -122,7 +122,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

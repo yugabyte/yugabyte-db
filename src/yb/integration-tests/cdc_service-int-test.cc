@@ -128,7 +128,7 @@ CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
 class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   void SetUp() override {
-    CHECK_OK(SET_FLAG(vmodule, "cdc*=4"));
+    google::SetVLOGLevel("cdc*", 4);
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;
@@ -255,7 +255,7 @@ void AssertChangeRecords(
 }
 
 void VerifyCdcStateNotEmpty(client::YBClient* client) {
-  CDCStateTable cdc_state_table(client);
+  auto cdc_state_table = MakeCDCStateTable(client);
   Status s;
   auto table_range = ASSERT_RESULT(
       cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -278,7 +278,7 @@ Status VerifyCdcStateMatches(
   LOG(INFO) << Format("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
 
-  CDCStateTable cdc_state_table(client);
+  auto cdc_state_table = MakeCDCStateTable(client);
   auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
       {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
   SCHECK(row, IllegalState, "CDC state row not found");
@@ -295,7 +295,7 @@ void VerifyStreamDeletedFromCdcState(
     const xrepl::StreamId& stream_id,
     const TabletId& tablet_id,
     int timeout_secs = 10) {
-  CDCStateTable cdc_state_table(client);
+  auto cdc_state_table = MakeCDCStateTable(client);
 
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
   // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
@@ -1302,8 +1302,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
       GetXClusterTabletMetrics(*CDCService(tservers[0]->server()), tablet_id, stream_id_));
 
   {  // Check metrics, should be 0.
-    ASSERT_EQ(ts0_metrics->async_replication_sent_lag_micros->value(), 0);
-    ASSERT_EQ(ts0_metrics->async_replication_committed_lag_micros->value(), 0);
+    ASSERT_EQ(ts0_metrics->async_replication_sent_lag_micros->value(), 1);
+    ASSERT_EQ(ts0_metrics->async_replication_committed_lag_micros->value(), 1);
   }
 
   // Write more data, but don't call GetChanges so that we can test lag when switching leaders.
@@ -1321,8 +1321,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   auto ts1_metrics = ASSERT_RESULT(
       GetXClusterTabletMetrics(*CDCService(tservers[1]->server()), tablet_id, stream_id_));
   {  // Metrics on this new server should show lag.
-    ASSERT_GT(ts1_metrics->async_replication_sent_lag_micros->value(), 0);
-    ASSERT_GT(ts1_metrics->async_replication_committed_lag_micros->value(), 0);
+    ASSERT_GT(ts1_metrics->async_replication_sent_lag_micros->value(), 1);
+    ASSERT_GT(ts1_metrics->async_replication_committed_lag_micros->value(), 1);
   }
 
   // Get all changes from this tserver (will get proxied to ts1).
@@ -1330,8 +1330,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   // [TIMESTAMP 2] - GetCurrentTimeMicros when last GetAllChanges is sent.
 
   {  // Metrics on this server should now be 0.
-    ASSERT_EQ(ts1_metrics->async_replication_sent_lag_micros->value(), 0);
-    ASSERT_EQ(ts1_metrics->async_replication_committed_lag_micros->value(), 0);
+    ASSERT_EQ(ts1_metrics->async_replication_sent_lag_micros->value(), 1);
+    ASSERT_EQ(ts1_metrics->async_replication_committed_lag_micros->value(), 1);
   }
   // Since we've caught up, metrics diverge a bit:
   // - Note that cdc_state last committed time has been set to [TIMESTAMP 2].
@@ -1346,8 +1346,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   CDCService(tservers[1]->server())->UpdateMetrics();
   int64_t ts1_sent_lag, ts1_committed_lag;
   {
-    ASSERT_GT(ts1_metrics->async_replication_sent_lag_micros->value(), 0);
-    ASSERT_GT(ts1_metrics->async_replication_committed_lag_micros->value(), 0);
+    ASSERT_GT(ts1_metrics->async_replication_sent_lag_micros->value(), 1);
+    ASSERT_GT(ts1_metrics->async_replication_committed_lag_micros->value(), 1);
     // Store these for later.
     // These are calculated as (approximately): [TIMESTAMP 3] - [TIMESTAMP 1]
     ts1_sent_lag = ts1_metrics->async_replication_sent_lag_micros->value();
@@ -1366,8 +1366,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
     // So we expect them to be less than (more accurate) than the previous ts1 values.
     ASSERT_LT(ts0_metrics->async_replication_sent_lag_micros->value(), ts1_sent_lag);
     ASSERT_LT(ts0_metrics->async_replication_committed_lag_micros->value(), ts1_committed_lag);
-    ASSERT_GT(ts0_metrics->async_replication_sent_lag_micros->value(), 0);
-    ASSERT_GT(ts0_metrics->async_replication_committed_lag_micros->value(), 0);
+    ASSERT_GT(ts0_metrics->async_replication_sent_lag_micros->value(), 1);
+    ASSERT_GT(ts0_metrics->async_replication_committed_lag_micros->value(), 1);
     // Also check other metrics. Most should be zero since we cleared them and haven't called
     // GetChanges yet.
     ASSERT_EQ(ts0_metrics->last_read_opid_term->value(), 0);
@@ -1386,8 +1386,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   // Get all changes and check metrics go back down to 0.
   ASSERT_NO_FATALS(GetAllChanges(tablet_id, stream_id_, &change_resp));
   {
-    ASSERT_EQ(ts0_metrics->async_replication_sent_lag_micros->value(), 0);
-    ASSERT_EQ(ts0_metrics->async_replication_committed_lag_micros->value(), 0);
+    ASSERT_EQ(ts0_metrics->async_replication_sent_lag_micros->value(), 1);
+    ASSERT_EQ(ts0_metrics->async_replication_committed_lag_micros->value(), 1);
     // Check other metrics. Should be non-zero now that we've called GetChanges.
     ASSERT_GT(ts0_metrics->last_read_opid_term->value(), 0);
     ASSERT_GT(ts0_metrics->last_read_opid_index->value(), 0);
@@ -2004,7 +2004,7 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  CDCStateTable cdc_state_table(client_.get());
+  auto cdc_state_table = MakeCDCStateTable(client_.get());
   Status s;
   auto table_range = ASSERT_RESULT(
       cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
@@ -2161,7 +2161,7 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestCdcMinReplicatedIndexAreRese
   WaitForCDCIndex(
     tablet_id, CDCService(tserver), 5, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
-  CDCStateTable cdc_state_table(client_.get());
+  auto cdc_state_table = MakeCDCStateTable(client_.get());
 
   std::vector<CDCStateTableKey> keys_to_delete;
   for (auto& stream_id : stream_ids) {

@@ -26,7 +26,7 @@ var updateAWSProviderCmd = &cobra.Command{
 	Short:   "Update an AWS YugabyteDB Anywhere provider",
 	Long:    "Update an AWS provider in YugabyteDB Anywhere",
 	Example: `yba provider aws update --name <provider-name> \
-	--remove-region <region-1> --remove-region <region-2>`,
+	 --remove-region <region-1> --remove-region <region-2>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -92,7 +92,11 @@ var updateAWSProviderCmd = &cobra.Command{
 		}
 
 		if len(strings.TrimSpace(provider.GetName())) == 0 {
-			errMessage := fmt.Sprintf("No provider %s in cloud type %s.", providerName, providerCode)
+			errMessage := fmt.Sprintf(
+				"No provider %s in cloud type %s.",
+				providerName,
+				providerCode,
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
 		}
 
@@ -133,7 +137,8 @@ var updateAWSProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(accessKeyID)) != 0 && len(strings.TrimSpace(secretAccessKey)) != 0 {
+		if len(strings.TrimSpace(accessKeyID)) != 0 &&
+			len(strings.TrimSpace(secretAccessKey)) != 0 {
 			logrus.Debug("Updating AWS credentials\n")
 			awsCloudInfo.SetAwsAccessKeyID(accessKeyID)
 			awsCloudInfo.SetAwsAccessKeySecret(secretAccessKey)
@@ -234,7 +239,13 @@ var updateAWSProviderCmd = &cobra.Command{
 
 		providerRegions = removeAWSRegions(removeRegions, providerRegions)
 
-		providerRegions = editAWSRegions(editRegions, addZones, editZones, removeZones, providerRegions)
+		providerRegions = editAWSRegions(
+			editRegions,
+			addZones,
+			editZones,
+			removeZones,
+			providerRegions,
+		)
 
 		providerRegions = addAWSRegions(addRegions, addZones, providerRegions)
 
@@ -390,7 +401,7 @@ func init() {
 			" The default for SSH Port is 22, IMDSv2 ("+
 			"This should be true if the Image bundle requires Instance Metadata Service v2)"+
 			" is false. Default marks the image bundle as default for the provider. "+
-			"Allowed values for architecture are x86_64 and arm64."+
+			"Allowed values for architecture are x86_64 and arm64/aarch64."+
 			"Each image bundle can be added using separate --add-image-bundle flag.")
 	updateAWSProviderCmd.Flags().StringArray("add-image-bundle-region-override", []string{},
 		"[Optional] Add Image bundle region overrides associated with the provider. "+
@@ -698,7 +709,8 @@ func editAWSImageBundles(
 					if len(imageBundle["ssh-port"]) != 0 {
 						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
 						if err != nil {
-							errMessage := err.Error() + " Using SSH Port as 22\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -709,7 +721,8 @@ func editAWSImageBundles(
 					if len(imageBundle["imdsv2"]) != 0 {
 						useIMDSv2, err := strconv.ParseBool(imageBundle["imdsv2"])
 						if err != nil {
-							errMessage := err.Error() + " Setting default as false\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'imdsv2'. Setting it to 'false'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -722,7 +735,8 @@ func editAWSImageBundles(
 					if len(imageBundle["default"]) != 0 {
 						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
 						if err != nil {
-							errMessage := err.Error() + " Setting default as false\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -751,7 +765,10 @@ func editAWSImageBundleRegionOverrides(
 	}
 
 	for _, imageBundleString := range editImageBundleRegionOverrides {
-		override := providerutil.BuildImageBundleRegionOverrideMapFromString(imageBundleString, "edit")
+		override := providerutil.BuildImageBundleRegionOverrideMapFromString(
+			imageBundleString,
+			"edit",
+		)
 		if strings.Compare(override["uuid"], bundleUUID) == 0 {
 			for k, v := range override {
 				if _, ok := imageBundleRegionOverrides[k]; ok {
@@ -791,7 +808,8 @@ func addAWSImageBundles(
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
 		if err != nil {
-			errMessage := err.Error() + " Using SSH Port as 22\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -800,7 +818,8 @@ func addAWSImageBundles(
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -809,7 +828,8 @@ func addAWSImageBundles(
 
 		useIMDSv2, err := strconv.ParseBool(bundle["imdsv2"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'imdsv2'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

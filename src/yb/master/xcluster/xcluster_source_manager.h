@@ -164,7 +164,7 @@ class XClusterSourceManager {
       const LeaderEpoch& epoch);
 
   std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
-      NamespaceId namespace_filter);
+      NamespaceId namespace_filter) const;
 
   struct XClusterOutboundReplicationGroupUserInfo {
     std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>
@@ -178,6 +178,8 @@ class XClusterSourceManager {
   bool IsTableReplicated(const TableId& table_id) const EXCLUDES(tables_to_stream_map_mutex_);
 
   Status ValidateSplitCandidateTable(const TableId& table_id) const;
+
+  bool IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const;
 
  private:
   friend class XClusterOutboundReplicationGroup;
@@ -204,6 +206,8 @@ class XClusterSourceManager {
   Result<std::shared_ptr<XClusterOutboundReplicationGroup>> GetOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id) const
       EXCLUDES(outbound_replication_group_map_mutex_);
+
+  Status SetNormalOidCounterAboveAllNormalOids(NamespaceId namespace_id);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsForDbScoped(
       const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
@@ -251,6 +255,10 @@ class XClusterSourceManager {
 
   Status SetupDDLReplicationExtension(
       const NamespaceId& namespace_id, StdStatusCallback callback) const;
+
+  Status DropDDLReplicationExtensionIfExists(
+      const NamespaceId& namespace_id,
+      const xcluster::ReplicationGroupId& drop_replication_group_id) const;
 
   Master& master_;
   CatalogManager& catalog_manager_;

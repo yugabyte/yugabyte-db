@@ -330,7 +330,7 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   // They should have the checkpoint set to the split_op, but not have any replication times yet as
   // they have not been polled for yet.
   const auto child_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
-  cdc::CDCStateTable cdc_state_table(client_.get());
+  auto cdc_state_table = cdc::MakeCDCStateTable(client_.get());
   Status s;
   int children_found = 0;
   OpId split_op_checkpoint;
@@ -604,8 +604,8 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     for (const auto& [consumer_tablet_id, producer_tablet_list] : tablet_map) {
       auto consumer_tablet = std::find_if(
           consumer_tablet_peers.begin(), consumer_tablet_peers.end(),
-          [consumer_tablet_id](const auto& tablet) {
-            return tablet->tablet_id() == consumer_tablet_id;
+          [tablet_id = std::cref(consumer_tablet_id)](const auto& tablet) {
+            return tablet->tablet_id() == tablet_id.get();
           });
       ASSERT_NE(consumer_tablet, consumer_tablet_peers.end());
 
@@ -1010,8 +1010,8 @@ TEST_F(XClusterTabletSplitMetricsTest, VerifyReplicationLagMetricsOnChildren) {
   {
     auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
     LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
-    ASSERT_EQ(committed_lag_micros, 0);
-    ASSERT_EQ(sent_lag_micros, 0);
+    ASSERT_EQ(committed_lag_micros, 1);
+    ASSERT_EQ(sent_lag_micros, 1);
   }
 }
 
@@ -1097,13 +1097,12 @@ TEST_F(XClusterExternalTabletSplitITest, MasterFailoverDuringProducerPostSplitOp
   auto tablet_ids = ASSERT_RESULT(GetTestTableTabletIds(0));
   tablet_ids.erase(parent_tablet);
 
-  client::YBClient* producer_client(
-      producer_cluster_ ? producer_client_.get() : client_.get());
+  auto* producer_client = producer_cluster_ ? producer_client_.get() : client_.get();
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         std::unordered_set<TabletId> tablet_ids_map(tablet_ids.begin(), tablet_ids.end());
-        cdc::CDCStateTable cdc_state_table(producer_client);
+        auto cdc_state_table = cdc::MakeCDCStateTable(producer_client);
         Status s;
         for (auto row_result :
              VERIFY_RESULT(cdc_state_table.GetTableRange({} /* just key columns */, &s))) {

@@ -15,6 +15,7 @@
 #include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/consensus/consensus.h"
@@ -83,12 +84,11 @@ Result<bool> IsBootstrapRequiredForTablet(
   OpId next_index = min_op_id;
   next_index.index++;
 
-  int64_t last_readable_opid_index;
   auto consensus = VERIFY_RESULT_OR_SET_CODE(
       tablet_peer->GetConsensus(), CDCError(CDCErrorPB::LEADER_NOT_READY));
 
-  auto log_result = consensus->ReadReplicatedMessagesForCDC(
-      next_index, &last_readable_opid_index, deadline, true /* fetch_single_entry */);
+  auto log_result = consensus->ReadReplicatedMessagesForXCluster(
+      next_index, deadline, /*fetch_single_entry=*/true);
 
   if (!log_result.ok()) {
     if (log_result.status().IsNotFound()) {
@@ -123,6 +123,7 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
   RETURN_NOT_OK(UpdateCdcStateTableWithCheckpoints());
 
   if (req_.check_if_bootstrap_required()) {
+    LOG_WITH_FUNC(INFO) << "Checking if bootstrap is required.";
     resp_->set_bootstrap_required(VERIFY_RESULT(IsBootstrapRequired()));
   }
 

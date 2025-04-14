@@ -32,31 +32,39 @@ class TableIndex {
   // the catalog manager has a pattern of looping through:
   //     * transaction tables (done through an additional set functioning as an index)
   //     * non system tables
-  class ColocatedUserTableTag;
+  class SecondaryTableTag;
   // Use a boost::multi_index_container to speed up common operations on tables by adding additional
   // indices. Indices:
   //     Primary index on TableId for point lookups.
-  //     Secondary index on IsColocatedUserTable to speed up the tablet split manager and load
+  //     Secondary index on IsSecondaryTable to speed up the tablet split manager and load
   //     balancer for clusters with many colocated tables.
   using Tables = boost::multi_index_container<
     TableInfoPtr,
     boost::multi_index::indexed_by<
-      boost::multi_index::hashed_unique<
+      boost::multi_index::ordered_unique<
         boost::multi_index::const_mem_fun<TableInfo, const TableId&, &TableInfo::id>>,
       boost::multi_index::hashed_non_unique<
-        boost::multi_index::tag<ColocatedUserTableTag>,
-        boost::multi_index::const_mem_fun<TableInfo, bool, &TableInfo::IsColocatedUserTable>>>>;
+        boost::multi_index::tag<SecondaryTableTag>,
+        boost::multi_index::const_mem_fun<TableInfo, bool, &TableInfo::IsSecondaryTable>>>>;
 
-  using TablesRange = boost::iterator_range<Tables::nth_index<1>::type::iterator>;
+  using TablesRange = boost::iterator_range<Tables::iterator>;
+  using PrimaryTablesRange = boost::iterator_range<
+      Tables::index<SecondaryTableTag>::type::iterator>;
 
   TableIndex() = default;
   ~TableIndex() = default;
-  scoped_refptr<TableInfo> FindTableOrNull(const TableId& id) const;
+  TableInfoPtr FindTableOrNull(const TableId& id) const;
 
-  TablesRange GetAllTables() const;
-  TablesRange GetPrimaryTables() const;
+  TablesRange GetAllTables() const {
+    return TablesRange(tables_);
+  }
 
-  void AddOrReplace(const scoped_refptr<TableInfo>& table);
+  PrimaryTablesRange GetPrimaryTables() const {
+    return boost::make_iterator_range(
+        tables_.get<SecondaryTableTag>().equal_range(false));
+  }
+
+  void AddOrReplace(const TableInfoPtr& table);
 
   void Clear();
 

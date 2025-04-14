@@ -324,12 +324,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Increases consumption of this tracker and its ancestors by 'bytes'.
   void Consume(int64_t bytes);
 
-  // Try to expand the limit (by asking the resource broker for more memory) by at least
-  // 'bytes'. Returns false if not possible, true if the request succeeded. May allocate
-  // more memory than was requested.
-  // TODO: always returns false for now, not yet implemented.
-  bool ExpandLimit(int64_t /* unused: bytes */) { return false; }
-
   // Increases consumption of this tracker and its ancestors by 'bytes' only if
   // they can all consume 'bytes'. If this brings any of them over, none of them
   // are updated.
@@ -548,6 +542,14 @@ class MemTrackerAllocator : public Alloc {
     mem_tracker_->Consume(n * sizeof(T));
     return Alloc::allocate(n);
   }
+
+#ifdef __cpp_lib_allocate_at_least
+  std::allocation_result<T*> allocate_at_least(size_type n) {
+    auto result = Alloc::allocate_at_least(n);
+    mem_tracker_->Consume(result.count * sizeof(T));
+    return result;
+  }
+#endif
 
   void deallocate(T* p, size_type n) {
     Alloc::deallocate(p, n);

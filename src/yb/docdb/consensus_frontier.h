@@ -25,8 +25,7 @@
 
 #include "yb/util/uuid.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 inline HybridTime NormalizeHistoryCutoff(HybridTime history_cutoff) {
   if (history_cutoff == HybridTime::kMin) {
@@ -126,7 +125,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   // Merge current frontier with provided map, preferring min values.
   void MakeExternalSchemaVersionsAtMost(
-      std::unordered_map<Uuid, SchemaVersion, UuidHash>* min_schema_versions) const;
+      std::unordered_map<Uuid, SchemaVersion>* min_schema_versions) const;
 
   HybridTime max_value_level_ttl_expiration_time() const {
     return max_value_level_ttl_expiration_time_;
@@ -140,6 +139,16 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     return hybrid_time_.ToUint64();
   }
 
+  void SetBackfillDone();
+  void SetBackfillPosition(Slice key);
+
+  bool backfill_done() const {
+    return backfill_done_;
+  }
+
+  Slice backfill_key() const {
+    return backfill_key_;
+  }
 
  private:
   OpId op_id_;
@@ -156,7 +165,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   HybridTime max_value_level_ttl_expiration_time_;
 
   std::optional<SchemaVersion> primary_schema_version_;
-  std::unordered_map<Uuid, SchemaVersion, UuidHash> cotable_schema_versions_;
+  std::unordered_map<Uuid, SchemaVersion> cotable_schema_versions_;
 
   // Serialized filter that is set only for the largest frontier of sst files
   // during restore. There are two types of filter - a global filter
@@ -177,9 +186,12 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   ------------------------------------------------------------------------------------------------
   */
   ByteBuffer<64> hybrid_time_filter_;
+
+  bool backfill_done_ = false;
+  std::string backfill_key_;
 };
 
-typedef rocksdb::UserFrontiersBase<ConsensusFrontier> ConsensusFrontiers;
+using ConsensusFrontiers = rocksdb::UserFrontiersBase<ConsensusFrontier>;
 
 inline void set_op_id(const OpId& op_id, ConsensusFrontiers* frontiers) {
   frontiers->Smallest().set_op_id(op_id);
@@ -207,5 +219,25 @@ void AddTableSchemaVersion(
 uint64_t ExtractGlobalFilter(Slice filter);
 void IterateCotablesFilter(Slice filter, const std::function<void(uint32_t, uint64_t)>& callback);
 
-} // namespace docdb
-} // namespace yb
+template <class DB>
+OpId MaxPersistentOpIdForDb(DB* db, bool invalid_if_no_new_data) {
+  // A possible race condition could happen, when data is written between this query and
+  // actual log gc. But it is not a problem as long as we are reading committed op id
+  // before MaxPersistentOpId, since we always keep last committed entry in the log during garbage
+  // collection.
+  // See TabletPeer::GetEarliestNeededLogIndex
+  if (db == nullptr ||
+      (invalid_if_no_new_data &&
+       db->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData)) {
+    return OpId::Invalid();
+  }
+
+  auto frontier = db->GetFlushedFrontier();
+  if (!frontier) {
+    return OpId();
+  }
+
+  return down_cast<ConsensusFrontier*>(frontier.get())->op_id();
+}
+
+} // namespace yb::docdb

@@ -136,7 +136,12 @@ var createReleaseCmd = &cobra.Command{
 
 		rGet, response, err := authAPI.GetNewRelease(resourceUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "Create - Get Release")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Release",
+				"Create - Get Release",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -161,11 +166,11 @@ func init() {
 	createReleaseCmd.MarkFlagRequired("version")
 
 	createReleaseCmd.Flags().String("type", "",
-		"[Required] Release type. Allowed values: LTS, STS, PREVIEW")
+		"[Required] Release type. Allowed values: lts, sts, preview")
 	createReleaseCmd.MarkFlagRequired("type")
 
 	createReleaseCmd.Flags().String("platform", "LINUX",
-		"[Optional] Platform supported by this version. Allowed values: LINUX, KUBERNETES")
+		"[Optional] Platform supported by this version. Allowed values: linux, kubernetes")
 
 	createReleaseCmd.Flags().String("arch", "",
 		fmt.Sprintf(

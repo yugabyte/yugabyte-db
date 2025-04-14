@@ -31,7 +31,7 @@
 namespace yb::pggate {
 
 PgDmlWrite::PgDmlWrite(
-    const PgSession::ScopedRefPtr& pg_session, YBCPgTransactionSetting transaction_setting,
+    const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
     bool packed)
     : PgDml(pg_session), transaction_setting_(transaction_setting), packed_(packed) {
 }
@@ -42,7 +42,7 @@ Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
 
   auto write_op = ArenaMakeShared<PgsqlWriteOp>(
       arena_ptr(), &arena(),
-      /* need_transaction= */ transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL,
+      /* need_transaction= */ transaction_setting_ == YbcPgTransactionSetting::YB_TRANSACTIONAL,
       is_region_local);
 
   write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
@@ -165,21 +165,12 @@ LWPgsqlExpressionPB* PgDmlWrite::AllocTargetPB() {
   return write_req_->add_targets();
 }
 
-LWPgsqlExpressionPB* PgDmlWrite::AllocQualPB() {
-  LOG(FATAL) << "Pure virtual function is being called";
-  return nullptr;
-}
-
-LWPgsqlColRefPB* PgDmlWrite::AllocColRefPB() {
-  return write_req_->add_col_refs();
-}
-
-void PgDmlWrite::ClearColRefPBs() {
-  write_req_->mutable_col_refs()->clear();
+ArenaList<LWPgsqlColRefPB>& PgDmlWrite::ColRefPBs() {
+  return *write_req_->mutable_col_refs();
 }
 
 template <class T>
-T DatumToYb(const YBCPgTypeEntity* type_entity, uint64_t datum) {
+T DatumToYb(const YbcPgTypeEntity* type_entity, uint64_t datum) {
   T value;
   type_entity->datum_to_yb(datum, &value, nullptr);
   return value;
@@ -187,7 +178,7 @@ T DatumToYb(const YBCPgTypeEntity* type_entity, uint64_t datum) {
 
 template <class T>
 void PackAsUInt32(
-    const YBCPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
+    const YbcPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
     ValueBuffer* out) {
   char* buf = out->GrowByAtLeast(1 + sizeof(uint32_t));
   *buf++ = static_cast<char>(type);
@@ -196,7 +187,7 @@ void PackAsUInt32(
 
 template <class T>
 void PackAsUInt64(
-    const YBCPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
+    const YbcPgTypeEntity* type_entity, uint64_t datum, dockv::ValueEntryType type,
     ValueBuffer* out) {
   char* buf = out->GrowByAtLeast(1 + sizeof(uint64_t));
   *buf++ = static_cast<char>(type);
@@ -205,7 +196,7 @@ void PackAsUInt64(
 
 class PackableBindColumn final : public dockv::PackableValue {
  public:
-  explicit PackableBindColumn(YBCBindColumn* column) : column_(column) {}
+  explicit PackableBindColumn(YbcBindColumn* column) : column_(column) {}
 
   void PackToV1(ValueBuffer* out) const override {
     using dockv::ValueEntryType;
@@ -252,6 +243,8 @@ class PackableBindColumn final : public dockv::PackableValue {
         PackAsUInt64<uint64_t>(type_entity, datum, ValueEntryType::kUInt64, out);
         return;
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_BSON: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY: {
         char *value;
         int64_t bytes = type_entity->datum_fixed_size;
@@ -319,6 +312,8 @@ class PackableBindColumn final : public dockv::PackableValue {
       case YB_YQL_DATA_TYPE_UINT64:
         return 9;
 
+      case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_BSON: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY: {
         char *value;
         int64_t bytes = type_entity->datum_fixed_size;
@@ -377,7 +372,7 @@ class PackableBindColumn final : public dockv::PackableValue {
     return DatumToYb<T>(column_->type_entity, column_->datum);
   }
 
-  YBCBindColumn* column_;
+  YbcBindColumn* column_;
 };
 
 class EmptyMissingValueProvider : public MissingValueProvider {
@@ -388,7 +383,7 @@ class EmptyMissingValueProvider : public MissingValueProvider {
   }
 };
 
-Status PgDmlWrite::BindRow(uint64_t ybctid, YBCBindColumn* columns, int count) {
+Status PgDmlWrite::BindRow(uint64_t ybctid, YbcBindColumn* columns, int count) {
   if (packed_) {
     return BindPackedRow(ybctid, columns, count);
   }
@@ -412,7 +407,7 @@ Status PgDmlWrite::BindRow(uint64_t ybctid, YBCBindColumn* columns, int count) {
   return Status::OK();
 }
 
-Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YBCBindColumn* columns, int count) {
+Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YbcBindColumn* columns, int count) {
   {
     const auto* type_entity = YBCPgFindTypeEntity(BYTEAOID);
     uint8_t *value;

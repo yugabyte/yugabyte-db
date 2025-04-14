@@ -17,13 +17,15 @@
 #include <string>
 #include <type_traits>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include "yb/util/kv_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/operation_counter.h"
 
@@ -34,6 +36,16 @@ using YbctidBounds = std::pair<Slice, Slice>;
 // An interface to support various different storage backends for a QL table.
 class YQLStorageIf {
  public:
+  struct BlocksSamplingState {
+    size_t num_blocks_processed;
+    size_t num_blocks_collected;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(num_blocks_processed, num_blocks_collected);
+    }
+  };
+  using SampleBlocksReservoir = std::vector<std::pair<KeyBuffer, KeyBuffer>>;
+
   typedef std::unique_ptr<YQLStorageIf> UniPtr;
   typedef std::shared_ptr<YQLStorageIf> SharedPtr;
 
@@ -105,7 +117,16 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
+      SkipSeek skip_seek = SkipSeek::kFalse,
+      UseVariableBloomFilter use_variable_bloom_filter = UseVariableBloomFilter::kFalse) const = 0;
+
+  // Returns up to num_blocks_for_sample number of sample blocks boundaries.
+  // Each boundary is an encoded doc key or its prefix.
+  // Lower bound is inclusive, upper bound is exclusive.
+  virtual Result<SampleBlocksReservoir> GetSampleBlocks(
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      DocDbBlocksSamplingMethod blocks_sampling_method,
+      size_t num_blocks_for_sample, BlocksSamplingState* state) const = 0;
 
   virtual std::string ToString() const = 0;
 };

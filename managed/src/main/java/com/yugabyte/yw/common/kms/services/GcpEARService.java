@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.GcpAlgorithm;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -88,10 +89,10 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
   }
 
   @Override
-  protected byte[] createKeyWithService(
+  protected EncryptionKey createKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) throws IOException {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
-    byte[] result;
+    EncryptionKey result;
     ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
     // Ensure the key ring exists from GCP KMS
     String keyRingRN = gcpEARServiceUtil.getKeyRingRN(authConfig);
@@ -109,23 +110,23 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
     }
     switch (config.type) {
       case CMK:
-        result = gcpEARServiceUtil.getCryptoKey(authConfig).getName().getBytes();
+        result = new EncryptionKey(gcpEARServiceUtil.getCryptoKey(authConfig).getName().getBytes());
         break;
       default:
         // Generate random byte array and encrypt it.
         // Store the encrypted byte array locally in the db.
         byte[] keyBytes = gcpEARServiceUtil.generateRandomBytes(authConfig, numBytes);
-        result = gcpEARServiceUtil.encryptBytes(authConfig, keyBytes);
+        result = new EncryptionKey(gcpEARServiceUtil.encryptBytes(authConfig, keyBytes));
         break;
     }
     return result;
   }
 
   @Override
-  protected byte[] rotateKeyWithService(
+  protected EncryptionKey rotateKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) throws IOException {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
-    byte[] result;
+    EncryptionKey result;
     ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
     // Ensure the key ring exists from GCP KMS to universe UUID
     String keyRingRN = gcpEARServiceUtil.getKeyRingRN(authConfig);
@@ -144,12 +145,13 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
     // Generate random byte array and encrypt it.
     // Store the encrypted byte array locally in the db.
     byte[] keyBytes = gcpEARServiceUtil.generateRandomBytes(authConfig, numBytes);
-    result = gcpEARServiceUtil.encryptBytes(authConfig, keyBytes);
+    result = new EncryptionKey(gcpEARServiceUtil.encryptBytes(authConfig, keyBytes));
     return result;
   }
 
   @Override
-  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
+  public byte[] retrieveKeyWithService(
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
     byte[] keyVal;
     try {
@@ -169,7 +171,7 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
 
   @Override
   protected byte[] validateRetrieveKeyWithService(
-      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConfig, ObjectNode encryptionContext) {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
     byte[] keyVal;
     try {
@@ -190,7 +192,7 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
   }
 
   @Override
-  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+  public EncryptionKey encryptKeyWithService(UUID configUUID, byte[] universeKey) {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
     byte[] encryptedUniverseKey;
     try {
@@ -207,7 +209,7 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
       LOG.error(errMsg, e);
       throw new RuntimeException(errMsg, e);
     }
-    return encryptedUniverseKey;
+    return new EncryptionKey(encryptedUniverseKey);
   }
 
   @Override

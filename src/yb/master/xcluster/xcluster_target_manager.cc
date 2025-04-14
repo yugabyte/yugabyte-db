@@ -13,7 +13,11 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+
+#include "yb/common/colocated_util.h"
+#include "yb/common/constants.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/strings/util.h"
@@ -23,6 +27,9 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
@@ -41,6 +48,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
+using namespace std::placeholders;
+
 DEPRECATE_FLAG(bool, xcluster_wait_on_ddl_alter, "11_2024");
 
 DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 * 60,
@@ -49,6 +58,7 @@ DEFINE_RUNTIME_uint32(add_new_index_to_bidirectional_xcluster_timeout_secs, 10 *
     "--ysql_auto_add_new_index_to_bidirectional_xcluster is set.");
 
 DECLARE_bool(ysql_auto_add_new_index_to_bidirectional_xcluster);
+DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb::master {
@@ -78,7 +88,6 @@ Status XClusterTargetManager::Init() {
   DCHECK(!safe_time_service_);
   safe_time_service_ = std::make_unique<XClusterSafeTimeService>(
       &master_, &catalog_manager_, master_.metric_registry());
-  RETURN_NOT_OK(safe_time_service_->Init());
 
   return Status::OK();
 }
@@ -172,8 +181,7 @@ Result<HybridTime> XClusterTargetManager::GetXClusterSafeTime(
   return HybridTime(l->pb.safe_time_map().at(namespace_id));
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap()
-    const {
+XClusterNamespaceToSafeTimeMap XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap() const {
   XClusterNamespaceToSafeTimeMap result;
   auto l = safe_time_info_.LockForRead();
 
@@ -585,18 +593,59 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   SCHECK_FORMAT(replication_info, NotFound, "Replication group $0 not found", replication_group_id);
 
   const auto cluster_config = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
-  auto l = replication_info->LockForRead();
-  return GetUniverseReplicationInfo(l->pb, cluster_config);
+  // Make pb copy to avoid potential deadlock while calling GetUniverseReplicationInfo.
+  auto pb = replication_info->LockForRead()->pb;
+  return GetUniverseReplicationInfo(pb, cluster_config);
 }
 
-Status XClusterTargetManager::ClearXClusterSourceTableId(
-    TableInfoPtr table_info, const LeaderEpoch& epoch) {
-  auto table_l = table_info->LockForWrite();
-  table_l.mutable_data()->pb.clear_xcluster_source_table_id();
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_.Upsert(epoch, table_info), "clearing xCluster source table id from table");
-  table_l.Commit();
+Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
+    TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) {
+  if (!table_pb.has_xcluster_table_info()) {
+    return Status::OK();
+  }
+
+  // We check for xcluster_table_info to determine if we need to do this cleanup, so clean up other
+  // fields first.
+  if (table_info->IsSecondaryTable()) {
+    bool found = false;
+    for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
+      if (HasNamespace(*universe, table_info->namespace_id())) {
+        RETURN_NOT_OK(CleanupColocatedTableHistoricalSchemaPackings(
+            *universe, table_info->namespace_id(), table_info->GetColocationId(), catalog_manager_,
+            epoch));
+        found = true;
+        break;  // Should only be one automatic mode universe with the namespace.
+      }
+    }
+    LOG_IF(INFO, !found) << "No XCluster replication info found for colocated table "
+                         << table_info->id() << " (colocation id " << table_info->GetColocationId()
+                         << ") in namespace " << table_info->namespace_id();
+  }
+
+  table_pb.clear_xcluster_table_info();
+
   return Status::OK();
+}
+
+bool XClusterTargetManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const {
+  auto all_universe_replications = catalog_manager_.GetAllUniverseReplications();
+  if (all_universe_replications.empty()) {
+    return false;
+  }
+
+  bool namespace_found = false;
+  for (const auto& replication_info : all_universe_replications) {
+    if (!HasNamespace(*replication_info, namespace_id)) {
+      continue;
+    }
+    if (!replication_info->IsAutomaticDdlMode()) {
+      return false;
+    }
+    namespace_found = true;
+  }
+
+  // Return true only if the namespace was found in repl groups and all in automatic DDL mode.
+  return namespace_found;
 }
 
 void XClusterTargetManager::NotifyAutoFlagsConfigChanged() {
@@ -1047,9 +1096,7 @@ Status XClusterTargetManager::SetupUniverseReplication(
     data.target_namespace_ids.push_back(ns_info->id());
   }
 
-  data.source_table_ids.insert(
-      data.source_table_ids.begin(), req->producer_table_ids().begin(),
-      req->producer_table_ids().end());
+  data.source_table_ids.assign(req->producer_table_ids().begin(), req->producer_table_ids().end());
 
   return SetupUniverseReplication(std::move(data), epoch);
 }
@@ -1160,7 +1207,8 @@ Status XClusterTargetManager::AlterUniverseReplication(
 Status XClusterTargetManager::DeleteUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
     bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
-    const LeaderEpoch& epoch) {
+    const LeaderEpoch& epoch,
+    std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above) {
   {
     // If a setup is in progress, then cancel it.
     std::lock_guard l(replication_setup_tasks_mutex_);
@@ -1181,6 +1229,36 @@ Status XClusterTargetManager::DeleteUniverseReplication(
 
   auto ri = catalog_manager_.GetUniverseReplication(replication_group_id);
   SCHECK(ri != nullptr, NotFound, "Universe replication $0 does not exist", replication_group_id);
+
+  {
+    auto l = ri->LockForRead();
+    auto& pb = l->pb;
+    if (pb.has_db_scoped_info()) {
+      std::unordered_map<NamespaceId, NamespaceId> source_to_target;
+      for (const auto& namespace_infos : pb.db_scoped_info().namespace_infos()) {
+        source_to_target[namespace_infos.producer_namespace_id()] =
+            namespace_infos.consumer_namespace_id();
+      }
+      auto* yb_client = master_.client_future().get();
+      SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
+      for (const auto& [source_namespace_id, oid_to_bump] :
+           source_namespace_id_to_oid_to_bump_above) {
+        NamespaceId target_namespace_id = source_to_target[source_namespace_id];
+        SCHECK(
+            !source_to_target.empty(), InvalidArgument,
+            "DeleteUniverseReplication called with a namespace ID $0 that is not present in the "
+            "replication group ($1)",
+            source_namespace_id, replication_group_id);
+        // Ensure next OID allocated from normal space will be above oid_to_bump.
+        uint32_t begin_oid;
+        uint32_t end_oid;
+        RETURN_NOT_OK(yb_client->ReservePgsqlOids(
+            target_namespace_id, oid_to_bump, /*count=*/1, &begin_oid, &end_oid,
+            /*use_secondary_space=*/false));
+      }
+      RETURN_NOT_OK(master_.catalog_manager()->InvalidateTserverOidCaches());
+    }
+  }
 
   RETURN_NOT_OK(master::DeleteUniverseReplication(
       *ri, ignore_errors, skip_producer_stream_deletion, resp, catalog_manager_, epoch));
@@ -1238,6 +1316,31 @@ Result<std::optional<HybridTime>> XClusterTargetManager::TryGetXClusterSafeTimeF
     // external HT field. To ensure transactional correctness we just need to pick a time higher
     // than the time that was picked on the source side. Since the table is created on the source
     // universe before the target this is always guaranteed to be true.
+
+    // Special case for colocated indexes in xCluster automatic DDL replication.
+    // Here we need to use the safe time that the ddl_queue handler is going to update the safe time
+    // to. This is because we cannot wait for xCluster safe time to reach now, as the ddl_queue
+    // table is waiting for this index to complete. In this case, we pass the backfill time from the
+    // ddl_queue to here, and use that.
+
+    // Check that all indexes have the same xCluster backfill hybrid time or none at all.
+    HybridTime xcluster_backfill_hybrid_time;
+    for (const auto& index_table_id : index_table_ids) {
+      auto index_table_info = VERIFY_RESULT(catalog_manager_.GetTableById(index_table_id));
+      HybridTime ht;
+      RETURN_NOT_OK(ht.FromUint64(index_table_info->LockForRead()->pb.xcluster_table_info()
+                                      .xcluster_backfill_hybrid_time()));
+      if (!ht.is_special()) {
+        SCHECK(
+            !xcluster_backfill_hybrid_time || ht != xcluster_backfill_hybrid_time, InvalidArgument,
+            "Indexes have different xCluster backfill hybrid times");
+        xcluster_backfill_hybrid_time = ht;
+      }
+    }
+
+    if (xcluster_backfill_hybrid_time) {
+      return xcluster_backfill_hybrid_time;
+    }
 
     return std::nullopt;
   }
@@ -1361,6 +1464,7 @@ Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
   {
     auto l = table->LockForWrite();
     auto& table_pb = l.mutable_data()->pb;
+    SCHECK(l->is_running(), IllegalState, "Table $0 is not running", table->ToStringWithState());
 
     // Compare the current schema version with the one in the request to avoid repeated updates.
     if (table_pb.version() != current_schema_version) {
@@ -1389,6 +1493,72 @@ Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
             << "(pending tablet schema updates) for " << table->ToString();
 
   return Status::OK();
+}
+
+Status XClusterTargetManager::InsertHistoricalColocatedSchemaPacking(
+    const InsertHistoricalColocatedSchemaPackingRequestPB* req,
+    InsertHistoricalColocatedSchemaPackingResponsePB* resp, const LeaderEpoch& epoch) {
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+  auto colocation_id = req->colocation_id();
+  TableId parent_table_id = req->target_parent_table_id();
+  SCHECK(
+      IsColocationParentTableId(parent_table_id), InvalidArgument,
+      "Parent table id is not a colocation parent id: ", parent_table_id);
+  auto tablegroup_id = GetTablegroupIdFromParentTableId(parent_table_id);
+  auto namespace_id = VERIFY_RESULT(catalog_manager_.GetTableNamespaceId(parent_table_id));
+
+  auto add_historical_schema_fn = [&](UniverseReplicationInfo& universe) -> Status {
+    auto compatible_schema_version = VERIFY_RESULT(AddHistoricalPackedSchemaForColocatedTable(
+        universe, namespace_id, parent_table_id, colocation_id, req->source_schema_version(),
+        req->schema(), catalog_manager_, epoch));
+    resp->set_last_compatible_consumer_schema_version(compatible_schema_version);
+    return Status::OK();
+  };
+
+  return catalog_manager_.InsertHistoricalColocatedSchemaPacking(
+      replication_group_id, tablegroup_id, colocation_id, add_historical_schema_fn);
+}
+
+Status XClusterTargetManager::ProcessCreateTableReq(
+    const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
+    const NamespaceId& namespace_id) const {
+  // Only need to process if this is the target of Automatic Mode xCluster replication.
+  if (req.xcluster_table_info().xcluster_source_table_id().empty()) {
+    return Status::OK();
+  }
+
+  // xcluster_source_table_id will be used to find the correct source table to replicate from.
+  table_pb.mutable_xcluster_table_info()->set_xcluster_source_table_id(
+      req.xcluster_table_info().xcluster_source_table_id());
+
+  if (req.xcluster_table_info().xcluster_backfill_hybrid_time()) {
+    table_pb.mutable_xcluster_table_info()->set_xcluster_backfill_hybrid_time(
+        req.xcluster_table_info().xcluster_backfill_hybrid_time());
+  }
+
+  // For colocated tables, we also need to fetch and update any historical packing schemas.
+  // This may also bump up the initial schema version.
+  const auto colocation_id = table_pb.schema().colocated_table_id().colocation_id();
+  if (colocation_id == kColocationIdNotSet) {
+    return Status::OK();
+  }
+  SCHECK(
+      !IsColocationParentTableId(req.table_id()), InvalidArgument,
+      "Received unexpected parent colocation table id: $0", req.table_id());
+
+  // Find the universe replication info for the parent table.
+  for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
+    if (!HasNamespace(*universe, namespace_id)) {
+      continue;
+    }
+    return UpdateColocatedTableWithHistoricalSchemaPackings(
+        *universe, table_pb, table_id, namespace_id, colocation_id);
+  }
+
+  return STATUS_FORMAT(
+      NotFound,
+      "XCluster replication group not found for table $0, colocation_id #1, namespace_id $2",
+      table_id, colocation_id, namespace_id);
 }
 
 Status XClusterTargetManager::SetReplicationGroupEnabled(

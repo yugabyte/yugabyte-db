@@ -31,6 +31,7 @@ func init() {
 	AzureEARCmd.AddCommand(listAzureEARCmd)
 	AzureEARCmd.AddCommand(describeAzureEARCmd)
 	AzureEARCmd.AddCommand(deleteAzureEARCmd)
+	AzureEARCmd.AddCommand(refreshAzureEARCmd)
 
 	AzureEARCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the configuration for the action. %s",

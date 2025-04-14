@@ -17,7 +17,12 @@
  */
 #ifdef USE_LLVM
 
+#include "jit/llvmjit_backport.h"
+
 #include <llvm-c/Types.h>
+#ifdef USE_LLVM_BACKPORT_SECTION_MEMORY_MANAGER
+#include <llvm-c/OrcEE.h>
+#endif
 
 
 /*
@@ -41,6 +46,13 @@ typedef struct LLVMJitContext
 
 	/* number of modules created */
 	size_t		module_generation;
+
+	/*
+	 * The LLVM Context used by this JIT context. An LLVM context is reused
+	 * across many compilations, but occasionally reset to prevent it using
+	 * too much memory due to more and more types accumulating.
+	 */
+	LLVMContextRef llvm_context;
 
 	/* current, "open for write", module */
 	LLVMModuleRef module;
@@ -67,6 +79,8 @@ extern PGDLLIMPORT LLVMTypeRef TypeStorageBool;
 extern PGDLLIMPORT LLVMTypeRef StructNullableDatum;
 extern PGDLLIMPORT LLVMTypeRef StructTupleDescData;
 extern PGDLLIMPORT LLVMTypeRef StructHeapTupleData;
+extern PGDLLIMPORT LLVMTypeRef StructHeapTupleHeaderData;
+extern PGDLLIMPORT LLVMTypeRef StructMinimalTupleData;
 extern PGDLLIMPORT LLVMTypeRef StructTupleTableSlot;
 extern PGDLLIMPORT LLVMTypeRef StructHeapTupleTableSlot;
 extern PGDLLIMPORT LLVMTypeRef StructMinimalTupleTableSlot;
@@ -78,8 +92,11 @@ extern PGDLLIMPORT LLVMTypeRef StructExprState;
 extern PGDLLIMPORT LLVMTypeRef StructAggState;
 extern PGDLLIMPORT LLVMTypeRef StructAggStatePerTransData;
 extern PGDLLIMPORT LLVMTypeRef StructAggStatePerGroupData;
+extern PGDLLIMPORT LLVMTypeRef StructPlanState;
 
 extern PGDLLIMPORT LLVMValueRef AttributeTemplate;
+extern PGDLLIMPORT LLVMValueRef ExecEvalBoolSubroutineTemplate;
+extern PGDLLIMPORT LLVMValueRef ExecEvalSubroutineTemplate;
 
 
 extern void llvm_enter_fatal_on_oom(void);
@@ -102,6 +119,7 @@ extern LLVMValueRef llvm_function_reference(LLVMJitContext *context,
 						LLVMModuleRef mod,
 						FunctionCallInfo fcinfo);
 
+extern void llvm_inline_reset_caches(void);
 extern void llvm_inline(LLVMModuleRef mod);
 
 /*
@@ -133,6 +151,15 @@ extern char *LLVMGetHostCPUFeatures(void);
 #endif
 
 extern unsigned LLVMGetAttributeCountAtIndexPG(LLVMValueRef F, uint32 Idx);
+extern LLVMTypeRef LLVMGetFunctionReturnType(LLVMValueRef r);
+extern LLVMTypeRef LLVMGetFunctionType(LLVMValueRef r);
+#ifdef USE_LLVM_BACKPORT_SECTION_MEMORY_MANAGER
+extern LLVMOrcObjectLayerRef LLVMOrcCreateRTDyldObjectLinkingLayerWithSafeSectionMemoryManager(LLVMOrcExecutionSessionRef ES);
+#endif
+
+#if LLVM_MAJOR_VERSION < 8
+extern LLVMTypeRef LLVMGlobalGetValueType(LLVMValueRef g);
+#endif
 
 #ifdef __cplusplus
 } /* extern "C" */

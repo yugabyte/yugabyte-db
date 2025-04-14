@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -29,12 +30,16 @@ class PostgresMiniCluster {
   std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;
   boost::optional<client::TransactionManager> txn_mgr_;
+  size_t pg_ts_idx_ = -1;
+  uint16_t pg_port_ = -1;
+
   Result<pgwrapper::PGConn> Connect();
   Result<pgwrapper::PGConn> ConnectToDB(
       const std::string& dbname, bool simple_query_protocol = false);
   Result<pgwrapper::PGConn> ConnectToDBWithReplication(const std::string& dbname);
 
- private:
   Status InitPostgres();
+  Status InitPostgres(size_t pg_ts_idx, uint16_t pg_port);
+  void ShutdownPostgres();
 };
 }  // namespace yb

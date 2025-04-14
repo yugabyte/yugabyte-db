@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.95-SNAPSHOT</version>
+  <version>0.8.102-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>Yugabyte</name>
@@ -87,7 +87,7 @@
     <cassandra-driver-core.version>3.10.3-yb-2</cassandra-driver-core.version>
     <spark-cassandra-connector.version>2.4-yb-4</spark-cassandra-connector.version>
     <lz4.version>1.8.0</lz4.version>
-    <snappy.version>1.1.4</snappy.version>
+    <snappy.version>1.1.8.4</snappy.version>
     <commons-cli.version>1.2</commons-cli.version>
     <commons-io.version>2.15.1</commons-io.version>
     <commons-lang3.version>3.6</commons-lang3.version>
@@ -104,7 +104,7 @@
 
     <mockito-inline.version>4.7.0</mockito-inline.version>
     <murmur.version>1.0.0</murmur.version>
-    <netty-all.version>4.1.108.Final</netty-all.version>
+    <netty-all.version>4.1.119.Final</netty-all.version>
     <protobuf.version>3.21.7</protobuf.version>
     <slf4j.version>1.7.32</slf4j.version>
     <spark.version>2.4.8</spark.version>

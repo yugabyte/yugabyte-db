@@ -22,8 +22,8 @@
 #include "yb/util/enums.h"
 #include "yb/util/tostring.h"
 
-#include "yb/vector_index/graph_repr_defs.h"
 #include "yb/vector_index/coordinate_types.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::vector_index {
 
@@ -147,65 +147,51 @@ using DistanceFunction = std::function<DistanceResult(const Vector&, const Vecto
 // compute the distance.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 using VertexIdToVectorDistanceFunction =
-    std::function<DistanceResult(VertexId vertex_id, const Vector&)>;
+    std::function<DistanceResult(VectorId vector_id, const Vector&)>;
 
 template<ValidDistanceResultType DistanceResult>
-struct VertexWithDistance {
-  VertexId vertex_id = kInvalidVertexId;
+struct VectorWithDistance {
+  VectorId vector_id = VectorId::Nil();
   DistanceResult distance{};
 
   // Constructor with the wrong order. Only delete it if DistanceResult is not uint64_t.
   template <typename T = DistanceResult,
-            typename std::enable_if<!std::is_same<T, VertexId>::value, int>::type = 0>
-  VertexWithDistance(DistanceResult, VertexId) = delete;
+            typename std::enable_if<!std::is_same<T, VectorId>::value, int>::type = 0>
+  VectorWithDistance(DistanceResult, VectorId) = delete;
 
-  VertexWithDistance() = default;
+  VectorWithDistance() = default;
 
   // Constructor with the correct order
-  VertexWithDistance(VertexId vertex_id_, DistanceResult distance_)
-      : vertex_id(vertex_id_), distance(distance_) {}
+  VectorWithDistance(VectorId vector_id_, DistanceResult distance_)
+      : vector_id(vector_id_), distance(distance_) {}
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(vertex_id, distance);
+    return YB_STRUCT_TO_STRING(vector_id, distance);
   }
 
-  // Sort in lexicographical order of (distance, vertex_id).
-  bool operator <(const VertexWithDistance& other) const {
+  // Sort in lexicographical order of (distance, vector_id).
+  bool operator <(const VectorWithDistance& other) const {
     return distance < other.distance ||
-           (distance == other.distance && vertex_id < other.vertex_id);
+           (distance == other.distance && vector_id < other.vector_id);
   }
 
-  bool operator>(const VertexWithDistance& other) const {
+  bool operator>(const VectorWithDistance& other) const {
     return other < *this;
   }
 
-  bool operator<=(const VertexWithDistance& other) const {
+  bool operator<=(const VectorWithDistance& other) const {
     return !(other < *this);
   }
 
-  bool operator>=(const VertexWithDistance& other) const {
+  bool operator>=(const VectorWithDistance& other) const {
     return !(*this < other);
   }
 };
 
 template<ValidDistanceResultType DistanceResult>
-bool operator==(const VertexWithDistance<DistanceResult>& lhs,
-                const VertexWithDistance<DistanceResult>& rhs) {
-  return YB_STRUCT_EQUALS(vertex_id, distance);
-}
-
-template<ValidDistanceResultType DistanceResult>
-using VerticesWithDistances = std::vector<VertexWithDistance<DistanceResult>>;
-
-template<ValidDistanceResultType DistanceResult>
-std::vector<VertexId> VertexIdsOnly(
-    const VerticesWithDistances<DistanceResult>& vertices_with_distances) {
-  std::vector<VertexId> result;
-  result.reserve(vertices_with_distances.size());
-  for (const auto& v_dist : vertices_with_distances) {
-    result.push_back(v_dist.vertex_id);
-  }
-  return result;
+bool operator==(const VectorWithDistance<DistanceResult>& lhs,
+                const VectorWithDistance<DistanceResult>& rhs) {
+  return YB_STRUCT_EQUALS(vector_id, distance);
 }
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

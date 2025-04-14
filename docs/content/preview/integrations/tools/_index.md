@@ -4,7 +4,6 @@ headerTitle: GUI clients
 linkTitle: GUI clients
 description: Interactive third party clients that you can use with YugabyteDB.
 headcontent: Use popular third party clients with YugabyteDB
-image: /images/section_icons/troubleshoot/troubleshoot.png
 aliases:
   - /develop/tools/
   - /preview/develop/tools/
@@ -83,7 +82,7 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
 
 To use these tools with YugabyteDB, you should have a cluster up and running, and you will need to know the connection parameters required by the client to connect to your cluster.
 
-To create a local cluster, follow the steps in [Quick start](/preview/quick-start/).
+To create a local cluster, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
 
 To create a cluster in YugabyteDB Aeon, follow the steps in [Create a cluster](/preview/yugabyte-cloud/cloud-quickstart/). In addition, do the following:
 

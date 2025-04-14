@@ -1031,8 +1031,10 @@ typedef struct BTArrayKeyInfo
 
 typedef struct BTScanOpaqueData
 {
-	/* these fields are set by _bt_preprocess_keys(): */
+	/* all fields (except arraysStarted) are set by _bt_preprocess_keys(): */
 	bool		qual_ok;		/* false if qual can never be satisfied */
+	bool		arraysStarted;	/* Started array keys, but have yet to "reach
+								 * past the end" of all arrays? */
 	int			numberOfKeys;	/* number of preprocessed scan keys */
 	ScanKey		keyData;		/* array of preprocessed scan keys */
 
@@ -1269,8 +1271,8 @@ extern void _bt_check_third_page(Relation rel, Relation heap,
 								 bool needheaptidspace, Page page, IndexTuple newtup);
 extern bool _bt_allequalimage(Relation rel, bool debugmessage);
 
-extern int _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
-								   bool reverse, Datum *elems, int nelems);
+extern int	_bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
+									bool reverse, Datum *elems, int nelems);
 
 /*
  * prototypes for functions in nbtvalidate.c

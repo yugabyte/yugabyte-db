@@ -1667,6 +1667,11 @@ ReadCommonPlan(Plan *local_node)
 	READ_NODE_FIELD(initPlan);
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
+	READ_STRING_FIELD(ybHintAlias);
+	READ_UINT_FIELD(ybUniqueId);
+	READ_STRING_FIELD(ybInheritedHintAlias);
+	READ_BOOL_FIELD(ybIsHinted);
+	READ_BOOL_FIELD(ybHasHintedUid);
 }
 
 /*
@@ -1748,8 +1753,6 @@ _readModifyTable(void)
 	READ_NODE_FIELD(yb_skip_entities);
 	READ_NODE_FIELD(yb_update_affected_entities);
 	READ_BOOL_FIELD(no_row_trigger);
-	READ_BOOL_FIELD(ybUseScanTupleInUpdate);
-	READ_BOOL_FIELD(ybHasWholeRowAttribute);
 
 	READ_DONE();
 }
@@ -2748,10 +2751,10 @@ _readPartitionPruneStepOp(void)
 	READ_DONE();
 }
 
-static PartitionPruneStepFuncOp *
-_readPartitionPruneStepFuncOp(void)
+static YbPartitionPruneStepFuncOp *
+_readYbPartitionPruneStepFuncOp(void)
 {
-	READ_LOCALS(PartitionPruneStepFuncOp);
+	READ_LOCALS(YbPartitionPruneStepFuncOp);
 
 	READ_INT_FIELD(step.step_id);
 	READ_NODE_FIELD(exprs);
@@ -2922,8 +2925,8 @@ _readYbSkippableEntities(void)
 static YbUpdateAffectedEntities *
 _readYbUpdateAffectedEntities(void)
 {
-	int nfields;
-	int nentities;
+	int			nfields;
+	int			nentities;
 
 	READ_LOCALS(YbUpdateAffectedEntities);
 

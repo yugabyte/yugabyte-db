@@ -37,17 +37,17 @@ $ cd tpcc
 
 The client machine is where the benchmark is run from. An 8vCPU machine with at least 16GB memory is recommended. The following instance types are recommended for the client machine.
 
-| vCPU |    AWS     |      AZURE      |     GCP      |
-| ---- | ---------- | --------------- | ------------ |
-| 8    | c5.2xlarge | Standard_F8s_v2 | n2-highcpu-8 |
+| vCPU |           AWS           |            AZURE             |            GCP            |
+| ---- | ----------------------- | ---------------------------- | ------------------------- |
+| 8    | {{<inst "c5.2xlarge">}} | {{<inst "Standard_F8s_v2">}} | {{<inst "n2-highcpu-8">}} |
 
 ## Cluster setup
 
 We will use 8vCPU machines for this test. The following cloud provider instance types are recommended for this test.
 
-| vCPU |     AWS     |      AZURE       |      GCP      |
-| ---- | ----------- | ---------------- | ------------- |
-| 8    | m6i.2xlarge | Standard_D8ds_v5 | n2-standard-8 |
+| vCPU |           AWS            |             AZURE             |            GCP             |
+| ---- | ------------------------ | ----------------------------- | -------------------------- |
+| 8    | {{<inst "m6i.2xlarge">}} | {{<inst "Standard_D8ds_v5">}} | {{<inst "n2-standard-8">}} |
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,cloud" active="local"/>}}
@@ -135,7 +135,7 @@ IPS=${IPS},127.0.0.4
 
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}
-Add a node using the [Edit Infrastructure](../../../yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
+Add a node using the [Edit Infrastructure](/preview/yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
 {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->
@@ -192,7 +192,7 @@ IPS=${IPS},127.0.0.5
 
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}
-Add a node using the [Edit Infrastructure](../../../yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
+Add a node using the [Edit Infrastructure](/preview/yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
 {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->
@@ -257,7 +257,7 @@ IPS=${IPS},127.0.0.6
 
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}
-Add a node using the [Edit Infrastructure](../../../yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
+Add a node using the [Edit Infrastructure](/preview/yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
 {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->

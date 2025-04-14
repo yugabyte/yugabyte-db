@@ -76,7 +76,6 @@
 #endif
 
 #include "common/ip.h"
-#include "common/pg_yb_common.h"
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "port/pg_bswap.h"
@@ -84,7 +83,9 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
+/* YB includes */
 #include "access/xact.h"
+#include "common/pg_yb_common.h"
 #include "libpq/yb_pqcomm_extensions.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -130,10 +131,12 @@ static char *PqSendBuffer;
 static int	PqSendBufferSize;	/* Size send buffer */
 static int	PqSendPointer;		/* Next index to store a byte in PqSendBuffer */
 static int	PqSendStart;		/* Next index to send a byte in PqSendBuffer */
-static int	PqSendYbSavedBufPos;/* Value of PqSendPointer to restore during statement restart */
-static bool PqSendYbNonRestartableData;	/* Indicates whether data sent to user should be treated as
-										 * preventing transparent restarts.
-										 * This should be false e.g. for BEGIN statement. */
+static int	PqSendYbSavedBufPos;	/* Value of PqSendPointer to restore
+									 * during statement restart */
+static bool PqSendYbNonRestartableData; /* Indicates whether data sent to user
+										 * should be treated as preventing
+										 * transparent restarts. This should
+										 * be false e.g. for BEGIN statement. */
 
 static char PqRecvBuffer[PQ_RECV_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */
@@ -204,14 +207,10 @@ pq_init(void)
 	 * nonblocking mode and use latches to implement blocking semantics if
 	 * needed. That allows us to provide safely interruptible reads and
 	 * writes.
-	 *
-	 * Use COMMERROR on failure, because ERROR would try to send the error to
-	 * the client, which might require changing the mode again, leading to
-	 * infinite recursion.
 	 */
 #ifndef WIN32
 	if (!pg_set_noblock(MyProcPort->sock))
-		ereport(COMMERROR,
+		ereport(FATAL,
 				(errmsg("could not set socket to nonblocking mode: %m")));
 #endif
 
@@ -818,7 +817,7 @@ StreamConnection(pgsocket server_fd, Port *port)
 
 #ifdef WIN32
 
-		#define PQ_SEND_BUFFER_SIZE 8192
+#define PQ_SEND_BUFFER_SIZE 8192
 
 		/*
 		 * This is a Win32 socket optimization.  The OS send buffer should be
@@ -996,6 +995,8 @@ pq_recvbuf(void)
 	{
 		int			r;
 
+		errno = 0;
+
 		r = secure_read(MyProcPort, PqRecvBuffer + PqRecvLength,
 						PQ_RECV_BUFFER_SIZE - PqRecvLength);
 
@@ -1008,10 +1009,13 @@ pq_recvbuf(void)
 			 * Careful: an ereport() that tries to write to the client would
 			 * cause recursion to here, leading to stack overflow and core
 			 * dump!  This message must go *only* to the postmaster log.
+			 *
+			 * If errno is zero, assume it's EOF and let the caller complain.
 			 */
-			ereport(COMMERROR,
-					(errcode_for_socket_access(),
-					 errmsg("could not receive data from client: %m")));
+			if (errno != 0)
+				ereport(COMMERROR,
+						(errcode_for_socket_access(),
+						 errmsg("could not receive data from client: %m")));
 			return EOF;
 		}
 		if (r == 0)
@@ -1100,6 +1104,8 @@ pq_getbyte_if_available(unsigned char *c)
 	/* Put the socket into non-blocking mode */
 	socket_set_nonblocking(true);
 
+	errno = 0;
+
 	r = secure_read(MyProcPort, c, 1);
 	if (r < 0)
 	{
@@ -1116,10 +1122,13 @@ pq_getbyte_if_available(unsigned char *c)
 			 * Careful: an ereport() that tries to write to the client would
 			 * cause recursion to here, leading to stack overflow and core
 			 * dump!  This message must go *only* to the postmaster log.
+			 *
+			 * If errno is zero, assume it's EOF and let the caller complain.
 			 */
-			ereport(COMMERROR,
-					(errcode_for_socket_access(),
-					 errmsg("could not receive data from client: %m")));
+			if (errno != 0)
+				ereport(COMMERROR,
+						(errcode_for_socket_access(),
+						 errmsg("could not receive data from client: %m")));
 			r = EOF;
 		}
 	}
@@ -1406,7 +1415,8 @@ socket_flush(void)
 static int
 internal_flush(void)
 {
-	if (PqSendYbNonRestartableData) {
+	if (PqSendYbNonRestartableData)
+	{
 		YBMarkDataSent();
 	}
 

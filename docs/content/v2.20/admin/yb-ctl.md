@@ -15,7 +15,7 @@ rightNav:
 
 ## Overview
 
-The yb-ctl utility provides a command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
+The yb-ctl utility provides a command line interface for administering local clusters used for development and learning. It invokes the [yb-tserver](../../reference/configuration/yb-tserver/) and [yb-master](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
 
 yb-ctl is meant for managing local clusters only. This means that a single host machine like a local laptop is used to simulate YugabyteDB clusters even though the YugabyteDB cluster can have 3 nodes or more. For creating multi-host clusters, follow the instructions in the [Deploy](../../deploy/) section.
 
@@ -129,7 +129,7 @@ Shows the help message and then exits.
 
 ##### --binary_dir
 
-Specifies the directory in which to find the YugabyteDB `yb-master` and `yb-tserver` binary files.
+Specifies the directory in which to find the YugabyteDB yb-master and yb-tserver binary files.
 
 Default: `<yugabyte-installation-dir>/bin/`
 
@@ -155,7 +155,7 @@ For details and examples, see [Create a local cluster with custom flags](#create
 
 **Example**
 
-To enable [YSQL authentication](../../secure/enable-authentication/ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/enable-authentication/ysql/), you can use the `--tserver_flags` flag to add the yb-tserver [`--ysql_enable-auth`](../../reference/configuration/yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
@@ -239,7 +239,7 @@ To create a local YugabyteDB cluster for development and learning, use the `yb-c
 
 To ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor. To expand or shrink the cluster, use the [add_node](#add-nodes) and [remove_node](#stop-and-remove-nodes) commands.
 
-Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
+Each of these initial nodes run a yb-tserver server and a yb-master server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
 If you are running YugabyteDB on your local computer, you can't run more than one cluster at a time. To set up a new local YugabyteDB cluster using yb-ctl, first [destroy the currently running cluster](#destroy-a-local-cluster).
 

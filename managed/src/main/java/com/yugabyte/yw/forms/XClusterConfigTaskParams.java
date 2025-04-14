@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -48,6 +49,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   public Set<String> dbs;
   protected Set<String> databaseIdsToAdd;
   protected Set<String> databaseIdsToRemove;
+  @Setter private UUID sourceUniverseUuid;
+  @Setter private UUID targetUniverseUuid;
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
@@ -150,7 +153,6 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
-      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       XClusterConfigEditFormData editFormData,
       Set<String> databaseIdsToAdd,
       Set<String> databaseIdsToRemove) {
@@ -197,8 +199,12 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   /** It is used in the delete method. */
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig, boolean isForced) {
-    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    this.setUniverseUUID(
+        Optional.ofNullable(xClusterConfig.getTargetUniverseUUID())
+            .orElseGet(() -> xClusterConfig.getSourceUniverseUUID()));
     this.xClusterConfig = xClusterConfig;
+    this.sourceUniverseUuid = xClusterConfig.getSourceUniverseUUID();
+    this.targetUniverseUuid = xClusterConfig.getTargetUniverseUUID();
     this.isForced = isForced;
   }
 
@@ -208,7 +214,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   }
 
   /** It is used in the sync method. */
-  public XClusterConfigTaskParams(XClusterConfigSyncFormData syncFormData) {
+  public XClusterConfigTaskParams(
+      @Nullable XClusterConfig xClusterConfig, XClusterConfigSyncFormData syncFormData) {
+    this.xClusterConfig = xClusterConfig;
     this.syncFormData = syncFormData;
     this.setUniverseUUID(syncFormData.targetUniverseUUID);
   }
@@ -248,15 +256,6 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     }
     this.pitrParams =
         new DrConfigCreateForm.PitrParams(pitrRetentionPeriodSec, pitrSnapshotIntervalSec);
-  }
-
-  /** It is used in the edit DR Config method. */
-  public XClusterConfigTaskParams(DrConfigEditForm drConfigEditForm) {
-    this.pitrParams = drConfigEditForm.pitrParams;
-    if (editFormData.bootstrapParams != null) {
-      editFormData.bootstrapParams.backupRequestParams =
-          editFormData.bootstrapParams.backupRequestParams;
-    }
   }
 
   public void refreshIfExists() {

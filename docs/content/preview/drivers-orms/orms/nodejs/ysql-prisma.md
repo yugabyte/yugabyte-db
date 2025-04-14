@@ -32,13 +32,13 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 {{< tip title="YugabyteDB Aeon requires SSL" >}}
 
-Are you using YugabyteDB Aeon? Install the [prerequisites](../../../../tutorials/build-apps/cloud-add-ip/).
+Are you using YugabyteDB Aeon? Install the [prerequisites](/preview/tutorials/build-apps/cloud-add-ip/).
 
 {{</ tip >}}
 
 ## Prerequisites
 
-This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](/preview/tutorials/quick-start/macos/).
 
 ## Clone the orm-examples repository
 
@@ -65,7 +65,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

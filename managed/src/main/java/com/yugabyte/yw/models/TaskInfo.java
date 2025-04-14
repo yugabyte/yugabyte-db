@@ -7,6 +7,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -43,6 +44,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -113,10 +115,12 @@ public class TaskInfo extends Model {
   // The task UUID.
   @Id
   @ApiModelProperty(value = "Task UUID", accessMode = READ_ONLY)
+  @JsonProperty("uuid")
   private UUID uuid;
 
   // The UUID of the parent task (if any; CustomerTasks have no parent)
   @ApiModelProperty(value = "Parent task UUID", accessMode = READ_ONLY)
+  @JsonProperty("parentUuid")
   private UUID parentUuid;
 
   // The position within the parent task's taskQueue (-1 for a CustomerTask)
@@ -124,38 +128,45 @@ public class TaskInfo extends Model {
   @ApiModelProperty(
       value = "The task's position with its parent task's queue",
       accessMode = READ_ONLY)
+  @JsonProperty("position")
   private Integer position = -1;
 
   // The task type.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Task type", accessMode = READ_ONLY)
+  @JsonProperty("taskType")
   private final TaskType taskType;
 
   // The task state.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Task state", accessMode = READ_ONLY)
+  @JsonProperty("taskState")
   private State taskState = State.Created;
 
   // The subtask group type (if it is a subtask)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Subtask type", accessMode = READ_ONLY)
+  @JsonProperty("subTaskGroupType")
   private UserTaskDetails.SubTaskGroupType subTaskGroupType;
 
   // The task creation time.
   @WhenCreated
   @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY, example = "1624295239113")
+  @JsonProperty("createTime")
   private Date createTime;
 
   // The task update time. Time of the latest update (including heartbeat updates) on this task.
   @WhenModified
   @ApiModelProperty(value = "Updated time", accessMode = READ_ONLY, example = "1624295239113")
+  @JsonProperty("updateTime")
   private Date updateTime;
 
   // The percentage completeness of the task, which is a number from 0 to 100.
   @Column(columnDefinition = "integer default 0")
   @ApiModelProperty(value = "Percentage complete", accessMode = READ_ONLY)
+  @JsonProperty("percentDone")
   private Integer percentDone = 0;
 
   // Task input parameters.
@@ -163,6 +174,7 @@ public class TaskInfo extends Model {
   @Column(columnDefinition = "TEXT default '{}'", nullable = false)
   @DbJson
   @ApiModelProperty(value = "Task params", accessMode = READ_ONLY, required = true)
+  @JsonProperty("taskParams")
   private JsonNode taskParams;
 
   // Execution or runtime details of the task.
@@ -171,6 +183,7 @@ public class TaskInfo extends Model {
   @Column(columnDefinition = "TEXT")
   @DbJson
   @ApiModelProperty(value = "Task details", accessMode = READ_ONLY)
+  @JsonProperty("details")
   private TaskDetails details;
 
   // Identifier of the process owning the task.
@@ -180,11 +193,40 @@ public class TaskInfo extends Model {
       value = "ID of the process that owns this task",
       accessMode = READ_ONLY,
       required = true)
+  @JsonProperty("owner")
   private String owner;
 
   public TaskInfo(TaskType taskType, UUID taskUUID) {
     this.taskType = taskType;
     this.uuid = taskUUID;
+  }
+
+  @JsonCreator
+  public TaskInfo(
+      @JsonProperty("uuid") UUID uuid,
+      @JsonProperty("parentUuid") UUID parentUuid,
+      @JsonProperty("position") Integer position,
+      @JsonProperty("taskType") TaskType taskType,
+      @JsonProperty("taskState") State taskState,
+      @JsonProperty("subTaskGroupType") UserTaskDetails.SubTaskGroupType subTaskGroupType,
+      @JsonProperty("createTime") Date createTime,
+      @JsonProperty("updateTime") Date updateTime,
+      @JsonProperty("percentDone") Integer percentDone,
+      @JsonProperty("taskParams") JsonNode taskParams,
+      @JsonProperty("details") TaskDetails details,
+      @JsonProperty("owner") String owner) {
+    this.uuid = uuid;
+    this.parentUuid = parentUuid;
+    this.position = position != null ? position : -1;
+    this.taskType = taskType;
+    this.taskState = taskState != null ? taskState : State.Created;
+    this.subTaskGroupType = subTaskGroupType;
+    this.createTime = createTime;
+    this.updateTime = updateTime;
+    this.percentDone = percentDone != null ? percentDone : 0;
+    this.taskParams = taskParams;
+    this.details = details;
+    this.owner = owner;
   }
 
   @JsonIgnore
@@ -250,6 +292,9 @@ public class TaskInfo extends Model {
   }
 
   public static Optional<TaskInfo> maybeGet(UUID taskUUID) {
+    if (Objects.isNull(taskUUID)) {
+      return Optional.empty();
+    }
     return Optional.ofNullable(get(taskUUID));
   }
 
@@ -352,21 +397,15 @@ public class TaskInfo extends Model {
   public UserTaskDetails getUserTaskDetails(List<TaskInfo> subTaskInfos, TaskCache taskCache) {
     UserTaskDetails taskDetails = new UserTaskDetails();
     Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
-    SubTaskGroupType lastGroupType = SubTaskGroupType.Invalid;
+    SubTaskGroupType lastGroupType = SubTaskGroupType.Configuring;
     for (TaskInfo taskInfo : subTaskInfos) {
       SubTaskGroupType subTaskGroupType = taskInfo.getSubTaskGroupType();
-      if (subTaskGroupType == SubTaskGroupType.Invalid) {
-        continue;
-      }
       SubTaskDetails subTask = null;
       if (userTasksMap.containsKey(subTaskGroupType)) {
         // The type is already seen, group it with the last task if it is present.
         // This is done not to move back the progress for the group type on the UI
         // if the type shows up later.
-        subTask =
-            lastGroupType == SubTaskGroupType.Invalid
-                ? userTasksMap.get(subTaskGroupType)
-                : userTasksMap.get(lastGroupType);
+        subTask = userTasksMap.get(lastGroupType);
       }
       if (subTask == null) {
         subTask = createSubTask(subTaskGroupType);

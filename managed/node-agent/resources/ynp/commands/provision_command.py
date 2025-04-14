@@ -7,8 +7,6 @@ import pkgutil
 import sys
 import pwd
 import grp
-import semver
-import stat
 
 from enum import Enum
 import modules.base_module as mbm
@@ -28,7 +26,8 @@ class OSFamily(Enum):
 
 class ProvisionCommand(Command):
 
-    cloud_only_modules = ['Preprovision']
+    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages']
+    onprem_only_modules = ['ConfigureSystemd', 'RebootNode']
 
     def __init__(self, config):
         super().__init__(config)
@@ -56,14 +55,14 @@ class ProvisionCommand(Command):
                 importlib.import_module(full_module_name)
 
     def _build_script(self, all_templates, phase):
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
+        key = next(iter(self.config), None)
+        context = self.config[key]
+        with tempfile.NamedTemporaryFile(mode="w+", dir=context.get('tmp_directory'),
+                                         delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
-            key = next(iter(self.config), None)
-            if key is not None:
-                context = self.config[key]
-                loglevel = context.get('loglevel')
-                if loglevel == "DEBUG":
-                    temp_file.write("set -x\n")
+            loglevel = context.get('loglevel')
+            if loglevel == "DEBUG":
+                temp_file.write("set -x\n")
             self.add_results_helper(temp_file)
             self.populate_sudo_check(temp_file)
             for key in all_templates:
@@ -77,10 +76,12 @@ class ProvisionCommand(Command):
         return temp_file.name
 
     def _run_script(self, script_path):
-        result = subprocess.run(["/bin/bash", "-lc", script_path], capture_output=True, text=True)
+        result = subprocess.run(["/bin/bash", "-lc", script_path], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, universal_newlines=True)
         logger.info("Output: %s", result.stdout)
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
+        return result
 
     def add_results_helper(self, file):
         file.write(
@@ -145,9 +146,19 @@ class ProvisionCommand(Command):
             module = self._module_registry.get(key)
             if module is None:
                 continue
-            if module in self.cloud_only_modules:
+            if key in self.cloud_only_modules and \
+                    self.config[key].get('is_cloud', 'False') == 'False':
+                print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
                 continue
-            if module == 'InstallNodeAgent' and not self.config[key].is_install_node_agent:
+            if key == 'InstallNodeAgent' and \
+                    self.config[key].get('is_install_node_agent', 'True') == 'False':
+                print(f"Skipping {key} because is_install_node_agent is "
+                      f"{self.config[key].get('is_install_node_agent')}")
+                continue
+            if key == 'ConfigureClockbound' and \
+                    self.config[key].get('configure_clockbound', 'False') == 'False':
+                print(f"Skipping {key} because {key}.configure_clockbound is "
+                      f"{self.config[key].get('configure_clockbound')}")
                 continue
             context = self.config[key]
 
@@ -187,16 +198,16 @@ class ProvisionCommand(Command):
         major_version = version.split('.')[0] if version else ""
 
         # Determine OS family
-        if distribution in {"rhel", "centos", "almalinux", "oraclelinux", "fedora"}:
-            os_family = OSFamily.REDHAT
+        if distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
+            os_family = OSFamily.REDHAT.value
         elif distribution in {"ubuntu", "debian"}:
-            os_family = OSFamily.DEBIAN
+            os_family = OSFamily.DEBIAN.value
         elif distribution in {"suse", "opensuse", "sles"}:
-            os_family = OSFamily.SUSE
+            os_family = OSFamily.SUSE.value
         elif distribution == "arch":
-            os_family = OSFamily.ARCH
+            os_family = OSFamily.ARCH.value
         else:
-            os_family = OSFamily.UNKNOWN
+            os_family = OSFamily.UNKNOWN.value
 
         return distribution, os_family, major_version
 
@@ -214,7 +225,7 @@ class ProvisionCommand(Command):
             logger.info(f"{package_name} is not installed.")
             sys.exit()
 
-    def _validate_required_packages(self):
+    def _get_package_manager(self):
         package_manager = None
         try:
             subprocess.run(['rpm', '--version'], check=True,
@@ -235,15 +246,28 @@ class ProvisionCommand(Command):
                 "Unsupported package manager. Cannot determine package installation status.")
             sys.exit(1)
 
+        return package_manager
+
+    def _validate_required_packages(self):
+        package_manager = self._get_package_manager()
         packages = ['openssl', 'policycoreutils']
+        cloud_only_packages = ['gzip']
         for package in packages:
             self._check_package(package_manager, package)
+        key = next(iter(self.config), None)
+        context = self.config[key]
+        is_cloud = context.get('is_cloud')
+        if is_cloud:
+            for package in cloud_only_packages:
+                self._check_package(package_manager, package)
 
     def execute(self):
         run_combined_script, precheck_combined_script = self._generate_template()
-        self._run_script(run_combined_script)
-        self._run_script(precheck_combined_script)
+        provision_result = self._run_script(run_combined_script)
+        precheck_result = self._run_script(precheck_combined_script)
         self._save_ynp_version()
+        if precheck_result.returncode != 0 or provision_result.returncode != 0:
+            sys.exit(1)
 
     def _save_ynp_version(self):
         key = next(iter(self.config), None)
@@ -271,14 +295,14 @@ class ProvisionCommand(Command):
         if key is not None:
             context = self.config[key]
             yb_home_dir = context.get('yb_home_dir')
-            current_ynp_version = semver.Version.parse(context.get('version'))
+            current_ynp_version = self._parse_version(context.get('version'))
 
             # Define the full path to the ynp_version file
             ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
             try:
                 # Read the ynp_version from the file
                 with open(ynp_version_file, 'r') as file:
-                    stored_ynp_version = semver.Version.parse(file.read().strip())
+                    stored_ynp_version = self._parse_version(file.read().strip())
             except FileNotFoundError:
                 logger.error(f"The ynp_version file was not found at {ynp_version_file}")
                 sys.exit(1)
@@ -286,18 +310,37 @@ class ProvisionCommand(Command):
                 logger.error(f"Error parsing version from the ynp_version file: {e}")
                 sys.exit(1)
 
-            if current_ynp_version.major != stored_ynp_version.major:
+            if current_ynp_version[0] != stored_ynp_version[0]:
                 logger.info(
                     f"The major versions are different. Current: {current_ynp_version},"
                     f"Stored: {stored_ynp_version}. "
                     "Please run reprovision again on the node"
-                    )
+                )
                 sys.exit(1)
+
+    def _parse_version(self, version):
+        """
+        Parse a version string into a tuple of integers (major, minor, patch).
+        :param version: str, the version string (e.g., '1.2.3').
+        :return: tuple, (major, minor, patch).
+        """
+        try:
+            parts = version.split('.')
+            if len(parts) != 3:
+                raise ValueError(f"Invalid version format: {version}")
+            return tuple(int(part) for part in parts)
+        except (ValueError, AttributeError):
+            raise ValueError(f"Invalid version format: {version}")
 
     def run_preflight_checks(self):
         _, precheck_combined_script = self._generate_template()
         self._compare_ynp_version()
         self._run_script(precheck_combined_script)
+
+    def dry_run(self):
+        install_script, precheck_script = self._generate_template()
+        logger.info("Install Script: %s", install_script)
+        logger.info("Precheck Script: %s", precheck_script)
 
     def cleanup(self):
         # Cleanup tasks to clean up any tmp data to support rerun

@@ -73,6 +73,16 @@ VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
 PRIVATE_DNS_ZONE_ID_REGEX = re.compile(
     "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
     "/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
+VNET_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/virtualNetworks/(?P<vnet_name>[^/]*)")
+SUBNET_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/virtualNetworks/(?P<vnet_name>[^/]*)"
+    "/subnets/(?P<subnet_name>[^/]*)")
+SECURITY_GROUP_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/networkSecurityGroups/(?P<security_group_name>[^/]*)")
 CLOUDINIT_EPHEMERAL_MNTPOINT = {
     "mounts": [
         ["ephemeral0", "/mnt/resource"]
@@ -693,12 +703,11 @@ class AzureCloudAdmin():
                     logging.info("[app] Deleted nic {}".format(nic_name))
                     break
             except (CloudError, HttpResponseError) as e:
-                if e.error and e.error.error in ['ResourceNotFound', 'NotFound']:
+                code = self._get_azure_error_code(e)
+                if code in ['ResourceNotFound', 'NotFound']:
                     logging.info("[app] Resource nic {} is not found".format(nic_name))
                     break
-                elif e.error and (
-                  (hasattr(e.error, 'error') and e.error.error == 'NicReservedForAnotherVm') or
-                  (hasattr(e.error, 'code') and e.error.code == 'NicReservedForAnotherVm')):
+                if code in ['NicReservedForAnotherVm', 'NicReservedForAnotherVm']:
                     # In case VM wasn't created, Azure reserves the NICs for the VMs
                     # for 180 seconds and throws NicReservedForAnotherVm error code,
                     # and suggests to retry after 180 seconds.
@@ -720,8 +729,9 @@ class AzureCloudAdmin():
                     ip_name)
                 ip_del.wait()
                 logging.info("[app] Deleted ip {}".format(ip_name))
-        except CloudError as e:
-            if e.error and e.error.error == 'ResourceNotFound':
+        except (CloudError, HttpResponseError) as e:
+            code = self._get_azure_error_code(e)
+            if code == 'ResourceNotFound':
                 logging.info("[app] Resource ip name {} is not found".format(ip_name))
             else:
                 raise e
@@ -804,12 +814,24 @@ class AzureCloudAdmin():
         logging.info("[app] Sucessfully destroyed instance {}".format(vm_name))
 
     def get_subnet_id(self, vnet, subnet):
+        # subnet URN can be used directly
+        if SUBNET_ID_REGEX.match(subnet):
+            return subnet
+        # vnet URN, subnet name
+        vnet_match = VNET_ID_REGEX.match(vnet)
+        if vnet_match:
+            return SUBNET_ID_FORMAT_STRING.format(vnet_match.group('subscription_id'),
+                                                  vnet_match.group('resource_group'),
+                                                  vnet_match.group('vnet_name'), subnet)
+        # vnet name, subnet name
         return SUBNET_ID_FORMAT_STRING.format(
             NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, vnet, subnet
         )
 
     def get_nsg_id(self, nsg):
         if nsg:
+            if SECURITY_GROUP_ID_REGEX.match(nsg):
+                return nsg
             return NSG_ID_FORMAT_STRING.format(
                 NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, nsg
             )
@@ -890,9 +912,9 @@ class AzureCloudAdmin():
             # Otherwise, we try to extract this info from the purchase plan
             # or identifier of the image definition.
             if (image_tags is not None
-                    and image_tags['PlanPublisher'] is not None
-                    and image_tags['PlanProduct'] is not None
-                    and image_tags['PlanInfo'] is not None):
+                    and image_tags.get('PlanPublisher', None) is not None
+                    and image_tags.get('PlanProduct', None) is not None
+                    and image_tags.get('PlanInfo', None) is not None):
                 plan = {
                     "publisher": image_tags['PlanPublisher'],
                     "product": image_tags['PlanProduct'],
@@ -916,9 +938,9 @@ class AzureCloudAdmin():
                 image_identifier = gallery_image.as_dict().get('identifier')
                 logging.info("Gallery Image identifier = " + str(image_identifier))
                 if (image_identifier is not None
-                        and image_identifier["publisher"] is not None
-                        and image_identifier["offer"] is not None
-                        and image_identifier["sku"] is not None):
+                        and image_identifier.get("publisher", None) is not None
+                        and image_identifier.get("offer", None) is not None
+                        and image_identifier.get("sku", None) is not None):
                     plan = {
                         "publisher": image_identifier["publisher"],
                         "product": image_identifier["offer"],
@@ -1166,11 +1188,20 @@ class AzureCloudAdmin():
                 json.dump(vms, writefile)
         return
 
-    def get_host_info(self, vm_name, get_all=False):
+    def get_host_info(self, vm_name, get_all=False, node_uuid=None):
         try:
             vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
         except Exception as e:
             logging.error("Failed to get VM info for {} with error {}".format(vm_name, e))
+            return None
+        host_node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
+        server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
+        universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
+        # Matching tag or no tag for backward compatibility.
+        if host_node_uuid is not None and node_uuid is not None \
+                and host_node_uuid != node_uuid:
+            logging.warning("VM {}({}) with node UUID {} is not found.".
+                            format(vm_name, host_node_uuid, node_uuid))
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
         nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP, nic_name)
@@ -1185,16 +1216,13 @@ class AzureCloudAdmin():
             public_ip = (self.network_client.public_ip_addresses
                          .get(NETWORK_RESOURCE_GROUP, ip_name).ip_address)
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
-        server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
-        node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
-        universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
         instance_state = self.extract_vm_instance_state(vm.instance_view)
         is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
-                "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
+                "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": host_node_uuid,
                 "universe_uuid": universe_uuid, "instance_state": instance_state,
                 "is_running": is_running, "root_volume": root_volume}
 
@@ -1225,17 +1253,17 @@ class AzureCloudAdmin():
         parameters, subscr_id = self._get_dns_record_set_args(
             dns_zone_id, domain_name_prefix, ip_list)
         # Setting if_none_match="*" will cause this to error if a record with the name exists.
-        return self.get_dns_client(subscr_id).record_sets.begin_create_or_update(if_none_match="*",
-                                                                                 **parameters)
+        return self.get_dns_client(subscr_id).record_sets.create_or_update(if_none_match="*",
+                                                                           **parameters)
 
     def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
         parameters, subscr_id = self._get_dns_record_set_args(
             dns_zone_id, domain_name_prefix, ip_list)
-        return self.get_dns_client(subscr_id).record_sets.begin_update(**parameters)
+        return self.get_dns_client(subscr_id).record_sets.update(**parameters)
 
     def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
         parameters, subscr_id = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix)
-        return self.get_dns_client(subscr_id).record_sets.begin_delete(**parameters)
+        return self.get_dns_client(subscr_id).record_sets.delete(**parameters)
 
     def _get_dns_record_set_args(self, dns_zone_id, domain_name_prefix, ip_list=None):
         zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
@@ -1244,7 +1272,7 @@ class AzureCloudAdmin():
             "resource_group_name": rg,
             "private_zone_name": zone_name,
             "record_type": "A",
-            "relative_record_set_name": "{}.{}".format(domain_name_prefix, zone_name),
+            "relative_record_set_name": domain_name_prefix,
         }
 
         if ip_list is not None:
@@ -1272,6 +1300,15 @@ class AzureCloudAdmin():
         if it's not given in Resource ID format.
         """
         return self._get_dns_zone_info_long(dns_zone_id)[:2]
+
+    def _get_azure_error_code(self, e):
+        """Returns the Azure string error code from the exception.
+        """
+        if isinstance(e, CloudError):
+            return e.code
+        if isinstance(e, HttpResponseError) and e.error and hasattr(e.error, 'code'):
+            return e.error.code
+        return str(e)
 
     def get_vm_status(self, vm_name):
         instance_view = self.compute_client.virtual_machines.get(RESOURCE_GROUP,

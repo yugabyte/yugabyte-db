@@ -24,8 +24,6 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
-
 #include "access/amapi.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type_d.h"
@@ -35,18 +33,26 @@
 #include "nodes/nodes.h"
 #include "postgres_ext.h"
 #include "utils/lsyscache.h"
+#include "ybvector.h"
+
+void
+YbVectorInit(void)
+{
+	YbHnswInit();
+}
+
 
 /*
  * makeBaseYbVectorHandler: Makes a handler that handles all functionality
  * common to YB vector index access methods.
  */
 IndexAmRoutine *
-makeBaseYbVectorHandler()
+makeBaseYbVectorHandler(bool is_copartitioned)
 {
 	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
 	amroutine->amstrategies = 0;
-	amroutine->amsupport = 1;
+	amroutine->amsupport = 2;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = true;
 	amroutine->amcanbackward = false;
@@ -90,6 +96,17 @@ makeBaseYbVectorHandler()
 	amroutine->yb_ambackfill = ybvectorbackfill;
 	amroutine->yb_ammightrecheck = ybvectormightrecheck;
 	amroutine->yb_ambindschema = NULL;
+
+	/* Override these methods for copartitioned indexes. */
+	if (is_copartitioned)
+	{
+		amroutine->amcanreturn = ybvectorcopartitionedcanreturn;
+		amroutine->yb_aminsert = ybvectorcopartitionedinsert;
+		amroutine->yb_amdelete = ybvectorcopartitioneddelete;
+		amroutine->yb_ambackfill = NULL;
+		amroutine->ambuild = ybvectorcopartitionedbuild;
+		amroutine->yb_amiscopartitioned = true;
+	}
 
 	return amroutine;
 }

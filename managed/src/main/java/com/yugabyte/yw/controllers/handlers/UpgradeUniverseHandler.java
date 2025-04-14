@@ -12,7 +12,9 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -82,6 +84,7 @@ public class UpgradeUniverseHandler {
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterUniverseService xClusterUniverseService;
   private final TelemetryProviderService telemetryProviderService;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -93,7 +96,8 @@ public class UpgradeUniverseHandler {
       CertificateHelper certificateHelper,
       AutoFlagUtil autoFlagUtil,
       XClusterUniverseService xClusterUniverseService,
-      TelemetryProviderService telemetryProviderService) {
+      TelemetryProviderService telemetryProviderService,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -103,6 +107,7 @@ public class UpgradeUniverseHandler {
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterUniverseService = xClusterUniverseService;
     this.telemetryProviderService = telemetryProviderService;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   public UUID restartUniverse(
@@ -227,12 +232,13 @@ public class UpgradeUniverseHandler {
     // update prev software version to track version in the task details.
     requestParams.ybPrevSoftwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    TaskType taskType =
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.FinalizeKubernetesUpgrade
+            : TaskType.FinalizeUpgrade;
     return submitUpgradeTask(
-        TaskType.FinalizeUpgrade,
-        CustomerTask.TaskType.FinalizeUpgrade,
-        requestParams,
-        customer,
-        universe);
+        taskType, CustomerTask.TaskType.FinalizeUpgrade, requestParams, customer, universe);
   }
 
   public UUID rollbackUpgrade(
@@ -486,6 +492,12 @@ public class UpgradeUniverseHandler {
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     }
 
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot modify audit log config while YSQL major version upgrade is in progress.");
+    }
+
     // Verify if exporter config is set to export active.
     if (requestParams.auditLogConfig.isExportActive()) {
       // If exporter config is set to export active, verify if any exporter is configured.
@@ -513,12 +525,30 @@ public class UpgradeUniverseHandler {
           throw new PlatformServiceException(BAD_REQUEST, errorMessage);
         }
       }
+
+      // For Kubernetes provider, verify the universe version is compatible with otel exporter.
+      if (userIntent.providerType.equals(CloudType.kubernetes)
+          && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
+        String errorMessage =
+            String.format(
+                "Audit log exporter is not supported for universe '%s' running version '%s'. Please"
+                    + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
+                    + " only enable audit logs on the universe.",
+                universe.getUniverseUUID(),
+                userIntent.ybSoftwareVersion,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
     }
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
     return submitUpgradeTask(
-        TaskType.ModifyAuditLoggingConfig,
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.ModifyKubernetesAuditLoggingConfig
+            : TaskType.ModifyAuditLoggingConfig,
         CustomerTask.TaskType.ModifyAuditLoggingConfig,
         requestParams,
         customer,
@@ -662,6 +692,9 @@ public class UpgradeUniverseHandler {
     SoftwareUpgradeInfoResponse response = new SoftwareUpgradeInfoResponse();
     try {
       response.setFinalizeRequired(autoFlagUtil.upgradeRequireFinalize(currentVersion, newVersion));
+      response.setYsqlMajorVersionUpgrade(
+          softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+              universe, currentVersion, newVersion));
     } catch (IOException e) {
       log.error("Error: ", e);
       throw new PlatformServiceException(

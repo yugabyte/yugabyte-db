@@ -25,11 +25,11 @@
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
 
-/* YB includes. */
+/* YB includes */
 #include "access/transam.h" /* For FirstNormalObjectId */
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 
  /*
   * Extension version number, for supporting older extension versions' objects
@@ -1762,19 +1762,23 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo * plan_info)
 static void
 pgsm_store(pgsmEntry * entry)
 {
+	if (yb_is_calling_internal_function_for_ddl)
+		return;
+
 	pgsmEntry  *shared_hash_entry;
 	pgsmSharedState *pgsm;
 	bool		found;
 	uint64		bucketid;
 	uint64		prev_bucket_id;
 	bool		reset = false;	/* Only used in update function - HAMID */
-	const char *query;	/* YB: changed to const for RedactPasswordIfExists */
+	const char *query;	/* YB: changed to const for YbRedactPasswordIfExists */
 	int			query_len;
 	BufferUsage bufusage;
 	WalUsage	walusage;
 	JitInstrumentation jitusage;
 	char		comments[COMMENTS_LEN] = {0};
 	int			comments_len;
+	CommandTag command_tag;
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
@@ -1790,10 +1794,11 @@ pgsm_store(pgsmEntry * entry)
 
 	entry->key.bucket_id = bucketid;
 	/*
-	 * TODO(jason): RedactPasswordIfExists is not designed in a
+	 * TODO(jason): YbRedactPasswordIfExists is not designed in a
 	 * memory-conscious way.
 	 */
-	query = RedactPasswordIfExists(entry->query_text.query_pointer);
+	command_tag = YbParseCommandTag(entry->query_text.query_pointer);
+	query = YbRedactPasswordIfExists(entry->query_text.query_pointer, command_tag);
 	query_len = strlen(query);
 
 	/* Let's do all the leg work here before we acquire any locks */

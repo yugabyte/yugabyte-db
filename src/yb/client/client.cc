@@ -64,18 +64,20 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/dockv/partition.h"
+#include "yb/common/init.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/schema_pbutil.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -101,9 +103,9 @@
 #include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/util/atomic.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"
 #include "yb/util/mem_tracker.h"
@@ -122,6 +124,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using namespace std::literals;
 
@@ -130,6 +133,8 @@ using google::protobuf::RepeatedPtrField;
 using std::make_pair;
 using std::string;
 using std::vector;
+using yb::master::AcquireObjectLocksGlobalRequestPB;
+using yb::master::AcquireObjectLocksGlobalResponsePB;
 using yb::master::AddTransactionStatusTabletRequestPB;
 using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::AlterRoleRequestPB;
@@ -213,12 +218,12 @@ using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::MasterBackupProxy;
 using yb::master::MasterDdlProxy;
 using yb::master::MasterReplicationProxy;
-using yb::master::PlacementInfoPB;
 using yb::master::RedisConfigGetRequestPB;
 using yb::master::RedisConfigGetResponsePB;
 using yb::master::RedisConfigSetRequestPB;
 using yb::master::RedisConfigSetResponsePB;
-using yb::master::ReplicationInfoPB;
+using yb::master::ReleaseObjectLocksGlobalRequestPB;
+using yb::master::ReleaseObjectLocksGlobalResponsePB;
 using yb::master::ReservePgsqlOidsRequestPB;
 using yb::master::ReservePgsqlOidsResponsePB;
 using yb::master::TableIdentifierPB;
@@ -356,6 +361,19 @@ void SetVerboseLogLevel(int level) {
 
 Status SetInternalSignalNumber(int signum) {
   return SetStackTraceSignal(signum);
+}
+
+tserver::PGReplicationSlotLsnType CDCSDKStreamInfo::GetPGReplicationSlotLsnType(
+    ReplicationSlotLsnType lsn_type) {
+  switch (lsn_type) {
+    case ReplicationSlotLsnType_SEQUENCE:
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE;
+    case ReplicationSlotLsnType_HYBRID_TIME:
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME;
+    default:
+      LOG(WARNING) << "Invalid LSN type specified: " << lsn_type << ", defaulting to SEQUENCE";
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE;
+  }
 }
 
 YBClientBuilder::YBClientBuilder()
@@ -890,7 +908,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const TransactionMetadata* txn,
                                  const bool colocated,
                                  CoarseTimePoint deadline,
-                                 std::optional<YbCloneInfo> yb_clone_info) {
+                                 std::optional<YbcCloneInfo> yb_clone_info) {
   if (yb_clone_info) {
     RETURN_NOT_OK(CloneNamespace(
         namespace_name, database_type ? database_type.value() : YQL_DATABASE_PGSQL,
@@ -933,7 +951,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
 
 Status YBClient::CloneNamespace(const std::string& target_namespace_name,
                                 const YQLDatabase& database_type,
-                                YbCloneInfo& yb_clone_info) {
+                                YbcCloneInfo& yb_clone_info) {
   LOG(INFO) << Format(
       "Creating database $0 as clone of database $1",
       target_namespace_name, yb_clone_info.src_db_name);
@@ -1118,17 +1136,21 @@ Status YBClient::ListClones(master::ListClonesResponsePB* ret) {
   return Status::OK();
 }
 
-Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
-                                  const uint32_t next_oid, const uint32_t count,
-                                  uint32_t* begin_oid, uint32_t* end_oid) {
+Status YBClient::ReservePgsqlOids(
+    const std::string& namespace_id, uint32_t next_oid, uint32_t count, uint32_t* begin_oid,
+    uint32_t* end_oid, bool use_secondary_space, uint32_t* oid_cache_invalidations_count) {
   ReservePgsqlOidsRequestPB req;
   ReservePgsqlOidsResponsePB resp;
   req.set_namespace_id(namespace_id);
   req.set_next_oid(next_oid);
   req.set_count(count);
+  req.set_use_secondary_space(use_secondary_space);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, ReservePgsqlOids);
   *begin_oid = resp.begin_oid();
   *end_oid = resp.end_oid();
+  if (oid_cache_invalidations_count) {
+    *oid_cache_invalidations_count = resp.oid_cache_invalidations_count();
+  }
   return Status::OK();
 }
 
@@ -1474,7 +1496,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     CoarseTimePoint deadline,
     const CDCSDKDynamicTablesOption& dynamic_tables_option,
     uint64_t *consistent_snapshot_time_out,
-    const std::optional<ReplicationSlotLsnType>& lsn_type) {
+    const std::optional<ReplicationSlotLsnType>& lsn_type,
+    const std::optional<ReplicationSlotOrderingMode>& ordering_mode) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1501,6 +1524,9 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   if (lsn_type.has_value()) {
     req.mutable_cdcsdk_stream_create_options()->set_lsn_type(lsn_type.value());
   }
+  if (ordering_mode.has_value()) {
+    req.mutable_cdcsdk_stream_create_options()->set_ordering_mode(ordering_mode.value());
+  }
   req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
       dynamic_tables_option);
 
@@ -1526,7 +1552,8 @@ Status YBClient::GetCDCStream(
     std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map,
     std::optional<std::string>* replication_slot_name,
     std::vector<TableId>* unqualified_table_ids,
-    std::optional<ReplicationSlotLsnType>* lsn_type) {
+    std::optional<ReplicationSlotLsnType>* lsn_type,
+    std::optional<ReplicationSlotOrderingMode>* ordering_mode) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1588,6 +1615,12 @@ Status YBClient::GetCDCStream(
   if (lsn_type && resp.stream().has_cdc_stream_info_options() &&
       resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_lsn_type()) {
     *lsn_type = resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type();
+  }
+
+  if (ordering_mode && resp.stream().has_cdc_stream_info_options() &&
+      resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_ordering_mode()) {
+    *ordering_mode =
+        resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_ordering_mode();
   }
 
   return Status::OK();
@@ -1963,6 +1996,20 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
   data_->DeleteNotServingTablet(this, tablet_id, deadline, callback);
 }
 
+void YBClient::AcquireObjectLocksGlobalAsync(
+    const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+    MonoDelta rpc_timeout) {
+  auto deadline = CoarseMonoClock::Now() + rpc_timeout;
+  data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback);
+}
+
+void YBClient::ReleaseObjectLocksGlobalAsync(
+    const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+    MonoDelta rpc_timeout) {
+  auto deadline = CoarseMonoClock::Now() + rpc_timeout;
+  data_->ReleaseObjectLocksGlobalAsync(this, request, deadline, callback);
+}
+
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
     PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
@@ -1975,7 +2022,7 @@ void YBClient::GetTableLocations(
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only,
                                    bool use_cache,
                                    const std::string* tablespace_id,
-                                   const master::ReplicationInfoPB* replication_info) {
+                                   const ReplicationInfoPB* replication_info) {
   // Must make an RPC call if replication info must be fetched
   // (ie. cannot use the tserver count cache)
   bool is_replication_info_required = tablespace_id || replication_info;
@@ -2028,10 +2075,10 @@ Result<TabletServersInfo> YBClient::ListLiveTabletServers(bool primary_only) {
   CALL_SYNC_LEADER_MASTER_RPC_EX(Cluster, req, resp, ListLiveTabletServers);
 
   TabletServersInfo result;
-  result.resize(resp.servers_size());
+  result.tablet_servers.resize(resp.servers_size());
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListLiveTabletServersResponsePB_Entry& entry = resp.servers(i);
-    auto& out = result[i];
+    auto& out = result.tablet_servers[i];
     out.server = YBTabletServer::FromPB(entry, data_->cloud_info_pb_);
     const CloudInfoPB& cloud_info = entry.registration().common().cloud_info();
 
@@ -2104,8 +2151,8 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
 }
 
 Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
-                                          master::PlacementInfoPB&& live_replicas) {
-  master::ReplicationInfoPB replication_info;
+                                          PlacementInfoPB&& live_replicas) {
+  ReplicationInfoPB replication_info;
   // Merge the obtained info with the existing table replication info.
   std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(OpenTable(table_name, &table), "Fetching table schema failed!");
@@ -2134,7 +2181,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
 }
 
 Status YBClient::CreateTransactionsStatusTable(
-    const string& table_name, const master::ReplicationInfoPB* replication_info) {
+    const string& table_name, const ReplicationInfoPB* replication_info) {
   if (table_name.rfind(kTransactionTablePrefix, 0) != 0) {
     return STATUS_FORMAT(
         InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
@@ -2405,13 +2452,13 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
-                                master::IncludeInactive include_inactive,
+                                master::IncludeHidden include_hidden,
                                 master::IncludeDeleted include_deleted,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, include_inactive, include_deleted, deadline, std::move(callback),
+      tablet_id, table, include_hidden, include_deleted, deadline, std::move(callback),
       use_cache);
 }
 
@@ -2590,7 +2637,7 @@ Result<master::ListTablesResponsePB> YBClient::ListTables(
 
 Result<std::vector<YBTableName>> YBClient::ListTables(
     const std::string& filter, bool exclude_ysql, const std::string& ysql_db_filter,
-    bool skip_hidden) {
+    SkipHidden skip_hidden) {
   auto resp = VERIFY_RESULT(ListTables(filter, ysql_db_filter));
 
   std::vector<YBTableName> result;
@@ -2598,6 +2645,7 @@ Result<std::vector<YBTableName>> YBClient::ListTables(
 
   for (int i = 0; i < resp.tables_size(); i++) {
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
+    VLOG_WITH_FUNC(4) << "Table: " << AsString(table_info);
     DCHECK(table_info.has_namespace_());
     DCHECK(table_info.namespace_().has_name());
     DCHECK(table_info.namespace_().has_id());
@@ -2733,15 +2781,27 @@ Result<pair<Schema, uint32_t>> YBClient::GetTableSchemaFromSysCatalog(
   return make_pair(current_schema, resp.version());
 }
 
-Result<bool> YBClient::TableExists(const YBTableName& table_name, bool skip_hidden) {
-  auto tables = VERIFY_RESULT(ListTables(
-      table_name.table_name(), /*exclude_ysql=*/false, /*ysql_db_filter=*/"", skip_hidden));
-  for (const YBTableName& table : tables) {
-    if (table == table_name) {
+Result<bool> YBClient::TableExists(const YBTableName& table_name) {
+  if (table_name.namespace_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
+    auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+    auto status = data_->GetTableSchema(this, table_name, deadline, nullptr);
+    if (status.ok()) {
       return true;
     }
+    if (status.IsNotFound()) {
+      return false;
+    }
+    return status;
+  } else {
+    auto tables = VERIFY_RESULT(ListTables(
+        table_name.table_name(), /* exclude_ysql =*/ false, /* ysql_db_filter= */ ""));
+    for (const YBTableName& table : tables) {
+      if (table == table_name) {
+        return true;
+      }
+    }
+    return false;
   }
-  return false;
 }
 
 Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
@@ -2771,8 +2831,9 @@ void YBClient::OpenTableAsync(
 }
 
 void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                              master::IncludeHidden include_hidden,
                               master::GetTableSchemaResponsePB* resp) {
-  DoOpenTableAsync(table_id, callback, master::IncludeHidden::kFalse, resp);
+  DoOpenTableAsync(table_id, callback, include_hidden, resp);
 }
 
 template <class Id>
@@ -2828,7 +2889,7 @@ bool YBClient::IsMultiMaster() const {
 Result<int> YBClient::NumTabletsForUserTable(
     TableType table_type,
     const std::string* tablespace_id,
-    const master::ReplicationInfoPB* replication_info) {
+    const ReplicationInfoPB* replication_info) {
   if (table_type == TableType::PGSQL_TABLE_TYPE &&
         FLAGS_ysql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ysql_num_tablets
@@ -2953,7 +3014,7 @@ Result<std::optional<std::pair<bool, uint32>>> YBClient::ValidateAutoFlagsConfig
   master::ValidateAutoFlagsConfigResponsePB resp;
   req.mutable_config()->CopyFrom(config);
   if (min_flag_class) {
-    req.set_min_flag_class(to_underlying(*min_flag_class));
+    req.set_min_flag_class(std::to_underlying(*min_flag_class));
   }
 
   // CALL_SYNC_LEADER_MASTER_RPC_EX will return on failure. Capture the Status so that we can handle
@@ -3014,6 +3075,10 @@ bool YBClient::RefreshTabletInfoWithConsensusInfo(
 
 int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
   return data_->meta_cache_->GetRaftConfigOpidIndex(tablet_id);
+}
+
+void YBClient::RequestAbortAllRpcs() {
+  data_->rpcs_.RequestAbortAll();
 }
 
 }  // namespace client

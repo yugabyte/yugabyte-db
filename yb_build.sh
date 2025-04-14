@@ -487,7 +487,7 @@ run_cxx_test() {
       # In this verbose mode, ctest also adds some number (test number?) with a colon in the
       # beginning of every line of the output. We filter that out.
       set -x
-      ctest --verbose -R ^"$cxx_test_name"$ 2>&1 | sed 's/^[0-9][0-9]*: //g'
+      ctest --verbose -R ^"$cxx_test_name"$ 2>&1 | LC_ALL=C sed 's/^[0-9][0-9]*: //g'
     )
   else
     run_repeat_unit_test "$build_type" "$test_binary_name"

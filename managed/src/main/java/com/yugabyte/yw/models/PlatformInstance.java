@@ -39,7 +39,6 @@ import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
 import jakarta.persistence.Transient;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.Date;
 import java.util.Optional;
@@ -61,9 +60,6 @@ public class PlatformInstance extends Model {
       new Finder<UUID, PlatformInstance>(PlatformInstance.class) {};
 
   private static final Logger LOG = LoggerFactory.getLogger(PlatformInstance.class);
-
-  private static final SimpleDateFormat TIMESTAMP_FORMAT =
-      new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy");
 
   private static long BACKUP_DISCONNECT_TIME_MILLIS = 15 * (60 * 1000);
 
@@ -258,7 +254,7 @@ public class PlatformInstance extends Model {
           PlatformInstance instance = new PlatformInstance();
           instance.uuid = UUID.fromString(json.get("uuid").asText());
           UUID configUUID = UUID.fromString(json.get("config_uuid").asText());
-          instance.config = HighAvailabilityConfig.get(configUUID).orElse(null);
+          instance.config = HighAvailabilityConfig.maybeGet(configUUID).orElse(null);
           instance.address = json.get("address").asText();
           instance.setIsLeader(json.get("is_leader").asBoolean());
           instance.setIsLocal(json.get("is_local").asBoolean());

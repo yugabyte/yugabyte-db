@@ -135,7 +135,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
       metricQueryHelper.query(customer, ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
-          re.buildResult(fakeRequest), "Queried time interval should be positive");
+          re.buildResult(fakeRequest), "Start time cannot be greater than the end time");
     }
   }
 

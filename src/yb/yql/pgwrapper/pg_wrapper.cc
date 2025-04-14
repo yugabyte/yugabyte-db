@@ -23,14 +23,13 @@
 #include <thread>
 #include <variant>
 #include <vector>
+#include "yb/server/server_base_options.h"
 
 #ifndef __linux__
 #include <libproc.h>
 #endif
 
 #include <boost/algorithm/string.hpp>
-
-#include "yb/tserver/tablet_server_interface.h"
 
 #include "yb/rpc/secure_stream.h"
 
@@ -60,6 +59,7 @@
 #include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(enable_ysql_conn_mgr);
+DECLARE_int32(ysql_conn_mgr_max_pools);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
@@ -80,6 +80,10 @@ DEFINE_NON_RUNTIME_bool(yb_enable_valgrind, false,
 
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
+
+DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
+                 "If true, enables race condition testing for query diagnostics.");
+
 // Default to 5MB
 DEFINE_UNKNOWN_string(
     pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
@@ -192,6 +196,13 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, tru
     "Enable the pg_locks view. This view provides information about the locks held by "
     "active postgres sessions.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pg_locks_integrate_advisory_locks, kLocalPersisted,
+    false, true,
+    "Enables pg_locks to integrate and display advisory locks details correctly.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_docdb_vector_type, kExternal, false, true,
+    "Enable using the DocDB Vector type from YSQL.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
     "Sets the minimum transaction age for results from pg_locks.");
 
@@ -268,6 +279,13 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersiste
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, false, true,
     "Enable replica identity command for Alter Table query");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_block_based_sampling_algorithm,
+    kLocalVolatile, false, true, "Allow YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_allow_separate_requests_for_sampling_stages, kLocalVolatile, false, true,
+    "Allow using separate requests for block-based sampling stages");
+
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
     "The default replica identity to be assigned to user defined tables at the time of creation. "
@@ -282,7 +300,7 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_nonempty_ms, 1, 
     "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
     "the CDC service in case the last received response was non-empty.");
 
-DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 1000,  // 1 sec
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 10,  // 10 ms
     "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");
@@ -292,20 +310,27 @@ DEFINE_RUNTIME_PG_FLAG(
     "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
     "streaming changes via logical replication . After that, changes are spooled to disk.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, 2048, // 2 KB
     "Size threshold in bytes for a catcache tuple to be compressed.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
   "Determines the behavior of read-after-commit-visibility guarantee.");
 
-DEFINE_test_flag(bool, yb_enable_query_diagnostics, false,
-              "True to enable Query Diagnostics");
-
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_fkey_catcache, true,
     "Enable preloading of foreign key information into the relation cache.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_sample_period, 1024 * 1024, // 1MB
+    "Sets the interval at which TCMalloc should sample allocations. "
+    "Sampling is disabled if this is set to 0.");
+
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");
+
+DEFINE_RUNTIME_PG_FLAG(string, yb_sampling_algorithm,
+    "block_based_sampling",
+    "Which sampling algorithm to use for YSQL. full_table_scan - scan the whole table and pick "
+    "random rows, block_based_sampling - sample the table for a set of blocks, then scan selected "
+    "blocks to form a final rows sample.");
 
 DEFINE_validator(ysql_yb_xcluster_consistency_level, FLAG_IN_SET_VALIDATOR("database", "tablet"));
 
@@ -317,6 +342,13 @@ DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
 
 DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
             "Trust YSQL connections via the local socket from the yugabyte user.");
+
+DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
+    "Enables the collection of query diagnostics data for YSQL queries, "
+    "facilitating the creation of diagnostic bundles.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_expression_pushdown, true,
+    "Enables expression pushdown for queries in mixed mode of a YSQL Major version upgrade.");
 
 DECLARE_bool(enable_pg_cron);
 
@@ -667,8 +699,7 @@ string GetPostgresInstallRoot() {
 
 Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     const std::string& bind_addresses,
-    const std::string& data_dir,
-    const int tserver_shm_fd) {
+    const std::string& data_dir) {
   PgProcessConf conf;
   if (!bind_addresses.empty()) {
     auto pg_host_port = VERIFY_RESULT(HostPort::FromString(
@@ -677,7 +708,6 @@ Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     conf.pg_port = pg_host_port.port();
   }
   conf.data_dir = data_dir;
-  conf.tserver_shm_fd = tserver_shm_fd;
   PgWrapper pg_wrapper(conf);
   RETURN_NOT_OK(pg_wrapper.PreflightCheck());
   RETURN_NOT_OK(pg_wrapper.InitDbLocalOnlyIfNeeded());
@@ -794,8 +824,11 @@ Status PgWrapper::Start() {
   std::string stats_key = std::to_string(ysql_conn_mgr_stats_shmem_key_);
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
-  if (FLAGS_enable_ysql_conn_mgr_stats)
-    proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, stats_key);
+  if (FLAGS_enable_ysql_conn_mgr_stats) {
+     proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, stats_key);
+     proc_->SetEnv("FLAGS_ysql_conn_mgr_max_pools",
+                   std::to_string(FLAGS_ysql_conn_mgr_max_pools));
+  }
 
   proc_->ShareParentStderr();
   proc_->ShareParentStdout();
@@ -812,7 +845,7 @@ Status PgWrapper::Start() {
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGQUIT));
-  proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
+  proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
 
   proc_->SetEnv("FLAGS_mem_tracker_tcmalloc_gc_release_bytes",
@@ -871,9 +904,13 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
-  initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
+  initdb_subprocess.InheritNonstandardFd(address_negotiator_fd_);
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
+
+  const std::string initdb_log_path = Format("$0/$1", FLAGS_log_dir, "initdb.log");
+  initdb_subprocess.SetEnv("YB_INITDB_LOG_FILE_PATH", initdb_log_path);
+
   if (global_initdb) {
     const auto& global_initdb_params = std::get<GlobalInitdbParams>(initdb_params);
 
@@ -886,14 +923,11 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
     }
   }
 
-  std::string stdout, stderr;
-  auto status = initdb_subprocess.Call(&stdout, &stderr);
-  LOG(INFO) << "initdb stdout: " << stdout;
-  if (!stderr.empty()) {
-    LOG(WARNING) << "initdb stderr: " << stderr;
-  }
-  if (!status.ok()) {
-    return status.CloneAndAppend(stderr);
+  Status initdb_status = initdb_subprocess.Run();
+  if (!initdb_status.ok()) {
+    LOG(ERROR) << "Initdb failed. Initdb log file path: "
+               << boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", getenv("TEST_TMPDIR"));
+    return initdb_status;
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
@@ -910,7 +944,7 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   std::vector<std::string> args{
       program_path,
       "--new-datadir", param.data_dir,
-      "--username", "yugabyte",
+      "--username", param.ysql_user_name,
       "--new-socketdir", param.new_version_socket_dir,
       "--new-port", ToString(param.new_version_pg_port),
       "--old-port", ToString(param.old_version_pg_port)};
@@ -924,17 +958,9 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   }
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
-  Subprocess subprocess(program_path, args);
-
-  std::string stdout, stderr;
-  auto status = Subprocess::Call(args, &stdout, &stderr);
-  LOG(INFO) << "pg_upgrade stdout: " << stdout;
-  if (!stderr.empty()) {
-    LOG(WARNING) << "pg_upgrade stderr: " << stderr;
-  }
-  if (!status.ok()) {
-    return status.CloneAndAppend(stderr);
-  }
+  RETURN_NOT_OK_PREPEND(
+      Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
+      "pg_upgrade failed. Check previous errors for more details.");
 
   LOG(INFO) << "pg_upgrade completed successfully";
   return Status::OK();
@@ -943,13 +969,6 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
 namespace {
 
 constexpr auto kVersionChars = 2;
-
-Result<int32_t> GetCurrentPgVersion() {
-  const char* curr_pg_ver_cstr;
-  PG_RETURN_NOT_OK(YbgGetPgVersion(&curr_pg_ver_cstr));
-  string curr_pg_ver_str = curr_pg_ver_cstr;
-  return CheckedStoi(curr_pg_ver_str.substr(0, kVersionChars));
-}
 
 Result<int32_t> GetPgDirectoryVersion(const string& data_dir) {
   std::unique_ptr<SequentialFile> result;
@@ -962,10 +981,13 @@ Result<int32_t> GetPgDirectoryVersion(const string& data_dir) {
   return CheckedStoi(slc.Prefix(kVersionChars));
 }
 
+std::string MakeVersionedDataDir(const std::string& data_dir, int32_t version) {
+  return data_dir + "_" + std::to_string(version);
+}
 }  // namespace
 
 string PgWrapper::MakeVersionedDataDir(int32_t version) {
-  return conf_.data_dir + "_" + std::to_string(version);
+  return pgwrapper::MakeVersionedDataDir(conf_.data_dir, version);
 }
 
 // The data directory contains PG files for a particular PG version.
@@ -975,7 +997,7 @@ string PgWrapper::MakeVersionedDataDir(int32_t version) {
 // directory.
 // This code is written to be identical for a tablet server hosting any major PG version.
 Status PgWrapper::InitDbLocalOnlyIfNeeded() {
-  int32_t current_pg_version = VERIFY_RESULT(GetCurrentPgVersion());
+  int32_t current_pg_version = YbgGetPgVersion();
 
   // One-time migration in case this installation is not yet using a symlink
   if (VERIFY_RESULT(Env::Default()->DoesDirectoryExist(conf_.data_dir)) &&
@@ -1030,9 +1052,23 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
   return Env::Default()->SymlinkPath(versioned_data_dir, conf_.data_dir);
 }
 
+Status PgWrapper::CleanupPgData(const std::string& data_dir) {
+  const auto current_pg_version = YbgGetPgVersion();
+  const std::string versioned_data_dir =
+      pgwrapper::MakeVersionedDataDir(data_dir, current_pg_version);
+  auto env = Env::Default();
+  RETURN_NOT_OK(DeleteIfExists(versioned_data_dir, env));
+  RETURN_NOT_OK(DeleteIfExists(data_dir, env));
+
+  return Status::OK();
+}
+
 Status PgWrapper::InitDbForYSQL(
-    const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd,
-    std::vector<std::pair<string, YBCPgOid>> db_to_oid, bool is_major_upgrade) {
+    PgWrapperContext* server, const server::ServerBaseOptions& options, FsManager& fs_manager,
+    const string& tmp_dir_base, std::vector<std::pair<string, YbcPgOid>> db_to_oid,
+    bool is_major_upgrade) {
+  const auto master_addresses = server::MasterAddressesToString(*options.GetMasterAddresses());
+
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -1040,7 +1076,6 @@ Status PgWrapper::InitDbForYSQL(
   conf.pg_port = 0;  // We should not use this port.
   std::mt19937 rng{std::random_device()()};
   conf.data_dir = Format("$0/tmp_pg_data_$1", tmp_dir_base, rng());
-  conf.tserver_shm_fd = tserver_shm_fd;
   auto se = ScopeExit([&conf] {
     auto is_dir = Env::Default()->IsDirectory(conf.data_dir);
     if (is_dir.ok()) {
@@ -1055,7 +1090,11 @@ Status PgWrapper::InitDbForYSQL(
                    << is_dir.status();
     }
   });
+
+  RETURN_NOT_OK(conf.SetSslConf(options, fs_manager));
+
   PgWrapper pg_wrapper(conf);
+  pg_wrapper.PrepareSharedMemoryNegotiation(server);
   auto start_time = std::chrono::steady_clock::now();
   Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid, is_major_upgrade});
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
@@ -1066,6 +1105,12 @@ Status PgWrapper::InitDbForYSQL(
     LOG(ERROR) << "initdb failed: " << initdb_status;
   }
   return initdb_status;
+}
+
+void PgWrapper::PrepareSharedMemoryNegotiation(PgWrapperContext* server) {
+  CHECK_OK(server->StartSharedMemoryNegotiation());
+  address_negotiator_fd_ = server->SharedMemoryNegotiationFd();
+  shared_mem_uuid_ = server->permanent_uuid();
 }
 
 string PgWrapper::GetPostgresExecutablePath() {
@@ -1098,8 +1143,8 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
-  CHECK_NE(conf_.tserver_shm_fd, -1);
-  proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+  proc->SetEnv("YB_PG_ADDRESS_NEGOTIATOR_FD", Format("$0", address_negotiator_fd_));
+  proc->SetEnv("FLAGS_pggate_tserver_shared_memory_uuid", shared_mem_uuid_);
 #ifdef OS_MACOSX
   // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
   if (getenv("LC_ALL") == nullptr) {
@@ -1234,16 +1279,26 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // PgSupervisor: monitoring a PostgreSQL child process and restarting if needed
 // ------------------------------------------------------------------------------------------------
 
-PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
-    : conf_(std::move(conf)) {
-  if (tserver) {
-    tserver->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
+PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
+    : conf_(std::move(conf)), server_(server) {
+  if (server_) {
+    server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
   }
 }
 
 PgSupervisor::~PgSupervisor() {
+  Stop();
+
   std::lock_guard lock(mtx_);
   DeregisterPgFlagChangeNotifications();
+}
+
+void PgSupervisor::Stop() {
+  ProcessSupervisor::Stop();
+  if (server_) {
+    CHECK_OK(server_->StopSharedMemoryNegotiation());
+    server_ = nullptr;
+  }
 }
 
 Status PgSupervisor::ReloadConfig() {
@@ -1314,6 +1369,9 @@ std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
     FLAGS_enable_ysql_conn_mgr_stats = false;
   }
 
+  if (server_) {
+    pgwrapper->PrepareSharedMemoryNegotiation(server_);
+  }
   return pgwrapper;
 }
 
@@ -1340,7 +1398,7 @@ key_t PgSupervisor::GetYsqlConnManagerStatsShmkey() {
   // Let's use a key start at 13000 + 997 (largest 3 digit prime number). Just decreasing
   // the chances of collision with the pg shared memory key space logic.
   key_t shmem_key = 13000 + 997;
-  size_t size_of_shmem = YSQL_CONN_MGR_MAX_POOLS * sizeof(struct ConnectionStats);
+  size_t size_of_shmem = FLAGS_ysql_conn_mgr_max_pools * sizeof(struct ConnectionStats);
   key_t shmid = -1;
 
   while (true) {

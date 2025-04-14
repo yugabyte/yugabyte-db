@@ -33,7 +33,8 @@ class InstallNodeAgent(BaseYnpModule):
                 "skipProvisioning": True,
                 "cloudInfo": {
                     "onprem": {
-                        "ybHomeDir": context.get("yb_home_dir", "/home/yugabyte")
+                        "ybHomeDir": context.get("yb_home_dir", "/home/yugabyte"),
+                        "useClockbound": context.get("configure_clockbound", "false")
                     }
                 }
             },
@@ -126,8 +127,7 @@ class InstallNodeAgent(BaseYnpModule):
                     "ip": context.get('node_external_fqdn'),
                     "region": context.get('provider_region_name'),
                     "zone": context.get('provider_region_zone_name'),
-                    "nodeName": context.get("node_name"),
-                    "instanceName": context.get('instance_type_name')
+                    "instanceName": context.get('node_name')
                 }
             ]
         }
@@ -187,6 +187,9 @@ class InstallNodeAgent(BaseYnpModule):
                 os.remove(file_path)
 
     def render_templates(self, context):
+        if context.get('is_cloud'):
+            return super().render_templates(context)
+
         node_agent_enabled = False
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https')

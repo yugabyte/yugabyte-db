@@ -72,30 +72,6 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
-  /migration_assesment:
-    get:
-      summary: Get Voyager data migration metrics
-      description: Get Voyager data migration metrics
-      operationId: GetVoyagerMigrationAssesmentDetails
-      tags:
-        - voyager-info
-      parameters:
-        - name: uuid
-          in: query
-          description: uuid of the voyager migration task
-          required: true
-          style: form
-          explode: false
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/VoyagerAssesmentResponse'
-        '400':
-          $ref: '#/components/responses/ApiError'
-        '500':
-          $ref: '#/components/responses/ApiError'
   /migrate_schema:
     get:
       summary: Get Voyager data migration metrics
@@ -212,6 +188,48 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/AssessmentTargetRecommendationResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /cluster:
+    get:
+      summary: Get a cluster
+      description: Get a Yugabyte Cluster
+      operationId: getCluster
+      tags:
+        - cluster
+      responses:
+        '200':
+          $ref: '#/components/responses/ClusterResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+    delete:
+      summary: Submit task to delete a cluster
+      description: Submit task to delete a Yugabyte Cluster
+      tags:
+        - cluster
+      responses:
+        '200':
+          description: Successfully submitted delete cluster request
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+      operationId: deleteCluster
+    put:
+      summary: Submit task to edit a cluster
+      description: Submit task to edit a Yugabyte Cluster
+      operationId: editCluster
+      tags:
+        - cluster
+      requestBody:
+        $ref: '#/components/requestBodies/ClusterSpec'
+      responses:
+        '200':
+          $ref: '#/components/responses/ClusterResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
@@ -591,48 +609,6 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
-  /cluster:
-    get:
-      summary: Get a cluster
-      description: Get a Yugabyte Cluster
-      operationId: getCluster
-      tags:
-        - cluster
-      responses:
-        '200':
-          $ref: '#/components/responses/ClusterResponse'
-        '400':
-          $ref: '#/components/responses/ApiError'
-        '500':
-          $ref: '#/components/responses/ApiError'
-    delete:
-      summary: Submit task to delete a cluster
-      description: Submit task to delete a Yugabyte Cluster
-      tags:
-        - cluster
-      responses:
-        '200':
-          description: Successfully submitted delete cluster request
-        '400':
-          $ref: '#/components/responses/ApiError'
-        '500':
-          $ref: '#/components/responses/ApiError'
-      operationId: deleteCluster
-    put:
-      summary: Submit task to edit a cluster
-      description: Submit task to edit a Yugabyte Cluster
-      operationId: editCluster
-      tags:
-        - cluster
-      requestBody:
-        $ref: '#/components/requestBodies/ClusterSpec'
-      responses:
-        '200':
-          $ref: '#/components/responses/ClusterResponse'
-        '400':
-          $ref: '#/components/responses/ApiError'
-        '500':
-          $ref: '#/components/responses/ApiError'
   /pitr:
     get:
       summary: Get PITR Schedules
@@ -766,48 +742,12 @@ components:
             status:
               description: Error code
               type: integer
-    AssesmentComplexityInfo:
-      title: Assesment complexity details
-      description: Assesment complexity details
-      type: object
-      properties:
-        schema:
-          type: string
-        sql_objects_count:
-          type: integer
-        table_count:
-          type: integer
-        complexity:
-          type: string
-    MigrationAssesmentInfo:
-      title: Details for Voyager migrations assesment
-      description: Details for Voyager migrations assesment
-      type: object
-      properties:
-        assesment_status:
-          type: boolean
-        top_errors:
-          type: array
-          items:
-            type: string
-        top_suggestions:
-          type: array
-          items:
-            type: string
-        complexity_overview:
-          type: array
-          items:
-            $ref: '#/components/schemas/AssesmentComplexityInfo'
-        operating_system:
-          type: string
-    ErrorsAndSuggestionsDetails:
-      title: Errors and Suggestions details
-      description: Errors and suggestions details
+    AnalysisIssueDetails:
+      title: Analysis Issue Details
+      description: Details of issues in Schema Analysis Report
       type: object
       properties:
         issueType:
-          type: string
-        objectType:
           type: string
         objectName:
           type: string
@@ -821,58 +761,12 @@ components:
           type: string
         GH:
           type: string
-    UnsupportedSqlWithDetails:
-      title: Schema for Suggested refactoring tab in Migrate Schema page
-      description: Schema for Suggested refactoring tab in Migrate Schema page
-      type: object
-      properties:
-        suggestions_errors:
-          type: array
-          items:
-            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
-        unsupported_type:
+        docs_link:
           type: string
-        count:
-          type: integer
-    RefactoringCount:
-      title: Count of automatic and manual refactoring
-      description: count for automatic and manual refactoring
-      type: object
-      properties:
-        sql_object_type:
-          type: string
-        manual:
-          type: integer
-        automatic:
-          type: integer
-    RecommendedRefactoringGraph:
-      title: Refectoring recommendations per SQL object type
-      description: Refectoring recommendations for migrating SQL objects
-      type: object
-      properties:
-        refactor_details:
+        minimum_versions_fixed_in:
           type: array
           items:
-            $ref: '#/components/schemas/RefactoringCount'
-    SchemaAnalysisReport:
-      title: Schema Analysis report
-      description: Voyager data migration metrics details
-      type: object
-      properties:
-        unsupported_functions:
-          type: array
-          items:
-            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
-        unsupported_features:
-          type: array
-          items:
-            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
-        unsupported_datatypes:
-          type: array
-          items:
-            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
-        recommended_refactoring:
-          $ref: '#/components/schemas/RecommendedRefactoringGraph'
+            type: string
     SqlObjectsDetails:
       title: Sql Objects
       description: Sql obejcts type and count
@@ -886,8 +780,42 @@ components:
           type: integer
         objectNames:
           type: string
-        objectDetails:
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalysisIssueDetails'
+    RefactoringCount:
+      title: Count of automatic, manual and invalid SQL objects
+      description: >-
+        Count of automatic, manual and invalid SQL objects displayed in Schema
+        analysis page
+      type: object
+      properties:
+        sql_object_type:
           type: string
+        manual:
+          type: integer
+        automatic:
+          type: integer
+        invalid:
+          type: integer
+    SchemaAnalysisReport:
+      title: Schema Analysis report
+      description: Voyager data migration metrics details
+      type: object
+      properties:
+        voyager_version:
+          type: string
+        target_db_version:
+          type: string
+        sql_objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/SqlObjectsDetails'
+        recommended_refactoring:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefactoringCount'
     MigrateSchemaTaskInfo:
       title: Details for export schema, import schema and analyze schema steps
       description: Voyager data migration metrics details
@@ -904,20 +832,12 @@ components:
           type: string
         import_schema:
           type: string
-        suggestions_errors:
-          type: array
-          items:
-            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
         current_analysis_report:
           $ref: '#/components/schemas/SchemaAnalysisReport'
         analysis_history:
           type: array
           items:
             $ref: '#/components/schemas/SchemaAnalysisReport'
-        sql_objects:
-          type: array
-          items:
-            $ref: '#/components/schemas/SqlObjectsDetails'
     VoyagerMigrateDataMetricsDetails:
       title: Voyager Migrate Data Metrics details
       description: Voyager data migration metrics details
@@ -936,8 +856,10 @@ components:
           type: integer
         count_live_rows:
           type: integer
+          format: int64
         count_total_rows:
           type: integer
+          format: int64
         invocation_timestamp:
           type: string
     VoyagerMigrateDataMetrics:
@@ -955,6 +877,8 @@ components:
       type: object
       properties:
         migration_complexity:
+          type: string
+        migration_comlexity_explanation:
           type: string
         estimated_migration_time:
           type: string
@@ -1043,30 +967,65 @@ components:
       description: Unsupported SQL Object Data
       type: object
       properties:
+        object_type:
+          type: string
         object_name:
           type: string
         sql_statement:
           type: string
-    UnsupportedSqlInfo:
-      title: Unsupported SQL Info
-      description: Unsupported SQL Info
+    AssessmentIssueInfo:
+      title: Assessment Sub Issue Info
+      description: >-
+        Assessment Issues of a particular issue type (migration caveat,
+        datatype, etc)
       type: object
       properties:
-        unsupported_type:
+        type:
+          type: string
+        name:
+          type: string
+        description:
           type: string
         count:
           type: integer
+        impact:
+          type: string
         objects:
           type: array
           items:
             $ref: '#/components/schemas/UnsupportedSqlObjectData'
         docs_link:
           type: string
+        minimum_versions_fixed_in:
+          type: array
+          items:
+            type: string
+    AssessmentCategoryInfo:
+      title: Assessment Issue Info
+      description: >-
+        Assessment Issues aggrageted based on Issue Category (migration
+        caveat,datatype,etc)
+      type: object
+      properties:
+        category:
+          type: string
+        category_description:
+          type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentIssueInfo'
     MigrationAssessmentReport:
       title: Details of the migration assessment report
       description: Details of the migration assessment report
       type: object
       properties:
+        operating_system:
+          type: string
+        voyager_version:
+          type: string
+        target_db_version:
+          type: string
         assessment_status:
           type: boolean
         summary:
@@ -1078,19 +1037,13 @@ components:
         target_recommendations:
           $ref: '#/components/schemas/TargetClusterRecommendationDetails'
         recommended_refactoring:
-          $ref: '#/components/schemas/RecommendedRefactoringGraph'
-        unsupported_data_types:
           type: array
           items:
-            $ref: '#/components/schemas/UnsupportedSqlInfo'
-        unsupported_functions:
+            $ref: '#/components/schemas/RefactoringCount'
+        assessment_issues:
           type: array
           items:
-            $ref: '#/components/schemas/UnsupportedSqlInfo'
-        unsupported_features:
-          type: array
-          items:
-            $ref: '#/components/schemas/UnsupportedSqlInfo'
+            $ref: '#/components/schemas/AssessmentCategoryInfo'
     SqlObjectCount:
       title: Count of specific Sql Object type in the source DB
       description: Count of specific Sql Object type in the source DB
@@ -1162,6 +1115,226 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TargetRecommendationItem'
+    CloudEnum:
+      title: Cloud Enum
+      description: Which cloud the cluster is deployed in
+      type: string
+      default: MANUAL
+      enum:
+        - AWS
+        - GCP
+        - MANUAL
+    CloudInfo:
+      title: Cloud Info
+      description: Cloud deployment information
+      type: object
+      properties:
+        code:
+          $ref: '#/components/schemas/CloudEnum'
+        region:
+          type: string
+          minLength: 1
+          default: us-west2
+      required:
+        - code
+        - region
+    ClusterFaultTolerance:
+      title: Cluster Fault Tolerance
+      description: The level of fault tolerance for the cluster
+      type: string
+      enum:
+        - NONE
+        - NODE
+        - ZONE
+        - REGION
+      default: ZONE
+    ClusterNodeInfo:
+      title: Cluster Node Info
+      description: Node level information
+      type: object
+      properties:
+        memory_mb:
+          description: The total amount of RAM (MB) used by all nodes
+          type: number
+          format: double
+          default: 0
+        disk_size_gb:
+          description: The total size of disk (GB)
+          type: number
+          format: double
+          default: 0
+        disk_size_used_gb:
+          description: The total size of used disk space (GB)
+          type: number
+          format: double
+          default: 0
+        cpu_usage:
+          description: The average CPU usage over all nodes
+          type: number
+          format: double
+          default: 0
+        num_cores:
+          description: The number of CPU cores per node
+          type: integer
+          default: 0
+        ram_provisioned_gb:
+          description: The total size of provisioned ram (GB)
+          type: number
+          format: double
+          default: 0
+      required:
+        - num_cores
+        - memory_mb
+        - disk_size_gb
+        - ram_provisioned_gb
+    ClusterInfo:
+      title: Cluster Info
+      description: Cluster level information
+      type: object
+      properties:
+        num_nodes:
+          description: How many nodes are in the cluster
+          type: integer
+          minimum: 1
+          maximum: 24
+          default: 3
+        fault_tolerance:
+          $ref: '#/components/schemas/ClusterFaultTolerance'
+        replication_factor:
+          description: The replication factor applied on the cluster
+          type: integer
+          minimum: 1
+          maximum: 24
+        node_info:
+          $ref: '#/components/schemas/ClusterNodeInfo'
+        is_production:
+          description: Describes if the cluster is a production cluster
+          type: boolean
+          default: false
+        version:
+          description: cluster data version
+          type: integer
+          nullable: true
+      required:
+        - num_nodes
+        - fault_tolerance
+        - node_info
+        - cluster_tier
+        - is_production
+    PlacementInfo:
+      type: object
+      properties:
+        cloud_info:
+          $ref: '#/components/schemas/CloudInfo'
+        num_nodes:
+          description: How many nodes are in the region
+          type: integer
+          minimum: 1
+          maximum: 24
+          default: 3
+      required:
+        - cloud_info
+        - num_nodes
+    ClusterRegionInfo:
+      title: Cluster Region Info
+      description: Cluster region info list
+      type: object
+      properties:
+        placement_info:
+          $ref: '#/components/schemas/PlacementInfo'
+      required:
+        - placement_info
+    EncryptionInfo:
+      title: Encryption Info
+      description: Cluster encryption info
+      type: object
+      properties:
+        encryption_at_rest:
+          type: boolean
+          default: false
+        encryption_in_transit:
+          type: boolean
+          default: false
+    ClusterSpec:
+      title: Cluster Specification
+      description: Cluster spec
+      type: object
+      properties:
+        name:
+          description: The name of the cluster
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
+        cloud_info:
+          $ref: '#/components/schemas/CloudInfo'
+        cluster_info:
+          $ref: '#/components/schemas/ClusterInfo'
+        cluster_region_info:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ClusterRegionInfo'
+          nullable: true
+        encryption_info:
+          $ref: '#/components/schemas/EncryptionInfo'
+      required:
+        - name
+        - cloud_info
+        - cluster_info
+        - network_info
+        - software_info
+        - encryption_info
+    EntityMetadata:
+      title: Entity Metadata
+      description: Common metadata for entities
+      type: object
+      properties:
+        created_on:
+          description: Timestamp when the entity was created (UTC)
+          type: string
+          nullable: true
+        updated_on:
+          description: Timestamp when the entity was last updated (UTC)
+          type: string
+          nullable: true
+    ClusterDataInfo:
+      type: object
+      properties:
+        universe_uuid:
+          description: The UUID of the universe
+          type: string
+          format: uuid
+        cluster_uuid:
+          description: The UUID of the cluster
+          type: string
+          format: uuid
+        state:
+          description: The current state of the cluster
+          type: string
+        software_version:
+          description: The current version of YugabyteDB installed on the cluster
+          type: string
+        metadata:
+          $ref: '#/components/schemas/EntityMetadata'
+      required:
+        - universe_uuid
+        - cluster_uuid
+        - state
+        - project_id
+        - metadata
+    ClusterData:
+      title: Cluster Data
+      description: Cluster data
+      type: object
+      required:
+        - spec
+        - info
+      properties:
+        spec:
+          $ref: '#/components/schemas/ClusterSpec'
+        info:
+          $ref: '#/components/schemas/ClusterDataInfo'
     LiveQueryResponseYSQLQueryItem:
       title: Live Query Response YSQL Query Item
       description: Schema for Live Query Response YSQL Query Item
@@ -1838,221 +2011,6 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/ConnectionsStatsData'
-    CloudEnum:
-      title: Cloud Enum
-      description: Which cloud the cluster is deployed in
-      type: string
-      default: MANUAL
-      enum:
-        - AWS
-        - GCP
-        - MANUAL
-    CloudInfo:
-      title: Cloud Info
-      description: Cloud deployment information
-      type: object
-      properties:
-        code:
-          $ref: '#/components/schemas/CloudEnum'
-        region:
-          type: string
-          minLength: 1
-          default: us-west2
-      required:
-        - code
-        - region
-    ClusterFaultTolerance:
-      title: Cluster Fault Tolerance
-      description: The level of fault tolerance for the cluster
-      type: string
-      enum:
-        - NONE
-        - NODE
-        - ZONE
-        - REGION
-      default: ZONE
-    ClusterNodeInfo:
-      title: Cluster Node Info
-      description: Node level information
-      type: object
-      properties:
-        memory_mb:
-          description: The total amount of RAM (MB) used by all nodes
-          type: number
-          format: double
-          default: 0
-        disk_size_gb:
-          description: The total size of disk (GB)
-          type: number
-          format: double
-          default: 0
-        disk_size_used_gb:
-          description: The total size of used disk space (GB)
-          type: number
-          format: double
-          default: 0
-        cpu_usage:
-          description: The average CPU usage over all nodes
-          type: number
-          format: double
-          default: 0
-        num_cores:
-          description: The number of CPU cores per node
-          type: integer
-          default: 0
-        ram_provisioned_gb:
-          description: The total size of provisioned ram (GB)
-          type: number
-          format: double
-          default: 0
-      required:
-        - num_cores
-        - memory_mb
-        - disk_size_gb
-        - ram_provisioned_gb
-    ClusterInfo:
-      title: Cluster Info
-      description: Cluster level information
-      type: object
-      properties:
-        num_nodes:
-          description: How many nodes are in the cluster
-          type: integer
-          minimum: 1
-          maximum: 24
-          default: 3
-        fault_tolerance:
-          $ref: '#/components/schemas/ClusterFaultTolerance'
-        replication_factor:
-          description: The replication factor applied on the cluster
-          type: integer
-          minimum: 1
-          maximum: 24
-        node_info:
-          $ref: '#/components/schemas/ClusterNodeInfo'
-        is_production:
-          description: Describes if the cluster is a production cluster
-          type: boolean
-          default: false
-        version:
-          description: cluster data version
-          type: integer
-          nullable: true
-      required:
-        - num_nodes
-        - fault_tolerance
-        - node_info
-        - cluster_tier
-        - is_production
-    PlacementInfo:
-      type: object
-      properties:
-        cloud_info:
-          $ref: '#/components/schemas/CloudInfo'
-        num_nodes:
-          description: How many nodes are in the region
-          type: integer
-          minimum: 1
-          maximum: 24
-          default: 3
-      required:
-        - cloud_info
-        - num_nodes
-    ClusterRegionInfo:
-      title: Cluster Region Info
-      description: Cluster region info list
-      type: object
-      properties:
-        placement_info:
-          $ref: '#/components/schemas/PlacementInfo'
-      required:
-        - placement_info
-    EncryptionInfo:
-      title: Encryption Info
-      description: Cluster encryption info
-      type: object
-      properties:
-        encryption_at_rest:
-          type: boolean
-          default: false
-        encryption_in_transit:
-          type: boolean
-          default: false
-    ClusterSpec:
-      title: Cluster Specification
-      description: Cluster spec
-      type: object
-      properties:
-        name:
-          description: The name of the cluster
-          type: string
-          minLength: 3
-          maxLength: 63
-          pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-        cloud_info:
-          $ref: '#/components/schemas/CloudInfo'
-        cluster_info:
-          $ref: '#/components/schemas/ClusterInfo'
-        cluster_region_info:
-          type: array
-          uniqueItems: true
-          items:
-            $ref: '#/components/schemas/ClusterRegionInfo'
-          nullable: true
-        encryption_info:
-          $ref: '#/components/schemas/EncryptionInfo'
-      required:
-        - name
-        - cloud_info
-        - cluster_info
-        - network_info
-        - software_info
-        - encryption_info
-    EntityMetadata:
-      title: Entity Metadata
-      description: Common metadata for entities
-      type: object
-      properties:
-        created_on:
-          description: Timestamp when the entity was created (UTC)
-          type: string
-          nullable: true
-        updated_on:
-          description: Timestamp when the entity was last updated (UTC)
-          type: string
-          nullable: true
-    ClusterDataInfo:
-      type: object
-      properties:
-        id:
-          description: The UUID of the cluster
-          type: string
-          format: uuid
-        state:
-          description: The current state of the cluster
-          type: string
-        software_version:
-          description: The current version of YugabyteDB installed on the cluster
-          type: string
-        metadata:
-          $ref: '#/components/schemas/EntityMetadata'
-      required:
-        - id
-        - state
-        - project_id
-        - metadata
-    ClusterData:
-      title: Cluster Data
-      description: Cluster data
-      type: object
-      required:
-        - spec
-        - info
-      properties:
-        spec:
-          $ref: '#/components/schemas/ClusterSpec'
-        info:
-          $ref: '#/components/schemas/ClusterDataInfo'
     PITRSchedule:
       title: List of PITR Schedules in the cluster
       description: Details of a Point-in-Time Recovery (PITR) schedule
@@ -2168,16 +2126,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
-    VoyagerAssesmentResponse:
-      description: Response for Plan and Asses page
-      content:
-        application/json:
-          schema:
-            title: API for Plan and Asses page
-            type: object
-            properties:
-              data:
-                $ref: '#/components/schemas/MigrationAssesmentInfo'
     MigrateSchemaResponse:
       description: Response for individual migration task
       content:
@@ -2224,6 +2172,16 @@ components:
             properties:
               data:
                 $ref: '#/components/schemas/AssessmentTargetRecommendationObject'
+    ClusterResponse:
+      description: Cluster response
+      content:
+        application/json:
+          schema:
+            title: Cluster Response
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/ClusterData'
     LiveQueryResponse:
       description: Live Queries of a Cluster
       content:
@@ -2370,16 +2328,6 @@ components:
         text/plain:
           schema:
             type: string
-    ClusterResponse:
-      description: Cluster response
-      content:
-        application/json:
-          schema:
-            title: Cluster Response
-            type: object
-            properties:
-              data:
-                $ref: '#/components/schemas/ClusterData'
     PITRScheduleListResponse:
       description: List of PITR Schedules in the cluster
       content:

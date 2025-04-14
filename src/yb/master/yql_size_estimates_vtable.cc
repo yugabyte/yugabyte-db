@@ -40,8 +40,7 @@ Result<VTableDataPtr> YQLSizeEstimatesVTable::RetrieveData(const QLReadRequestPB
 
   auto tables = catalog_manager->GetTables(GetTablesMode::kVisibleToClient);
   for (const auto& table : tables) {
-    Schema schema;
-    RETURN_NOT_OK(table->GetSchema(&schema));
+    auto schema = VERIFY_RESULT(table->GetSchema());
 
     // Get namespace for table.
     auto ns_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));

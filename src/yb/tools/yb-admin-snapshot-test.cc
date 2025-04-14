@@ -931,7 +931,7 @@ class YbAdminSnapshotTest : public AdminTestBase {
         RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
     return pgwrapper::PGConnBuilder({
       .host = ts->bind_host(),
-      .port = ts->pgsql_rpc_port(),
+      .port = ts->ysql_port(),
       .dbname = db_name
     }).Connect();
   }

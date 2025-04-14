@@ -8,7 +8,8 @@ import {
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure,
-  resetCustomerTasks
+  resetCustomerTasks,
+  showTaskInDrawer
 } from '../../../actions/tasks';
 import { openDialog, closeDialog } from '../../../actions/modal';
 
@@ -36,6 +37,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     showTaskAbortModal: () => {
       dispatch(openDialog('confirmAbortTask'));
+    },
+    showTaskDrawer: (taskUUID) => {
+      dispatch(showTaskInDrawer(taskUUID));
     }
   };
 };

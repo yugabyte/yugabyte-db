@@ -1,0 +1,6 @@
+comment = 'API surface for DocumentDB for PostgreSQL'
+default_version = '0.102-0'
+module_pathname = '$libdir/pg_documentdb'
+relocatable = false
+superuser = true
+requires = 'documentdb_core, pg_cron, tsm_system_rows, vector, postgis, rum'

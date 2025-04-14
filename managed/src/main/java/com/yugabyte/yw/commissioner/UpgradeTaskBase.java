@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,6 +51,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -173,7 +175,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()
-        && !taskParams().skipNodeChecks) {
+        && !isSkipPrechecks()) {
       Optional<NodeDetails> nonLive =
           nodesToBeRestarted.getAllNodes().stream()
               .filter(n -> n.state != NodeState.Live)
@@ -191,6 +193,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
       }
     }
+  }
+
+  protected boolean isSkipPrechecks() {
+    return taskParams().skipNodeChecks;
   }
 
   private RollMaxBatchSize getCurrentRollBatchSize(Universe universe) {
@@ -212,7 +218,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   @Override
   protected void addBasicPrecheckTasks() {
-    if (isFirstTry()) {
+    if (isFirstTry() && !isSkipPrechecks()) {
       verifyClustersConsistency();
     }
   }
@@ -234,11 +240,22 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public abstract NodeState getNodeState();
 
   public void runUpgrade(Runnable upgradeLambda) {
+    runUpgrade(upgradeLambda, null /* Txn callback */);
+  }
+
+  public void runUpgrade(Runnable upgradeLambda, @Nullable Consumer<Universe> firstRunTxnCallback) {
+    runUpgrade(upgradeLambda, firstRunTxnCallback, null /* onFailureTask */);
+  }
+
+  public void runUpgrade(
+      Runnable upgradeLambda,
+      @Nullable Consumer<Universe> firstRunTxnCallback,
+      Runnable onFailureTask) {
     if (maybeRunOnlyPrechecks()) {
       return;
     }
     checkUniverseVersion();
-    lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, null /* Txn callback */);
+    lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, firstRunTxnCallback);
     try {
       Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
@@ -283,6 +300,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               createLoadBalancerStateChangeTask(true)
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
             });
+      }
+      if (onFailureTask != null) {
+        log.info("Running on failure upgrade task");
+        onFailureTask.run();
+        log.info("Finished on failure upgrade task");
       }
       throw t;
     } finally {
@@ -597,12 +619,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       boolean hasPrimaryNodes = false;
       for (NodeDetails node : nodeList) {
         hasPrimaryNodes = hasPrimaryNodes || node.isInPlacement(primaryId);
-        if (!taskParams().skipNodeChecks) {
+        if (!isSkipPrechecks()) {
           createNodePrecheckTasks(
               node, processTypes, subGroupType, true, context.targetSoftwareVersion);
         }
       }
-      if (activeRole && hasPrimaryNodes && !taskParams().skipNodeChecks) {
+      if (activeRole && hasPrimaryNodes && !isSkipPrechecks()) {
         createCheckNodesAreSafeToTakeDownTask(
             Collections.singletonList(MastersAndTservers.from(nodeList, processTypes)),
             getTargetSoftwareVersion(),
@@ -615,7 +637,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         rollingUpgradeLambda.run(nodeList, processTypes);
       }
 
-      if (isYbcPresent) {
+      // Stop yb-controller only if master server on node is in active role.
+      if (isYbcPresent && activeRole) {
         createServerControlTasks(nodeList, ServerType.CONTROLLER, "stop")
             .setSubTaskGroupType(subGroupType);
       }
@@ -781,7 +804,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       nonRollingUpgradeLambda.run(nodes, Collections.singleton(processType));
     }
 
-    if (isYbcPresent) {
+    // Stop yb-controller only if master server on node is in active role.
+    if (isYbcPresent && activeRole) {
       createServerControlTasks(nodes, ServerType.CONTROLLER, "stop")
           .setSubTaskGroupType(subGroupType);
     }
@@ -1237,5 +1261,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     @Builder.Default boolean skipStartingProcesses = false;
     String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
+    YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
   }
 }

@@ -30,7 +30,11 @@ namespace yb {
 
 namespace {
 
-TableId GetPgsqlTableIdPg11(const uint32_t database_oid, const uint32_t table_oid);
+// Dev Note: When the major catalog version changes, meaning, for the YugabyteDB version that uses
+// PG17+ for the YSQL layer, update kPgPreviousUuidVersion to kPgCurrentUuidVersion, and increase
+// kPgCurrentUuidVersion by 1.
+constexpr uint8_t kPgPreviousUuidVersion = 0;  // PG11
+constexpr uint8_t kPgCurrentUuidVersion = 1;   // PG15
 
 }  // namespace
 
@@ -48,8 +52,8 @@ const uint32_t kPgTablespaceTableOid = 1213;
 const TableId kPgProcTableId = GetPgsqlTableId(kTemplate1Oid, kPgProcTableOid);
 const TableId kPgYbCatalogVersionTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgYbCatalogVersionTableOid);
-const TableId kPgYbCatalogVersionTableIdPg11 =
-    GetPgsqlTableIdPg11(kTemplate1Oid, kPgYbCatalogVersionTableOid);
+const TableId kPgYbCatalogVersionTableIdPriorVersion =
+    GetPriorVersionYsqlCatalogTableId(kTemplate1Oid, kPgYbCatalogVersionTableOid);
 const TableId kPgTablespaceTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgTablespaceTableOid);
 const TableId kPgSequencesDataTableId =
@@ -62,8 +66,6 @@ const string kPgSequencesDataNamespaceId =
 //-------------------------------------------------------------------------------------------------
 
 namespace {
-
-YB_STRONGLY_TYPED_BOOL(IsPg15);
 
 // Layout of Postgres database and table 4-byte oids in a YugaByte 16-byte table UUID:
 //
@@ -80,6 +82,8 @@ YB_STRONGLY_TYPED_BOOL(IsPg15);
 // pgv = for PG catalog tables only, the PG version for the table.
 // 0 = PG11
 // 1 = PG15
+// 2 = PG17 (or whatever major PG version YB integrates next)
+// ...
 // Must be set to 0 for all user tables.
 
 void UuidSetDatabaseId(const uint32_t database_oid, uuid* id) {
@@ -96,6 +100,15 @@ void UuidSetTableIds(const uint32_t table_oid, uuid* id) {
   id->data[15] = table_oid & 0xFF;
 }
 
+inline void UuidSetPgVersion(uuid& id, bool is_current_version) {
+  id.data[9] = is_current_version ? kPgCurrentUuidVersion : kPgPreviousUuidVersion;
+}
+
+inline bool IsCurrentPgVersion(const TableId& table_id) {
+  const auto binary_id = a2b_hex(table_id);
+  return binary_id[9] == kPgCurrentUuidVersion;
+}
+
 std::string UuidToString(uuid* id) {
   // Set variant that is stored in octet 7, which is index 8, since indexes count backwards.
   // Variant must be 0b10xxxxxx for RFC 4122 UUID variant 1.
@@ -110,21 +123,34 @@ std::string UuidToString(uuid* id) {
 }
 
 TableId GetPgsqlTableIdInternal(
-    const uint32_t database_oid, const uint32_t table_oid, IsPg15 is_pg15) {
+    const uint32_t database_oid, const uint32_t table_oid, bool is_current_version) {
   uuid id = boost::uuids::nil_uuid();
   UuidSetDatabaseId(database_oid, &id);
 
-  if (table_oid < kPgFirstNormalObjectId && is_pg15) {
-    // "pgv" in the above diagram
-    id.data[9] = 1;
+  // For catalog tables, we need to set the correct version in id.data[9], which is "pgv" in the
+  // above diagram. Note that normal object IDs are versionless, always id.data[9] == 0.
+  if (table_oid < kPgFirstNormalObjectId) {
+    UuidSetPgVersion(id, is_current_version);
+  } else {
+    LOG_IF(DFATAL, !is_current_version) << "User table IDs do not have prior versions.";
   }
 
   UuidSetTableIds(table_oid, &id);
   return UuidToString(&id);
 }
 
-TableId GetPgsqlTableIdPg11(const uint32_t database_oid, const uint32_t table_oid) {
-  return GetPgsqlTableIdInternal(database_oid, table_oid, IsPg15::kFalse);
+bool IsYsqlCatalogTable(const TableId& table_id) {
+  if (!IsPgsqlId(table_id)) {
+    return false;
+  }
+  Result<uint32_t> oid_res = GetPgsqlTableOid(table_id);
+  if (!oid_res.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 5)
+        << "Invalid PostgreSQL table id " << table_id << ": " << oid_res.status();
+    return false;
+  }
+
+  return *oid_res < kPgFirstNormalObjectId;
 }
 
 } // namespace
@@ -136,7 +162,7 @@ NamespaceId GetPgsqlNamespaceId(const uint32_t database_oid) {
 }
 
 TableId GetPgsqlTableId(const uint32_t database_oid, const uint32_t table_oid) {
-  return GetPgsqlTableIdInternal(database_oid, table_oid, IsPg15::kTrue);
+  return GetPgsqlTableIdInternal(database_oid, table_oid, /*is_current_version=*/true);
 }
 
 TablegroupId GetPgsqlTablegroupId(const uint32_t database_oid, const uint32_t tablegroup_oid) {
@@ -218,25 +244,24 @@ Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id) {
   return GetPgsqlOid(tablespace_id, 0, "tablespace id");
 }
 
-bool IsPg11CatalogId(const TableId& hex_id) {
-  if (!IsPgsqlId(hex_id)) {
-    return false;
-  }
-  Result<uint32_t> res_oid = GetPgsqlTableOid(hex_id);
-  if (!res_oid.ok()) {
-    return false;
-  }
-  uint32_t oid = *res_oid;
-  std::string id = a2b_hex(hex_id);
-  return id[9] == 0 && oid < kPgFirstNormalObjectId;
+TableId GetPriorVersionYsqlCatalogTableId(const uint32_t database_oid, const uint32_t table_oid) {
+  return GetPgsqlTableIdInternal(database_oid, table_oid, /*is_current_version=*/false);
 }
 
-bool IsPg15CatalogId(const TableId& hex_id) {
-  if (!IsPgsqlId(hex_id)) {
+bool IsPriorVersionYsqlCatalogTable(const TableId& table_id) {
+  if (!IsYsqlCatalogTable(table_id)) {
     return false;
   }
-  std::string id = a2b_hex(hex_id);
-  return id[9] == 1;
+
+  return !IsCurrentPgVersion(table_id);
+}
+
+bool IsCurrentVersionYsqlCatalogTable(const TableId& table_id) {
+  if (!IsYsqlCatalogTable(table_id)) {
+    return false;
+  }
+
+  return IsCurrentPgVersion(table_id);
 }
 
 namespace xrepl {

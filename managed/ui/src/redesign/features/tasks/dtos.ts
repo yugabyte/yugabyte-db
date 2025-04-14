@@ -31,7 +31,8 @@ export enum TaskStates {
 export const TaskType = {
   GFlags_UPGRADE: 'GFlagsUpgrade',
   EDIT: 'Update',
-  SOFTWARE_UPGRADE: 'SoftwareUpgrade'
+  SOFTWARE_UPGRADE: 'SoftwareUpgrade',
+  RESIZE_NODE: 'ResizeNode',
 };
 export const TargetType = {
   UNIVERSE: 'Universe',
@@ -58,9 +59,15 @@ export interface Task {
   };
   abortable: boolean;
   retryable: boolean;
+  canRollback: boolean;
   correlationId: string;
   userEmail: string;
   subtaskInfos: SubTaskInfo[];
+  taskInfo: {
+    taskParams: {
+      previousTaskUUID?: string;
+    }
+  }
 }
 
 export interface FailedTask {

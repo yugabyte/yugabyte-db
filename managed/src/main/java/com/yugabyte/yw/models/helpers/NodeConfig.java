@@ -154,7 +154,9 @@ public class NodeConfig {
 
     YSQL_SERVER_RPC_PORT("YSQL server rpc port is open"),
 
-    VM_MAX_MAP_COUNT("VM max memory map count");
+    VM_MAX_MAP_COUNT("VM max memory map count"),
+
+    NTP_SKEW("NTP time skew in acceptable range");
 
     private final String description;
 

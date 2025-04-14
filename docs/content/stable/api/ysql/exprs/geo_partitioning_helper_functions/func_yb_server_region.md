@@ -44,23 +44,20 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
     ```sh
     ./bin/yugabyted start                           \
       --base_dir=/home/yugabyte/<IP1>/yugabyte-data \
-      --listen=<IP1>                                \
-      --master_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1c" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1c"
+      --advertise_address=<IP1>                     \
+      --cloud_location=aws.us-west-1.us-west-1c     \
 
     ./bin/yugabyted start                           \
       --base_dir=/home/yugabyte/<IP2>/yugabyte-data \
-      --listen=<IP2>                                \
+      --advertise_address=<IP2>                     \
       --join=<IP1>                                  \
-      --master_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2c" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2c"
+      --cloud_location=aws.us-east-2.us-east-2c     \
 
     ./bin/yugabyted start                            \
       --base_dir=/home/yugabyte/<IP3>/yugabyte-data  \
-      --listen=<IP3>                                 \
+      --advertise_address=<IP3>                      \
       --join=<IP1>                                   \
-      --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
+      --cloud_location=aws.us-east-1.us-east-1a     \
     ```
 
 1. Use [yb-admin](../../../../../admin/yb-admin/) to specify the placement configuration to be used by the cluster:
@@ -69,7 +66,7 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
     ./bin/yb-admin -master_addresses <IP1>:7100 modify_placement_info aws.us-west-1.us-west-1c:1,aws.us-east-1.us-east-1a:1,aws.us-east-2.us-east-2c:1 3
     ```
 
-1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../../api/ysqlsh/#using-ysqlsh):
+1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../ysqlsh/#using-ysqlsh):
 
     ```sql
     CREATE TABLESPACE us_west_tablespace WITH (replica_placement=' {"num_replicas":1,"placement_blocks":[{"cloud":"aws","region":"us-west-1","zone":"us-west-1c","min_num_replicas":1}]}');
@@ -79,7 +76,7 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
 
     For more information on how to set up a cluster, see [tablespaces](../../../../../explore/going-beyond-sql/tablespaces/).
 
-1. Using the tablespaces, you can create a geo-partitioned table as follows. This is a partitioned table with 3 partitions, where each partition is pinned to a different location based on the regions. The geo_partition column value is default to be the currently connected region as in `yb_server_region()`.
+1. Using the tablespaces, you can create a geo-partitioned table as follows. This is a partitioned table with 3 partitions, where each partition is pinned to a different location based on the regions. The `geo_partition` column value is default to be the currently connected region as in `yb_server_region()`.
 
     ```sql
     CREATE TABLE users(user_id INTEGER NOT NULL,
@@ -103,13 +100,13 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
     INSERT INTO users VALUES(1, 'US West user');
     ```
 
-    If your server is connected to region us-west-1 and you want to insert rows into another region's partitioned table, you can still insert the rows normally.
+    If your server is connected to region `us-west-1` and you want to insert rows into another region's partitioned table, you can still insert the rows normally.
 
     ```sql
     INSERT INTO users VALUES(2, 'US East 1 user', 'us-east-1');
     ```
 
-1. In a partitioned setup, if there are no WHERE clause restrictions on the partition key, note that every query on a partitioned table gets fanned out to all of its child partitions:
+1. In a partitioned setup, if there are no `WHERE` clause restrictions on the partition key, note that every query on a partitioned table gets fanned out to all of its child partitions:
 
     ```sql
     EXPLAIN (COSTS OFF) SELECT * FROM users;

@@ -9,25 +9,39 @@
 
 import { MutableRefObject } from 'react';
 import clsx from 'clsx';
-import { differenceWith, intersectionWith, isEqual } from 'lodash';
+import { differenceWith, intersectionWith, isEqual, keys } from 'lodash';
 import { useTranslation } from 'react-i18next';
-import { makeStyles } from '@material-ui/core';
-import { ClusterType } from '../../../../../helpers/dtos';
-import {
-  Cluster,
-  PlacementAZ,
-  PlacementRegion,
-  UniverseDetails
-} from '../../../../universe/universe-form/utils/dto';
+import { Box, makeStyles, Typography } from '@material-ui/core';
+
 import { getPrimaryCluster } from '../../../../universe/universe-form/utils/helpers';
-import { Task } from '../../../dtos';
 import { DiffActions } from '../DiffActions';
 import { DiffTitleBanner, TaskDiffBanner } from '../DiffBanners';
 import DiffCard, { DiffCardRef } from '../DiffCard';
 import { DiffCardWrapper } from '../DiffCardWrapper';
 import { FieldOperations, getFieldOpertions, isAZEqual } from '../DiffUtils';
-import { DiffComponentProps, DiffOperation, DiffProps } from '../dtos';
 import { BaseDiff } from './BaseDiff';
+
+import { Task } from '../../../dtos';
+import { DiffComponentProps, DiffOperation, DiffProps } from '../dtos';
+import {
+  Cluster,
+  ClusterType,
+  MasterPlacementMode,
+  PlacementAZ,
+  PlacementRegion,
+  UniverseDetails,
+  DeviceInfo,
+  UserIntent
+} from '../../../../universe/universe-form/utils/dto';
+
+const DeviceInfoFields: Record<keyof Omit<DeviceInfo, 'mountPoints'>, string> = {
+  volumeSize: 'Volume Size',
+  numVolumes: 'Number of Volumes',
+  diskIops: 'Disk IOPS',
+  throughput: 'Throughput',
+  storageClass: 'Storage Class',
+  storageType: 'Storage Type'
+};
 
 /**
  * Represents a component for displaying the differences the task made during the edit operation.
@@ -42,6 +56,9 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
   // Refs for the diff cards. used to expand all cards.
   cardRefs: MutableRefObject<DiffCardRef>[];
 
+  // keep track of changes made by the edit operation
+  changesCount: number;
+
   constructor(props: DiffComponentProps) {
     super(props);
     this.diffProps = props;
@@ -51,6 +68,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
       [ClusterType.ASYNC]: []
     };
     this.cardRefs = [];
+    this.changesCount = 0;
   }
 
   getModalTitle() {
@@ -60,7 +78,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
   // Get the differences in the instance type of the cluster.
   getInstanceTypeDiff(beforeValue: Cluster, afterValue: Cluster, clusterType: ClusterType) {
     // If the instance type is changed, add a diff card.
-    if (beforeValue.userIntent.instanceType !== afterValue.userIntent.instanceType) {
+    if (beforeValue?.userIntent?.instanceType !== afterValue?.userIntent?.instanceType) {
       this.cards[clusterType].push(
         <DiffCard
           ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
@@ -294,6 +312,16 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     const fieldOperations = getFieldOpertions(beforePlacementAZ, afterPlacementAZ!);
     const afterFieldOperations = getFieldOpertions(beforePlacementAZ, afterPlacementAZ!, true);
 
+    // Count the number of changes made by the edit operation.
+    keys(fieldOperations).forEach((key) => {
+      if (
+        fieldOperations[key] !== DiffOperation.UNCHANGED ||
+        afterFieldOperations[key] !== DiffOperation.UNCHANGED
+      ) {
+        this.changesCount++;
+      }
+    });
+
     return [
       <PlacementAzComponent
         key={beforePlacementAZ?.uuid}
@@ -320,18 +348,371 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     ];
   }
 
+  getRegionListDiff = (placementInfo: Cluster['placementInfo']) => {
+    return placementInfo?.cloudList.map((cloud) => {
+      return cloud.regionList.map((region) => {
+        return (
+          <Box display="flex" key={region.code} mt={1} flexDirection="column">
+            <Typography variant="h5">{region.code}</Typography>
+            <Box pl={2}>
+              {region.azList.map((az) => (
+                <Typography key={az.name} variant="body2">
+                  {az.name} - {az.numNodesInAZ} node
+                </Typography>
+              ))}
+            </Box>
+          </Box>
+        );
+      });
+    });
+  };
+
+  isMasterPlacementPresent(beforeValue: Cluster, afterValue: Cluster) {
+    return (
+      beforeValue?.userIntent?.dedicatedNodes === true ||
+      afterValue?.userIntent?.dedicatedNodes === true
+    );
+  }
+
+  getMasterPlacementDiffComponent(
+    beforeValue: Cluster,
+    afterValue: Cluster,
+    clusterType: ClusterType
+  ) {
+    const attributes: JSX.Element[] = [];
+    const beforeComp: JSX.Element[] = [];
+    const afterComp: JSX.Element[] = [];
+
+    const { attributes: attr1, beforeComp: before1, afterComp: after1 } = this.getDeviceInfoFields(
+      beforeValue.userIntent.masterDeviceInfo,
+      afterValue.userIntent.masterDeviceInfo
+    );
+    if (attr1.length !== 0) {
+      attributes.push(<DeviceInfoHeader content="Master">{attr1}</DeviceInfoHeader>);
+      beforeComp.push(<DeviceInfoField content={<>&nbsp;</>} />, ...before1);
+      afterComp.push(<DeviceInfoField content={<>&nbsp;</>} />, ...after1);
+    }
+
+    if (beforeValue.userIntent.masterInstanceType !== afterValue.userIntent.masterInstanceType) {
+      this.cards[clusterType].push(
+        <DiffCard
+          ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
+          attribute={{ title: 'Master Instance Type' }}
+          operation={DiffOperation.CHANGED}
+          beforeValue={{
+            title: beforeValue.userIntent.masterInstanceType!
+          }}
+          afterValue={{
+            title: afterValue.userIntent.masterInstanceType!
+          }}
+        />
+      );
+      this.changesCount++;
+    }
+
+    const { attributes: attr2, beforeComp: before2, afterComp: after2 } = this.getDeviceInfoFields(
+      beforeValue.userIntent.deviceInfo,
+      afterValue.userIntent.deviceInfo
+    );
+
+    if (attr2.length !== 0) {
+      attributes.push(<DeviceInfoHeader content="T-Server">{attr2}</DeviceInfoHeader>);
+      beforeComp.push(<DeviceInfoField content={<>&nbsp;</>} />, ...before2);
+      afterComp.push(<DeviceInfoField content={<>&nbsp;</>} />, ...after2);
+    }
+
+    if (!isEqual(beforeValue.placementInfo, afterValue.placementInfo)) {
+      const afterElem = this.getRegionListDiff(afterValue.placementInfo);
+      const beforeElem = this.getRegionListDiff(beforeValue.placementInfo);
+
+      if (afterElem || beforeElem) {
+        attributes.push(<DeviceInfoHeader content="Placement" />);
+        afterComp.push(...(afterElem?.flat() ?? []));
+        beforeComp.push(...(beforeElem?.flat() ?? []));
+      }
+    }
+
+    if (attributes.length === 0) {
+      return;
+    }
+
+    this.cards[clusterType].push(
+      <DiffCard
+        operation={DiffOperation.CHANGED}
+        ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
+        attribute={{
+          title: 'Master Placement',
+          element: <>{attributes}</>
+        }}
+        afterValue={{
+          title: `${
+            afterValue?.userIntent?.dedicatedNodes
+              ? MasterPlacementMode.DEDICATED
+              : MasterPlacementMode.COLOCATED
+          }`,
+          element: <>{afterComp}</>
+        }}
+        beforeValue={{
+          title: `${
+            beforeValue?.userIntent?.dedicatedNodes
+              ? MasterPlacementMode.DEDICATED
+              : MasterPlacementMode.COLOCATED
+          }`,
+          element: <>{beforeComp}</>
+        }}
+      />
+    );
+  }
+
+  getDeviceInfoFields = (
+    beforeDeviceInfo?: DeviceInfo | null,
+    afterDeviceInfo?: DeviceInfo | null
+  ) => {
+    const attributes: JSX.Element[] = [];
+    const beforeComp: JSX.Element[] = [];
+    const afterComp: JSX.Element[] = [];
+
+    if (!beforeDeviceInfo && !afterDeviceInfo) {
+      return { attributes, beforeComp, afterComp };
+    }
+
+    if (!beforeDeviceInfo) {
+      beforeDeviceInfo = {} as DeviceInfo;
+    }
+    if (!afterDeviceInfo) {
+      afterDeviceInfo = {} as DeviceInfo;
+    }
+
+    (keys(DeviceInfoFields) as (keyof typeof DeviceInfoFields)[]).forEach((field) => {
+      if (beforeDeviceInfo![field] !== afterDeviceInfo![field]) {
+        const label = DeviceInfoFields[field];
+        attributes.push(<DeviceInfoField content={label} CustomElem="li" />);
+        beforeComp.push(
+          <DeviceInfoField
+            content={beforeDeviceInfo![field]?.toString() ?? '---'}
+            operation={DiffOperation.REMOVED}
+          />
+        );
+        afterComp.push(
+          <DeviceInfoField
+            content={afterDeviceInfo![field]?.toString() ?? '---'}
+            operation={DiffOperation.ADDED}
+          />
+        );
+        this.changesCount++;
+      }
+    });
+
+    return { attributes, beforeComp, afterComp };
+  };
+
+  getDeviceInfoDiffComponent(beforeValue: Cluster, afterValue: Cluster, clusterType: ClusterType) {
+    const beforeDeviceInfo = beforeValue.userIntent?.deviceInfo ?? null;
+    const afterDeviceInfo = afterValue.userIntent?.deviceInfo ?? null;
+
+    if (!beforeDeviceInfo || !afterDeviceInfo) {
+      return;
+    }
+
+    const { attributes, beforeComp, afterComp } = this.getDeviceInfoFields(
+      beforeDeviceInfo,
+      afterDeviceInfo
+    );
+
+    if (attributes.length === 0) {
+      return;
+    }
+
+    this.cards[clusterType].push(
+      <DiffCard
+        ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
+        attribute={{
+          element: <DeviceInfoHeader content="">{attributes}</DeviceInfoHeader>,
+          title: 'Instance Configuration'
+        }}
+        operation={DiffOperation.CHANGED}
+        beforeValue={{ element: <>{beforeComp}</> }}
+        afterValue={{ element: <>{afterComp}</> }}
+      />
+    );
+  }
+
+  getCommunicationDiffComponent(
+    beforeValue: UniverseDetails,
+    afterValue: UniverseDetails,
+    clusterType: ClusterType
+  ) {
+    const beforeCommunicationPort = beforeValue.communicationPorts;
+    const afterCommunicationPort = afterValue.communicationPorts;
+    if (!beforeCommunicationPort || !afterCommunicationPort) {
+      return;
+    }
+
+    const attributes: JSX.Element[] = [];
+    const beforeComp: JSX.Element[] = [];
+    const afterComp: JSX.Element[] = [];
+
+    (Object.keys(beforeCommunicationPort) as (keyof typeof beforeCommunicationPort)[]).forEach(
+      (key) => {
+        if (beforeCommunicationPort[key] !== afterCommunicationPort[key]) {
+          attributes.push(<DeviceInfoField content={key} CustomElem="li" />);
+          beforeComp.push(
+            <DeviceInfoField
+              content={beforeCommunicationPort[key]?.toString() ?? '---'}
+              operation={DiffOperation.REMOVED}
+            />
+          );
+          afterComp.push(
+            <DeviceInfoField
+              content={afterCommunicationPort[key]?.toString() ?? '---'}
+              operation={DiffOperation.ADDED}
+            />
+          );
+          this.changesCount++;
+        }
+      }
+    );
+    if (attributes.length === 0) {
+      return;
+    }
+    this.cards[clusterType].push(
+      <DiffCard
+        ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
+        attribute={{
+          element: <DeviceInfoHeader content="Communication Ports">{attributes}</DeviceInfoHeader>,
+          title: 'Communication Ports'
+        }}
+        operation={DiffOperation.CHANGED}
+        beforeValue={{
+          element: (
+            <>
+              <DeviceInfoField content={<>&nbsp;</>} />
+              {beforeComp}
+            </>
+          )
+        }}
+        afterValue={{
+          element: (
+            <>
+              <DeviceInfoField content={<>&nbsp;</>} />
+              {afterComp}
+            </>
+          )
+        }}
+      />
+    );
+  }
+
+  getInstanceTagsDiffComponent(
+    beforeInstanceTags: UserIntent['instanceTags'],
+    afterInstanceTags: UserIntent['instanceTags']
+  ) {
+    if (
+      (!beforeInstanceTags && !afterInstanceTags) ||
+      isEqual(beforeInstanceTags, afterInstanceTags)
+    ) {
+      // If both instance tags are null or equal, return.
+      return;
+    }
+    const attributes: JSX.Element[] = [];
+    const beforeComp: JSX.Element[] = [];
+    const afterComp: JSX.Element[] = [];
+
+    // Check for the added instance tags.
+    beforeInstanceTags &&
+      Object.keys(beforeInstanceTags).forEach((key) => {
+        if (!afterInstanceTags || !afterInstanceTags[key]) {
+          attributes.push(<InstanceTagsField value={key} />);
+          beforeComp.push(
+            <InstanceTagsField operation={DiffOperation.ADDED} value={beforeInstanceTags[key]} />
+          );
+          afterComp.push(<InstanceTagsField operation={DiffOperation.REMOVED} value={'---'} />);
+          this.changesCount++;
+        } else if (afterInstanceTags && beforeInstanceTags[key] !== afterInstanceTags[key]) {
+          attributes.push(<InstanceTagsField value={key} />);
+          beforeComp.push(
+            <InstanceTagsField operation={DiffOperation.REMOVED} value={beforeInstanceTags[key]} />
+          );
+          afterComp.push(
+            <InstanceTagsField operation={DiffOperation.ADDED} value={afterInstanceTags[key]} />
+          );
+          this.changesCount++;
+        }
+      });
+    afterInstanceTags &&
+      Object.keys(afterInstanceTags).forEach((key) => {
+        if (!beforeInstanceTags || !beforeInstanceTags[key]) {
+          attributes.push(<InstanceTagsField value={key} />);
+          beforeComp.push(<InstanceTagsField operation={DiffOperation.REMOVED} value={'---'} />);
+          afterComp.push(
+            <InstanceTagsField operation={DiffOperation.ADDED} value={afterInstanceTags[key]} />
+          );
+          this.changesCount++;
+        }
+      });
+    this.cards[ClusterType.PRIMARY].push(
+      <DiffCard
+        ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
+        attribute={{
+          title: 'Instance Tags',
+          element: <>{attributes}</>
+        }}
+        afterValue={{
+          title: '',
+          element: <>{afterComp}</>
+        }}
+        beforeValue={{
+          title: '',
+          element: <>{beforeComp}</>
+        }}
+        operation={DiffOperation.CHANGED}
+      />
+    );
+  }
+
   getDiffComponent(): React.ReactElement {
+    this.changesCount = 0;
     // Get the primary cluster before and after the edit operation.
     const beforePrimaryCluster = getPrimaryCluster(this.diffProps.beforeData as UniverseDetails);
     const afterPrimaryCluster = getPrimaryCluster(this.diffProps.afterData as UniverseDetails);
 
+    if (!beforePrimaryCluster || !afterPrimaryCluster) {
+      return <Typography variant="h6">Changes not found</Typography>;
+    }
     // Get the differences in the instance type of the primary cluster.
     this.getInstanceTypeDiff(beforePrimaryCluster!, afterPrimaryCluster!, ClusterType.PRIMARY);
+
     // Get the differences in the cloud list of the primary cluster.
     this.getCloudListDiffComponent(
       beforePrimaryCluster!,
       afterPrimaryCluster!,
       ClusterType.PRIMARY
+    );
+
+    if (this.isMasterPlacementPresent(beforePrimaryCluster!, afterPrimaryCluster!)) {
+      this.getMasterPlacementDiffComponent(
+        beforePrimaryCluster!,
+        afterPrimaryCluster!,
+        ClusterType.PRIMARY
+      );
+    } else {
+      // Get the differences in the device info of the primary cluster.
+      this.getDeviceInfoDiffComponent(
+        beforePrimaryCluster!,
+        afterPrimaryCluster!,
+        ClusterType.PRIMARY
+      );
+    }
+
+    this.getCommunicationDiffComponent(
+      this.diffProps.beforeData as UniverseDetails,
+      this.diffProps.afterData as UniverseDetails,
+      ClusterType.PRIMARY
+    );
+
+    this.getInstanceTagsDiffComponent(
+      beforePrimaryCluster.userIntent.instanceTags,
+      afterPrimaryCluster.userIntent.instanceTags
     );
 
     return (
@@ -342,14 +723,9 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
               ref?.current?.onExpand(flag);
             });
           }}
-          changesCount={
-            this.cards[ClusterType.PRIMARY].length + this.cards[ClusterType.ASYNC].length
-          }
+          changesCount={this.changesCount}
         />
-        <TaskDiffBanner
-          task={this.task}
-          diffCount={this.cards[ClusterType.PRIMARY].length + this.cards[ClusterType.ASYNC].length}
-        />
+        <TaskDiffBanner task={this.task} diffCount={this.changesCount} />
         <DiffTitleBanner title="Primary Cluster" />
         {this.cards[ClusterType.PRIMARY]}
       </DiffCardWrapper>
@@ -448,6 +824,56 @@ const PlacementAzComponent = ({
         {displayEmpty ? '---' : placementAz.isAffinitized + ''}
       </span>
       <br />
+    </div>
+  );
+};
+
+const InstanceTagsField = ({
+  value,
+  operation
+}: {
+  value?: string;
+  operation?: DiffOperation;
+}): JSX.Element => {
+  const classes = useStylePlacementAzComponent();
+  return (
+    <div className={classes.root} title={value}>
+      <span className={operation}>
+        {(value ?? '').length > 20 ? `${value?.substring(0, 20)}...` : value}
+      </span>
+    </div>
+  );
+};
+
+const DeviceInfoField = ({
+  content,
+  operation,
+  CustomElem = 'div'
+}: {
+  content: string | React.ReactElement;
+  operation?: DiffOperation;
+  CustomElem?: keyof JSX.IntrinsicElements;
+}): JSX.Element => {
+  const classes = useStylePlacementAzComponent();
+  return (
+    <CustomElem className={classes.root}>
+      <span className={operation}>{content}</span>
+    </CustomElem>
+  );
+};
+
+const DeviceInfoHeader = ({
+  content,
+  children
+}: {
+  content: string;
+  children?: React.ReactElement[] | React.ReactElement;
+}): JSX.Element => {
+  const classes = useStyles();
+  return (
+    <div className={classes.root}>
+      <b>{content}</b>
+      <ul>{children}</ul>
     </div>
   );
 };

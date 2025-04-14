@@ -23,7 +23,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
@@ -47,6 +47,7 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 using namespace std::literals;
 
@@ -54,8 +55,6 @@ DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
-DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
-                 "Don't fill YSQL's internal cache for FK check to force read row from a table");
 DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
                  "For new tables without PK, make the ybrowid column ASC and generated using a"
                  " naive per-node sequential counter. This can fail with collisions for a"
@@ -67,6 +66,17 @@ DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
                  " case of UPDATEs because PG regenerates ctid while YB doesn't.");
 DEFINE_test_flag(bool, ysql_log_perdb_allocated_new_objectid, false,
                  "Log new object id returned by per database oid allocator");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
+                       "The function yb_increment_db_catalog_version_with_inval_messages or "
+                       "yb_increment_all_db_catalog_versions_with_inval_messages will delete "
+                       "invalidation messages older than this time");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
+                       "If a DDL statement generates more than this number of invalidation "
+                       "messages we do not associate the messages with the new catalog version "
+                       "caused by this DDL statement. This effetively turns off incremental "
+                       "catalog cache refresh for this new catalog version.");
 
 namespace yb::pggate {
 namespace {
@@ -153,12 +163,22 @@ bool Empty(const PgOperationBuffer& buffer) {
   return !buffer.Size();
 }
 
-void Update(BufferingSettings* buffering_settings) {
+// Update the buffer setting. 'max_batch_size' will be adjusted to multiple of 'multiple'
+void Update(BufferingSettings* buffering_settings, int multiple = 1) {
   /* Use the gflag value if the session variable is unset for batch size. */
-  buffering_settings->max_batch_size = ysql_session_max_batch_size <= 0
+  uint64_t max_batch_size = ysql_session_max_batch_size <= 0
     ? FLAGS_ysql_session_max_batch_size
     : static_cast<uint64_t>(ysql_session_max_batch_size);
+  buffering_settings->max_batch_size = ((max_batch_size + multiple - 1) / multiple) * multiple;
   buffering_settings->max_in_flight_operations = static_cast<uint64_t>(ysql_max_in_flight_ops);
+  buffering_settings->multiple = multiple;
+  auto msg = Format("Adjust max_batch_size from $0 to $1", max_batch_size,
+      buffering_settings->max_batch_size);
+  if (multiple > 1) {
+    LOG(INFO) << msg;
+  } else {
+    VLOG(3) << msg;
+  }
 }
 
 RowMarkType GetRowMarkType(const PgsqlOp& op) {
@@ -228,6 +248,31 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
   }
   actual_read_time->AddToPB(options);
   return Status::OK();
+}
+
+void ApplyForceCatalogModification(PgsqlReadOp& op) {
+
+}
+
+void ApplyForceCatalogModification(PgsqlOp& op) {
+  if (op.is_write()) {
+    down_cast<PgsqlWriteOp&>(op).write_request().set_force_catalog_modifications(true);
+  }
+}
+
+template<class PB>
+void AdvisoryLockRequestInitCommon(
+    PB& req, uint64_t session_id, const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode) {
+  req.set_session_id(session_id);
+  req.set_db_oid(lock_id.database_id);
+  auto& req_lock = *req.add_locks();
+  auto& req_lock_id = *req_lock.mutable_lock_id();
+  req_lock_id.set_classid(lock_id.classid);
+  req_lock_id.set_objid(lock_id.objid);
+  req_lock_id.set_objsubid(lock_id.objsubid);
+  req_lock.set_lock_mode(mode == YbcAdvisoryLockMode::YB_ADVISORY_LOCK_EXCLUSIVE
+      ? tserver::AdvisoryLockMode::LOCK_EXCLUSIVE : tserver::AdvisoryLockMode::LOCK_SHARE);
+
 }
 
 } // namespace
@@ -394,18 +439,16 @@ class PgSession::RunHelper {
 PgSession::PgSession(
     PgClient& pg_client,
     scoped_refptr<PgTxnManager> pg_txn_manager,
-    const YBCPgCallbacks& pg_callbacks,
-    YBCPgExecStatsState& stats_state,
-    YbctidReader&& ybctid_reader,
+    const YbcPgCallbacks& pg_callbacks,
+    YbcPgExecStatsState& stats_state,
     bool is_pg_binary_upgrade,
-    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
+    std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+    BufferingSettings& buffering_settings)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
-      ybctid_reader_(std::move(ybctid_reader)),
-      explicit_row_lock_buffer_(aux_ybctid_container_provider_, ybctid_reader_),
-      insert_on_conflict_buffer_(),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
+      buffering_settings_(buffering_settings),
       buffer_(
           [this](BufferableOperations&& ops, bool transactional)
               -> Result<PgOperationBuffer::PerformFutureEx> {
@@ -500,43 +543,41 @@ Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
                                                               int64_t seq_oid,
                                                               uint64_t ysql_catalog_version,
                                                               bool is_db_catalog_version_mode) {
+  std::optional<uint64_t> optional_ysql_catalog_version = std::nullopt;
+  std::optional<uint64_t> optional_yb_read_time = std::nullopt;
+  if (!yb_disable_catalog_version_check) {
+    optional_ysql_catalog_version = ysql_catalog_version;
+  }
   if (yb_read_time != 0) {
-    return pg_client_.ReadSequenceTuple(
-        db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, yb_read_time);
+    optional_yb_read_time = yb_read_time;
   }
   return pg_client_.ReadSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode);
+      db_oid, seq_oid, optional_ysql_catalog_version, is_db_catalog_version_mode,
+      optional_yb_read_time);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropTable(const PgObjectId& table_id) {
+Status PgSession::DropTable(const PgObjectId& table_id, bool use_regular_transaction_block) {
   tserver::PgDropTableRequestPB req;
   table_id.ToPB(req.mutable_table_id());
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
 }
 
 Status PgSession::DropIndex(
     const PgObjectId& index_id,
+    bool use_regular_transaction_block,
     client::YBTableName* indexed_table_name) {
   tserver::PgDropTableRequestPB req;
   index_id.ToPB(req.mutable_table_id());
   req.set_index(true);
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
   if (indexed_table_name) {
     *indexed_table_name = std::move(result);
   }
   return Status::OK();
-}
-
-Status PgSession::DropTablegroup(const PgOid database_oid,
-                                 PgOid tablegroup_oid) {
-  tserver::PgDropTablegroupRequestPB req;
-  PgObjectId tablegroup_id(database_oid, tablegroup_oid);
-  tablegroup_id.ToPB(req.mutable_tablegroup_id());
-  Status s = pg_client_.DropTablegroup(&req, CoarseTimePoint());
-  InvalidateTableCache(PgObjectId(database_oid, tablegroup_oid), InvalidateOnPgClient::kFalse);
-  return s;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -562,10 +603,11 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(
     return DoLoadTable(table_id, /* fail_on_cache_hit */ true, include_hidden);
   }
 
-  VLOG(4) << "Table cache MISS: " << table_id;
+  VLOG(4) << "Table cache MISS: " << table_id << " reopen = " << exists;
   auto table = VERIFY_RESULT(
-      pg_client_.OpenTable(table_id, exists, invalidate_table_cache_time_, include_hidden));
-  invalidate_table_cache_time_ = CoarseTimePoint();
+      pg_client_.OpenTable(
+        table_id, exists, table_cache_min_ysql_catalog_version_, include_hidden));
+
   if (exists) {
     cached_table_it->second = table;
   } else {
@@ -601,8 +643,12 @@ void PgSession::InvalidateTableCache(
   }
 }
 
-void PgSession::InvalidateAllTablesCache() {
-  invalidate_table_cache_time_ = CoarseMonoClock::now();
+void PgSession::InvalidateAllTablesCache(uint64_t min_ysql_catalog_version) {
+  if (table_cache_min_ysql_catalog_version_ >= min_ysql_catalog_version) {
+    return;
+  }
+
+  table_cache_min_ysql_catalog_version_ = min_ysql_catalog_version;
   table_cache_.clear();
 }
 
@@ -617,7 +663,7 @@ Status PgSession::StartOperationsBuffering() {
                 << buffer_.Size()
                 << " buffered operations found";
   }
-  Update(&buffering_settings_);
+  Update(&buffering_settings_, 1 /* multiple */);
   buffering_enabled_ = true;
   return Status::OK();
 }
@@ -639,6 +685,17 @@ Status PgSession::FlushBufferedOperations() {
 
 void PgSession::DropBufferedOperations() {
   buffer_.Clear();
+}
+
+Status PgSession::AdjustOperationsBuffering(int multiple) {
+  SCHECK(buffering_enabled_, IllegalState, "Buffering has not started yet");
+  if (PREDICT_FALSE(!Empty(buffer_))) {
+    LOG(DFATAL) << "Buffer should be empty, but "
+                << buffer_.Size()
+                << " buffered operations found";
+  }
+  Update(&buffering_settings_, multiple);
+  return Status::OK();
 }
 
 PgIsolationLevel PgSession::GetIsolationLevel() {
@@ -693,7 +750,13 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, boo
   //
   // EnsureReadTimeIsSet helps PgClientService to determine whether it can safely use the
   // optimization of allowing docdb (which serves the operation) to pick the read time.
-  return Perform(std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet::kTrue});
+  auto ensure_read_time = pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL
+      ? EnsureReadTimeIsSet::kFalse : EnsureReadTimeIsSet::kTrue;
+  auto non_transactional_buffered_write =
+      pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL;
+  return Perform(std::move(ops),
+      {.ensure_read_time_is_set = ensure_read_time,
+       .non_transactional_buffered_write = non_transactional_buffered_write});
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
@@ -705,7 +768,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    pg_txn_manager_->SetupPerformOptions(&options, ops_options.ensure_read_time_is_set);
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(
+        &options, ops_options.ensure_read_time_is_set,
+        ops_options.non_transactional_buffered_write));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -731,7 +796,20 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   if (yb_read_time != 0) {
     SCHECK(
         !pg_txn_manager_->IsDdlMode(), IllegalState,
-        "DDL operation should not be performed while yb_read_time is set to nonzero.");
+        "DDL operation can not be performed while yb_read_time is set to nonzero.");
+    // Disallow serializable reads that are not read-only as they need to acquire locks and thus,
+    // not pure reads.
+    SCHECK(
+        pg_txn_manager_->GetIsolationLevel() != IsolationLevel::SERIALIZABLE_ISOLATION,
+        IllegalState,
+        "Transactions with serializable isolation can not be performed while yb_read_time is set "
+        "to nonzero. Try setting the transaction as read only or try another isolation level.");
+    // Only read-only DMLs are allowed when yb_read_time is set to non-zero.
+    for (const auto& pg_op : ops.operations()) {
+      SCHECK(
+          IsReadOnly(*pg_op), IllegalState,
+          "Write DML operation can not be performed while yb_read_time is set to nonzero.");
+    }
     if (yb_is_read_time_ht) {
       ReadHybridTime::FromUint64(yb_read_time).ToPB(options.mutable_read_time());
     } else {
@@ -799,70 +877,53 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       pg_client_.PerformAsync(&options, std::move(operations)), std::move(relations));
 }
 
-Result<bool> PgSession::ForeignKeyReferenceExists(
-    PgOid database_id, const LightweightTableYbctid& key) {
-  if (fk_reference_cache_.find(key) != fk_reference_cache_.end()) {
-    return true;
+InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer(void* plan) {
+  auto iter = std::find_if(
+      insert_on_conflict_buffers_.begin(), insert_on_conflict_buffers_.end(),
+      [&plan](const InsertOnConflictPlanBuffer& buffer) {
+        return buffer.first == plan;
+      });
+
+  if (iter == insert_on_conflict_buffers_.end()) {
+    insert_on_conflict_buffers_.emplace_back(std::make_pair(plan, InsertOnConflictBuffer()));
+    return insert_on_conflict_buffers_.back().second;
   }
 
-  // Check existence of required FK intent.
-  // Absence means the key was checked by previous batched request and was not found.
-  // We don't need to call the reader in this case.
-  auto it = fk_reference_intent_.find(key);
-  if (it == fk_reference_intent_.end()) {
-    return false;
-  }
-
-  auto ybctids_accessor = aux_ybctid_container_provider_.Get();
-  auto& ybctids = *ybctids_accessor;
-  const auto max_count = std::min<size_t>(
-      fk_reference_intent_.size(), buffering_settings_.max_batch_size);
-  ybctids.reserve(max_count);
-
-  // If the reader fails to get the result, we fail the whole operation (and transaction).
-  // Hence it's ok to extract (erase) the keys from intent before calling reader.
-  auto node = fk_reference_intent_.extract(it);
-  ybctids.push_back(std::move(node.value()));
-
-  // Read up to session max batch size keys.
-  for (auto it = fk_reference_intent_.begin();
-       it != fk_reference_intent_.end() && ybctids.size() < max_count; ) {
-    node = fk_reference_intent_.extract(it++);
-    ybctids.push_back(std::move(node.value()));
-  }
-
-  // Add the keys found in docdb to the FK cache.
-  RETURN_NOT_OK(ybctid_reader_(
-      database_id, ybctids, fk_intent_region_local_tables_,
-      make_lw_function([](PgExecParameters& params) {
-        params.rowmark = ROW_MARK_KEYSHARE;
-      })));
-  for (const auto& ybctid : ybctids) {
-    fk_reference_cache_.emplace(ybctid.table_id, ybctid.ybctid);
-  }
-  return fk_reference_cache_.find(key) != fk_reference_cache_.end();
+  return iter->second;
 }
 
-void PgSession::AddForeignKeyReferenceIntent(
-    const LightweightTableYbctid& key, bool is_region_local) {
-  if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
-    if (is_region_local) {
-      fk_intent_region_local_tables_.insert(key.table_id);
-    }
-    DCHECK(is_region_local || !fk_intent_region_local_tables_.contains(key.table_id));
-    fk_reference_intent_.emplace(key.table_id, std::string(key.ybctid));
-  }
+InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer() {
+  CHECK_EQ(insert_on_conflict_buffers_.empty(), false);
+  return insert_on_conflict_buffers_.front().second;
 }
 
-void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
-  if (fk_reference_cache_.find(key) == fk_reference_cache_.end() &&
-      PREDICT_TRUE(!FLAGS_TEST_ysql_ignore_add_fk_reference)) {
-    fk_reference_cache_.emplace(key.table_id, key.ybctid);
+void PgSession::ClearAllInsertOnConflictBuffers() {
+  for (auto& buffer : insert_on_conflict_buffers_) {
+    // Since we will end up clearing all intents, might as well simply pass true for all the calls.
+    buffer.second.Clear(true /* clear_intents */);
   }
+
+  insert_on_conflict_buffers_.clear();
 }
 
-void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
-  Erase(&fk_reference_cache_, key);
+void PgSession::ClearInsertOnConflictBuffer(void* plan) {
+  auto iter = std::find_if(
+      insert_on_conflict_buffers_.begin(), insert_on_conflict_buffers_.end(),
+      [&plan](const InsertOnConflictPlanBuffer& buffer) {
+        return buffer.first == plan;
+      });
+
+  DCHECK(iter != insert_on_conflict_buffers_.end());
+  // This should only be called in case the keys_ map was manually cleared beforehand.  Otherwise,
+  // we could run into memory leaks of the slots in that map.
+  DCHECK_EQ(iter->second.GetNumIndexKeys(), 0);
+  // Only clear the global intents cache if this is the final buffer.
+  iter->second.Clear(insert_on_conflict_buffers_.size() == 1 /* clear_intents */);
+  insert_on_conflict_buffers_.erase(iter);
+}
+
+bool PgSession::IsInsertOnConflictBufferEmpty() const {
+  return insert_on_conflict_buffers_.empty();
 }
 
 Result<int> PgSession::TabletServerCount(bool primary_only) {
@@ -885,6 +946,10 @@ Status PgSession::GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
 
 void PgSession::SetTimeout(const int timeout_ms) {
   pg_client_.SetTimeout(timeout_ms * 1ms);
+}
+
+void PgSession::SetLockTimeout(int lock_timeout_ms) {
+  pg_client_.SetLockTimeout(lock_timeout_ms * 1ms);
 }
 
 void PgSession::ResetCatalogReadPoint() {
@@ -912,11 +977,6 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
-  if (pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL) {
-    VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
-    return Status::OK();
-  }
-
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
   // TODO(read committed): performance improvement -
@@ -924,9 +984,7 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
-  tserver::PgPerformOptionsPB options;
-  pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
-  auto status = pg_client_.RollbackToSubTransaction(id, &options);
+  const auto status = pg_txn_manager_->RollbackToSubTransaction(id);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
   return status;
 }
@@ -943,32 +1001,18 @@ void PgSession::SetDdlHasSyscatalogChanges() {
   pg_txn_manager_->SetDdlHasSyscatalogChanges();
 }
 
-Status PgSession::ValidatePlacement(const std::string& placement_info) {
-  tserver::PgValidatePlacementRequestPB req;
-
-  Result<PlacementInfoConverter::Placement> result =
-      PlacementInfoConverter::FromString(placement_info);
-
+Status PgSession::ValidatePlacement(const std::string& placement_info, bool check_satisfiable) {
   // For validation, if there is no replica_placement option, we default to the
-  // cluster configuration which the user is responsible for maintaining
-  if (!result.ok() && result.status().IsInvalidArgument()) {
-    return Status::OK();
+  // cluster configuration which the user is responsible for maintaining.
+  if (placement_info.empty()) return Status::OK();
+
+  ReplicationInfoPB replication_info = VERIFY_RESULT(TablespaceParser::FromString(placement_info));
+  if (check_satisfiable) {
+    tserver::PgValidatePlacementRequestPB req;
+    *req.mutable_replication_info() = std::move(replication_info);
+    return pg_client_.ValidatePlacement(&req);
   }
-
-  RETURN_NOT_OK(result);
-
-  PlacementInfoConverter::Placement placement = result.get();
-  for (const auto& block : placement.placement_infos) {
-    auto pb = req.add_placement_infos();
-    pb->set_cloud(block.cloud);
-    pb->set_region(block.region);
-    pb->set_zone(block.zone);
-    pb->set_min_num_replicas(block.min_num_replicas);
-    pb->set_leader_preference(block.leader_preference);
-  }
-  req.set_num_replicas(placement.num_replicas);
-
-  return pg_client_.ValidatePlacement(&req);
+  return Status::OK();
 }
 
 template<class Generator>
@@ -995,20 +1039,30 @@ Result<PerformFuture> PgSession::DoRunAsync(
   RunHelper runner(
       this, group_session_type, in_txn_limit, force_non_bufferable,
       ForceFlushBeforeNonBufferableOp{multiple_ops_for_processing});
-  const auto is_ddl = pg_txn_manager_->IsDdlMode();
-  auto processor = [this, &runner, is_ddl, group_session_type,
-                    non_ddl_txn_for_sys_tables_allowed](const auto& table_op) -> Status {
-    DCHECK(!table_op.IsEmpty());
-    const auto& table = *table_op.table;
-    const auto& op = *table_op.operation;
-    const auto session_type = VERIFY_RESULT(GetRequiredSessionType(
-        *pg_txn_manager_, table, *op, non_ddl_txn_for_sys_tables_allowed));
-    RSTATUS_DCHECK_EQ(
-        session_type, group_session_type,
-        IllegalState, "Operations on different sessions can't be mixed");
-    has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
-    return runner.Apply(table, op);
-  };
+  const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
+  auto processor =
+      [this,
+       is_ddl = ddl_force_catalog_mod_opt.has_value(),
+       force_catalog_modification = is_major_pg_version_upgrade_ ||
+                                    ddl_force_catalog_mod_opt.value_or(false) ||
+                                    YBIsMajorUpgradeInitDb(),
+       group_session_type, &runner, non_ddl_txn_for_sys_tables_allowed](const auto& table_op) {
+        DCHECK(!table_op.IsEmpty());
+        const auto& table = *table_op.table;
+        const auto& op = *table_op.operation;
+        const auto session_type = VERIFY_RESULT(GetRequiredSessionType(
+            *pg_txn_manager_, table, *op, non_ddl_txn_for_sys_tables_allowed));
+        RSTATUS_DCHECK_EQ(
+            session_type, group_session_type,
+            IllegalState, "Operations on different sessions can't be mixed");
+        if (force_catalog_modification &&
+            table.schema().table_properties().is_ysql_catalog_table()) {
+          ApplyForceCatalogModification(*op);
+        }
+        has_write_ops_in_ddl_mode_ =
+            has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
+        return runner.Apply(table, op);
+    };
   RETURN_NOT_OK(processor(first_table_op));
   for (; !table_op.IsEmpty(); table_op = generator()) {
     RETURN_NOT_OK(processor(table_op));
@@ -1093,5 +1147,44 @@ Status PgSession::SetCronLastMinute(int64_t last_minute) {
 }
 
 Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
+
+Status PgSession::AcquireAdvisoryLock(
+    const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
+
+  tserver::PgAcquireAdvisoryLockRequestPB req;
+  AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
+  req.set_wait(wait);
+  // No need to populate the txn metadata for session level advisory locks.
+  if (session) {
+    req.set_session(session);
+  } else {
+    auto& options = *req.mutable_options();
+    // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
+    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+      false /* read_only */,
+      pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED
+          ? kHighestPriority : kLowerPriorityRange));
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options));
+    // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
+    // then it should be safe to skip set_force_global_transaction.
+    options.set_force_global_transaction(true);
+  }
+  return pg_client_.AcquireAdvisoryLock(&req, CoarseTimePoint());
+}
+
+Status PgSession::ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode) {
+  // ReleaseAdvisoryLock is only used for session level advisory locks, hence no need to populate
+  // the req with txn meta.
+  tserver::PgReleaseAdvisoryLockRequestPB req;
+  AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
+  return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
+}
+
+Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
+  tserver::PgReleaseAdvisoryLockRequestPB req;
+  req.set_session_id(pg_client_.SessionID());
+  req.set_db_oid(db_oid);
+  return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
+}
 
 }  // namespace yb::pggate

@@ -280,7 +280,8 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
     if (!peer->tablet() || peer->tablet()->metadata()->table_id() != table_.table()->id()) {
       continue;
     }
-    const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountRegularDBRecords());
+    const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountDBRecords(
+        docdb::StorageDbType::kRegular));
     auto raft_consensus = EXPECT_RESULT(peer->GetRaftConsensus());
     auto request_counts = raft_consensus->TEST_CountRetryableRequests();
     LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()
@@ -518,7 +519,7 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
     auto* column_value = req->add_column_values();
     column_value->set_column_id(value_column_id);
     auto* bfcall = column_value->mutable_expr()->mutable_bfcall();
-    bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
+    bfcall->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
     bfcall->add_operands()->set_column_id(value_column_id);
     bfcall->add_operands()->mutable_value()->set_int64_value(1);
     write_ops.push_back(op);

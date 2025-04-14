@@ -1,27 +1,30 @@
 import React, { FC, useMemo, Fragment } from "react";
 import type { RefactoringCount } from "@app/api/src";
 import { useTranslation } from "react-i18next";
-import { YBTable, YBButton } from "@app/components";
+import { YBTable, YBButton, YBTooltip } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { Box, TableCell, TableRow, makeStyles } from "@material-ui/core";
-import type { UnsupportedSqlWithDetails, ErrorsAndSuggestionsDetails } from "@app/api/src";
+import type { SqlObjectsDetails, AnalysisIssueDetails } from "@app/api/src";
 import MinusIcon from "@app/assets/minus_icon.svg";
 import PlusIcon from "@app/assets/plus_icon.svg";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import ExpandIcon from "@app/assets/expand.svg";
 import CollapseIcon from "@app/assets/collapse.svg";
-import { useQueryParams } from "@app/helpers";
+import { formatSnakeCase, useQueryParams } from "@app/helpers";
 import { MigrationRefactoringSidePanel } from "../assessment/AssessmentRefactoringSidePanel";
 interface RefactoringGraphProps {
   sqlObjects: RefactoringCount[] | undefined;
-  sqlObjectsList?: UnsupportedSqlWithDetails[] | undefined;
+  sqlObjectsList?: SqlObjectsDetails[] | undefined;
+  isAssessmentPage?: boolean | undefined;
+  setSelectedObjectType?: React.Dispatch<React.SetStateAction<string>> | undefined;
+  scrollToIssueTable?: () => void;
 }
 
-type ESD = ErrorsAndSuggestionsDetails;
+type AID = AnalysisIssueDetails;
 interface FileIssue {
-  objectType: ESD["issueType"];
-  filePath: ESD["filePath"];
-  objectName: ESD["objectName"];
+  objectType: AID["issueType"];
+  filePath: AID["filePath"];
+  objectName: AID["objectName"];
   acknowledgedObjects: {
     ackCount: number;
     totalCount: number;
@@ -44,7 +47,13 @@ const useStyles = makeStyles((theme) => ({
 
 const ACKNOWLEDGED_OBJECTS_LOCAL_STORAGE_KEY: string = "acknowledgedObjects";
 
-export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObjectsList }) => {
+export const RefactoringGraph: FC<RefactoringGraphProps> = ({
+    sqlObjects,
+    sqlObjectsList,
+    isAssessmentPage,
+    setSelectedObjectType,
+    scrollToIssueTable
+  }) => {
   const { t } = useTranslation();
   const classes = useStyles();
   const queryParams = useQueryParams();
@@ -89,7 +98,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
   }, [sqlObjectsList]);
 
   const [selectedDataType, setSelectedDataType] =
-    React.useState<UnsupportedSqlWithDetails | undefined>(undefined);
+    React.useState<SqlObjectsDetails | undefined>(undefined);
 
   const [sidePanelHeader, setSidePanelHeader] = React.useState<string>("");
   const [sidePanelTitle, setSidePanelTitle] = React.useState<string>("");
@@ -141,13 +150,15 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
       return objectTypeArrayMap;
     }
     sqlObjectsList.forEach((sqlObject) => {
-      if (sqlObject.suggestions_errors) {
-        sqlObject.suggestions_errors.forEach((error) => {
-          const objectType = error?.objectType?.toLowerCase() ?? "";
+      if ((sqlObject?.issues?.length ?? 0) > 0) {
+        sqlObject?.issues?.forEach((error: AnalysisIssueDetails) => {
+
+          const objectType = sqlObject?.objectType?.toLowerCase() ?? "";
 
           if (!objectTypeArrayMap.has(objectType)) {
             objectTypeArrayMap.set(objectType, []);
           }
+
           const objectName = error.objectName ?? "";
           const filePath = error?.filePath ?? "";
           const sqlStatement = error?.sqlStatement ?? "";
@@ -159,14 +170,15 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
           );
 
           const totalCount = sqlObjectsList.reduce((count, sqlObj) => {
-            const filteredErrors = sqlObj.suggestions_errors?.filter(
-              (error) => error.filePath === filePath && error.objectName === objectName
+            const filteredErrors = sqlObj?.issues?.filter(
+              (issue) => issue?.filePath === filePath && issue?.objectName === objectName
             );
             return count + (filteredErrors?.length ?? 0);
           }, 0);
+
           if (existingIssueIndex === -1) {
             existingIssues.push({
-              objectType: error.objectType,
+              objectType: sqlObject?.objectType,
               filePath: filePath,
               objectName: objectName,
               acknowledgedObjects: {
@@ -177,6 +189,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
             });
           } else {
             const existingIssue = existingIssues[existingIssueIndex];
+
             if (getIssueStatus(filePath, sqlStatement, reason, migrationUUID ?? "")) {
               existingIssue.acknowledgedObjects.ackCount++;
             }
@@ -193,13 +206,14 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
       return [];
     }
 
-    const objectTypeNameMap = new Map<string, ESD["objectName"][]>();
-    sqlObjectsList?.forEach((sqlObject: UnsupportedSqlWithDetails) => {
-      const currentSuggestionErrors: ESD[] = sqlObject?.suggestions_errors || [];
+    const objectTypeNameMap = new Map<string, AID["objectName"][]>();
 
-      currentSuggestionErrors.forEach((item) => {
-        const objectType: string = item.objectType?.toLowerCase() ?? "";
-        const objectName: string = item.objectName?.toLowerCase() ?? "";
+    sqlObjectsList?.forEach((sqlObject: SqlObjectsDetails) => {
+      const currentIssues: AID[] = sqlObject?.issues || [];
+
+      currentIssues.forEach((issue: AnalysisIssueDetails) => {
+        const objectType: string = sqlObject?.objectType?.toLowerCase() ?? "";
+        const objectName: string = issue?.objectName?.toLowerCase() ?? "";
 
         if (objectTypeNameMap.has(objectType)) {
           objectTypeNameMap.get(objectType)?.push(objectName);
@@ -210,8 +224,11 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
     });
 
     return sqlObjects
-      .filter(({ automatic, manual }) => (automatic ?? 0) + (manual ?? 0) > 0)
-      .map(({ sql_object_type, automatic, manual }, index) => {
+      .filter(({ automatic, manual, invalid }) => {
+        const total: number = (automatic ?? 0) + (manual ?? 0) + (invalid ?? 0);
+        return total > 0;
+      })
+      .map(({ sql_object_type, automatic, manual, invalid }, index) => {
         const mapReturnedArray = objectTypeNameMap.get(sql_object_type!.trim().toLowerCase()) || [];
         const doesMapReturnArray: boolean = Array.isArray(mapReturnedArray);
         return {
@@ -222,6 +239,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
           objectType: sql_object_type?.trim().toLowerCase(),
           automaticDDLImport: automatic ?? 0,
           manualRefactoring: manual ?? 0,
+          invalidObjCount: invalid ?? 0,
           rightArrowSidePanel: {
             mapReturnedArrayLength: doesMapReturnArray ? mapReturnedArray?.length : 0,
             sqlObjectType: sql_object_type?.trim().toLowerCase(),
@@ -301,16 +319,34 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
       },
     },
   ];
-  const showPlusMinusExpansion = graphData.some(
+
+  const showPlusMinusExpansion: boolean = graphData.some(
     (item) => item.plusMinusExpansion.mapReturnedArrayLength > 0
   );
-  const showRightArrowSidePanel = graphData.some(
+
+  const showRightArrowSidePanel: boolean = graphData.some(
     (item) => item.rightArrowSidePanel.mapReturnedArrayLength > 0
   );
+
+  const createCustomHeaderLabelRender =
+    (labelKey: string, tooltipKey?: string): () => React.ReactNode => {
+      return () => (
+        <Box display="inline-flex" alignItems="center">
+          {t(labelKey)}
+          {tooltipKey && (
+            <YBTooltip
+              title={t(tooltipKey)}
+              placement="top"
+              interactive
+            />
+          )}
+        </Box>
+      );
+    };
+
   const columns = [
     {
       name: "plusMinusExpansion",
-      label: " ",
       options: {
         sort: false,
         display: showPlusMinusExpansion,
@@ -331,6 +367,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
               {expandedSuggestions[plusMinusExpansion.index] ? <MinusIcon /> : <PlusIcon />}
             </Box>
           ),
+        customHeadLabelRender: () => null
       },
     },
     {
@@ -339,38 +376,71 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
       options: {
         sort: false,
         setCellHeaderProps: () => ({ style: { padding: "8px 30px" } }),
-        setCellProps: () => ({ style: { padding: "8px 30px", textTransform: "capitalize" } }),
+        setCellProps: () => ({ style: { padding: "8px 30px" } }),
+        customHeadLabelRender: createCustomHeaderLabelRender(
+          "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.objectType"
+        ),
+        customBodyRender: (value: string) => (
+          isAssessmentPage ? (
+            <YBButton
+              onClick={() => {
+              setSelectedObjectType?.(formatSnakeCase(value));
+              scrollToIssueTable?.();
+            }}
+           >
+            {formatSnakeCase(value)}
+           </YBButton>
+          ) : (
+            (value)
+          )
+        ),
       },
     },
     {
       name: "automaticDDLImport",
-      label: t(
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImport"
-      ),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 30px" } }),
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Success} />
         ),
+        customHeadLabelRender: createCustomHeaderLabelRender(
+        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImport",
+        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.automaticDDLImportTooltip"
+        ),
+      },
+    },
+    {
+      name: "invalidObjCount",
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
+        setCellProps: () => ({ style: { padding: "8px 30px" } }),
+        customBodyRender: (count: number) => (
+          <YBBadge text={count} variant={count > 0 ? BadgeVariant.Warning : BadgeVariant.Success} />
+        ),
+        customHeadLabelRender: createCustomHeaderLabelRender(
+        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCount",
+        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.invalidObjectCountTooltip"
+        ),
       },
     },
     {
       name: "manualRefactoring",
-      label: t(
-        "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoring"
-      ),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 25px" } }),
         setCellProps: () => ({ style: { padding: "8px 30px" } }),
         customBodyRender: (count: number) => (
           <YBBadge text={count} variant={BadgeVariant.Warning} />
         ),
+        display: isAssessmentPage === false, // Hiding this column in assessment page.
+        customHeadLabelRender: createCustomHeaderLabelRender(
+         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoring",
+         "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.manualRefactoringTooltip"
+        ),
       },
     },
     {
       name: "rightArrowSidePanel",
-      label: " ",
       options: {
         sort: false,
         display: showRightArrowSidePanel,
@@ -385,27 +455,31 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
               style={{ cursor: "pointer" }}
               onClick={() => {
                 const objectType: string = rightArrowSidePanel.sqlObjectType?.toLowerCase() ?? "";
-                let dataForSidePanel: UnsupportedSqlWithDetails = {
-                  unsupported_type: "",
-                  suggestions_errors: [],
-                  count: 0,
+                let dataForSidePanel: SqlObjectsDetails = {
+                  objectType: "",
+                  totalCount: 0,
+                  invalidCount: 0,
+                  objectNames: "",
+                  issues: [],
                 };
-                const sidePanelSuggestionErrors: ESD[] = [];
+                const sidePanelSuggestionIssues: AID[] = [];
+                let totalCount: number = 0;
                 sqlObjectsList?.forEach((sqlObjects) => {
-                  sqlObjects.suggestions_errors?.forEach((currentSuggestionError) => {
-                    if (
-                      currentSuggestionError &&
-                      currentSuggestionError?.objectType?.toLowerCase() === objectType
-                    )
-                      sidePanelSuggestionErrors.push(currentSuggestionError);
+                  sqlObjects.issues?.forEach((currentIssue) => {
+                    if (currentIssue && sqlObjects &&
+                        sqlObjects?.objectType?.toLowerCase() === objectType) {
+                          sidePanelSuggestionIssues.push(currentIssue);
+                        totalCount = sqlObjects?.totalCount ?? 0;
+                    }
                   });
                 });
-                dataForSidePanel.unsupported_type = objectType.toUpperCase();
-                dataForSidePanel.suggestions_errors = sidePanelSuggestionErrors;
-                dataForSidePanel.count = sidePanelSuggestionErrors.length;
+                dataForSidePanel.objectType = objectType.toUpperCase();
+                dataForSidePanel.issues = sidePanelSuggestionIssues;
+                dataForSidePanel.invalidCount = sidePanelSuggestionIssues.length;
+                dataForSidePanel.totalCount = totalCount;
                 setSelectedDataType(dataForSidePanel);
                 const sideHeader = t(
-             "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.compatibilityIssues"
+              "clusterDetail.voyager.planAndAssess.recommendation.schemaChanges.compatibilityIssues"
                 );
                 setSidePanelHeader(sideHeader);
                 const sideTitle = t(
@@ -417,6 +491,7 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
               <ArrowRightIcon />
             </Box>
           ),
+        customHeadLabelRender: () => null, // No heading needed here
       },
     },
   ];
@@ -475,27 +550,27 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects, sqlObj
             plusMinusExpansion.mapReturnedArrayLength > 0
         ) ??
           false) && (
-          <Box position="absolute" right={0} top={0}>
-            <YBButton
-              variant="ghost"
-              startIcon={getExpandCollapseStatus ? <ExpandIcon /> : <CollapseIcon />}
-              onClick={() => {
-                graphData?.forEach(({ plusMinusExpansion }) => {
-                  if (plusMinusExpansion.mapReturnedArrayLength > 0) {
-                    setExpandedSuggestions((prev) => ({
-                      ...prev,
-                      [plusMinusExpansion.index]: getExpandCollapseStatus,
-                    }));
-                  }
-                });
-              }}
-            >
-              {getExpandCollapseStatus
-                ? t("clusterDetail.voyager.planAndAssess.refactoring.expandAll")
-                : t("clusterDetail.voyager.planAndAssess.refactoring.collapseAll")}
-            </YBButton>
-          </Box>
-        )}
+            <Box position="absolute" right={0} top={0}>
+              <YBButton
+                variant="ghost"
+                startIcon={getExpandCollapseStatus ? <ExpandIcon /> : <CollapseIcon />}
+                onClick={() => {
+                  graphData?.forEach(({ plusMinusExpansion }) => {
+                    if (plusMinusExpansion.mapReturnedArrayLength > 0) {
+                      setExpandedSuggestions((prev) => ({
+                        ...prev,
+                        [plusMinusExpansion.index]: getExpandCollapseStatus,
+                      }));
+                    }
+                  });
+                }}
+              >
+                {getExpandCollapseStatus
+                  ? t("clusterDetail.voyager.planAndAssess.refactoring.expandAll")
+                  : t("clusterDetail.voyager.planAndAssess.refactoring.collapseAll")}
+              </YBButton>
+            </Box>
+          )}
       </Box>
 
       <MigrationRefactoringSidePanel

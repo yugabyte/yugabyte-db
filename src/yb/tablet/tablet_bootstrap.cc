@@ -92,6 +92,7 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/backup.pb.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
@@ -417,10 +418,10 @@ struct ReplayDecision {
 
   // This is true for transaction update operations that have already been applied to the regular
   // RocksDB but not to the intents RocksDB.
-  AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse;
+  docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(should_replay, already_applied_to_regular_db);
+    return YB_STRUCT_TO_STRING(should_replay, apply_to_storages);
   }
 };
 
@@ -528,9 +529,14 @@ class TabletBootstrap {
     const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
 
     if (data_.retryable_requests) {
+      const auto table_type_for_retryable_request_timeout =
+          tablet_->table_type() == PGSQL_TABLE_TYPE ||
+          meta_->table_name() == std::string(tserver::kPgAdvisoryLocksTableName)
+              ? PGSQL_TABLE_TYPE
+              : tablet_->table_type();
       const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
           ? client::SysCatalogRetryableRequestTimeoutSecs()
-          : client::RetryableRequestTimeoutSecs(tablet_->table_type());
+          : client::RetryableRequestTimeoutSecs(table_type_for_retryable_request_timeout);
       data_.retryable_requests->SetRequestTimeout(retryable_request_timeout_secs);
       data_.retryable_requests->SetMetricEntity(tablet_->GetTabletMetricsEntity());
     }
@@ -557,8 +563,8 @@ class TabletBootstrap {
       RETURN_NOT_OK(FinishBootstrap("No bootstrap required, opened a new log",
                                     rebuilt_log,
                                     rebuilt_tablet));
-      consensus_info->last_id = MinimumOpId();
-      consensus_info->last_committed_id = MinimumOpId();
+      consensus_info->last_id = OpId::Min();
+      consensus_info->last_committed_id = OpId::Min();
       return Status::OK();
     }
 
@@ -578,8 +584,8 @@ class TabletBootstrap {
 
     RETURN_NOT_OK_PREPEND(PlaySegments(consensus_info), "Failed log replay. Reason");
 
-    if (cmeta_->current_term() < consensus_info->last_id.term()) {
-      cmeta_->set_current_term(consensus_info->last_id.term());
+    if (cmeta_->current_term() < consensus_info->last_id.term) {
+      cmeta_->set_current_term(consensus_info->last_id.term);
     }
 
     // Flush the consensus metadata once at the end to persist our changes, if any.
@@ -976,14 +982,14 @@ class TabletBootstrap {
   // Replays the given committed operation.
   Status PlayAnyRequest(
       consensus::LWReplicateMsg* replicate,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+      const docdb::StorageSet& apply_to_storages) {
     const auto op_type = replicate->op_type();
     if (test_hooks_) {
-      test_hooks_->Replayed(OpId::FromPB(replicate->id()), already_applied_to_regular_db);
+      test_hooks_->Replayed(OpId::FromPB(replicate->id()), apply_to_storages);
     }
     switch (op_type) {
       case consensus::WRITE_OP:
-        return PlayWriteRequest(replicate, already_applied_to_regular_db);
+        return PlayWriteRequest(replicate, apply_to_storages);
 
       case consensus::CHANGE_METADATA_OP:
         return PlayChangeMetadataRequest(replicate);
@@ -998,7 +1004,7 @@ class TabletBootstrap {
         return Status::OK();  // This is why it is a no-op!
 
       case consensus::UPDATE_TRANSACTION_OP:
-        return PlayUpdateTransactionRequest(replicate, already_applied_to_regular_db);
+        return PlayUpdateTransactionRequest(replicate, apply_to_storages);
 
       case consensus::SNAPSHOT_OP:
         return PlayTabletSnapshotRequest(replicate);
@@ -1027,8 +1033,7 @@ class TabletBootstrap {
 
   Status PlayTabletSnapshotRequest(consensus::LWReplicateMsg* replicate_msg) {
     SnapshotOperation operation(tablet_, replicate_msg->mutable_snapshot_request());
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
 
     return operation.Replicated(/* leader_term= */ OpId::kUnknownTerm,
                                 WasPending::kFalse);
@@ -1056,8 +1061,7 @@ class TabletBootstrap {
     }
 
     SplitOperation operation(tablet_, data_.tablet_init_data.tablet_splitter, &split_request);
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
     return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(
         &operation, log_.get(), cmeta_->committed_config());
 
@@ -1073,8 +1077,7 @@ class TabletBootstrap {
   Status PlayCloneOpRequest(consensus::LWReplicateMsg* replicate_msg) {
     CloneOperation operation(
         tablet_, data_.tablet_init_data.tablet_splitter, replicate_msg->mutable_clone_tablet());
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
     // We might be asked to replay CLONE_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set. ApplyCloneTablet will still succeed in this case
     // because it is a no-op if a clone with the same seq_no is already applied according to the
@@ -1117,29 +1120,37 @@ class TabletBootstrap {
   ReplayDecision ShouldReplayOperation(
       consensus::OperationType op_type,
       const int64_t index,
-      const int64_t regular_flushed_index,
-      const int64_t intents_flushed_index,
+      const DocDbOpIds& flushed_op_ids,
       const int64_t metadata_flushed_index,
       TransactionStatus txn_status,
       bool write_op_has_transaction) {
     if (op_type == consensus::UPDATE_TRANSACTION_OP) {
-      if (txn_status == TransactionStatus::APPLYING && index <= regular_flushed_index) {
+      if (txn_status == TransactionStatus::APPLYING) {
+        auto apply_to_storages = docdb::StorageSet::All();
+        if (index <= flushed_op_ids.regular.index) {
+          apply_to_storages.ResetRegularDB();
+        }
+        for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
+          if (index <= flushed_op_ids.vector_indexes[idx].index) {
+            apply_to_storages.ResetVectorIndex(idx);
+          }
+        }
         // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
         // before they are replicated to the CDC destination.
         //
         // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is
         // a temporary change. The long term change is to track write and apply operations
         // separately instead of a tracking a single "intents_flushed_index".
-        VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " "
-                                     << "regular_flushed_index: " << regular_flushed_index
-                                     << " intents_flushed_index: " << intents_flushed_index;
-        return {true, AlreadyAppliedToRegularDB::kTrue};
+        VLOG_WITH_PREFIX_AND_FUNC(3)
+            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+            << ", apply_to_storages: " << apply_to_storages.ToString();
+        return {true, apply_to_storages};
       }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
-      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
-                                   << "regular_flushed_index: " << regular_flushed_index;
-      return {index > regular_flushed_index};
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+      return {index > flushed_op_ids.regular.index};
     }
 
     if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
@@ -1151,25 +1162,24 @@ class TabletBootstrap {
 
     // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
     // trying to be resilient to violations of that assumption.
-    if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
+    if (index <= std::min(flushed_op_ids.regular.index, flushed_op_ids.intents.index)) {
       // Never replay anything that is flushed to both regular and intents RocksDBs in a
       // transactional table.
-      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " "
-                                   << "regular_flushed_index: " << regular_flushed_index
-                                   << " intents_flushed_index: " << intents_flushed_index;
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
       return {false};
     }
 
     if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
       // Write intents that have not been flushed into the intents DB.
-      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
-                                   << "intents_flushed_index: " << intents_flushed_index;
-      return {index > intents_flushed_index};
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+      return {index > flushed_op_ids.intents.index};
     }
 
-    VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
-                                 << "regular_flushed_index: " << regular_flushed_index;
-    return {index > regular_flushed_index};
+    VLOG_WITH_PREFIX_AND_FUNC(3)
+        << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+    return {index > flushed_op_ids.regular.index};
   }
 
   // Performs various checks based on the OpId, and decides whether to replay the given operation.
@@ -1182,8 +1192,7 @@ class TabletBootstrap {
     const auto decision = ShouldReplayOperation(
         op_type,
         replicate.id().index(),
-        replay_state_->stored_op_ids.regular.index,
-        replay_state_->stored_op_ids.intents.index,
+        replay_state_->stored_op_ids,
         meta_->LastFlushedChangeMetadataOperationOpId().index,
         // txn_status
         replicate.has_transaction_state()
@@ -1196,7 +1205,7 @@ class TabletBootstrap {
     VLOG_WITH_PREFIX_AND_FUNC(3) << "decision: " << AsString(decision);
     if (decision.should_replay) {
       RETURN_NOT_OK_PREPEND(
-          PlayAnyRequest(&replicate, decision.already_applied_to_regular_db),
+          PlayAnyRequest(&replicate, decision.apply_to_storages),
           Format(
             "Failed to play $0 request, replicate: { $1 }",
             OperationType_Name(op_type), replicate));
@@ -1684,8 +1693,8 @@ class TabletBootstrap {
         replay_state_->prev_op_id, replay_state_->committed_op_id);
 
     tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
-    consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
-    consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
+    consensus_info->last_id = replay_state_->prev_op_id;
+    consensus_info->last_committed_id = replay_state_->committed_op_id;
 
     if (data_.retryable_requests) {
       data_.retryable_requests->Clock().Adjust(last_entry_time);
@@ -1709,7 +1718,7 @@ class TabletBootstrap {
 
   Status PlayWriteRequest(
       consensus::LWReplicateMsg* replicate_msg,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+      const docdb::StorageSet& apply_to_storages) {
     SCHECK(replicate_msg->has_hybrid_time(), IllegalState,
            "A write operation with no hybrid time");
 
@@ -1718,9 +1727,8 @@ class TabletBootstrap {
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
     WriteOperation operation(tablet_, write);
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    HybridTime hybrid_time(replicate_msg->hybrid_time());
-    operation.set_hybrid_time(hybrid_time);
+    operation.SetupFromReplicateMsg(*replicate_msg);
+    auto hybrid_time = operation.hybrid_time();
 
     auto op_id = operation.op_id();
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
@@ -1735,8 +1743,7 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    auto apply_status = tablet_->ApplyRowOperations(
-        &operation, already_applied_to_regular_db);
+    auto apply_status = tablet_->ApplyRowOperations(&operation, apply_to_storages);
     // Failure is regular case, since could happen because transaction was aborted, while
     // replicating its intents.
     LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
@@ -1800,15 +1807,11 @@ class TabletBootstrap {
       return PlayChangeMetadataRequestDeprecated(replicate_msg);
     }
 
-    // If last_flushed_change_metadata_op_id is valid then new code gets executed
-    // wherein we replay everything.
-    const auto op_id = OpId::FromPB(replicate_msg->id());
-
     // Otherwise play.
     auto* request = replicate_msg->mutable_change_metadata_request();
 
     ChangeMetadataOperation operation(tablet_, log_.get(), request);
-    operation.set_op_id(op_id);
+    operation.SetupFromReplicateMsg(*replicate_msg);
     RETURN_NOT_OK(operation.Prepare(tablet::IsLeaderSide::kFalse));
 
     Status s;
@@ -1848,9 +1851,7 @@ class TabletBootstrap {
     auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_, req);
-
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime::FromPB(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
 
     Status s = tablet_->Truncate(&operation);
 
@@ -1861,15 +1862,14 @@ class TabletBootstrap {
 
   Status PlayUpdateTransactionRequest(
       consensus::LWReplicateMsg* replicate_msg,
-      AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+      const docdb::StorageSet& apply_to_storages) {
     SCHECK(replicate_msg->has_hybrid_time(),
            Corruption, "A transaction update request must have a hybrid time");
 
     UpdateTxnOperation operation(
         /* tablet */ nullptr, replicate_msg->mutable_transaction_state());
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    HybridTime hybrid_time(replicate_msg->hybrid_time());
-    operation.set_hybrid_time(hybrid_time);
+    operation.SetupFromReplicateMsg(*replicate_msg);
+    auto hybrid_time = operation.hybrid_time();
 
     auto op_id = OpId::FromPB(replicate_msg->id());
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
@@ -1890,7 +1890,7 @@ class TabletBootstrap {
         .op_id = operation.op_id(),
         .hybrid_time = operation.hybrid_time(),
         .sealed = operation.request()->sealed(),
-        .already_applied_to_regular_db = already_applied_to_regular_db
+        .apply_to_storages = apply_to_storages,
       };
       return transaction_participant->ProcessReplicated(replicated_data);
     }
@@ -2019,8 +2019,6 @@ class TabletBootstrap {
 
   // A way to inject flushed OpIds for regular and intents RocksDBs.
   boost::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
-
-  bool TEST_collect_replayed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
   std::vector<OpId> TEST_replayed_op_ids_;

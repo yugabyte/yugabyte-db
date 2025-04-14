@@ -14,15 +14,15 @@ yba universe create [flags]
 
 ```
 yba universe create -n <universe-name> --provider-code <provider-code> \
-	--provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
-	--master-gflags \
-	"{\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\",\
-	\"<gflag-3>\": \"<value-3>\",\"<gflag-4>\": \"<value-4>\"}" \
-	--tserver-gflags \
-	"{\"primary\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"},\
-	\"async\": {\"<gflag-1>\": \"<value-1>\",\"<gflag-2>\": \"<value-2>\"}}" \
-	--num-nodes 1 --replication-factor 1 \
-	--user-tags <key-1>=<value-1>,<key-2>=<value-2>
+	 --provider-name <provider-name> --yb-db-version <YugbayteDB-version> \
+	 --master-gflags \
+	 '{"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>",\
+	 "<gflag-3>": "<value-3>","<gflag-4>": "<value-4>"}" \
+	 --tserver-gflags \
+	 "{"primary": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"},\
+	 "async": {"<gflag-1>": "<value-1>","<gflag-2>": "<value-2>"}}' \
+	 --num-nodes 1 --replication-factor 1 \
+	 --user-tags <key-1>=<value-1>,<key-2>=<value-2>
 ```
 
 ### Options
@@ -33,35 +33,37 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --provider-code string                             [Required] Provider code. Allowed values: aws, gcp, azu, onprem, kubernetes.
       --provider-name string                             [Optional] Provider name to be used in universe. Run "yba provider list --code <provider-code>" to check the list of providers for the given provider-code. Fetches the first provider in the list by default.
       --dedicated-nodes                                  [Optional] Place Masters on dedicated nodes, (default false) for aws, azu, gcp, onprem. Defaults to true for kubernetes.
-      --cpu-architecture string                          [Optional] CPU architecture for nodes in all clusters. (default "x86_64")
+      --cpu-architecture string                          [Optional] CPU architecture for nodes in all clusters. Allowed values: x86_64, aarch64. (default "x86_64")
       --add-read-replica                                 [Optional] Add a read replica cluster to the universe. (default false)
       --replication-factor ints                          [Optional] Replication factor of the cluster. Provide replication-factor for each cluster as a separate flag. "--replication-factor 3 --replication-factor 5" OR "--replication-factor 3,5" refers to RF of Primary cluster = 3 and RF of Read Replica = 5. First flag always corresponds to the primary cluster. (default [3,3])
       --num-nodes ints                                   [Optional] Number of nodes in the cluster. Provide no of nodes for each cluster as a separate flag. "--num-nodes 3 --num-nodes 5" OR "--num-nodes 3,5" refers to 3 nodes in the Primary cluster and 5 nodes in the Read Replica cluster. First flag always corresponds to the primry cluster. (default [3,3])
-      --regions stringArray                              [Optional] Regions for the nodes of the cluster to be placed in. Provide comma-separated strings for each cluster as a separate flag, in the following format: "--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster' --regions 'region-1-for-read-replica,region-2-for-read-replica'". Defaults to fetching the region from the provider. Throws an error if multiple regions are present.
-      --preferred-region stringArray                     [Optional] Preferred region to place the node of the cluster in. Provide preferred regions for each cluster as a separate flag. Defaults to null.
-      --master-gflags string                             [Optional] Master GFlags in map (JSON or YAML) format. Provide the gflags in the following formats: "--master-gflags { \"master-gflag-key-1\":\"value-1\",\"master-gflag-key-2\":\"value-2\" }" or  "--master-gflags "master-gflag-key-1: value-1
+      --regions stringArray                              [Optional] Regions for the nodes of the cluster to be placed in. Provide comma-separated strings for each cluster as a separate flag, in the following format: "--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster' --regions 'region-1-for-read-replica,region-2-for-read-replica'". Defaults to fetching the regions from the provider.
+      --preferred-region stringArray                     [Optional] Preferred region to place the node of the cluster in. Provide preferred regions for each cluster as a separate flag. (default [])
+      --master-gflags string                             [Optional] Master GFlags in map (JSON or YAML) format. Provide the gflags in the following formats: "--master-gflags {"master-gflag-key-1":"value-1","master-gflag-key-2":"value-2" }" or  "--master-gflags "master-gflag-key-1: value-1
                                                          master-gflag-key-2: value-2
                                                          master-gflag-key-3: value-3".
-      --tserver-gflags string                            [Optional] TServer GFlags in map (JSON or YAML) format. Provide gflags for clusters in the following format: "--tserver-gflags "{\"primary\": {\"tserver-gflag-key-1\": \"value-1\",\"tserver-gflag-key-2\": \"value-2\"},\"async\": {\"tserver-gflag-key-1\": \"value-1\",\"tserver-gflag-key-2\": \"value-2\"}}"" OR "--tserver-gflag "primary:
-                                                         	log_min_segments_to_retain: 1
-                                                         	log_cache_size_limit_mb: 0
-                                                         	global_log_cache_size_limit_mb: 0
-                                                         	log_stop_retaining_min_disk_mb: 9223372036854775807
+      --tserver-gflags string                            [Optional] TServer GFlags in map (JSON or YAML) format. Provide gflags for clusters in the following format: "--tserver-gflags '{"primary": {"tserver-gflag-key-1": "value-1","tserver-gflag-key-2": "value-2"},"async": {"tserver-gflag-key-1": "value-1","tserver-gflag-key-2": "value-2"}}'" OR "--tserver-gflag "primary:
+                                                         	tserver-gflag-key-1: value-1
+                                                         	tserver-gflag-key-2: value-2
+                                                         	tserver-gflag-key-3: value-3
+                                                         	tserver-gflag-key-4: value-4
+                                                         	tserver-gflag-key-5: value-5
                                                          async:
-                                                         	log_min_segments_to_retain: 2
-                                                         	log_cache_size_limit_mb: 0
-                                                         	global_log_cache_size_limit_mb: 0"". If no-of-clusters = 2 and no tserver gflags are provided for the read replica, the primary cluster gflags are by default applied to the read replica cluster.
+                                                         	tserver-gflag-key-6: value-6
+                                                         	tserver-gflag-key-7: value-7
+                                                         	tserver-gflag-key-8: value-8"". If no-of-clusters = 2 and no tserver gflags are provided for the read replica, the primary cluster gflags are by default applied to the read replica cluster.
       --linux-version stringArray                        [Optional] Linux version for the universe nodes. Default linux version is fetched from the provider. corresponding to cpu-architecture of the universe.
       --instance-type stringArray                        [Optional] Instance Type for the universe nodes. Provide the instance types for each cluster as a separate flag. Defaults to "c5.large" for aws, "Standard_DS2_v2" for azure and "n1-standard-1" for gcp. Fetches the first available instance type for onprem providers.
       --num-volumes ints                                 [Optional] Number of volumes to be mounted on this instance at the default path. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [1,1])
       --volume-size ints                                 [Optional] The size of each volume in each instance. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [100,100])
       --mount-points stringArray                         [Optional] Disk mount points. Provide comma-separated strings for each cluster as a separate flag, in the following format: "--mount-points 'mount-point-1-for-primary-cluster,mount-point-2-for-primary-cluster' --mount-points 'mount-point-1-for-read-replica,mount-point-2-for-read-replica'". Defaults to null for aws, azure, gcp. Fetches the first available instance mount points for onprem providers.
-      --storage-type stringArray                         [Optional] Storage type (EBS for AWS) used for this instance. Provide the storage type  of volumes for each cluster as a separate flag. Defaults to "GP3" for aws, "Premium_LRS" for azure and "Persistent" for gcp.
+      --storage-type stringArray                         [Optional] Storage type (EBS for AWS) used for this instance. Provide the storage type  of volumes for each cluster as a separate flag. Run "yba provider [aws/azure/gcp] instance-type supported-storage" to check list of supported storage types. Defaults to "GP3" for aws, "Premium_LRS" for azure and "Persistent" for gcp.
       --storage-class stringArray                        [Optional] Name of the storage class, supported for Kubernetes. Provide the storage type of volumes for each cluster as a separate flag. Defaults to "standard".
       --disk-iops ints                                   [Optional] Desired IOPS for the volumes mounted on this instance, supported only for AWS. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [3000,3000])
       --throughput ints                                  [Optional] Desired throughput for the volumes mounted on this instance in MB/s, supported only for AWS. Provide throughput for each cluster as a separate flag or as comma separated values. (default [125,125])
       --k8s-tserver-mem-size float64Slice                [Optional] Memory size of the kubernetes tserver node in GB. Provide k8s-tserver-mem-size for each cluster as a separate flag or as comma separated values. (default [4.000000,4.000000])
       --k8s-tserver-cpu-core-count float64Slice          [Optional] CPU core count of the kubernetes tserver node. Provide k8s-tserver-cpu-core-count for each cluster as a separate flag or as comma separated values. (default [2.000000,2.000000])
+      --exposing-service stringArray                     [Optional] Exposing service for the universe clusters. Can be unique for each cluster. Provide the exposing service for each cluster as a separate flag. Allowed values: none, exposed, unexposed. Defaults to none.
       --dedicated-master-instance-type string            [Optional] Instance Type for the dedicated master nodes in the primary cluster. Defaults to "c5.large" for aws, "Standard_DS2_v2" for azure and "n1-standard-1" for gcp. Fetches the first available instance type for onprem providers.
       --dedicated-master-num-volumes int                 [Optional] Number of volumes to be mounted on master instance at the default path. (default 1)
       --dedicated-master-volume-size int                 [Optional] The size of each volume in each master instance. (default 100)
@@ -70,8 +72,10 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --dedicated-master-storage-class string            [Optional] Name of the storage class for the master instance. Defaults to "standard".
       --dedicated-master-disk-iops int                   [Optional] Desired IOPS for the volumes mounted on this instance, supported only for AWS. (default 3000)
       --dedicated-master-throughput int                  [Optional] Desired throughput for the volumes mounted on this instance in MB/s, supported only for AWS. (default 125)
-      --k8s-master-mem-size float64Slice                 [Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size for each cluster as a separate flag or as comma separated values. (default [4.000000,4.000000])
-      --k8s-master-cpu-core-count float64Slice           [Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count for each cluster as a separate flag or as comma separated values. (default [2.000000,2.000000])
+      --k8s-master-mem-size float                        [Optional] Memory size of the kubernetes master node in GB. (default 4)
+      --k8s-master-cpu-core-count float                  [Optional] CPU core count of the kubernetes master node. (default 2)
+      --use-spot-instance                                [Optional] Use spot instances for cloud provider based universe nodes. (default false)
+      --spot-price float                                 [Optional] Max price willing to pay for spot instances.
       --assign-public-ip                                 [Optional] Assign Public IPs to the DB servers for connections over the internet. (default true)
       --assign-static-public-ip                          [Optional] Assign Static Public IPs to the DB servers for connections over the internet. (default true)
       --enable-ysql                                      [Optional] Enable YSQL endpoint. (default true)
@@ -82,9 +86,10 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --enable-node-to-node-encrypt                      [Optional] Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes. (default true)
       --enable-client-to-node-encrypt                    [Optional] Enable Client-to-Node encryption to use TLS enabled connection for communication between a client (ex: Database application, ysqlsh, ycqlsh) and the Universe YSQL -or- YCQL endpoint. (default true)
       --root-ca string                                   [Optional] Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled.
+      --client-root-ca string                            [Optional] Client Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled.
       --enable-volume-encryption                         [Optional] Enable encryption for data stored on the tablet servers. (default false)
       --kms-config string                                [Optional] Key management service config name. Required when enable-volume-encryption is set to true.
-      --enable-ipv6                                      [Optional] Enable IPV6 networking for connections between the DB Servers, supported only for Kubernetes universes (default false) 
+      --enable-ipv6                                      [Optional] Enable IPV6 networking for connections between the DB Servers, supported only for Kubernetes universes. (default false)
       --yb-db-version string                             [Optional] YugabyteDB Software Version, defaults to the latest available version. Run "yba yb-db-version list" to find the latest version.
       --use-systemd                                      [Optional] Use SystemD. (default true)
       --access-key-code string                           [Optional] Access Key code (UUID) corresponding to the provider, defaults to the provider's access key.
@@ -103,6 +108,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --yql-server-rpc-port int                          [Optional] YQL Server RPC Port. (default 9042)
       --ysql-server-http-port int                        [Optional] YSQL Server HTTP Port. (default 13000)
       --ysql-server-rpc-port int                         [Optional] YSQL Server RPC Port. (default 5433)
+      --connection-pooling string                        This is a preview flag (may change in future). [Optional] Connection Pooling setting for the universe. Enable "yb.universe.allow_connection_pooling" runtime configuration to allow enabling connection pooling in universes. Allowed values: enable, disable. (default "disable")
+      --internal-ysql-server-rpc-port int                This is a preview flag (may change in future). [Optional] Internal YSQL Server RPC Port used when connection pooling is enabled. (default 6433)
   -h, --help                                             help for create
 ```
 
@@ -110,10 +117,13 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
 
 ```
   -a, --apiToken string    YugabyteDB Anywhere api token.
-      --config string      Config file, defaults to $HOME/.yba-cli.yaml
+      --ca-cert string     CA certificate file path for secure connection to YugabyteDB Anywhere. Required when the endpoint is https and --insecure is not set.
+      --config string      Full path to a specific configuration file for YBA CLI. If provided, this takes precedence over the directory specified via --directory, and the generated files are added to the same path. If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.
       --debug              Use debug mode, same as --logLevel debug.
+      --directory string   Directory containing YBA CLI configuration and generated files. If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. Defaults to '$HOME/.yba-cli/'.
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
+      --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)

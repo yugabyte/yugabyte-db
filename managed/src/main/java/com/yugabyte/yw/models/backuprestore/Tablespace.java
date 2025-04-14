@@ -23,9 +23,9 @@ import javax.validation.constraints.Size;
 import lombok.Builder;
 import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.collections4.CollectionUtils;
-import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
-import org.yb.master.CatalogEntityInfo.PlacementInfoPB;
-import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
+import org.yb.CommonNet.PlacementBlockPB;
+import org.yb.CommonNet.PlacementInfoPB;
+import org.yb.CommonNet.ReplicationInfoPB;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Builder

@@ -73,13 +73,15 @@ class VectorANN {
  public:
   explicit VectorANN(uint32_t dims) {}
 
-  // Creates a copy of the supplied vector and stores it internally.
-  virtual void Add(const Vector& vector, Slice val) = 0;
+  // Creates a copy of the supplied vector and stores it internally if the vector with the given
+  // vertex id does not exist and returns true, otherwise returns false.
+  virtual bool Add(VectorId vector_id, Vector&& vector, Slice val) = 0;
 
   virtual std::vector<DocKeyWithDistance> GetTopKVectors(
       Vector query_vec, size_t k, double lb_distance, Slice lb_key, bool is_lb_inclusive) const = 0;
 
   static Result<Vector> GetVectorFromYSQLWire(const YSQLVector& ysql_vector, size_t total_len);
+  static Result<Vector> GetVectorFromYSQLWire(Slice binary_vector);
 
   // static Vector GetVector(VectorSlice vec_ref) { return pointer_cast<Vector>(vec_ref.data()); }
 

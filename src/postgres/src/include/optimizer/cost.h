@@ -46,11 +46,11 @@
 #define YB_DEFAULT_DOCDB_BLOCK_SIZE 32768
 
 /* LSM Lookup costs */
-#define YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES 50
-#define YB_DEFAULT_SEEK_COST_FACTOR 50
-#define YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR 10
+#define YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES 5
+#define YB_DEFAULT_SEEK_COST_FACTOR 0.4
+#define YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR 1
 
-/* 
+/*
  * The value for the fast backward scan seek cost factor has been selected based on the smallest
  * improvement (2.8 times) for the backward scan related Order By workloads of Featurebench. It
  * might be good to use a different factor for colocated case, where the smallest improvement
@@ -59,14 +59,14 @@
 #define YB_DEFAULT_FAST_BACKWARD_SEEK_COST_FACTOR (YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR / 3.0)
 
 /* DocDB row decode and process cost */
-#define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
+#define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 5
 
 /* DocDB storage filter cost */
-#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 20
+#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 3
 
 /* Network transfer cost */
-#define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 80000.0
+#define YB_DEFAULT_LOCAL_LATENCY_COST 10.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 800.0
 
 /*
  * TODO : Since we cannot currently estimate the number of key value pairs per
@@ -151,28 +151,28 @@ extern PGDLLIMPORT bool yb_enable_parallel_append;
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 								  double index_pages, PlannerInfo *root);
 extern void yb_cost_seqscan(Path *path, PlannerInfo *root,
-				RelOptInfo *baserel, ParamPathInfo *param_info);
+							RelOptInfo *baserel, ParamPathInfo *param_info);
 extern void cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 						 ParamPathInfo *param_info);
 extern void cost_samplescan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 							ParamPathInfo *param_info);
 extern void yb_cost_index(IndexPath *path, PlannerInfo *root,
-		   double loop_count, bool partial_path);
+						  double loop_count, bool partial_path);
 extern void cost_index(IndexPath *path, PlannerInfo *root,
 					   double loop_count, bool partial_path);
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								  ParamPathInfo *param_info,
 								  Path *bitmapqual, double loop_count);
 extern void yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
-					  ParamPathInfo *param_info,
-					  Path *bitmapqual, double loop_count);
+									  ParamPathInfo *param_info,
+									  Path *bitmapqual, double loop_count);
 extern void cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);
 extern void yb_cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);
 extern void cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root);
 extern void yb_cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root);
 extern void cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec);
 extern void yb_cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec,
-					  int *ybctid_width);
+									 int *ybctid_width);
 extern void cost_tidscan(Path *path, PlannerInfo *root,
 						 RelOptInfo *baserel, List *tidquals, ParamPathInfo *param_info);
 extern void cost_tidrangescan(Path *path, PlannerInfo *root,

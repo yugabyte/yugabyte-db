@@ -21,7 +21,6 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/objectaddress.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_conversion.h"
@@ -60,23 +59,24 @@
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
-#include "commands/tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/typecmds.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/fmgroids.h"
+#include "utils/memutils.h"
+#include "utils/syscache.h"
 
-/* Yugabyte includes */
-#include "postgres_ext.h"
+/* YB includes */
+#include "catalog/objectaddress.h"
 #include "catalog/pg_yb_profile_d.h"
 #include "catalog/pg_yb_role_profile_d.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/yb_profile.h"
-#include "utils/memutils.h"
-#include "utils/syscache.h"
+#include "commands/yb_tablegroup.h"
 #include "pg_yb_utils.h"
+#include "postgres_ext.h"
 
 typedef enum
 {
@@ -207,7 +207,8 @@ recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespaceOid)
 		/* Nothing to do */
 		return;
 	}
-	ObjectAddress myself, referenced;
+	ObjectAddress myself,
+				referenced;
 
 	myself.classId = classId;
 	myself.objectId = objectId;
@@ -346,9 +347,9 @@ shdepChangeDep(Relation sdepRel,
 }
 
 void
-shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId) 
+shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 {
-	Oid databaseId;
+	Oid			databaseId;
 	ScanKeyData key[2];
 	SysScanDesc scan;
 	Relation	sdepRel;
@@ -359,19 +360,20 @@ shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId)
 	sdepRel = table_open(SharedDependRelationId, RowExclusiveLock);
 
 
-	ScanKeyInit(&key[0], Anum_pg_shdepend_dbid, 
-	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(databaseId));
+	ScanKeyInit(&key[0], Anum_pg_shdepend_dbid,
+				BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(databaseId));
 
-	ScanKeyInit(&key[1], Anum_pg_shdepend_classid, 
-	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(YbTablegroupRelationId));
+	ScanKeyInit(&key[1], Anum_pg_shdepend_classid,
+				BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(YbTablegroupRelationId));
 
 	scan = systable_beginscan(sdepRel, SharedDependDependerIndexId, true, NULL, 2, key);
 
-	while (HeapTupleIsValid(tup = systable_getnext(scan))) 
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
 		Form_pg_shdepend shdepForm = (Form_pg_shdepend) GETSTRUCT(tup);
-		if (shdepForm->refobjid == tablespaceId) 
-    {
+
+		if (shdepForm->refobjid == tablespaceId)
+		{
 			*tablegroupId = shdepForm->objid;
 			break;
 		}
@@ -456,7 +458,7 @@ recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespace)
 		if (tablespace == InvalidOid)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Tablespace dependencies cannot be recorded on InvalidOid")));
+					 errmsg("tablespace dependencies cannot be recorded on InvalidOid")));
 
 		/*
 		 * Since the pg_default and pg_global tablespaces cannot be dropped,
@@ -1030,7 +1032,7 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 		if (slot_stored_count == max_slots)
 		{
 			CatalogTuplesMultiInsertWithInfo(sdepRel, slot, slot_stored_count, indstate,
-											 false /* yb_shared_insert */);
+											 false /* yb_shared_insert */ );
 			slot_stored_count = 0;
 		}
 	}
@@ -1038,7 +1040,7 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 	/* Insert any tuples left in the buffer */
 	if (slot_stored_count > 0)
 		CatalogTuplesMultiInsertWithInfo(sdepRel, slot, slot_stored_count, indstate,
-										 false /* yb_shared_insert */);
+										 false /* yb_shared_insert */ );
 
 	systable_endscan(scan);
 
@@ -1350,7 +1352,7 @@ shdepLockAndCheckObject(Oid classId, Oid objectId)
 static void
 storeObjectDescription(StringInfo descs,
 					   SharedDependencyObjectType type,
-						 Oid refobjid,
+					   Oid refobjid,
 					   ObjectAddress *object,
 					   SharedDependencyType deptype,
 					   int count)
@@ -1377,20 +1379,19 @@ storeObjectDescription(StringInfo descs,
 				appendStringInfo(descs, _("privileges for %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_POLICY)
 				appendStringInfo(descs, _("target of %s"), objdesc);
-			else if (deptype == SHARED_DEPENDENCY_TABLESPACE) 
-      {
-				char implicit_tablegroup_name[33];
+			else if (deptype == SHARED_DEPENDENCY_TABLESPACE)
+			{
+				char		implicit_tablegroup_name[33];
+
 				sprintf(implicit_tablegroup_name, "tablegroup colocation_%u", refobjid);
-				
+
 				/*
 				 * Do not report dependency from implicit tablegroup to tablespace.
 				 * This would be fine since implicit tablegroup will be dropped if no tables
 				 * are present in it.
 				 */
-				if (strcmp(implicit_tablegroup_name, objdesc) != 0) 
-        {
+				if (strcmp(implicit_tablegroup_name, objdesc) != 0)
 					appendStringInfo(descs, _("tablespace for %s"), objdesc);
-				}
 			}
 			else if (deptype == SHARED_DEPENDENCY_PROFILE)
 				appendStringInfo(descs, _("profile of %s"), objdesc);
@@ -1657,12 +1658,12 @@ shdepReassignOwned(List *roleids, Oid newrole)
 
 			/*
 			 * The various ALTER OWNER routines tend to leak memory in
-			 * GetCurrentMemoryContext().  That's not a problem when they're only
+			 * CurrentMemoryContext.  That's not a problem when they're only
 			 * called once per command; but in this usage where we might be
 			 * touching many objects, it can amount to a serious memory leak.
 			 * Fix that by running each call in a short-lived context.
 			 */
-			cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+			cxt = AllocSetContextCreate(CurrentMemoryContext,
 										"shdepReassignOwned",
 										ALLOCSET_DEFAULT_SIZES);
 			oldcxt = MemoryContextSwitchTo(cxt);
@@ -1782,7 +1783,8 @@ shdepReassignOwned(List *roleids, Oid newrole)
 void
 ybRecordDependencyOnProfile(Oid classId, Oid objectId, Oid profile)
 {
-	ObjectAddress myself, referenced;
+	ObjectAddress myself,
+				referenced;
 
 	ObjectAddressSet(myself, classId, objectId);
 	ObjectAddressSet(referenced, YbProfileRelationId, profile);

@@ -18,6 +18,7 @@ import {
   ImageBundle
 } from './dto';
 import { EditGflagPayload } from '../../universe-actions/edit-gflags/GflagHelper';
+import { YBPTask } from '../../../../helpers/dtos';
 import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 
 // define unique names to use them as query keys
@@ -37,7 +38,8 @@ export enum QUERY_KEY {
   fetchProviderRunTimeConfigs = 'fetchProviderRunTimeConfigs',
   validateHelmYAML = 'validateHelmYAML',
   editGflag = 'upgradeGflags',
-  getLinuxVersions = 'linuxVersions'
+  getLinuxVersions = 'linuxVersions',
+  fetchUniverseTasks = 'fetchUniverseTasks'
 }
 
 export const DBReleasesQueryKey = {
@@ -250,9 +252,17 @@ class ApiService {
     return axios.post<HelmOverridesError>(requestUrl, data).then((resp) => resp.data);
   };
 
-  upgradeGflags = (data: EditGflagPayload, universeId: string): Promise<EditGflagPayload> => {
+  upgradeGflags = (
+    data: EditGflagPayload,
+    universeId: string
+  ): Promise<EditGflagPayload | YBPTask> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/gflags`;
     return axios.post<EditGflagPayload>(requestUrl, data).then((resp) => resp.data);
+  };
+
+  fetchUniverseTasks = (universeUuid: string): Promise<any> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
+    return axios.get<any>(requestUrl, { params: { uUUID: universeUuid } });
   };
 
   // check if exception was caused by canceling previous request

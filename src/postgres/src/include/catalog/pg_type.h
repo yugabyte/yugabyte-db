@@ -23,6 +23,9 @@
 #include "catalog/pg_type_d.h"
 #include "nodes/nodes.h"
 
+#define BSONOID				8095
+#define VECTOROID			8078
+
 /* ----------------
  *		pg_type definition.  cpp turns this into
  *		typedef struct FormData_pg_type

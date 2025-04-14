@@ -586,7 +586,8 @@ func editGCPImageBundles(
 					if len(imageBundle["ssh-port"]) != 0 {
 						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
 						if err != nil {
-							errMessage := err.Error() + " Using SSH Port as 22\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -600,7 +601,8 @@ func editGCPImageBundles(
 					if len(imageBundle["default"]) != 0 {
 						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
 						if err != nil {
-							errMessage := err.Error() + " Setting default as false\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -645,7 +647,8 @@ func addGCPImageBundles(
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
 		if err != nil {
-			errMessage := err.Error() + " Using SSH Port as 22\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -654,7 +657,8 @@ func addGCPImageBundles(
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])
 		if err != nil {
-			errMessage := err.Error() + " Setting default as false\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

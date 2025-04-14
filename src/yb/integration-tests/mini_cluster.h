@@ -162,10 +162,11 @@ class MiniCluster : public MiniClusterBase {
 
   // Add a new TS to the cluster. The new TS is started.
   // Requires that the master is already running.
-  Status AddTabletServer(const tserver::TabletServerOptions& extra_opts);
+  Status AddTabletServer(
+      const tserver::TabletServerOptions& extra_opts, bool wait_for_registration = true);
 
   // Same as above, but get options from flags.
-  Status AddTabletServer();
+  Status AddTabletServer(bool wait_for_registration = true);
 
   // Start YB Controller servers for all the existing TSs.
   Status StartYbControllerServers();
@@ -258,6 +259,9 @@ class MiniCluster : public MiniClusterBase {
   // within kRegistrationWaitTimeSeconds.
   Result<std::vector<std::shared_ptr<master::TSDescriptor>>> WaitForTabletServerCount(
       size_t count, bool live_only = false);
+
+  // Waits for the tablet server to heartbeat successfully to the master leader.
+  Status WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.
@@ -353,7 +357,17 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletActivePeers(
     MiniCluster* cluster, const TabletId& tablet_id);
 
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
-    MiniCluster* cluster, const TableId& table_id);
+    MiniCluster* cluster, const TableId& table_id, ListPeersFilter filter = ListPeersFilter::kAll);
+
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
+    MiniCluster* cluster, const std::string& table_name,
+    ListPeersFilter filter = ListPeersFilter::kAll);
+
+Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
+    MiniCluster* cluster, const std::string& table_name,
+    ListPeersFilter filter = ListPeersFilter::kAll);
+
+std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers);
 
 // By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
 // i.e. not yet completed split or deleted (tombstoned).
@@ -417,8 +431,9 @@ int NumTotalRunningCompactions(MiniCluster* cluster);
 
 int NumRunningFlushes(MiniCluster* cluster);
 
-Result<scoped_refptr<master::TableInfo>> FindTable(
+Result<master::TableInfoPtr> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name);
+Result<TableId> FindTableId(MiniCluster* cluster, const std::string& table_name);
 
 Status WaitForInitDb(MiniCluster* cluster);
 
@@ -475,5 +490,7 @@ template <typename T>
 Result<T> MiniCluster::GetLeaderMasterProxy() {
   return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
 }
+
+void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
 
 }  // namespace yb

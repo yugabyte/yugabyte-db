@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,7 +33,7 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
 
 #include "yb/server/monitored_task.h"
@@ -45,6 +45,8 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
+
+#include "yb/tserver/tserver_admin.pb.h"
 
 namespace yb {
 namespace master {
@@ -241,7 +243,8 @@ class BackfillTableJob : public server::MonitoredTask {
 
   void SetState(server::MonitoredTaskState new_state);
 
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher) override;
 
   void MarkDone();
 
@@ -350,8 +353,6 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
 
   void UnregisterAsyncTaskCallback() override;
 
-  TabletServerId permanent_uuid();
-
   tserver::GetSafeTimeResponsePB resp_;
   const std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
@@ -386,8 +387,6 @@ class BackfillChunk : public RetryingTSRpcTaskWithTable {
   bool SendRequest(int attempt) override;
 
   void UnregisterAsyncTaskCallback() override;
-
-  TabletServerId permanent_uuid();
 
   int num_max_retries() override;
   int max_delay_ms() override;

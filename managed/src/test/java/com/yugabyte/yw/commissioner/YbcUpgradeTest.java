@@ -6,7 +6,10 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -117,11 +120,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
   @Test
   public void testUpgradeSuccess() {
-    UpgradeResponse resp =
-        UpgradeResponse.newBuilder()
-            .setStatus(RpcControllerStatus.newBuilder().setCode(ControllerStatus.OK).build())
-            .build();
-    when(mockYbcClient.Upgrade(any())).thenReturn(resp);
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(response);
     UpgradeResultResponse upgradeResultResponse =
         UpgradeResultResponse.newBuilder()
             .setStatus(ControllerStatus.COMPLETE)
@@ -152,6 +152,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
   @Test
   public void testIgnoreFewUpgradeWithUniverseBatchSize() {
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(response);
     Universe universe =
         ModelFactory.createUniverse(
             "Test-Universe-2",
@@ -200,6 +202,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
   @Test
   public void testIgnoreFewUpgradeWithNodeBatchSize() {
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(response);
     Universe universe =
         ModelFactory.createUniverse(
             "Test-Universe-2",
@@ -250,6 +254,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
   @Test
   public void testUpgradeAllWithUniverseBatchSize() {
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(response);
     Universe universe =
         ModelFactory.createUniverse(
             "Test-Universe-3",
@@ -296,8 +302,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
   @Test
   public void testUpgradeFailedUniverse() {
-    when(mockYbcClient.Upgrade(any())).thenReturn(null);
-    when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(1, "{}"));
+    doThrow(new RuntimeException()).when(mockYbcManager).waitForYbc(any(), anySet());
     String oldYbcVersion = defaultUniverse.getUniverseDetails().getYbcSoftwareVersion();
     ybcUpgrade.scheduleRunner();
     assertEquals(
@@ -311,11 +317,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
         Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .getYbcSoftwareVersion());
-    UpgradeResponse resp =
-        UpgradeResponse.newBuilder()
-            .setStatus(RpcControllerStatus.newBuilder().setCode(ControllerStatus.OK).build())
-            .build();
-    when(mockYbcClient.Upgrade(any())).thenReturn(resp);
+
     UpgradeResultResponse upgradeResultResponse =
         UpgradeResultResponse.newBuilder()
             .setStatus(ControllerStatus.COMPLETE)
@@ -323,6 +325,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, "{}"));
+    doNothing().when(mockYbcManager).waitForYbc(any(), anySet());
     ybcUpgrade.scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,
@@ -333,15 +337,16 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
   @Test
   public void testUpgradeRequestOnUnreachableNodes() {
-    UpgradeResponse resp =
-        UpgradeResponse.newBuilder()
-            .setStatus(RpcControllerStatus.newBuilder().setCode(ControllerStatus.OK).build())
-            .build();
-    when(mockYbcClient.Upgrade(any())).thenReturn(resp);
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, "{}"));
     UpgradeResultResponse upgradeResultResponse =
         UpgradeResultResponse.newBuilder()
             .setStatus(ControllerStatus.COMPLETE)
             .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
+    UpgradeResultResponse upgradeResultResponseFail =
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(defaultUniverse.getUniverseDetails().getYbcSoftwareVersion())
             .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     List<NodeDetails> nodes = new ArrayList<>(defaultUniverse.getNodes());
@@ -350,7 +355,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
             defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
             defaultUniverse.getCertificateNodetoNode()))
         .thenReturn(mockYbcClient);
-    when(mockYbcClient2.Upgrade(any())).thenReturn(null);
+    when(mockYbcClient2.UpgradeResult(any())).thenReturn(upgradeResultResponseFail);
     when(mockYbcClientService.getNewClient(
             nodes.get(1).cloudInfo.private_ip,
             defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
@@ -363,7 +368,6 @@ public class YbcUpgradeTest extends FakeDBApplication {
         Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .getYbcSoftwareVersion());
-    when(mockYbcClient2.Upgrade(any())).thenReturn(resp);
     when(mockYbcClient2.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(
             nodes.get(1).cloudInfo.private_ip,
@@ -381,6 +385,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
   @Test
   public void testDisabledScheduledUniverseUpgrade() {
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(response);
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.ybcAllowScheduledUpgrade)))
         .thenReturn(false);

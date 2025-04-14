@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 
 import { isAvailable } from '../../../utils/LayoutUtils';
 import {
-  isKubernetesUniverse,
+  getIsKubernetesUniverse,
   getPrimaryCluster,
   optimizeVersion
 } from '../../../utils/UniverseUtils';
@@ -28,7 +28,11 @@ export const YBUniverseItem = (props) => {
   return (
     <div>
       <Link to={`/universes/${universe.universeUUID}`}>
-        <div className={`universe-list-item-name-status universe-list-flex ${isNewTaskDetailsUIEnabled && 'new-task-details'}`}>
+        <div
+          className={`universe-list-item-name-status universe-list-flex ${
+            isNewTaskDetailsUIEnabled && 'new-task-details'
+          }`}
+        >
           <Row>
             <Col sm={6}>
               <div className="universe-name-cell">{universe.name}</div>
@@ -62,7 +66,10 @@ export const YBUniverseItem = (props) => {
       <div className="universe-list-item-detail universe-list-flex">
         <Row>
           <Col sm={6}>
-            <CellLocationPanel isKubernetesUniverse={isKubernetesUniverse(universe)} {...props} />
+            <CellLocationPanel
+              isKubernetesUniverse={getIsKubernetesUniverse(universe)}
+              {...props}
+            />
           </Col>
           <Col sm={6}>
             <CellResourcesPanel {...props} />

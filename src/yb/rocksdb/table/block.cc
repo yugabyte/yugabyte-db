@@ -55,7 +55,7 @@ const size_t kMinBlockSize = 2 * sizeof(uint32_t);
 
 inline uint32_t GetMiddleIndex(
     const uint32_t total_number, const MiddlePointPolicy middle_point_policy) {
-  return total_number ? (total_number - yb::to_underlying(middle_point_policy)) / 2 : 0;
+  return total_number ? (total_number - std::to_underlying(middle_point_policy)) / 2 : 0;
 }
 
 // Helper routine: decode the next block entry starting at "p",
@@ -261,40 +261,6 @@ void BlockIter::SeekToRestart(uint32_t index) {
 
   MoveToRestartBlock(index);
   ParseNextKey();
-}
-
-ScanForwardResult BlockIter::ScanForward(
-    const Comparator* user_key_comparator, const Slice& upperbound,
-    KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
-  LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
-
-  ScanForwardResult result;
-  do {
-    const auto user_key = ExtractUserKey(CurrentEntry().key_.GetKey());
-    if (!upperbound.empty() && user_key_comparator->Compare(user_key, upperbound) >= 0) {
-      break;
-    }
-
-    bool skip_key = false;
-    if (key_filter_callback) {
-      auto kf_result =
-          (*key_filter_callback)(/*prefixed_key=*/ Slice(), /*shared_bytes=*/ 0, user_key);
-      skip_key = kf_result.skip_key;
-    }
-
-    if (!skip_key) {
-      if (!(*scan_callback)(user_key, CurrentEntry().entry_.value)) {
-        result.reached_upperbound = false;
-        return result;
-      }
-    }
-
-    result.number_of_keys_visited++;
-    Next();
-  } while (Valid());
-
-  result.reached_upperbound = true;
-  return result;
 }
 
 namespace {

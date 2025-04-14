@@ -26,6 +26,7 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/snapshot.h"
+#include "yb/master/ts_manager.h"
 #include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
@@ -279,9 +280,8 @@ Status CatalogManager::AddUDTypeEntriesToPB(
     const unordered_set<NamespaceId>& namespaces) {
   // Collect all UDType entries.
   unordered_set<UDTypeId> type_ids;
-  Schema schema;
   for (const TableDescription& table : tables) {
-    RETURN_NOT_OK(table.table_info->GetSchema(&schema));
+    auto schema = VERIFY_RESULT(table.table_info->GetSchema());
     for (size_t i = 0; i < schema.num_columns(); ++i) {
       for (const auto &udt_id : schema.column(i).type()->GetUserDefinedTypeIds()) {
         type_ids.insert(udt_id);
@@ -374,11 +374,14 @@ Result<SysRowEntries> CatalogManager::CollectEntriesForSequencesDataTable() {
 }
 
 Result<SysRowEntries> CatalogManager::CollectEntriesForSnapshot(
-    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) {
-  SysRowEntries entries = VERIFY_RESULT(CollectEntries(
-      tables,
-      CollectFlags{CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
-                   CollectFlag::kSucceedIfCreateInProgress}));
+    const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+    IncludeHiddenTables includeHiddenTables) {
+  auto collect_flags = CollectFlags{
+      CollectFlag::kAddIndexes, CollectFlag::kIncludeParentColocatedTable,
+      CollectFlag::kSucceedIfCreateInProgress};
+  collect_flags.SetIf(CollectFlag::kIncludeHiddenTables, includeHiddenTables);
+
+  SysRowEntries entries = VERIFY_RESULT(CollectEntries(tables, collect_flags));
   // Include sequences_data table if the filter is on a ysql database.
   // For sequences, we have a special sequences_data (id=0000ffff00003000800000000000ffff)
   // table in the system_postgres database.
@@ -484,7 +487,7 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
         }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-          const auto res = GetPgSchemaName(table_info);
+          const auto res = GetPgSchemaName(table_info->id(), l.data());
           if (!res.ok()) {
             // Check for the scenario where the table is dropped by YSQL but not docdb - this can
             // happen due to a bug with the async nature of drops in PG with docdb.
@@ -699,6 +702,8 @@ Status CatalogManager::DoImportSnapshotMeta(
   // PHASE 5: Restore tablets.
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, tables_data));
 
+  ImportSnapshotRemoveInvalidIndexes(tables_data);
+
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
     LOG_WITH_FUNC(WARNING) << msg;
@@ -867,6 +872,10 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
         // import here.
         auto s = ImportTableEntry(namespace_map, type_map, *tables_data, epoch, is_clone, &data);
         if (s.IsInvalidArgument() && MasterError(s) == MasterErrorPB::OBJECT_NOT_FOUND) {
+          // Defer the removal from the tables_data map until we go through all tablets, so we can
+          // verify that the only tablets missing tables belong to invalid indexes.
+          LOG(WARNING) << Format("Index $0 not found (might be backfilling, or in an invalid "
+              "state); omitting it from import.", entry.id());
           continue;
         } else if (!s.ok()) {
           return s;
@@ -943,6 +952,13 @@ Status CatalogManager::ImportSnapshotProcessTablets(const SnapshotInfoPB& snapsh
   }
 
   return Status::OK();
+}
+
+void CatalogManager::ImportSnapshotRemoveInvalidIndexes(
+    ExternalTableSnapshotDataMap* tables_data) {
+  std::erase_if(*tables_data, [](const auto& entry) {
+    return !entry.second.table_meta && entry.second.is_index();
+  });
 }
 
 template <class RespClass>
@@ -1082,9 +1098,7 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
 
   // Copy the table mapping into the response.
   for (auto& [_, table_data] : tables_data) {
-    if (table_data.table_meta) {
-      resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
-    }
+    resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
   }
 
   return Status::OK();
@@ -1655,8 +1669,8 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
     // Ensure the main table schema (including column ids) was not changed.
     if (!using_existing_table) {
-      Schema new_indexed_schema, src_indexed_schema;
-      RETURN_NOT_OK(indexed_table->GetSchema(&new_indexed_schema));
+      auto new_indexed_schema = VERIFY_RESULT(indexed_table->GetSchema());
+      Schema src_indexed_schema;
       RETURN_NOT_OK(SchemaFromPB(it->second.table_entry_pb.schema(), &src_indexed_schema));
 
       if (!new_indexed_schema.Equals(src_indexed_schema)) {
@@ -1745,7 +1759,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       }
       // Make sure the table's tablets can be deleted.
       RETURN_NOT_OK_PREPEND(
-          CheckIfForbiddenToDeleteTabletOf(table),
+          CheckIfForbiddenToDeleteTabletOf(*table),
           Format("Cannot repartition table $0", table->id()));
 
       // Create and mark new tablets for creation.
@@ -1757,10 +1771,10 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       for (const auto& [source_tablet_id, partition_pb] : table_data->old_tablets) {
         TabletInfoPtr tablet;
         if (is_clone) {
-          tablet = CreateTabletInfo(table.get(), partition_pb, SysTabletsEntryPB::CREATING);
+          tablet = CreateTabletInfo(table, partition_pb, SysTabletsEntryPB::CREATING);
           tablet->mutable_metadata()->mutable_dirty()->pb.set_created_by_clone(true);
         } else {
-          tablet = CreateTabletInfo(table.get(), partition_pb, SysTabletsEntryPB::PREPARING);
+          tablet = CreateTabletInfo(table, partition_pb, SysTabletsEntryPB::PREPARING);
         }
         tablet->mutable_metadata()->mutable_dirty()->pb.set_colocated(table->colocated());
         new_tablets.push_back(tablet);
@@ -1789,7 +1803,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     ScopedInfoCommitter<TabletInfo> unlocker_new(&new_tablets);
 
     // Mark old tablets for deletion.
-    old_tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    old_tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     // Sort so that locking can be done in a deterministic order.
     std::sort(old_tablets.begin(), old_tablets.end(), [](const auto& lhs, const auto& rhs) {
       return lhs->tablet_id() < rhs->tablet_id();
@@ -1905,7 +1919,8 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
           << ", table type: " << TableType_Name(table->GetTableType());
       // If not a debug build, ignore pg_schema_name.
     } else {
-      const string internal_schema_name = VERIFY_RESULT(GetPgSchemaName(table));
+      const string internal_schema_name = VERIFY_RESULT(GetPgSchemaName(
+          table->id(), table_lock.data()));
       const string& external_schema_name = snapshot_data->pg_schema_name;
       if (internal_schema_name != external_schema_name) {
         LOG_WITH_FUNC(INFO) << "Schema names do not match: "
@@ -2054,7 +2069,6 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           SharedLock lock(mutex_);
 
           for (const auto& table : tables_->GetAllTables()) {
-
             if (new_namespace_id != table->namespace_id()) {
               VLOG_WITH_FUNC(3) << "Namespace ids do not match: "
                                 << table->namespace_id() << " vs " << new_namespace_id
@@ -2066,7 +2080,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
               continue;
             }
             // Also check if table is user-created.
-            if (!IsUserCreatedTableUnlocked(*table)) {
+            if (!table->IsUserCreated()) {
               VLOG_WITH_FUNC(2) << "Table not user created: " << table->ToString();
               continue;
             }
@@ -2132,7 +2146,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     {
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
-      RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+      persisted_schema = VERIFY_RESULT(table_lock->GetSchema());
       new_num_tablets = table->NumPartitions();
     }
 
@@ -2206,9 +2220,10 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       }
     }
 
-    if (is_clone && table->IsColocatedUserTable()) {
+    if (is_clone && table->IsSecondaryTable()) {
       // For colocated tables that are not the parent table, update their info to point to the newly
       // recreated parent tablet.
+      // TODO(mhaddad): Check necessary steps for vector indexes.
       RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(table, table_data, epoch));
     }
 
@@ -2391,7 +2406,7 @@ Status CatalogManager::UpdateColocatedUserTableInfoForClone(
     scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
     const LeaderEpoch& epoch) {
   RSTATUS_DCHECK(
-      table->IsColocatedUserTable(), InvalidArgument,
+      table->IsSecondaryTable(), InvalidArgument,
       Format("table: $0 is not a colocated user table", table->id()));
   // Remove old colocated tablet from TableInfo.
   auto old_tablet = VERIFY_RESULT(table->GetTablets())[0];
@@ -2560,7 +2575,7 @@ AsyncTabletSnapshotOpPtr CatalogManager::CreateAsyncTabletSnapshotOp(
 }
 
 void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& task) {
-  WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
+  WARN_NOT_OK(ScheduleTask(task), Format("Failed to send snapshot task: $0", *task));
 }
 
 Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb(
@@ -2639,16 +2654,6 @@ Status CatalogManager::RestoreSysCatalogSlowPitr(
   // wait for this operation to complete before starting shutdown rocksdb.
   auto tablet_pending_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
 
-  bool restore_successful = false;
-  // If sys catalog restoration fails then unblock other RPCs.
-  auto scope_exit = ScopeExit([this, &restore_successful] {
-    if (!restore_successful) {
-      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
-      std::lock_guard l(state_lock_);
-      is_catalog_loaded_ = true;
-    }
-  });
-
   RestoreSysCatalogState state(restoration);
   docdb::DocWriteBatch write_batch(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
@@ -2668,8 +2673,6 @@ Status CatalogManager::RestoreSysCatalogSlowPitr(
     RETURN_NOT_OK(ElectedAsLeaderCb());
   }
 
-  restore_successful = true;
-
   return Status::OK();
 }
 
@@ -2683,16 +2686,6 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
   // triggering a shutdown. So we don't need a ScopedRWOperation guarding this area against
   // Rocsdb shutdowns. Create a dummy ScopedRWOperation here.
   ScopedRWOperation tablet_pending_op;
-  bool restore_successful = false;
-
-  // If sys catalog restoration fails then unblock other RPCs.
-  auto scope_exit = ScopeExit([this, &restore_successful] {
-    if (!restore_successful) {
-      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
-      std::lock_guard<simple_spinlock> l(state_lock_);
-      is_catalog_loaded_ = true;
-    }
-  });
 
   docdb::DocWriteBatch write_batch(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
@@ -2704,12 +2697,12 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
 
   if (state.IsYsqlRestoration()) {
     // Set Hybrid Time filter for pg catalog tables.
-    tablet::TabletScopedRWOperationPauses op_pauses = tablet->StartShutdownRocksDBs(
+    tablet::TabletScopedRWOperationPauses op_pauses = tablet->StartShutdownStorages(
         tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kTrue);
 
     std::lock_guard<std::mutex> lock(tablet->create_checkpoint_lock_);
 
-    tablet->CompleteShutdownRocksDBs(op_pauses);
+    tablet->CompleteShutdownStorages(op_pauses);
 
     rocksdb::Options rocksdb_opts;
     tablet->InitRocksDBOptions(&rocksdb_opts, tablet->LogPrefix());
@@ -2737,18 +2730,23 @@ Status CatalogManager::RestoreSysCatalogFastPitr(
     RETURN_NOT_OK(ElectedAsLeaderCb());
   }
 
-  restore_successful = true;
-
   return Status::OK();
 }
 
 Status CatalogManager::RestoreSysCatalog(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
+    Status* complete_status) {
   Status s;
   if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
     s = RestoreSysCatalogFastPitr(restoration, tablet);
   } else {
     s = RestoreSysCatalogSlowPitr(restoration, tablet);
+  }
+  if (!s.ok() && leader_mode) {
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
+        << "PITR: Accepting RPCs to the master leader because of restoration failure: " << s;
+    std::lock_guard l(leader_mutex_);
+    restoring_sys_catalog_ = false;
   }
   // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
   // status in case of validation failures so that it gets propagated back to the client before
@@ -2861,20 +2859,25 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
   if (!table->LockForRead()->is_hidden_but_not_deleting()) {
     return;
   }
-  auto tablet_info = table->GetColocatedUserTablet();
-  if (!tablet_info) {
+  DCHECK(table->IsSecondaryTable());
+  auto list = table->GetTabletsIncludeInactive();
+  if (!list.ok()) {
+    LOG_WITH_FUNC(WARNING)
+        << "Failed to obtain tablets list for " << AsString(*table) << ": " << list.status();
     return;
   }
-  if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
-          *table, *tablet_info, schedule_min_restore_time)) {
-    return;
+  for (const auto& tablet_info : *list) {
+    if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
+            *table, *tablet_info, schedule_min_restore_time)) {
+      continue;
+    }
+    LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
+    auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+        master_, AsyncTaskPool(), tablet_info, table, epoch);
+    table->AddTask(call);
+    WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+    table->ClearTabletMaps();
   }
-  LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
-  auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-      master_, AsyncTaskPool(), tablet_info, table, epoch);
-  table->AddTask(call);
-  WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-  table->ClearTabletMaps();
 }
 
 void CatalogManager::CleanupHiddenTables(
@@ -2892,9 +2895,9 @@ void CatalogManager::CleanupHiddenTables(
 
   std::vector<TableInfoPtr> expired_tables;
   for (auto& table : tables) {
-    if (table->GetColocatedUserTablet() != nullptr) {
-      // Table is colocated and still registered with its parent tablet. Remove it from its parent
-      // tablet's metadata first.
+    if (table->IsSecondaryTable()) {
+      // Table is colocated or a vector index and still registered with its hosting tablet(s).
+      // Remove it from its hosting tablets' metadata first.
       RemoveHiddenColocatedTableFromTablet(table, schedule_min_restore_time, epoch);
     }
 
@@ -3201,8 +3204,8 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   {
-    std::lock_guard l(state_lock_);
-    is_catalog_loaded_ = false;
+    std::lock_guard l(leader_mutex_);
+    restoring_sys_catalog_ = true;
   }
   sys_catalog_->IncrementPitrCount();
 }

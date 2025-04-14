@@ -20,8 +20,8 @@
 #include "tcop/dest.h"
 #include "utils/relcache.h"
 
-
-extern void SetMatViewPopulatedState(Relation relation, bool newstate);
+extern void SetMatViewPopulatedState(Relation relation, bool newstate,
+									 bool yb_in_place_refresh);
 
 extern ObjectAddress ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 										ParamListInfo params, QueryCompletion *qc);

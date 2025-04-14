@@ -62,6 +62,15 @@
       value: 0
       state: present
     tags: yb-prebuilt-ami
+  # We don't follow symlinks here because we want to check if the symlink exists.
+  # if the symlink exists we don't worry about configuring the core dump directory.
+  - name: Check if the core dumps directory or symlink exists
+    stat:
+      # no slash at the end to check if the symlink exists, otherwise it fails for symlinks
+      path: "{{ yb_home_dir }}/cores"
+      follow: false
+    register: core_dumps_dir_stat
+    tags: yb-prebuilt-ami
 
   - name: Create directory for core dumps
     file:
@@ -70,6 +79,7 @@
       mode: '0755'
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
+    when: not core_dumps_dir_stat.stat.exists
     tags: yb-prebuilt-ami
 
   - name: Ensure gzip is installed
@@ -189,7 +199,7 @@
   include_role:
     name: setup-cgroup
   when: not systemd_option or (ansible_os_family == 'RedHat' and
-        ansible_distribution_major_version < "9")
+        (ansible_distribution_major_version < "9" and not ansible_distribution == 'Amazon'))
 
 - name: Grant traverse permission on yb_home directory
   file:
@@ -324,6 +334,7 @@
       state: present
       validate: "/usr/sbin/visudo -cf %s"
 
+  # YBM use case will revisit at later stage for YNP
   - name: setup-postgres-cgroups
     include_role:
       name: setup-cgroup
@@ -461,4 +472,69 @@
       line: Unattended-Upgrade::Automatic-Reboot "false";
     when: unattendedupgrade_file.stat.exists
   when: ansible_distribution == "Ubuntu"
+  tags: yb-prebuilt-ami
+
+- name: Add prometheus user to yugabyte group
+  ansible.builtin.user:
+    name: prometheus
+    groups: yugabyte
+    append: true
+  become: yes
+
+- name: Restart the node_exporter service
+  service:
+    name: "node_exporter.service"
+    state: restarted
+
+- name: Ensure the service is running
+  service:
+    name: "node_exporter.service"
+    state: started
+
+# THP settings are added here for prebuilt AMI and for backports
+- name: Provision | Add yb-enable-transparent-huge-pages.service unit
+  copy:
+    dest: /etc/systemd/system/yb-enable-transparent-huge-pages.service
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=YugabyteDB Enable Transparent Hugepages (THP)
+      DefaultDependencies=no
+      After=local-fs.target
+      Before=sysinit.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh -c '\
+        echo always > /sys/kernel/mm/transparent_hugepage/enabled && \
+        echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag && \
+        echo 0 > /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none'
+
+      [Install]
+      WantedBy=basic.target
+  tags: yb-prebuilt-ami
+
+- name: Provision | Reload systemd to pick up THP unit
+  systemd:
+    daemon_reload: true
+  tags: yb-prebuilt-ami
+
+- name: Provision | Enable and start yb-enable-transparent-huge-pages
+  systemd:
+    name: yb-enable-transparent-huge-pages
+    enabled: true
+    state: started
+  tags: yb-prebuilt-ami
+
+- name: Provision | Validate transparent hugepage settings
+  shell: |
+    grep '\[always\]' /sys/kernel/mm/transparent_hugepage/enabled &&
+    grep '\[defer+madvise\]' /sys/kernel/mm/transparent_hugepage/defrag &&
+    [[ "$(cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none)" == "0" ]]
+  register: thp_validate
+  changed_when: false
+  failed_when: thp_validate.rc != 0
   tags: yb-prebuilt-ami

@@ -12,8 +12,8 @@
  * quite likely to be in compressed or short format.  We also need to check
  * for NULLs, since initdb will mark loid and pageno but not data as NOT NULL.
  *
- * Note: many of these routines leak memory in GetCurrentMemoryContext(), as indeed
- * does most of the backend code.  We expect that GetCurrentMemoryContext() will
+ * Note: many of these routines leak memory in CurrentMemoryContext, as indeed
+ * does most of the backend code.  We expect that CurrentMemoryContext will
  * be a short-lived context.  Data that must persist across function calls
  * is kept either in CacheMemoryContext (the Relation structs) or in the
  * memory context given to inv_open (for LargeObjectDesc structs).
@@ -757,7 +757,7 @@ inv_write(LargeObjectDesc *obj_desc, const char *buf, int nbytes)
 			values[Anum_pg_largeobject_pageno - 1] = Int32GetDatum(pageno);
 			values[Anum_pg_largeobject_data - 1] = PointerGetDatum(&workbuf);
 			newtup = heap_form_tuple(lo_heap_r->rd_att, values, nulls);
-			CatalogTupleInsertWithInfo(lo_heap_r, newtup, indstate, false /* yb_shared_insert */);
+			CatalogTupleInsertWithInfo(lo_heap_r, newtup, indstate, false /* yb_shared_insert */ );
 			heap_freetuple(newtup);
 		}
 		pageno++;
@@ -927,7 +927,7 @@ inv_truncate(LargeObjectDesc *obj_desc, int64 len)
 		values[Anum_pg_largeobject_pageno - 1] = Int32GetDatum(pageno);
 		values[Anum_pg_largeobject_data - 1] = PointerGetDatum(&workbuf);
 		newtup = heap_form_tuple(lo_heap_r->rd_att, values, nulls);
-		CatalogTupleInsertWithInfo(lo_heap_r, newtup, indstate, false /* yb_shared_insert */);
+		CatalogTupleInsertWithInfo(lo_heap_r, newtup, indstate, false /* yb_shared_insert */ );
 		heap_freetuple(newtup);
 	}
 

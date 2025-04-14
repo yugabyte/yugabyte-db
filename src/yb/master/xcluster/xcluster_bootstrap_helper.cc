@@ -13,16 +13,21 @@
 
 #include "yb/master/xcluster/xcluster_bootstrap_helper.h"
 
+#include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/gutil/bind.h"
+
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_transfer_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+
 #include "yb/util/backoff_waiter.h"
 
 using namespace std::literals;

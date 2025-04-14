@@ -87,7 +87,7 @@ execute qry;
 This is the result:
 
 ```output
- search_path | row from pg_class 
+ search_path | row from pg_class
 -------------+-------------------
  "my schema" | xyz_table
 ```
@@ -120,7 +120,7 @@ execute qry;
 This is the new result:
 
 ```output
- search_path | row from pg_class 
+ search_path | row from pg_class
 -------------+-------------------
  ""          | xyz_table
 ```
@@ -141,7 +141,7 @@ execute qry;
 This is the new result:
 
 ```output
-       search_path       |      row from pg_class      
+       search_path       |      row from pg_class
 -------------------------+-----------------------------
  "my schema", pg_catalog | xyz in "my schema".pg_class
 ```
@@ -165,7 +165,7 @@ execute qry;
 This is the new result:
 
 ```output
-       search_path       |    row from pg_class    
+       search_path       |    row from pg_class
 -------------------------+-------------------------
  "my schema", pg_catalog | xyz in pg_temp.pg_class
 ```
@@ -184,7 +184,7 @@ Better still, ensure that the role as which client-side sessions connect doesn't
 This restores the earlier (and presumably intended) result:
 
 ```output
-           search_path            |      row from pg_class      
+           search_path            |      row from pg_class
 ----------------------------------+-----------------------------
  "my schema", pg_catalog, pg_temp | xyz in "my schema".pg_class
 ```
@@ -244,7 +244,7 @@ execute qry;
 This is the result:
 
 ```output
- 1 = 1 | 17 = 42 | 17 = 42 baroque syntax 
+ 1 = 1 | 17 = 42 | 17 = 42 baroque syntax
 -------+---------+------------------------
  false | true    | false
 ```
@@ -259,7 +259,7 @@ execute qry;
 This is the result:
 
 ```output
- 1 = 1 | 17 = 42 | 17 = 42 baroque syntax 
+ 1 = 1 | 17 = 42 | 17 = 42 baroque syntax
 -------+---------+------------------------
  true  | false   | false
 ```
@@ -278,7 +278,7 @@ The tests have shown that you cannot exclude either _pg_temp_ or _pg_catalog_ fr
 
 - If the definition of _search_path_ mentions neither _pg_temp_ nor _pg_catalog_, then the effective search order that name resolution uses is:
 
-  ```output 
+  ```output
   pg_temp, [everything that the definition did mention, in that order], pg_catalog
   ```
 
@@ -318,7 +318,7 @@ select area(2.0, 3.0);
 This is the result:
 
 ```output
- area 
+ area
 ------
  6.00
 ```
@@ -405,6 +405,6 @@ select a.v from s.t as a;
 
 But the example, as presented, _is_ legal; and in the presence of a matching schema _s_ and a relation _t_ with a column _v_, it executes without error and produces the expected result. The use of the alias _a_ is interesting in its own right. A "keyhole" inspection of _a.v_ tells you that it might mean the column _v_ in the schema-level table _a_ (but not the function _v()_ in the schema _a_). However, analysis of the _from_ list tells the parser that _a_ in the _select_ list can only be the alias _a_ that is defined, privately, for the present statement.
 
-Of course, the engineers who implement Postgres's SQL processing code need to understand all the rules that govern name-resolution for secondary objects in complete and exact detail. But anecdotal evidence tells us that ordinary application programmers who write practical SQL (especially when everything has a sensible name) are able easily to express their meaning without being able to rehearse these rules precisely.
+Of course, the engineers who implement the PostgreSQL SQL processing code need to understand all the rules that govern name-resolution for secondary objects in complete and exact detail. But anecdotal evidence tells us that ordinary application programmers who write practical SQL (especially when everything has a sensible name) are able easily to express their meaning without being able to rehearse these rules precisely.
 
 The essential pedagogy of this current section is the explanation of the critical role that the _search_path_ plays in the name resolution of schema-objects.

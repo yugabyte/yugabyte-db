@@ -173,6 +173,10 @@ void InvokeCallbackTask::Done(const Status& status) {
     // We are in the shutdown path, with the threadpool closing, so allow IO and wait.
     ThreadRestrictions::SetWaitAllowed(true);
     ThreadRestrictions::SetIOAllowed(true);
+    {
+      std::lock_guard lock(call_->mtx_);
+      call_->status_ = status;
+    }
     call_->InvokeCallbackSync();
   }
   // Clear the call, since it holds OutboundCall object.
@@ -254,7 +258,7 @@ OutboundCall::~OutboundCall() {
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
-              << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us."
+              << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString() << "."
               << (trace_ ? " Trace:" : "");
     if (trace_) {
       trace_->DumpToLogInfo(true);

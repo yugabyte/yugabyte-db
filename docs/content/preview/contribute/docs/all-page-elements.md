@@ -129,28 +129,28 @@ These pills automatically re-flow based on page width; just keep adding list ite
 <ul class="nav yb-pills">
 
   <li>
-    <a href="../../../tutorials/build-apps/java/cloud-ysql-yb-jdbc/" class="orange">
+    <a href="/preview/tutorials/build-apps/java/cloud-ysql-yb-jdbc/" class="orange">
       <i class="fa-brands fa-java"></i>
       Java
     </a>
   </li>
 
   <li>
-    <a href="../../../tutorials/build-apps/go/cloud-ysql-go/" class="orange">
+    <a href="/preview/tutorials/build-apps/go/cloud-ysql-go/" class="orange">
       <i class="fa-brands fa-golang"></i>
       Go
     </a>
   </li>
 
   <li>
-    <a href="../../../tutorials/build-apps/python/cloud-ysql-python/" class="orange">
+    <a href="/preview/tutorials/build-apps/python/cloud-ysql-python/" class="orange">
       <i class="fa-brands fa-python"></i>
       Python
     </a>
   </li>
 
   <li>
-    <a href="../../../tutorials/build-apps/nodejs/cloud-ysql-node/" class="orange">
+    <a href="/preview/tutorials/build-apps/nodejs/cloud-ysql-node/" class="orange">
       <i class="fa-brands fa-node-js"></i>
       Node.js
     </a>
@@ -254,7 +254,7 @@ Some bullets:
 - the cluster CA certificate; YugabyteDB Aeon uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
-Refer to [Before you begin](../../../tutorials/build-apps/cloud-add-ip/).
+Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).
 
 ## Glossary entries
 
@@ -305,6 +305,8 @@ Heading 5 is used so that we can deep-link to the flag.
 ##### -F, --this-is-a-flag
 
 This is a paragraph.
+
+## Include files
 
 {{% readfile "include-file.md" %}}
 

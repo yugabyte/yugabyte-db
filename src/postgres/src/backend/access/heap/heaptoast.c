@@ -450,13 +450,13 @@ yb_toast_compress_tuple(HeapTuple tup, TupleDesc tupleDesc)
 		 * Look at non-null varlena attributes that are over the toast threshold in size
 		 * and whose attstorage is marked for compression.
 		 */
-		if (!toast_isnull[i] && 
-			TupleDescAttr(tupleDesc, i)->attlen == -1 && 
+		if (!toast_isnull[i] &&
+			TupleDescAttr(tupleDesc, i)->attlen == -1 &&
 			(TupleDescAttr(tupleDesc, i)->attstorage == 'm' ||
 			 TupleDescAttr(tupleDesc, i)->attstorage == 'x'))
 		{
 			struct varlena *old_value;
-			Datum compressed_value;
+			Datum		compressed_value;
 
 			old_value = (struct varlena *) DatumGetPointer(toast_values[i]);
 			if (VARATT_IS_COMPRESSED(old_value))
@@ -464,7 +464,8 @@ yb_toast_compress_tuple(HeapTuple tup, TupleDesc tupleDesc)
 
 			compressed_value = toast_compress_datum(PointerGetDatum(old_value),
 													TupleDescAttr(tupleDesc, i)->attcompression);
-			if (DatumGetPointer(compressed_value) != NULL) {
+			if (DatumGetPointer(compressed_value) != NULL)
+			{
 				toast_values[i] = compressed_value;
 				toast_free[i] = true;
 			}
@@ -489,7 +490,7 @@ yb_toast_compress_tuple(HeapTuple tup, TupleDesc tupleDesc)
 	new_tuple->t_data->t_infomask |=
 		tup->t_data->t_infomask & HEAP_XACT_MASK;
 	new_tuple->t_data->t_infomask2 &= ~HEAP2_XACT_MASK;
-		new_tuple->t_data->t_infomask2 |=
+	new_tuple->t_data->t_infomask2 |=
 		tup->t_data->t_infomask2 & HEAP2_XACT_MASK;
 
 	HEAPTUPLE_COPY_YBCTID(tup, new_tuple);

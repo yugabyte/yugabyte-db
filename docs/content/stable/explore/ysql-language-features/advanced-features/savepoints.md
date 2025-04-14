@@ -6,7 +6,7 @@ menu:
   stable:
     identifier: advanced-features-savepoints
     parent: advanced-features
-    weight: 235
+    weight: 400
 type: docs
 ---
 

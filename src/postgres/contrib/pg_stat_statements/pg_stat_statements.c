@@ -43,10 +43,8 @@
  */
 #include "postgres.h"
 
-#include <inttypes.h>
 #include <math.h>
 #include <sys/stat.h>
-#include <stddef.h>
 #include <unistd.h>
 
 #include "access/parallel.h"
@@ -55,7 +53,6 @@
 #include "executor/instrument.h"
 #include "funcapi.h"
 #include "jit/jit.h"
-#include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "optimizer/planner.h"
@@ -64,7 +61,6 @@
 #include "parser/scanner.h"
 #include "parser/scansup.h"
 #include "pgstat.h"
-#include "pg_yb_utils.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
@@ -77,16 +73,18 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
-/* Yugabyte includes */
-#include "hdr/hdr_histogram.h"
-#include "utils/json.h"
-#include "utils/jsonb.h"
+/* YB includes */
 #include "common/jsonapi.h"
 #include "common/pg_yb_common.h"
-
-
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "hdr/hdr_histogram.h"
+#include "lib/stringinfo.h"
+#include "pg_yb_utils.h"
+#include "utils/json.h"
+#include "utils/jsonb.h"
+#include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 #include "yb_query_diagnostics.h"
+#include <inttypes.h>
+#include <stddef.h>
 
 PG_MODULE_MAGIC;
 
@@ -140,6 +138,7 @@ typedef enum pgssVersion
 	PGSS_V1_10,
 	YB_PGSS_V1_10
 } pgssVersion;
+
 /*
  * yb change: Added YB_PGSS_V1_4 which adds a the column yb_latency_histogram to
  * pg_stat_statements. This necessitates new pg_stat_statements_internal changes
@@ -161,7 +160,7 @@ typedef enum pgssVersion
 
  */
 
- typedef enum pgssStoreKind
+typedef enum pgssStoreKind
 {
 	PGSS_INVALID = -1,
 
@@ -237,7 +236,7 @@ typedef struct Counters
  * hdr_histogram
  * defined in third party hdr_histogram.h
  */
-typedef struct hdr_iter hdr_iter;
+typedef struct hdr_iter yb_hdr_iter;
 
 /*
  * Global statistics for pg_stat_statements
@@ -257,27 +256,29 @@ typedef struct pgssGlobalStats
  */
 typedef struct pgssEntry
 {
-	pgssHashKey		key;			/* hash key of entry - MUST BE FIRST */
-	Counters		counters;		/* the statistics for this query */
-	Size			query_offset;	/* query text offset in external file */
-	int				query_len;		/* # of valid bytes in query string, or -1 */
-	int				encoding;		/* query text encoding */
-	slock_t			mutex;			/* protects the counters only */
-	size_t			yb_slow_executions; /* # of executions >= yb_hdr_max_value * yb_hdr_latency_res_ms */
-	hdr_histogram	yb_hdr_histogram; /* flexible array member at end - MUST BE LAST */
+	pgssHashKey key;			/* hash key of entry - MUST BE FIRST */
+	Counters	counters;		/* the statistics for this query */
+	Size		query_offset;	/* query text offset in external file */
+	int			query_len;		/* # of valid bytes in query string, or -1 */
+	int			encoding;		/* query text encoding */
+	slock_t		mutex;			/* protects the counters only */
+	size_t		yb_slow_executions; /* # of executions >= yb_hdr_max_value *
+									 * yb_hdr_latency_res_ms */
+	hdr_histogram yb_hdr_histogram; /* flexible array member at end - MUST BE
+									 * LAST */
 } pgssEntry;
 
 typedef struct
 {
-	int32 num;
-	int *buffer_size;
-	char **buffer;
+	int32		num;
+	int		   *buffer_size;
+	char	  **buffer;
 
-	/*  hdr specific */
-	int temp_yb_hdr_count_bytes;
-	bool hdr_config_match;
+	/* hdr specific */
+	int			temp_yb_hdr_count_bytes;
+	bool		hdr_config_match;
 
-} pgssReaderContext;
+} pgssYbReaderContext;
 
 /*
  * Global shared state
@@ -345,12 +346,21 @@ static int	pgss_track;			/* tracking level */
 static bool pgss_track_utility; /* whether to track utility commands */
 static bool pgss_track_planning;	/* whether to track planning duration */
 static bool pgss_save;			/* whether to save stats across shutdown */
-static float	yb_hdr_max_latency_ms = YB_HDR_DEFAULT_MAX_LATENCY_MS; /* hardcoded in phase 1, max query latency tracked by histogram */
-static float	yb_hdr_latency_res_ms = YB_HDR_DEFAULT_LATENCY_RES_MS; /* hardcoded in phase 1, starting query latency resolution tracked by histogram */
-static int	yb_hdr_bucket_factor; /* subbuckets per bucket for histogram */
-static int64_t	yb_hdr_max_value = YB_HDR_DEFAULT_MAX_VALUE; /* default hardcode for phase 1, will need to be adjusted against latency_res */
+static float yb_hdr_max_latency_ms = YB_HDR_DEFAULT_MAX_LATENCY_MS; /* hardcoded in phase 1,
+																	 * max query latency
+																	 * tracked by histogram */
+static float yb_hdr_latency_res_ms = YB_HDR_DEFAULT_LATENCY_RES_MS; /* hardcoded in phase 1,
+																	 * starting query
+																	 * latency resolution
+																	 * tracked by histogram */
+static int	yb_hdr_bucket_factor;	/* subbuckets per bucket for histogram */
+static int64_t yb_hdr_max_value = YB_HDR_DEFAULT_MAX_VALUE; /* default hardcode for
+															 * phase 1, will need to
+															 * be adjusted against
+															 * latency_res */
 static struct hdr_histogram_bucket_config cfg;
-static int yb_qtext_size_limit = YB_DEFAULT_QTEXT_LIMIT_KB;
+static int	yb_qtext_size_limit = YB_DEFAULT_QTEXT_LIMIT_KB;
+
 /*
  * yb_hdr_max_value is the integer representation of the max query latency we
  * want to track. Currently with a latency resolution of 0.1ms,
@@ -442,25 +452,25 @@ static int	comp_location(const void *a, const void *b);
 
 /* YB functions */
 PG_FUNCTION_INFO_V1(yb_get_histogram_jsonb);
-Datum
-yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level);
+static Datum yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid,
+										 bool top_level);
 static void yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
-	count_t count, JsonbPair *pair);
+									count_t count, JsonbPair *pair);
 static Datum yb_add_histogram_jsonb(JsonbParseState *state,
-	hdr_histogram *h, size_t yb_slow_executions);
+									hdr_histogram *h, size_t yb_slow_executions);
 static void yb_hdr_reset(hdr_histogram *h);
-static int read_entry_original(int header, FILE *file, FILE *qfile,
-	pgssReaderContext *context);
-static int read_entry_hdr(int header, FILE *file, FILE *qfile,
-	pgssReaderContext *context);
-static int extended_header_reader(int header, FILE *file,
-	pgssReaderContext *context);
-static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
-	Size *query_offset, int encoding, Counters *counters,
-	pgssReaderContext *context);
-static void enforce_bucket_factor(int * value);
+static int	read_entry_original(int header, FILE *file, FILE *qfile,
+								pgssYbReaderContext *context);
+static int	read_entry_hdr(int header, FILE *file, FILE *qfile,
+						   pgssYbReaderContext *context);
+static int	extended_header_reader(int header, FILE *file,
+								   pgssYbReaderContext *context);
+static int	query_buffer_helper(FILE *file, FILE *qfile, int qlen,
+								Size *query_offset, int encoding, Counters *counters,
+								pgssYbReaderContext *context);
+static void enforce_bucket_factor(int *value);
 static bool yb_track_nested_queries(void);
-static void YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_query);
+static int	YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query);
 
 /*
  * Module load callback
@@ -528,7 +538,7 @@ _PG_init(void)
 							 "Selects whether planning duration is tracked by pg_stat_statements.",
 							 NULL,
 							 &pgss_track_planning,
-							 false,
+							 true,
 							 PGC_SUSET,
 							 0,
 							 NULL,
@@ -580,11 +590,12 @@ _PG_init(void)
 	 * yb_hdr_max_latency_ms and yb_hdr_latency_res_ms will be made GUC vars
 	 * Adjust yb_hdr_max_latency_ms accordingly
 	 */
-	int prelim_max_value = yb_hdr_max_latency_ms / yb_hdr_latency_res_ms;
+	int			prelim_max_value = yb_hdr_max_latency_ms / yb_hdr_latency_res_ms;
+
 	enforce_bucket_factor(&yb_hdr_bucket_factor);
 
 	if (yb_hdr_calculate_bucket_config(1, prelim_max_value - 1,
-		yb_hdr_bucket_factor, &cfg))
+									   yb_hdr_bucket_factor, &cfg))
 	{
 		elog(LOG, "Cannot configure custom hdr values, reverting to default");
 		yb_hdr_max_latency_ms = YB_HDR_DEFAULT_MAX_LATENCY_MS;
@@ -592,15 +603,16 @@ _PG_init(void)
 		yb_hdr_bucket_factor = YB_HDR_DEFAULT_BUCKET_FACTOR;
 		prelim_max_value = yb_hdr_max_latency_ms / yb_hdr_latency_res_ms;
 		yb_hdr_calculate_bucket_config(1, prelim_max_value - 1,
-			yb_hdr_bucket_factor, &cfg);
+									   yb_hdr_bucket_factor, &cfg);
 	}
-	int derived_max_magnitude = cfg.sub_bucket_half_count_magnitude
-		+ cfg.bucket_count;
+	int			derived_max_magnitude = (cfg.sub_bucket_half_count_magnitude +
+										 cfg.bucket_count);
+
 	yb_hdr_max_value = pow(2, derived_max_magnitude);
 	/* cfg retains prelim_max_value, update for use in hdr_init_preallocated */
 	if (prelim_max_value != yb_hdr_max_value)
 		yb_hdr_calculate_bucket_config(1, yb_hdr_max_value - 1,
-			yb_hdr_bucket_factor, &cfg);
+									   yb_hdr_bucket_factor, &cfg);
 	yb_hdr_max_latency_ms = yb_hdr_max_value * yb_hdr_latency_res_ms;
 
 	/*
@@ -633,6 +645,12 @@ _PG_init(void)
 	 * to get normalized query text.
 	 */
 	yb_get_normalized_query = &YbGetPgssNormalizedQueryText;
+
+	/*
+	 * Initialize the function pointer required by yb_query_diagnostics.c
+	 * to get constant lengths in the query text.
+	 */
+	yb_qd_fill_in_constant_lengths = &fill_in_constant_lengths;
 }
 
 /*
@@ -652,13 +670,15 @@ pgss_shmem_request(void)
 static void
 resetYsqlStatementStats()
 {
-  pg_stat_statements_reset(NULL);
+	pg_stat_statements_reset(NULL);
 }
 
 static void
-yb_add_hist_json(void *cb_arg, hdr_histogram *h, size_t yb_slow_executions) {
-	hdr_iter iter;
+yb_add_hist_json(void *cb_arg, hdr_histogram *h, size_t yb_slow_executions)
+{
+	yb_hdr_iter iter;
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	hdr_iter_init(&iter, h);
@@ -668,8 +688,8 @@ yb_add_hist_json(void *cb_arg, hdr_histogram *h, size_t yb_slow_executions) {
 		{
 			resetStringInfo(&buf);
 			appendStringInfo(&buf, "[%.1f,%.1f)",
-				(iter.value_iterated_to) * yb_hdr_latency_res_ms,
-				(iter.highest_equivalent_value + 1) * yb_hdr_latency_res_ms);
+							 (iter.value_iterated_to) * yb_hdr_latency_res_ms,
+							 (iter.highest_equivalent_value + 1) * yb_hdr_latency_res_ms);
 			WriteIntValueObjectToJson(cb_arg, buf.data, &iter.count);
 		}
 	}
@@ -683,7 +703,8 @@ yb_add_hist_json(void *cb_arg, hdr_histogram *h, size_t yb_slow_executions) {
 	pfree(buf.data);
 }
 
-static double calc_stddev(int64 calls, double sum_var_time)
+static double
+calc_stddev(int64 calls, double sum_var_time)
 {
 	return (calls > 1) ? (sqrt(sum_var_time / calls)) : 0.0;
 }
@@ -705,11 +726,12 @@ getYsqlStatementStats(void *cb_arg)
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
-		// some entries have 0 calls and strange query text - ignore them
+		/* some entries have 0 calls and strange query text - ignore them */
 		if (IS_STICKY(entry->counters))
 			continue;
 
-		char *qry = qtext_fetch(entry->query_offset, entry->query_len, qbuffer, qbuffer_size);
+		char	   *qry = qtext_fetch(entry->query_offset, entry->query_len, qbuffer, qbuffer_size);
+
 		if (qry != NULL)
 		{
 			WriteStartObjectToJson(cb_arg);
@@ -718,9 +740,7 @@ getYsqlStatementStats(void *cb_arg)
 			WriteIntToJson(cb_arg, "dbid", entry->key.dbid);
 			WriteIntToJson(cb_arg, "query_id", entry->key.queryid);
 			WriteStringToJson(cb_arg, "query", qry);
-			WriteIntToJson(cb_arg, "calls",
-						   entry->counters.calls[PGSS_PLAN] +
-							   entry->counters.calls[PGSS_EXEC]);
+			WriteIntToJson(cb_arg, "calls", entry->counters.calls[PGSS_EXEC]);
 
 			WriteDoubleToJson(cb_arg, "total_plan_time", entry->counters.total_time[PGSS_PLAN]);
 			WriteDoubleToJson(cb_arg, "total_exec_time", entry->counters.total_time[PGSS_EXEC]);
@@ -734,14 +754,12 @@ getYsqlStatementStats(void *cb_arg)
 			WriteDoubleToJson(cb_arg, "mean_plan_time", entry->counters.mean_time[PGSS_PLAN]);
 			WriteDoubleToJson(cb_arg, "mean_exec_time", entry->counters.mean_time[PGSS_EXEC]);
 
-			WriteDoubleToJson(
-				cb_arg, "stddev_plan_time",
-				calc_stddev(entry->counters.calls[PGSS_PLAN],
-							entry->counters.sum_var_time[PGSS_PLAN]));
-			WriteDoubleToJson(
-				cb_arg, "stddev_exec_time",
-				calc_stddev(entry->counters.calls[PGSS_EXEC],
-							entry->counters.sum_var_time[PGSS_EXEC]));
+			WriteDoubleToJson(cb_arg, "stddev_plan_time",
+							  calc_stddev(entry->counters.calls[PGSS_PLAN],
+										  entry->counters.sum_var_time[PGSS_PLAN]));
+			WriteDoubleToJson(cb_arg, "stddev_exec_time",
+							  calc_stddev(entry->counters.calls[PGSS_EXEC],
+										  entry->counters.sum_var_time[PGSS_EXEC]));
 
 			WriteIntToJson(cb_arg, "rows", entry->counters.rows);
 
@@ -768,9 +786,10 @@ getYsqlStatementStats(void *cb_arg)
  * Parse in query text from disk during shared memory startup, and write that
  * text into the query dump file pointed to by qfile.
  */
-static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
-	Size *query_offset, int encoding, Counters *counters,
-	pgssReaderContext *context)
+static int
+query_buffer_helper(FILE *file, FILE *qfile, int qlen,
+					Size *query_offset, int encoding, Counters *counters,
+					pgssYbReaderContext *context)
 {
 	/* Encoding is the only field we can easily sanity-check */
 	if (!PG_VALID_BE_ENCODING(encoding))
@@ -805,33 +824,34 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
  * Parse in pgssEntries from disk during shared memory startup, for .stat files
  * generated by pre-histogram code.
  */
-static int read_entry_original(int header, FILE *file, FILE *qfile,
-	pgssReaderContext *context)
+static int
+read_entry_original(int header, FILE *file, FILE *qfile,
+					pgssYbReaderContext *context)
 {
-	typedef struct pgssEntry_original
+	struct pgssEntry_original
 	{
-		pgssHashKey	key;	/* hash key of entry - MUST BE FIRST */
+		pgssHashKey key;		/* hash key of entry - MUST BE FIRST */
 		Counters	counters;	/* the statistics for this query */
-		Size	query_offset;	/* query text offset in external file */
-		int	query_len;	/* # of valid bytes in query string, or -1 */
-		int	encoding;	/* query text encoding */
-		slock_t	mutex;	/* protects the counters only */
-	} pgssEntry_original;
+		Size		query_offset;	/* query text offset in external file */
+		int			query_len;	/* # of valid bytes in query string, or -1 */
+		int			encoding;	/* query text encoding */
+		slock_t		mutex;		/* protects the counters only */
+	};
 
 	Assert(header == 0x20171004);
 
-	size_t pgssEntry_size = sizeof(pgssEntry_original);
+	size_t		pgssEntry_size = sizeof(struct pgssEntry_original);
 
 	for (int i = 0; i < context->num; i++)
 	{
-		pgssEntry_original temp;
+		struct pgssEntry_original temp;
 		pgssEntry  *entry;
 		Size		query_offset;
 
-		int qlen = 0;
-		int encoding = 0;
+		int			qlen = 0;
+		int			encoding = 0;
 		pgssHashKey key;
-		Counters counters;
+		Counters	counters;
 
 		if (fread(&temp, pgssEntry_size, 1, file) != 1)
 			return -1;
@@ -841,11 +861,11 @@ static int read_entry_original(int header, FILE *file, FILE *qfile,
 		counters = temp.counters;
 
 		if (query_buffer_helper(file, qfile, qlen, &query_offset, encoding,
-			&counters, context))
+								&counters, context))
 			return -1;
 
 		entry = entry_alloc(&key, query_offset, qlen,
-			encoding, false);
+							encoding, false);
 
 		/* copy in the actual stats */
 		entry->counters = counters;
@@ -857,26 +877,27 @@ static int read_entry_original(int header, FILE *file, FILE *qfile,
  * Parse in post-histogram pgssEntries from disk, throw out histogram parts if
  * config variables have changed between restarts.
  */
-static int read_entry_hdr(int header, FILE *file, FILE *qfile,
-	pgssReaderContext *context)
+static int
+read_entry_hdr(int header, FILE *file, FILE *qfile,
+			   pgssYbReaderContext *context)
 {
 	Assert(header == 0x20230330);
 
 	/* TODO: address case where hdr_histogram size changes due to 3p update */
-	int prev_entry_total_size =
-		sizeof(pgssEntry) + context->temp_yb_hdr_count_bytes;
-	char prev_entry[prev_entry_total_size];
+	int			prev_entry_total_size = (sizeof(pgssEntry) +
+										 context->temp_yb_hdr_count_bytes);
+	char		prev_entry[prev_entry_total_size];
 
 	for (int i = 0; i < context->num; i++)
 	{
-		pgssEntry *temp = (pgssEntry*) prev_entry;
-		pgssEntry *entry;
-		Size query_offset;
+		pgssEntry  *temp = (pgssEntry *) prev_entry;
+		pgssEntry  *entry;
+		Size		query_offset;
 
-		int qlen = 0;
-		int encoding = 0;
+		int			qlen = 0;
+		int			encoding = 0;
 		pgssHashKey key;
-		Counters counters;
+		Counters	counters;
 
 		if (fread(prev_entry, prev_entry_total_size, 1, file) != 1)
 			return -1;
@@ -886,11 +907,11 @@ static int read_entry_hdr(int header, FILE *file, FILE *qfile,
 		counters = temp->counters;
 
 		if (query_buffer_helper(file, qfile, qlen, &query_offset, encoding,
-			&counters, context))
+								&counters, context))
 			return -1;
 
 		entry = entry_alloc(&key, query_offset, qlen,
-			encoding, false);
+							encoding, false);
 
 		/*
 		 * only pass in old slow exec counts and old histograms if configs match
@@ -898,9 +919,9 @@ static int read_entry_hdr(int header, FILE *file, FILE *qfile,
 		if (context->hdr_config_match)
 		{
 			memcpy(&entry->yb_slow_executions,
-				&temp->yb_slow_executions,
-				sizeof(size_t) + sizeof(hdr_histogram) +
-				cfg.counts_len * sizeof(count_t));
+				   &temp->yb_slow_executions,
+				   sizeof(size_t) + sizeof(hdr_histogram) +
+				   cfg.counts_len * sizeof(count_t));
 		}
 		/* copy in the actual stats */
 		entry->counters = counters;
@@ -912,15 +933,17 @@ static int read_entry_hdr(int header, FILE *file, FILE *qfile,
  * Post-histogram pg_stat_statements.stat files will have histogram config
  * variables to parse following the standard file header.
  */
-static int extended_header_reader(int header, FILE *file,
-	pgssReaderContext *context)
+static int
+extended_header_reader(int header, FILE *file,
+					   pgssYbReaderContext *context)
 {
 	if (header != 0x20230330)
 		return -1;
 
-	int64_t temp_yb_hdr_max_value;
-	int temp_yb_hdr_count_bytes;
-	int temp_yb_hdr_bucket_factor;
+	int64_t		temp_yb_hdr_max_value;
+	int			temp_yb_hdr_count_bytes;
+	int			temp_yb_hdr_bucket_factor;
+
 	if (fread(&temp_yb_hdr_max_value, sizeof(int64_t), 1, file) != 1 ||
 		fread(&temp_yb_hdr_count_bytes, sizeof(int), 1, file) != 1 ||
 		fread(&temp_yb_hdr_bucket_factor, sizeof(int), 1, file) != 1)
@@ -928,17 +951,17 @@ static int extended_header_reader(int header, FILE *file,
 
 	context->temp_yb_hdr_count_bytes = temp_yb_hdr_count_bytes;
 	context->hdr_config_match = (temp_yb_hdr_max_value == yb_hdr_max_value &&
-		temp_yb_hdr_count_bytes == cfg.counts_len * sizeof(count_t) &&
-		temp_yb_hdr_bucket_factor == yb_hdr_bucket_factor);
+								 temp_yb_hdr_count_bytes == cfg.counts_len * sizeof(count_t) &&
+								 temp_yb_hdr_bucket_factor == yb_hdr_bucket_factor);
 	return 0;
 }
 
-typedef struct pgssReader
+typedef struct pgssYbReader
 {
-	uint32 header;
-	int (*extended_header_reader)(int, FILE*, pgssReaderContext *context);
-	int (*entry_reader)(int, FILE*, FILE*, pgssReaderContext *context);
-} pgssReader;
+	uint32		header;
+	int			(*extended_header_reader) (int, FILE *, pgssYbReaderContext *context);
+	int			(*entry_reader) (int, FILE *, FILE *, pgssYbReaderContext *context);
+} pgssYbReader;
 
 /*
  * Array of pgssEntry deserialization functions, organized by header member.
@@ -949,19 +972,20 @@ typedef struct pgssReader
  * offsets would be lost.
  */
 static const int pgssReaderEndMarker = -1;
-pgssReader pgssReaderList[] =
+pgssYbReader pgssReaderList[] =
 {
 	{0x20171004, NULL, read_entry_original},
 	{0x20230330, extended_header_reader, read_entry_hdr},
 	{pgssReaderEndMarker, NULL, NULL}
 };
 
-static void enforce_bucket_factor(int *value)
+static void
+enforce_bucket_factor(int *value)
 {
 	if (*value != 8 && *value != 16 && *value != 32)
 	{
 		elog(LOG, "Unsupported yb_hdr_bucket_factor, defaulting to %d",
-			YB_HDR_DEFAULT_BUCKET_FACTOR);
+			 YB_HDR_DEFAULT_BUCKET_FACTOR);
 		*value = YB_HDR_DEFAULT_BUCKET_FACTOR;
 	}
 }
@@ -1089,8 +1113,9 @@ pgss_shmem_startup(void)
 	if (pgver != PGSS_PG_MAJOR_VERSION)
 		goto data_error;
 
-	pgssReader *version_reader = NULL;
-	int i = 0;
+	pgssYbReader *version_reader = NULL;
+	int			i = 0;
+
 	while (pgssReaderList[i].header != pgssReaderEndMarker)
 	{
 		if (header == pgssReaderList[i].header)
@@ -1104,7 +1129,8 @@ pgss_shmem_startup(void)
 	if (version_reader == NULL)
 		goto read_error;
 
-	pgssReaderContext context;
+	pgssYbReaderContext context;
+
 	context.num = num;
 	context.buffer_size = &buffer_size;
 	context.buffer = &buffer;
@@ -1214,7 +1240,8 @@ pgss_shmem_shutdown(int code, Datum arg)
 	num_entries = hash_get_num_entries(pgss_hash);
 	if (fwrite(&num_entries, sizeof(int32), 1, file) != 1)
 		goto error;
-	int yb_hdr_count_bytes = cfg.counts_len * sizeof(count_t);
+	int			yb_hdr_count_bytes = cfg.counts_len * sizeof(count_t);
+
 	if (fwrite(&yb_hdr_max_value, sizeof(int64_t), 1, file) != 1)
 		goto error;
 	if (fwrite(&yb_hdr_count_bytes, sizeof(int), 1, file) != 1)
@@ -1241,7 +1268,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 			continue;			/* Ignore any entries with bogus texts */
 
 		if (fwrite(entry, sizeof(pgssEntry) + cfg.counts_len * sizeof(count_t),
-			1, file) != 1 ||
+				   1, file) != 1 ||
 			fwrite(qstr, 1, len + 1, file) != len + 1)
 		{
 			/* note: we assume hash_seq_term won't change errno */
@@ -1705,7 +1732,7 @@ pgss_store(const char *query, uint64 queryId,
 #ifdef YB_TODO
 	/* TODO(devansh): Enable password redaction. Workaround for DB-11332. */
 	const char *redacted_query;
-	int         redacted_query_len;
+	int			redacted_query_len;
 #endif
 	int			encoding = GetDatabaseEncoding();
 
@@ -1713,6 +1740,9 @@ pgss_store(const char *query, uint64 queryId,
 
 	/* Safety check... */
 	if (!pgss || !pgss_hash)
+		return;
+
+	if (yb_is_calling_internal_function_for_ddl)
 		return;
 
 	/*
@@ -1736,9 +1766,13 @@ pgss_store(const char *query, uint64 queryId,
 	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
 #endif
 
+	if (yb_enable_query_diagnostics && !jstate)
+		YbQueryDiagnosticsAccumulatePgss(queryId, (YbQdPgssStoreKind) kind,
+										 total_time, rows, bufusage, walusage, jitusage);
+
 	/* Set up key for hashtable search */
 
-	/* memset() is required when pgssHashKey is without padding only */
+	/* clear padding */
 	memset(&key, 0, sizeof(pgssHashKey));
 
 	key.userid = GetUserId();
@@ -1836,7 +1870,7 @@ pgss_store(const char *query, uint64 queryId,
 			gc_qtexts();
 	}
 
-	if (YBIsQueryDiagnosticsEnabled())
+	if (yb_enable_query_diagnostics)
 		YbSetPgssNormalizedQueryText(queryId, entry->query_offset,
 									 entry->query_len);
 
@@ -1860,12 +1894,16 @@ pgss_store(const char *query, uint64 queryId,
 		e->counters.calls[kind] += 1;
 		e->counters.total_time[kind] += total_time;
 
-		/* Add record for only execution time for queries in latency histograms */
+		/*
+		 * Add record for only execution time for queries in latency
+		 * histograms
+		 */
 		if (IsYugaByteEnabled() && kind == PGSS_EXEC)
 		{
-			int64_t tt_int = (int64_t)(total_time/yb_hdr_latency_res_ms);
+			int64_t		tt_int = (int64_t) (total_time / yb_hdr_latency_res_ms);
+
 			if (tt_int < yb_hdr_max_value)
-				hdr_record_value((hdr_histogram *)&e->yb_hdr_histogram, tt_int);
+				hdr_record_value((hdr_histogram *) &e->yb_hdr_histogram, tt_int);
 			else
 				e->yb_slow_executions++;
 		}
@@ -1950,7 +1988,7 @@ done:
 Datum
 pg_stat_statements_reset_1_7(PG_FUNCTION_ARGS)
 {
-	if (YBIsQueryDiagnosticsEnabled())
+	if (yb_enable_query_diagnostics)
 		*yb_pgss_last_reset_time = GetCurrentTimestamp();
 
 	Oid			userid;
@@ -1972,7 +2010,7 @@ pg_stat_statements_reset_1_7(PG_FUNCTION_ARGS)
 Datum
 pg_stat_statements_reset(PG_FUNCTION_ARGS)
 {
-	if (YBIsQueryDiagnosticsEnabled())
+	if (yb_enable_query_diagnostics)
 		*yb_pgss_last_reset_time = GetCurrentTimestamp();
 
 	entry_reset(0, 0, 0);
@@ -2397,9 +2435,9 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 		if (api_version == YB_PGSS_V1_4 || api_version == YB_PGSS_V1_10)
 		{
 			values[i++] = yb_get_histogram_jsonb_args(queryid,
-												entry->key.userid,
-												entry->key.dbid,
-												entry->key.toplevel);
+													  entry->key.userid,
+													  entry->key.dbid,
+													  entry->key.toplevel);
 		}
 
 		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
@@ -2473,7 +2511,7 @@ pgss_memsize(void)
 
 	size = MAXALIGN(sizeof(pgssSharedState));
 	size = add_size(size, hash_estimate_size(pgss_max,
-		sizeof(pgssEntry) + cfg.counts_len * sizeof(count_t)));
+											 sizeof(pgssEntry) + cfg.counts_len * sizeof(count_t)));
 
 	return size;
 }
@@ -2774,7 +2812,7 @@ qtext_load_file(Size *buffer_size)
 
 	/* Allocate buffer; beware that off_t might be wider than size_t */
 	if ((yb_qtext_size_limit >= 0 && stat.st_size > yb_qtext_size_limit * 1024) ||
-	     !AllocHugeSizeIsValid(stat.st_size))
+		!AllocHugeSizeIsValid(stat.st_size))
 		buf = NULL;
 	else
 		buf = (char *) malloc(stat.st_size);
@@ -3108,11 +3146,11 @@ gc_fail:
 bool
 yb_lwlock_crash_after_acquire_pg_stat_statements_reset()
 {
-	static int cached_value = -1;
+	static int	cached_value = -1;
+
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrue(
-		    "FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset");
+		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset");
 	}
 	return cached_value;
 
@@ -3147,16 +3185,16 @@ entry_reset(Oid userid, Oid dbid, uint64 queryid)
 		key.dbid = dbid;
 		key.queryid = queryid;
 
-		/* Remove the key if it exists, starting with the top-level entry  */
+		/*
+		 * Remove the key if it exists, starting with the non-top-level entry.
+		 */
 		key.toplevel = false;
 		entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_REMOVE, NULL);
 		if (entry)				/* found */
 			num_remove++;
 
-		/* Also remove entries for top level statements */
+		/* Also remove the top-level entry if it exists. */
 		key.toplevel = true;
-
-		/* Remove the key if exists */
 		entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_REMOVE, NULL);
 		if (entry)				/* found */
 			num_remove++;
@@ -3206,7 +3244,7 @@ entry_reset(Oid userid, Oid dbid, uint64 queryid)
 	}
 
 	if (yb_lwlock_crash_after_acquire_pg_stat_statements_reset())
-	  kill(getpid(), 9);
+		kill(getpid(), 9);
 	/*
 	 * Write new empty query file, perhaps even creating a new one to recover
 	 * if the file was missing.
@@ -3485,14 +3523,14 @@ comp_location(const void *a, const void *b)
  * of that query. Userid and dbid can be passed as NULL or 0 to use the
  * currently connected userid and dbid.
  */
-Datum
+static Datum
 yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level)
 {
 	userid = userid != InvalidOid ? userid : GetUserId();
 	dbid = dbid != InvalidOid ? dbid : MyDatabaseId;
 	pgssHashKey key;
 	pgssEntry  *entry;
-	bool is_allowed_role = has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
+	bool		is_allowed_role = has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
 
 	memset(&key, 0, sizeof(pgssHashKey));
 	key.queryid = queryid;
@@ -3502,8 +3540,8 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 
 	if (!is_allowed_role && userid != GetUserId())
 	{
-		ereport(ERROR, (errmsg(
-			"Insufficient privilege to read this query detail.")));
+		ereport(ERROR,
+				(errmsg("insufficient privilege to read this query detail")));
 		PG_RETURN_DATUM(0);
 	}
 
@@ -3511,15 +3549,16 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 
 	if (!entry)
 	{
-		ereport(ERROR, (errmsg(
-			"Invalid combination of queryid, userid, dbid and top_level.\n" \
-			"Please refer to pg_stat_statements for the correct details.")));
+		ereport(ERROR,
+				(errmsg("invalid combination of queryid, userid, dbid, and top_level"),
+				 errhint("Please refer to pg_stat_statements for the correct details.")));
 		PG_RETURN_DATUM(0);
 	}
 
 	JsonbParseState *state = NULL;
+
 	return yb_add_histogram_jsonb(state, &entry->yb_hdr_histogram,
-		entry->yb_slow_executions);
+								  entry->yb_slow_executions);
 }
 
 /*
@@ -3527,21 +3566,23 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
  */
 static Datum
 yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
-	size_t yb_slow_executions)
+					   size_t yb_slow_executions)
 {
-	hdr_iter iter;
+	yb_hdr_iter iter;
 
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	JsonbValue *res;
-	JsonbPair pair;
+	JsonbPair	pair;
+
 	pair.key.type = jbvString;
 	pair.value.type = jbvNumeric;
 
-	MemoryContext tempContext = AllocSetContextCreate(GetCurrentMemoryContext(),
-						  "JSONB processing temporary context",
-						  ALLOCSET_DEFAULT_SIZES);
+	MemoryContext tempContext = AllocSetContextCreate(CurrentMemoryContext,
+													  "JSONB processing temporary context",
+													  ALLOCSET_DEFAULT_SIZES);
 	MemoryContext oldContext = MemoryContextSwitchTo(tempContext);
 
 	pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
@@ -3552,8 +3593,8 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 		{
 			resetStringInfo(&buf);
 			appendStringInfo(&buf, "[%.1f,%.1f)",
-				(iter.value_iterated_to) * yb_hdr_latency_res_ms,
-				(iter.highest_equivalent_value + 1) * yb_hdr_latency_res_ms);
+							 (iter.value_iterated_to) * yb_hdr_latency_res_ms,
+							 (iter.highest_equivalent_value + 1) * yb_hdr_latency_res_ms);
 			yb_add_hdr_jsonb_object(state, buf.data, iter.count, &pair);
 		}
 	}
@@ -3567,20 +3608,22 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 
 	res = pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 	MemoryContextSwitchTo(oldContext);
-	Jsonb *ret = JsonbValueToJsonb(res);
+	Jsonb	   *ret = JsonbValueToJsonb(res);
+
 	MemoryContextDelete(tempContext);
 	pfree(buf.data);
 
 	PG_RETURN_POINTER(ret);
 }
 
-static void yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
-	count_t count, JsonbPair *pair)
+static void
+yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
+						count_t count, JsonbPair *pair)
 {
 	pair->key.val.string.len = strlen(buf);
 	pair->key.val.string.val = pstrdup(buf);
-	pair->value.val.numeric = DatumGetNumeric(
-		DirectFunctionCall1(int8_numeric, (int64_t) count));
+	pair->value.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric,
+																  (int64_t) count));
 
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	(void) pushJsonbValue(&state, WJB_KEY, &pair->key);
@@ -3597,12 +3640,15 @@ static void yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
 Datum
 yb_get_histogram_jsonb(PG_FUNCTION_ARGS)
 {
-	uint64 queryid = PG_GETARG_INT64(0);
-	Oid userid = PG_NARGS() >= 2 && PG_GETARG_OID(1) != InvalidOid ?
-		PG_GETARG_OID(1) : InvalidOid;
-	Oid dbid = PG_NARGS() >= 3 && PG_GETARG_OID(2) != InvalidOid ?
-		PG_GETARG_OID(2) : InvalidOid;
-	bool top_level = PG_NARGS() == 4 ? PG_GETARG_BOOL(3) : false;
+	uint64		queryid = PG_GETARG_INT64(0);
+	Oid			userid = (PG_NARGS() >= 2 && PG_GETARG_OID(1) != InvalidOid ?
+						  PG_GETARG_OID(1) :
+						  InvalidOid);
+	Oid			dbid = (PG_NARGS() >= 3 && PG_GETARG_OID(2) != InvalidOid ?
+						PG_GETARG_OID(2) :
+						InvalidOid);
+	bool		top_level = PG_NARGS() == 4 ? PG_GETARG_BOOL(3) : false;
+
 	/*
 	 * Check for null queryid
 	 */
@@ -3616,7 +3662,8 @@ yb_get_histogram_jsonb(PG_FUNCTION_ARGS)
 * Wipes histogram counts array only, expects pgssEntry memory cleanup to
 * handle deallocating the actual histogram struct
 */
-static void yb_hdr_reset(hdr_histogram *h)
+static void
+yb_hdr_reset(hdr_histogram *h)
 {
 	memset(h, 0, sizeof(hdr_histogram) + (sizeof(count_t) * h->counts_len));
 }
@@ -3630,19 +3677,50 @@ yb_track_nested_queries(void)
 /*
  * Get the normalized query text from the pgss_query_texts.stat file
  * and copy it to the normalized_query buffer.
- * Note that normalized_query is expected to be a buffer of at least
- * query_len + 1 bytes.
+ * Note that normalized_query is expected to be a buffer of size at max
+ * 1024 bytes.
+ *
+ * Returns:
+ *  YB_DIAGNOSTICS_SUCCESS if normalized query fetched successfully,
+ *	YB_DIAGNOSTICS_ERROR otherwise.
  */
-static void
-YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_query)
+static int
+YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query)
 {
 	char	   *qbuffer = NULL;
 	Size		qbuffer_size = 0;
+	int			query_len = Min(actual_query_len, YB_QD_MAX_PGSS_QUERY_LEN);
 
 	qbuffer = qtext_load_file(&qbuffer_size);
-	memcpy(normalized_query, qtext_fetch(query_offset, query_len,
-										 qbuffer, qbuffer_size), query_len);
+
+	if (qbuffer == NULL)
+	{
+		ereport(LOG,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("could not load pgss query text file")));
+		return YB_DIAGNOSTICS_ERROR;
+	}
+
+	/*
+	* Its important to fetch the query and then memcpy to normalized_query,
+	* as qtext_fetch requires query length to be exact length of the query,
+	* whereas query_len can be 1024 bytes in case pgss_query_len >= 1024.
+	*/
+	char	   *fetched_query = qtext_fetch(query_offset, actual_query_len,
+											qbuffer, qbuffer_size);
+
+	if (fetched_query == NULL)
+	{
+		ereport(LOG,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("could not load pgss query text file")));
+		free(qbuffer);
+		return YB_DIAGNOSTICS_ERROR;
+	}
+
+	memcpy(normalized_query, fetched_query, query_len);
 	normalized_query[query_len] = '\0'; /* Ensure null-termination */
 
 	free(qbuffer);
+	return YB_DIAGNOSTICS_SUCCESS;
 }

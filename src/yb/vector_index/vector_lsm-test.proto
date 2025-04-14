@@ -17,6 +17,6 @@ package yb.vector_index;
 option java_package = "org.yb.vector_index";
 
 message VectorLSMTestFrontierPB {
-  uint64 vertex_id = 1;
+  bytes vertex_id = 1; // 16 bytes uuid
 }
 

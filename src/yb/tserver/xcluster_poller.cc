@@ -151,13 +151,14 @@ void XClusterPoller::Init(bool use_local_tserver, rocksdb::RateLimiter* rate_lim
 
 void XClusterPoller::InitDDLQueuePoller(
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, const NamespaceName& namespace_name,
-    TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func) {
+    const NamespaceId& source_namespace_id, TserverXClusterContextIf& xcluster_context,
+    ConnectToPostgresFunc connect_to_pg_func) {
   DCHECK_EQ(is_automatic_mode_, true);
   Init(use_local_tserver, rate_limiter);
 
   ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
-      &local_client_, namespace_name, consumer_namespace_id_, LogPrefix(), xcluster_context,
-      std::move(connect_to_pg_func));
+      &local_client_, namespace_name, source_namespace_id, consumer_namespace_id_, LogPrefix(),
+      xcluster_context, std::move(connect_to_pg_func));
 }
 
 void XClusterPoller::StartShutdown() {
@@ -244,11 +245,7 @@ HybridTime XClusterPoller::GetSafeTime() const {
     return HybridTime::kInvalid;
   }
 
-  HybridTime safe_time;
-  {
-    SharedLock lock(safe_time_lock_);
-    safe_time = producer_safe_time_;
-  }
+  auto safe_time = producer_safe_time_.load();
 
   TEST_SYNC_POINT_CALLBACK("XClusterPoller::GetSafeTime", &safe_time);
 
@@ -262,21 +259,26 @@ void XClusterPoller::UpdateSafeTime(int64 new_time) {
     return;
   }
 
-  std::lock_guard l(safe_time_lock_);
-  if (producer_safe_time_.is_special() || new_hybrid_time > producer_safe_time_) {
-    producer_safe_time_ = new_hybrid_time;
+  auto existing = producer_safe_time_.load();
+  for (;;) {
+    if (!existing.is_special() && existing > new_hybrid_time) {
+      break;
+    }
+    if (producer_safe_time_.compare_exchange_strong(existing, new_hybrid_time)) {
+      break;
+    }
   }
 }
 
 void XClusterPoller::InvalidateSafeTime() {
-  std::lock_guard l(safe_time_lock_);
-  producer_safe_time_ = HybridTime::kInvalid;
+  producer_safe_time_.store(HybridTime::kInvalid);
 }
 
 void XClusterPoller::SchedulePoll() {
   if (is_paused_) {
     // Run immediately.
     ScheduleFunc(BIND_FUNCTION_AND_ARGS(XClusterPoller::DoPoll));
+    return;
   }
 
   // determine if we should delay our upcoming poll
@@ -546,6 +548,12 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
       StoreNOKReplicationError();
       if (FLAGS_enable_xcluster_stat_collection) {
         poll_stats_history_.SetError(std::move(s));
+      }
+
+      // If we're paused or failed, then stop processing the DDL queue table.
+      if (is_paused_ || is_failed_) {
+        SchedulePoll();
+        return;
       }
 
       // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).

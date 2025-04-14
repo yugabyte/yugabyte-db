@@ -13,6 +13,8 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskParams;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
@@ -27,9 +29,12 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.annotation.Transactional;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,6 +70,8 @@ public class Commissioner {
 
   private final TaskExecutor taskExecutor;
 
+  private final TaskQueue taskQueue;
+
   // A map of task UUIDs to latches for currently paused tasks.
   private final Map<UUID, CountDownLatch> pauseLatches = new ConcurrentHashMap<>();
 
@@ -77,15 +84,17 @@ public class Commissioner {
       ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
       TaskExecutor taskExecutor,
+      TaskQueue taskQueue,
       ProviderEditRestrictionManager providerEditRestrictionManager,
       RuntimeConfGetter runtimeConfGetter) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
+    this.taskQueue = taskQueue;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
     this.runtimeConfGetter = runtimeConfGetter;
-    executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
-    log.info("Started Commissioner TaskPool.");
+    this.executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
+    log.info("Started Commissioner TaskPool");
   }
 
   /**
@@ -106,6 +115,16 @@ public class Commissioner {
    */
   public static boolean isTaskTypeRetryable(TaskType taskType) {
     return TaskExecutor.isTaskRetryable(taskType.getTaskClass());
+  }
+
+  /**
+   * Returns true if the task identified by the task type can rollback.
+   *
+   * @param taskType the task type.
+   * @return true if can rollback.
+   */
+  public static boolean canTaskTypeRollback(TaskType taskType) {
+    return TaskExecutor.canTaskRollback(taskType.getTaskClass());
   }
 
   /**
@@ -142,33 +161,45 @@ public class Commissioner {
       ITaskParams taskParams,
       UUID taskUUID,
       @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
-    RunnableTask taskRunnable = null;
+    RunnableTask taskRunnable =
+        taskQueue.enqueue(
+            TaskParams.builder()
+                .taskType(taskType)
+                .taskParams(taskParams)
+                .taskUuid(taskUUID)
+                .build(),
+            p -> {
+              RunnableTask runnableTask = createRunnableTask(p, preTaskSubmitWork);
+              runnableTask.setTaskExecutionListener(getTaskExecutionListener());
+              return runnableTask;
+            },
+            (t, p) -> execute(t, p));
+    return taskRunnable.getTaskUUID();
+  }
+
+  private void execute(RunnableTask taskRunnable, ITaskParams taskParams) {
     try {
+      ITask task = taskRunnable.getTask();
       if (runtimeConfGetter.getGlobalConf(
           GlobalConfKeys.enableTaskAndFailedRequestDetailedLogging)) {
-        JsonNode taskParamsJson = Json.toJson(taskParams);
+        JsonNode taskParamsJson = task.getTaskParams();
         JsonNode redactedJson =
             RedactingService.filterSecretFields(taskParamsJson, RedactionTarget.LOGS);
         log.debug(
-            "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
+            "Executing TaskType {} with params {}",
+            taskRunnable.getTaskInfo().getTaskType(),
+            redactedJson.toString());
       }
-      // Create the task runnable object based on the various parameters passed in.
-      taskRunnable = createRunnableTask(taskType, taskParams, taskUUID, preTaskSubmitWork);
-      // Add the consumer to handle before task if available.
-      taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
       onTaskCreated(taskRunnable, taskParams);
-      return taskExecutor.submit(taskRunnable, executor);
+      taskExecutor.submit(taskRunnable, executor);
     } catch (Throwable t) {
-      if (taskRunnable != null) {
-        // Destroy the task initialization in case of failure.
-        taskRunnable.getTask().terminate();
-        TaskInfo taskInfo = taskRunnable.getTaskInfo();
-        if (taskInfo.getTaskState() != TaskInfo.State.Failure) {
-          taskInfo.setTaskState(TaskInfo.State.Failure);
-          taskInfo.update();
-        }
-      }
-      String msg = "Error processing " + taskType + " task for " + taskParams.toString();
+      // Destroy the task initialization in case of failure.
+      taskRunnable.getTask().terminate();
+      taskRunnable.updateTaskDetailsOnError(State.Failure, t);
+      String msg =
+          String.format(
+              "Error processing %s task for %s",
+              taskRunnable.getTaskInfo().getTaskType(), taskParams.toString());
       log.error(msg, t);
       if (t instanceof PlatformServiceException) {
         throw t;
@@ -179,12 +210,9 @@ public class Commissioner {
 
   @Transactional
   private RunnableTask createRunnableTask(
-      TaskType taskType,
-      ITaskParams taskParams,
-      UUID taskUUID,
-      @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
+      TaskParams creationParams, @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
     // Create the task runnable object based on the various parameters passed in.
-    RunnableTask taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams, taskUUID);
+    RunnableTask taskRunnable = taskExecutor.createRunnableTask(creationParams);
     if (preTaskSubmitWork != null) {
       preTaskSubmitWork.accept(taskRunnable);
     }
@@ -206,13 +234,16 @@ public class Commissioner {
    */
   public boolean abortTask(UUID taskUUID, boolean force) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    if (taskQueue.cancel(taskUUID)) {
+      log.info("Task {} is removed from the queue", taskUUID);
+      return true;
+    }
     if (!force && !isTaskTypeAbortable(taskInfo.getTaskType())) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
     }
-
     if (taskInfo.getTaskState() != TaskInfo.State.Running) {
-      log.warn("Task {} is not running", taskUUID);
+      log.warn("Task {} is not in running state", taskUUID);
       return false;
     }
     CountDownLatch latch = pauseLatches.get(taskUUID);
@@ -329,11 +360,20 @@ public class Commissioner {
                 CustomerTask lastTask = lastTaskByTarget.get(task.getTargetUUID());
                 return lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID());
               }
+
+              JsonNode xClusterConfigNode = taskInfo.getTaskParams().get("xClusterConfig");
+              if (xClusterConfigNode != null && !xClusterConfigNode.isNull()) {
+                XClusterConfig xClusterConfig =
+                    Json.fromJson(xClusterConfigNode, XClusterConfig.class);
+                return CustomerTaskManager.isXClusterTaskRetryable(tf.getUuid(), xClusterConfig);
+              }
+
               Set<String> taskUuidsToAllowRetry =
                   updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
               return taskUuidsToAllowRetry.contains(taskInfo.getUuid().toString());
             });
     responseJson.put("retryable", retryable);
+    responseJson.put("canRollback", canTaskRollback(taskInfo));
     if (isTaskPaused(taskInfo.getUuid())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
@@ -343,8 +383,14 @@ public class Commissioner {
   }
 
   public boolean isTaskAbortable(TaskInfo taskInfo) {
-    return isTaskTypeAbortable(taskInfo.getTaskType())
-        && taskExecutor.isTaskRunning(taskInfo.getUuid());
+    RunnableTask taskRunnable = taskQueue.find(taskInfo.getUuid());
+    if (taskRunnable == null || taskRunnable.isRunning()) {
+      // Check with the executor if the task is not queued or already running.
+      return isTaskTypeAbortable(taskInfo.getTaskType())
+          && taskExecutor.isTaskRunning(taskInfo.getUuid());
+    }
+    // Task is still in the queue.
+    return true;
   }
 
   public boolean isTaskRetryable(TaskInfo taskInfo, Predicate<TaskInfo> moreCondition) {
@@ -353,6 +399,11 @@ public class Commissioner {
       return moreCondition.test(taskInfo);
     }
     return false;
+  }
+
+  public boolean canTaskRollback(TaskInfo taskInfo) {
+    return canTaskTypeRollback(taskInfo.getTaskType())
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState());
   }
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {
@@ -386,8 +437,8 @@ public class Commissioner {
     return taskExecutor.isTaskRunning(taskUuid);
   }
 
-  public void waitForTask(UUID taskUuid) {
-    taskExecutor.waitForTask(taskUuid);
+  public void waitForTask(UUID taskUuid, @Nullable Duration timeout) {
+    taskExecutor.waitForTask(taskUuid, timeout);
   }
 
   public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
@@ -463,13 +514,14 @@ public class Commissioner {
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
     final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
+    final Consumer<TaskInfo> afterTaskConsumer = getAfterTaskConsumer();
     DefaultTaskExecutionListener listener =
-        new DefaultTaskExecutionListener(providerEditRestrictionManager, beforeTaskConsumer);
+        new DefaultTaskExecutionListener(beforeTaskConsumer, afterTaskConsumer);
     return listener;
   }
 
   // Returns the composed for before task callback of TaskExecutionListener.
-  private Consumer<TaskInfo> getBeforeTaskConsumer() {
+  protected Consumer<TaskInfo> getBeforeTaskConsumer() {
     Consumer<TaskInfo> consumer = null;
     final int subTaskAbortPosition = getSubTaskPositionFromContext(SUBTASK_ABORT_POSITION_PROPERTY);
     final int subTaskPausePosition = getSubTaskPositionFromContext(SUBTASK_PAUSE_POSITION_PROPERTY);
@@ -509,5 +561,20 @@ public class Commissioner {
       consumer = consumer == null ? pauseConsumer : consumer.andThen(pauseConsumer);
     }
     return consumer;
+  }
+
+  protected Consumer<TaskInfo> getAfterTaskConsumer() {
+    return taskInfo -> {
+      if (taskInfo.getParentUuid() == null) {
+        log.debug("Parent task {} has completed", taskInfo.getTaskType());
+        try {
+          taskQueue.dequeue(
+              taskExecutor.getRunnableTask(taskInfo.getUuid()), (t, p) -> execute(t, p));
+        } catch (Exception e) {
+          log.error("Error occurred in running the next task - {}", e.getMessage());
+        }
+      }
+      providerEditRestrictionManager.onTaskFinished(taskInfo.getUuid());
+    };
   }
 }

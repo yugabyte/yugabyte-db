@@ -19,35 +19,42 @@
 #include <condition_variable>
 #include <mutex>
 
+#include <boost/intrusive/list.hpp>
+
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
 
+#include "yb/util/flags.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_restrictions.h"
+#include "yb/util/unique_lock.h"
 
 using namespace std::literals;
 
-namespace yb {
-namespace rpc {
+DEFINE_NON_RUNTIME_uint64(default_idle_timeout_ms, 15000,
+    "Default RPC ThreadPool idle timeout value in milliseconds");
+
+namespace yb::rpc {
 
 namespace {
 
 class Worker;
 
-typedef cds::container::BasketQueue<cds::gc::DHP, ThreadPoolTask*> TaskQueue;
-typedef cds::container::BasketQueue<cds::gc::DHP, Worker*> WaitingWorkers;
+using TaskQueue = cds::container::BasketQueue<cds::gc::DHP, ThreadPoolTask*>;
+using WaitingWorkers = LockFreeStack<Worker>;
 
 struct ThreadPoolShare {
   const ThreadPoolOptions options;
   TaskQueue task_queue;
   WaitingWorkers waiting_workers;
+  std::atomic<size_t> num_workers{0};
 
   explicit ThreadPoolShare(ThreadPoolOptions o)
       : options(std::move(o)) {}
 };
-
-const char* kRpcThreadCategory = "rpc_thread_pool";
 
 const auto kShuttingDownStatus = STATUS(Aborted, "Service is shutting down");
 
@@ -61,18 +68,29 @@ void TaskDone(ThreadPoolTask* task, const Status& status) {
   }
 }
 
-class Worker {
+// There is difference between idle stop and external stop.
+// In case of idle stop we don't perform join on thread, since it is already detached.
+YB_DEFINE_ENUM(WorkerState, (kRunning)(kWaitingTask)(kIdleStop)(kExternalStop));
+
+class Worker : public boost::intrusive::list_base_hook<> {
  public:
-  explicit Worker(ThreadPoolShare* share)
+  explicit Worker(ThreadPoolShare& share)
       : share_(share) {
   }
 
-  Status Start(size_t index) {
-    auto name = strings::Substitute("rpc_tp_$0_$1", share_->options.name, index);
-    return yb::Thread::Create(kRpcThreadCategory, name, &Worker::Execute, this, &thread_);
+  Status Start(size_t index, ThreadPoolTask* task) {
+    auto name = strings::Substitute("$0_$1_worker", share_.options.name, index);
+    return Thread::Create(share_.options.name, name, &Worker::Execute, this, task, &thread_);
   }
 
   ~Worker() {
+    {
+      std::lock_guard lock(mutex_);
+      DCHECK(!task_);
+      if (state_ == WorkerState::kIdleStop) {
+        return;
+      }
+    }
     if (thread_) {
       thread_->Join();
     }
@@ -82,92 +100,129 @@ class Worker {
   void operator=(const Worker& worker) = delete;
 
   void Stop() {
-    stop_requested_ = true;
-    std::lock_guard lock(mutex_);
-    cond_.notify_one();
+    ThreadPoolTask* task;
+    {
+      std::lock_guard lock(mutex_);
+      if (state_ != WorkerState::kIdleStop) {
+        state_ = WorkerState::kExternalStop;
+      }
+      task = std::exchange(task_, nullptr);
+      cond_.notify_one();
+    }
+    if (task) {
+      TaskDone(task, kShuttingDownStatus);
+    }
   }
 
-  bool Notify() {
+  WorkerState Notify(ThreadPoolTask* task) {
     std::lock_guard lock(mutex_);
     added_to_waiting_workers_ = false;
     // There could be cases when we popped task after adding ourselves to worker queue (see below).
     // So we are already processing task, but reside in worker queue.
-    // To handle this case we use waiting_for_task_ flag.
-    // If we are not waiting for a task, we return false here, and next worker would be popped from
-    // queue and notified.
-    if (!waiting_for_task_) {
-      return false;
+    if (state_ == WorkerState::kWaitingTask) {
+      DCHECK(!task_);
+      task_ = task;
+      cond_.notify_one();
     }
-    cond_.notify_one();
-    return true;
+    return state_;
   }
 
  private:
   // Our main invariant is empty task queue or empty worker queue.
   // In other words, one of those queues should be empty.
-  // Meaning that we does not have work (task queue empty) or
+  // Meaning that we do not have work (task queue empty) or
   // does not have free hands (worker queue empty)
-  void Execute() {
-    Thread::current_thread()->SetUserData(share_);
-    while (!stop_requested_) {
-      ThreadPoolTask* task = nullptr;
-      if (PopTask(&task)) {
-        task->Run();
-        TaskDone(task, Status::OK());
-      }
+  void Execute(ThreadPoolTask* task) {
+    Thread::current_thread()->SetUserData(&share_);
+    while (task) {
+      task->Run();
+      TaskDone(task, Status::OK());
+      task = PopTask();
     }
   }
 
-  bool PopTask(ThreadPoolTask** task) {
+  ThreadPoolTask* PopTask() {
     // First of all we try to get already queued task, w/o locking.
     // If there is no task, so we could go to waiting state.
-    if (share_->task_queue.pop(*task)) {
-      return true;
+    ThreadPoolTask* task;
+    if (share_.task_queue.pop(task)) {
+      return task;
     }
-    std::unique_lock<std::mutex> lock(mutex_);
-    waiting_for_task_ = true;
-    auto se = ScopeExit([this] {
-      waiting_for_task_ = false;
-    });
 
-    while (!stop_requested_) {
+    UniqueLock lock(mutex_);
+    if (auto task_opt = DoPopTask()) {
+      return *task_opt;
+    }
+
+    state_ = WorkerState::kWaitingTask;
+
+    for (;;) {
       AddToWaitingWorkers();
 
-      // There could be a situation when a task was queued before we added ourselves to the worker
-      // queue. So the worker queue could be empty in this case, while nobody was notified about
-      // the new task. So we check there for this case. This technique is similar to
-      // double-checked locking.
-      if (share_->task_queue.pop(*task)) {
-        return true;
+      bool timeout;
+      if (share_.options.idle_timeout) {
+        CHECK(!task_);
+        auto duration = share_.options.idle_timeout.ToSteadyDuration();
+        timeout = cond_.wait_for(GetLockForCondition(lock), duration) == std::cv_status::timeout;
+      } else {
+        cond_.wait(GetLockForCondition(lock));
+        timeout = false;
       }
 
-      cond_.wait(lock);
+      if (auto task_opt = DoPopTask()) {
+        state_ = WorkerState::kRunning;
+        return *task_opt;
+      }
 
-      // Sometimes another worker could steal a task before we wake up. In this case we will
-      // just enqueue ourselves back.
-      if (share_->task_queue.pop(*task)) {
-        return true;
+      if (timeout && added_to_waiting_workers_) {
+        --share_.num_workers;
+        state_ = WorkerState::kIdleStop;
+        auto thread = std::move(thread_);
+        return nullptr;
       }
     }
-    return false;
   }
 
-  void AddToWaitingWorkers() {
+  std::optional<ThreadPoolTask*> DoPopTask() REQUIRES(mutex_) {
+    if (state_ == WorkerState::kExternalStop) {
+      return nullptr;
+    }
+    if (task_) {
+      return std::exchange(task_, nullptr);
+    }
+    ThreadPoolTask* task;
+    if (share_.task_queue.pop(task)) {
+      return task;
+    }
+    return std::nullopt;
+  }
+
+  void AddToWaitingWorkers() REQUIRES(mutex_) {
     if (!added_to_waiting_workers_) {
-      auto pushed = share_->waiting_workers.push(this);
-      DCHECK(pushed); // BasketQueue always succeed.
+      share_.waiting_workers.Push(this);
       added_to_waiting_workers_ = true;
     }
   }
 
-  ThreadPoolShare* share_;
-  scoped_refptr<yb::Thread> thread_;
+  friend void SetNext(Worker* worker, Worker* next) {
+    worker->next_waiting_worker_ = next;
+  }
+
+  friend Worker* GetNext(Worker* worker) {
+    return worker->next_waiting_worker_;
+  }
+
+  ThreadPoolShare& share_;
+  scoped_refptr<Thread> thread_;
   std::mutex mutex_;
   std::condition_variable cond_;
-  std::atomic<bool> stop_requested_ = {false};
-  bool waiting_for_task_ = false;
-  bool added_to_waiting_workers_ = false;
+  WorkerState state_ GUARDED_BY(mutex_) = WorkerState::kRunning;
+  bool added_to_waiting_workers_ GUARDED_BY(mutex_) = false;
+  ThreadPoolTask* task_ GUARDED_BY(mutex_) = nullptr;
+  Worker* next_waiting_worker_ = nullptr;
 };
+
+using Workers = boost::intrusive::list<Worker>;
 
 } // namespace
 
@@ -189,44 +244,68 @@ class ThreadPool::Impl {
       TaskDone(task, kShuttingDownStatus);
       return false;
     }
-    bool added = share_.task_queue.push(task);
-    DCHECK(added); // BasketQueue always succeed.
-    Worker* worker = nullptr;
-    while (share_.waiting_workers.pop(worker)) {
-      if (worker->Notify()) {
-        --adding_;
-        return true;
-      }
+    if (NotifyWorker(task)) {
+      --adding_;
+      return true;
     }
-    --adding_;
 
-    auto index = num_workers_++;
-    if (index < share_.options.max_workers) {
+    if (share_.num_workers++ < share_.options.max_workers) {
       std::lock_guard lock(mutex_);
       if (!closing_) {
-        auto new_worker = std::make_unique<Worker>(&share_);
-        auto status = new_worker->Start(workers_.size());
+        auto new_worker = std::make_unique<Worker>(share_);
+        auto status = new_worker->Start(++worker_counter_, task);
         if (status.ok()) {
-          workers_.push_back(std::move(new_worker));
+          workers_.push_back(*new_worker.release());
+          --adding_;
+          return true;
         } else {
           if (workers_.empty()) {
-            LOG(FATAL) << "Unable to start first worker: " << status;
+            LOG_WITH_PREFIX(FATAL) << "Unable to start first worker: " << status;
           } else {
-            LOG(WARNING) << "Unable to start worker: " << status;
+            LOG_WITH_PREFIX(WARNING) << "Unable to start worker: " << status;
           }
-          --num_workers_;
         }
       }
-    } else {
-      --num_workers_;
     }
+    --share_.num_workers;
+
+    bool added = share_.task_queue.push(task);
+    DCHECK(added); // BasketQueue always succeed.
+    --adding_;
+    NotifyWorker(nullptr);
     return true;
+  }
+
+  // Returns true if we found worker that will pick up this task, false otherwise.
+  bool NotifyWorker(ThreadPoolTask* task) {
+    while (auto worker = share_.waiting_workers.Pop()) {
+      auto state = worker->Notify(task);
+      switch (state) {
+        case WorkerState::kWaitingTask:
+          return true;
+        case WorkerState::kExternalStop: [[fallthrough]];
+        case WorkerState::kRunning:
+          break;
+        case WorkerState::kIdleStop: {
+          std::lock_guard lock(mutex_);
+          if (!closing_) {
+            workers_.erase_and_dispose(
+                workers_.iterator_to(*worker), std::default_delete<Worker>());
+          }
+        } break;
+      }
+    }
+    return false;
+  }
+
+  std::string LogPrefix() const {
+    return share_.options.name + ": ";
   }
 
   void Shutdown() {
     // Prevent new worker threads from being created by pretending a large number of workers have
     // already been created.
-    num_workers_ = 1ul << 48;
+    share_.num_workers = 1ul << 48;
     decltype(workers_) workers;
     {
       std::lock_guard lock(mutex_);
@@ -239,9 +318,7 @@ class ThreadPool::Impl {
       workers = std::move(workers_);
     }
     for (auto& worker : workers) {
-      if (worker) {
-        worker->Stop();
-      }
+      worker.Stop();
     }
     // Shutdown is quite a rare situation otherwise, and enqueue is quite frequent.
     // Because of this we use "atomic lock" in enqueue and busy wait in shutdown.
@@ -253,7 +330,7 @@ class ThreadPool::Impl {
     {
       std::lock_guard lock(mutex_);
       if (!workers_.empty()) {
-        LOG(DFATAL) << "Workers were added while closing: " << workers_.size();
+        LOG_WITH_PREFIX(DFATAL) << "Workers were added while closing: " << workers_.size();
         workers_.clear();
       }
     }
@@ -261,6 +338,8 @@ class ThreadPool::Impl {
     while (share_.task_queue.pop(task)) {
       TaskDone(task, kShuttingDownStatus);
     }
+
+    workers.clear_and_dispose(std::default_delete<Worker>());
   }
 
   bool Owns(Thread* thread) {
@@ -269,10 +348,10 @@ class ThreadPool::Impl {
 
  private:
   ThreadPoolShare share_;
-  std::vector<std::unique_ptr<Worker>> workers_ GUARDED_BY(mutex_);
+  Workers workers_ GUARDED_BY(mutex_);
   // An atomic counterpart of workers_.size() during normal operation. During shutdown, this is set
   // to an unrealistically high number to prevent new workers from being created.
-  std::atomic<size_t> num_workers_ = {0};
+  std::atomic<size_t> worker_counter_{0};
   std::mutex mutex_;
   std::atomic<bool> closing_ = {false};
   std::atomic<size_t> adding_ = {0};
@@ -297,11 +376,6 @@ ThreadPool::~ThreadPool() {
   if (impl_) {
     impl_->Shutdown();
   }
-}
-
-bool ThreadPool::IsCurrentThreadRpcWorker() {
-  const Thread* thread = Thread::current_thread();
-  return thread != nullptr && thread->category() == kRpcThreadCategory;
 }
 
 bool ThreadPool::Enqueue(ThreadPoolTask* task) {
@@ -369,5 +443,8 @@ void ThreadSubPool::OnTaskDone(ThreadPoolTask* task, const Status& status) {
   active_tasks_.fetch_sub(1, std::memory_order_acq_rel);
 }
 
-} // namespace rpc
-} // namespace yb
+MonoDelta DefaultIdleTimeout() {
+  return MonoDelta::FromMilliseconds(FLAGS_default_idle_timeout_ms);
+}
+
+} // namespace yb::rpc

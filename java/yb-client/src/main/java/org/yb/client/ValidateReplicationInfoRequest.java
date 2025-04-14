@@ -12,13 +12,13 @@
 
 package org.yb.client;
 
-import org.yb.util.Pair;
 import com.google.protobuf.Message;
 import io.netty.buffer.ByteBuf;
+import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
-import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.master.MasterReplicationOuterClass.ValidateReplicationInfoResponsePB;
+import org.yb.util.Pair;
 
 public class ValidateReplicationInfoRequest extends YRpc<ValidateReplicationInfoResponse>{
 

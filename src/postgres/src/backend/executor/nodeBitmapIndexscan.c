@@ -28,9 +28,10 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 
-/* YB includes. */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/relscan.h"
+#include "pg_yb_utils.h"
+
 
 /* ----------------------------------------------------------------
  *		ExecBitmapIndexScan
@@ -97,8 +98,9 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	{
 		/* XXX should we use less than work_mem for this? */
 		bitmap = tbm_create(work_mem * 1024L,
-							((BitmapIndexScan *) node->ss.ps.plan)->isshared
-								? node->ss.ps.state->es_query_dsa : NULL);
+							(((BitmapIndexScan *) node->ss.ps.plan)->isshared ?
+							 node->ss.ps.state->es_query_dsa :
+							 NULL));
 	}
 
 	/*

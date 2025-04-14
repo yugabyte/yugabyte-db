@@ -27,6 +27,8 @@ import { compareYBSoftwareVersions } from '../../../utils/universeUtilsTyped';
 
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { api } from '../../../redesign/helpers/api';
+import { api as universeApi } from '../../../redesign/features/universe/universe-form/utils/api';
+import { isBackupPITREnabled } from '../common/BackupUtils';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import ScheduledBackupList from '../../../redesign/features/backup/scheduled/ScheduledBackupList';
 
@@ -61,7 +63,9 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
   // const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
   const currentUniverse = useQuery<Universe>(['universe', uuid], () => api.fetchUniverse(uuid));
 
-  if (currentUniverse.isLoading || currentUniverse.isIdle) {
+  const { data: runtimeConfigs, isLoading: runtimeConfigLoading } = useQuery(['runtimeConfigs', uuid], () => universeApi.fetchRunTimeConfigs(true, uuid));
+
+  if (currentUniverse.isLoading || currentUniverse.isIdle || runtimeConfigLoading) {
     return <YBLoading />;
   }
 
@@ -85,7 +89,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
     (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
     isYbcInstalledInUniverse(currentUniverse.data.universeDetails);
 
-  const isNewBackupPITREnabled = featureFlags.test.enableBackupPITR || featureFlags.released.enableBackupPITR;
+  const isNewBackupPITREnabled = isBackupPITREnabled(runtimeConfigs!);
 
   const allowedTasks = currentUniverse?.data?.allowedTasks;
 

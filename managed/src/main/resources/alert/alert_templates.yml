@@ -87,15 +87,15 @@ templates:
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
-        threshold: 900.0
+        threshold: 15
     targetType: PLATFORM
     defaultThresholdCondition: GREATER_THAN
-    defaultThresholdUnit: SECOND
+    defaultThresholdUnit: MINUTE
     thresholdReadOnly: false
-    thresholdUnitName: seconds
+    thresholdUnitName: min
     labels:
       affected_instance_addrs: >-
-        {{ range $index, $element := query "count by (instance_address) (time() - last_over_time(yba_ha_last_backup_seconds[1m]) > {{ query_threshold }}) > 0"}}
+        {{ range $index, $element := query "count by (instance_address) ((time() - last_over_time(yba_ha_last_backup_seconds[1m]) / 60) > {{ query_threshold }}) > 0"}}
         {{ if $index }},{{ end }}{{ $element.Labels.instance_address }}{{ end }}
     annotations:
       summary: >-
@@ -389,7 +389,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "sum by (universe_uuid, node_name) ((ybp_health_check_node_master_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) * ignoring (saved_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
-        == bool 1)) + sum by (universe_uuid, node_name) ((ybp_health_check_node_tserver_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
+        == bool 1)) > 0 or sum by (universe_uuid, node_name) ((ybp_health_check_node_tserver_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) * ignoring (saved_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         == bool 1)) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
@@ -460,7 +460,7 @@ templates:
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
-        threshold: 0.0
+        threshold: 100.0
     targetType: UNIVERSE
     defaultThresholdCondition: GREATER_THAN
     defaultThresholdUnit: COUNT
@@ -570,7 +570,7 @@ templates:
     labels:
       affected_node_names: >-
         {{ range $index, $element := query "sum by (universe_uuid, node_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
-        < bool 1) + sum by (universe_uuid, node_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
+        < bool 1) > 0 or sum by (universe_uuid, node_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
@@ -660,6 +660,7 @@ templates:
     queryTemplate: yb_ddl_atomicity_check{universe_uuid="__universeUuid__"}
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
+    defaultDurationSec: 300
     defaultThresholdMap:
       SEVERE:
         threshold: 1.0
@@ -1280,6 +1281,37 @@ templates:
         XCluster config tables are in bad state for universe '{{ $labels.source_name }}'
         Affected XCluster configs: {{ $labels.affected_xcluster_configs }}
 
+  SAFETIME_LAG:
+    name: XCluster Transactional Safe Time Lag
+    description: Max xCluster transactional safe time lag for 10 minutes in ms on the target universe is above threshold; Safe time on the target universe has not progressed for a long time
+    queryTemplate: max by (universe_uuid) (max_over_time(consumer_safe_time_lag{universe_uuid="__universeUuid__"}[10m])) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.safetime_lag_ms
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query
+        "max by (universe_uuid, node_name)
+        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
+        {{ query_condition }} {{ query_threshold }})" }}
+        {{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+      affected_namespace_ids: >-
+        {{ range $index, $element := query
+        "max by (universe_uuid, namespace_id)
+        (max_over_time(consumer_safe_time_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
+        {{ query_condition }} {{ query_threshold }})" }}
+        {{if $index}},{{end}}{{ $element.Labels.namespace_id }}{{ end }}
+    annotations:
+      summary: >-
+        Max xCluster transactional safe time lag for the target universe '{{ $labels.source_name }}' is above
+        {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+
+
   PRIVATE_ACCESS_KEY_STATUS:
     name: Private access key permission status
     description: Change in universe private access keys file permissions
@@ -1492,6 +1524,33 @@ templates:
         Maximum throughput for YSQL operations for universe '{{ $labels.source_name }}'
         is above {{ $labels.threshold }}. Current value is {{ $value | printf "%.0f" }}
 
+  YCQL_MICROSECOND_TIMESTAMPS_DETECTED:
+    name: YCQL inserts with microseconds precision
+    description: YCQL inserts with microseconds precision detected, which is not fully supported.
+    queryTemplate: max by (universe_uuid) (increase(cql_microseconds_timestamps_used{universe_uuid="__universeUuid__"}[{{ query_threshold }}m])) {{ query_condition }} 0
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 60
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MINUTE
+    thresholdUnitName: min
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (increase(cql_microseconds_timestamps_used{universe_uuid='{{ $labels.universe_uuid }}'}[{{ query_threshold }}m]))
+        {{ query_condition }} 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        YCQL inserts with microseconds precision detected on universe '{{ $labels.source_name }}',
+        which is not fully supported. Please change application code to use milliseconds precision,
+        or set cql_revert_to_partial_microsecond_support=false gflag value to round
+        down all future microsecond precision timestamps to previous millisecond.
+        See https://docs.yugabyte.com/preview/releases/techadvisories/ta-23476
+        for more details.
+        Affected nodes: {{ $labels.affected_node_names }}
+
   YCQL_OP_AVG_LATENCY:
     name: YCQL average latency is high
     description: Average latency of YCQL operations is above threshold
@@ -1662,27 +1721,28 @@ templates:
 
   INCREASED_REMOTE_BOOTSTRAPS:
     name: Increase in remote bootstraps
-    description: Increase in remote bootstraps detected during last 5 minutes
-    queryTemplate: sum by (universe_uuid) (increase(rpc_latency_count{export_type="tserver_export", service_type="ConsensusService", universe_uuid="__universeUuid__", server_type="yb_consensus", service_method="StartRemoteBootstrap"}[5m]))
+    description: Increase in remote bootstraps detected during last 10 minutes
+    queryTemplate: sum by (universe_uuid) (increase(rpc_latency_count{export_type="tserver_export",
+      service_type="ConsensusService", universe_uuid="__universeUuid__", server_type="yb_consensus",
+      service_method="StartRemoteBootstrap"}[10m])) / max by (universe_uuid)
+      (ts_live_tablet_peers{universe_uuid="__universeUuid__"}) * 100
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: false
     defaultThresholdMap:
       WARNING:
-        threshold: 0.0
+        threshold: 10.0
     targetType: UNIVERSE
     defaultThresholdCondition: GREATER_THAN
-    defaultThresholdUnit: COUNT
-    thresholdUnitName: bootstrap(s)
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
     labels:
       affected_node_names: >-
-        {{ range $index, $element := query "sum by (universe_uuid, node_name)
-        (increase(rpc_latency_count{export_type='tserver_export', service_type='ConsensusService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_consensus', service_method='StartRemoteBootstrap'}[5m]))
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Increase in remote bootstraps detected for universe '{{ $labels.source_name }}'.
-
-        Affected nodes: {{ $labels.affected_node_names }}
 
 
   TABLET_SERVER_AVG_READ_LATENCY:
@@ -1927,3 +1987,69 @@ templates:
         Clock drift is high for universe '{{ $labels.source_name }}'.
         Current drift from actual clock is {{ $value }} milliseconds.
         Affected nodes: {{ $labels.affected_node_names }}
+
+  UNIVERSE_UNEXPECTED_MASTERS_RUNNING:
+    name: Unexpected masters are running in the universe
+    description: Found master processes that are not expected to run
+    queryTemplate: count by (universe_uuid) (last_over_time(yb_node_unexpected_master_running{universe_uuid="__universeUuid__"}[1m]) > 0)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "last_over_time(yb_node_unexpected_master_running{universe_uuid='{{
+        $labels.universe_uuid }}'}[1m]) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Found master process that is not expected to run on {{ $value | printf "%.0f" }}
+        nodes(s) for universe '{{ $labels.source_name }}'.
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  UNIVERSE_UNEXPECTED_TSERVERS_RUNNING:
+    name: Unexpected tservers are running in the universe
+    description: Found tserver processes that is are not expected to run
+    queryTemplate: count by (universe_uuid) (last_over_time(yb_node_unexpected_tserver_running{universe_uuid="__universeUuid__"}[1m]) > 0)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "last_over_time(yb_node_unexpected_tserver_running{universe_uuid='{{
+        $labels.universe_uuid }}'}[1m]) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Found tserver process that is not expected to run on {{ $value | printf "%.0f" }}
+        nodes(s) for universe '{{ $labels.source_name }}'.
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  CONTINUOUS_BACKUPS_STATUS:
+    name: Continuous Backups Status
+    description: The most recent backup uploaded to remote storage was successful
+    queryTemplate: count by (storage_loc) (last_over_time(yba_cont_backup_status[1m]) {{ query_condition }} {{ query_threshold }}) > 0
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 1.0
+    targetType: PLATFORM
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdReadOnly: true
+    labels:
+      affected_backup_locations: >-
+        {{ range $index, $element := query "count by (storage_loc) (last_over_time(yba_cont_backup_status[1m]) {{ query_condition }} {{ query_threshold }}) > 0" }}
+        {{ if $index }},{{ end }}{{ $element.Labels.storage_loc }}{{ end}}
+    annotations:
+      summary: >-
+        Continuous backups to {{ $labels.affected_backup_locations }} are failing.

@@ -121,6 +121,40 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
   ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
 }
 
+TEST_F(CDCSDKTabletSplitTest, TestTabletSplitDisabledForTablesWithReplicationSlot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_replication_slot_streamed_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(SetUpWithParams(/*replication_factor=*/1, /*num_masters=*/1, /*colocated=*/false));
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  // Should be ok to split before creating a stream.
+  ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
+
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Split disallowed since FLAGS_enable_tablet_split_of_replication_slot_streamed_tables is false
+  // and we have a stream with replication slot on the table.
+  auto s = XReplValidateSplitCandidateTable(table_id);
+  ASSERT_NOK(s);
+  ASSERT_NE(
+      s.message().AsStringView().find(
+          "Tablet splitting is not supported for tables that are a part of a replication slot"),
+      std::string::npos)
+      << s.message();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_replication_slot_streamed_tables) = true;
+  // Should be ok to split since FLAGS_enable_tablet_split_of_replication_slot_streamed_tables is
+  // true.
+  ASSERT_OK(XReplValidateSplitCandidateTable(table_id));
+}
+
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitWithBeforeImage)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -792,11 +826,11 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitBeforeBoots
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
   SleepFor(MonoDelta::FromSeconds(10));
 
-  // We are checking the 'cdc_state' table just after tablet split is succesfull, but since we
+  // We are checking the 'cdc_state' table just after tablet split is successful, but since we
   // haven't started streaming from the parent tablet, we should only see 2 rows.
   uint seen_rows = 0;
   TabletId parent_tablet_id = tablets[0].tablet_id();
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -871,7 +905,7 @@ void CDCSDKTabletSplitTest::TestCDCStateTableAfterTabletSplit(CDCCheckpointType 
   // entries, one for the parent tablet and two for the children tablets.
   uint seen_rows = 0;
   TabletId parent_tablet_id = tablets[0].tablet_id();
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   for (auto row_result : ASSERT_RESULT(
            cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
@@ -949,7 +983,7 @@ google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
 
   // We will not be seeing the entry corresponding to the parent tablet since that is deleted now.
   TabletId parent_tablet_id = tablets[0].tablet_id();
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   for (auto row_result : ASSERT_RESULT(
            cdc_state_table.GetTableRange({} /* just key columns */, &s))) {
@@ -1814,7 +1848,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestSplitAfterSplit)) {
   }
 
   // Verify that the cdc_state has only current set of children tablets.
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s;
@@ -1966,7 +2000,7 @@ void CDCSDKTabletSplitTest::TestStreamMetaDataCleanupDropTableAfterTabletSplit(
     expected_tablet_ids.insert(tablet.tablet_id());
   }
 
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s;
@@ -2146,7 +2180,7 @@ void CDCSDKTabletSplitTest::TestCleanUpCDCStreamsMetadataDuringTabletSplit(
   // Incase there is some lag in completing the execution of delete operation on cdc_state table
   // triggered by the CleanUpCDCStreamMetadata thread.
   SleepFor(MonoDelta::FromSeconds(2));
-  CDCStateTable cdc_state_table(test_client());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   std::unordered_set<TabletId> tablets_found;
   for (auto row_result : ASSERT_RESULT(cdc_state_table.GetTableRange(

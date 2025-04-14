@@ -30,13 +30,12 @@
 #include "access/yb_scan.h"
 #include "access/ybgin.h"
 #include "access/ybgin_private.h"
-#include "commands/tablegroup.h"
+#include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
-#include "utils/palloc.h"
-#include "utils/memutils.h"
-#include "utils/rel.h"
-
 #include "pg_yb_utils.h"
+#include "utils/memutils.h"
+#include "utils/palloc.h"
+#include "utils/rel.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*
@@ -59,10 +58,10 @@ ybginbeginscan(Relation rel, int nkeys, int norderbys)
 	so = (GinScanOpaque) palloc(sizeof(YbginScanOpaqueData));
 	so->keys = NULL;
 	so->nkeys = 0;
-	so->tempCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->tempCtx = AllocSetContextCreate(CurrentMemoryContext,
 										"Ybgin scan temporary context",
 										ALLOCSET_DEFAULT_SIZES);
-	so->keyCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->keyCtx = AllocSetContextCreate(CurrentMemoryContext,
 									   "Ybgin scan key context",
 									   ALLOCSET_DEFAULT_SIZES);
 	initGinState(&so->ginstate, scan->indexRelation);
@@ -76,63 +75,25 @@ void
 ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 			ScanKey orderbys, int norderbys)
 {
-	YbginScanOpaque	  ybso = (YbginScanOpaque) scan->opaque;
-	YbTableProperties yb_table_properties_relation =
-		YbGetTableProperties(scan->heapRelation);
-	YbTableProperties yb_table_properties_index =
-		YbGetTableProperties(scan->indexRelation);
-	bool querying_colocated_table = false;
-	bool is_colocated = yb_table_properties_relation->is_colocated;
-	bool is_colocated_tables_with_tablespace_enabled =
-		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+	YbginScanOpaque ybso = (YbginScanOpaque) scan->opaque;
+	YbcPgPrepareParameters prepare_params = {
+		.index_relfilenode_oid = YbGetRelfileNodeId(scan->indexRelation),
+		.index_only_scan = scan->xs_want_itup,
+		.embedded_idx = YbIsScanningEmbeddedIdx(scan->heapRelation,
+												scan->indexRelation),
+	};
 
 	/* Initialize non-yb gin scan opaque fields. */
 	ginrescan(scan, scankey, nscankeys, orderbys, norderbys);
 
-	if (!is_colocated_tables_with_tablespace_enabled)
-	{
-		querying_colocated_table = is_colocated;
-	}
-	else
-	{
-		querying_colocated_table =
-			is_colocated && yb_table_properties_index->tablegroup_oid ==
-								yb_table_properties_relation->tablegroup_oid;
-	}
-
 	/* Initialize ybgin scan opaque handle. */
-	YBCPgPrepareParameters prepare_params = {
-		.index_relfilenode_oid = YbGetRelfileNodeId(scan->indexRelation),
-		.index_only_scan = scan->xs_want_itup,
-		.querying_colocated_table = querying_colocated_table,
-	};
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),
 								  YbGetRelfileNodeId(scan->heapRelation),
 								  &prepare_params,
 								  YBCIsRegionLocal(scan->heapRelation),
 								  &ybso->handle));
-
-	/* Add any pushdown expression to the main table scan. */
-	if (scan->yb_rel_pushdown != NULL)
-	{
-		YbDmlAppendQuals(scan->yb_rel_pushdown->quals,
-						 true /* is_primary */,
-						 ybso->handle);
-		YbDmlAppendColumnRefs(scan->yb_rel_pushdown->colrefs,
-							  true /* is_primary */,
-							  ybso->handle);
-	}
-
-	/* Add any pushdown expression to the index relation scan. */
-	if (scan->yb_idx_pushdown != NULL)
-	{
-		YbDmlAppendQuals(scan->yb_idx_pushdown->quals,
-						 false /* is_primary */,
-						 ybso->handle);
-		YbDmlAppendColumnRefs(scan->yb_idx_pushdown->colrefs,
-							  false /* is_primary */,
-							  ybso->handle);
-	}
+	YbApplyPrimaryPushdown(ybso->handle, scan->yb_rel_pushdown);
+	YbApplySecondaryIndexPushdown(ybso->handle, scan->yb_idx_pushdown);
 
 	/* Initialize ybgin scan opaque is_exec_done. */
 	ybso->is_exec_done = false;

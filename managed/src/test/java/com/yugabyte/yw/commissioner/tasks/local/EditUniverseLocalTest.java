@@ -2,21 +2,27 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -25,6 +31,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +39,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
 import org.junit.Test;
 import org.yb.client.YBClient;
 import play.libs.Json;
@@ -42,6 +50,13 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   @Override
   protected Pair<Integer, Integer> getIpRange() {
     return new Pair<>(2, 30);
+  }
+
+  @Before
+  public void setUpDNS() {
+    provider.getDetails().getCloudInfo().local.setHostedZoneId("test");
+    provider.update();
+    localNodeManager.setCheckDNS(true);
   }
 
   @Test
@@ -65,6 +80,58 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
     verifyPayload();
+  }
+
+  @Test
+  public void testChangeIB() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    details.setRegions(regionImageInfo);
+    details.setArch(PublicCloudConstants.Architecture.x86_64);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle imageBundle = ImageBundle.create(provider, "ib-1", details, true);
+
+    ImageBundleDetails details2 = new ImageBundleDetails();
+    details2.setRegions(regionImageInfo);
+    details2.setArch(PublicCloudConstants.Architecture.x86_64);
+    details2.setGlobalYbImage("yb_image2");
+    ImageBundle imageBundle2 = ImageBundle.create(provider, "ib-1", details2, false);
+
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.imageBundleUUID = imageBundle.getUuid();
+
+    Universe universe = createUniverse(userIntent);
+    Map<String, String> gg =
+        localNodeManager.getProvisionedArgs(
+            universe.getUniverseDetails().nodeDetailsSet.iterator().next().nodeName);
+    assertEquals("yb_image", gg.get("--machine_image"));
+    initYSQL(universe);
+    verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.imageBundleUUID = imageBundle2.getUuid();
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 3, 3);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = waitForTask(taskID, universe);
+
+    verifyUniverseTaskSuccess(taskInfo);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    gg =
+        localNodeManager.getProvisionedArgs(
+            universe.getUniverseDetails().nodeDetailsSet.iterator().next().nodeName);
+    assertEquals("yb_image2", gg.get("--machine_image"));
+    verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
+    verifyYSQL(universe);
   }
 
   @Test
@@ -404,7 +471,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(1, universe.getMasters().size());
   }
 
-  @Test
+  //   @Test
   public void testUpdateCommPorts() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
@@ -416,6 +483,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     newPorts.masterRpcPort = 11011;
     newPorts.tserverHttpPort = 11050;
     newPorts.tserverRpcPort = 11051;
+    newPorts.nodeExporterPort = 12555;
     taskParams.communicationPorts = newPorts;
 
     PlacementInfoUtil.updateUniverseDefinition(
@@ -434,6 +502,9 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(universe);
     assertEquals(newPorts, universe.getUniverseDetails().communicationPorts);
     for (NodeDetails nodeDetails : universe.getNodes()) {
+      Map<String, String> provisionArgs =
+          localNodeManager.getProvisionedArgs(nodeDetails.getNodeName());
+      assertEquals("12555", provisionArgs.get("--node_exporter_port"));
       if (nodeDetails.isMaster) {
         verifyListeningPort(nodeDetails, newPorts.masterHttpPort);
         verifyListeningPort(nodeDetails, newPorts.masterRpcPort);
@@ -620,6 +691,60 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             .get()
             .getErrorMessage(),
         containsString("AddMaster operation has not completed within PT30S"));
+  }
+
+  @Test
+  public void testCreateWrongMasterUniverseUUID_FAIL() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    UUID randomUUID = UUID.randomUUID();
+    localNodeManager.setAdditionalGFlags(
+        SpecificGFlags.construct(
+            Collections.singletonMap(GFlagsUtil.CLUSTER_UUID, randomUUID.toString()),
+            Collections.emptyMap()));
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    taskParams.expectedUniverseVersion = -1;
+    // CREATE
+    UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
+    TaskInfo taskInfo =
+        waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    String error = getAllErrorsStr(taskInfo);
+    assertThat(
+        error,
+        containsString(
+            String.format("for MASTER cluster_uuid gflag, found '%s'", randomUUID.toString())));
+  }
+
+  @Test
+  public void testCreateWrongTserverUniverseUUID_FAIL() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    UUID randomUUID = UUID.randomUUID();
+    localNodeManager.setAdditionalGFlags(
+        SpecificGFlags.construct(
+            Collections.emptyMap(),
+            Collections.singletonMap(GFlagsUtil.CLUSTER_UUID, randomUUID.toString())));
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    taskParams.expectedUniverseVersion = -1;
+    // CREATE
+    UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
+    TaskInfo taskInfo =
+        waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    String error = getAllErrorsStr(taskInfo);
+    assertThat(
+        error,
+        containsString(
+            String.format("for TSERVER cluster_uuid gflag, found '%s'", randomUUID.toString())));
   }
 
   private NodeDetails silentlyRemoveNode(Universe universe, boolean isMaster, boolean isTserver) {

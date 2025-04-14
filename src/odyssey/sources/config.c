@@ -19,7 +19,9 @@ void od_config_init(od_config_t *config)
 	config->log_config = 0;
 	config->log_session = 1;
 	config->log_query = 0;
-	config->log_file = NULL;
+	config->log_dir = NULL;
+	config->log_max_size = 0;
+	config->log_rotate_interval = 0;
 	config->log_stats = 1;
 	config->log_general_stats_prom = 0;
 	config->log_route_stats_prom = 0;
@@ -56,7 +58,13 @@ void od_config_init(od_config_t *config)
 	config->coroutine_stack_size = 4;
 	config->hba_file = NULL;
 
+	/* YB */
 	config->yb_use_auth_backend = true;
+	config->yb_optimized_extended_query_protocol = true;
+	config->yb_enable_multi_route_pool = true;
+	// Same default as the value of ysql_max_connections.
+	config->yb_ysql_max_connections = 300;
+	config->yb_max_pools = YSQL_CONN_MGR_MAX_POOLS;
 
 	od_list_init(&config->listen);
 }
@@ -80,8 +88,8 @@ void od_config_free(od_config_t *config)
 		listen = od_container_of(i, od_config_listen_t, link);
 		od_config_listen_free(listen);
 	}
-	if (config->log_file)
-		free(config->log_file);
+	if (config->log_dir)
+		free(config->log_dir);
 	if (config->log_format)
 		free(config->log_format);
 	if (config->pid_file)
@@ -259,9 +267,13 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	if (config->log_format)
 		od_log(logger, "config", NULL, NULL,
 		       "log_format              %s", config->log_format);
-	if (config->log_file)
+	if (config->log_dir)
 		od_log(logger, "config", NULL, NULL,
-		       "log_file                %s", config->log_file);
+		       "log_dir                %s", config->log_dir);
+	od_log(logger, "config", NULL, NULL,
+		    "log_max_size          %d", config->log_max_size);
+	od_log(logger, "config", NULL, NULL,
+		   	"log_rotate_interval       %d", config->log_rotate_interval);
 	od_log(logger, "config", NULL, NULL, "log_to_stdout           %s",
 	       od_config_yes_no(config->log_to_stdout));
 	od_log(logger, "config", NULL, NULL, "log_syslog              %s",
@@ -324,6 +336,18 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 
 	od_log(logger, "config", NULL, NULL, "yb_use_auth_backend     %s",
 	       od_config_yes_no(config->yb_use_auth_backend));
+
+	od_log(logger, "config", NULL, NULL, "yb_optimized_extended_query_protocol %s",
+			od_config_yes_no(config->yb_optimized_extended_query_protocol));
+
+	od_log(logger, "config", NULL, NULL, "yb_enable_multi_route_pool     %s",
+	       od_config_yes_no(config->yb_enable_multi_route_pool));
+
+	od_log(logger, "config", NULL, NULL, "yb_ysql_max_connections     %d",
+	       config->yb_ysql_max_connections);
+	
+	od_log(logger, "config", NULL, NULL, "yb_max_pools     %s",
+	       od_config_yes_no(config->yb_max_pools));
 
 #ifdef USE_SCRAM
 	od_log(logger, "config", NULL, NULL, "SCRAM auth metod:       OK");

@@ -238,6 +238,7 @@ export default class Replication extends Component {
           setStartMoment={this.handleStartDateChange}
           setEndMoment={this.handleEndDateChange}
           handleTimeframeChange={this.queryMetrics}
+          timezone={currentUser.data.timezone}
         />
       );
     }

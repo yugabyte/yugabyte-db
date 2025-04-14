@@ -52,6 +52,8 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/tserver/tserver_fwd.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/locks.h"
@@ -66,6 +68,11 @@ class HostPort;
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(Retry);
+
+// Checks if the Tablet locations are valid - Partition keys are sorted with no overlaps.
+Status CheckTabletLocations(
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+    tserver::AllowSplitTablet allow_split_tablets);
 
 class YBClient::Data {
  public:
@@ -318,7 +325,7 @@ class YBClient::Data {
   void CreateXClusterStream(
       YBClient* client, const TableId& table_id,
       const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
-      master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
+      master::SysCDCStreamEntryPB_State state, cdc::StreamModeTransactional transactional,
       CoarseTimePoint deadline, CreateCDCStreamCallback callback);
 
   void DeleteCDCStream(
@@ -352,6 +359,14 @@ class YBClient::Data {
 
   void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
+      StdStatusCallback callback);
+
+  void AcquireObjectLocksGlobalAsync(
+      YBClient* client, master::AcquireObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+      StdStatusCallback callback);
+
+  void ReleaseObjectLocksGlobalAsync(
+      YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
       StdStatusCallback callback);
 
   void GetTableLocations(
@@ -439,12 +454,12 @@ class YBClient::Data {
   // retry. It is otherwise used in a RetryFunc to indicate if to keep retrying or not, if we get a
   // version mismatch on setting the config.
   Status SetReplicationInfo(
-      YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
+      YBClient* client, const ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
       bool* retry = nullptr);
 
   // Validate replication info as satisfiable for the cluster data.
   Status ValidateReplicationInfo(
-        const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
+        const ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
 
   // Get disk size of table, calculated as WAL + SST file size.
   // It does not take replication factor into account

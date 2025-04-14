@@ -22,13 +22,14 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "executor/executor.h"
-#include "utils/syscache.h"
 #include "utils/rel.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
-#include "executor/ybcModifyTable.h"
+#include "executor/ybModifyTable.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
+#include "utils/syscache.h"
 
 /*
  * CatalogOpenIndexes - open the indexes on a system catalog.
@@ -265,8 +266,8 @@ CatalogIndexDelete(CatalogIndexState indstate, HeapTuple heapTuple)
 		 * The index AM does the rest.
 		 */
 		yb_index_delete(relationDescs[i],	/* index relation */
-						values,	/* array of index Datums */
-						isnull,	/* is-null flags */
+						values, /* array of index Datums */
+						isnull, /* is-null flags */
 						HEAPTUPLE_YBCTID(heapTuple),	/* heap tuple */
 						heapRelation,
 						indexInfo);
@@ -339,7 +340,7 @@ CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 
 	simple_heap_insert(heapRel, tup);
 
-	CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
+	CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
 	CatalogCloseIndexes(indstate);
 }
 
@@ -359,7 +360,8 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 	CatalogTupleCheckConstraints(heapRel, tup);
 
 	/* Keep ybctid consistent across all databases. */
-	Datum ybctid = 0;
+	Datum		ybctid = 0;
+
 	if (yb_shared_insert)
 	{
 		if (!IsYsqlUpgrade)
@@ -367,13 +369,14 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 
 		YB_FOR_EACH_DB(pg_db_tuple)
 		{
-			Oid dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
+			Oid			dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
+
 			/*
 			 * Since this is a catalog table, we assume it exists in all databases.
 			 * YB doesn't use PG locks so it's okay not to take them.
 			 */
 			if (dboid == YBCGetDatabaseOid(heapRel))
-				continue; /* Will be done after the loop. */
+				continue;		/* Will be done after the loop. */
 
 			YBCExecuteInsertHeapTupleForDb(dboid,
 										   heapRel,
@@ -422,7 +425,8 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 	if (IsYugaByteEnabled())
 	{
 		/* Keep ybctid consistent across all databases. */
-		Datum ybctid = 0;
+		Datum		ybctid = 0;
+
 		if (yb_shared_insert)
 		{
 			if (!IsYsqlUpgrade)
@@ -430,13 +434,14 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 
 			YB_FOR_EACH_DB(pg_db_tuple)
 			{
-				Oid dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
+				Oid			dboid = ((Form_pg_database) GETSTRUCT(pg_db_tuple))->oid;
+
 				/*
 				 * Since this is a catalog table, we assume it exists in all databases.
 				 * YB doesn't use PG locks so it's okay not to take them.
 				 */
 				if (dboid == YBCGetDatabaseOid(heapRel))
-					continue; /* Will be done after the loop. */
+					continue;	/* Will be done after the loop. */
 				YBCExecuteInsertHeapTupleForDb(dboid, heapRel, tup,
 											   ONCONFLICT_NONE, &ybctid,
 											   YB_TRANSACTIONAL);
@@ -478,8 +483,9 @@ CatalogTuplesMultiInsertWithInfo(Relation heapRel, TupleTableSlot **slot,
 
 	if (IsYugaByteEnabled())
 	{
-		bool	  shouldFree;
-		HeapTuple tuple;
+		bool		shouldFree;
+		HeapTuple	tuple;
+
 		for (int i = 0; i < ntuples; i++)
 		{
 			tuple = ExecFetchSlotHeapTuple(slot[i], false, &shouldFree);
@@ -514,6 +520,29 @@ CatalogTuplesMultiInsertWithInfo(Relation heapRel, TupleTableSlot **slot,
 	}
 }
 
+static void
+YBCatalogTupleUpdate(Relation heapRel, HeapTuple tup,
+					 CatalogIndexState indstate)
+{
+	HeapTuple	oldtup = NULL;
+	bool		has_indices = YBRelHasSecondaryIndices(heapRel);
+
+	Assert(HEAPTUPLE_YBCTID(tup));
+
+	if (has_indices)
+	{
+		YbFetchHeapTuple(heapRel, HEAPTUPLE_YBCTID(tup), &oldtup);
+		CatalogIndexDelete(indstate, oldtup);
+	}
+
+	YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
+	/* Update the local cache automatically */
+	YbSetSysCacheTuple(heapRel, tup);
+
+	if (has_indices)
+		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
+}
+
 /*
  * CatalogTupleUpdate - do heap and indexing work for updating a catalog tuple
  *
@@ -536,33 +565,13 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 	if (IsYugaByteEnabled())
 	{
-		HeapTuple	oldtup = NULL;
-		bool		has_indices = YBRelHasSecondaryIndices(heapRel);
-
-		if (has_indices)
-		{
-			if (tup->t_ybctid)
-			{
-				YbFetchHeapTuple(heapRel, tup->t_ybctid, &oldtup);
-				CatalogIndexDelete(indstate, oldtup);
-			}
-			else
-				YBC_LOG_WARNING("ybctid missing in %s's tuple",
-								RelationGetRelationName(heapRel));
-		}
-
-		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
-		/* Update the local cache automatically */
-		YbSetSysCacheTuple(heapRel, tup);
-
-		if (has_indices)
-			CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
+		YBCatalogTupleUpdate(heapRel, tup, indstate);
 	}
 	else
 	{
 		simple_heap_update(heapRel, otid, tup);
 
-		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
+		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
 	}
 
 	CatalogCloseIndexes(indstate);
@@ -584,27 +593,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 
 	if (IsYugaByteEnabled())
 	{
-		HeapTuple	oldtup = NULL;
-		bool		has_indices = YBRelHasSecondaryIndices(heapRel);
-
-		if (has_indices)
-		{
-			if (tup->t_ybctid)
-			{
-				YbFetchHeapTuple(heapRel, tup->t_ybctid, &oldtup);
-				CatalogIndexDelete(indstate, oldtup);
-			}
-			else
-				YBC_LOG_WARNING("ybctid missing in %s's tuple",
-								RelationGetRelationName(heapRel));
-		}
-
-		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
-		/* Update the local cache automatically */
-		YbSetSysCacheTuple(heapRel, tup);
-
-		if (has_indices)
-			CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
+		YBCatalogTupleUpdate(heapRel, tup, indstate);
 	}
 	else
 	{
@@ -612,7 +601,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 
 		simple_heap_update(heapRel, otid, tup);
 
-		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
+		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
 	}
 }
 

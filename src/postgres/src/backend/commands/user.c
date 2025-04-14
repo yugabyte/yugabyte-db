@@ -12,8 +12,6 @@
  */
 #include "postgres.h"
 
-#include <assert.h>
-
 #include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/table.h"
@@ -41,9 +39,11 @@
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
+#include <assert.h>
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_pg_authid_oid = InvalidOid;
@@ -274,7 +274,7 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser or a member of the yb_db_admin "
-					 		"role to create bypassrls users")));
+							"role to create bypassrls users")));
 	}
 	else
 	{
@@ -498,9 +498,10 @@ YbIsPgAuthTupleEqual(TupleDesc pg_authid_dsc,
 					 HeapTuple auth_tup1,
 					 HeapTuple auth_tup2)
 {
-	static_assert(sizeof(*(Form_pg_authid)0) == 80, "size mismatch");
+	static_assert(sizeof(*(Form_pg_authid) 0) == 80, "size mismatch");
 	Form_pg_authid authform1 = (Form_pg_authid) GETSTRUCT(auth_tup1);
 	Form_pg_authid authform2 = (Form_pg_authid) GETSTRUCT(auth_tup2);
+
 	/* All these struct members have a not null constraint. */
 	if (authform1->oid != authform2->oid ||
 		authform1->rolsuper != authform2->rolsuper ||
@@ -517,8 +518,10 @@ YbIsPgAuthTupleEqual(TupleDesc pg_authid_dsc,
 #ifdef CATALOG_VARLEN
 #error "need to compare extra members"
 #endif
-	Datum datum1, datum2;
-	bool isnull1, isnull2;
+	Datum		datum1,
+				datum2;
+	bool		isnull1,
+				isnull2;
 
 	/* Check rolpassword (SQL type text), can be null. */
 	datum1 = heap_getattr(auth_tup1, Anum_pg_authid_rolpassword,
@@ -584,7 +587,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	DefElem    *dbypassRLS = NULL;
 	Oid			roleid;
 
-	char       *profile = NULL;
+	char	   *profile = NULL;
 	int			unlocked = -1;
 	DefElem    *dprofile = NULL;
 	DefElem    *dnoprofile = NULL;
@@ -749,7 +752,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("must be superuser or a member of the yb_db_admin "
-					 		"role to change bypassrls attribute")));
+							"role to change bypassrls attribute")));
 	}
 	else if (profile != NULL || dnoprofile != NULL || dunlocked != NULL)
 	{
@@ -775,8 +778,9 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 			YbCreateRoleProfile(roleid, rolename, profile);
 		else if (dunlocked != NULL)
 			YbSetRoleProfileStatus(roleid, rolename,
-								   unlocked == 0 ? YB_ROLPRFSTATUS_LOCKED
-												 : YB_ROLPRFSTATUS_OPEN);
+								   (unlocked == 0 ?
+									YB_ROLPRFSTATUS_LOCKED :
+									YB_ROLPRFSTATUS_OPEN));
 		else
 		{
 			Assert(dnoprofile);
@@ -868,7 +872,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("cannot set connection limit for postgres"),
-					 errhint("did you mean ALTER ROLE %s CONNECTION LIMIT -1", rolename)));
+					 errhint("Did you mean ALTER ROLE %s CONNECTION LIMIT -1.", rolename)));
 		new_record[Anum_pg_authid_rolconnlimit - 1] = Int32GetDatum(connlimit);
 		new_record_repl[Anum_pg_authid_rolconnlimit - 1] = true;
 	}
@@ -1310,7 +1314,7 @@ RenameRole(const char *oldname, const char *newname)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("cannot rename postgres"),
 				 strcmp(oldname, "postgres") != 0 ?
-				  errhint("ALTER ROLE %s RENAME TO postgres", oldname) : 0));
+				 errhint("ALTER ROLE %s RENAME TO postgres", oldname) : 0));
 
 	/*
 	 * If built with appropriate switch, whine when regression-testing
@@ -1495,7 +1499,7 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("non-superuser cannot reassign objects "
-					 		"from superuser")));
+							"from superuser")));
 	}
 
 	/* Must have privileges on the receiving side too */
@@ -1603,6 +1607,16 @@ AddRoleMems(const char *rolename, Oid roleid,
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to set grantor")));
+
+	if (!superuser() && *YBCGetGFlags()->ysql_block_dangerous_roles &&
+		(roleid == ROLE_PG_EXECUTE_SERVER_PROGRAM ||
+		 roleid == ROLE_PG_READ_ALL_DATA ||
+		 roleid == ROLE_PG_READ_SERVER_FILES ||
+		 roleid == ROLE_PG_WRITE_ALL_DATA ||
+		 roleid == ROLE_PG_WRITE_SERVER_FILES))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("read/write data/files roles are disabled")));
 
 	pg_authmem_rel = table_open(AuthMemRelationId, RowExclusiveLock);
 	pg_authmem_dsc = RelationGetDescr(pg_authmem_rel);

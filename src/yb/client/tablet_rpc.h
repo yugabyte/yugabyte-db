@@ -127,8 +127,9 @@ class TabletInvoker {
                          const std::shared_ptr<const YBTable>& table,
                          rpc::RpcRetrier* retrier,
                          Trace* trace,
-                         master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
-                         master::IncludeDeleted include_deleted = master::IncludeDeleted::kFalse);
+                         master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
+                         master::IncludeDeleted include_deleted = master::IncludeDeleted::kFalse,
+                         const bool fail_on_not_found = false);
 
   virtual ~TabletInvoker();
 
@@ -220,8 +221,8 @@ class TabletInvoker {
   // while this object is alive.
   Trace* const trace_;
 
-  // Whether or not to allow lookups of inactive tablets.
-  const master::IncludeInactive include_inactive_;
+  // Whether or not to allow lookups of hiddden tablets.
+  const master::IncludeHidden include_hidden_;
 
   // Whether or not to allow deleted tablets.
   const master::IncludeDeleted include_deleted_;
@@ -243,6 +244,8 @@ class TabletInvoker {
   const bool local_tserver_only_;
 
   const bool consistent_prefix_;
+
+  const bool fail_on_not_found_;
 
   // The TS receiving the write. May change if the write is retried.
   // RemoteTabletServer is taken from YBClient cache, so it is guaranteed that those objects are

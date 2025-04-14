@@ -15,14 +15,14 @@ public class UserTaskDetails {
 
   // The various groupings of user facing subtasks.
   public enum SubTaskGroupType {
+    // Default generic subtask group type. Do not use this to set as it's given special treatment.
+    Configuring,
+
     // Used for parent tasks which could have own details/errors. Only for UI/API
     // purposes, not stored in DB.
     Preparation,
 
-    // Ignore this subtask and do not display it to the user.
-    Invalid,
-
-    // Perform preflight checks to determine if the node is ready to be configured or provisioned.
+    // Perform preflight checks to determine if the task target is healthy.
     PreflightChecks,
 
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
@@ -284,7 +284,22 @@ public class UserTaskDetails {
     CreatePodDisruptionBudgetPolicy,
 
     // Remove Pod Disruption Budget Policy
-    RemovingPodDisruptionBudgetPolicy
+    RemovingPodDisruptionBudgetPolicy,
+
+    // Validate after upgrade
+    PostUpdateValidations,
+
+    // PITR Restore step during failover
+    PITRRestore,
+
+    // Pause replication
+    PauseReplication,
+
+    // Persist use clockbound
+    PersistUseClockbound,
+
+    // Support bundle component download
+    SupportBundleComponentDownload
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -294,15 +309,17 @@ public class UserTaskDetails {
     String title;
     String description;
     switch (subTaskGroupType) {
+      case Configuring:
+        title = "Configuring";
+        description = "Applying the configuration.";
+        break;
       case Preparation:
         title = "Action preparation";
         description = "Preparing to execute a selected action.";
         break;
       case PreflightChecks:
         title = "Preflight Checks";
-        description =
-            "Perform preflight checks to determine if node is ready"
-                + " to be provisioned/configured.";
+        description = "Perform preflight checks to determine if the task target is healthy.";
         break;
       case Provisioning:
         title = "Provisioning";
@@ -659,6 +676,25 @@ public class UserTaskDetails {
       case RemovingPodDisruptionBudgetPolicy:
         title = "Removing Pod Disruption Budget Policy";
         description = "Removing Pod Disruption Budget Policy";
+        break;
+      case PostUpdateValidations:
+        title = "Validating after updates";
+        description = "Validating updates applied correctly";
+        break;
+      case PITRRestore:
+        title = "PITR Restore";
+        description = "Restoring namespaces using PITR to a consistent cut";
+        break;
+      case PauseReplication:
+        title = "Pause Replication";
+        description = "Pause replication from source to target universe";
+      case SupportBundleComponentDownload:
+        title = "Downloading support bundle content";
+        description = "Downloading support bundle content from DB nodes";
+        break;
+      case PersistUseClockbound:
+        title = "Persist useClockbound";
+        description = "Persist useClockbound true/false in userIntent";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

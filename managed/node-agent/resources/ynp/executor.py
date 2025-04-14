@@ -17,7 +17,10 @@ class Executor:
         # Need to validate only in case of onprem nodes.
         if self.args.extra_vars is None:
             command_instance.validate()
-        if self.args.preflight_check:
+
+        if self.args.dry_run:
+            command_instance.dry_run()
+        elif self.args.preflight_check:
             command_instance.run_preflight_checks()
         else:
             command_instance.execute()

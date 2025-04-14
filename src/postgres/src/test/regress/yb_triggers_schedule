@@ -3,10 +3,10 @@
 ####################################################################################################
 # Triggers Testsuites
 ####################################################################################################
-# Dependency for `yb_pg_triggers`
-test: yb_pg_test_setup
+# Dependency for `yb.port.triggers`
+test: yb.port.test_setup
 
-test: yb_pg_triggers
-test: yb_triggers
-test: yb_pg_event_trigger
-test: yb_event_trigger
+test: yb.port.triggers
+test: yb.orig.triggers
+test: yb.port.event_trigger
+test: yb.orig.event_trigger

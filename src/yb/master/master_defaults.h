@@ -94,5 +94,7 @@ static constexpr int kNumSystemTablesWithTxn = kNumSystemTables + 1;
 constexpr uint16_t kMasterDefaultPort = 7100;
 constexpr uint16_t kMasterDefaultWebPort = 7000;
 
+static constexpr int32_t kInvalidClusterConfigVersion = 0;
+
 } // namespace master
 } // namespace yb

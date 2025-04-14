@@ -198,7 +198,7 @@ EndCommand(const QueryCompletion *qc, CommandDest dest, bool force_undecorated_o
 				snprintf(completionTag, COMPLETION_TAG_BUFSIZE, "%s", tagname);
 			pq_putmessage('C', completionTag, strlen(completionTag) + 1);
 
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case DestNone:
 		case DestDebug:
 		case DestSPI:

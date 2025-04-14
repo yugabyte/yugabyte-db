@@ -78,8 +78,7 @@ class FilterBlockReader {
   FilterBlockReader() {}
   virtual ~FilterBlockReader() {}
 
-  virtual bool KeyMayMatch(const Slice& key,
-                           uint64_t block_offset = kNotValid) = 0;
+  virtual bool KeyMayMatch(Slice key, uint64_t block_offset = kNotValid) = 0;
   virtual bool PrefixMayMatch(const Slice& prefix,
                               uint64_t block_offset = kNotValid) = 0;
   virtual size_t ApproximateMemoryUsage() const = 0;

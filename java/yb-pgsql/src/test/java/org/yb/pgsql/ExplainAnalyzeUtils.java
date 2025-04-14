@@ -24,6 +24,7 @@ import com.google.gson.JsonParser;
 public class ExplainAnalyzeUtils {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgExplainAnalyze.class);
   public static final String NODE_AGGREGATE = "Aggregate";
+  public static final String NODE_APPEND = "Append";
   public static final String NODE_BITMAP_INDEX_SCAN = "Bitmap Index Scan";
   public static final String NODE_BITMAP_OR = "BitmapOr";
   public static final String NODE_BITMAP_AND = "BitmapAnd";
@@ -38,7 +39,7 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_MERGE_JOIN = "Merge Join";
   public static final String NODE_MODIFY_TABLE = "ModifyTable";
   public static final String NODE_NESTED_LOOP = "Nested Loop";
-  public static final String NODE_RESULT = "Result";
+  public static final String NODE_RESULT = "Result *RESULT*";
   public static final String NODE_SEQ_SCAN = "Seq Scan";
   public static final String NODE_SORT = "Sort";
   public static final String NODE_VALUES_SCAN = "Values Scan";
@@ -255,7 +256,7 @@ public class ExplainAnalyzeUtils {
         options.summary, options.timing, options.verbose);
   }
 
-  private static TopLevelCheckerBuilder makeTopLevelBuilder() {
+  public static TopLevelCheckerBuilder makeTopLevelBuilder() {
     return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false);
   }
 

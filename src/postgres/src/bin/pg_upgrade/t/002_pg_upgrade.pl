@@ -221,7 +221,7 @@ if (defined($ENV{oldinstall}))
 
 	my $dump_data = slurp_file($dump1_file);
 
-	my $newregresssrc = "$srcdir/src/test/regress";
+	my $newregresssrc = dirname($ENV{REGRESS_SHLIB});
 	foreach (@libpaths)
 	{
 		my $libpath = $_;
@@ -254,6 +254,12 @@ if (defined($ENV{oldinstall}))
 	}
 }
 
+# Create an invalid database, will be deleted below
+$oldnode->safe_psql('postgres', qq(
+  CREATE DATABASE regression_invalid;
+  UPDATE pg_database SET datconnlimit = -2 WHERE datname = 'regression_invalid';
+));
+
 # In a VPATH build, we'll be started in the source directory, but we want
 # to run pg_upgrade in the build directory so that any files generated finish
 # in it, like delete_old_cluster.{sh,bat}.
@@ -282,6 +288,26 @@ ok(-d $newnode->data_dir . "/pg_upgrade_output.d",
 	"pg_upgrade_output.d/ not removed after pg_upgrade failure");
 rmtree($newnode->data_dir . "/pg_upgrade_output.d");
 
+# Check that pg_upgrade aborts when encountering an invalid database
+command_checks_all(
+	[
+		'pg_upgrade', '--no-sync', '-d', $oldnode->data_dir,
+		'-D', $newnode->data_dir, '-b', $oldbindir,
+		'-B', $newbindir, '-s', $newnode->host,
+		'-p', $oldnode->port, '-P', $newnode->port,
+		'--check',
+	],
+	1,
+	[qr/invalid/], # pg_upgrade prints errors on stdout :(
+	[qr//],
+	'invalid database causes failure');
+rmtree($newnode->data_dir . "/pg_upgrade_output.d");
+
+# And drop it, so we can continue
+$oldnode->start;
+$oldnode->safe_psql('postgres', 'DROP DATABASE regression_invalid');
+$oldnode->stop;
+
 # --check command works here, cleans up pg_upgrade_output.d.
 command_ok(
 	[
@@ -293,7 +319,7 @@ command_ok(
 	],
 	'run of pg_upgrade --check for new instance');
 ok(!-d $newnode->data_dir . "/pg_upgrade_output.d",
-	"pg_upgrade_output.d/ not removed after pg_upgrade --check success");
+	"pg_upgrade_output.d/ removed after pg_upgrade --check success");
 
 # Actual run, pg_upgrade_output.d is removed at the end.
 command_ok(
@@ -321,9 +347,14 @@ if (-d $log_path)
 			  if $File::Find::name =~ m/.*\.log/;
 		},
 		$newnode->data_dir . "/pg_upgrade_output.d");
+
+	my $test_logfile = $PostgreSQL::Test::Utils::test_logfile;
+
+	note "=== pg_upgrade logs found - appending to $test_logfile ===\n";
 	foreach my $log (@log_files)
 	{
-		note "=== contents of $log ===\n";
+		note "=== appending $log ===\n";
+		print "=== contents of $log ===\n";
 		print slurp_file($log);
 		print "=== EOF ===\n";
 	}
@@ -338,15 +369,9 @@ push(@dump_command, '--extra-float-digits', '0')
   if ($oldnode->pg_version < 12);
 $newnode->command_ok(\@dump_command, 'dump after running pg_upgrade');
 
-# No need to apply filters on the dumps if working on the same version
-# for the old and new nodes.
-my $dump1_filtered = $dump1_file;
-my $dump2_filtered = $dump2_file;
-if ($oldnode->pg_version != $newnode->pg_version)
-{
-	$dump1_filtered = filter_dump(1, $oldnode->pg_version, $dump1_file);
-	$dump2_filtered = filter_dump(0, $oldnode->pg_version, $dump2_file);
-}
+# Filter the contents of the dumps.
+my $dump1_filtered = filter_dump(1, $oldnode->pg_version, $dump1_file);
+my $dump2_filtered = filter_dump(0, $oldnode->pg_version, $dump2_file);
 
 # Compare the two dumps, there should be no differences.
 my $compare_res = compare($dump1_filtered, $dump2_filtered);

@@ -69,7 +69,7 @@ var urlArtifactReleaseCmd = &cobra.Command{
 			)
 		}
 
-		logrus.Debugf("Resource UUID for current release: %s\n", resourceUUID)
+		logrus.Infof("Resource UUID for current release: %s\n", resourceUUID)
 		logrus.Debug("Extracting Metadata...\n")
 
 		msg := fmt.Sprintf("The resource %s extraction is in progress",

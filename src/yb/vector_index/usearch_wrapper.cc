@@ -29,6 +29,18 @@
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vectorann_util.h"
 
+namespace unum::usearch {
+
+// Expcilit specialization for the operator== is required for usearch need, as a compiler is not
+// smart enough to resolve StronglyTypedUuid's comparison operator, where one argument is different
+// from StronglyTypedUuid but can be implicitly casted the corresponding StronglyTypedUuid.
+bool operator==(const yb::vector_index::VectorId& lhs,
+                const yb::vector_index::VectorId& rhs) noexcept {
+  return *lhs == *rhs;
+}
+
+} // namespace unum::usearch
+
 namespace yb::vector_index {
 
 using unum::usearch::byte_t;
@@ -74,28 +86,46 @@ scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
 
 namespace {
 
-// No-op VectorIterator
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class NoOpVectorIterator : public AbstractIterator<std::pair<Vector, VertexId>> {
+class UsearchVectorIterator : public AbstractIterator<std::pair<VectorId, Vector>> {
+ public:
+  using IteratorPair = std::pair<VectorId, Vector>;
+  using member_citerator_t = typename unum::usearch::index_dense_gt<VectorId>::member_citerator_t;
+
+  UsearchVectorIterator(
+      size_t dimensions, member_citerator_t it, const index_dense_gt<VectorId>* index)
+      : dimensions_(dimensions), it_(it), index_(index) {}
+
  protected:
-  std::pair<Vector, VertexId> Dereference() const override {
-    return {Vector(), VertexId{}};
+  IteratorPair Dereference() const override {
+    // TODO(vector_index) do it in more efficient way
+    Vector result_vector(dimensions_);
+    index_->get(it_.key(), result_vector.data());
+
+    return IteratorPair(it_.key(), result_vector);
   }
 
   void Next() override {
-    // TODO(vector_index) implement iterator for Usearch
+    ++it_;
   }
 
-  bool NotEquals(const AbstractIterator<std::pair<Vector, VertexId>>&) const override {
-    return false;  // Always the same, indicating no iteration
+  bool NotEquals(const AbstractIterator<IteratorPair>& other) const override {
+    const auto* other_iterator = down_cast<const UsearchVectorIterator*>(&other);
+    if (!other_iterator) return true;
+    return it_ != other_iterator->it_;
   }
+
+ private:      // Reference to the Usearch index
+  size_t dimensions_;              // Dimensionality of the vectors
+  member_citerator_t it_; // Iterator over the internal Usearch entities
+  const index_dense_gt<VectorId>* index_;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class UsearchIndex :
     public IndexWrapperBase<UsearchIndex<Vector, DistanceResult>, Vector, DistanceResult> {
  public:
-  using IndexImpl = index_dense_gt<VertexId>;
+  using IndexImpl = index_dense_gt<VectorId>;
 
   explicit UsearchIndex(const HNSWOptions& options)
       : dimensions_(options.dimensions),
@@ -109,14 +139,14 @@ class UsearchIndex :
     CHECK_GT(dimensions_, 0);
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> BeginImpl() const override {
-    // (TODO(vector_index) implement real vector iterator for USearchIndex
-    return std::make_unique<NoOpVectorIterator<Vector, DistanceResult>>();
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
+    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
+        dimensions_, index_.cbegin(), &index_);
   }
 
-  std::unique_ptr<AbstractIterator<std::pair<Vector, VertexId>>> EndImpl() const override {
-    // (TODO(vector_index) implement real vector iterator for USearchIndex
-    return std::make_unique<NoOpVectorIterator<Vector, DistanceResult>>();
+  std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> EndImpl() const override {
+    return std::make_unique<UsearchVectorIterator<Vector, DistanceResult>>(
+        dimensions_, index_.cend(), &index_);
   }
 
   Status Reserve(
@@ -125,31 +155,48 @@ class UsearchIndex :
     // Since it always allocate power of 2, we use this weird logic to make it pick minimal
     // power of 2 that is greater or equals than num_vectors.
     auto rounded_num_vectors = unum::usearch::ceil2(num_vectors);
+    auto num_members = std::max<size_t>(rounded_num_vectors * 2 / 3, 1);
     index_.reserve(unum::usearch::index_limits_t(
-        rounded_num_vectors * 2 / 3, max_concurrent_inserts + max_concurrent_reads));
+      num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
     return Status::OK();
   }
 
-  Status DoInsert(VertexId vertex_id, const Vector& v) {
-    auto add_result = index_.add(vertex_id, v.data());
+  Status DoInsert(VectorId vector_id, const Vector& v) {
+    auto add_result = index_.add(vector_id, v.data());
     RSTATUS_DCHECK(
-        add_result, RuntimeError, "Failed to add a vector: $0", add_result.error.release());
+        add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
+        add_result.error.release());
     return Status::OK();
+  }
+
+  size_t Size() const override {
+    return index_.size();
+  }
+
+  size_t Capacity() const override {
+    return index_.limits().members;
   }
 
   Status DoSaveToFile(const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
-    if (!index_.save(output_file_t(path.c_str()))) {
-      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
+    VLOG_WITH_FUNC(2) << path << ", size: " << index_.size();
+    try {
+      if (!index_.save(output_file_t(path.c_str()))) {
+        return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
+      }
+    } catch(std::exception& exc) {
+      return STATUS_FORMAT(IOError, "Failed to save index to file $0: $1", path, exc.what());
     }
     return Status::OK();
   }
 
-  Status DoLoadFromFile(const std::string& path) {
+  Status DoLoadFromFile(const std::string& path, size_t max_concurrent_reads) {
     auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
     if (result) {
+      search_semaphore_.emplace(max_concurrent_reads);
       index_ = std::move(result.index);
+      VLOG_WITH_FUNC(2) << path << ": " << index_.size();
       return Status::OK();
     }
     return STATUS_FORMAT(IOError, "Failed to load index from file: $0", path);
@@ -160,29 +207,30 @@ class UsearchIndex :
         pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
   }
 
-  Result<std::vector<VertexWithDistance<DistanceResult>>> DoSearch(
-      const Vector& query_vector, size_t max_num_results) const {
+  Result<std::vector<VectorWithDistance<DistanceResult>>> DoSearch(
+      const Vector& query_vector, const SearchOptions& options) const {
     SemaphoreLock lock(*search_semaphore_);
-    auto usearch_results = index_.search(query_vector.data(), max_num_results);
+    auto usearch_results = index_.filtered_search(
+        query_vector.data(), options.max_num_results, options.filter);
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());
-    std::vector<VertexWithDistance<DistanceResult>> result_vec;
+    std::vector<VectorWithDistance<DistanceResult>> result_vec;
     result_vec.reserve(usearch_results.size());
     for (size_t i = 0; i < usearch_results.size(); ++i) {
       auto match = usearch_results[i];
-      result_vec.push_back(VertexWithDistance<DistanceResult>(match.member.key, match.distance));
+      result_vec.push_back(VectorWithDistance<DistanceResult>(match.member.key, match.distance));
     }
     return result_vec;
   }
 
-  Result<Vector> GetVector(VertexId vertex_id) const override {
-    Vector result;
-    result.resize(dimensions_);
-    if (index_.get(vertex_id, result.data())) {
-      return result;
-    }
-    return Vector();
+  Result<Vector> GetVector(VectorId vector_id) const override {
+    // TODO(vector_index) do it in more efficient way
+    Vector result(dimensions_);
+    SCHECK_EQ(
+        index_.get(vector_id, result.data()), 1, NotFound,
+        Format("Vector $0 is missing in index", vector_id));
+    return result;
   }
 
   static std::string StatsToStringHelper(const IndexImpl::stats_t& stats) {
@@ -226,7 +274,7 @@ class UsearchIndex :
   size_t dimensions_;
   DistanceKind distance_kind_;
   metric_punned_t metric_;
-  index_dense_gt<VertexId> index_;
+  IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
 };
 

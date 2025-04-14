@@ -1,9 +1,9 @@
 ---
 title: Manually provision on-premises nodes using a script
-headerTitle: Assisted manual provisioning
-linkTitle: Assisted manual
-description: Provision the on-premises nodes using a script.
-headContent: Provision on-premises nodes using the script
+headerTitle: Legacy assisted manual provisioning
+linkTitle: Legacy assisted manual
+description: Provision the on-premises nodes manually using a script.
+headContent: Manually provision on-premises nodes using the legacy assisted manual provisioning script
 menu:
   preview_yugabyte-platform:
     identifier: on-premises-script
@@ -12,13 +12,19 @@ menu:
 type: docs
 ---
 
+{{< warning title="Deprecated workflow" >}}
+The assisted manual provisioning script (provision_instance.py) shown on the **Instances** page is strictly for legacy manual provisioning.
+
+If you provisioned your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh), you can add your nodes (if they have not already been added to the provider) by clicking [Add Instances](../on-premises-nodes/#add-instances-to-the-on-premises-provider).
+{{< /warning >}}
+
 If the SSH user configured in the on-premises provider has sudo privileges that require a password, you can provision your nodes by running the pre-provisioning script (`provision_instance.py`).
 
 The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
 
-{{< warning title="Note" >}}
-If the SSH user does not have any sudo privileges at all, you can't use the script and need to manually provision nodes. Refer to [Fully manual](../../prepare/server-nodes-software/software-on-prem-manual/).
-{{< /warning >}}
+{{< note title="Note" >}}
+If the SSH user does not have any sudo privileges at all, you can't use the assisted manual script and need to manually provision nodes. Refer to [Legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/).
+{{< /note >}}
 
 ## Manually provision nodes using the script
 
@@ -26,15 +32,9 @@ You can manually provision each node using the pre-provisioning Python script, a
 
 1. Log in to the YugabyteDB Anywhere virtual machine via SSH.
 
-1. If you installed YugabyteDB Anywhere using Replicated, access the Docker `yugaware` container, as follows:
-
-    ```sh
-    sudo docker exec -it yugaware bash
-    ```
-
 1. In YugabyteDB Anywhere, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the on-premises provider configuration you created, and choose **Instances**.
 
-    ![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
+    ![Legacy On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
 
 1. Copy and paste the Python script command under **Instances**.
 

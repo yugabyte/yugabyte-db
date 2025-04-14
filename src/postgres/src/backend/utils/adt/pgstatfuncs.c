@@ -17,6 +17,7 @@
 #include "access/htup_details.h"
 #include "access/xlog.h"
 #include "access/xlogprefetcher.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_type.h"
 #include "common/ip.h"
@@ -34,6 +35,7 @@
 
 /* YB includes */
 #include "commands/progress.h"
+#include "commands/yb_cmds.h"
 #include "inttypes.h"
 #include "pg_yb_utils.h"
 #include "utils/uuid.h"
@@ -45,7 +47,7 @@
 
 extern bool yb_retrieved_concurrent_index_progress;
 
-uint64_t *yb_pg_stat_retrieve_concurrent_index_progress();
+uint64_t   *yb_pg_stat_retrieve_concurrent_index_progress();
 
 Datum
 pg_stat_get_numscans(PG_FUNCTION_ARGS)
@@ -474,8 +476,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	ProgressCommandType cmdtype;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 
-	uint64_t *index_progress = NULL;
-	uint64_t *index_progress_iterator = NULL;
+	uint64_t   *index_progress = NULL;
+	uint64_t   *index_progress_iterator = NULL;
 
 	/* Translate command name into command type code. */
 	if (pg_strcasecmp(cmd, "VACUUM") == 0)
@@ -544,7 +546,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		 * command.
 		 */
 		if (!beentry || (beentry->st_progress_command != cmdtype &&
-						beentry->st_progress_command != PROGRESS_COMMAND_COPY))
+						 beentry->st_progress_command != PROGRESS_COMMAND_COPY))
 			continue;
 
 		/*
@@ -646,16 +648,20 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 	InitMaterializedSRF(fcinfo, 0);
 
-	YBCPgSessionTxnInfo *txn_infos = NULL;
+	YbcPgSessionTxnInfo *txn_infos = NULL;
+
+	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
+	size_t		yb_numreplicationslots = 0;
+
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
-		txn_infos = (YBCPgSessionTxnInfo *) palloc0(
-			sizeof(YBCPgSessionTxnInfo) * num_backends);
+		txn_infos = (YbcPgSessionTxnInfo *)
+			palloc0(sizeof(YbcPgSessionTxnInfo) * num_backends);
 		/* 1-based index */
 		for (curr_backend = 1; curr_backend <= num_backends; ++curr_backend)
 		{
-			const PgBackendStatus *beentry =
-				pgstat_fetch_stat_beentry(curr_backend);
+			const PgBackendStatus *beentry = pgstat_fetch_stat_beentry(curr_backend);
+
 			if (!beentry)
 				break;
 			txn_infos[curr_backend - 1].session_id = beentry->yb_session_id;
@@ -663,6 +669,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		yb_txn_rpc_timestamp = GetCurrentTimestamp();
 		HandleYBStatus(YBCPgActiveTransactions(txn_infos, num_backends));
 	}
+
+	if (IsYugaByteEnabled())
+		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	/* 1-based index */
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
@@ -734,6 +743,21 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			values[16] = TransactionIdGetDatum(local_beentry->backend_xmin);
 		else
 			nulls[16] = true;
+
+		if (IsYugaByteEnabled())
+		{
+			int slotno;
+			for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
+			{
+				YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+				if (slot->active_pid == beentry->st_procpid)
+				{
+					values[16] = slot->xmin;
+					nulls[16]  = false;
+					break;
+				}
+			}
+		}
 
 		/* Values only available to role member or pg_read_all_stats */
 		if (HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
@@ -1013,17 +1037,19 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		}
 
 		nulls[YB_BACKEND_XID_COL] = true;
-		/* The activity_start_timestamp is updated at the start of every
+
+		/*
+		 * The activity_start_timestamp is updated at the start of every
 		 * query. When the query start timestamp is later (greater) than the
-		 * timestamp of the RPC above, this indicates that the data in the
-		 * RPC is out-of-date. In such cases, we skip printing the
-		 * transaction ID.  */
+		 * timestamp of the RPC above, this indicates that the data in the RPC
+		 * is out-of-date. In such cases, we skip printing the transaction ID.
+		 */
 
 		if (yb_enable_pg_locks && beentry->yb_session_id &&
 			beentry->st_activity_start_timestamp <= yb_txn_rpc_timestamp)
 		{
 			Assert(txn_infos);
-			const YBCPgSessionTxnInfo *info = txn_infos + curr_backend - 1;
+			const YbcPgSessionTxnInfo *info = txn_infos + curr_backend - 1;
 
 			if (info->is_not_null)
 			{
@@ -1271,7 +1297,7 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 	clean_ipv6_addr(beentry->st_clientaddr.addr.ss_family, remote_host);
 
 	PG_RETURN_DATUM(DirectFunctionCall1(inet_in,
-										 CStringGetDatum(remote_host)));
+										CStringGetDatum(remote_host)));
 }
 
 Datum
@@ -1357,81 +1383,6 @@ pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(result);
 }
 
-
-/*
- * For this function, there exists a corresponding entry in pg_proc which dictates the input and schema of the output row.
- * This is used in a different manner from other methods like pgstat_get_backend_activity_start which will be called individually
- * in parallel. This method will return the rows in batched format all at once. Note that {i,o,o,o} in pg_proc means that for the
- * corresponding entry at the same index, it is an input if labeled i but output (represented by o) otherwise.
- */
-Datum
-yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
-{
-	#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not " \
-						"allowed in this context")));
-
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
-#ifdef YB_TODO
-	/* Yugabyte needs new implementation for stats */
-	Oid			db_oid = PG_ARGISNULL(0) ? -1 : PG_GETARG_OID(0);
-	size_t num_queries = 0;
-	PgStat_YBStatQueryEntry *queries = pgstat_fetch_ybstat_queries(db_oid, &num_queries);
-	for (size_t i = 0; i < num_queries; i++)
-	{
-		if (has_privs_of_role(GetUserId(), queries[i].st_userid) ||
-			is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS) ||
-			IsYbDbAdminUser(GetUserId()))
-		{
-			Datum		values[PG_YBSTAT_TERMINATED_QUERIES_COLS];
-			bool		nulls[PG_YBSTAT_TERMINATED_QUERIES_COLS];
-
-			MemSet(values, 0, sizeof(values));
-			MemSet(nulls, 0, sizeof(nulls));
-
-			values[0] = ObjectIdGetDatum(queries[i].database_oid);
-			values[1] = Int32GetDatum(queries[i].backend_pid);
-			values[2] = CStringGetTextDatum(queries[i].query_string);
-			values[3] = CStringGetTextDatum(queries[i].termination_reason);
-			values[4] = TimestampTzGetDatum(queries[i].activity_start_timestamp);
-			values[5] = TimestampTzGetDatum(queries[i].activity_end_timestamp);
-
-			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-		}
-		else
-			continue;
-	}
-#endif
-
-	tuplestore_donestoring(tupstore);
-
-	return (Datum) 0;
-}
 
 Datum
 pg_stat_get_db_xact_commit(PG_FUNCTION_ARGS)
@@ -2347,13 +2298,17 @@ pg_stat_reset_shared(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-/* Reset a single counter in the current database */
+/*
+ * Reset a statistics for a single object, which may be of current
+ * database or shared across all databases in the cluster.
+ */
 Datum
 pg_stat_reset_single_table_counters(PG_FUNCTION_ARGS)
 {
 	Oid			taboid = PG_GETARG_OID(0);
+	Oid			dboid = (IsSharedRelation(taboid) ? InvalidOid : MyDatabaseId);
 
-	pgstat_reset(PGSTAT_KIND_RELATION, MyDatabaseId, taboid);
+	pgstat_reset(PGSTAT_KIND_RELATION, dboid, taboid);
 
 	PG_RETURN_VOID();
 }
@@ -2696,12 +2651,13 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 	int			num_indexes = 0;
 	Oid			database_oids[num_backends];
 	Oid			index_oids[num_backends];
-	uint64_t	*progress = NULL;
+	uint64_t   *progress = NULL;
 
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
 	{
 		PgBackendStatus *beentry;
 		LocalPgBackendStatus *local_beentry;
+
 		local_beentry = pgstat_fetch_stat_local_beentry(curr_backend);
 
 		if (!local_beentry)

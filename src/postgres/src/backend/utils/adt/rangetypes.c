@@ -41,6 +41,8 @@
 #include "utils/lsyscache.h"
 #include "utils/rangetypes.h"
 #include "utils/timestamp.h"
+
+/* YB includes */
 #include "funcapi.h"
 
 
@@ -121,7 +123,7 @@ Datum
 range_out(PG_FUNCTION_ARGS)
 {
 	RangeType  *range = PG_GETARG_RANGE_P(0);
-	DatumDecodeOptions *decode_options = NULL;
+	YbDatumDecodeOptions *decode_options = NULL;
 	char	   *output_str;
 	RangeIOData *cache;
 	char		flags;
@@ -135,7 +137,7 @@ range_out(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() == 2)
 	{
-		decode_options = (DatumDecodeOptions *)PG_GETARG_POINTER(1);
+		decode_options = (YbDatumDecodeOptions *) PG_GETARG_POINTER(1);
 		TypeCacheEntry elemtype;
 		TypeCacheEntry typcache;
 
@@ -163,11 +165,12 @@ range_out(PG_FUNCTION_ARGS)
 		{
 			if (decode_options->option == 't')
 			{
-				DatumDecodeOptions tz_datum_decodeOptions;
+				YbDatumDecodeOptions tz_datum_decodeOptions;
+
 				tz_datum_decodeOptions.timezone = decode_options->timezone;
 				tz_datum_decodeOptions.from_YB = decode_options->from_YB;
 				lbound_str = DatumGetCString(FunctionCall2(decode_options->elem_finfo, lower.val,
-							PointerGetDatum(&tz_datum_decodeOptions)));
+														   PointerGetDatum(&tz_datum_decodeOptions)));
 			}
 			else
 			{
@@ -178,11 +181,12 @@ range_out(PG_FUNCTION_ARGS)
 		{
 			if (decode_options->option == 't')
 			{
-				DatumDecodeOptions tz_datum_decodeOptions;
+				YbDatumDecodeOptions tz_datum_decodeOptions;
+
 				tz_datum_decodeOptions.timezone = decode_options->timezone;
 				tz_datum_decodeOptions.from_YB = decode_options->from_YB;
 				ubound_str = DatumGetCString(FunctionCall2(decode_options->elem_finfo, upper.val,
-							PointerGetDatum(&tz_datum_decodeOptions)));
+														   PointerGetDatum(&tz_datum_decodeOptions)));
 			}
 			else
 			{
@@ -2557,7 +2561,8 @@ range_contains_elem_internal(TypeCacheEntry *typcache, const RangeType *r, Datum
  * values into a range object.  They are modeled after heaptuple.c's
  * heap_compute_data_size() and heap_fill_tuple(), but we need not handle
  * null values here.  TYPE_IS_PACKABLE must test the same conditions as
- * heaptuple.c's ATT_IS_PACKABLE macro.
+ * heaptuple.c's ATT_IS_PACKABLE macro.  See the comments thare for more
+ * details.
  */
 
 /* Does datatype allow packing into the 1-byte-header varlena format? */

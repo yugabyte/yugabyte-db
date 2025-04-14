@@ -55,6 +55,7 @@ DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_use_relcache_file);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
@@ -155,6 +156,10 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
         std::string(config.preload_additional_catalog_list);
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
+    // When invalidation messages are used, this test does not use the tserver response
+    // cache and the test will timeout if we wait for response cache counters to become
+    // greater than 0.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
     PgMiniTestBase::SetUp();
     metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());
@@ -255,6 +260,20 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
     }));
     ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
   }
+
+  // Test to verify the number of RPCs sent to the master during the first SELECT statement
+  // execution on a table with a primary key and extended statistics after a cache refresh.
+  // Presence of extended statistics triggers lookup against `pg_statistic_ext_data`.
+  void TestAfterCacheRefreshRPCCountOnSelectWithExtStats(size_t expected_master_rpc_count) {
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(aux_conn.Execute("CREATE STATISTICS extstats_t_k_v ON k, v FROM t"));
+    auto master_rpc_count_for_select = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+      VERIFY_RESULT(conn->Fetch("SELECT * FROM t"));
+      return static_cast<Status>(Status::OK());
+    }));
+    ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
+  }
 };
 
 constexpr auto kResponseCacheSize5MB = 5 * 1024 * 1024;
@@ -263,6 +282,7 @@ constexpr auto kPreloadCatalogList =
 constexpr auto kExtendedTableList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger,pg_statistic,pg_invalid"sv;
 constexpr auto kShortTableList = "pg_inherits"sv;
+constexpr auto kStatsTableList = "pg_statistic,pg_statistic_ext,pg_statistic_ext_data"sv;
 
 constexpr Configuration kConfigDefault;
 
@@ -296,6 +316,9 @@ constexpr Configuration kConfigPredictableMemoryUsage{
 constexpr Configuration kConfigSmallPreload{
     .preload_additional_catalog_list = kShortTableList};
 
+constexpr Configuration kConfigStatsPreload{
+    .preload_additional_catalog_list = kStatsTableList};
+
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
  private:
@@ -306,6 +329,7 @@ class ConfigurableTest : public Base {
 
 using PgCatalogPerfTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigDefault>;
 using PgCatalogMinPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigMinPreload>;
+using PgStatsPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigStatsPreload>;
 using PgCatalogWithUnlimitedCachePerfTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithUnlimitedCache>;
 using PgCatalogWithLimitedCachePerfTest =
@@ -440,13 +464,23 @@ TEST_F_EX(PgCatalogPerfTest,
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 3);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 4);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/12);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/13);
+}
+
+TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
+  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 7);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          AfterCacheRefreshRPCCountOnSelectWithExtStatsPreload,
+          PgStatsPreloadTest) {
+  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 3);
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive
@@ -833,9 +867,33 @@ TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalC
             "SELECT * FROM primary_table JOIN foreign_table ON primary_table.k = foreign_table.k"));
         return Status::OK();
       }));
-  // With yb_enable_fkey_catcache turned off, we would see more than 12 RPCs
+  // With yb_enable_fkey_catcache turned off, we would see more than 24 RPCs
   // because we have to look up the foreign keys from master.
-  ASSERT_EQ(select_rpc_count, 12);
+  ASSERT_EQ(select_rpc_count, 24);
+}
+
+// The test checks that sys catalog table prefetching works well in case of login of user with
+// non-trivial connection permissions.
+TEST_F(PgCatalogPerfTest, RestrictedConnections) {
+  constexpr auto kNewUserName = "new_user"sv;
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE ROLE new_role;"
+        "GRANT CONNECT ON DATABASE yugabyte TO new_role;"
+        "CREATE ROLE $0 LOGIN;"
+        "GRANT new_role TO $0;"
+        "REVOKE CONNECT ON DATABASE yugabyte FROM PUBLIC", kNewUserName));
+    // Establish new connection to update relcache_file after catalog version change
+    conn = ASSERT_RESULT(Connect());
+  }
+
+  auto settings = MakeConnSettings();
+  // Disable reconnect to speedup failure detection
+  settings.connect_timeout = 1;
+  settings.user = kNewUserName;
+  // Make sure new user with non-trivial connection permissions is able to connect
+  ASSERT_OK(PGConnBuilder(settings).Connect());
 }
 
 } // namespace yb::pgwrapper

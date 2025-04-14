@@ -73,7 +73,7 @@ class CowObject {
 
   // Lock the object for write (preventing concurrent mutators), and make a safe
   // copy of the object to mutate.
-  void StartMutation() {
+  void StartMutation() NO_THREAD_SAFETY_ANALYSIS {
     lock_.WriteLock();
     // Clone our object.
     dirty_state_.reset(new State(state_));
@@ -81,7 +81,7 @@ class CowObject {
 
   // Abort the current mutation. This drops the write lock without applying any
   // changes made to the mutable copy.
-  void AbortMutation() {
+  void AbortMutation() NO_THREAD_SAFETY_ANALYSIS {
     dirty_state_.reset();
     is_dirty_ = false;
     lock_.WriteUnlock();
@@ -100,11 +100,6 @@ class CowObject {
   }
 
   // Return the current state, not reflecting any in-progress mutations.
-  State& state() {
-    DCHECK(lock_.HasReaders() || lock_.HasWriteLock());
-    return state_;
-  }
-
   const State& state() const {
     DCHECK(lock_.HasReaders() || lock_.HasWriteLock());
     return state_;
@@ -132,8 +127,10 @@ class CowObject {
   // Thus, this is only really useful in the context of a DCHECK assertion.
   bool HasWriteLock() const { return lock_.HasWriteLock(); }
 
-  void WriteLockThreadChanged() {
-    lock_.WriteLockThreadChanged();
+  // Should be invoked only from ctor of appropriate object.
+  State& DirectStateForInitialSetup() {
+    DCHECK(!lock_.HasReaders() && !lock_.HasWriteLock());
+    return state_;
   }
 
  private:
@@ -289,10 +286,6 @@ class CowWriteLock {
 
   bool locked() const {
     return cow_ != nullptr;
-  }
-
-  void ThreadChanged() {
-    cow_->WriteLockThreadChanged();
   }
 
   ~CowWriteLock() {

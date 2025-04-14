@@ -1,3 +1,6 @@
+is_cloud={{ is_cloud | default(false) }}
+bin_path="/usr/local/bin"
+
 # Set system limits
 # Append limits to /etc/security/limits.conf if they don't already exist
 #
@@ -20,7 +23,7 @@ sed -i 's/*          soft    nproc     4096/*          soft    nproc     \
 
 
 # Determine the PLATFORM_ID
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
 
 if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
   # Check and set DefaultLimitNOFILE in /etc/systemd/system.conf
@@ -54,31 +57,126 @@ if ! grep -q "^vm.swappiness=" /etc/sysctl.conf; then
 fi
 sysctl -w vm.swappiness={{ vm_swappiness }}
 
-# Set and persist kernel.core_pattern
-if ! grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
-  echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
+if [[ "$is_cloud" == "False" ]]; then
+  # Set and persist kernel.core_pattern
+  if ! grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
+    echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
+  fi
+  sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
+
+  # Set and persist vm.max_map_count
+  if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf; then
+    echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
+  fi
+  sysctl -w vm.max_map_count={{ vm_max_map_count }}
 fi
-sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
 
-# Set and persist vm.max_map_count
-if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf; then
-  echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
+if [[ "$is_cloud" == "True" ]]; then
+  # Define paths and directories
+  DUMP_DIR="{{ yb_home_dir }}/cores/"
+
+  # Ensure the cores directory exists with proper permissions
+  mkdir -p "$DUMP_DIR"
+  chmod 0755 "$DUMP_DIR"
+  chown "{{ yb_user }}:{{ yb_user }}" "$DUMP_DIR"
+
+  # Create core dump compression script
+  cat << 'EOF' > "$bin_path/compress_core.sh"
+#!/bin/bash
+DUMP_DIR="/home/yugabyte/cores/"
+CORE_FILE="$DUMP_DIR/$(basename $1).$$.gz"
+GZIP_PATH=$(PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" which gzip)
+if [[ -z "$GZIP_PATH" ]]; then
+  echo "gzip not found, aborting." >> /home/yugabyte/cores/custom_core_dump.log
+  exit 1
 fi
-sysctl -w vm.max_map_count={{ vm_max_map_count }}
-
-echo "Kernel settings configured."
-
-echo "OS Configuration applied successfully."
-
-cat <<EOF >> /etc/systemd/journald.conf
-
-##### ADDED BY YUGABYTE #####
-Storage=persistent
-MaxRetentionSec=30days
-SystemMaxUse=400M
-##### ADDED BY YUGABYTE #####
+/usr/bin/gzip >> "$CORE_FILE"
+chmod 644 "$CORE_FILE"
 EOF
 
-systemctl restart systemd-journald
+  # Create core dump kernel pattern
+  CORE_SCRIPT="$bin_path/compress_core.sh"
+  CORE_DIR="{{ yb_home_dir }}/cores"
+  CORE_PATTERN="|$CORE_SCRIPT $CORE_DIR/core_yb.%t.%e.%p"
 
-echo "Journald settings configured."
+  # Apply the core pattern temporarily
+  sysctl -w kernel.core_pattern="$CORE_PATTERN"
+
+  # Update or append kernel.core_pattern in /etc/sysctl.conf
+  if grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
+      sed -i "s#^kernel.core_pattern=.*#kernel.core_pattern=$CORE_PATTERN#" /etc/sysctl.conf
+  else
+      echo "kernel.core_pattern=$CORE_PATTERN" | tee -a /etc/sysctl.conf > /dev/null
+  fi
+
+  # Set max map count
+  sysctl -w vm.max_map_count="{{ vm_max_map_count }}"
+
+  # Apply the changes system-wide
+  sysctl --system
+
+  # Ensure metrics directory exists
+  yb_metrics_dir="{{ yb_home_dir }}/metrics"
+  mkdir -p "$yb_metrics_dir"
+  chown -R "{{ yb_user }}:{{ yb_user }}" "$yb_metrics_dir"
+  chmod -R 755 "$yb_metrics_dir"
+
+  if [[ "{{ os_family }}" == "RedHat" ]]; then
+    # Check if tuned is installed
+    if command -v tuned-adm &> /dev/null; then
+        echo "Tuned is installed. Enabling and starting the service..."
+        systemctl enable --now tuned
+        # Ensure tuned service is running before applying a profile
+        if systemctl is-active --quiet tuned; then
+            tuned-adm profile latency-performance
+        else
+            echo "Error: Tuned service is not running. Skipping tuning configuration."
+        fi
+    else
+        echo "Tuned is not installed. Skipping tuning configuration."
+    fi
+  fi
+
+  # Check if the distribution is Ubuntu
+  if [[ "{{ os_distribution }}" == "Ubuntu" ]]; then
+    # Check if /etc/apt/apt.conf.d/20auto-upgrades exists
+    if [[ -f /etc/apt/apt.conf.d/20auto-upgrades ]]; then
+      echo "Reenabling unattended upgrades in /etc/apt/apt.conf.d/20auto-upgrades..."
+      sed -i '/Unattended-Upgrade/s/"0"/"1"/' /etc/apt/apt.conf.d/20auto-upgrades
+    else
+      echo "/etc/apt/apt.conf.d/20auto-upgrades not found. Skipping reenable of unattended upgrades."
+    fi
+
+    # Check if /etc/apt/apt.conf.d/50unattended-upgrades exists
+    if [[ -f /etc/apt/apt.conf.d/50unattended-upgrades ]]; then
+      echo "Disabling automatic reboot in /etc/apt/apt.conf.d/50unattended-upgrades..."
+      if ! grep -q 'Unattended-Upgrade::Automatic-Reboot "false";' /etc/apt/apt.conf.d/50unattended-upgrades; then
+        echo 'Unattended-Upgrade::Automatic-Reboot "false";' >> /etc/apt/apt.conf.d/50unattended-upgrades
+      fi
+    else
+      echo "/etc/apt/apt.conf.d/50unattended-upgrades not found. Skipping disable of automatic reboot."
+    fi
+  fi
+fi
+
+JOURNALD_CONF="/etc/systemd/journald.conf"
+CONFIG_BLOCK="##### ADDED BY YUGABYTE #####"
+SETTINGS="Storage=persistent
+MaxRetentionSec=30days
+SystemMaxUse=400M"
+
+# Check if the block already exists
+if ! grep -q "$CONFIG_BLOCK" "$JOURNALD_CONF"; then
+    echo -e "\n$CONFIG_BLOCK" | sudo tee -a "$JOURNALD_CONF" > /dev/null
+    echo "$SETTINGS" | sudo tee -a "$JOURNALD_CONF" > /dev/null
+    echo "$CONFIG_BLOCK" | sudo tee -a "$JOURNALD_CONF" > /dev/null
+    echo "Updated $JOURNALD_CONF with journald settings."
+else
+    echo "Settings already present in $JOURNALD_CONF. No changes made."
+fi
+
+systemctl restart systemd-journald
+echo "systemd-journald restarted successfully."
+
+echo "Kernel settings configured."
+echo "OS Configuration applied successfully."

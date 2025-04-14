@@ -65,6 +65,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -372,6 +374,18 @@ public class NodeAgent extends Model {
     }
   }
 
+  @Override
+  public String toString() {
+    return new ToStringBuilder(this, ToStringStyle.NO_CLASS_NAME_STYLE)
+        .append("uuid", getUuid())
+        .append("ip", getIp())
+        .append("port", getPort())
+        .append("state", getState())
+        .append("home", getHome())
+        .append("version", getVersion())
+        .build();
+  }
+
   public void ensureState(State expectedState) {
     if (getState() != expectedState) {
       throw new PlatformServiceException(
@@ -462,15 +476,34 @@ public class NodeAgent extends Model {
   @JsonIgnore
   public PublicKey getPublicKey() {
     try {
-      CertificateFactory factory = CertificateFactory.getInstance("X.509");
-      X509Certificate cert =
-          (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(getServerCert()));
+      X509Certificate cert = getServerX509Cert();
       return cert.getPublicKey();
     } catch (RuntimeException e) {
       throw e;
     } catch (Exception e) {
       throw new RuntimeException(e.getMessage(), e);
     }
+  }
+
+  @JsonIgnore
+  public X509Certificate getServerX509Cert() {
+    try {
+      CertificateFactory factory = CertificateFactory.getInstance("X.509");
+      return (X509Certificate)
+          factory.generateCertificate(new ByteArrayInputStream(getServerCert()));
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
+  }
+
+  @JsonIgnore
+  public Date getServerCertExpiry() {
+    // TODO Cache this to avoid doing expensive work in periodic calls.
+    return CertificateHelper.extractDatesFromCertBundle(
+            Collections.singletonList(getServerX509Cert()))
+        .getRight();
   }
 
   @JsonIgnore

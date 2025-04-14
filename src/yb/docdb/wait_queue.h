@@ -15,13 +15,15 @@
 
 #include <stdint.h>
 
-#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/conflict_data.h"
 #include "yb/docdb/lock_batch.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -36,11 +38,13 @@ class ScopedWaitingTxnRegistration {
     const TransactionId& waiting,
     int64_t request_id,
     std::shared_ptr<ConflictDataManager> blockers,
-    const TabletId& status_tablet) = 0;
+    const TabletId& status_tablet,
+    boost::optional<PgSessionRequestVersion> pg_session_req_version) = 0;
   virtual Status RegisterSingleShardWaiter(
       const TabletId& tablet_id,
       uint64_t wait_start_us) = 0;
   virtual int64 GetDataUseCount() const = 0;
+  virtual Status PruneInactiveBlockerData(const TabletId& status_tablet) = 0;
   virtual ~ScopedWaitingTxnRegistration() = default;
 };
 
@@ -83,7 +87,9 @@ class WaitQueue {
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, int64_t request_id,
-      CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback);
+      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      bool prune_waiter_edges_post_resumption, CoarseTimePoint deadline,
+      IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
   // should be called as the first step in conflict resolution when processing a new request to
@@ -95,7 +101,9 @@ class WaitQueue {
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t req_start_us, int64_t request_id, CoarseTimePoint deadline,
+      int64_t txn_start_us, uint64_t req_start_us, int64_t request_id,
+      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      bool prune_waiter_edges_post_resumption, CoarseTimePoint deadline,
       IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
   void Poll(HybridTime now);
@@ -112,6 +120,10 @@ class WaitQueue {
 
   // Accept a signal that the given transaction was promoted.
   void SignalPromoted(const TransactionId& id, TransactionStatusResult&& res);
+
+  // Force refreshes all waiting requests blocker on this transaction. Currently used only for
+  // session level advisory release lock path.
+  void ForceRefreshWaitersForBlocker(const TransactionId& id);
 
   // Provides access to a monotonically increasing serial number to be used by waiting requests to
   // enforce fairness in a best effort manner. Incoming requests should retain a serial number as

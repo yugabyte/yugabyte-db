@@ -34,6 +34,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 
+DECLARE_bool(TEST_allow_table_option_compressed_block_cache);
+
 using std::string;
 using std::unique_ptr;
 
@@ -344,6 +346,7 @@ Options DBHolder::CurrentOptions(
       options.num_levels = 8;
       break;
     case kCompressedBlockCache:
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_table_option_compressed_block_cache) = true;
       options.allow_mmap_writes = true;
       table_options.block_cache_compressed = NewLRUCache(8 * 1024 * 1024);
       break;

@@ -28,6 +28,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static TupleTableSlot *ForeignNext(ForeignScanState *node);

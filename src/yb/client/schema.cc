@@ -372,8 +372,11 @@ InternalType YBColumnSchema::ToInternalDataType(DataType type) {
       return InternalType::kTimeuuidValue;
     case DataType::BOOL:
       return InternalType::kBoolValue;
+    case DataType::VECTOR: FALLTHROUGH_INTENDED;
     case DataType::BINARY:
       return InternalType::kBinaryValue;
+    case DataType::BSON:
+      return InternalType::kBsonValue;
     case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
     case DataType::MAP:
       return InternalType::kMapValue;

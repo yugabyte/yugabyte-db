@@ -3,7 +3,7 @@ import algoliasearch from 'algoliasearch';
 /* eslint no-underscore-dangle: 0 */
 (function () {
   const algoliaAppId = 'UMBCUJCBE8';
-  const algoliaApiKey = 'b6c4bdb11b865250add6fecc38d8ebdf';
+  const algoliaApiKey = '7cd0659fb88c5d3f1abce809ad5f96f2';
   const algoliaIndexName = 'yugabytedb_docs';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
@@ -369,43 +369,11 @@ import algoliasearch from 'algoliasearch';
     const aiSearch = document.getElementById('ai-search');
     if (aiSearch) {
       aiSearch.addEventListener('click', () => {
-        const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
-        if (kapaWidgetButton) {
-          kapaWidgetButton.click();
-
-          const aiSearchInput = new MutationObserver(() => {
-            const mantineTextInput = document.querySelector('.mantine-TextInput-input');
-            if (mantineTextInput) {
-              const event = new Event('input', {
-                bubbles: true,
-              });
-
-              // Add the original searched input.
-              mantineTextInput.setAttribute('value', searchInput.value.trim());
-
-              mantineTextInput.dispatchEvent(event);
-
-              aiSearchInput.disconnect();
-            }
-          });
-
-          const aiSearchTab = new MutationObserver(() => {
-            const mantineSearchTab = document.querySelector('.mantine-SegmentedControl-control input[value="search"]');
-            if (mantineSearchTab) {
-              mantineSearchTab.click();
-
-              aiSearchTab.disconnect();
-            }
-          });
-
-          aiSearchInput.observe(document, {
-            childList: true,
-            subtree: true,
-          });
-
-          aiSearchTab.observe(document, {
-            childList: true,
-            subtree: true,
+        if (window.Kapa) {
+          window.Kapa.open({
+            mode: 'search',
+            query: searchInput.value.trim(),
+            submit: true,
           });
         }
       });

@@ -13,6 +13,8 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/common/ysql_operation_lease.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.service.h"
@@ -22,6 +24,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
@@ -37,6 +40,7 @@ DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
 DECLARE_bool(emergency_repair_mode);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 using namespace std::literals;
 
@@ -74,7 +78,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     bool is_ysql_replication_info_required =
         FLAGS_enable_ysql_tablespaces_for_placement &&
         (req->has_tablespace_id() || req->has_replication_info());
-    std::unique_ptr<master::ReplicationInfoPB> replication_info;
+    std::unique_ptr<ReplicationInfoPB> replication_info;
     if (is_ysql_replication_info_required) {
       if (req->has_tablespace_id()) {
         LOG(INFO) << "Retrieve placement info from tablespace ID";
@@ -101,15 +105,17 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
           is_ysql_replication_info_required = false;
         } else {
           replication_info =
-              std::make_unique<master::ReplicationInfoPB>(*tablespace_replication_pb);
+              std::make_unique<ReplicationInfoPB>(*tablespace_replication_pb);
         }
       } else if (req->has_replication_info()) {
         LOG(INFO) << "Retrieve placement info from user request";
         replication_info =
-            std::make_unique<master::ReplicationInfoPB>(req->replication_info());
+            std::make_unique<ReplicationInfoPB>(req->replication_info());
       }
     }
 
+    auto ysql_lease_infos =
+        server_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
     for (const auto& desc : descs) {
       auto l = desc->LockForRead();
       if (is_ysql_replication_info_required) {
@@ -152,6 +158,13 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       }
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());
+      auto it = ysql_lease_infos.find(desc->id());
+      if (it != ysql_lease_infos.end() &&
+          it->second.instance_seqno() == entry->instance_id().instance_seqno()) {
+        auto& lease_info = *entry->mutable_lease_info();
+        lease_info.set_is_live(it->second.live_lease());
+        lease_info.set_lease_epoch(it->second.lease_epoch());
+      }
     }
     rpc.RespondSuccess();
   }
@@ -245,9 +258,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       // be invalid. We need to allow the leader to respond to the GetMasterRegistration request so
       // that the client can then invoke DumpSysCatalogEntries and WriteSysCatalogEntry RPCs.
       if (!l.leader_status().ok()) {
-        YB_LOG_EVERY_N_SECS(INFO, 1)
-            << "Patching role from leader to follower because of: " << l.leader_status()
-            << THROTTLE_MSG;
+        YB_LOG_EVERY_N_SECS(INFO, 5) << l.leader_status();
         role = PeerRole::FOLLOWER;
       }
     }

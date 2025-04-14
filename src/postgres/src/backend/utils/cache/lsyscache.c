@@ -13,8 +13,6 @@
  *	  Eventually, the index information should go through here, too.
  *-------------------------------------------------------------------------
  */
-
-#include "pg_yb_utils.h"
 #include "postgres.h"
 
 #include "access/hash.h"
@@ -51,6 +49,7 @@
 
 /* YB includes */
 #include "catalog/yb_type.h"
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;
@@ -384,7 +383,7 @@ get_mergejoin_opfamilies(Oid opno)
 		Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
 
 		/* must be btree equality */
-		if ((aform->amopmethod == BTREE_AM_OID || aform->amopmethod == LSM_AM_OID) && 
+		if ((aform->amopmethod == BTREE_AM_OID || aform->amopmethod == LSM_AM_OID) &&
 			aform->amopstrategy == BTEqualStrategyNumber)
 			result = lappend_oid(result, aform->amopfamily);
 	}
@@ -3155,7 +3154,8 @@ yb_get_attdistinctcount(Oid relid, AttrNumber attnum)
 		ReleaseSysCache(tp);
 		if (stadistinct < 0)
 		{
-			float4 reltuples = yb_get_rel_reltuples(relid);
+			float4		reltuples = yb_get_rel_reltuples(relid);
+
 			stadistinct *= -1 * reltuples;
 		}
 		return stadistinct;
@@ -3185,7 +3185,7 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
 	/*
 	 * This functionality was left disabled even after ANALYZE was implemented.
 	 * This oversight was detected during cost model project. We protect it
-	 * under this feature toggle to prevent regressions. 
+	 * under this feature toggle to prevent regressions.
 	 */
 	if (!yb_enable_base_scans_cost_model)
 		return 0;

@@ -37,10 +37,14 @@ struct TransactionStatusInfo {
   // Status containing the deadlock info if the transaction was aborted due to a deadlock.
   // Defaults to Status::OK() in all other cases.
   Status expected_deadlock_status = Status::OK();
+  // Only relevant for docdb transactions of type PgClientSessionKind::kPgSession. The field is
+  // used by the the wait-queue to resume deadlocked session advisory lock requests.
+  PgSessionRequestVersion pg_session_req_version = 0;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
-        status_tablet, transaction_id, status, status_ht, coordinator_safe_time);
+        status_tablet, transaction_id, status, status_ht, coordinator_safe_time,
+        expected_deadlock_status, pg_session_req_version);
   }
 };
 

@@ -17,20 +17,17 @@
 
 #include <functional>
 #include <memory>
-#include <set>
-#include <utility>
 #include <vector>
 
 #include <boost/function/function_fwd.hpp>
 
-#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
-#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 template <class T>
@@ -61,6 +58,7 @@ class YBqlWriteOp;
 class YBPgsqlOp;
 class YBPgsqlReadOp;
 class YBPgsqlWriteOp;
+class YBPgsqlLockOp;
 
 class YBRedisOp;
 class YBRedisReadOp;
@@ -104,16 +102,17 @@ struct YBTabletServer;
 struct YBTabletServerPlacementInfo;
 struct YBqlWriteHashKeyComparator;
 struct YBqlWritePrimaryKeyComparator;
+struct TabletServersInfo;
 
 using LocalTabletFilter = std::function<void(std::vector<const TabletId*>*)>;
 using VersionedTablePartitionListPtr = std::shared_ptr<const VersionedTablePartitionList>;
 using TablePartitionListPtr = std::shared_ptr<const TablePartitionList>;
-using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
 using YBqlOpPtr = std::shared_ptr<YBqlOp>;
 using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;
 using YBqlWriteOpPtr = std::shared_ptr<YBqlWriteOp>;
 using YBPgsqlReadOpPtr = std::shared_ptr<YBPgsqlReadOp>;
 using YBPgsqlWriteOpPtr = std::shared_ptr<YBPgsqlWriteOp>;
+using YBPgsqlLockOpPtr = std::shared_ptr<YBPgsqlLockOp>;
 
 enum class YBTableType;
 
@@ -122,6 +121,7 @@ YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
 YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
 YB_STRONGLY_TYPED_BOOL(Initial);
 YB_STRONGLY_TYPED_BOOL(UseCache);
+YB_STRONGLY_TYPED_BOOL(ForceCreateTransaction);
 
 namespace internal {
 

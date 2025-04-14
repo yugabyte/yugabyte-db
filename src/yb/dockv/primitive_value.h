@@ -244,12 +244,6 @@ class PrimitiveValue {
     write_time_ = write_time;
   }
 
-  static void AppendEncodedTo(const FloatVector& v, ValueBuffer& out);
-  static void AppendEncodedTo(const UInt64Vector& v, ValueBuffer& out);
-
-  static Result<FloatVector> DecodeFloatVector(Slice input);
-  static Result<UInt64Vector> DecodeUInt64Vector(Slice input);
-
   template <class T>
   static ValueBuffer Encoded(const T& t) {
     ValueBuffer value;
@@ -295,8 +289,6 @@ class PrimitiveValue {
     // This is used in SubDocument to hold a pointer to a map or a vector.
     void* complex_data_structure_;
     uint8_t gin_null_val_;
-    FloatVector* float_vector_;
-    UInt64Vector* uint64_vector_;
   };
 
  private:

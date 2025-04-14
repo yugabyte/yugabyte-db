@@ -154,6 +154,11 @@ message PgsqlRandState {
   required uint64 s1 = 2;
 }
 
+message PgsqlSampleBlockPB {
+  required bytes lower_bound = 1;
+  required bytes upper_bound = 2;
+}
+
 // Random sampling state
 message PgsqlSamplingStatePB {
   // target number of rows to collect
@@ -162,6 +167,8 @@ message PgsqlSamplingStatePB {
   optional int32 numrows = 2;
   // number of rows considered for sample across all blocks
   optional double samplerows = 3;
+  // number of total rows estimated
+  optional double DEPRECATED_estimated_total_rows = 8;
   // current number of rows to skip
   optional double rowstoskip = 4;
   // reservoir state W
@@ -170,6 +177,15 @@ message PgsqlSamplingStatePB {
   reserved 6;
   // 128 bits of sampler random state.
   optional PgsqlRandState rand_state = 7;
+  // number of blocks collected so far across all tablets
+  optional uint64 num_blocks_collected = 11;
+  // number of blocks considered so far for sample across all tablets
+  optional uint64 num_blocks_processed = 12;
+  // Whether caller expects only sample blocks boundaries as a result of this request processing.
+  optional bool is_blocks_sampling_stage = 13 [default = false];
+
+  optional YsqlSamplingAlgorithm sampling_algorithm = 9;
+  optional DocDbBlocksSamplingMethod docdb_blocks_sampling_method = 10;
 }
 
 message PgsqlFetchSequenceParamsPB {
@@ -295,12 +311,11 @@ message PgsqlWriteRequestPB {
   optional bytes partition_key = 22;
 
   optional PgsqlFetchSequenceParamsPB fetch_sequence_params = 25;
-}
 
-message PgVectorReadOptionsPB {
-  optional QLValuePB vector = 1;
-  optional int32 prefetch_size = 2;
-  optional int32 vector_column_id = 3;
+  // During ysql major catalog upgrades, we block pg from updating the catalog
+  // data. Bypass this check when we know its safe.
+  // Valid cases are InitDB, pg_upgrade, and temp tables.
+  optional bool force_catalog_modifications = 27;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -380,7 +395,7 @@ message PgsqlBackfillSpecPB {
   optional bytes next_row_key = 3;
 }
 
-// Make sure this is in sync with YBCPgMetricsCaptureType in ybc_pg_typedefs.h.
+// Make sure this is in sync with YbcPgMetricsCaptureType in ybc_pg_typedefs.h.
 enum PgsqlMetricsCaptureType {
   PGSQL_METRICS_CAPTURE_NONE = 0;
   PGSQL_METRICS_CAPTURE_ALL = 1;
@@ -536,6 +551,10 @@ message PgsqlReadRequestPB {
   // If present, the request is to collect random sample
   optional PgsqlSamplingStatePB sampling_state = 30 [(rpc.lightweight_field).pointer = true];
 
+  // Boundaries of blocks to be sampled at 2nd stage for getting sample of rows, empty during 1st
+  // stage.
+  repeated PgsqlSampleBlockPB sample_blocks = 44;
+
   // Instruction for BACKFILL operation from the tablet server.
   // This is the serialized-string of "message PgsqlBackfillSpecPB" which will be used by
   // the tablet server handling the PgsqlRead to terminate the scan and checkpoint the paging
@@ -546,6 +565,7 @@ message PgsqlReadRequestPB {
   // Per scanned row, expressions are evaluated by PGgate one by one, and if any is evaluated to
   // false the row is skipped.
   repeated PgsqlExpressionPB where_clauses = 33;
+  optional uint32 expression_serialization_version = 43;
 
   // Columns referenced by this write operation.
   // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
@@ -601,6 +621,8 @@ message PgsqlRequestMetricsPB {
 
 // Response from tablet server for both read and write.
 message PgsqlResponsePB {
+  reserved 18;
+
   // Response status
   enum RequestStatus {
     PGSQL_STATUS_OK = 0;
@@ -638,7 +660,15 @@ message PgsqlResponsePB {
 
   // For use with geometric indexes. The nth value here is the distance of the
   // nth returned row from the query point/vector.
-  repeated double distances = 18;
+  // The distance is encoded into binary representation and converted to int64.
+  // So if we have original_distance1 < original_distance2, then
+  // encoded_distance1 < encoded_distance2.
+  // We are widely use the similar approach for table primary key when it is converted to
+  // binary representation. Here we do the same with addendum that distance could be always encoded
+  // to 8 bytes or less.
+  repeated uint64 vector_index_distances = 19;
+  // The offset of end of encoded row for particular vector.
+  repeated uint64 vector_index_ends = 20;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
@@ -682,4 +712,33 @@ message PgsqlResponsePB {
 
   // Metrics changes as a result of processing the request.
   optional PgsqlRequestMetricsPB metrics = 17;
+}
+
+message PgsqlAdvisoryLockPB {
+  repeated QLExpressionPB lock_partition_column_values = 1;
+  repeated QLExpressionPB lock_range_column_values = 2;
+}
+
+message PgsqlLockRequestPB {
+  enum PgsqlAdvisoryLockMode {
+    PG_LOCK_SHARE = 1;
+    PG_LOCK_EXCLUSIVE = 2;
+  }
+  // Client info
+  optional QLClient client = 1; // required
+
+  optional PgsqlAdvisoryLockPB lock_id = 2; // All locks if not specified
+
+  optional PgsqlAdvisoryLockMode lock_mode = 3;
+  optional bool wait = 4;
+  optional bool is_lock = 5; // Lock or Unlock
+
+  optional bytes partition_key = 6;
+  optional uint32 hash_code = 7;
+}
+
+message PgTxnSnapshotPB {
+  optional uint32 db_oid = 1;
+  optional uint32 isolation_level = 2;
+  optional bool read_only = 3;
 }

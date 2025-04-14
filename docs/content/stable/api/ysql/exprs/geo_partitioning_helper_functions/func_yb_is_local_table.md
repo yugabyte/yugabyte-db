@@ -36,23 +36,20 @@ This function is helpful while implementing [Row-level geo-partitioning](../../.
     ```sh
     ./bin/yugabyted start                           \
       --base_dir=/home/yugabyte/<IP1>/yugabyte-data \
-      --listen=<IP1>                                \
-      --master_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1c" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-west-1,placement_zone=us-west-1c"
+      --advertise_address=<IP1>                     \
+      --cloud_location=aws.us-west-1.us-west-1c     \
 
     ./bin/yugabyted start                           \
       --base_dir=/home/yugabyte/<IP2>/yugabyte-data \
-      --listen=<IP2>                                \
+      --advertise_address=<IP2>                     \
       --join=<IP1>                                  \
-      --master_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2c" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-east-2,placement_zone=us-east-2c"
+      --cloud_location=aws.us-east-2.us-east-2c     \
 
     ./bin/yugabyted start                            \
       --base_dir=/home/yugabyte/<IP3>/yugabyte-data  \
-      --listen=<IP3>                                 \
+      --advertise_address=<IP3>                      \
       --join=<IP1>                                   \
-      --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a" \
-      --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
+      --cloud_location=aws.us-east-1.us-east-1a     \
     ```
 
 1. Use [yb-admin](../../../../../admin/yb-admin/) to specify the placement configuration to be used by the cluster as follows:
@@ -61,7 +58,7 @@ This function is helpful while implementing [Row-level geo-partitioning](../../.
     ./bin/yb-admin -master_addresses <IP1>:7100 modify_placement_info aws.us-west-1.us-west-1c:1,aws.us-east-1.us-east-1a:1,aws.us-east-2.us-east-2c:1 3
     ```
 
-1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../../api/ysqlsh/#using-ysqlsh) as follows:
+1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../ysqlsh/#using-ysqlsh) as follows:
 
     ```sql
     CREATE TABLESPACE us_west_tablespace WITH (replica_placement=' {"num_replicas":1,"placement_blocks":[     {"cloud":"aws","region":"us-west-1","zone":"us-west-1c","min_num_replicas":1}]}');

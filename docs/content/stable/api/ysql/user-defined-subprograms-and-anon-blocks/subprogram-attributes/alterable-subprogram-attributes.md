@@ -66,7 +66,7 @@ show lock_timeout;
 
 The _security_ attribute determines the identity of the effective _role_ (as is observed with the _[current_role](https://www.postgresql.org/docs/11/functions-info.html#FUNCTIONS-INFO-SESSION-TABLE)_ built-in function) with which SQL issued by a subprogram executes. The allowed values are _definer_ and _invoker_. The default is _invoker_.
 
-- A _security definer_ subprogram executes with the privileges of the subprogram's owner. The general use-case is to allow a low-privileged invoking role to execute specific intended actions that require privileges (or role attributes) that the invoker does not possess. 
+- A _security definer_ subprogram executes with the privileges of the subprogram's owner. The general use-case is to allow a low-privileged invoking role to execute specific intended actions that require privileges (or role attributes) that the invoker does not possess.
 - A _security invoker_ subprogram executes with the privileges of the _[session_user](https://www.postgresql.org/docs/11/functions-info.html#FUNCTIONS-INFO-SESSION-TABLE)_.
 
 It's important to understand how unqualified names in SQL statements in a subprogram's implementation are resolved. This is explained in the section [Name resolution within anonymous blocks and user-defined subprograms](../../name-resolution-in-subprograms/).

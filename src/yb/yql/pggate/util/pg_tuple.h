@@ -28,7 +28,7 @@ namespace pggate {
 // Currently we allocate one individual buffer per column and write result there.
 class PgTuple {
  public:
-  PgTuple(uint64_t *datums, bool *isnulls, PgSysColumns *syscols);
+  PgTuple(uint64_t *datums, bool *isnulls, YbcPgSysColumns *syscols);
 
   // Write null value.
   void WriteNull(int index);
@@ -37,14 +37,14 @@ class PgTuple {
   void WriteDatum(int index, uint64_t datum);
 
   // Get returning-space for system columns. Tuple writer will save values in this struct.
-  PgSysColumns *syscols() {
+  YbcPgSysColumns *syscols() {
     return syscols_;
   }
 
  private:
   uint64_t *datums_;
   bool *isnulls_;
-  PgSysColumns *syscols_;
+  YbcPgSysColumns *syscols_;
 };
 
 }  // namespace pggate

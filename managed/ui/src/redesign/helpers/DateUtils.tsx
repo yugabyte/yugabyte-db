@@ -16,13 +16,15 @@ export const YBTimeFormats = {
   YB_DEFAULT_TIMESTAMP: 'MMM-DD-YYYY HH:mm:ss [UTC]ZZ',
   YB_DATE_ONLY_TIMESTAMP: 'MMM-DD-YYYY',
   YB_HOURS_FIRST_TIMESTAMP: 'HH:mm:ss MMM-DD-YYYY [UTC]ZZ',
-  YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]H:mm:ssZZ',
+  YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]HH:mm:ssZZ',
   YB_TIME_ONLY_TIMESTAMP: 'HH:mm:ss'
 } as const;
 
 export type YBTimeFormats = typeof YBTimeFormats[keyof typeof YBTimeFormats];
 
 export const YB_INPUT_TIMESTAMP_FORMAT = 'ddd MMM DD HH:mm:ss z YYYY';
+
+export const YB_LIVE_QUERY_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH:mm:ss:SSSZ';
 
 /**
  * Converts date to RFC3339 format("yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -60,21 +62,22 @@ export const convertToISODateString = (d: Date) => {
 export const formatDatetime = (
   date: moment.MomentInput,
   timeFormat: YBTimeFormats = YBTimeFormats.YB_DEFAULT_TIMESTAMP,
-  timezone?: string
+  timezone?: string,
+  inputTimeFormat?: string
 ): string => {
-  const momentObj = getMomentObject(date);
+  const momentObj = getMomentObject(date, inputTimeFormat);
   return timezone ? momentObj.tz(timezone).format(timeFormat) : momentObj.format(timeFormat);
 };
 
 type FormatDateProps = {
   date: Date | string | number;
   timeFormat: YBTimeFormats;
+  timezone?: string;
 };
 
-export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat }) => {
-  const currentUserTimezone = useSelector(
-    (state: any) => state.customer?.currentUser?.data?.timezone
-  );
+export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat, timezone }) => {
+  const userTimezone = useSelector((state: any) => state.customer?.currentUser?.data?.timezone);
+  const currentUserTimezone = timezone ?? userTimezone;
   return <>{formatDatetime(date, timeFormat, currentUserTimezone)}</>;
 };
 
@@ -92,9 +95,20 @@ export const getDiffHours = (startDateTime: any, endDateTime: any) => {
   return diffHours;
 };
 
-const getMomentObject = (date: moment.MomentInput) => {
+const getMomentObject = (date: moment.MomentInput, inputTimeFormat = YB_INPUT_TIMESTAMP_FORMAT) => {
   //charts use linux epoch as timestamps
-  return !isInteger(date) && moment(date, YB_INPUT_TIMESTAMP_FORMAT).isValid()
-    ? moment(date, YB_INPUT_TIMESTAMP_FORMAT)
+  return !isInteger(date) && moment(date, inputTimeFormat).isValid()
+    ? moment(date, inputTimeFormat)
     : moment(date);
+};
+
+export const getBrowserTimezoneOffset = (): string => {
+  const offset = new Date().getTimezoneOffset();
+  const sign = offset <= 0 ? '+' : '-';
+  const absOffset = Math.abs(offset);
+  const hours = Math.floor(absOffset / 60)
+    .toString()
+    .padStart(2, '0');
+  const minutes = (absOffset % 60).toString().padStart(2, '0');
+  return `UTC${sign}${hours}${minutes}`;
 };

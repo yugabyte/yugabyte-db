@@ -9,14 +9,22 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 
@@ -42,10 +50,16 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
 
   public ServerType configureServer;
 
+  public Map<UUID, SpecificGFlags> connectionPoolingGflags = new HashMap<>();
+
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    UserIntent userIntent = primaryCluster.userIntent;
     CommunicationPorts universePorts = universe.getUniverseDetails().communicationPorts;
+    if (CommunicationPorts.hasDuplicatePorts(universePorts)) {
+      throw new PlatformServiceException(BAD_REQUEST, "All ports must be different.");
+    }
     boolean changeInYsql =
         (enableYSQL != userIntent.enableYSQL)
             || (enableYSQLAuth != userIntent.enableYSQLAuth)
@@ -63,6 +77,14 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
       throw new PlatformServiceException(
           BAD_REQUEST, "Need to enable at least one endpoint among YSQL and YCQL");
     }
+
+    // Validate consistency across primary and read only clusters.
+    for (Cluster readOnlyCluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      UniverseCRUDHandler.validateConsistency(primaryCluster, readOnlyCluster);
+    }
+
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
     if (configureServer.equals(ServerType.YSQLSERVER)) {
       if (changeInYcql) {
@@ -91,6 +113,12 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
               == communicationPorts.ysqlServerHttpPort) {
         throw new PlatformServiceException(BAD_REQUEST, "All YSQL ports must be different.");
       } else if (!enableYSQL) {
+        if (!runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.allowDisableDBApis)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Disabling YSQL is not allowed. Please set yb.configure_db_api.allow_disable to allow"
+                  + " disable DB API");
+        }
         // Ensure that user deletes all backup schedules, xcluster configs
         // and pitr configs before disabling YSQL.
         if (PitrConfig.getByUniverseUUID(universe.getUniverseUUID()).stream()
@@ -143,6 +171,12 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
       } else if (communicationPorts.yqlServerHttpPort == communicationPorts.yqlServerRpcPort) {
         throw new PlatformServiceException(BAD_REQUEST, "All YCQL ports must be different.");
       } else if (!enableYCQL) {
+        if (!runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.allowDisableDBApis)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Disabling YCQL is not allowed. Please set yb.configure_db_api.allow_disable to allow"
+                  + " disable DB API");
+        }
         // Ensure that all backup schedules, xcluster configs
         // and pitr configs are deleted before disabling YCQL.
         if (PitrConfig.getByUniverseUUID(universe.getUniverseUUID()).stream()

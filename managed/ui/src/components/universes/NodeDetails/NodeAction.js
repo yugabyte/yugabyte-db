@@ -88,6 +88,8 @@ export default class NodeAction extends Component {
       caption = 'Add Node';
     } else if (actionType === 'REPLACE') {
       caption = 'Replace Node';
+    }  else if (actionType === 'DECOMMISSION') {
+      caption = 'Decommission Node';
     } else if (actionType === 'CONNECT') {
       caption = 'Connect';
     } else if (actionType === 'START_MASTER') {
@@ -115,7 +117,7 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-stop-circle';
     } else if (actionType === 'REMOVE') {
       btnIcon = 'fa fa-minus-circle';
-    } else if (actionType === 'DELETE') {
+    } else if (actionType === 'DELETE' || actionType === 'DECOMMISSION') {
       btnIcon = 'fa fa-minus-circle';
     } else if (actionType === 'RELEASE') {
       btnIcon = 'fa fa-trash';
@@ -434,9 +436,9 @@ export default class NodeAction extends Component {
             </>
           )}
           subMenus={{
-            advanced: (backToMainMenu) => (
+            advanced: (setActiveSubmenu) => (
               <>
-                <MenuItem onClick={backToMainMenu}>
+                <MenuItem onSelect={() => setActiveSubmenu(null)}>
                   <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
                 </MenuItem>
                 <MenuItem divider />

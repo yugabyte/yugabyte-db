@@ -216,7 +216,7 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     ash::AshMetadata metadata{
         .root_request_id = Uuid::Generate(),
-        .pid = server_->tserver()->SharedObject().pid(),
+        .pid = server_->tserver()->SharedObject()->pid(),
         .client_host_port = HostPort(inbound_call->remote_address()),
         .addr_family = static_cast<uint8_t>(inbound_call->remote_address().address().is_v4()
             ? AF_INET : AF_INET6)};
@@ -314,7 +314,8 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocateStatement(
                                  DCHECK_NOTNULL(ql_env)->CurrentKeyspace(), query,
                                  stmts_list.end(), stmts_mem_tracker_))
                .first->second;
-    std::shared_ptr<StmtCounters> stmt_counters = std::make_shared<StmtCounters>(query);
+    std::shared_ptr<StmtCounters> stmt_counters = std::make_shared<StmtCounters>(
+        query, ql_env->CurrentKeyspace());
     stmt->SetCounters(stmt_counters);
     InsertLruStatementUnlocked(stmt, &stmts_list);
   } else {
@@ -596,6 +597,7 @@ Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsReq
     const StmtCountersMap stmt_counters = this->GetStatementCountersForMetrics(is_prepare);
     for (auto &stmt : stmt_counters) {
       auto &stmt_pb = *resp->add_statements();
+      stmt_pb.set_keyspace(stmt.second.keyspace);
       stmt_pb.set_queryid(ql::CQLMessage::QueryIdAsUint64(stmt.first));
       stmt_pb.set_query(stmt.second.query);
       stmt_pb.set_is_prepared(is_prepare == IsPrepare::kTrue);

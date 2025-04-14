@@ -147,21 +147,10 @@ const auto kSecondaryIndexTestTableName =
 class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
+    itest::SetupQuickSplit(64_KB);
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
-    // Setting this very low will just cause to include metrics in every heartbeat, no overhead on
-    // setting it lower than FLAGS_heartbeat_interval_ms.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 1000;
-
-    // Reduce cleanup waiting time, so tests are completed faster.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 64_KB;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
         FLAGS_tablet_force_split_threshold_bytes;
@@ -414,7 +403,7 @@ void CqlTabletSplitTest::CompleteSecondaryIndexTest(const int num_splits, const 
 }
 
 TEST_F(CqlTabletSplitTest, SecondaryIndex) {
-  const auto kNumSplits = RegularBuildVsSanitizers(10, 3);
+  const auto kNumSplits = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 3, 3, 3);
 
   ASSERT_NO_FATALS(StartSecondaryIndexTest());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability) = 0.5;
@@ -487,7 +476,11 @@ TEST_F_EX(CqlTabletSplitTest, SecondaryIndexWithDrop, CqlTabletSplitTestMultiMas
 class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
  protected:
   void SetUpFlags() override {
+#ifdef __APPLE__
+    const int64 kSplitThreshold = 16_KB;
+#else
     const int64 kSplitThreshold = 64_KB;
+#endif
 
     std::vector<std::string> common_flags;
     common_flags.push_back("--yb_num_shards_per_tserver=1");
@@ -533,14 +526,22 @@ struct BatchTimeseriesDataSource {
 Status RunBatchTimeSeriesTest(
     ExternalMiniCluster* cluster, CppCassandraDriver* driver, const int num_splits,
     const MonoDelta timeout) {
+#ifdef __APPLE__
+  const auto kWriterThreads = 1;
+  const auto kReaderThreads = 1;
+  const auto kReadBatchSize = 10;
+  const auto kWriteBatchSize = 10;
+  const auto kValueSize = 500;
+#else
   const auto kWriterThreads = 4;
   const auto kReaderThreads = 4;
-  const auto kMinMetricsCount = 10000;
-  const auto kMaxMetricsCount = 20000;
   const auto kReadBatchSize = 100;
   const auto kWriteBatchSize = 500;
-  const auto kReadBackDeltaTime = 100;
   const auto kValueSize = 100;
+#endif
+  const auto kMinMetricsCount = 10000;
+  const auto kMaxMetricsCount = 20000;
+  const auto kReadBackDeltaTime = 100;
 
   const auto kMaxWriteErrors = 100;
   const auto kMaxReadErrors = 100;
@@ -664,6 +665,10 @@ Status RunBatchTimeSeriesTest(
       }
       YB_LOG_EVERY_N_SECS(INFO, 5)
           << "Completed " << num_writes << " writes, num_write_errors: " << num_write_errors;
+      if (IsSanitizer()) {
+        // Give some time for compaction to go.
+        std::this_thread::sleep_for(num_writes.load() * 1ms);
+      }
     }
   };
 

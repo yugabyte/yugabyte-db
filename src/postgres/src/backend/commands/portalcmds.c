@@ -33,7 +33,10 @@
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
+
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 /*
  * PerformCursorOpen
@@ -148,8 +151,11 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 	Assert(portal->strategy == PORTAL_ONE_SELECT);
 
 	/* Increment yb_sticky_connection if a WITH HOLD cursor is declared. */
-	if (YbIsClientYsqlConnMgr()	&& (cstmt->options & CURSOR_OPT_HOLD))	
+	if (YbIsClientYsqlConnMgr() && (cstmt->options & CURSOR_OPT_HOLD))
+	{
+		elog(LOG, "Incrementing sticky object count for cursor %s", cstmt->portalname);
 		increment_sticky_object_count();
+	}
 
 	/*
 	 * We're done; the query won't actually be run until PerformPortalFetch is

@@ -16,12 +16,16 @@
 #include <gmock/gmock.h>
 
 #include "yb/client/xcluster_client_mock.h"
+
 #include "yb/common/xcluster_util.h"
+
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
@@ -31,9 +35,9 @@
 
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
+DECLARE_bool(xcluster_enable_ddl_replication);
 
+using namespace std::chrono_literals;
 using namespace std::placeholders;
 using testing::_;
 using testing::AtLeast;
@@ -130,7 +134,7 @@ const PgSchemaName kPgSchemaName = "public", kPgSchemaName2 = "public2";
 const xcluster::ReplicationGroupId kReplicationGroupId = xcluster::ReplicationGroupId("rg1");
 const TableName kTableName1 = "table1", kTableName2 = "table2";
 const TableId kTableId1 = "table_id_1", kTableId2 = "table_id_2";
-const MonoDelta kTimeout = MonoDelta::FromSeconds(5 * kTimeMultiplier);
+const MonoDelta kTimeout = 5s * kTimeMultiplier;
 
 class XClusterOutboundReplicationGroupMockedTest : public YBTest {
  public:
@@ -161,12 +165,10 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     }
   }
 
-  void SetUp() {
-    YBTest::SetUp();
+  void SetUp() override {
+    TEST_SETUP_SUPER(YBTest);
     LOG(INFO) << "Test uses automatic mode: " << UseAutomaticMode();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) = UseAutomaticMode();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
-        UseAutomaticMode();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
   }
 
   virtual bool UseAutomaticMode() {
@@ -310,6 +312,10 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
         return Status::OK();
       },
+      .set_normal_oid_counter_above_all_normal_oids_func =
+          [](NamespaceId namespace_id) -> Status { return Status::OK(); },
+      .get_normal_oid_higher_than_any_used_normal_oid_func =
+          [](NamespaceId namespace_id) -> Result<uint32_t> { return 100'000; },
       .get_namespace_func =
           std::bind(&XClusterOutboundReplicationGroupMockedTest::GetNamespace, this, _1),
       .get_tables_func =
@@ -338,6 +344,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
             }
             return table_designators;
           },
+      .is_automatic_mode_switchover_func = [](NamespaceId) { return false; },
       .create_xcluster_streams_func =
           [this](const std::vector<TableId>& table_ids, const LeaderEpoch&) {
             auto create_context = std::make_unique<XClusterCreateStreamsContext>();
@@ -379,6 +386,17 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
         callback(Status::OK());
         return Status::OK();
       },
+      .drop_ddl_replication_extension_func =
+          [this](
+              const NamespaceId& namespace_id,
+              const xcluster::ReplicationGroupId& drop_replication_group_id) -> Status {
+        SCHECK(UseAutomaticMode(), InternalError, "Should only be called in automatic mode");
+        for (const auto& table_name :
+             {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+          DropTable(namespace_id, table_name);
+        }
+        return Status::OK();
+      },
   };
 
   Result<scoped_refptr<NamespaceInfo>> GetNamespace(const NamespaceIdentifierPB& ns_identifier) {
@@ -401,7 +419,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   void VerifyNamespaceCheckpointInfo(
       const TableId& table_id1, const TableId& table_id2, const NamespaceCheckpointInfo& ns_info,
       bool all_tables_included = true, const PgSchemaName& table2_schema_name = kPgSchemaName) {
-    EXPECT_FALSE(ns_info.initial_bootstrap_required);
+    EXPECT_EQ(ns_info.initial_bootstrap_required, UseAutomaticMode());
     ASSERT_EQ(ns_info.table_infos.size(), 2 + (all_tables_included ? OverheadStreamsCount() : 0));
     std::set<TableId> table_ids;
     for (const auto& table_info : ns_info.table_infos) {
@@ -431,6 +449,20 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
     }
     EXPECT_TRUE(table_ids.contains(table_id1));
     EXPECT_TRUE(table_ids.contains(table_id2));
+  }
+
+  Status VerifyExtensionTablesDeleted(const NamespaceId namespace_id) {
+    if (!UseAutomaticMode()) {
+      return Status::OK();
+    }
+    for (const auto& table_name :
+         {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+      if (TableExists(namespace_id, table_name)) {
+        return STATUS_FORMAT(
+            InternalError, "Table $0 still exists in namespace $1", table_name, namespace_id);
+      }
+    }
+    return Status::OK();
   }
 };
 
@@ -483,6 +515,7 @@ TEST_P(XClusterOutboundReplicationGroupMockedParameterized, TestMultipleTable) {
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
   ASSERT_TRUE(outbound_rg.IsDeleted());
+  ASSERT_OK(VerifyExtensionTablesDeleted(kNamespaceId));
 
   // We should have 0 streams now.
   ASSERT_TRUE(xcluster_streams.empty());
@@ -574,6 +607,7 @@ TEST_P(XClusterOutboundReplicationGroupMockedParameterized, AddDeleteNamespaces)
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(namespace_id_2));
   ASSERT_TRUE(xcluster_streams.empty());
+  ASSERT_OK(VerifyExtensionTablesDeleted(kNamespaceId));
 }
 
 TEST_P(XClusterOutboundReplicationGroupMockedParameterized, CreateTargetReplicationGroup) {
@@ -686,8 +720,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTableDuringCheckpoint) {
   auto* sync_point_instance = yb::SyncPoint::GetInstance();
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"TESTAddTableDuringCheckpoint::TableCreated",
-        "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
+      {{.predecessor = "TESTAddTableDuringCheckpoint::TableCreated",
+        .successor = "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
   sync_point_instance->EnableProcessing();
 
   ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));
@@ -714,8 +748,8 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, DropTableDuringCheckpoint) {
   auto* sync_point_instance = yb::SyncPoint::GetInstance();
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"TESTAddTableDuringCheckpoint::TableCreated",
-        "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
+      {{.predecessor = "TESTAddTableDuringCheckpoint::TableCreated",
+        .successor = "XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap"}});
   sync_point_instance->EnableProcessing();
 
   ASSERT_OK(CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName));

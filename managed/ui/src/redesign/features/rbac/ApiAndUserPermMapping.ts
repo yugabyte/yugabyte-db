@@ -300,6 +300,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/nodes/$nodeUUID<[^/]+>/list'
     },
+    INSTALL_NODE_AGENT: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/node_agents'
+    },
     GET_PROVIDERS: { requestType: ApiRequestType.GET, endpoint: '/providers' },
     CREATE_PROVIDER: { requestType: ApiRequestType.POST, endpoint: '/providers' },
     GET_PROVIDER_BY_ID: {
@@ -539,6 +543,10 @@ export const ApiPermissionMap = {
     RETRY_TASKS: {
         requestType: ApiRequestType.POST,
         endpoint: '/tasks/$tUUID<[^/]+>/retry'
+    },
+    ROLLBACK_TASKS: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/tasks/$tUUID<[^/]+>/rollback'
     },
     CONFIGURE_UNIVERSE: {
         requestType: ApiRequestType.POST,

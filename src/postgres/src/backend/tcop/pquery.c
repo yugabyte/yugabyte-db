@@ -19,7 +19,6 @@
 
 #include "access/xact.h"
 #include "commands/prepare.h"
-#include "commands/trigger.h"
 #include "executor/tstoreReceiver.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
@@ -28,9 +27,12 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
+/* YB includes */
+#include "commands/trigger.h"
+#include "executor/ybModifyTable.h"
+#include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
-#include "executor/ybcModifyTable.h"
-#include "optimizer/ybcplan.h"
+
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
@@ -682,6 +684,8 @@ PortalSetResultFormat(Portal portal, int nFormats, int16 *formats)
  * isTopLevel: true if query is being executed at backend "top level"
  * (that is, directly from a client command message)
  *
+ * run_once: ignored, present only to avoid an API break in stable branches.
+ *
  * dest: where to send output of primary (canSetTag) query
  *
  * altdest: where to send output of non-primary queries
@@ -726,10 +730,6 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	 */
 	MarkPortalActive(portal);
 
-	/* Set run_once flag.  Shouldn't be clear if previously set. */
-	Assert(!portal->run_once || run_once);
-	portal->run_once = run_once;
-
 	/*
 	 * Set up global portal context pointers.
 	 *
@@ -741,7 +741,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	 * restart.  So we need to be prepared to restore it as pointing to the
 	 * exit-time TopTransactionResourceOwner.  (Ain't that ugly?  This idea of
 	 * internally starting whole new transactions is not good.)
-	 * GetCurrentMemoryContext() has a similar problem, but the other pointers we
+	 * CurrentMemoryContext has a similar problem, but the other pointers we
 	 * save here will be NULL or pointing to longer-lived objects.
 	 */
 	saveTopTransactionResourceOwner = TopTransactionResourceOwner;
@@ -749,7 +749,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	saveActivePortal = ActivePortal;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
-	saveMemoryContext = GetCurrentMemoryContext();
+	saveMemoryContext = CurrentMemoryContext;
 	PG_TRY();
 	{
 		ActivePortal = portal;
@@ -816,12 +816,17 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 				result = false; /* keep compiler quiet */
 				break;
 		}
-		// We flush buffered ops here to ensure that any errors in the ops can be caught by the
-		// PG_CATCH() and mark the portal failed. If some ops are not flushed here and say flushed later
-		// at a place that doesn't catch the error and mark the portal failed, it can result in spurious
-		// WARNING messages (like "Snapshot reference leak") when releasing the portal resources later
-		// (for example via a CreatePortal() call that drops existing duplicate portal of an earlier
-		// execution).
+
+		/*
+		 * We flush buffered ops here to ensure that any errors in the ops can
+		 * be caught by the PG_CATCH() and mark the portal failed. If some ops
+		 * are not flushed here and say flushed later at a place that doesn't
+		 * catch the error and mark the portal failed, it can result in
+		 * spurious WARNING messages (like "Snapshot reference leak") when
+		 * releasing the portal resources later (for example via a
+		 * CreatePortal() call that drops existing duplicate portal of an
+		 * earlier execution).
+		 */
 		if (isTopLevel)
 			YBFlushBufferedOperations();
 	}
@@ -942,7 +947,7 @@ PortalRunSelect(Portal portal,
 		{
 			PushActiveSnapshot(queryDesc->snapshot);
 			ExecutorRun(queryDesc, direction, (uint64) count,
-						portal->run_once);
+						false);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
 		}
@@ -982,7 +987,7 @@ PortalRunSelect(Portal portal,
 		{
 			PushActiveSnapshot(queryDesc->snapshot);
 			ExecutorRun(queryDesc, direction, (uint64) count,
-						portal->run_once);
+						false);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
 		}
@@ -1348,7 +1353,7 @@ PortalRunMulti(Portal portal,
 		/*
 		 * Clear subsidiary contexts to recover temporary memory.
 		 */
-		Assert(portal->portalContext == GetCurrentMemoryContext());
+		Assert(portal->portalContext == CurrentMemoryContext);
 
 		MemoryContextDeleteChildren(portal->portalContext);
 
@@ -1426,9 +1431,6 @@ PortalRunFetch(Portal portal,
 	 * Check for improper portal use, and mark portal active.
 	 */
 	MarkPortalActive(portal);
-
-	/* If supporting FETCH, portal can't be run-once. */
-	Assert(!portal->run_once);
 
 	/*
 	 * Set up global portal context pointers.

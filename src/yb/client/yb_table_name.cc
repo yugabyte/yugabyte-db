@@ -22,8 +22,7 @@
 #include "yb/master/master_util.h"
 #include "yb/util/flags.h"
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
 DEFINE_RUNTIME_bool(yb_system_namespace_readonly, true, "Set system keyspace read-only.");
 
@@ -131,5 +130,20 @@ void YBTableName::set_pgschema_name(const std::string& pgschema_name) {
   pgschema_name_ = pgschema_name;
 }
 
-} // namespace client
-} // namespace yb
+std::string YBTableName::ToString(bool include_id) const {
+  std::string result;
+  if (has_namespace()) {
+    result += namespace_name_;
+    result += ".";
+  }
+  result += table_name_;
+  if (!pgschema_name_.empty()) {
+    result += Format(" [ysql_schema=$0]", pgschema_name_);
+  }
+  if (include_id && !table_id_.empty()) {
+    result += Format(" [$0]", table_id_);
+  }
+  return result;
+}
+
+} // namespace yb::client

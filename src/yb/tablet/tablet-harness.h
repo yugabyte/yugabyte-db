@@ -47,7 +47,6 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/env.h"
-#include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
 
@@ -79,10 +78,9 @@ class TabletHarness {
     bool enable_metrics;
   };
 
-  TabletHarness(const Schema& schema, Options options)
-      : options_(std::move(options)), schema_(schema) {}
+  TabletHarness(const Schema& schema, Options options);
 
-  virtual ~TabletHarness() = default;
+  virtual ~TabletHarness();
 
   Status Create(bool first_time);
 

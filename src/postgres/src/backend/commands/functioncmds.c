@@ -49,12 +49,14 @@
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
+#include "commands/extension.h"
 #include "commands/proclang.h"
 #include "executor/execdesc.h"
 #include "executor/executor.h"
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
 #include "parser/analyze.h"
 #include "parser/parse_coerce.h"
@@ -76,8 +78,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
-#include "commands/extension.h"
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*
@@ -1127,7 +1128,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	}
 	else
 	{
-		/* 
+		/*
 		 * If untrusted language, must be superuser, or someone with the
 		 * yb_extension role in the midst of creating an extension.
 		 */
@@ -1779,9 +1780,13 @@ CreateCast(CreateCastStmt *stmt)
 #ifdef NEIL
 Oid
 get_cast_oid(Oid sourcetypeid, Oid targettypeid, bool missing_ok)
+{
+}
 
 void
 DropCastById(Oid castOid)
+{
+}
 #endif
 
 static void
@@ -2043,6 +2048,8 @@ get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok)
 #ifdef NEIL
 void
 DropTransformById(Oid transformOid)
+{
+}
 #endif
 
 
@@ -2392,6 +2399,33 @@ CallStmtResultDesc(CallStmt *stmt)
 
 	ReleaseSysCache(tuple);
 
+	/*
+	 * The result of build_function_result_tupdesc_t has the right column
+	 * names, but it just has the declared output argument types, which is the
+	 * wrong thing in polymorphic cases.  Get the correct types by examining
+	 * stmt->outargs.  We intentionally keep the atttypmod as -1 and the
+	 * attcollation as the type's default, since that's always the appropriate
+	 * thing for function outputs; there's no point in considering any
+	 * additional info available from outargs.  Note that tupdesc is null if
+	 * there are no outargs.
+	 */
+	if (tupdesc)
+	{
+		Assert(tupdesc->natts == list_length(stmt->outargs));
+		for (int i = 0; i < tupdesc->natts; i++)
+		{
+			Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+			Node	   *outarg = (Node *) list_nth(stmt->outargs, i);
+
+			TupleDescInitEntry(tupdesc,
+							   i + 1,
+							   NameStr(att->attname),
+							   exprType(outarg),
+							   -1,
+							   0);
+		}
+	}
+
 	return tupdesc;
 }
 
@@ -2422,7 +2456,9 @@ AlterFunctionOwner(AlterOwnerStmt *stmt, Oid newOwnerId)
 
 	AlterFunctionOwner_internal(relation, tup, newOwnerId);
 
-	/* YB_TEST(neil) address should already have procid (address.objectid == tup->oid?)
+	/*
+	 * YB_TEST(neil) address should already have procid (address.objectid ==
+	 * tup->oid?)
 	 *   ObjectAddressSet(address, ProcedureRelationId, procId);
 	 */
 
@@ -2439,13 +2475,13 @@ AlterFunctionOwner(AlterOwnerStmt *stmt, Oid newOwnerId)
 void
 AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 {
-	Oid procId;
+	Oid			procId;
 	Form_pg_proc proc;
-	Oid namespaceId;
+	Oid			namespaceId;
 
 	proc = (Form_pg_proc) GETSTRUCT(tup);
 	procId = proc->oid;
-	
+
 	/* Assigning a function to the same owner is a no-op */
 	if (proc->proowner == newOwnerId)
 		return;
@@ -2454,7 +2490,7 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 	{
 		/* Must be owner */
-		if(!has_privs_of_role(GetUserId(), proc->proowner))
+		if (!has_privs_of_role(GetUserId(), proc->proowner))
 		{
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION, NameStr(proc->proname));
 		}
@@ -2469,10 +2505,10 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 			AclResult	aclresult;
 
 			aclresult = pg_namespace_aclcheck(namespaceId, newOwnerId,
-												  ACL_CREATE);
+											  ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error(aclresult, OBJECT_SCHEMA,
-								get_namespace_name(namespaceId));
+							   get_namespace_name(namespaceId));
 		}
 	}
 
@@ -2513,23 +2549,23 @@ RenameFunction(RenameStmt *stmt, const char *newname)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("function with OID %u does not exist", address.objectId)));
-	
+
 	Form_pg_proc proc;
 
 	proc = (Form_pg_proc) GETSTRUCT(tup);
-	
+
 	/* Superusers and yb_db_admin role can bypass permission checks */
 	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 	{
 		/* Must be owner of the existing object */
-		if (!has_privs_of_role(GetUserId(),proc->proowner))
-			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,  NameStr(proc->proname));
+		if (!has_privs_of_role(GetUserId(), proc->proowner))
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION, NameStr(proc->proname));
 	}
-	
+
 	/* Make sure function with new name doesn't exist */
 	IsThereFunctionInNamespace(newname, proc->pronargs,
-								   &proc->proargtypes, proc->pronamespace);
-	
+							   &proc->proargtypes, proc->pronamespace);
+
 	/* Rename */
 	namestrcpy(&(((Form_pg_proc) GETSTRUCT(tup))->proname), newname);
 	CatalogTupleUpdate(relation, &tup->t_self, tup);

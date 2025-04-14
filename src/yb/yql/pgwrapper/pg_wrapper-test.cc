@@ -324,7 +324,7 @@ class PgWrapperOneNodeClusterTest : public PgWrapperTest {
   Result<PGConn> ConnectToDB(const std::string& dbname) const {
     return PGConnBuilder({
       .host = pg_ts->bound_rpc_addr().host(),
-      .port = pg_ts->pgsql_rpc_port(),
+      .port = pg_ts->ysql_port(),
       .dbname = dbname
     }).Connect();
   }
@@ -646,6 +646,7 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_txn_locks_per_tablet=1000");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replica_identity=true");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_docdb_vector_type=false");
   }
 };
 
@@ -661,6 +662,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_txn_locks_per_tablet", "1000"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 }
 
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
@@ -693,6 +695,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "true"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(true /* expect_target_value */));
 }
@@ -714,6 +717,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
 }
@@ -737,6 +741,31 @@ TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) 
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,two "2")"));
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,"tw"o")"));
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String with a \n char'"));
+}
+
+TEST_F(PgWrapperTest, GetPgSocketDir) {
+  auto proxy = cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0);
+
+  tserver::GetPgSocketDirRequestPB req;
+  tserver::GetPgSocketDirResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(10s);
+
+  ASSERT_OK(proxy.GetPgSocketDir(req, &resp, &rpc));
+  LOG(INFO) << "GetPgSocketDir response: " << resp.DebugString();
+  ASSERT_FALSE(resp.has_error());
+
+  auto socket_dir = HostPortFromPB(resp.pg_socket_dir());
+
+  PGConnBuilder builder(
+      {.host = socket_dir.host(),
+       .port = socket_dir.port(),
+       .dbname = "yugabyte",
+       .user = "yugabyte"});
+  auto conn = ASSERT_RESULT(builder.Connect());
+
+  auto result = ASSERT_RESULT(conn.FetchRow<PGUint32>("SELECT 1"));
+  ASSERT_EQ(result, 1);
 }
 
 }  // namespace pgwrapper

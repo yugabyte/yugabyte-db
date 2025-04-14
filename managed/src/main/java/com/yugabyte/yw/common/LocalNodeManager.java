@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
@@ -63,6 +64,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -107,13 +109,37 @@ public class LocalNodeManager {
 
   private Map<String, NodeInfo> nodesByNameMap = new ConcurrentHashMap<>();
   private Map<String, String> nodeFSByNameMap = new ConcurrentHashMap<>();
+  private Map<String, Map<String, String>> provisionArgs = new ConcurrentHashMap<>();
 
   private SpecificGFlags additionalGFlags;
+  private Pair<Set<String>, Set<String>> gFlagsToRemove;
 
   @Setter private int ipRangeStart = 2;
   @Setter private int ipRangeEnd = 100;
 
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private DnsManager dnsManager;
+
+  private boolean checkDNS = false;
+
+  public static class LocalDNSManager extends DnsManager {
+    public Map<UUID, Set<String>> ipsList = new HashMap<>();
+
+    @Override
+    public ShellResponse manipulateDnsRecord(
+        DnsCommandType type,
+        UUID providerUUID,
+        String hostedZoneId,
+        String domainNamePrefix,
+        String nodeIpCsv) {
+      if (type == DnsCommandType.Create || type == DnsCommandType.Edit) {
+        ipsList.put(providerUUID, new HashSet<>(Arrays.asList(nodeIpCsv.split(","))));
+      } else if (type == DnsCommandType.Delete) {
+        ipsList.remove(providerUUID);
+      }
+      return ShellResponse.create(ERROR_CODE_SUCCESS, "");
+    }
+  }
 
   public void setPredefinedConfig(Map<Integer, String> predefinedConfig) {
     this.predefinedConfig = predefinedConfig;
@@ -123,9 +149,21 @@ public class LocalNodeManager {
     versionBinPathMap.put(version, binPath);
   }
 
+  public void setGFlagsToRemove(Pair<Set<String>, Set<String>> gFlagsToRemove) {
+    this.gFlagsToRemove = gFlagsToRemove;
+  }
+
+  public String getVersionBinPath(String version) {
+    return versionBinPathMap.get(version);
+  }
+
   public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
     log.debug("Set additional gflags: {}", additionalGFlags.getPerProcessFlags().value);
     this.additionalGFlags = additionalGFlags;
+  }
+
+  public void setCheckDNS(boolean checkDNS) {
+    this.checkDNS = checkDNS;
   }
 
   // Temporary method.
@@ -346,6 +384,10 @@ public class LocalNodeManager {
     return result;
   }
 
+  public Map<String, String> getProvisionedArgs(String nodeName) {
+    return provisionArgs.get(nodeName);
+  }
+
   public static String getRawCommandOutput(String str) {
     String result = str.replaceFirst(COMMAND_OUTPUT_PREFIX, "");
     return result.strip();
@@ -399,6 +441,7 @@ public class LocalNodeManager {
           log.debug("No node found for " + nodeTaskParam.nodeName);
         } else {
           nodeInfo.setState(NodeState.PROVISIONED);
+          provisionArgs.put(nodeInfo.name, args);
         }
         break;
       case List:
@@ -700,6 +743,11 @@ public class LocalNodeManager {
     provider.save();
   }
 
+  private Set<String> getDnsSet(NodeInfo nodeInfo) {
+    return ((LocalDNSManager) dnsManager)
+        .ipsList.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
+  }
+
   public void startProcessForNode(
       UniverseDefinitionTaskParams.UserIntent userIntent,
       UniverseTaskBase.ServerType serverType,
@@ -719,6 +767,11 @@ public class LocalNodeManager {
         executable = localCloudInfo.getYugabyteBinDir() + "/" + MASTER_EXECUTABLE;
         break;
       case TSERVER:
+        Set<String> dnsSet = getDnsSet(nodeInfo);
+        if (checkDNS && dnsSet.contains(nodeInfo.ip)) {
+          throw new IllegalStateException(
+              "Node " + nodeInfo.ip + " is prematurely in the dns list " + dnsSet);
+        }
         executable = localCloudInfo.getYugabyteBinDir() + "/" + TSERVER_EXECUTABLE;
         break;
       case CONTROLLER:
@@ -765,6 +818,12 @@ public class LocalNodeManager {
       throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
     }
     log.debug("Killing process {}", process.pid());
+
+    Set<String> dnsSet = getDnsSet(nodeInfo);
+    if (serverType == UniverseTaskBase.ServerType.TSERVER && dnsSet.contains(nodeInfo.ip)) {
+      throw new IllegalStateException(
+          "Node " + nodeInfo.ip + " is still in the dns list " + dnsSet);
+    }
     killProcess(process.pid(), true);
   }
 
@@ -796,6 +855,14 @@ public class LocalNodeManager {
     Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
     if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
+    }
+    if (gFlagsToRemove != null) {
+      gflagsToWrite
+          .keySet()
+          .removeAll(
+              serverType == UniverseTaskBase.ServerType.MASTER
+                  ? gFlagsToRemove.getFirst()
+                  : gFlagsToRemove.getSecond());
     }
     String fileName = getNodeGFlagsFile(userIntent, serverType, nodeInfo);
     log.debug("Write gflags {} for {} to file {}", gflagsToWrite, serverType, fileName);
@@ -920,7 +987,7 @@ public class LocalNodeManager {
     return nodesByNameMap.get(nodeDetails.nodeName);
   }
 
-  private String getNodeFSRoot(
+  public String getNodeFSRoot(
       UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
     String res = getNodeRoot(userIntent, nodeInfo) + "/data/";
     new File(res).mkdirs();

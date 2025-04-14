@@ -416,7 +416,7 @@ BeginCopyTo(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 
@@ -474,7 +474,7 @@ BeginCopyTo(ParseState *pstate,
 				if (q->querySource == QSRC_NON_INSTEAD_RULE)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("DO ALSO rules are not supported for the COPY")));
+							 errmsg("DO ALSO rules are not supported for COPY")));
 			}
 
 			ereport(ERROR,
@@ -491,7 +491,11 @@ BeginCopyTo(ParseState *pstate,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY (SELECT INTO) is not supported")));
 
-		Assert(query->utilityStmt == NULL);
+		/* The only other utility command we could see is NOTIFY */
+		if (query->utilityStmt != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY query must not be a utility command")));
 
 		/*
 		 * Similarly the grammar doesn't enforce the presence of a RETURNING
@@ -516,8 +520,8 @@ BeginCopyTo(ParseState *pstate,
 		/*
 		 * With row-level security and a user using "COPY relation TO", we
 		 * have to convert the "COPY relation TO" to a query-based COPY (eg:
-		 * "COPY (SELECT * FROM relation) TO"), to allow the rewriter to add
-		 * in any RLS clauses.
+		 * "COPY (SELECT * FROM ONLY relation) TO"), to allow the rewriter to
+		 * add in any RLS clauses.
 		 *
 		 * When this happens, we are passed in the relid of the originally
 		 * found relation (which we have locked).  As the planner will look up
@@ -825,7 +829,7 @@ DoCopyTo(CopyToState cstate)
 	 * datatype output routines, and should be faster than retail pfree's
 	 * anyway.  (We don't need a whole econtext as CopyFrom does.)
 	 */
-	cstate->rowcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cstate->rowcontext = AllocSetContextCreate(CurrentMemoryContext,
 											   "COPY TO",
 											   ALLOCSET_DEFAULT_SIZES);
 
@@ -885,7 +889,7 @@ DoCopyTo(CopyToState cstate)
 	{
 		TupleTableSlot *slot;
 		TableScanDesc scandesc;
-		bool is_yb_relation;
+		bool		is_yb_relation;
 		MemoryContext oldcontext;
 		MemoryContext yb_context;
 
@@ -899,7 +903,7 @@ DoCopyTo(CopyToState cstate)
 		 */
 		if (is_yb_relation)
 		{
-			yb_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+			yb_context = AllocSetContextCreate(CurrentMemoryContext,
 											   "COPY TO (YB)",
 											   ALLOCSET_DEFAULT_SIZES);
 			oldcontext = MemoryContextSwitchTo(yb_context);

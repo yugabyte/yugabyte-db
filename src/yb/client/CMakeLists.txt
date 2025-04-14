@@ -80,10 +80,11 @@ set(CLIENT_LIBS
   pg_cron_leader_service_proto
   gutil
   test_echo_service_proto
-  tserver_util
+  tserver_shared
   yb_ql_expr
   yb_ash
   yb_util
+  yb_util_shmem
   yrpc
   yb_dockv)
 
@@ -119,11 +120,11 @@ endif()
 # part of the client itself (ie we don't want to ship it to customers,
 # and therefore don't need to worry about export strictness)
 ADD_YB_LIBRARY(yb_client_test_util
-               SRCS client-test-util.cc
+               SRCS client-test-util.cc snapshot_test_util.cc
                DEPS gmock gtest yb_client yb_test_util)
 
 ADD_YB_LIBRARY(ql-dml-test-base
-               SRCS ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc
+               SRCS ql-dml-test-base.cc txn-test-base.cc
                DEPS integration-tests)
 
 # Tests
@@ -146,3 +147,4 @@ ADD_YB_TEST(snapshot-txn-test)
 ADD_YB_TEST(snapshot_schedule-test)
 ADD_YB_TEST(serializable-txn-test)
 ADD_YB_TEST(tablet_rpc-test)
+ADD_YB_TEST(advisory_lock-test)

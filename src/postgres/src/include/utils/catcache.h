@@ -34,7 +34,6 @@
 
 #define CATCACHE_MAXKEYS		4
 
-
 /* function computing a datum's hash */
 typedef uint32 (*CCHashFN) (Datum datum);
 
@@ -61,7 +60,8 @@ typedef struct catcache
 	slist_node	cc_next;		/* list link */
 	ScanKeyData cc_skey[CATCACHE_MAXKEYS];	/* precomputed key info for heap
 											 * scans */
-	bool		yb_cc_is_fully_loaded;	/* is relation fully loaded on start/refresh */
+	bool		yb_cc_is_fully_loaded;	/* is relation fully loaded on
+										 * start/refresh */
 
 	/*
 	 * Keep these at the end, so that compiling catcache.c with CATCACHE_STATS
@@ -80,7 +80,7 @@ typedef struct catcache
 	long		cc_invals;		/* # of entries invalidated from cache */
 	long		cc_lsearches;	/* total # list-searches */
 	long		cc_lhits;		/* # of matches against existing lists */
-	long 		yb_cc_size_bytes;  /* size of this cache in bytes */
+	long		yb_cc_size_bytes;	/* size of this cache in bytes */
 #endif
 } CatCache;
 
@@ -180,10 +180,10 @@ typedef struct catclist
 	CatCTup    *members[FLEXIBLE_ARRAY_MEMBER]; /* members */
 } CatCList;
 
-typedef struct yb_catclist_iterator
+typedef struct
 {
-	CatCList *list;
-	int index;
+	CatCList   *list;
+	int			index;
 } YbCatCListIterator;
 
 typedef struct catcacheheader
@@ -225,6 +225,7 @@ extern CatCList *SearchCatCacheList(CatCache *cache, int nkeys,
 extern void ReleaseCatCacheList(CatCList *list);
 
 extern void ResetCatalogCaches(void);
+extern void ResetCatalogCachesExt(bool debug_discard);
 extern void CatalogCacheFlushCatalog(Oid catId);
 extern void CatCacheInvalidate(CatCache *cache, uint32 hashValue);
 extern void PrepareToInvalidateCacheTuple(Relation relation,
@@ -242,10 +243,18 @@ extern void SetCatCacheList(CatCache *cache, int nkeys, List *fnlist);
 
 extern bool RelationHasCachedLists(Relation relation);
 extern long YbGetCatCacheMisses();
-extern long* YbGetCatCacheIdMisses();
+extern long *YbGetCatCacheIdMisses();
 extern long *YbGetCatCacheTableMisses();
+extern long YbGetCatCacheRefreshes();
+extern long YbGetCatCacheDeltaRefreshes();
 
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);
 extern void YbCatCListIteratorFree(YbCatCListIterator *iterator);
+
+extern uint32 YbCatalogCacheComputeHashValue(CatCache *cache, Datum v1, Datum v2, Datum v3, Datum v4);
+
+extern void YbHandleLogCatcacheStatsInterrupt(void);
+extern void YbProcessLogCatcacheStatsInterrupt(void);
+
 #endif							/* CATCACHE_H */

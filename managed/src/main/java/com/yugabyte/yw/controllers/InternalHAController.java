@@ -11,9 +11,8 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -30,9 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Files;
 import play.libs.Files.TemporaryFile;
 import play.mvc.Controller;
@@ -41,24 +39,22 @@ import play.mvc.Result;
 import play.mvc.With;
 
 @With(HAAuthenticator.class)
+@Slf4j
 public class InternalHAController extends Controller {
 
-  public static final Logger LOG = LoggerFactory.getLogger(InternalHAController.class);
-
-  @Inject private RuntimeConfGetter runtimeConfGetter;
-
+  private final RuntimeConfGetter runtimeConfGetter;
   private final PlatformReplicationManager replicationManager;
   private final ValidatingFormFactory formFactory;
-  private final ConfigHelper configHelper;
 
   @Inject
   InternalHAController(
+      RuntimeConfGetter runtimeConfGetter,
       PlatformReplicationManager replicationManager,
       ValidatingFormFactory formFactory,
       ConfigHelper configHelper) {
+    this.runtimeConfGetter = runtimeConfGetter;
     this.replicationManager = replicationManager;
     this.formFactory = formFactory;
-    this.configHelper = configHelper;
   }
 
   private String getClusterKey(Http.Request request) {
@@ -71,59 +67,48 @@ public class InternalHAController extends Controller {
           HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
 
       if (!config.isPresent()) {
-        return ApiResponse.error(NOT_FOUND, "Could not find HA Config by cluster key");
+        throw new PlatformServiceException(NOT_FOUND, "Could not find HA Config by cluster key");
       }
 
       return PlatformResults.withData(config.get());
     } catch (Exception e) {
-      LOG.error("Error retrieving HA config");
-
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Error retrieving HA config");
+      log.error("Error retrieving HA config");
+      if (e instanceof PlatformServiceException) {
+        throw (PlatformServiceException) e;
+      }
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error retrieving HA config");
     }
   }
 
   // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
-  public Result syncInstances(long timestamp, Http.Request request) {
+  public synchronized Result syncInstances(long timestamp, Http.Request request) {
+    log.debug("Received request to sync instances from {}", request.remoteAddress());
     Optional<HighAvailabilityConfig> config =
         HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
     if (!config.isPresent()) {
-      return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
+      throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
     }
 
     Optional<PlatformInstance> localInstance = config.get().getLocal();
 
     if (!localInstance.isPresent()) {
-      LOG.warn("No local instance configured");
-
-      return ApiResponse.error(BAD_REQUEST, "No local instance configured");
+      log.warn("No local instance configured");
+      throw new PlatformServiceException(BAD_REQUEST, "No local instance configured");
     }
-
     if (localInstance.get().getIsLeader()) {
-      LOG.warn(
+      log.warn(
           "Rejecting request to import instances due to this process being designated a leader");
-
-      return ApiResponse.error(BAD_REQUEST, "Cannot import instances for a leader");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot import instances for a leader");
     }
-
-    Date requestLastFailover = new Date(timestamp);
-    Date localLastFailover = config.get().getLastFailover();
-
-    // Reject the request if coming from a platform instance that was failed over to earlier.
-    if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
-      LOG.warn("Rejecting request to import instances due to request lastFailover being stale");
-
-      return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
-    }
-
     String content = request.body().asBytes().utf8String();
     List<PlatformInstance> newInstances = Util.parseJsonArray(content, PlatformInstance.class);
     Set<PlatformInstance> processedInstances =
-        replicationManager.importPlatformInstances(config.get(), newInstances);
+        replicationManager.importPlatformInstances(config.get(), newInstances, new Date(timestamp));
 
     return PlatformResults.withData(processedInstances);
   }
 
-  public Result syncBackups(Http.Request request) throws Exception {
+  public synchronized Result syncBackups(Http.Request request) throws Exception {
     Http.MultipartFormData<Files.TemporaryFile> body = request.body().asMultipartFormData();
 
     Map<String, String[]> reqParams = body.asFormUrlEncoded();
@@ -135,7 +120,7 @@ public class InternalHAController extends Controller {
             && senders.length == 1
             && ybaVersions.length == 1)
         || (reqParams.size() == 2 && leaders.length == 1 && senders.length == 1))) {
-      return ApiResponse.error(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Expected exactly 2 (leader, sender) or 3 (leader, sender, ybaversion) arguments in "
               + "'application/x-www-form-urlencoded' data part. Received: "
@@ -143,7 +128,7 @@ public class InternalHAController extends Controller {
     }
     Http.MultipartFormData.FilePart<Files.TemporaryFile> filePart = body.getFile("backup");
     if (filePart == null) {
-      return ApiResponse.error(BAD_REQUEST, "backup file not found in request");
+      throw new PlatformServiceException(BAD_REQUEST, "backup file not found in request");
     }
     String fileName = FilenameUtils.getName(filePart.getFilename());
     TemporaryFile temporaryFile = filePart.getRef();
@@ -151,29 +136,29 @@ public class InternalHAController extends Controller {
     String sender = senders[0];
 
     if (!leader.equals(sender)) {
-      return ApiResponse.error(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Sender: " + sender + " does not match leader: " + leader);
     }
 
     Optional<HighAvailabilityConfig> config =
         HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
     if (!config.isPresent()) {
-      return ApiResponse.error(BAD_REQUEST, "Could not find HA Config");
+      throw new PlatformServiceException(BAD_REQUEST, "Could not find HA Config");
     }
 
     Optional<PlatformInstance> localInstance = config.get().getLocal();
     if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
-      return ApiResponse.error(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Backup originated on the node itself. Leader: " + leader);
     }
 
     if (ybaVersions.length == 1) {
       String ybaVersion = ybaVersions[0];
       if (Util.compareYbVersions(ybaVersion, Util.getYbaVersion()) > 0) {
-        return ApiResponse.error(
+        throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
-                "Can not sync backup from leader on higher version %s to follower on lower version"
+                "Cannot sync backup from leader on higher version %s to follower on lower version"
                     + " %s",
                 ybaVersion, Util.getYbaVersion()));
       }
@@ -188,67 +173,42 @@ public class InternalHAController extends Controller {
       // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
       replicationManager.cleanupReceivedBackups(leaderUrl);
       return YBPSuccess.withMessage("File uploaded");
-    } else {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "failed to copy backup");
     }
+    throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to copy backup");
   }
 
-  public Result demoteLocalLeader(long timestamp, boolean promote, Http.Request request) {
+  /** This is invoked by the remote peer to demote this local leader. */
+  public synchronized Result demoteLocalLeader(
+      long timestamp, boolean promote, Http.Request request) {
     try {
-      LOG.info("Received request to demote local instance.");
-      Optional<HighAvailabilityConfig> config =
-          HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
-      if (!config.isPresent()) {
-        LOG.warn("No HA configuration configured, skipping request");
-
-        return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
-      }
-
+      log.debug("Received request to demote local instance from {}", request.remoteAddress());
       DemoteInstanceFormData formData =
           formFactory.getFormDataOrBadRequest(request, DemoteInstanceFormData.class).get();
-
+      Optional<HighAvailabilityConfig> config =
+          HighAvailabilityConfig.getByClusterKey(getClusterKey(request));
+      if (!config.isPresent()) {
+        log.warn("No HA configuration configured, skipping request");
+        throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
+      }
       Optional<PlatformInstance> localInstance = config.get().getLocal();
-
       if (!localInstance.isPresent()) {
-        LOG.warn("No local instance configured");
-
-        return ApiResponse.error(BAD_REQUEST, "No local instance configured");
+        log.warn("No local instance configured");
+        throw new PlatformServiceException(BAD_REQUEST, "No local instance configured");
       }
-
-      Date requestLastFailover = new Date(timestamp);
-      Date localLastFailover = config.get().getLastFailover();
-
-      // Reject the request if coming from a platform instance that was failed over to earlier.
-      if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
-        LOG.warn("Rejecting demote request due to request lastFailover being stale");
-
-        return ApiResponse.error(BAD_REQUEST, "Rejecting demote request from stale leader");
-      } else if (localLastFailover == null || localLastFailover.before(requestLastFailover)) {
-        // Otherwise, update the last failover timestamp and proceed with demotion request.
-        config.get().updateLastFailover(requestLastFailover);
-      }
-
       // Demote the local instance.
-      replicationManager.demoteLocalInstance(localInstance.get(), formData.leader_address);
-
-      String version =
-          configHelper
-              .getConfig(ConfigType.YugawareMetadata)
-              .getOrDefault("version", "UNKNOWN")
-              .toString();
-
-      localInstance.get().setYbaVersion(version);
-
+      replicationManager.demoteLocalInstance(
+          config.get(), localInstance.get(), formData.leader_address, new Date(timestamp));
       // Only restart YBA when demote comes from promote call, not from periodic sync
       if (promote && runtimeConfGetter.getGlobalConf(GlobalConfKeys.haShutdownLevel) > 1) {
         Util.shutdownYbaProcess(5);
       }
-
       return PlatformResults.withData(localInstance);
     } catch (Exception e) {
-      LOG.error("Error demoting platform instance", e);
-
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Error demoting platform instance");
+      log.error("Error demoting platform instance", e);
+      if (e instanceof PlatformServiceException) {
+        throw (PlatformServiceException) e;
+      }
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error demoting platform instance");
     }
   }
 }

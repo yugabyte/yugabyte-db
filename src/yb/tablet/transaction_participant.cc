@@ -191,7 +191,8 @@ void UpdateHistoricalMaxOpId(std::atomic<OpId>* historical_max_op_id, OpId const
 }
 
 class TransactionParticipant::Impl
-    : public RunningTransactionContext, public TransactionLoaderContext {
+    : public RunningTransactionContext, public TransactionLoaderContext,
+      public std::enable_shared_from_this<Impl> {
  public:
   Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier,
        const scoped_refptr<MetricEntity>& entity,
@@ -324,7 +325,7 @@ class TransactionParticipant::Impl
         cleanup_cache_.Erase(metadata.transaction_id) != 0) {
       RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
       auto status = STATUS_EC_FORMAT(
-          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
           "Transaction was recently aborted: $0", metadata.transaction_id);
       return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
@@ -392,8 +393,7 @@ class TransactionParticipant::Impl
     }
     auto iter = docdb::CreateRocksDBIterator(db_.intents,
                                              db_.key_bounds,
-                                             docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-                                             boost::none,
+                                             docdb::BloomFilterOptions::Inactive(),
                                              rocksdb::kDefaultQueryId,
                                              /* file_filter = */ nullptr,
                                              /* iterate_upper_bound = */ nullptr,
@@ -445,10 +445,10 @@ class TransactionParticipant::Impl
         id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (!lock_and_iterator.found()) {
       return lock_and_iterator.did_txn_deadlock()
-          ? lock_and_iterator.deadlock_status
-          : STATUS(TryAgain,
-                   Format("Unknown transaction, could be recently aborted: $0", id), Slice(),
-                   PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+                 ? lock_and_iterator.deadlock_status
+                 : STATUS(
+                       TryAgain, Format("Unknown transaction, could be recently aborted: $0", id),
+                       Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
     }
     RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();
@@ -1421,13 +1421,13 @@ class TransactionParticipant::Impl
         YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
             << "Request to unknown transaction " << transaction_id;
         return STATUS_EC_FORMAT(
-            Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+            Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
             "Transaction $0 expired or aborted by a conflict", transaction_id);
       }
 
       auto& transaction = *it;
       RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
-                             PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+                             PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_CONFLICT));
       txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
@@ -1493,6 +1493,16 @@ class TransactionParticipant::Impl
     std::lock_guard lock(mutex_);
     return ResultToStatus(DoProcessRecentlyAppliedTransactions(
         retryable_requests_flushed_op_id_, true /* persist */));
+  }
+
+  std::weak_ptr<void> RetainWeak() override {
+    return shared_from_this();
+  }
+
+  void ForceRefreshWaitersForBlocker(const TransactionId& txn_id) {
+    if (wait_queue_) {
+      wait_queue_->ForceRefreshWaitersForBlocker(txn_id);
+    }
   }
 
  private:
@@ -1583,17 +1593,19 @@ class TransactionParticipant::Impl
       std::lock_guard lock(mutex_);
       if (!pending_applies.empty()) {
         size_t idx = 0;
-        for (const auto& p : pending_applies) {
-          auto it = transactions_.find(p.first);
+        for (const auto& [txn_id, pending_apply] : pending_applies) {
+          auto it = transactions_.find(txn_id);
           if (it == transactions_.end()) {
-            LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(p.first);
+            LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(txn_id);
             continue;
           }
 
-          TransactionApplyData apply_data;
-          apply_data.transaction_id = p.first;
-          apply_data.commit_ht = p.second.commit_ht;
-          (**it).SetApplyData(p.second.state, &apply_data, &operations[idx]);
+          auto apply_data = TransactionApplyData {
+            .transaction_id = txn_id,
+            .op_id = pending_apply.apply_op_id,
+            .commit_ht = pending_apply.commit_ht,
+          };
+          (**it).SetApplyData(pending_apply.state, &apply_data, &operations[idx]);
           ++idx;
         }
       }
@@ -1902,7 +1914,7 @@ class TransactionParticipant::Impl
       TransactionMetadata&& metadata,
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
-      const ApplyStateWithCommitHt* pending_apply) override {
+      const docdb::ApplyStateWithCommitInfo* pending_apply) override {
     auto start_time = metadata.start_time;
     auto replay_start_time = MinReplayTxnStartTime();
     if (start_time && replay_start_time && start_time < replay_start_time) {
@@ -2004,7 +2016,7 @@ class TransactionParticipant::Impl
       VLOG_WITH_PREFIX(3) << "Transaction status update: " << AsString(info);
       if ((**it).UpdateStatus(
           info.status_tablet, info.status, info.status_ht, info.coordinator_safe_time,
-          info.aborted_subtxn_set, info.expected_deadlock_status)) {
+          info.aborted_subtxn_set, info.expected_deadlock_status, info.pg_session_req_version)) {
         NotifyAbortedTransactionIncrement(info.transaction_id);
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier,
@@ -2107,9 +2119,10 @@ class TransactionParticipant::Impl
       .commit_ht = commit_time,
       .log_ht = data.hybrid_time,
       .sealed = data.sealed,
-      .status_tablet = data.state.tablets().front().ToBuffer()
+      .status_tablet = data.state.tablets().front().ToBuffer(),
+      .apply_to_storages = data.apply_to_storages,
     };
-    if (!data.already_applied_to_regular_db) {
+    if (data.apply_to_storages.Any()) {
       return ProcessApply(apply_data);
     }
     if (!data.sealed) {
@@ -2660,7 +2673,7 @@ OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(
 }
 
 std::string TransactionParticipant::ReplicatedData::ToString() const {
-  return YB_STRUCT_TO_STRING(leader_term, state, op_id, hybrid_time, already_applied_to_regular_db);
+  return YB_STRUCT_TO_STRING(leader_term, state, op_id, hybrid_time, apply_to_storages);
 }
 
 void TransactionParticipant::SetWaitQueue(std::unique_ptr<docdb::WaitQueue> wait_queue) {
@@ -2765,6 +2778,10 @@ void TransactionParticipant::SetRetryableRequestsFlushedOpId(const OpId& flushed
 
 Status TransactionParticipant::ProcessRecentlyAppliedTransactions() {
   return impl_->ProcessRecentlyAppliedTransactions();
+}
+
+void TransactionParticipant::ForceRefreshWaitersForBlocker(const TransactionId& txn_id) {
+  return impl_->ForceRefreshWaitersForBlocker(txn_id);
 }
 
 }  // namespace tablet

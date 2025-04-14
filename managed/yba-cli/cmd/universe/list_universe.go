@@ -19,6 +19,7 @@ import (
 var listUniverseCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
+	GroupID: "action",
 	Short:   "List YugabyteDB Anywhere universes",
 	Long:    "List YugabyteDB Anywhere universes",
 	Example: `yba universe list`,
@@ -27,7 +28,11 @@ var listUniverseCmd = &cobra.Command{
 
 		universeListRequest := authAPI.ListUniverses()
 		// filter by name and/or by universe code
-		universeName, _ := cmd.Flags().GetString("name")
+		universeName, err := cmd.Flags().GetString("name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		if universeName != "" {
 			universeListRequest = universeListRequest.Name(universeName)
 		}

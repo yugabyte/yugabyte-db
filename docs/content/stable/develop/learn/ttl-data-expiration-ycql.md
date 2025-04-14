@@ -3,6 +3,8 @@ title: TTL for data expiration in YCQL
 headerTitle: TTL for data expiration
 linkTitle: TTL for data expiration
 description: Learn how to use TTL for data expiration in YCQL.
+tags:
+  other: ycql
 menu:
   stable:
     identifier: ttl-data-expiration-ycql
@@ -11,7 +13,9 @@ menu:
 type: docs
 ---
 
-{{<api-tabs list="ycql">}}
+{{<note>}}
+TTL is a [YCQL](/{{<version>}}/api/ycql) only feature. It is not supported in the [YSQL](/{{<version>}}/api/ysql)  API.
+{{</note>}}
 
 There are two types of time to live (TTL) in YCQL:
 
@@ -138,8 +142,6 @@ When using the `file_expiration_value_ttl_overrides_table_ttl` flag, be sure to 
 
 To convert existing YCQL tables to ones configured for file expiration, the same TServer flag values as above can be used. However, a temporary 2 times space amplification of the data should be expected in this case. This amplification happens because the existing file structure will have kept most data in a single large file, and that file will now be excluded from compactions going forward. Thus, this file will be unchanged until its contents have entirely expired, approximately TTL amount of time after the file expiration feature was configured.
 
-Additionally, if data files were created with YugabyteDB versions 2.6.6 or earlier, or 2.8.1 or earlier, files may lack the necessary metadata to be expired naturally. The `file_expiration_ignore_value_ttl` flag can be set to `true` to ignore the missing metadata. This will ignore the row- and column-level TTL metadata, expiring files purely based on the table's `default_time_to_live`.
-
 {{< warning title="Warning" >}}
 To prevent early data deletion, it is very important that in these cases, the `default_time_to_live` for any tables with TTL should be set to greater than or equal to the largest value-level TTL contained within those tables. It is recommended that once the files lacking the metadata have been removed, the `file_expiration_ignore_value_ttl` flag be set back to `false` (no restart required).
 {{< /warning >}}
@@ -151,6 +153,8 @@ To prevent early data deletion, it is very important that in these cases, the `d
 * Files are expired in a conservative manner, only being deleted after every data item it holds has completely expired. If a file has both a table-level TTL and column-level TTL, the later of the two is used in determining expiration.
 * If a universe was created on a YugabyteDB version earlier than 2.6.6 or 2.8.1, files may not contain the necessary metadata for file expiration. Similarly, if a data item is inserted with an unreasonably high TTL (or no TTL), the file expiration feature will stop being able to garbage-collect data. In these cases, it may become necessary to set the `file_expiration_ignore_value_ttl` flag to `true`, which may lead to unwanted loss of data. For more information, see [File expiration based on TTL flags](../../../reference/configuration/yb-tserver/#file-expiration-based-on-ttl-flags).
 * If backfilling data into a table using a column TTL lower than the default TTL, it should be expected that this data will not expire until the table's default TTL has been exceeded. This can be circumvented by setting the `file_expiration_value_ttl_overrides_table_ttl` flag to `true`, which may lead to unwanted loss of data. For more information, see [File expiration based on TTL flags](../../../reference/configuration/yb-tserver/#file-expiration-based-on-ttl-flags).
+* If Table level TTL and Row/Column level TTL is used, then the Row level TTL takes precendence, effectively getting rid of the file expiration feature. In such cases, if certain rows have Row/Column level TTL enabled accidentally, it is better to get rid of the application logic to not use TTL at the Row/Column level granularity, so as to benefit from the file level expiration feature that Table level TTL brings. If it is desired to have Row/Column level TTL, then there is no benefit in enabling the Table level TTL for the table at all.
+* If a table was configured for Table level TTL and you want to reduce the `default_time_to_live` in order to lower the storage footprint of the cluster (or to reduce the latency impact of too many SSTs being kept around), then it is safe to do so by altering the table. When the table is altered, the SST files that do not have any rows corresponding to Row/Column level TTL, the new `default_time_to_live` will take effect immediately and the next time compaction runs, it will garbage collect any file that is older than `default_time_to_live`.
 
 ## TTL-related commands and functions
 
@@ -162,4 +166,3 @@ There are several ways to work with TTL:
 4. [`WriteTime` function](../../../api/ycql/expr_fcall/#writetime-function) returns timestamp when a row or column was inserted.
 5. [Update row or column TTL](../../../api/ycql/dml_update/#using-clause) to update the TTL of a row or column.
 6. [YB-TServer flags related to TTL](../../../reference/configuration/yb-tserver/#file-expiration-based-on-ttl-flags) to configure the YB-TServer for file expiration based on TTL.
-

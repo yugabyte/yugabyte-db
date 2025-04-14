@@ -448,11 +448,13 @@ public class NodeInstanceController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Update a node", response = YBPTask.class)
+  @ApiOperation(
+      value = "Perform the specified action on the universe node",
+      response = YBPTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Node action",
-        value = "Node action data to be updated",
+        value = "Details of the node action to be performed",
         required = true,
         dataType = "com.yugabyte.yw.forms.NodeActionFormData",
         paramType = "body")
@@ -505,7 +507,8 @@ public class NodeInstanceController extends AuthenticatedController {
             || nodeAction == NodeActionType.REMOVE
             || nodeAction == NodeActionType.DELETE
             || nodeAction == NodeActionType.REBOOT
-            || nodeAction == NodeActionType.HARD_REBOOT)
+            || nodeAction == NodeActionType.HARD_REBOOT
+            || nodeAction == NodeActionType.DECOMMISSION)
         && !force) {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);

@@ -63,6 +63,23 @@ struct od_server {
 	bool reset_timeout;
 	/* is this an auth-backend? */
 	bool yb_auth_backend;
+
+	/* logical client version of the server. This field is populated 
+	 * after backend is spawned.
+	 */
+	int64_t logical_client_version;
+
+	/* If true, this server is marked for expiration to be
+	 * eventually cleaned by cron job
+	 */
+	bool marked_for_close;
+
+	/*
+	 * The ID of the logical client that has sent parse message to the backend
+	 * corresponding to this server object for an unnamed prepared statement. 
+	 * This would be cleared after server gets detached.
+	*/
+	od_id_t yb_unnamed_prep_stmt_client_id;
 };
 
 static const size_t OD_SERVER_DEFAULT_HASHMAP_SZ = 420;
@@ -90,6 +107,8 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->yb_sticky_connection = false;
 	server->reset_timeout = false;
 	server->yb_auth_backend = false;
+	server->logical_client_version = 0;
+	server->marked_for_close = false;
 
 #ifdef USE_SCRAM
 	od_scram_state_init(&server->scram_state);
@@ -103,6 +122,8 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	od_relay_init(&server->relay, &server->io);
 	od_list_init(&server->link);
 	memset(&server->id, 0, sizeof(server->id));
+	memset(&server->yb_unnamed_prep_stmt_client_id, 0,
+	       sizeof(server->yb_unnamed_prep_stmt_client_id));
 
 	if (reserve_prep_stmts) {
 		server->prep_stmts =
@@ -129,6 +150,10 @@ static inline void od_server_free(od_server_t *server)
 		od_io_free(&server->io);
 		if (server->prep_stmts) {
 			od_hashmap_free(server->prep_stmts);
+		}
+		if (server->vars.vars != NULL) {
+			free(server->vars.vars);
+			server->vars.vars = NULL;
 		}
 		free(server);
 	}

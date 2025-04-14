@@ -36,8 +36,8 @@ extern char *encrypt_password(PasswordType target_type, const char *role,
 							  const char *password);
 
 extern char *get_role_password(const char *role, const char **logdetail);
-extern bool yb_get_role_password(
-	const char *role, const char **logdetail, uint64_t *auth_key);
+extern bool yb_get_role_password(const char *role, const char **logdetail,
+								 uint64_t *auth_key);
 
 extern int	md5_crypt_verify(const char *role, const char *shadow_pass,
 							 const char *client_pass, const char *md5_salt,
@@ -45,7 +45,7 @@ extern int	md5_crypt_verify(const char *role, const char *shadow_pass,
 extern int	plain_crypt_verify(const char *role, const char *shadow_pass,
 							   const char *client_pass,
 							   const char **logdetail);
-extern int yb_plain_key_verify(const char *role, const uint64_t server_auth_key,
-							   const uint64_t client_auth_key, const char **logdetail);
+extern int	yb_plain_key_verify(const char *role, const uint64_t server_auth_key,
+								const uint64_t client_auth_key, const char **logdetail);
 
 #endif

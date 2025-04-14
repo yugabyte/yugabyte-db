@@ -24,6 +24,7 @@ public class PodDisruptionBudgetPolicy extends KubernetesTaskBase {
 
   public static class Params extends UniverseDefinitionTaskParams {
     public boolean deletePDB;
+    public boolean reCreatePDB;
   }
 
   public Params taskParams() {
@@ -40,9 +41,10 @@ public class PodDisruptionBudgetPolicy extends KubernetesTaskBase {
     try {
       log.info("Running {}", getName());
       Universe universe = getUniverse();
-      if (taskParams().deletePDB) {
+      if (taskParams().deletePDB || taskParams().reCreatePDB) {
         shellKubernetesManager.deletePodDisruptionBudget(universe);
-      } else {
+      }
+      if (!taskParams().deletePDB) {
         shellKubernetesManager.createPodDisruptionBudget(universe);
       }
     } catch (Exception e) {

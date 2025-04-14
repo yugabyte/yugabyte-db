@@ -13,10 +13,15 @@
 
 #pragma once
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/util/status_fwd.h"
 
-namespace yb::master {
+namespace yb {
+
+class VersionInfoPB;
+
+namespace master {
 
 class YsqlCatalogConfig;
 
@@ -31,6 +36,14 @@ class YsqlManagerIf {
 
   virtual bool IsTransactionalSysCatalogEnabled() const = 0;
   virtual Status SetTransactionalSysCatalogEnabled(const LeaderEpoch& epoch) = 0;
+
+  virtual Result<TableId> GetVersionSpecificCatalogTableId(
+      const TableId& current_table_id) const = 0;
+
+  virtual bool IsMajorUpgradeInProgress() const = 0;
+
+  virtual Status ValidateTServerVersion(const VersionInfoPB& version) const = 0;
 };
 
-}  // namespace yb::master
+}  // namespace master
+}  // namespace yb

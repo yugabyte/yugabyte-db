@@ -33,7 +33,7 @@ Explore YugabyteDB
 
 ### What makes YugabyteDB unique
 
-YugabyteDB stands out as a unique database solution due to its combination of features that bring together the strengths of both traditional SQL databases and modern NoSQL systems. It is [horizontally scalable](/preview/explore/linear-scalability/), supports global geo-distribution, supports [SQL (YSQL)](/preview/explore/ysql-language-features/sql-feature-support/) and [NoSQL (YCQL)](/preview/explore/ycql-language/) APIs, is [highly performant](/preview/benchmark/) and guarantees strong transactional consistency.
+YugabyteDB stands out as a unique database solution due to its combination of features that bring together the strengths of both traditional SQL databases and modern NoSQL systems. It is [horizontally scalable](/preview/explore/linear-scalability/), supports global geo-distribution, supports [SQL (YSQL)](/preview/api/ysql/sql-feature-support/) and [NoSQL (YCQL)](/preview/explore/ycql-language/) APIs, is [highly performant](/preview/benchmark/) and guarantees strong transactional consistency.
 
 {{<lead link="/preview/architecture/design-goals/">}}
 Design goals
@@ -125,7 +125,7 @@ Ensuring [ACID](../../architecture/key-concepts/#acid) transactions and full com
 
 - **Robustness vs PostgreSQL compatibility**: Every new PostgreSQL feature must be optimized and rigorously tested for distributed environments before being considered to be supported by YugabyteDB, which is not a simple task. Be sure to verify that the PostgreSQL features your application relies on are supported in the current version of YugabyteDB.
 
-    {{<lead link="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features">}}
+    {{<lead link="/preview/develop/postgresql-compatibility/#unsupported-postgresql-features">}}
 PostgreSQL compatibility
     {{</lead>}}
 
@@ -180,7 +180,7 @@ Compare YugabyteDB to other databases
 
 YugabyteDB is [wire-protocol, syntax, feature, and runtime](https://www.yugabyte.com/postgresql/postgresql-compatibility/) compatible with PostgreSQL. But that said, supporting all PostgreSQL features in a distributed system is not always feasible.
 
-{{<lead link="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features">}}
+{{<lead link="/preview/develop/postgresql-compatibility/#unsupported-postgresql-features">}}
 PostgreSQL compatibility
 {{</lead>}}
 

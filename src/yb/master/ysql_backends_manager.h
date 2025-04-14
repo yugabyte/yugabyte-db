@@ -139,7 +139,7 @@ class BackendsCatalogVersionTS;
 //     its backends satisfy the requested db+ver.  master_ts_ysql_catalog_lease_ms bounds the amount
 //     of time we can be in this uncertain state.  The lease needs to be handled on both sides:
 //     - tserver: block its own backends from functioning when its "lease" with master expires.
-//       TODO(#13369): the blocking is currently not implemented and is required for correctness.
+// TODO(#13369): the blocking is currently not implemented and is required for correctness.
 //     - master: if newly elected as leader, it currently won't know when all tservers have
 //       re-registered.  In other words, it doesn't know all the tservers that exist.  Since there
 //       could always exist a tserver that is network partitioned, the new master must wait the
@@ -301,11 +301,10 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   }
   std::string type_name() const override { return "Backends Catalog Version"; }
   std::string description() const override;
-  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override
-      EXCLUDES(mutex_);
-  bool CompareAndSwapState(server::MonitoredTaskState old_state,
-                           server::MonitoredTaskState new_state)
-      EXCLUDES(mutex_);
+  server::MonitoredTaskState AbortAndReturnPrevState(
+      const Status& status, bool call_task_finisher = true) override EXCLUDES(mutex_);
+  bool CompareAndSwapState(
+      server::MonitoredTaskState old_state, server::MonitoredTaskState new_state) EXCLUDES(mutex_);
   Result<int> HandleTerminalState() EXCLUDES(mutex_);
 
   // Put job in kRunning state and kick off TS RPCs.
@@ -395,9 +394,10 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   void UnregisterAsyncTaskCallback() override;
   TabletId tablet_id() const override { return ""; }
 
-  TabletServerId permanent_uuid() const;
-
   std::string LogPrefix() const;
+
+ protected:
+  bool RetryTaskAfterRPCFailure(const Status& status) override;
 
  private:
   // Use a weak ptr because this doesn't own job and job can be destroyed at any moment.

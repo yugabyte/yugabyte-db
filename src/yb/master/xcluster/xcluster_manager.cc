@@ -21,6 +21,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
@@ -48,13 +49,9 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
 DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
     "Timeout for YSQL statements executed during xCluster operations.");
 
-// This flag will be converted to a PREVIEW, and then a kExternal Auto flag as the feature matures.
-DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
+// This flag will be converted to a kExternal Auto flag as the feature matures.
+DEFINE_RUNTIME_PREVIEW_bool(xcluster_enable_ddl_replication, false,
     "Enables xCluster automatic DDL replication.");
-
-DEFINE_test_flag(bool, xcluster_enable_sequence_replication, false,
-    "Enable xCluster automatic replication of sequences (requires automatic DB-scoped "
-    "replication).");
 
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
@@ -119,7 +116,8 @@ void XClusterManager::StartShutdown() {
     tasks = monitored_tasks_;
   }
   for (auto& task : tasks) {
-    task->AbortAndReturnPrevState(STATUS(Aborted, "Master is shutting down"));
+    task->AbortAndReturnPrevState(
+        STATUS(Aborted, "Master is shutting down"), /* call_task_finisher */ true);
   }
 }
 
@@ -283,7 +281,7 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
   return xcluster_config_->PauseResumeXClusterProducerStreams(epoch, streams_to_change, paused);
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterManager::GetXClusterNamespaceToSafeTimeMap() const {
+XClusterNamespaceToSafeTimeMap XClusterManager::GetXClusterNamespaceToSafeTimeMap() const {
   return XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap();
 }
 
@@ -333,8 +331,8 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
   bool automatic_ddl_mode =
       req->automatic_ddl_mode() || FLAGS_TEST_force_automatic_ddl_replication_mode;
   SCHECK(
-      !automatic_ddl_mode || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
-      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
+      !automatic_ddl_mode || FLAGS_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (xcluster_enable_ddl_replication) is not enabled.");
 
   std::vector<NamespaceId> namespace_ids;
   for (const auto& namespace_id : req->namespace_ids()) {
@@ -703,9 +701,9 @@ XClusterManager::GetInboundTransactionalReplicationGroups() const {
   return XClusterTargetManager::GetTransactionalReplicationGroups();
 }
 
-Status XClusterManager::ClearXClusterSourceTableId(
-    TableInfoPtr table_info, const LeaderEpoch& epoch) {
-  return XClusterTargetManager::ClearXClusterSourceTableId(table_info, epoch);
+Status XClusterManager::ClearXClusterFieldsAfterYsqlDDL(
+    TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) {
+  return XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(table_info, table_pb, epoch);
 }
 
 void XClusterManager::NotifyAutoFlagsConfigChanged() {
@@ -760,6 +758,19 @@ bool XClusterManager::IsTableReplicated(const TableId& table_id) const {
          XClusterTargetManager::IsTableReplicated(table_id);
 }
 
+bool XClusterManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const {
+  return XClusterSourceManager::IsNamespaceInAutomaticDDLMode(namespace_id) ||
+         XClusterTargetManager::IsNamespaceInAutomaticDDLMode(namespace_id);
+}
+
+bool XClusterManager::IsNamespaceInAutomaticModeSource(const NamespaceId& namespace_id) const {
+  return XClusterSourceManager::IsNamespaceInAutomaticDDLMode(namespace_id);
+}
+
+bool XClusterManager::IsNamespaceInAutomaticModeTarget(const NamespaceId& namespace_id) const {
+  return XClusterTargetManager::IsNamespaceInAutomaticDDLMode(namespace_id);
+}
+
 bool XClusterManager::IsTableBiDirectionallyReplicated(const TableId& table_id) const {
   // In theory this would return true for B in the case of chaining A -> B -> C, but we don't
   // support chaining in xCluster.
@@ -807,8 +818,8 @@ Status XClusterManager::SetupUniverseReplication(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
   SCHECK(
-      !req->automatic_ddl_mode() || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
-      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
+      !req->automatic_ddl_mode() || FLAGS_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (xcluster_enable_ddl_replication) is not enabled.");
 
   return XClusterTargetManager::SetupUniverseReplication(req, resp, epoch);
 }
@@ -816,8 +827,8 @@ Status XClusterManager::SetupUniverseReplication(
 Status XClusterManager::SetupUniverseReplication(
     XClusterSetupUniverseReplicationData&& data, const LeaderEpoch& epoch) {
   SCHECK(
-      !data.automatic_ddl_mode || FLAGS_TEST_xcluster_enable_ddl_replication, InvalidArgument,
-      "Automatic DDL replication (TEST_xcluster_enable_ddl_replication) is not enabled.");
+      !data.automatic_ddl_mode || FLAGS_xcluster_enable_ddl_replication, InvalidArgument,
+      "Automatic DDL replication (xcluster_enable_ddl_replication) is not enabled.");
   return XClusterTargetManager::SetupUniverseReplication(std::move(data), epoch);
 }
 
@@ -891,9 +902,14 @@ Status XClusterManager::DeleteUniverseReplication(
 
   RETURN_NOT_OK(ValidateUniverseUUID(req, catalog_manager_));
 
+  std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above;
+  for (const auto& [consumer_namespace_id, oid_to_bump_above] : req->producer_namespace_oids()) {
+    source_namespace_id_to_oid_to_bump_above[consumer_namespace_id] = oid_to_bump_above;
+  }
+
   RETURN_NOT_OK(XClusterTargetManager::DeleteUniverseReplication(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->ignore_errors(),
-      req->skip_producer_stream_deletion(), resp, epoch));
+      req->skip_producer_stream_deletion(), resp, epoch, source_namespace_id_to_oid_to_bump_above));
 
   LOG(INFO) << "Successfully completed DeleteUniverseReplication request from "
             << RequestorString(rpc);
@@ -938,6 +954,17 @@ Status XClusterManager::InsertPackedSchemaForXClusterTarget(
       table_id, req->packed_schema(), req->current_schema_version(), epoch);
 }
 
+Status XClusterManager::InsertHistoricalColocatedSchemaPacking(
+    const InsertHistoricalColocatedSchemaPackingRequestPB* req,
+    InsertHistoricalColocatedSchemaPackingResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(
+      *req, replication_group_id, target_parent_table_id, colocation_id, source_schema_version,
+      schema);
+  return XClusterTargetManager::InsertHistoricalColocatedSchemaPacking(req, resp, epoch);
+}
+
 Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {
   std::lock_guard l(monitored_tasks_mutex_);
   SCHECK_FORMAT(
@@ -949,6 +976,12 @@ Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {
 void XClusterManager::UnRegisterMonitoredTask(server::MonitoredTaskPtr task) {
   std::lock_guard l(monitored_tasks_mutex_);
   monitored_tasks_.erase(task);
+}
+
+Status XClusterManager::ProcessCreateTableReq(
+    const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
+    const NamespaceId& namespace_id) const {
+  return XClusterTargetManager::ProcessCreateTableReq(req, table_pb, table_id, namespace_id);
 }
 
 }  // namespace yb::master

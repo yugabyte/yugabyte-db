@@ -25,6 +25,8 @@
 #include <sys/syscall.h>
 #endif // __linux__
 
+#include "yb/rocksdb/util/coding.h"
+#include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
@@ -105,6 +107,8 @@ size_t GetUniqueIdFromFile(int fd, uint8_t* id) {
   rid = EncodeVarint64(rid, buf.st_dev);
   rid = EncodeVarint64(rid, buf.st_ino);
   rid = EncodeVarint64(rid, version);
+  InlineEncodeFixed32(rid, static_cast<uint32_t>(buf.st_mtime));
+  rid += sizeof(uint32_t);
   DCHECK_GE(rid, id);
   return rid - id;
 }

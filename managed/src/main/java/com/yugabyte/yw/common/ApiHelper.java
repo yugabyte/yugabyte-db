@@ -18,6 +18,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.pekko.stream.javadsl.Source;
 import org.apache.pekko.util.ByteString;
 import play.libs.Json;
@@ -102,6 +103,24 @@ public class ApiHelper {
   // Helper function to get the full body of the webpage via an http request to the given url.
   public String getBody(String url) {
     return getBody(url, new HashMap<>(), DEFAULT_GET_REQUEST_TIMEOUT);
+  }
+
+  public Pair<Integer, String> getResponse(String url) {
+    return getResponse(url, new HashMap<>(), DEFAULT_GET_REQUEST_TIMEOUT);
+  }
+
+  public Pair<Integer, String> getResponse(
+      String url, Map<String, String> headers, Duration timeout) {
+    WSRequest request = requestWithHeaders(url, headers);
+    request.setRequestTimeout(timeout);
+    CompletionStage<WSResponse> responsePromise = request.get();
+    try {
+      WSResponse response = responsePromise.toCompletableFuture().get();
+      return Pair.of(response.getStatus(), response.getBody());
+    } catch (Exception e) {
+      log.error("Error occurred", e);
+      return Pair.of(-1, e.getMessage());
+    }
   }
 
   public String getBody(String url, Map<String, String> headers, Duration timeout) {

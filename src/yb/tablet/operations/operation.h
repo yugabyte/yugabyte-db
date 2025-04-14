@@ -172,6 +172,12 @@ class Operation {
     completion_clbk_ = std::move(completion_clbk);
   }
 
+  template <class ReplicateMsg>
+  void SetupFromReplicateMsg(const ReplicateMsg& replicate_msg) {
+    set_hybrid_time(HybridTime::FromPB(replicate_msg.hybrid_time()));
+    set_op_id(OpId::FromPB(replicate_msg.id()));
+  }
+
   // Sets the hybrid_time for the transaction
   void set_hybrid_time(const HybridTime& hybrid_time) EXCLUDES(mutex_);
 

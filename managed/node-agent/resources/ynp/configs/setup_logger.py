@@ -2,6 +2,7 @@ import logging
 import logging.config
 import os
 import pwd
+import time
 
 
 def setup_logger(config):
@@ -18,12 +19,15 @@ def setup_logger(config):
     # We need execute set on directory for traversal, don't need it on all files.
     os.makedirs(log_dir, mode=0o755, exist_ok=True)
 
+    log_path = os.path.join(log_dir, log_file)
     logging_config = {
         'version': 1,
         'disable_existing_loggers': False,
         'formatters': {
             'standard': {
-                'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+                'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                'datefmt': '%Y-%m-%dT%H:%M:%SZ',  # ISO-like UTC format
+                '()': 'logging.Formatter',        # Explicit formatter class
             },
         },
         'handlers': {
@@ -36,7 +40,7 @@ def setup_logger(config):
                 'class': 'logging.FileHandler',
                 'formatter': 'standard',
                 'level': 'DEBUG',
-                'filename': os.path.join(log_dir, log_file),
+                'filename': log_path,
                 'mode': 'a',
             },
         },
@@ -44,17 +48,20 @@ def setup_logger(config):
             '': {  # root logger
                 'handlers': ['console', 'file'],
                 'level': 'DEBUG',
-                'propagate': True
+                'propagate': True,
             }
         }
     }
     logging.config.dictConfig(logging_config)
-    # Ensure the log file has the correct permissions (644)
-    # No execute set, root can read/write, group can read, others can read
-    os.chmod(os.path.join(log_dir, log_file), 0o644)
-    logger = logging.getLogger()
-    logger.info("Logging Setup Done")
+    # Patch all formatters to use UTC time
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler.formatter, logging.Formatter):
+            handler.formatter.converter = time.gmtime
 
+    # Set file permissions (644)
+    os.chmod(log_path, 0o644)
+
+    # Set ownership to original user if script was run with sudo
     if 'SUDO_USER' in os.environ:
         original_user = os.environ['SUDO_USER']
     else:
@@ -63,4 +70,7 @@ def setup_logger(config):
     uid = user_info.pw_uid
     gid = user_info.pw_gid
     os.chown(log_dir, uid, gid)
-    os.chown(os.path.join(log_dir, log_file), uid, gid)
+    os.chown(log_path, uid, gid)
+
+    logger = logging.getLogger()
+    logger.info("Logging setup complete in UTC timezone")

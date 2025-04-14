@@ -27,86 +27,18 @@
 #include <kiwi.h>
 #include <machinarium.h>
 #include <odyssey.h>
+#include <pthread.h>
 #include "yb_oid_entry.h"
 
 /* TODO(janand): GH#21436 Use hash map instead of list */
-#define MAX_DATABASES YSQL_CONN_MGR_MAX_POOLS
 #define YB_INVALID_OID_IN_PKT 0
 
-yb_db_entry_t database_entry_list[MAX_DATABASES];
-od_atomic_u64_t database_count = 0;
-
-static inline void set_db_name(yb_db_entry_t *db_entry, const char *db_name)
+static inline void set_oid_obj_name(yb_oid_entry_t *entry, const char *name)
 {
-	assert(db_entry != NULL);
+	assert(entry != NULL);
 
-	strcpy((char *)db_entry->name, db_name);
-	db_entry->name_len = strlen(db_name);
-}
-
-static inline int add_db_entry(int oid, const char *name,
-			       od_instance_t *instance)
-{
-	/* TODO(janand): GH#21437 Add tests for too many db pools */
-	if (database_count >= MAX_DATABASES)
-		return -1;
-
-	const int newDbEntryIdx = od_atomic_u32_inc(&database_count);
-	if (newDbEntryIdx >= MAX_DATABASES)
-		return -1;
-
-	for (int i = 0; i < newDbEntryIdx; ++i) {
-		assert(database_entry_list[i].oid != oid);
-	}
-
-	set_db_name(database_entry_list + newDbEntryIdx, name);
-	database_entry_list[newDbEntryIdx].oid = oid;
-	database_entry_list[newDbEntryIdx].status = YB_DB_ACTIVE;
-	od_debug(
-		&instance->logger, "yb db oid", NULL, NULL,
-		"Added the entry for database %s with oid %d in the global database_entry_list",
-		(char *)database_entry_list[newDbEntryIdx].name,
-		database_entry_list[newDbEntryIdx].oid);
-	return 0;
-}
-
-static inline int yb_add_or_update_db_entry(const int yb_db_oid,
-					    const char *db_name,
-					    od_instance_t *instance)
-{
-	/* Update the entry if found */
-	for (uint64_t i = 0; i < database_count; ++i) {
-		if (database_entry_list[i].oid == yb_db_oid) {
-			set_db_name(database_entry_list + i, db_name);
-			return 0;
-		}
-	}
-
-	if (add_db_entry(yb_db_oid, db_name, instance) < 0)
-		return -1;
-
-	return 0;
-}
-
-yb_db_entry_t *yb_get_db_entry(const int yb_db_oid)
-{
-	assert(yb_db_oid >= 0);
-
-	/* yb_db_oid = 0 repesents control connection */
-	if (yb_db_oid == 0)
-		return database_entry_list;
-
-	for (uint64_t i = 1; i < database_count; ++i)
-		if (database_entry_list[i].oid == yb_db_oid)
-			return database_entry_list + i;
-
-	return NULL;
-}
-
-void yb_db_list_init(od_instance_t *instance)
-{
-	/* Add entry for the control connection */
-	add_db_entry(YB_CTRL_CONN_OID, "yugabyte", instance);
+	strcpy((char *)entry->name, name);
+	entry->name_len = strlen(name);
 }
 
 static inline char *parse_single_col_data_row_pkt(machine_msg_t *msg)
@@ -137,43 +69,50 @@ static inline char *parse_single_col_data_row_pkt(machine_msg_t *msg)
 		goto error;
 	}
 
-	/* db name */
+	/* user/db name */
 	return pos;
 
 error:
 	return NULL;
 }
 
-static inline int update_db_entry_from_backend(od_instance_t *instance,
+static inline int update_oid_entry_from_backend(const int obj_type,
+						   od_instance_t *instance,
 					       od_server_t *server,
-					       yb_db_entry_t *entry)
+					       yb_oid_entry_t *entry)
 {
 	char query[240];
-	sprintf(query,
-		"SELECT datname AS db_name FROM pg_database WHERE oid IN (%d)",
-		entry->oid);
+	if (obj_type == YB_DATABASE)
+		sprintf(query,
+			"SELECT datname AS db_name FROM pg_database WHERE oid IN (%d)",
+			entry->oid);
+	else if (obj_type == YB_USER)
+		sprintf(query,
+			"SELECT rolname AS user_name FROM pg_roles WHERE oid IN (%d)",
+			entry->oid);
 
 	machine_msg_t *msg = od_query_do(server, "auth query", query, NULL);
 	if (msg == NULL) {
-		od_error(&instance->logger, "auth_query", NULL, server,
-			 "auth query returned empty msg");
-		return -1;
+		/* od_query_do handles if msg is NULL due to errors */
+		entry->status = YB_OID_DROPPED;
+		return 0;
 	}
 
 	char *value = parse_single_col_data_row_pkt(msg);
 	if (value == NULL) {
-		/* i.e. db is dropped */
-		entry->status = YB_DB_DROPPED;
+		/* i.e. user/db is dropped */
+		entry->status = YB_OID_DROPPED;
 	} else {
-		set_db_name(entry, value);
+		set_oid_obj_name(entry, value);
 	}
 
 	machine_msg_free(msg);
 	return 0;
 }
 
-static inline int update_db_entry_via_ctrl_conn(od_global_t *global,
-						yb_db_entry_t *entry)
+static inline int update_oid_entry_via_ctrl_conn(const int obj_type, 
+						od_global_t *global,
+						yb_oid_entry_t *entry)
 {
 	od_instance_t *instance = global->instance;
 	od_router_t *router = global->router;
@@ -255,7 +194,7 @@ static inline int update_db_entry_via_ctrl_conn(od_global_t *global,
 		}
 	}
 
-	rc = update_db_entry_from_backend(instance, server, entry);
+	rc = update_oid_entry_from_backend(obj_type, instance, server, entry);
 
 	/*
 	 * close the backend connection as we don't want to reuse machines in
@@ -280,21 +219,25 @@ failed_to_acquire_control_connection:
 	return NOT_OK_RESPONSE;
 }
 
-int yb_resolve_db_status(od_global_t *global, yb_db_entry_t *entry,
+/*
+ * Currently below code never executes. And it's dependent upon yb_oid_entry_t which is no longer
+ * been used (DB-15614). Make sure to update the below code before using it according to current
+ * implementation of handling OIDs.
+*/
+int yb_resolve_oid_status(const int obj_type, od_global_t *global, yb_oid_entry_t *entry,
 			 od_server_t *server)
 {
 	if (server == NULL) {
-		return update_db_entry_via_ctrl_conn(global, entry);
+		return update_oid_entry_via_ctrl_conn(obj_type, global, entry);
 	} else {
-		return update_db_entry_from_backend(global->instance, server,
-						    entry);
+		return update_oid_entry_from_backend(obj_type, global->instance, server, entry);
 	}
 }
 
-bool yb_is_route_invalid(void *route)
+/* Return the status of the route whether it's valid or not */
+int yb_is_route_invalid(void *route)
 {
-	return ((od_route_t *)route)->yb_database_entry->status ==
-	       YB_DB_DROPPED;
+	return ((od_route_t *)route)->status == YB_ROUTE_INACTIVE ? YB_ROUTE_INVALID : 0;
 }
 
 int read_oid_pkt(od_client_t *client, machine_msg_t *msg,
@@ -324,39 +267,39 @@ int read_oid_pkt(od_client_t *client, machine_msg_t *msg,
 }
 
 int yb_handle_oid_pkt_server(od_instance_t *instance, od_server_t *server,
-			     machine_msg_t *msg, const char *db_name)
+			     machine_msg_t *msg)
 {
 	char oid_type;
 	uint32_t oid_val;
+	int route_oid;
+	int db_oid = -1;
+	int user_oid = -1;
 
 	int rc = read_oid_pkt(server, msg, instance, &oid_type, &oid_val);
 	if (rc == -1)
 		return -1;
 
-	assert(((od_route_t *)server->route)->yb_database_entry != NULL);
+	if (oid_type == 'd') {
+		route_oid = ((od_route_t *)server->route)->id.yb_db_oid;
+		db_oid = route_oid;
+	} else if (oid_type == 'u') {
+		route_oid = ((od_route_t *)server->route)->id.yb_user_oid;
+		user_oid = route_oid;
+	}
 
+	/* database/user dropped just before sending oid packet */
 	if (oid_val == YB_INVALID_OID_IN_PKT) {
-		/* database is already declared invalid */
-		if (yb_is_route_invalid(server->route))
-			return 0;
-
-		/* database dropped just before sending oid packet */
-		return yb_resolve_db_status(
-			instance,
-			((od_route_t *)server->route)->yb_database_entry, NULL);
+		yb_mark_routes_inactive(server->global->router, db_oid, user_oid);
+		return -1;
 	}
 
 	/* control connection */
-	if (!((od_route_t *)server->route)->yb_database_entry->oid)
+	if (!route_oid)
 		return 0;
 
-	if (((od_route_t *)server->route)->yb_database_entry->oid !=
-	    (int)oid_val) {
-		/* Database has been renamed or recreated */
-		yb_resolve_db_status(
-			instance,
-			((od_route_t *)server->route)->yb_database_entry,
-			server);
+	if (route_oid != (int)oid_val) {
+		/* db/user has been recreated, mark original db/user as dropped */
+		yb_mark_routes_inactive(server->global->router, db_oid, user_oid);
 		return -1;
 	}
 
@@ -372,14 +315,14 @@ int yb_handle_oid_pkt_client(od_instance_t *instance, od_client_t *client,
 	if (read_oid_pkt(client, msg, instance, &oid_type, &oid_val) == -1)
 		return -1;
 
-	if (oid_type == 'd') {
-		/* Do nothing for a logical connection failure */
-		if (oid_val == YB_INVALID_OID_IN_PKT)
-			return 0;
+	/* Do nothing for a logical connection failure */
+	if (oid_val == YB_INVALID_OID_IN_PKT)
+		return 0;
 
+	if (oid_type == 'd') {
 		client->yb_db_oid = oid_val;
-		return yb_add_or_update_db_entry(
-			oid_val, client->startup.database.value, instance);
+	} else if (oid_type == 'u') {
+		client->yb_user_oid = oid_val;
 	}
 
 	return 0;

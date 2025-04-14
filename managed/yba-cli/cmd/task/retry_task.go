@@ -91,7 +91,12 @@ var retryTaskCmd = &cobra.Command{
 
 			tasks, response, err := authAPI.TasksList().Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Task", "Retry - Fetch Tasks")
+				errMessage := util.ErrorFromHTTPResponse(
+					response,
+					err,
+					"Task",
+					"Retry - Fetch Tasks",
+				)
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 

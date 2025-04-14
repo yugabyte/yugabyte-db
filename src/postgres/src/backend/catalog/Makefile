@@ -76,7 +76,8 @@ CATALOG_HEADERS := \
 	pg_sequence.h pg_publication.h pg_publication_namespace.h \
 	pg_publication_rel.h pg_subscription.h pg_subscription_rel.h \
 	pg_yb_catalog_version.h pg_yb_migration.h \
-    pg_yb_profile.h pg_yb_role_profile.h pg_yb_tablegroup.h pg_yb_logical_client_version.h
+    pg_yb_profile.h pg_yb_role_profile.h pg_yb_tablegroup.h pg_yb_logical_client_version.h \
+    pg_yb_invalidation_messages.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h) schemapg.h system_fk_info.h
 
@@ -137,17 +138,19 @@ install-data: bki-stamp yb_bki-stamp installdirs
 	$(INSTALL_DATA) $(call vpathsearch,yb_postgres.bki) '$(DESTDIR)$(datadir)/yb_postgres.bki'
 	$(INSTALL_DATA) $(call vpathsearch,system_constraints.sql) '$(DESTDIR)$(datadir)/system_constraints.sql'
 	$(INSTALL_DATA) $(srcdir)/system_functions.sql '$(DESTDIR)$(datadir)/system_functions.sql'
+	$(INSTALL_DATA) $(srcdir)/yb_system_functions.sql '$(DESTDIR)$(datadir)/yb_system_functions.sql'
 	$(INSTALL_DATA) $(srcdir)/system_views.sql '$(DESTDIR)$(datadir)/system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/yb_system_views.sql '$(DESTDIR)$(datadir)/yb_system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
+	$(INSTALL_DATA) $(srcdir)/fix-CVE-2024-4317.sql '$(DESTDIR)$(datadir)/fix-CVE-2024-4317.sql'
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(datadir)'
 
 .PHONY: uninstall-data
 uninstall-data:
-	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki yb_postgres.bki system_constraints.sql system_functions.sql system_views.sql information_schema.sql sql_features.txt)
+	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki system_constraints.sql system_functions.sql system_views.sql information_schema.sql sql_features.txt fix-CVE-2024-4317.sql yb_system_functions.sql yb_system_views.sql)
 
 # postgres.bki, system_constraints.sql, and the generated headers are
 # in the distribution tarball, so they are not cleaned here.

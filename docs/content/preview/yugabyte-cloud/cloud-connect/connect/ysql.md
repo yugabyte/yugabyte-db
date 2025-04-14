@@ -1,10 +1,11 @@
 <!--
 +++
 private = true
+block_indexing = true
 +++
 -->
 
-To connect to a cluster using `ysqlsh`:
+To connect to a cluster using ysqlsh:
 
 1. On the **Clusters** tab, select a cluster.
 1. Click **Connect**.
@@ -16,7 +17,7 @@ To connect to a cluster using `ysqlsh`:
 
     The connection string includes flags specifying the host (`host`), username (`user`), database (`dbname`), and TLS settings (`sslmode` and `sslrootcert`). The command specifies that the connection will use the CA certificate you installed on your computer. For information on using other SSL modes, refer to [SSL modes in YSQL](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
-    Here's an example of the generated `ysqlsh` command:
+    Here's an example of the generated ysqlsh command:
 
     ```sh
     ./ysqlsh "host=740ce33e-4242-4242-a424-cc4242c4242b.aws.yugabyte.cloud \
@@ -35,10 +36,10 @@ To connect to a cluster using `ysqlsh`:
 
 1. Enter your password when prompted.
 
-The `ysqlsh` shell opens connected to the remote cluster.
+The ysqlsh shell opens connected to the remote cluster.
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 
