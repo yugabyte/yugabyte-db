@@ -82,20 +82,20 @@ Displays information about active WAL senders, providing insights into the state
 | usename | name | Name of the user logged into this WAL sender process. |
 | application_name | text | Name of the application that is connected to this WAL sender. |
 | client_addr | inet | IP address of the client connected to this WAL sender. If this field is null, it indicates that the client is connected via a Unix socket on the server machine. |
-| client_hostname | text | Host name of the connected client, as reported by a reverse DNS lookup of client_addr. This field will only be non-null for IP connections, and only when log_hostname is enabled. |
+| client_hostname | text | Host name of the connected client, as reported by a reverse DNS lookup of client_addr. This field will only be non-null for IP connections, and only when the [log_hostname](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-HOSTNAME) configuration parameter is enabled. |
 | client_port | integer | TCP port number that the client is using for communication with this WAL sender, or -1 if a Unix socket is used. |
-| backend_start | timestamp with time zone | Time when this process was started, i.e., when the client connected to this WAL sender. |
+| backend_start | timestamp with time zone | Time when this process was started (that is, when the client connected to this WAL sender). |
 | backend_xmin | xid | The oldest transaction the client is interested in. |
-| state | text | Current WAL sender state (Always `streaming`). |
+| state | text | Current WAL sender state. Always `streaming`. |
 | sent_lsn | pg_lsn | Last write-ahead log location sent on this connection. |
-| write_lsn | pg_lsn | The last lsn acknowledged by the logical replication client. |
+| write_lsn | pg_lsn | The last LSN acknowledged by the logical replication client. |
 | flush_lsn | pg_lsn | Same as `write_lsn`. |
 | replay_lsn | pg_lsn | Same as `write_lsn`. |
 | write_lag | interval | The difference between the timestamp of the latest record in WAL and the timestamp of the last acknowledged record. Since YugabyteDB does not differentiate between write, flush, or replay, this value is the same for all three lag metrics. |
 | flush_lag | interval | Same as `write_lag`. |
 | replay_lag | interval | Same as `write_lag`. |
-| sync_priority | integer | Synchronous state of this standby server. Always 0 in YSQL since we only support asynchronous replication. |
-| sync_state | text | Synchronous state of this standby server (Always `async`). |
+| sync_priority | integer | Synchronous state of this standby server. Always 0, as logical replication only supports asynchronous replication. |
+| sync_state | text | Synchronous state of this standby server. Always `async`. |
 | reply_time | timestamp with time zone | Timestamp of the last reply message received from the client. |
 
 ## CDC service metrics
