@@ -749,6 +749,11 @@ public class Audit extends Model {
     return entry;
   }
 
+  public void updateAdditionalDetails(JsonNode additionalDetails) {
+    this.additionalDetails = additionalDetails;
+    this.update();
+  }
+
   public static List<Audit> getAllUserEntries(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
   }
