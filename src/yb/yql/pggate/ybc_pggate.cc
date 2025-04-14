@@ -2266,7 +2266,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
       .ysql_enable_inheritance =
-          &FLAGS_ysql_enable_inheritance
+          &FLAGS_ysql_enable_inheritance,
+      .TEST_enable_object_locking_for_table_locks =
+          &FLAGS_TEST_enable_object_locking_for_table_locks
   };
   // clang-format on
   return &accessor;

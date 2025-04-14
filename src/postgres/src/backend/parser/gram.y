@@ -13134,47 +13134,56 @@ LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
 
 opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 			| /*EMPTY*/
-			  {
-			    parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
-			    $$ = AccessExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
+			    	$$ = AccessExclusiveLock;
+				}
 		;
 
 lock_type:	ACCESS SHARE					{ $$ = AccessShareLock; }
 			| ROW SHARE
-			  { parser_ybc_not_support(@1, "ROW SHARE");
-			    $$ = RowShareLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ROW SHARE");
+			    	$$ = RowShareLock;
+				}
 			| ROW EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "ROW EXCLUSIVE");
-			    $$ = RowExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ROW EXCLUSIVE");
+			    	$$ = RowExclusiveLock;
+				}
 			| SHARE UPDATE EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
-			    $$ = ShareUpdateExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
+			    	$$ = ShareUpdateExclusiveLock;
+				}
 			| SHARE
-			  {
-			    parser_ybc_not_support(@1, "SHARE");
-			    $$ = ShareLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE");
+			    	$$ = ShareLock;
+				}
 			| SHARE ROW EXCLUSIVE
 				{
-				  parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
-				  $$ = ShareRowExclusiveLock;
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
+			    	$$ = ShareRowExclusiveLock;
 				}
 			| EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "EXCLUSIVE");
-			    $$ = ExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "EXCLUSIVE");
+			    	$$ = ExclusiveLock;
+				}
 			| ACCESS EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
-			    $$ = AccessExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
+			    	$$ = AccessExclusiveLock;
+				}
 		;
 
 opt_nowait:	NOWAIT							{ $$ = true; }
