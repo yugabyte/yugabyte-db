@@ -2714,12 +2714,13 @@ public class NodeManager extends DevopsBase {
     switch (rootCert.getCertType()) {
       case CustomCertHostPath:
         CertificateParams.CustomCertInfo certConfig = rootCert.getCustomCertPathParams();
+        String fingerprint = CertificateHelper.computeFingerprint(rootCert.getCertificate());
         // For NodeToNode encryption
         if (!isClient) {
           commandArgs.add("--root_cert_path");
           commandArgs.add(certConfig.rootCertPath);
-          commandArgs.add("--yba_root_cert_checksum");
-          commandArgs.add(rootCert.getChecksum());
+          commandArgs.add("--yba_root_cert_fingerprint");
+          commandArgs.add(fingerprint);
           commandArgs.add("--node_server_cert_path");
           commandArgs.add(certConfig.nodeCertPath);
           commandArgs.add("--node_server_key_path");
@@ -2729,8 +2730,8 @@ public class NodeManager extends DevopsBase {
         else {
           commandArgs.add("--client_root_cert_path");
           commandArgs.add(certConfig.rootCertPath);
-          commandArgs.add("--yba_client_root_cert_checksum");
-          commandArgs.add(rootCert.getChecksum());
+          commandArgs.add("--yba_client_root_cert_fingerprint");
+          commandArgs.add(fingerprint);
           commandArgs.add("--client_server_cert_path");
           commandArgs.add(certConfig.nodeCertPath);
           commandArgs.add("--client_server_key_path");
