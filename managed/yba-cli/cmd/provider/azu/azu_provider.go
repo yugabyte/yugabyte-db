@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/azu/instancetype"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
@@ -32,10 +33,12 @@ func init() {
 	AzureProviderCmd.AddCommand(listAzureProviderCmd)
 	AzureProviderCmd.AddCommand(describeAzureProviderCmd)
 	AzureProviderCmd.AddCommand(deleteAzureProviderCmd)
+	AzureProviderCmd.AddCommand(instancetype.InstanceTypesCmd)
 
 	AzureProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe, update.",
-				formatter.GreenColor)))
+				"Required for create, delete, describe, update, and some instance-type subcommands.",
+				formatter.GreenColor,
+			)))
 }

@@ -179,7 +179,7 @@ Default: `true`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -940,6 +940,18 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
 Default: `28800` (8 hours)
+
+##### --cdc_intent_retention_ms
+
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+
+Default: `28800000` (8 hours)
+
+##### --cdcsdk_tablet_not_of_interest_timeout_secs
+
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+Default: `14400` (4 hours)
 
 ##### --enable_tablet_split_of_cdcsdk_streamed_tables
 

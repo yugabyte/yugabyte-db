@@ -59,7 +59,7 @@ export const NodeAgentStatus = ({ nodeAgent }: NodeAgentStatusProps) => {
     tagTextColor = helperClasses.tagTextRed;
     imageSrc = Warning;
   } else {
-    switch (status) {
+    switch (nodeAgent.state) {
       case NodeAgentState.READY:
         tagColor = helperClasses.tagGreen;
         tagTextColor = helperClasses.tagTextGreen;

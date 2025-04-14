@@ -938,7 +938,6 @@ public class CloudProviderHelper {
             String.format("Provider with name %s already exists.", editProviderReq.getName()));
       }
     }
-
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
     // Validate the provider request so as to ensure we only allow editing of fields
     // that does not impact the existing running universes.
@@ -997,7 +996,7 @@ public class CloudProviderHelper {
     JsonNode newErrors = null;
     if (cloudValidate) {
       try {
-        providerValidator.validate(editProviderReq);
+        providerValidator.validate(editProviderReq, provider);
       } catch (PlatformServiceException e) {
         log.error(
             "Received validation error,  ignoreValidationErrors=" + ignoreCloudValidationErrors, e);

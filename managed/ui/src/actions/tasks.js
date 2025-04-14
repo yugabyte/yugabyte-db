@@ -16,13 +16,13 @@ export const FETCH_FAILED_TASK_DETAIL_RESPONSE = 'FETCH_TASK_DETAIL_RESPONSE';
 export const RETRY_TASK = 'RETRY_TASK';
 export const RETRY_TASK_RESPONSE = 'RETRY_TASK_RESPONSE';
 
-export const ROLLBACK_TASK = 'ROLLBACK_TASK';
-export const ROLLBACK_TASK_RESPONSE = 'ROLLBACK_TASK_RESPONSE';
-
 export const ABORT_TASK = 'ABORT_TASK';
 export const ABORT_TASK_RESPONSE = 'ABORT_TASK_RESPONSE';
 
 export const PATCH_TASKS_FOR_CUSTOMER = 'PATCH_TASKS_FOR_CUSTOMER';
+
+export const SHOW_TASK_IN_DRAWER = 'SHOW_TASK_IN_DRAWER';
+export const HIDE_TASK_IN_DRAWER = 'HIDE_TASK_IN_DRAWER';
 
 export function fetchTaskProgress(taskUUID) {
   const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
@@ -101,36 +101,6 @@ export function fetchFailedSubTasksResponse(response) {
   };
 }
 
-export function retryTask(taskUUID) {
-  const request = axios.post(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
-  return {
-    type: RETRY_TASK,
-    payload: request
-  };
-}
-
-export function retryTaskResponse(response) {
-  return {
-    type: RETRY_TASK_RESPONSE,
-    payload: response
-  };
-}
-
-export function rollbackTask(taskUUID) {
-  const request = axios.post(`${getCustomerEndpoint()}/tasks/${taskUUID}/rollback`);
-  return {
-    type: ROLLBACK_TASK,
-    payload: request
-  };
-}
-
-export function rollbackTaskResponse(response) {
-  return {
-    type: ROLLBACK_TASK_RESPONSE,
-    payload: response
-  };
-}
-
 export function abortTask(taskUUID) {
   const request = axios.post(`${getCustomerEndpoint()}/tasks/${taskUUID}/abort`);
   return {
@@ -145,3 +115,16 @@ export function abortTaskResponse(response) {
     payload: response
   };
 }
+
+export const showTaskInDrawer = (taskUUID) => {
+  return {
+    type: SHOW_TASK_IN_DRAWER,
+    payload: taskUUID
+  };
+};
+
+export const hideTaskInDrawer = () => {
+  return {
+    type: HIDE_TASK_IN_DRAWER
+  };
+};

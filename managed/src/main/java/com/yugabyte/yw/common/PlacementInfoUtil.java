@@ -580,6 +580,14 @@ public class PlacementInfoUtil {
             cluster.userIntent.assignPublicIP);
         return true;
       }
+      if (!Objects.equals(
+          currentCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID)) {
+        LOG.debug(
+            "imageBundleUUID has changed from {} to {}",
+            currentCluster.userIntent.imageBundleUUID,
+            cluster.userIntent.imageBundleUUID);
+        return true;
+      }
     }
     return false;
   }
@@ -1104,6 +1112,8 @@ public class PlacementInfoUtil {
           || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
           || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
           || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)
+          || !Objects.equals(
+              newCluster.userIntent.imageBundleUUID, oldCluster.userIntent.imageBundleUUID)
           || existingIntent.assignPublicIP != userIntent.assignPublicIP) {
         throw new UnsupportedOperationException(
             "Cannot change anything but placement if replication factor is altered.");

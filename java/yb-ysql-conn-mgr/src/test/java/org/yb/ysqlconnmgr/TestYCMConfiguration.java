@@ -19,6 +19,7 @@ import static org.yb.AssertionWrappers.fail;
 import java.sql.*;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
@@ -26,6 +27,21 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
 
   private static final String LONG_RAND_STR =
       "randonmlongstringabcdefgergekrjbgferkjbferjkberkjghbverjkh";
+
+  private void createRole(String roleName) {
+    try (Connection conn = getConnectionBuilder()
+                           .withUser("yugabyte")
+                           .withDatabase("yugabyte")
+                           .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                           .connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute(String.format("CREATE ROLE %s LOGIN", roleName));
+      LOG.info("Created the role " + roleName);
+    } catch (Exception e) {
+      LOG.error("Got exception", e);
+      fail();
+    }
+  }
 
   @Test
   public void testQuerySizeGflag() throws Exception {
@@ -77,4 +93,53 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
 
   }
 
+  @Test
+  public void testMaxPoolSize() throws Exception {
+
+    reduceMaxPoolSize(4);
+
+    createRole("test_role_1");
+    createRole("test_role_2");
+    createRole("test_role_3");
+
+    // Each connection will be created with different role which will lead
+    // to creation of different pools.
+    ConnectionBuilder roleUserConnectionBuilder = getConnectionBuilder()
+                      .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+
+    try (Connection connection = roleUserConnectionBuilder
+                                 .withUser("test_role_1").connect()) {
+      // No-op.
+    }
+    catch (Exception e) {
+      LOG.error("Got an unexpected error: ", e);
+      fail("Connection faced an unexpected issue");
+    }
+
+    try (Connection connection = roleUserConnectionBuilder
+                                 .withUser("test_role_2").connect()) {
+      // No-op.
+    }
+    catch (Exception e) {
+      LOG.error("Got an unexpected error: ", e);
+      fail("Connection faced an unexpected issue");
+    }
+
+    // This connection will fail as the max pool size is set to 4.
+    // 4 pools already created are:
+      // 1. Control Connecton pool
+      // 2. Default Pool (yugabyte/yugabyte)
+      // 3. Pool for test_role_1
+      // 4. Pool for test_role_2
+    try (Connection connection = roleUserConnectionBuilder
+                                 .withUser("test_role_3").connect()) {
+      // No-op.
+      LOG.error("Should have failed on reaching the max pool limit");
+      fail("Connection is expected to fail on reaching max pool size");
+    }
+    catch (Exception e) {
+      LOG.info("Connection is expected to fail on eaching max pool size", e);
+    }
+
+  }
 }

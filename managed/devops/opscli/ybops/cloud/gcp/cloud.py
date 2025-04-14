@@ -76,7 +76,8 @@ class GcpCloud(AbstractCloud):
             args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
             cloud_subnet_secondary=args.cloud_subnet_secondary,
-            gcp_instance_template=args.instance_template)
+            gcp_instance_template=args.instance_template, disk_iops=args.disk_iops,
+            disk_throughput=args.disk_throughput)
 
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)
@@ -109,6 +110,13 @@ class GcpCloud(AbstractCloud):
         logging.info("Unmounting disk {} from host {} in zone {}".format(
                      name, args['search_pattern'], args['zone']))
         self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
+
+    def get_disk(self, host_info, volume_id, args):
+        logging.info("Retrieving disk {} from host {} in zone {}".format(
+                     volume_id, host_info['search_pattern'], host_info['zone']))
+        return self.get_admin().get_disk(host_info['zone'],
+                                         host_info['search_pattern'],
+                                         volume_id)
 
     def stop_instance(self, host_info):
         instance = self.get_admin().get_instances(host_info['zone'], host_info['search_pattern'],

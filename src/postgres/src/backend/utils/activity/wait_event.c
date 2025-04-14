@@ -29,9 +29,9 @@
 /* YB includes */
 #include "funcapi.h"
 #include "nodes/execnodes.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "pg_yb_utils.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
 #define YB_WAIT_EVENT_DESC_COLS_V1 4
@@ -807,6 +807,9 @@ pgstat_get_wait_io(WaitEventIO w)
 		case WAIT_EVENT_TWOPHASE_FILE_WRITE:
 			event_name = "TwophaseFileWrite";
 			break;
+		case WAIT_EVENT_VERSION_FILE_SYNC:
+			event_name = "VersionFileSync";
+			break;
 		case WAIT_EVENT_VERSION_FILE_WRITE:
 			event_name = "VersionFileWrite";
 			break;
@@ -1146,6 +1149,7 @@ yb_get_wait_io_desc(WaitEventIO w)
 		case WAIT_EVENT_WAL_COPY_WRITE:
 		case WAIT_EVENT_WAL_SYNC_METHOD_ASSIGN:
 		case WAIT_EVENT_SLRU_FLUSH_SYNC:
+		case WAIT_EVENT_VERSION_FILE_SYNC:
 		case WAIT_EVENT_YB_IO_END:
 			break;
 			/* no default case, so that compiler will warn */
@@ -1197,6 +1201,9 @@ yb_get_wait_lwlock_desc(BuiltinTrancheIds tranche_id)
 			break;
 		case LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER:
 			desc = "A YSQL backend is waiting for YB query diagnostics circular buffer memory access.";
+			break;
+		case LWTRANCHE_YB_TERMINATED_QUERIES:
+			desc = "A YSQL backend is waiting for YB terminated queries buffer memory access.";
 			break;
 		case LWTRANCHE_LOCK_FASTPATH:
 		case LWTRANCHE_MULTIXACTMEMBER_BUFFER:

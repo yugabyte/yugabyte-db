@@ -26,7 +26,7 @@ class OSFamily(Enum):
 
 class ProvisionCommand(Command):
 
-    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages', 'BackupUtils']
+    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages']
     onprem_only_modules = ['ConfigureSystemd', 'RebootNode']
 
     def __init__(self, config):
@@ -76,10 +76,12 @@ class ProvisionCommand(Command):
         return temp_file.name
 
     def _run_script(self, script_path):
-        result = subprocess.run(["/bin/bash", "-lc", script_path], capture_output=True, text=True)
+        result = subprocess.run(["/bin/bash", "-lc", script_path], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, universal_newlines=True)
         logger.info("Output: %s", result.stdout)
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
+        return result
 
     def add_results_helper(self, file):
         file.write(
@@ -153,6 +155,11 @@ class ProvisionCommand(Command):
                 print(f"Skipping {key} because is_install_node_agent is "
                       f"{self.config[key].get('is_install_node_agent')}")
                 continue
+            if key == 'ConfigureClockbound' and \
+                    self.config[key].get('configure_clockbound', 'False') == 'False':
+                print(f"Skipping {key} because {key}.configure_clockbound is "
+                      f"{self.config[key].get('configure_clockbound')}")
+                continue
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")
@@ -191,16 +198,16 @@ class ProvisionCommand(Command):
         major_version = version.split('.')[0] if version else ""
 
         # Determine OS family
-        if distribution in {"rhel", "centos", "almalinux", "oraclelinux", "fedora"}:
-            os_family = OSFamily.REDHAT
+        if distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
+            os_family = OSFamily.REDHAT.value
         elif distribution in {"ubuntu", "debian"}:
-            os_family = OSFamily.DEBIAN
+            os_family = OSFamily.DEBIAN.value
         elif distribution in {"suse", "opensuse", "sles"}:
-            os_family = OSFamily.SUSE
+            os_family = OSFamily.SUSE.value
         elif distribution == "arch":
-            os_family = OSFamily.ARCH
+            os_family = OSFamily.ARCH.value
         else:
-            os_family = OSFamily.UNKNOWN
+            os_family = OSFamily.UNKNOWN.value
 
         return distribution, os_family, major_version
 
@@ -254,44 +261,13 @@ class ProvisionCommand(Command):
             for package in cloud_only_packages:
                 self._check_package(package_manager, package)
 
-    def _install_python(self):
-        package_manager = self._get_package_manager()
-        try:
-            # Check if Python 3.11 is already installed
-            subprocess.run(['python3.11', '--version'], check=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logger.info("Python 3.11 is already installed.")
-        except FileNotFoundError:
-            logger.info("Python 3.11 not found. Installing...")
-            if package_manager == 'rpm':
-                # Install Python 3.11 on RPM-based systems
-                subprocess.run(['sudo', 'dnf', 'install', '-y', 'python3.11'], check=True)
-            elif package_manager == 'deb':
-                # Update repositories and install Python 3.11 on DEB-based systems
-                subprocess.run(['sudo', 'apt-get', 'update'], check=True)
-                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3.11'], check=True)
-            else:
-                logger.error("Unsupported package manager. Cannot install Python 3.11.")
-                sys.exit(1)
-
-            # Verify installation
-            try:
-                subprocess.run(['python3.11', '--version'], check=True,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                logger.info("Python 3.11 installed successfully.")
-            except FileNotFoundError:
-                logger.error("Failed to install Python 3.11.")
-                sys.exit(1)
-
     def execute(self):
-        for key in self.config:
-            if self.config[key].get('is_cloud') == 'True':
-                # Install the desired python version in case of CSP's
-                self._install_python()
         run_combined_script, precheck_combined_script = self._generate_template()
-        self._run_script(run_combined_script)
-        self._run_script(precheck_combined_script)
+        provision_result = self._run_script(run_combined_script)
+        precheck_result = self._run_script(precheck_combined_script)
         self._save_ynp_version()
+        if precheck_result.returncode != 0 or provision_result.returncode != 0:
+            sys.exit(1)
 
     def _save_ynp_version(self):
         key = next(iter(self.config), None)
@@ -360,6 +336,11 @@ class ProvisionCommand(Command):
         _, precheck_combined_script = self._generate_template()
         self._compare_ynp_version()
         self._run_script(precheck_combined_script)
+
+    def dry_run(self):
+        install_script, precheck_script = self._generate_template()
+        logger.info("Install Script: %s", install_script)
+        logger.info("Precheck Script: %s", precheck_script)
 
     def cleanup(self):
         # Cleanup tasks to clean up any tmp data to support rerun

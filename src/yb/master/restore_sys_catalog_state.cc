@@ -15,32 +15,27 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/qlexpr/index.h"
 #include "yb/common/pg_types.h"
 
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/qlexpr/ql_expr.h"
-#include "yb/docdb/consensus_frontier.h"
+#include "yb/qlexpr/index.h"
+
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb.h"
-#include "yb/docdb/pgsql_operation.h"
-#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_writer.h"
+#include "yb/master/sys_catalog.h"
 
-#include "yb/rocksdb/write_batch.h"
 #include "yb/tablet/restore_util.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet.h"
+
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"

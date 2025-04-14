@@ -21,8 +21,8 @@
 #pragma once
 
 #include "postgres.h"
-#include "funcapi.h"
 
+#include "funcapi.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

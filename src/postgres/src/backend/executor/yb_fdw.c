@@ -20,51 +20,47 @@
  *
  *--------------------------------------------------------------------------------------------------
  */
-
 #include "postgres.h"
 
+#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <string.h>
 
-/*  TODO see which includes of this block are still needed. */
 #include "access/htup_details.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/yb_scan.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_foreign_table.h"
+#include "catalog/pg_operator.h"
+#include "catalog/yb_type.h"
 #include "commands/copy.h"
+#include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
 #include "commands/vacuum.h"
+#include "executor/ybExpr.h"
+#include "executor/yb_fdw.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
+#include "parser/parsetree.h"
+#include "pg_yb_utils.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
-#include "utils/sampling.h"
-
-/*  YB includes. */
-#include "commands/dbcommands.h"
-#include "catalog/pg_operator.h"
-#include "catalog/yb_type.h"
-#include "utils/lsyscache.h"
-#include "utils/syscache.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
-#include "access/yb_scan.h"
-#include "executor/ybExpr.h"
-#include "executor/yb_fdw.h"
-#include "optimizer/optimizer.h"
 #include "utils/resowner_private.h"
+#include "utils/sampling.h"
+#include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 /* -------------------------------------------------------------------------- */
 /*  Planner/Optimizer functions */
@@ -215,7 +211,8 @@ ybcGetForeignPlan(PlannerInfo *root,
 		List	   *colrefs = NIL;
 		Expr	   *expr = (Expr *) lfirst(lc);
 
-		if (YbCanPushdownExpr(expr, &colrefs))
+		if (YbCanPushdownExpr(expr, &colrefs,
+							  planner_rt_fetch(scan_relid, root)->relid))
 		{
 			remote_quals = lappend(remote_quals, expr);
 			remote_colrefs = list_concat(remote_colrefs, colrefs);

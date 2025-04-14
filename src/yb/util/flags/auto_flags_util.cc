@@ -90,7 +90,7 @@ string DumpAutoFlagsToJSON(const ProcessName& program_name) {
     Value obj(rapidjson::kObjectType);
 
     AddMember(kNameMember, flag->name, &obj, &allocator);
-    obj.AddMember(kClassMember, Value(yb::to_underlying(flag->flag_class)), allocator);
+    obj.AddMember(kClassMember, Value(std::to_underlying(flag->flag_class)), allocator);
 
     flags.PushBack(obj, allocator);
   }

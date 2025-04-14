@@ -36,8 +36,8 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "common/ip.h"
-#include "libpq/libpq.h"
 #include "libpq/libpq-be.h"
+#include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
@@ -45,9 +45,7 @@
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
-
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
-
 #include "yb_ysql_conn_mgr_helper.h"
 
 /* Max size of string that can be stored in shared memory */
@@ -747,7 +745,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	yb_net_client_connections = CountUserBackends(*roleid);
 
 	if (IsYugaByteEnabled() &&
-		YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
+		YbGetNumYsqlConnMgrConnections(-1, *roleid, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
 	{
 		yb_net_client_connections +=
@@ -817,21 +815,16 @@ YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superus
 
 	/*
 	 * Create a shared memory block for a client connection if YB_GUC_SUPPORT_VIA_SHMEM
-	 * is enabled. Otherwise send 1 for every logical client and disable the code to delete the
+	 * is enabled. Otherwise don't send any packet and disable the code to delete the
 	 * shared memory block in DeleteSharedMemory() based on YB_GUC_SUPPORT_VIA_SHMEM.
-	 * TODO (mkumar) GH #24350 Don't send errhint packet if YB_GUC_SUPPORT_VIA_SHMEM
-	 * 			mode is not enabled.
 	 */
-	int			new_client_id =
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
-	yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
-#else
-	1;
+		int new_client_id = yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
+		if (new_client_id > 0)
+			ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
+		else
+			ereport(FATAL, (errmsg("unable to create the shared memory block")));
 #endif
-	if (new_client_id > 0)
-		ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
-	else
-		ereport(FATAL, (errmsg("unable to create the shared memory block")));
 }
 
 void
@@ -954,15 +947,17 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 }
 
 /*
- * Calculate the number of logical and physical connections to a database
- * or user or both. These values are used to calcualte the actual
- * number of client connections which should be considered for DROP DATABASE.
+ * If one out of db_oid or user_oid is invalid (invalid entries are marked with -1),
+ * calculate number of logical and physical connections across all pools corresponding to the
+ * provided valid db_oid or user_oid.
+ * If both db_oid and usr_oid are valid, then connections will be calculated for that specific
+ * pool.
  *
  * These values are read from the shared memory segment for Ysql Connection
  * Manager stats.
  */
 bool
-YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
+YbGetNumYsqlConnMgrConnections(const Oid db_oid, const Oid user_oid,
 							   uint32_t *num_logical_conn,
 							   uint32_t *num_physical_conn)
 {
@@ -1006,16 +1001,16 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 	 */
 	*num_logical_conn = 0;
 	*num_physical_conn = 0;
-	for (uint32_t itr = 0; itr < YSQL_CONN_MGR_MAX_POOLS; ++itr)
+	for (int32_t itr = 0; itr < atoi(getenv("FLAGS_ysql_conn_mgr_max_pools")); ++itr)
 	{
-		if (strcmp(shmp[itr].database_name, "") == 0 ||
-			strcmp(shmp[itr].user_name, "") == 0)
-			break;
-
-		if (db_name != NULL && strcmp(shmp[itr].database_name, db_name) != 0)
+		if (shmp[itr].user_oid == -1 ||
+			shmp[itr].database_oid == -1)
 			continue;
 
-		if (user_name != NULL && strcmp(shmp[itr].user_name, user_name) != 0)
+		if (db_oid != -1 && shmp[itr].database_oid != db_oid)
+			continue;
+
+		if (user_oid != -1 && shmp[itr].user_oid != user_oid)
 			continue;
 
 		/*

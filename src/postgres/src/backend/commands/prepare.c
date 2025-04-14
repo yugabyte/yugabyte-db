@@ -41,6 +41,7 @@
 #include "pg_yb_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
+
 /*
  * The hash table in which prepared queries are stored. This is
  * per-backend: query plans are not shared between backends.
@@ -191,7 +192,7 @@ ExecuteQuery(ParseState *pstate,
 	 */
 	if (entry->plansource->usesPostgresRel)
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	/* Evaluate parameters, if any */

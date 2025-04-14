@@ -380,7 +380,7 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public String performYbcAction(
+  public String executeCommandInPodContainer(
       Map<String, String> config,
       String namespace,
       String podName,

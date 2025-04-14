@@ -13,11 +13,19 @@
 
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
+#include "yb/common/version_info.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/ysql/ysql_catalog_config.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
+
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/outbound_call.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
@@ -26,14 +34,17 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/common/version_info.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_string(tmp_dir);
 DECLARE_bool(master_join_existing_universe);
+DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(ysql_enable_auth);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 
 DEFINE_RUNTIME_uint32(ysql_upgrade_postgres_port, 5434,
   "Port used to start the postgres process for ysql upgrade");
@@ -54,6 +65,8 @@ DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
 
 using yb::pgwrapper::PgWrapper;
 
+#define SCHECK_YSQL_ENABLED SCHECK(FLAGS_enable_ysql, IllegalState, "YSQL is not enabled")
+
 namespace yb::master {
 
 namespace {
@@ -62,6 +75,31 @@ bool IsYsqlMajorCatalogOperationRunning(YsqlMajorCatalogUpgradeInfoPB::State sta
   return state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE ||
          state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB ||
          state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK;
+}
+
+// Returns std::nullopt if Tserver is runnning on an older version that does not support the RPC
+// call.
+Result<std::optional<HostPort>> GetPgSocketDir(TSDescriptorPtr ts_desc) {
+  std::shared_ptr<tserver::TabletServerAdminServiceProxy> proxy;
+  RETURN_NOT_OK(ts_desc->GetProxy(&proxy));
+
+  tserver::GetPgSocketDirRequestPB req;
+  tserver::GetPgSocketDirResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+
+  auto status = proxy->GetPgSocketDir(req, &resp, &rpc);
+
+  if (!status.ok() && rpc::RpcError(status) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+    // Tserver is running older version.
+    return std::nullopt;
+  }
+  RETURN_NOT_OK(status);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return HostPortFromPB(resp.pg_socket_dir());
 }
 
 }  // namespace
@@ -76,6 +114,10 @@ YsqlInitDBAndMajorUpgradeHandler::YsqlInitDBAndMajorUpgradeHandler(
       thread_pool_(thread_pool) {}
 
 void YsqlInitDBAndMajorUpgradeHandler::Load(scoped_refptr<SysConfigInfo> config) {
+  if (!FLAGS_enable_ysql) {
+    return;
+  }
+
   auto& ysql_catalog_config = config->mutable_metadata()->mutable_dirty()->pb.ysql_catalog_config();
   if (ysql_catalog_config.has_ysql_major_catalog_upgrade_info()) {
     const auto persisted_version =
@@ -139,6 +181,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::StartNewClusterGlobalInitDB(const Leade
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::StartYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch) {
+  SCHECK_YSQL_ENABLED;
+
   RETURN_NOT_OK(
       TransitionMajorCatalogUpgradeState(YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB, epoch));
 
@@ -162,6 +206,8 @@ IsOperationDoneResult YsqlInitDBAndMajorUpgradeHandler::IsYsqlMajorCatalogUpgrad
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::FinalizeYsqlMajorCatalogUpgrade(const LeaderEpoch& epoch) {
+  SCHECK_YSQL_ENABLED;
+
   RETURN_NOT_OK_PREPEND(
       master_.ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
       "Cannot finalize YSQL major catalog upgrade before all yb-tservers have been upgraded to the "
@@ -171,6 +217,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::FinalizeYsqlMajorCatalogUpgrade(const L
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorCatalogVersion(const LeaderEpoch& epoch) {
+  SCHECK_YSQL_ENABLED;
+
   RETURN_NOT_OK_PREPEND(
       master_.ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kYsqlMajorVersionLT),
       "Cannot rollback YSQL major catalog while yb-tservers are running on a newer YSQL major "
@@ -194,6 +242,10 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackYsqlMajorCatalogVersion(const L
 
 Result<YsqlMajorCatalogUpgradeState>
 YsqlInitDBAndMajorUpgradeHandler::GetYsqlMajorCatalogUpgradeState() const {
+  if (!FLAGS_enable_ysql) {
+    return YSQL_MAJOR_CATALOG_UPGRADE_DONE;
+  }
+
   const auto state = ysql_catalog_config_.GetMajorCatalogUpgradeState();
   switch (state) {
     case YsqlMajorCatalogUpgradeInfoPB::INVALID:
@@ -221,6 +273,16 @@ bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
     const TableId& table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.
   if (IsMajorUpgradeInProgress()) {
+    // Allow updates to the catalog version table only during the pg_upgrade step.
+    // These updates are later fixed up in UpdateCatalogVersions.
+    if (table_id == kPgYbCatalogVersionTableIdPriorVersion ||
+        (table_id == kPgYbCatalogVersionTableId &&
+         ysql_catalog_config_.GetMajorCatalogUpgradeState() ==
+             YsqlMajorCatalogUpgradeInfoPB::MONITORING)) {
+      LOG(DFATAL) << "Invalid attempt to update catalog version table " << table_id
+                  << " during ysql major upgrade";
+      return false;
+    }
     return is_forced_update;
   }
 
@@ -264,13 +326,9 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
     snapshot_writer = &catalog_manager_.AllocateAndGetInitialSysCatalogSnapshotWriter();
   }
 
-  const auto& master_opts = master_.opts();
-  const auto master_addresses_str =
-      server::MasterAddressesToString(*master_opts.GetMasterAddresses());
-
   RETURN_NOT_OK(PgWrapper::InitDbForYSQL(
-      master_addresses_str, FLAGS_tmp_dir, master_.GetSharedMemoryFd(), db_name_to_oid_list,
-      is_major_upgrade));
+      &master_, master_.options(), *master_.fs_manager(), FLAGS_tmp_dir,
+      db_name_to_oid_list, is_major_upgrade));
 
   if (!snapshot_writer) {
     return Status::OK();
@@ -303,6 +361,9 @@ void YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgrade(const LeaderEpoch&
 }
 
 Status YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgradeImpl(const LeaderEpoch& epoch) {
+  LOG(INFO) << "Killing any in-flight transactions before starting the YSQL major catalog upgrade";
+  sys_catalog_.tablet_peer()->AbortActiveTransactions();
+
   RETURN_NOT_OK(RunMajorVersionCatalogUpgrade(epoch));
   RETURN_NOT_OK_PREPEND(UpdateCatalogVersions(epoch), "Failed to update catalog versions");
 
@@ -355,9 +416,17 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   const auto pg_upgrade_data_dir =
       JoinPathSegments(master_opts.fs_opts.data_paths.front(), "pg_upgrade_data");
 
+  RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
+
+  auto bind_address = FLAGS_pgsql_proxy_bind_address.empty() ? FLAGS_rpc_bind_addresses
+                                                             : FLAGS_pgsql_proxy_bind_address;
+  SCHECK(
+      !bind_address.empty(), IllegalState,
+      "No bind address found. Either pgsql_proxy_bind_address or rpc_bind_addresses must be set.");
+
   // Run local initdb to prepare the node for starting postgres.
   auto pg_conf = VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-      FLAGS_rpc_bind_addresses, pg_upgrade_data_dir, master_.GetSharedMemoryFd()));
+      bind_address, pg_upgrade_data_dir));
 
   pg_conf.master_addresses = master_opts.master_addresses_flag;
   pg_conf.pg_port = FLAGS_ysql_upgrade_postgres_port;
@@ -367,7 +436,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_conf.listen_addresses << ", port "
             << pg_conf.pg_port;
 
-  pgwrapper::PgSupervisor pg_supervisor(pg_conf, nullptr);
+  pgwrapper::PgSupervisor pg_supervisor(pg_conf, &master_);
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
   RETURN_NOT_OK(pg_supervisor.Start());
 
@@ -385,7 +454,25 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
       narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()));
 
   if (local_ts) {
-    pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
+    auto pg_socket_dir_opt = VERIFY_RESULT(GetPgSocketDir(closest_ts));
+    if (pg_socket_dir_opt) {
+      closest_ts_hp = std::move(*pg_socket_dir_opt);
+      pg_upgrade_params.old_version_socket_dir = closest_ts_hp.host();
+    } else {
+      // Tserver is running a version which does not support the RPC to get Pg local address. Do
+      // best effort to guess the most likely address based on our own flags.
+
+      // When pgsql_proxy_bind_address is set, it is used as the socket dir. The tserver does not
+      // expose its pgsql_proxy_bind_address, but we expect master and tserver flags to be the same,
+      // so we can use our flag value to infer the tservers socket dir.
+      if (!FLAGS_pgsql_proxy_bind_address.empty()) {
+        closest_ts_hp.set_host(pg_conf.listen_addresses);
+      }
+      if (FLAGS_enable_ysql_conn_mgr) {
+        closest_ts_hp.set_port(pgwrapper::PgProcessConf::kDefaultPortWithConnMgr);
+      }
+      pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
+    }
   } else {
     // Remote tserver.
     pg_upgrade_params.old_version_pg_address = closest_ts_hp.host();
@@ -401,6 +488,8 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
 
   RETURN_NOT_OK(PgWrapper::RunPgUpgrade(pg_upgrade_params));
+
+  RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
 
   return Status::OK();
 }
@@ -646,6 +735,10 @@ Status YsqlInitDBAndMajorUpgradeHandler::CleanupPreviousYsqlMajorCatalog(const L
 
 Status YsqlInitDBAndMajorUpgradeHandler::ValidateTServerVersion(
     const VersionInfoPB& ts_version) const {
+  if (!FLAGS_enable_ysql) {
+    return Status::OK();
+  }
+
   // Dev note: Returning a bad status will cause the yb-tserver to FATAL.
   const auto current_major_version = VersionInfo::YsqlMajorVersion();
 

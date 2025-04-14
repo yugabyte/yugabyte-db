@@ -29,6 +29,8 @@ struct BuildInfo {
   std::string darwin_release_arm64_url;
 };
 
+YB_DEFINE_ENUM(MajorUpgradeCompatibilityType, (kNone)(kBackwardsCompatible));
+
 // Helper class to perform upgrades and rollback of Yugabyte DB.
 // This test sets up a ExternalMini cluster on an older yb version and helps upgrade it to the
 // current version, and rollback to the older version.
@@ -42,6 +44,9 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
  protected:
   static const MonoDelta kNoDelayBetweenNodes;
   void SetUpOptions(ExternalMiniClusterOptions& opts) override;
+
+  Status SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType type);
+
   Status StartClusterInOldVersion();
   Status StartClusterInOldVersion(const ExternalMiniClusterOptions& options);
 
@@ -94,6 +99,7 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   VersionInfoPB current_version_info() const { return current_version_info_; }
   TestThreadHolder test_thread_holder_;
 
+  uint32 UpgradeCompatibilityGucValue(MajorUpgradeCompatibilityType type) const;
   bool IsYsqlMajorVersionUpgrade() const { return is_ysql_major_version_upgrade_; }
 
  private:
@@ -106,11 +112,12 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 
   std::optional<uint32> auto_flags_rollback_version_;
 
+  uint32 old_ysql_major_version_ = 0;
   bool is_ysql_major_version_upgrade_ = false;
 };
 
 // From build versions.
-static constexpr auto kBuild_2024_2_2_0 = "2024.2.2.0";
+static constexpr auto kBuild_2024_2_3_0 = "2024.2.3.0";
 static constexpr auto kBuild_2_25_0_0 = "2.25.0.0";
 
 }  // namespace yb

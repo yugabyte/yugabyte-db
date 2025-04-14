@@ -17,7 +17,6 @@
 
 #include "access/transam.h"
 #include "catalog/pg_type.h"
-#include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
@@ -25,10 +24,13 @@
 #include "optimizer/planmain.h"
 #include "optimizer/planner.h"
 #include "optimizer/tlist.h"
-#include "pg_yb_utils.h"
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+
+/* YB includes */
+#include "nodes/execnodes.h"
+#include "pg_yb_utils.h"
 
 
 typedef struct
@@ -1464,6 +1466,22 @@ set_subqueryscan_references(PlannerInfo *root,
 		 * We can omit the SubqueryScan node and just pull up the subplan.
 		 */
 		result = clean_up_removed_plan_level((Plan *) plan, plan->subplan);
+
+		if (IsYugaByteEnabled() && rel->ybHintAlias != NULL)
+		{
+			/*
+			 * We are eliminating this subquery scan so put its hint alias on
+			 * its input Plan.
+			 */
+			if (yb_enable_planner_trace)
+			{
+				ereport(DEBUG1,
+						(errmsg("\nPlan id %d inherited hint alias : [block %d : table %s (uid = %d, relid = %d)]",
+								plan->subplan->plan_node_id, root->ybBlockId, rel->ybHintAlias, rel->ybUniqueBaseId, rel->relid)));
+			}
+
+			result->ybInheritedHintAlias = rel->ybHintAlias;
+		}
 	}
 	else
 	{
@@ -1586,7 +1604,19 @@ trivial_subqueryscan(SubqueryScan *plan)
 static Plan *
 clean_up_removed_plan_level(Plan *parent, Plan *child)
 {
-	/* We have to be sure we don't lose any initplans */
+	/*
+	 * We have to be sure we don't lose any initplans, so move any that were
+	 * attached to the parent plan to the child.  If we do move any, the child
+	 * is no longer parallel-safe.
+	 */
+	if (parent->initPlan)
+		child->parallel_safe = false;
+
+	/*
+	 * Attach plans this way so that parent's initplans are processed before
+	 * any pre-existing initplans of the child.  Probably doesn't matter, but
+	 * let's preserve the ordering just in case.
+	 */
 	child->initPlan = list_concat(parent->initPlan,
 								  child->initPlan);
 
@@ -1813,6 +1843,12 @@ set_append_references(PlannerInfo *root,
 				PartitionedRelPruneInfo *pinfo = lfirst(l2);
 
 				pinfo->rtindex += rtoffset;
+				pinfo->initial_pruning_steps =
+					fix_scan_list(root, pinfo->initial_pruning_steps,
+								  rtoffset, 1);
+				pinfo->exec_pruning_steps =
+					fix_scan_list(root, pinfo->exec_pruning_steps,
+								  rtoffset, 1);
 			}
 		}
 	}
@@ -1885,6 +1921,12 @@ set_mergeappend_references(PlannerInfo *root,
 				PartitionedRelPruneInfo *pinfo = lfirst(l2);
 
 				pinfo->rtindex += rtoffset;
+				pinfo->initial_pruning_steps =
+					fix_scan_list(root, pinfo->initial_pruning_steps,
+								  rtoffset, 1);
+				pinfo->exec_pruning_steps =
+					fix_scan_list(root, pinfo->exec_pruning_steps,
+								  rtoffset, 1);
 			}
 		}
 	}
@@ -2020,10 +2062,10 @@ fix_expr_common(PlannerInfo *root, Node *node)
 		set_sa_opfuncid(saop);
 		record_plan_function_dependency(root, saop->opfuncid);
 
-		if (!OidIsValid(saop->hashfuncid))
+		if (OidIsValid(saop->hashfuncid))
 			record_plan_function_dependency(root, saop->hashfuncid);
 
-		if (!OidIsValid(saop->negfuncid))
+		if (OidIsValid(saop->negfuncid))
 			record_plan_function_dependency(root, saop->negfuncid);
 	}
 	else if (IsA(node, Const))
@@ -3607,8 +3649,27 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 		if (query->commandType == CMD_UTILITY)
 		{
 			/*
-			 * Ignore utility statements, except those (such as EXPLAIN) that
-			 * contain a parsed-but-not-planned query.
+			 * This logic must handle any utility command for which parse
+			 * analysis was nontrivial (cf. stmt_requires_parse_analysis).
+			 *
+			 * Notably, CALL requires its own processing.
+			 */
+			if (IsA(query->utilityStmt, CallStmt))
+			{
+				CallStmt   *callstmt = (CallStmt *) query->utilityStmt;
+
+				/* We need not examine funccall, just the transformed exprs */
+				(void) extract_query_dependencies_walker((Node *) callstmt->funcexpr,
+														 context);
+				(void) extract_query_dependencies_walker((Node *) callstmt->outargs,
+														 context);
+				return false;
+			}
+
+			/*
+			 * Ignore other utility statements, except those (such as EXPLAIN)
+			 * that contain a parsed-but-not-planned query.  For those, we
+			 * just need to transfer our attention to the contained query.
 			 */
 			query = UtilityContainsQuery(query->utilityStmt);
 			if (query == NULL)

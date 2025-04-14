@@ -503,7 +503,7 @@ PLy_output(volatile int level, PyObject *self, PyObject *args, PyObject *kw)
 								 sqlstatestr[4]);
 	}
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	PG_TRY();
 	{
 		if (message != NULL)

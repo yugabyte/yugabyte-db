@@ -258,7 +258,28 @@ CREATE VIEW pg_stats WITH (security_barrier) AS
             WHEN stakind3 = 5 THEN stanumbers3
             WHEN stakind4 = 5 THEN stanumbers4
             WHEN stakind5 = 5 THEN stanumbers5
-        END AS elem_count_histogram
+        END AS elem_count_histogram,
+        CASE
+            WHEN stakind1 = 6 THEN stavalues1
+            WHEN stakind2 = 6 THEN stavalues2
+            WHEN stakind3 = 6 THEN stavalues3
+            WHEN stakind4 = 6 THEN stavalues4
+            WHEN stakind5 = 6 THEN stavalues5
+        END AS range_length_histogram,
+        CASE
+            WHEN stakind1 = 6 THEN stanumbers1[1]
+            WHEN stakind2 = 6 THEN stanumbers2[1]
+            WHEN stakind3 = 6 THEN stanumbers3[1]
+            WHEN stakind4 = 6 THEN stanumbers4[1]
+            WHEN stakind5 = 6 THEN stanumbers5[1]
+        END AS range_empty_frac,
+        CASE
+            WHEN stakind1 = 7 THEN stavalues1
+            WHEN stakind2 = 7 THEN stavalues2
+            WHEN stakind3 = 7 THEN stavalues3
+            WHEN stakind4 = 7 THEN stavalues4
+            WHEN stakind5 = 7 THEN stavalues5
+            END AS range_bounds_histogram
     FROM pg_statistic s JOIN pg_class c ON (c.oid = s.starelid)
          JOIN pg_attribute a ON (c.oid = attrelid AND attnum = s.staattnum)
          LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
@@ -299,12 +320,7 @@ CREATE VIEW pg_stats_ext WITH (security_barrier) AS
                             array_agg(base_frequency) AS most_common_base_freqs
                      FROM pg_mcv_list_items(sd.stxdmcv)
                    ) m ON sd.stxdmcv IS NOT NULL
-    WHERE NOT EXISTS
-              ( SELECT 1
-                FROM unnest(stxkeys) k
-                     JOIN pg_attribute a
-                          ON (a.attrelid = s.stxrelid AND a.attnum = k)
-                WHERE NOT has_column_privilege(c.oid, a.attnum, 'select') )
+    WHERE pg_has_role(c.relowner, 'USAGE')
     AND (c.relrowsecurity = false OR NOT row_security_active(c.oid));
 
 CREATE VIEW pg_stats_ext_exprs WITH (security_barrier) AS
@@ -374,7 +390,9 @@ CREATE VIEW pg_stats_ext_exprs WITH (security_barrier) AS
          JOIN LATERAL (
              SELECT unnest(pg_get_statisticsobjdef_expressions(s.oid)) AS expr,
                     unnest(sd.stxdexpr)::pg_statistic AS a
-         ) stat ON (stat.expr IS NOT NULL);
+         ) stat ON (stat.expr IS NOT NULL)
+    WHERE pg_has_role(c.relowner, 'USAGE')
+    AND (c.relrowsecurity = false OR NOT row_security_active(c.oid));
 
 -- unprivileged users may read pg_statistic_ext but not pg_statistic_ext_data
 REVOKE ALL ON pg_statistic_ext_data FROM public;
@@ -404,9 +422,9 @@ SELECT l.locktype,
        null::smallint             AS tuple,
        null::text                 AS virtualxid,
        null::xid                  AS transactionid,
-       null::oid                  AS classid,
-       null::oid                  AS objid,
-       null::smallint             AS objsubid,
+       l.classid,
+       l.objid,
+       l.objsubid,
        null::text                 AS virtualtransaction,
        l.pid,
        array_to_string(mode, ',') AS mode,

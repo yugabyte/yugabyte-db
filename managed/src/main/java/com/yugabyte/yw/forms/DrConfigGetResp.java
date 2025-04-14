@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
+import com.yugabyte.yw.forms.webhook.GetWebhookResponse;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -186,6 +187,12 @@ public class DrConfigGetResp {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   public Set<XClusterNamespaceConfig> getDbDetails() {
     return xClusterConfig.getNamespaceDetails();
+  }
+
+  public List<GetWebhookResponse> getWebhooks() {
+    return drConfig.getWebhooks().stream()
+        .map(webhook -> new GetWebhookResponse(webhook))
+        .collect(Collectors.toList());
   }
 
   @ApiModelProperty(

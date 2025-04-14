@@ -53,7 +53,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/builtins.h"
@@ -541,7 +541,7 @@ CopyFrom(CopyFromState cstate)
 	ModifyTableState *mtstate;
 	ExprContext *econtext;
 	TupleTableSlot *singleslot = NULL;
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 
 	PartitionTupleRouting *proute = NULL;
 	ErrorContextCallback errcallback;
@@ -555,10 +555,12 @@ CopyFrom(CopyFromState cstate)
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
+	bool orig_yb_disable_transactional_writes = yb_disable_transactional_writes;
 
 	/* Yb variables */
 	bool		useNonTxnInsert = false;
 	bool		has_more_tuples;
+	bool set_txn_batch_size_explicitly = true;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
@@ -570,6 +572,7 @@ CopyFrom(CopyFromState cstate)
 	if (cstate->opts.batch_size < 0)
 	{
 		cstate->opts.batch_size = yb_default_copy_from_rows_per_transaction;
+		set_txn_batch_size_explicitly = false;
 	}
 
 	/*
@@ -733,6 +736,32 @@ CopyFrom(CopyFromState cstate)
 	if (cstate->whereClause)
 		cstate->qualexpr = ExecInitQual(castNode(List, cstate->whereClause),
 										&mtstate->ps);
+	/*
+	 * For colocated table, default to non-txn for better performance. But for consistency,
+	 * we need to ensure the index and the row are written in same batch.
+	 * If ROWS_PER_TRANSACTION is not explicitly set for a colocated table, non-txn will be
+	 * enabled automatically. In this case, the batch_size will be set to 0, ensuring that
+	 * data is sent continuously in a pipeline i.e., without an intervening commit which will
+	 * act as a flush barrier.
+	 * Always use distributed transaction in following cases for consistency:
+	 * 1. When foreign key constrain is defined. If a foreign key constraint is violated,
+	 *    the data will still be loaded into the table, leading to inconsistencies.
+	 * 2. When rules or trigger are defined. Both rules and trigger may write data in separate
+	 *    buffer, leading to inconsistencies.
+	 */
+	bool has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
+		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
+	if (yb_fast_path_for_colocated_copy &&
+		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
+		!has_rule_or_trigger && !IsTransactionBlock())
+	{
+		elog(LOG,"using non-txn for copy from colocated table");
+		useNonTxnInsert = true;
+		yb_disable_transactional_writes = true;
+		cstate->opts.batch_size = 0;
+		YBAdjustOperationsBuffering(YBCRelInfoGetSecondaryIndicesCount(resultRelInfo) + 1);
+	}
 
 	if (cstate->opts.batch_size > 0)
 	{
@@ -828,6 +857,9 @@ CopyFrom(CopyFromState cstate)
 		 * Can't support multi-inserts if there are any volatile function
 		 * expressions in WHERE clause.  Similarly to the trigger case above,
 		 * such expressions may query the table we're inserting into.
+		 *
+		 * Note: the whereClause was already preprocessed in DoCopy(), so it's
+		 * okay to use contain_volatile_functions() directly.
 		 */
 		insertMethod = CIM_SINGLE;
 	}
@@ -1393,6 +1425,7 @@ yb_no_more_tuples:
 
 	FreeExecutorState(estate);
 
+	yb_disable_transactional_writes = orig_yb_disable_transactional_writes;
 	return processed;
 }
 
@@ -1450,7 +1483,7 @@ BeginCopyFrom(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 
@@ -1561,6 +1594,12 @@ BeginCopyFrom(ParseState *pstate,
 		cstate->need_transcoding = true;
 		cstate->conversion_proc = FindDefaultConversionProc(cstate->file_encoding,
 															GetDatabaseEncoding());
+		if (!OidIsValid(cstate->conversion_proc))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("default conversion function for encoding \"%s\" to \"%s\" does not exist",
+							pg_encoding_to_char(cstate->file_encoding),
+							pg_encoding_to_char(GetDatabaseEncoding()))));
 	}
 
 	cstate->copy_src = COPY_FILE;	/* default */
@@ -1672,7 +1711,8 @@ BeginCopyFrom(ParseState *pstate,
 				 * known to be safe for use with the multi-insert
 				 * optimization. Hence we use this special case function
 				 * checker rather than the standard check for
-				 * contain_volatile_functions().
+				 * contain_volatile_functions().  Note also that we already
+				 * ran the expression through expression_planner().
 				 */
 				if (!volatile_defexprs)
 					volatile_defexprs = contain_volatile_functions_not_nextval((Node *) defexpr);

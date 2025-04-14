@@ -31,7 +31,11 @@ var deleteBackupCmd = &cobra.Command{
 		if len(backupInfoArray) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No backup info specified to delete backup(s)\n", formatter.RedColor))
+				formatter.Colorize(
+					"No backup info specified to delete backup(s)\n",
+					formatter.RedColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {

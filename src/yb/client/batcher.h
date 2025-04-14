@@ -38,7 +38,6 @@
 #include "yb/ash/wait_state_fwd.h"
 
 #include "yb/client/async_rpc.h"
-#include "yb/client/client-internal.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/transaction.h"
 
@@ -55,6 +54,8 @@
 #include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
+
+#include "yb/server/clock.h"
 
 namespace yb {
 namespace client {

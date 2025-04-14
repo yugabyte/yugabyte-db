@@ -13,7 +13,7 @@ yba provider onprem [flags]
 ### Options
 
 ```
-  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, instance-type and node.
+  -n, --name string   [Optional] The name of the provider for the action. Required for create, delete, describe, update, instance-type and node.
   -h, --help          help for onprem
 ```
 
@@ -21,10 +21,13 @@ yba provider onprem [flags]
 
 ```
   -a, --apiToken string    YugabyteDB Anywhere api token.
-      --config string      Config file, defaults to $HOME/.yba-cli.yaml
+      --ca-cert string     CA certificate file path for secure connection to YugabyteDB Anywhere. Required when the endpoint is https and --insecure is not set.
+      --config string      Full path to a specific configuration file for YBA CLI. If provided, this takes precedence over the directory specified via --directory, and the generated files are added to the same path. If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.
       --debug              Use debug mode, same as --logLevel debug.
+      --directory string   Directory containing YBA CLI configuration and generated files. If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. Defaults to '$HOME/.yba-cli/'.
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
+      --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
@@ -37,7 +40,7 @@ yba provider onprem [flags]
 * [yba provider onprem create](yba_provider_onprem_create.md)	 - Create an On-premises YugabyteDB Anywhere provider
 * [yba provider onprem delete](yba_provider_onprem_delete.md)	 - Delete an On-premises YugabyteDB Anywhere provider
 * [yba provider onprem describe](yba_provider_onprem_describe.md)	 - Describe an On-premises YugabyteDB Anywhere provider
-* [yba provider onprem instance-type](yba_provider_onprem_instance-type.md)	 - Manage YugabyteDB Anywhere onprem instance types
+* [yba provider onprem instance-type](yba_provider_onprem_instance-type.md)	 - Manage YugabyteDB Anywhere on-premises instance types
 * [yba provider onprem list](yba_provider_onprem_list.md)	 - List On-premises YugabyteDB Anywhere providers
 * [yba provider onprem node](yba_provider_onprem_node.md)	 - Manage YugabyteDB Anywhere onprem node instances
 * [yba provider onprem update](yba_provider_onprem_update.md)	 - Update an On-premises YugabyteDB Anywhere provider

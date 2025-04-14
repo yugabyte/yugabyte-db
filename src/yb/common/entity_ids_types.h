@@ -13,7 +13,9 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
+#include <vector>
 #include <unordered_set>
 
 #include "yb/util/strongly_typed_string.h"
@@ -52,5 +54,7 @@ using FlushRequestId = std::string;
 using RedisConfigKey = std::string;
 
 using TableIdSet = std::unordered_set<TableId>;
+using TableIds = std::vector<TableId>;
+using TableIdsPtr = std::shared_ptr<TableIds>;
 
 }  // namespace yb

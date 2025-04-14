@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -51,7 +54,12 @@ func WaitForUpgradeUniverseTask(
 
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade - Fetch Universe")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Universe",
+				"Upgrade - Fetch Universe",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		universesCtx := formatter.Context{
@@ -80,7 +88,12 @@ func Validations(cmd *cobra.Command, operation string) (
 	error,
 ) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-	universeName, err := cmd.Flags().GetString("name")
+
+	universeNameFlag := "name"
+	if strings.EqualFold(operation, util.PITROperation) {
+		universeNameFlag = "universe-name"
+	}
+	universeName, err := cmd.Flags().GetString(universeNameFlag)
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
@@ -156,27 +169,27 @@ func FetchTServerGFlags(
 	return tserverGFlagsList
 }
 
-// ProcessMasterGflagsJSONString takes in a JSON string and returns it as a map
-func ProcessMasterGflagsJSONString(jsonData string) map[string]string {
+// ProcessGFlagsJSONString takes in a JSON string and returns it as a map
+func ProcessGFlagsJSONString(jsonData string, serverType string) map[string]string {
 	// Parse the JSON input into a map
 	var singleMap map[string]string
 	if err := json.Unmarshal([]byte(jsonData), &singleMap); err != nil {
 		logrus.Fatalf(formatter.Colorize(
 			fmt.Sprintln("Error parsing JSON:", err), formatter.RedColor))
 	}
-	logrus.Debug("Master GFlags from JSON string: ", singleMap)
+	logrus.Debug(serverType+" GFlags from JSON string: ", singleMap)
 	return singleMap
 }
 
-// ProcessMasterGflagsYAMLString takes in a YAML string and returns it as a map
-func ProcessMasterGflagsYAMLString(yamlData string) map[string]string {
+// ProcessGFlagsYAMLString takes in a YAML string and returns it as a map
+func ProcessGFlagsYAMLString(yamlData string, serverType string) map[string]string {
 	// Parse the YAML input into a map
 	var singleMap map[string]string
 	if err := yaml.Unmarshal([]byte(yamlData), &singleMap); err != nil {
 		logrus.Fatalf(formatter.Colorize(
 			fmt.Sprintln("Error parsing YAML:", err), formatter.RedColor))
 	}
-	logrus.Debug("Master GFlags from YAML string: ", singleMap)
+	logrus.Debug(serverType+" GFlags from YAML string: ", singleMap)
 	return singleMap
 }
 
@@ -202,4 +215,250 @@ func ProcessTServerGFlagsFromConfig(input map[string]interface{}) map[string]map
 		data[k] = *util.StringMap(v.(map[string]interface{}))
 	}
 	return data
+}
+
+// BuildNodeDetailsRespArrayToNodeDetailsArray takes in an array of NodeDetailsResp and returns an array of NodeDetails
+func BuildNodeDetailsRespArrayToNodeDetailsArray(
+	nodes []ybaclient.NodeDetailsResp,
+) *[]ybaclient.NodeDetails {
+	var nodesDetails []ybaclient.NodeDetails
+	for _, v := range nodes {
+		nodeDetail := ybaclient.NodeDetails{
+			AzUuid:                v.AzUuid,
+			CloudInfo:             v.CloudInfo,
+			CronsActive:           v.CronsActive,
+			DisksAreMountedByUUID: v.DisksAreMountedByUUID,
+			IsMaster:              v.IsMaster,
+			IsRedisServer:         v.IsRedisServer,
+			IsTserver:             v.IsTserver,
+			IsYqlServer:           v.IsYqlServer,
+			IsYsqlServer:          v.IsYsqlServer,
+			MachineImage:          v.MachineImage,
+			MasterHttpPort:        v.MasterHttpPort,
+			MasterRpcPort:         v.MasterRpcPort,
+			MasterState:           v.MasterState,
+			NodeExporterPort:      v.NodeExporterPort,
+			NodeIdx:               v.NodeIdx,
+			NodeName:              v.NodeName,
+			NodeUuid:              v.NodeUuid,
+			PlacementUuid:         v.PlacementUuid,
+			RedisServerHttpPort:   v.RedisServerHttpPort,
+			RedisServerRpcPort:    v.RedisServerRpcPort,
+			State:                 v.State,
+			TserverHttpPort:       v.TserverHttpPort,
+			TserverRpcPort:        v.TserverRpcPort,
+			YbPrebuiltAmi:         v.YbPrebuiltAmi,
+			YqlServerHttpPort:     v.YqlServerHttpPort,
+			YqlServerRpcPort:      v.YqlServerRpcPort,
+			YsqlServerHttpPort:    v.YsqlServerHttpPort,
+			YsqlServerRpcPort:     v.YsqlServerRpcPort,
+		}
+		nodesDetails = append(nodesDetails, nodeDetail)
+	}
+	return &nodesDetails
+}
+
+// FetchRegionUUIDFromName fetches the region UUID from the region name
+func FetchRegionUUIDFromName(
+	regionsInProvider []ybaclient.Region,
+	regionsInput, operation string,
+) ([]string, error) {
+	regions := make([]string, 0)
+	regionCodeList := make([]string, 0)
+	regionCodeList = append(regionCodeList, strings.Split(regionsInput, ",")...)
+
+	for _, r := range regionCodeList {
+		if len(regionsInProvider) > 0 {
+			for _, rInProvider := range regionsInProvider {
+				if strings.Compare(r, rInProvider.GetCode()) == 0 {
+					regions = append(regions, rInProvider.GetUuid())
+				}
+			}
+		}
+	}
+	if len(regions) != len(regionCodeList) {
+		err := fmt.Errorf("the provided region name to %s cannot be found", operation)
+		return nil, err
+	}
+	return regions, nil
+}
+
+// RemoveOrAddZones removes or adds zones
+func RemoveOrAddZones(
+	cloudList []ybaclient.PlacementCloud,
+	regionsInProvider []ybaclient.Region,
+	providerUUID string,
+	regionsInUniverse, removeZonesString, editZonesStrings, addZonesString []string,
+) ([]ybaclient.PlacementCloud, error) {
+	for i, cloud := range cloudList {
+		if cloud.GetUuid() != providerUUID {
+			continue
+		}
+		remainingCloudListAfterRegionRemoved := make([]ybaclient.PlacementRegion, 0)
+		regionListInCloud := cloud.GetRegionList()
+		for _, region := range regionListInCloud {
+			if slices.Contains(regionsInUniverse, region.GetUuid()) {
+				remainingCloudListAfterRegionRemoved = append(
+					remainingCloudListAfterRegionRemoved,
+					region,
+				)
+			}
+		}
+		cloud.SetRegionList(remainingCloudListAfterRegionRemoved)
+		if len(removeZonesString) != 0 {
+			for _, removeZoneString := range removeZonesString {
+				removeZone := providerutil.BuildZoneMapFromString(removeZoneString, "remove")
+				regions := cloud.GetRegionList()
+				for ri, region := range regions {
+					if strings.EqualFold(removeZone["region-name"], region.GetCode()) {
+						zonesInCloudRegion := region.GetAzList()
+						remainingZonesInCloudRegion := make([]ybaclient.PlacementAZ, 0)
+						for _, zone := range zonesInCloudRegion {
+							if !strings.EqualFold(zone.GetName(), removeZone["name"]) {
+								remainingZonesInCloudRegion = append(
+									remainingZonesInCloudRegion,
+									zone,
+								)
+							}
+						}
+						region.SetAzList(remainingZonesInCloudRegion)
+						regions[ri] = region
+					}
+				}
+				cloud.SetRegionList(regions)
+			}
+		}
+		if len(editZonesStrings) != 0 {
+			for _, editZoneString := range editZonesStrings {
+				editZone := providerutil.BuildZoneMapFromString(editZoneString, "edit")
+				regions := cloud.GetRegionList()
+				for ri, region := range regions {
+					if strings.EqualFold(editZone["region-name"], region.GetCode()) {
+						zonesInCloudRegion := region.GetAzList()
+						for zi, zone := range zonesInCloudRegion {
+							if strings.EqualFold(zone.GetName(), editZone["name"]) {
+								if editZone["num-nodes"] != "" {
+									numNodes, err := strconv.Atoi(editZone["num-nodes"])
+									if err != nil {
+										return nil, err
+									}
+									zone.SetNumNodesInAZ(int32(numNodes))
+									zonesInCloudRegion[zi] = zone
+								}
+							}
+						}
+						region.SetAzList(zonesInCloudRegion)
+						regions[ri] = region
+					}
+				}
+				cloud.SetRegionList(regions)
+			}
+		}
+		if len(addZonesString) != 0 {
+			for _, addZoneString := range addZonesString {
+				addZone := providerutil.BuildZoneMapFromString(addZoneString, "add")
+				addZoneName := addZone["name"]
+				addZoneRegion := addZone["region-name"]
+				addNumNodes, err := strconv.Atoi(addZone["num-nodes"])
+				if err != nil {
+					return nil, err
+				}
+
+				var regionOfWhichZoneToBeAdded ybaclient.Region
+
+				for _, regionInProvider := range regionsInProvider {
+					if strings.EqualFold(regionInProvider.GetCode(), addZoneRegion) {
+						regionOfWhichZoneToBeAdded = regionInProvider
+						break
+					}
+				}
+				if regionOfWhichZoneToBeAdded.GetUuid() == "" {
+					return nil, fmt.Errorf("Region %s not found in provider", addZoneRegion)
+				}
+
+				if !slices.Contains(regionsInUniverse, regionOfWhichZoneToBeAdded.GetUuid()) {
+					return nil, fmt.Errorf(
+						"Region %s not found in universe, add using --add-regions/--regions flag",
+						addZoneRegion,
+					)
+				}
+
+				zoneToBeAdded := ybaclient.AvailabilityZone{}
+				for _, zoneInRegion := range regionOfWhichZoneToBeAdded.GetZones() {
+					if strings.EqualFold(zoneInRegion.GetName(), addZoneName) {
+						zoneToBeAdded = zoneInRegion
+						break
+					}
+				}
+				if zoneToBeAdded.GetName() == "" {
+					return nil, fmt.Errorf(
+						"Zone %s not found in provider region %s",
+						addZoneName,
+						addZoneRegion,
+					)
+				}
+
+				regionFoundInCloudList := false
+				regions := cloud.GetRegionList()
+				for ri, region := range regions {
+					if strings.EqualFold(region.GetUuid(), regionOfWhichZoneToBeAdded.GetUuid()) {
+						regionFoundInCloudList = true
+						zonesInCloudRegion := region.GetAzList()
+						for _, zone := range zonesInCloudRegion {
+							if strings.EqualFold(zone.GetName(), addZoneName) {
+								return nil, fmt.Errorf(
+									"Zone %s already exists in region %s, use --edit-zones to edit number of zones",
+									addZoneName,
+									addZoneRegion,
+								)
+							}
+						}
+						zoneToAdd := ybaclient.PlacementAZ{
+							Name:            util.GetStringPointer(addZoneName),
+							NumNodesInAZ:    util.GetInt32Pointer(int32(addNumNodes)),
+							Subnet:          zoneToBeAdded.Subnet,
+							Uuid:            zoneToBeAdded.Uuid,
+							SecondarySubnet: zoneToBeAdded.SecondarySubnet,
+						}
+						zonesInCloudRegion = append(zonesInCloudRegion, zoneToAdd)
+
+						region.SetAzList(zonesInCloudRegion)
+						regions[ri] = region
+					}
+				}
+				cloud.SetRegionList(regions)
+				if !regionFoundInCloudList {
+					regionToAdd := ybaclient.PlacementRegion{
+						Name: regionOfWhichZoneToBeAdded.Name,
+						Code: regionOfWhichZoneToBeAdded.Code,
+						Uuid: regionOfWhichZoneToBeAdded.Uuid,
+					}
+					zoneToAdd := ybaclient.PlacementAZ{
+						Name:            util.GetStringPointer(zoneToBeAdded.Name),
+						NumNodesInAZ:    util.GetInt32Pointer(int32(addNumNodes)),
+						Subnet:          zoneToBeAdded.Subnet,
+						Uuid:            zoneToBeAdded.Uuid,
+						SecondarySubnet: zoneToBeAdded.SecondarySubnet,
+					}
+					regionToAdd.SetAzList([]ybaclient.PlacementAZ{zoneToAdd})
+					regions := cloud.GetRegionList()
+					regions = append(regions, regionToAdd)
+					cloud.SetRegionList(regions)
+				}
+			}
+		}
+		cloudList[i] = cloud
+	}
+	return cloudList, nil
+}
+
+// FindClusterByType finds the cluster by type
+func FindClusterByType(clusters []ybaclient.Cluster, clusterType string) ybaclient.Cluster {
+	for _, cluster := range clusters {
+		if strings.EqualFold(cluster.GetClusterType(), clusterType) {
+			return cluster
+		}
+	}
+	logrus.Debug("No cluster found with type: ", clusterType)
+	return ybaclient.Cluster{}
 }

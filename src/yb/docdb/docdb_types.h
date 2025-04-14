@@ -36,7 +36,8 @@ YB_DEFINE_ENUM(
     (kPlainSubDocKey)
     (kTransactionMetadata)
     (kPostApplyTransactionMetadata)
-    (kExternalIntents));
+    (kExternalIntents)
+    (kApplyState));
 
 // ------------------------------------------------------------------------------------------------
 // Bounds

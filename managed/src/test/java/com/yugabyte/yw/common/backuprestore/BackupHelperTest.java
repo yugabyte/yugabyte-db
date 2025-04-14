@@ -34,8 +34,12 @@ import com.yugabyte.yw.common.replication.ValidateReplicationInfo;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams;
@@ -105,7 +109,8 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockCommissioner,
                 mockValidateReplicationInfo,
                 mockNodeUniverseManager,
-                mockYbcBackupUtil));
+                mockYbcBackupUtil,
+                mockSoftwareUpgradeHelper));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
   }
@@ -914,5 +919,39 @@ public class BackupHelperTest extends FakeDBApplication {
             testCustomer.getUuid(), params);
     assertTrue(nonRestorableItems.getFirst());
     assertEquals(0, nonRestorableItems.getSecond().size());
+  }
+
+  @Test
+  public void testRestoreWhenYsqlMajorVersionUpgradeInMonitoringPhase() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    RestoreBackupParams restoreBackupParams = new RestoreBackupParams();
+    restoreBackupParams.storageConfigUUID = backup.getStorageConfigUUID();
+    restoreBackupParams.setUniverseUUID(testUniverse.getUniverseUUID());
+    restoreBackupParams.actionType = ActionType.RESTORE;
+    BackupStorageInfo storageInfo = new BackupStorageInfo();
+    storageInfo.storageLocation = backup.getBackupInfo().storageLocation;
+    storageInfo.keyspace = backup.getBackupInfo().getKeyspace();
+    restoreBackupParams.backupStorageInfoList = Arrays.asList(storageInfo);
+    testUniverse =
+        Universe.saveDetails(
+            testUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  "2025.1.0.0-b1";
+              universe.getUniverseDetails().prevYBSoftwareConfig = new PrevYBSoftwareConfig();
+              universe
+                  .getUniverseDetails()
+                  .prevYBSoftwareConfig
+                  .setSoftwareVersion("2024.2.1.0-b1");
+            });
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> {
+              spyBackupHelper.createRestoreTask(testCustomer.getUuid(), restoreBackupParams);
+            });
+    assertEquals(
+        "Cannot restore backup with major version upgrade is in progress", ex.getMessage());
   }
 }

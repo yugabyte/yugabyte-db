@@ -153,7 +153,10 @@ var setGflagsUniverseCmd = &cobra.Command{
 				clusterUserIntent := clusters[i].GetUserIntent()
 				clusterType := clusters[i].GetClusterType()
 				clusterUUID := clusters[i].GetUuid()
-				if strings.Compare(strings.ToUpper(clusterType), strings.ToUpper(gflags.ClusterType)) == 0 {
+				if strings.Compare(
+					strings.ToUpper(clusterType),
+					strings.ToUpper(gflags.ClusterType),
+				) == 0 {
 					if strings.Compare(clusterUUID, gflags.ClusterUUID) == 0 {
 						logrus.Debugf(
 							"Updating specific gflags for cluster %s (%s)\n",

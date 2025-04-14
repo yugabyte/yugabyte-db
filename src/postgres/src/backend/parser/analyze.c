@@ -54,10 +54,12 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "commands/dbcommands.h"
 #include "pg_yb_utils.h"
+
 
 /* Hook for plugins to get control at end of parse analysis */
 post_parse_analyze_hook_type post_parse_analyze_hook = NULL;
@@ -130,7 +132,7 @@ parse_analyze_fixedparams(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	if (IsQueryIdEnabled())
@@ -176,7 +178,7 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	/* make sure all is well with parameter types */
@@ -223,7 +225,7 @@ parse_analyze_withcb(RawStmt *parseTree, const char *sourceText,
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	if (IsQueryIdEnabled())
@@ -359,6 +361,11 @@ transformStmt(ParseState *pstate, Node *parseTree)
 	}
 #endif							/* RAW_EXPRESSION_COVERAGE_TEST */
 
+	/*
+	 * Caution: when changing the set of statement types that have non-default
+	 * processing here, see also stmt_requires_parse_analysis() and
+	 * analyze_requires_snapshot().
+	 */
 	switch (nodeTag(parseTree))
 	{
 			/*
@@ -458,14 +465,22 @@ transformStmt(ParseState *pstate, Node *parseTree)
 }
 
 /*
- * analyze_requires_snapshot
- *		Returns true if a snapshot must be set before doing parse analysis
- *		on the given raw parse tree.
+ * stmt_requires_parse_analysis
+ *		Returns true if parse analysis will do anything non-trivial
+ *		with the given raw parse tree.
  *
- * Classification here should match transformStmt().
+ * Generally, this should return true for any statement type for which
+ * transformStmt() does more than wrap a CMD_UTILITY Query around it.
+ * When it returns false, the caller can assume that there is no situation
+ * in which parse analysis of the raw statement could need to be re-done.
+ *
+ * Currently, since the rewriter and planner do nothing for CMD_UTILITY
+ * Queries, a false result means that the entire parse analysis/rewrite/plan
+ * pipeline will never need to be re-done.  If that ever changes, callers
+ * will likely need adjustment.
  */
 bool
-analyze_requires_snapshot(RawStmt *parseTree)
+stmt_requires_parse_analysis(RawStmt *parseTree)
 {
 	bool		result;
 
@@ -479,6 +494,7 @@ analyze_requires_snapshot(RawStmt *parseTree)
 		case T_UpdateStmt:
 		case T_MergeStmt:
 		case T_SelectStmt:
+		case T_ReturnStmt:
 		case T_PLAssignStmt:
 			result = true;
 			break;
@@ -489,7 +505,7 @@ analyze_requires_snapshot(RawStmt *parseTree)
 		case T_DeclareCursorStmt:
 		case T_ExplainStmt:
 		case T_CreateTableAsStmt:
-			/* yes, because we must analyze the contained statement */
+		case T_CallStmt:
 			result = true;
 			break;
 
@@ -498,12 +514,36 @@ analyze_requires_snapshot(RawStmt *parseTree)
 			break;
 
 		default:
-			/* other utility statements don't have any real parse analysis */
+			/* all other statements just get wrapped in a CMD_UTILITY Query */
 			result = false;
 			break;
 	}
 
 	return result;
+}
+
+/*
+ * analyze_requires_snapshot
+ *		Returns true if a snapshot must be set before doing parse analysis
+ *		on the given raw parse tree.
+ */
+bool
+analyze_requires_snapshot(RawStmt *parseTree)
+{
+	/*
+	 * Currently, this should return true in exactly the same cases that
+	 * stmt_requires_parse_analysis() does, so we just invoke that function
+	 * rather than duplicating it.  We keep the two entry points separate for
+	 * clarity of callers, since from the callers' standpoint these are
+	 * different conditions.
+	 *
+	 * While there may someday be a statement type for which transformStmt()
+	 * does something nontrivial and yet no snapshot is needed for that
+	 * processing, it seems likely that making such a choice would be fragile.
+	 * If you want to install an exception, document the reasoning for it in a
+	 * comment.
+	 */
+	return stmt_requires_parse_analysis(parseTree);
 }
 
 /*
@@ -1067,17 +1107,28 @@ transformInsertRow(ParseState *pstate, List *exprlist,
 
 		if (strip_indirection)
 		{
+			/*
+			 * We need to remove top-level FieldStores and SubscriptingRefs,
+			 * as well as any CoerceToDomain appearing above one of those ---
+			 * but not a CoerceToDomain that isn't above one of those.
+			 */
 			while (expr)
 			{
-				if (IsA(expr, FieldStore))
+				Expr	   *subexpr = expr;
+
+				while (IsA(subexpr, CoerceToDomain))
 				{
-					FieldStore *fstore = (FieldStore *) expr;
+					subexpr = ((CoerceToDomain *) subexpr)->arg;
+				}
+				if (IsA(subexpr, FieldStore))
+				{
+					FieldStore *fstore = (FieldStore *) subexpr;
 
 					expr = (Expr *) linitial(fstore->newvals);
 				}
-				else if (IsA(expr, SubscriptingRef))
+				else if (IsA(subexpr, SubscriptingRef))
 				{
-					SubscriptingRef *sbsref = (SubscriptingRef *) expr;
+					SubscriptingRef *sbsref = (SubscriptingRef *) subexpr;
 
 					if (sbsref->refassgnexpr == NULL)
 						break;

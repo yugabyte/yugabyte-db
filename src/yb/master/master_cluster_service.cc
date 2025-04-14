@@ -13,6 +13,8 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/common/ysql_operation_lease.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.service.h"
@@ -22,6 +24,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
@@ -37,6 +40,7 @@ DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
 DECLARE_bool(emergency_repair_mode);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 using namespace std::literals;
 
@@ -110,6 +114,8 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       }
     }
 
+    auto ysql_lease_infos =
+        server_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
     for (const auto& desc : descs) {
       auto l = desc->LockForRead();
       if (is_ysql_replication_info_required) {
@@ -152,6 +158,13 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       }
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());
+      auto it = ysql_lease_infos.find(desc->id());
+      if (it != ysql_lease_infos.end() &&
+          it->second.instance_seqno() == entry->instance_id().instance_seqno()) {
+        auto& lease_info = *entry->mutable_lease_info();
+        lease_info.set_is_live(it->second.live_lease());
+        lease_info.set_lease_epoch(it->second.lease_epoch());
+      }
     }
     rpc.RespondSuccess();
   }

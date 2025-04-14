@@ -27,14 +27,14 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface K8VolumeInfoFieldProps {
-  isDedicatedMasterField: boolean;
+  isMaster: boolean;
   disableVolumeSize: boolean;
   isEditMode: boolean;
   maxVolumeCount: number;
 }
 
 export const K8VolumeInfoField = ({
-  isDedicatedMasterField,
+  isMaster,
   disableVolumeSize,
   isEditMode,
   maxVolumeCount
@@ -42,18 +42,16 @@ export const K8VolumeInfoField = ({
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
   const { t } = useTranslation();
-  const nodeTypeTag = isDedicatedMasterField ? NodeType.Master : NodeType.TServer;
+  const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
 
   // watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
-  const fieldValue = isDedicatedMasterField
+  const fieldValue = isMaster
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
-  const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
+  const UPDATE_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
   // To set value based on master or tserver field in dedicated mode
-  const INSTANCE_TYPE_UPDATE_FIELD = isDedicatedMasterField
-    ? MASTER_INSTANCE_TYPE_FIELD
-    : INSTANCE_TYPE_FIELD;
+  const INSTANCE_TYPE_UPDATE_FIELD = isMaster ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
   const convertToString = (str: string) => str?.toString() ?? '';
 
   //fetch run time configs
@@ -95,7 +93,7 @@ export const K8VolumeInfoField = ({
           field: t('universeForm.instanceConfig.instanceType')
         }) as string
       }}
-      render={({}) => {
+      render={() => {
         return (
           <Grid container spacing={2}>
             <Grid item lg={6}>
@@ -131,7 +129,7 @@ export const K8VolumeInfoField = ({
                       <YBInput
                         type="number"
                         fullWidth
-                        disabled={isDedicatedMasterField || disableVolumeSize}
+                        disabled={disableVolumeSize}
                         inputProps={{
                           min: 1,
                           'data-testid': `K8VolumeInfoField-${nodeTypeTag}-VolumeSizeInput`

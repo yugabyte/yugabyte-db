@@ -37,7 +37,6 @@
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
-#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
@@ -53,7 +52,7 @@ YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
-class PgSession : public RefCountedThreadSafe<PgSession> {
+class PgSession final : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
   using ScopedRefPtr = scoped_refptr<PgSession>;
@@ -64,10 +63,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YbcPgCallbacks& pg_callbacks,
       YbcPgExecStatsState& stats_state,
-      YbctidReader&& ybctid_reader,
       bool is_pg_binary_upgrade,
-      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
-  virtual ~PgSession();
+      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+      BufferingSettings& buffering_settings);
+  ~PgSession();
 
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
@@ -130,18 +129,16 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Operations on Tablegroup.
   //------------------------------------------------------------------------------------------------
 
-  Status DropTablegroup(const PgOid database_oid,
-                        PgOid tablegroup_oid);
-
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
   Status CreateSchema(const std::string& schema_name, bool if_not_exist);
   Status DropSchema(const std::string& schema_name, bool if_exist);
 
   // API for table operations.
-  Status DropTable(const PgObjectId& table_id);
+  Status DropTable(const PgObjectId& table_id, bool use_regular_transaction_block);
   Status DropIndex(
       const PgObjectId& index_id,
+      bool use_regular_transaction_block,
       client::YBTableName* indexed_table_name = nullptr);
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(
@@ -155,6 +152,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status StopOperationsBuffering();
   // Drop all pending buffered operations and stop further buffering. Buffering may be in any state.
   void ResetOperationsBuffering();
+  // Adjust buffer batch size.
+  Status AdjustOperationsBuffering(int multiple = 1);
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
   Status FlushBufferedOperations();
@@ -220,25 +219,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   std::string GenerateNewYbrowid();
 
-  void InvalidateAllTablesCache();
-
-  void InvalidateForeignKeyReferenceCache() {
-    fk_reference_cache_.clear();
-    fk_reference_intent_.clear();
-    fk_intent_region_local_tables_.clear();
-  }
+  void InvalidateAllTablesCache(uint64_t min_ysql_catalog_version);
 
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
-
-  Result<bool> ForeignKeyReferenceExists(PgOid database_id, const LightweightTableYbctid& key);
-  void AddForeignKeyReferenceIntent(const LightweightTableYbctid& key, bool is_region_local);
-  void AddForeignKeyReference(const LightweightTableYbctid& key);
-
-  // Deletes the row referenced by ybctid from FK reference cache.
-  void DeleteForeignKeyReference(const LightweightTableYbctid& key);
-
-  ExplicitRowLockBuffer& explicit_row_lock_buffer() { return explicit_row_lock_buffer_; }
 
   InsertOnConflictBuffer& GetInsertOnConflictBuffer(void* plan);
   InsertOnConflictBuffer& GetInsertOnConflictBuffer();
@@ -250,6 +234,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
+
+  void SetLockTimeout(int lock_timeout_ms);
 
   Status ValidatePlacement(const std::string& placement_info, bool check_satisfiable);
 
@@ -315,6 +301,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
     std::optional<CacheOptions> cache_options = std::nullopt;
     HybridTime in_txn_limit = {};
+    bool non_transactional_buffered_write = false;
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
@@ -336,7 +323,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   };
 
   PgClient& pg_client_;
-  TableYbctidVectorProvider aux_ybctid_container_provider_;
 
   // A transaction manager allowing to begin/abort/commit transactions.
   scoped_refptr<PgTxnManager> pg_txn_manager_;
@@ -347,14 +333,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status status_;
   std::string errmsg_;
 
-  CoarseTimePoint invalidate_table_cache_time_;
+  uint64_t table_cache_min_ysql_catalog_version_ = 0;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
-  const YbctidReader ybctid_reader_;
-  MemoryOptimizedTableYbctidSet fk_reference_cache_;
-  TableYbctidSet fk_reference_intent_;
-  OidSet fk_intent_region_local_tables_;
 
-  ExplicitRowLockBuffer explicit_row_lock_buffer_;
   using InsertOnConflictPlanBuffer = std::pair<void *, InsertOnConflictBuffer>;
   std::vector<InsertOnConflictPlanBuffer> insert_on_conflict_buffers_;
 
@@ -364,7 +345,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
-  BufferingSettings buffering_settings_;
+  BufferingSettings& buffering_settings_;
   PgOperationBuffer buffer_;
 
   bool has_write_ops_in_ddl_mode_ = false;

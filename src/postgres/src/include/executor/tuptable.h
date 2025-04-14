@@ -20,7 +20,7 @@
 #include "access/tupdesc.h"
 #include "storage/buf.h"
 
-/* YB includes. */
+/* YB includes */
 #include "ybctid.h"
 
 /*----------
@@ -135,6 +135,7 @@ typedef struct TupleTableSlot
 
 	/* YugaByte support */
 	Datum		tts_ybctid;
+	Datum		ts_ybuniqueidxkeysuffix;
 } TupleTableSlot;
 
 /* routines for a TupleTableSlot implementation */
@@ -424,6 +425,18 @@ slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 		/* heap tuple is not required to obtain the ybctid */
 		*isnull = false;
 		return TABLETUPLE_YBCTID(slot);
+	}
+	else if (attnum == YBIdxBaseTupleIdAttributeNumber)
+	{
+		/* Used for secondary index scan during index consistency check. */
+		*isnull = false;
+		return TABLETUPLE_YBCTID(slot);
+	}
+	else if (attnum == YBUniqueIdxKeySuffixAttributeNumber)
+	{
+		/* Used for secondary index scan during index consistency check. */
+		*isnull = DatumGetPointer(slot->ts_ybuniqueidxkeysuffix) == NULL;
+		return slot->ts_ybuniqueidxkeysuffix;
 	}
 
 	/* Fetch the system attribute from the underlying tuple. */

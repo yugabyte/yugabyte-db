@@ -403,7 +403,7 @@ pg_do_encoding_conversion(unsigned char *src, int len,
 						   len)));
 
 	result = (unsigned char *)
-		MemoryContextAllocHuge(GetCurrentMemoryContext(),
+		MemoryContextAllocHuge(CurrentMemoryContext,
 							   (Size) len * MAX_CONVERSION_GROWTH + 1);
 
 	(void) OidFunctionCall6(proc,
@@ -816,7 +816,7 @@ perform_default_encoding_conversion(const char *src, int len,
 						   len)));
 
 	result = (char *)
-		MemoryContextAllocHuge(GetCurrentMemoryContext(),
+		MemoryContextAllocHuge(CurrentMemoryContext,
 							   (Size) len * MAX_CONVERSION_GROWTH + 1);
 
 	FunctionCall6(flinfo,
@@ -1129,7 +1129,7 @@ SetMessageEncoding(int encoding)
 static bool
 raw_pg_bind_textdomain_codeset(const char *domainname, int encoding)
 {
-	bool		elog_ok = (GetCurrentMemoryContext() != NULL);
+	bool		elog_ok = (CurrentMemoryContext != NULL);
 	int			i;
 
 	for (i = 0; pg_enc2gettext_tbl[i].name != NULL; i++)
@@ -1174,7 +1174,7 @@ raw_pg_bind_textdomain_codeset(const char *domainname, int encoding)
 int
 pg_bind_textdomain_codeset(const char *domainname)
 {
-	bool		elog_ok = (GetCurrentMemoryContext() != NULL);
+	bool		elog_ok = (CurrentMemoryContext != NULL);
 	int			encoding = GetDatabaseEncoding();
 	int			new_msgenc;
 
@@ -1322,7 +1322,7 @@ pg_utf8_increment(unsigned char *charptr, int length)
 				charptr[3]++;
 				break;
 			}
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 3:
 			a = charptr[2];
 			if (a < 0xBF)
@@ -1330,7 +1330,7 @@ pg_utf8_increment(unsigned char *charptr, int length)
 				charptr[2]++;
 				break;
 			}
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 2:
 			a = charptr[1];
 			switch (*charptr)
@@ -1350,7 +1350,7 @@ pg_utf8_increment(unsigned char *charptr, int length)
 				charptr[1]++;
 				break;
 			}
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 1:
 			a = *charptr;
 			if (a == 0x7F || a == 0xDF || a == 0xEF || a == 0xF4)

@@ -18,7 +18,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -53,6 +52,7 @@ namespace yb::pggate {
 struct DdlMode {
   bool has_docdb_schema_changes{false};
   std::optional<uint32_t> silently_altered_db;
+  bool use_regular_transaction_block{true};
 
   std::string ToString() const;
   void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
@@ -62,7 +62,7 @@ struct DdlMode {
     (AlterDatabase)(AlterTable) \
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
-    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
+    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)(AcquireObjectLock)
 
 struct PerformResult {
   Status status;
@@ -110,10 +110,6 @@ class PerformExchangeFuture {
 using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
 using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
 
-using PgTxnSnapshotId = std::string;
-using PgTxnSnapshotReadTime = uint64_t;
-using PgTxnSnapshotDescriptor = std::variant<PgTxnSnapshotId, PgTxnSnapshotReadTime>;
-
 void Wait(const PerformResultFuture& future);
 bool Ready(const std::future<PerformResult>& future);
 bool Ready(const PerformExchangeFuture& future);
@@ -129,17 +125,19 @@ class PgClient {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object,
+               const tserver::TServerSharedData& tserver_shared_object,
                std::optional<uint64_t> session_id);
 
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
 
+  void SetLockTimeout(MonoDelta lock_timeout);
+
   uint64_t SessionID() const;
 
   Result<PgTableDescPtr> OpenTable(
-      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+      const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
@@ -212,7 +210,7 @@ class PgClient {
                                                          bool cycle);
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
-      int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
+      int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
       bool is_db_catalog_version_mode, std::optional<uint64_t> read_time = std::nullopt);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
@@ -232,6 +230,9 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 
+  Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
+      uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
+
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
 
@@ -244,7 +245,10 @@ class PgClient {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
-      const YbcReplicationSlotHashRange* slot_hash_range);
+      const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid);
+
+  Result<cdc::GetLagMetricsResponsePB> GetLagMetrics(
+      const std::string& stream_id, int64_t* lag_metric);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
@@ -265,8 +269,8 @@ class PgClient {
   Result<int64_t> GetCronLastMinute();
 
   Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req);
-  Result<tserver::PgSetTxnSnapshotResponsePB> SetTxnSnapshot(
-      PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options);
+  Result<PgTxnSnapshotPB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
   Status ClearExportedTxnSnapshots();
 
   using ActiveTransactionCallback = LWFunction<Status(

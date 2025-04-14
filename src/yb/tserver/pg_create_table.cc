@@ -163,7 +163,10 @@ Status PgCreateTable::Exec(
     table_creator->tablegroup_id(tablegroup_oid.GetYbTablegroupId());
   }
 
-  if (req_.optional_colocation_id_case() !=
+  if (overwrite_colocation_id_ != kColocationIdNotSet) {
+    table_creator->colocation_id(overwrite_colocation_id_);
+  } else if (
+      req_.optional_colocation_id_case() !=
       PgCreateTableRequestPB::OptionalColocationIdCase::OPTIONAL_COLOCATION_ID_NOT_SET) {
     table_creator->colocation_id(req_.colocation_id());
   }
@@ -200,6 +203,10 @@ Status PgCreateTable::Exec(
 
   if (xcluster_source_table_id_.IsValid()) {
     table_creator->xcluster_source_table_id(xcluster_source_table_id_.GetYbTableId());
+  }
+
+  if (xcluster_backfill_hybrid_time_) {
+    table_creator->xcluster_backfill_hybrid_time(xcluster_backfill_hybrid_time_);
   }
 
   if (transaction_metadata) {
@@ -266,7 +273,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   if (req_.is_unique_index()) {
     auto name = "ybuniqueidxkeysuffix";
     client::YBColumnSpec* col = schema_builder_.AddColumn(name)->Type(yb_type);
-    col->Order(to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix));
+    col->Order(std::to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix));
     col->PrimaryKey();
     range_columns_.emplace_back(name);
   }
@@ -276,7 +283,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   // column if any or before exec() below.
   auto name = "ybidxbasectid";
   client::YBColumnSpec* col = schema_builder_.AddColumn(name)->Type(yb_type);
-  col->Order(to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId));
+  col->Order(std::to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId));
   if (!req_.is_unique_index()) {
     col->PrimaryKey();
     range_columns_.emplace_back(name);
@@ -358,6 +365,14 @@ size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
 
 void PgCreateTable::SetXClusterSourceTableId(const PgObjectId& xcluster_source_table_id) {
   xcluster_source_table_id_ = xcluster_source_table_id;
+}
+
+void PgCreateTable::SetXClusterBackfillHybridTime(uint64_t xcluster_backfill_hybrid_time) {
+  xcluster_backfill_hybrid_time_ = xcluster_backfill_hybrid_time;
+}
+
+void PgCreateTable::OverwriteColocationId(const ColocationId& colocation_id) {
+  overwrite_colocation_id_ = colocation_id;
 }
 
 Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline) {

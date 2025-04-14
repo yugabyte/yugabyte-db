@@ -415,6 +415,10 @@ inline std::strong_ordering operator<=>(const Slice& lhs, const Slice& rhs) {
   return lhs.compare(rhs) <=> 0;
 }
 
+inline std::string AsDebugHexString(Slice value) {
+  return value.ToDebugHexString();
+}
+
 }  // namespace yb
 
 namespace rocksdb {

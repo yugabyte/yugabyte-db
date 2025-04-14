@@ -91,9 +91,12 @@ PostgreSQL documentation
       <term><option>--clean</option></term>
       <listitem>
        <para>
-        Include SQL commands to clean (drop) databases before
-        recreating them.  <command>DROP</command> commands for roles and
-        tablespaces are added as well.
+        Emit SQL commands to <command>DROP</command> all the dumped
+        databases, roles, and tablespaces before recreating them.
+        This option is useful when the restore is to overwrite an existing
+        cluster.  If any of the objects do not exist in the destination
+        cluster, ignorable error messages will be reported during
+        restore, unless <option>--if-exists</option> is also specified.
        </para>
       </listitem>
      </varlistentry>
@@ -324,9 +327,11 @@ PostgreSQL documentation
       <term><option>--if-exists</option></term>
       <listitem>
        <para>
-        Use conditional commands (i.e., add an <literal>IF EXISTS</literal>
-        clause) to drop databases and other objects.  This option is not valid
-        unless <option>--clean</option> is also specified.
+        Use <literal>DROP ... IF EXISTS</literal> commands to drop objects
+        in <option>--clean</option> mode.  This suppresses <quote>does not
+        exist</quote> errors that might otherwise be reported.  This
+        option is not valid unless <option>--clean</option> is also
+        specified.
        </para>
       </listitem>
      </varlistentry>
@@ -361,10 +366,6 @@ PostgreSQL documentation
         and the two systems have different definitions of the collation used
         to sort the partitioning column.
        </para>
-
-       <!-- Currently, we don't need pg_dump's warning about parallelism here,
-        since parallel restore from a pg_dumpall script is impossible.
-       -->
       </listitem>
      </varlistentry>
 
@@ -785,6 +786,17 @@ PostgreSQL documentation
    database creation will fail for databases in non-default
    locations.
   </para>
+
+  <para>
+   It is generally recommended to use the <option>-X</option>
+   (<option>--no-psqlrc</option>) option when restoring a database from a
+   <application>pg_dumpall</application> script to ensure a clean restore
+   process and prevent potential conflicts with non-default
+   <application>psql</application> configurations. Additionally, because
+   the <application>pg_dumpall</application> script may
+   include <application>psql</application> meta-commands, it may be
+   incompatible with clients other than <application>psql</application>.
+  </para>
  </refsect1>
 
 
@@ -801,9 +813,9 @@ PostgreSQL documentation
   <para>
    To restore database(s) from this file, you can use:
 <screen>
-<prompt>$</prompt> <userinput>psql -f db.out postgres</userinput>
+<prompt>$</prompt> <userinput>psql -X -f db.out -d postgres</userinput>
 </screen>
-   It is not important to which database you connect here since the
+   It is not important which database you connect to here since the
    script file created by <application>pg_dumpall</application> will
    contain the appropriate commands to create and connect to the saved
    databases.  An exception is that if you specified <option>--clean</option>,

@@ -92,6 +92,7 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/backup.pb.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
@@ -528,9 +529,14 @@ class TabletBootstrap {
     const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
 
     if (data_.retryable_requests) {
+      const auto table_type_for_retryable_request_timeout =
+          tablet_->table_type() == PGSQL_TABLE_TYPE ||
+          meta_->table_name() == std::string(tserver::kPgAdvisoryLocksTableName)
+              ? PGSQL_TABLE_TYPE
+              : tablet_->table_type();
       const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
           ? client::SysCatalogRetryableRequestTimeoutSecs()
-          : client::RetryableRequestTimeoutSecs(tablet_->table_type());
+          : client::RetryableRequestTimeoutSecs(table_type_for_retryable_request_timeout);
       data_.retryable_requests->SetRequestTimeout(retryable_request_timeout_secs);
       data_.retryable_requests->SetMetricEntity(tablet_->GetTabletMetricsEntity());
     }
@@ -557,8 +563,8 @@ class TabletBootstrap {
       RETURN_NOT_OK(FinishBootstrap("No bootstrap required, opened a new log",
                                     rebuilt_log,
                                     rebuilt_tablet));
-      consensus_info->last_id = MinimumOpId();
-      consensus_info->last_committed_id = MinimumOpId();
+      consensus_info->last_id = OpId::Min();
+      consensus_info->last_committed_id = OpId::Min();
       return Status::OK();
     }
 
@@ -578,8 +584,8 @@ class TabletBootstrap {
 
     RETURN_NOT_OK_PREPEND(PlaySegments(consensus_info), "Failed log replay. Reason");
 
-    if (cmeta_->current_term() < consensus_info->last_id.term()) {
-      cmeta_->set_current_term(consensus_info->last_id.term());
+    if (cmeta_->current_term() < consensus_info->last_id.term) {
+      cmeta_->set_current_term(consensus_info->last_id.term);
     }
 
     // Flush the consensus metadata once at the end to persist our changes, if any.
@@ -1687,8 +1693,8 @@ class TabletBootstrap {
         replay_state_->prev_op_id, replay_state_->committed_op_id);
 
     tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
-    consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
-    consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
+    consensus_info->last_id = replay_state_->prev_op_id;
+    consensus_info->last_committed_id = replay_state_->committed_op_id;
 
     if (data_.retryable_requests) {
       data_.retryable_requests->Clock().Adjust(last_entry_time);
@@ -2013,8 +2019,6 @@ class TabletBootstrap {
 
   // A way to inject flushed OpIds for regular and intents RocksDBs.
   boost::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
-
-  bool TEST_collect_replayed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
   std::vector<OpId> TEST_replayed_op_ids_;

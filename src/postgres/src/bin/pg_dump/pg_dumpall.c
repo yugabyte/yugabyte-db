@@ -48,7 +48,7 @@ static int	runPgDump(const char *dbname, const char *create_opts);
 static void buildShSecLabels(PGconn *conn,
 							 const char *catalog_name, Oid objectId,
 							 const char *objtype, const char *objname,
-							 PQExpBuffer buffer);
+							 PQExpBuffer buffer, const char *yb_indent);
 static PGconn *connectDatabase(const char *dbname, const char *connstr, const char *pghost, const char *pgport,
 							   const char *pguser, trivalue prompt_password, bool fail_on_error);
 static char *constructConnStr(const char **keywords, const char **values);
@@ -91,6 +91,7 @@ static int	on_conflict_do_nothing = 0;
 static char role_catalog[10];
 #define PG_AUTHID "pg_authid"
 #define PG_ROLES  "pg_roles "
+#define YB_SUPERUSER  "yb_superuser"
 
 static FILE *OPF;
 static char *filename = NULL;
@@ -105,6 +106,9 @@ static char *masterHosts = NULL;
 static int	include_yb_metadata = 0;	/* In this mode DDL statements include
 										 * YB specific metadata such as tablet
 										 * partitions. */
+static int	yb_dump_role_checks = 0;	/* Add to the dump additional checks if the used ROLE
+										 * exists. The ROLE usage statements are skipped if
+										 * the ROLE does not exist. */
 static int	dump_single_database = 0;	/* Dump only one DB specified by
 										 * '--database' argument. */
 
@@ -166,6 +170,7 @@ main(int argc, char *argv[])
 		{"on-conflict-do-nothing", no_argument, &on_conflict_do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 7},
 		{"include-yb-metadata", no_argument, &include_yb_metadata, 1},
+		{"dump-role-checks", no_argument, &yb_dump_role_checks, 1},
 		{"dump-single-database", no_argument, &dump_single_database, 1},
 
 		{NULL, 0, NULL, 0}
@@ -403,6 +408,20 @@ main(int argc, char *argv[])
 		exit_nicely(1);
 	}
 
+	if (binary_upgrade && include_yb_metadata)
+	{
+		pg_log_error("options --binary-upgrade and --include-yb-metadata cannot be used together");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+		exit_nicely(1);
+	}
+
+	if (yb_dump_role_checks && !include_yb_metadata)
+	{
+		pg_log_error("option --dump-role-checks must be used only together with --include-yb-metadata");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+		exit_nicely(1);
+	}
+
 	/*
 	 * If password values are not required in the dump, switch to using
 	 * pg_roles which is equally useful, just more likely to have unrestricted
@@ -450,6 +469,8 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --on-conflict-do-nothing");
 	if (include_yb_metadata)
 		appendPQExpBufferStr(pgdumpopts, " --include-yb-metadata");
+	if (yb_dump_role_checks)
+		appendPQExpBufferStr(pgdumpopts, " --dump-role-checks");
 
 	/*
 	 * If there was a database specified on the command line, use that,
@@ -515,6 +536,7 @@ main(int argc, char *argv[])
 	 * we know how to escape strings.
 	 */
 	encoding = PQclientEncoding(conn);
+	setFmtEncoding(encoding);
 	std_strings = PQparameterStatus(conn, "standard_conforming_strings");
 	if (!std_strings)
 		std_strings = "off";
@@ -656,6 +678,10 @@ help(void)
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
 			 "                               like SPLIT details).\n"));
+	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
+			 "                               exists. The ROLE usage statements are skipped if\n"
+			 "                               the ROLE does not exist.\n"
+			 "                               Requires --include-yb-metadata.\n"));
 	printf(_("  --inserts                    dump data as INSERT commands, rather than COPY\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comments\n"));
@@ -765,28 +791,31 @@ dumpRoles(PGconn *conn)
 				i_is_current_user;
 	int			i;
 
-	/* note: rolconfig is dumped later */
+	/*
+	 * Notes: rolconfig is dumped later, and pg_authid must be used for
+	 * extracting rolcomment regardless of role_catalog.
+	 */
 	if (server_version >= 90600)
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
 						  "rolcreaterole, rolcreatedb, "
 						  "rolcanlogin, rolconnlimit, rolpassword, "
 						  "rolvaliduntil, rolreplication, rolbypassrls, "
-						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
+						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
 						  "FROM %s "
 						  "WHERE rolname !~ '^pg_' "
-						  "ORDER BY 2", role_catalog, role_catalog);
+						  "ORDER BY 2", role_catalog);
 	else if (server_version >= 90500)
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
 						  "rolcreaterole, rolcreatedb, "
 						  "rolcanlogin, rolconnlimit, rolpassword, "
 						  "rolvaliduntil, rolreplication, rolbypassrls, "
-						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
+						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
 						  "FROM %s "
-						  "ORDER BY 2", role_catalog, role_catalog);
+						  "ORDER BY 2", role_catalog);
 	else
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
@@ -794,10 +823,10 @@ dumpRoles(PGconn *conn)
 						  "rolcanlogin, rolconnlimit, rolpassword, "
 						  "rolvaliduntil, rolreplication, "
 						  "false as rolbypassrls, "
-						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
+						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
 						  "FROM %s "
-						  "ORDER BY 2", role_catalog, role_catalog);
+						  "ORDER BY 2", role_catalog);
 
 	res = executeQuery(conn, buf->data);
 
@@ -832,8 +861,12 @@ dumpRoles(PGconn *conn)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		const char *rolename;
-		char	   *yb_frolename;
 		Oid			auth_oid;
+
+		char	   *yb_frolename = NULL;
+		const char *yb_indent = "";
+		bool		yb_skip_create_role = false;
+		bool		yb_need_endif = false;
 
 		auth_oid = atooid(PQgetvalue(res, i, i_oid));
 		rolename = PQgetvalue(res, i, i_rolname);
@@ -848,9 +881,11 @@ dumpRoles(PGconn *conn)
 		/*
 		 * In Yugabyte major upgrade, there are additional roles already created
 		 * by initdb.
+		 * yb_superuser is created outside of initdb, so it needs to be included.
 		 */
 		if (IsYugabyteEnabled && binary_upgrade &&
-			strncmp(rolename, "yb_", 3) == 0)
+			strncmp(rolename, "yb_", 3) == 0 &&
+			strncmp(rolename, YB_SUPERUSER, strlen(YB_SUPERUSER)) != 0)
 		{
 			pg_log_warning("role name starting with \"yb_\" skipped (%s)",
 						   rolename);
@@ -875,41 +910,52 @@ dumpRoles(PGconn *conn)
 		 * for the role we are connected as, since even with --clean we will
 		 * have failed to drop it.  binary_upgrade cannot generate any errors,
 		 * so we assume the current role is already created.
+		 *
+		 * General algorithm for YB:
+		 * [1] Dump for Binary Upgrade (binary_upgrade == true)
+		 *     yugabyte / postgres roles (created by default): ALTER ROLE...
+		 *     Any other roles                               : CREATE ROLE... ALTER ROLE...
+		 * [2] Dump for Backup (include_yb_metadata == true, binary_upgrade == false)
+		 *     Current user (i_is_current_user == "t")       : ALTER ROLE...
+		 *     Any other roles                               :
+		 *                        \\if (!role_exists) { CREATE ROLE... ALTER ROLE... }
+		 * [3] Common dump (include_yb_metadata == false, binary_upgrade == false)
+		 *     Any roles                                     : CREATE ROLE... ALTER ROLE...
+		 *
+		 * In Yugabyte major upgrade, initdb always creates the yugabyte
+		 * and postgres users.
 		 */
 		if (IsYugabyteEnabled && binary_upgrade)
-		{
-			/*
-			 * In Yugabyte major upgrade, initdb always creates the yugabyte
-			 * and postgres users.
-			 */
-			if (strcmp(rolename, "yugabyte") != 0 && strcmp(rolename, "postgres") != 0)
-				appendPQExpBuffer(buf, "CREATE ROLE %s;\n", yb_frolename);
-		}
-		else if (!binary_upgrade ||
-				 strcmp(PQgetvalue(res, i, i_is_current_user), "f") == 0)
+			yb_skip_create_role =
+				(strcmp(rolename, "yugabyte") == 0 || strcmp(rolename, "postgres") == 0);
+		else
+			yb_skip_create_role = ((binary_upgrade || include_yb_metadata) &&
+				(strcmp(PQgetvalue(res, i, i_is_current_user), "t") == 0));
+
+		if (!yb_skip_create_role)
 		{
 			if (include_yb_metadata)
 			{
+				yb_need_endif = true;
+				yb_indent = "    ";
 				appendPQExpBuffer(buf,
 								  "\\set role_exists false\n"
 								  "\\if :ignore_existing_roles\n"
-								  "    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ");
+								  "%sSELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ",
+								  yb_indent);
 				appendStringLiteralConn(buf, rolename, conn);
 				appendPQExpBuffer(buf,
 								  ") AS role_exists \\gset\n"
 								  "\\endif\n"
 								  "\\if :role_exists\n"
-								  "    \\echo 'Role already exists:' %s\n"
-								  "\\else\n    ", yb_frolename);
+								  "%s\\echo 'Role already exists:' %s\n"
+								  "\\else\n", yb_indent, yb_frolename);
 			}
 
-			appendPQExpBuffer(buf, "CREATE ROLE %s;\n", yb_frolename);
-
-			if (include_yb_metadata)
-				appendPQExpBufferStr(buf, "\\endif\n");
+			appendPQExpBuffer(buf, "%sCREATE ROLE %s;\n", yb_indent, yb_frolename);
 		}
 
-		appendPQExpBuffer(buf, "ALTER ROLE %s WITH", yb_frolename);
+		appendPQExpBuffer(buf, "%sALTER ROLE %s WITH", yb_indent, yb_frolename);
 
 		if (strcmp(PQgetvalue(res, i, i_rolsuper), "t") == 0)
 			appendPQExpBufferStr(buf, " SUPERUSER");
@@ -950,7 +996,6 @@ dumpRoles(PGconn *conn)
 			appendPQExpBuffer(buf, " CONNECTION LIMIT %s",
 							  PQgetvalue(res, i, i_rolconnlimit));
 
-
 		if (!PQgetisnull(res, i, i_rolpassword) && !no_role_passwords)
 		{
 			appendPQExpBufferStr(buf, " PASSWORD ");
@@ -965,7 +1010,7 @@ dumpRoles(PGconn *conn)
 
 		if (!no_comments && !PQgetisnull(res, i, i_rolcomment))
 		{
-			appendPQExpBuffer(buf, "COMMENT ON ROLE %s IS ", yb_frolename);
+			appendPQExpBuffer(buf, "%sCOMMENT ON ROLE %s IS ", yb_indent, yb_frolename);
 			appendStringLiteralConn(buf, PQgetvalue(res, i, i_rolcomment), conn);
 			appendPQExpBufferStr(buf, ";\n");
 		}
@@ -973,7 +1018,10 @@ dumpRoles(PGconn *conn)
 		if (!no_security_labels)
 			buildShSecLabels(conn, "pg_authid", auth_oid,
 							 "ROLE", rolename,
-							 buf);
+							 buf, yb_indent);
+
+		if (yb_need_endif)
+			appendPQExpBufferStr(buf, "\\endif\n");
 
 		if (include_yb_metadata)
 			appendPQExpBufferStr(buf, "\n");
@@ -1035,10 +1083,13 @@ dumpRoleMembership(PGconn *conn)
 		char	   *member = PQgetvalue(res, i, 1);
 		char	   *option = PQgetvalue(res, i, 2);
 
-		fprintf(OPF, "GRANT %s", fmtId(roleid));
-		fprintf(OPF, " TO %s", fmtId(member));
+		char	   *yb_grantor = NULL;
+
+		PQExpBuffer yb_sql = createPQExpBuffer();
+		appendPQExpBuffer(yb_sql, "GRANT %s", fmtId(roleid));
+		appendPQExpBuffer(yb_sql, " TO %s", fmtId(member));
 		if (*option == 't')
-			fprintf(OPF, " WITH ADMIN OPTION");
+			appendPQExpBufferStr(yb_sql, " WITH ADMIN OPTION");
 
 		/*
 		 * We don't track the grantor very carefully in the backend, so cope
@@ -1046,17 +1097,33 @@ dumpRoleMembership(PGconn *conn)
 		 */
 		if (!PQgetisnull(res, i, 3))
 		{
-			char	   *grantor = PQgetvalue(res, i, 3);
-
-			fprintf(OPF, " GRANTED BY %s", fmtId(grantor));
+			yb_grantor = PQgetvalue(res, i, 3);
+			appendPQExpBuffer(yb_sql, " GRANTED BY %s", fmtId(yb_grantor));
 		}
-		fprintf(OPF, ";\n");
+		appendPQExpBufferStr(yb_sql, ";\n");
+
+		if (yb_dump_role_checks)
+		{
+			PQExpBuffer yb_source_sql = yb_sql;
+			yb_sql = createPQExpBuffer();
+			YBWwrapInRoleChecks(conn, yb_source_sql, "grant privilege",
+								member,		/* role1 */
+								yb_grantor,	/* role2; note: yb_grantor can be NULL */
+								NULL,		/* role3 */
+								yb_sql);
+			destroyPQExpBuffer(yb_source_sql);
+		}
+
+		fprintf(OPF, "%s", yb_sql->data);
+		destroyPQExpBuffer(yb_sql);
 	}
 
 	PQclear(res);
 	destroyPQExpBuffer(buf);
 
-	fprintf(OPF, "\n\n");
+	fprintf(OPF, "\n");
+	if (!yb_dump_role_checks)
+		fprintf(OPF, "\n"); /* Second EOL. */
 }
 
 
@@ -1098,9 +1165,9 @@ dumpRoleGUCPrivs(PGconn *conn)
 		/* needed for buildACLCommands() */
 		fparname = pg_strdup(fmtId(parname));
 
-		if (!buildACLCommands(fparname, NULL, NULL, "PARAMETER",
+		if (!buildACLCommands(conn, fparname, NULL, NULL, "PARAMETER",
 							  paracl, acldefault,
-							  parowner, "", server_version, buf))
+							  parowner, "", server_version, yb_dump_role_checks, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for parameter \"%s\"",
 						 paracl, parname);
@@ -1243,9 +1310,9 @@ dumpTablespaces(PGconn *conn)
 		/* tablespaces can't have initprivs */
 
 		if (!skip_acls &&
-			!buildACLCommands(fspcname, NULL, NULL, "TABLESPACE",
+			!buildACLCommands(conn, fspcname, NULL, NULL, "TABLESPACE",
 							  spcacl, acldefault,
-							  spcowner, "", server_version, buf))
+							  spcowner, "", server_version, yb_dump_role_checks, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for tablespace \"%s\"",
 						 spcacl, spcname);
@@ -1263,7 +1330,7 @@ dumpTablespaces(PGconn *conn)
 		if (!no_security_labels)
 			buildShSecLabels(conn, "pg_tablespace", spcoid,
 							 "TABLESPACE", spcname,
-							 buf);
+							 buf, "");
 
 		if (include_yb_metadata)
 			appendPQExpBufferStr(buf, "\n");
@@ -1313,7 +1380,7 @@ dropDBs(PGconn *conn)
 	res = executeQuery(conn,
 					   "SELECT datname "
 					   "FROM pg_database d "
-					   "WHERE datallowconn "
+					   "WHERE datallowconn AND datconnlimit != -2 "
 					   "ORDER BY datname");
 
 	if (PQntuples(res) > 0)
@@ -1456,7 +1523,7 @@ dumpDatabases(PGconn *conn, const char *pgdb)
 	res = executeQuery(conn,
 					   "SELECT datname "
 					   "FROM pg_database d "
-					   "WHERE datallowconn "
+					   "WHERE datallowconn AND datconnlimit != -2 "
 					   "ORDER BY (datname <> 'template1'), datname");
 
 	if (PQntuples(res) > 0)
@@ -1593,14 +1660,14 @@ runPgDump(const char *dbname, const char *create_opts)
 static void
 buildShSecLabels(PGconn *conn, const char *catalog_name, Oid objectId,
 				 const char *objtype, const char *objname,
-				 PQExpBuffer buffer)
+				 PQExpBuffer buffer, const char *yb_indent)
 {
 	PQExpBuffer sql = createPQExpBuffer();
 	PGresult   *res;
 
 	buildShSecLabelQuery(catalog_name, objectId, sql);
 	res = executeQuery(conn, sql->data);
-	emitShSecLabels(conn, res, buffer, objtype, objname);
+	emitShSecLabels(conn, res, buffer, objtype, objname, yb_indent);
 
 	PQclear(res);
 	destroyPQExpBuffer(sql);

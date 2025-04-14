@@ -23,11 +23,12 @@
 #ifndef YB_VIRTUAL_WAL_CLIENT_H
 #define YB_VIRTUAL_WAL_CLIENT_H
 
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "access/xlogreader.h"
 #include "c.h"
+
+#include "access/xlogreader.h"
 #include "nodes/pg_list.h"
 #include "replication/yb_virtual_wal_client_typedefs.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 extern void YBCInitVirtualWal(List *yb_publication_names);
 extern void YBCDestroyVirtualWal();

@@ -226,10 +226,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
   size_t ObjectSize() const { return sizeof(*this); }
   size_t DynamicMemoryUsage() const;
 
-  bool must_print() const {
-    std::lock_guard l(lock_);
-    return must_print_;
-  }
+  bool must_print() const;
 
   void set_must_print(bool flag) {
     std::lock_guard l(lock_);

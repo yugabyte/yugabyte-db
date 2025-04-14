@@ -94,9 +94,9 @@
 #endif
 
 #if defined(__has_attribute) && __has_attribute(fallthrough)
-#define switch_fallthrough() __attribute__((fallthrough))
+#define yb_switch_fallthrough() __attribute__((fallthrough))
 #else
-#define switch_fallthrough()
+#define yb_switch_fallthrough()
 #endif
 
 /*
@@ -404,7 +404,7 @@ typedef void (*pg_funcptr_t) (void);
  * bool
  *		Boolean value, either true or false.
  *
- * We use stdbool.h if available and its bool has size 1.  That's useful for
+ * We use stdbool.h if bool has size 1 after including it.  That's useful for
  * better compiler and debugger output and for compatibility with third-party
  * libraries.  But PostgreSQL currently cannot deal with bool of other sizes;
  * there are static assertions around the code to prevent that.

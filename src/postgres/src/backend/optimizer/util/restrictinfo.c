@@ -20,9 +20,10 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/restrictinfo.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+
 
 static RestrictInfo *make_restrictinfo_internal(PlannerInfo *root,
 												Expr *clause,
@@ -226,6 +227,23 @@ make_restrictinfo_internal(PlannerInfo *root,
 	restrictinfo->right_hasheqoperator = InvalidOid;
 
 	return restrictinfo;
+}
+
+/*
+ * Returns whether the given rinfo can be used as a hashed clause during a
+ * hashed BNL join. This operates similar to the check hash joins do to
+ * determine if a clause can be hashed as in hash_inner_and_outer in
+ * joinpath.c.
+ */
+bool
+yb_can_hash_batched_rinfo(RestrictInfo *batched_rinfo,
+						 Relids outer_relids,
+						 Relids inner_relids)
+{
+	if (bms_is_subset(batched_rinfo->right_relids, outer_relids) &&
+		bms_is_subset(batched_rinfo->left_relids, inner_relids))
+		return true;
+	return false;
 }
 
 /*
@@ -576,6 +594,35 @@ extract_actual_join_clauses(List *restrictinfo_list,
 			*joinquals = lappend(*joinquals, rinfo->clause);
 		}
 	}
+}
+
+/*
+ * has_pseudoconstant_clauses
+ *
+ * Returns true if 'restrictinfo_list' includes pseudoconstant clauses.
+ *
+ * This is used when we determine whether to allow extensions to consider
+ * pushing down joins in add_paths_to_joinrel().
+ */
+bool
+has_pseudoconstant_clauses(PlannerInfo *root,
+						   List *restrictinfo_list)
+{
+	ListCell   *l;
+
+	/* No need to look if we know there are no pseudoconstants */
+	if (!root->hasPseudoConstantQuals)
+		return false;
+
+	/* See if there are pseudoconstants in the RestrictInfo list */
+	foreach(l, restrictinfo_list)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+
+		if (rinfo->pseudoconstant)
+			return true;
+	}
+	return false;
 }
 
 

@@ -207,6 +207,8 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id) const
       EXCLUDES(outbound_replication_group_map_mutex_);
 
+  Status SetNormalOidCounterAboveAllNormalOids(NamespaceId namespace_id);
+
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsForDbScoped(
       const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
   Result<xrepl::StreamId> CreateNonTxnStreamForNewTable(
@@ -254,7 +256,7 @@ class XClusterSourceManager {
   Status SetupDDLReplicationExtension(
       const NamespaceId& namespace_id, StdStatusCallback callback) const;
 
-  Status DropDDLReplicationExtension(
+  Status DropDDLReplicationExtensionIfExists(
       const NamespaceId& namespace_id,
       const xcluster::ReplicationGroupId& drop_replication_group_id) const;
 

@@ -37,7 +37,8 @@ class PgCreateDatabase final : public PgStatementLeafBase<PgDdl, StmtOp::kCreate
                    PgOid next_oid,
                    YbcCloneInfo* yb_clone_info,
                    bool colocated,
-                   bool use_transaction);
+                   bool use_transaction,
+                   bool use_regular_transaction_block);
 
   Status Exec();
 
@@ -74,7 +75,7 @@ class PgCreateTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kCrea
  public:
   PgCreateTablegroup(
       const PgSession::ScopedRefPtr& pg_session, const char* database_name, PgOid database_oid,
-      PgOid tablegroup_oid, PgOid tablespace_oid);
+      PgOid tablegroup_oid, PgOid tablespace_oid, bool use_regular_transaction_block);
 
   Status Exec();
 
@@ -85,7 +86,8 @@ class PgCreateTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kCrea
 class PgDropTablegroup final : public PgStatementLeafBase<PgDdl, StmtOp::kDropTablegroup> {
  public:
   PgDropTablegroup(
-      const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid);
+      const PgSession::ScopedRefPtr& pg_session, PgOid database_oid, PgOid tablegroup_oid,
+      bool use_regular_transaction_block);
 
   Status Exec();
 
@@ -112,7 +114,7 @@ class PgCreateTableBase : public PgDdl {
 
   Status SetNumTablets(int32_t num_tablets);
 
-  Status SetHnswOptions(int ef_construction, int m);
+  Status SetHnswOptions(int m, int m0, int ef_construction);
 
   Status SetVectorOptions(YbcPgVectorIdxOptions* options);
 
@@ -138,7 +140,8 @@ class PgCreateTableBase : public PgDdl {
                     const PgObjectId& pg_table_oid,
                     const PgObjectId& old_relfilenode_oid,
                     bool is_truncate,
-                    bool use_transaction);
+                    bool use_transaction,
+                    bool use_regular_transaction_block);
 
   tserver::PgCreateTableRequestPB req_;
 
@@ -168,7 +171,8 @@ class PgCreateTable final : public PgStatementLeafBase<PgCreateTableBase, StmtOp
       const PgObjectId& pg_table_oid,
       const PgObjectId& old_relfilenode_oid,
       bool is_truncate,
-      bool use_transaction);
+      bool use_transaction,
+      bool use_regular_transaction_block);
 };
 
 class PgCreateIndex final : public PgStatementLeafBase<PgCreateTableBase, StmtOp::kCreateIndex> {
@@ -192,6 +196,7 @@ class PgCreateIndex final : public PgStatementLeafBase<PgCreateTableBase, StmtOp
       const PgObjectId& old_relfilenode_oid,
       bool is_truncate,
       bool use_transaction,
+      bool use_regular_transaction_block,
       const PgObjectId& base_table_id,
       bool is_unique_index,
       bool skip_index_backfill);
@@ -199,13 +204,16 @@ class PgCreateIndex final : public PgStatementLeafBase<PgCreateTableBase, StmtOp
 
 class PgDropTable final : public PgStatementLeafBase<PgDdl, StmtOp::kDropTable> {
  public:
-  PgDropTable(const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist);
+  PgDropTable(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist,
+      bool use_regular_transaction_block);
 
   Status Exec();
 
  protected:
   const PgObjectId table_id_;
   const bool if_exist_;
+  const bool use_regular_transaction_block_;
 };
 
 class PgTruncateTable final : public PgStatementLeafBase<PgDdl, StmtOp::kTruncateTable> {
@@ -222,7 +230,7 @@ class PgDropIndex final : public PgStatementLeafBase<PgDdl, StmtOp::kDropIndex> 
  public:
   PgDropIndex(
       const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool if_exist,
-      bool ddl_rollback_enabled);
+      bool ddl_rollback_enabled, bool use_regular_transaction_block);
 
   Status Exec();
 
@@ -230,12 +238,15 @@ class PgDropIndex final : public PgStatementLeafBase<PgDdl, StmtOp::kDropIndex> 
   const PgObjectId index_id_;
   const bool if_exist_;
   const bool ddl_rollback_enabled_;
+  const bool use_regular_transaction_block_;
 };
 
 class PgAlterTable final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterTable> {
  public:
-  PgAlterTable(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool use_transaction);
+  PgAlterTable(const PgSession::ScopedRefPtr& pg_session,
+               const PgObjectId& table_id,
+               bool use_transaction,
+               bool use_regular_transaction_block);
 
   Status AddColumn(const char *name,
                    const YbcPgTypeEntity *attr_type,
@@ -291,7 +302,7 @@ class PgCreateReplicationSlot final : public PgStatementLeafBase<
   PgCreateReplicationSlot(
       const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
       PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action,
-      YbcLsnType lsn_type);
+      YbcLsnType lsn_type, YbcOrderingMode yb_ordering_mode);
 
   Result<tserver::PgCreateReplicationSlotResponsePB> Exec();
 

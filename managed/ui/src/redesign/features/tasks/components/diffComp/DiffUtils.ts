@@ -46,8 +46,8 @@ export const getFieldOpertions = (
   const fields: FieldOperations = {
     name: undefined,
     numNodesInAZ: undefined,
-    isAffinitized: undefined,
-    replicationFactor: undefined
+    isAffinitized: undefined
+    // replicationFactor: undefined
   };
 
   if (!beforePlacement) {

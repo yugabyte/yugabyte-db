@@ -42,6 +42,12 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
     )?.value === 'true';
 
+  // If use_ansible_provisioning is false, YNP is going to do the provisioning and YNP does not support cron based universes
+  const useAnsibleProvisioning =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.USE_ANSIBLE_PROVISIONING
+    )?.value === 'true';
+
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
 
@@ -90,7 +96,7 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
       {provider.code !== CloudType.kubernetes && (
         <>
           <Box display="flex" width="100%" mt={2.5}>
-            <SystemDField disabled={!isCreatePrimary} />
+            <SystemDField disabled={!isCreatePrimary || !useAnsibleProvisioning} />
           </Box>
           <Box display="flex" width="100%" mt={2.5}>
             <DeploymentPortsField

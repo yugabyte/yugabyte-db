@@ -54,14 +54,13 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
 #include "catalog/catalog.h"
 #include "catalog/yb_type.h"
+#include "executor/execPartition.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
-/* Yugabyte includes */
-#include "executor/execPartition.h"
 
 /*
  * Local definitions
@@ -357,7 +356,7 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 	Relation	referenced_rel = NULL;
 
 	/* Get current context, will be helpful during error recovery. */
-	MemoryContext cur_context = GetCurrentMemoryContext();
+	MemoryContext cur_context = CurrentMemoryContext;
 
 	PG_TRY();
 	{
@@ -3375,7 +3374,8 @@ RI_FKey_trigger_type(Oid tgfoid)
 
 void
 YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
-							  TupleTableSlot *new_slot, EState *estate)
+							  TupleTableSlot *new_slot, EState *estate,
+							  bool is_deferred)
 {
 	YbcPgYBTupleIdDescriptor *descr;
 
@@ -3402,7 +3402,9 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 			null_found = attr->is_null && (attr->attr_num > 0);
 
 		if (!null_found)
-			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr, YBCIsRegionLocal(fk_rel)));
+			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr,
+														   YBCIsRegionLocal(fk_rel),
+														   is_deferred));
 		pfree(descr);
 	}
 }

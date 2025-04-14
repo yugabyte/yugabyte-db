@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.webhook.DrConfigWebhookCall;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
@@ -62,6 +63,7 @@ import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Webhook;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -269,6 +271,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected Optional<XClusterConfig> maybeGetXClusterConfig() {
+    if (Objects.isNull(taskParams().getXClusterConfig())) {
+      return Optional.empty();
+    }
     return XClusterConfig.maybeGet(taskParams().getXClusterConfig().getUuid());
   }
 
@@ -891,11 +896,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     // Sync id and status for each stream.
     if (xClusterConfig.getType() != ConfigType.Db) {
-      Map<String, CdcConsumer.StreamEntryPB> replicationStreams =
-          replicationGroup.getStreamMapMap();
       Map<String, String> streamMap =
-          replicationStreams.entrySet().stream()
-              .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
+          getSourceTableIdToStreamIdMapFromReplicationGroup(replicationGroup);
       for (String tableId : tableIds) {
         Optional<XClusterTableConfig> tableConfig = xClusterConfig.maybeGetTableById(tableId);
         if (tableConfig.isEmpty()) {
@@ -3252,6 +3254,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
+  public static Map<String, String> getSourceTableIdToStreamIdMapFromReplicationGroup(
+      CdcConsumer.ProducerEntryPB replicationGroup) {
+    Map<String, CdcConsumer.StreamEntryPB> replicationStreams = replicationGroup.getStreamMapMap();
+    return replicationStreams.entrySet().stream()
+        .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
+  }
+
   // DR methods.
   // --------------------------------------------------------------------------------
   protected DrConfig getDrConfigFromTaskParams() {
@@ -3359,6 +3368,20 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       ret.append(")");
       return ret.toString();
     }
+  }
+
+  protected SubTaskGroup createDrConfigWebhookCallTask(DrConfig drConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DrConfigWebhookCall");
+    for (Webhook webhook : drConfig.getWebhooks()) {
+      DrConfigWebhookCall task = createTask(DrConfigWebhookCall.class);
+      DrConfigWebhookCall.Params params = new DrConfigWebhookCall.Params();
+      params.drConfigUuid = drConfig.getUuid();
+      params.hook = webhook;
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   // --------------------------------------------------------------------------------

@@ -3456,7 +3456,7 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   // This combination of txns number and user rows is enough to generate suitable number of
   // internal records to make middle key point to one of the ApplyTransactionState records.
   // Also this will prevent spawning logs with long operation timeout warnings.
-  constexpr auto kNumTxns = 50;
+  constexpr auto kNumTxns = 100;
   constexpr auto kNumRows = 3;
 
   Schema schema;

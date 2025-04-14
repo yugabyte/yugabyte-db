@@ -108,6 +108,10 @@ class MPSCQueue {
     return result;
   }
 
+  bool Empty() const {
+    return push_head_.load(std::memory_order_acquire) == nullptr;
+  }
+
   void Drain() {
     while (auto* entry = Pop()) {
       delete entry;

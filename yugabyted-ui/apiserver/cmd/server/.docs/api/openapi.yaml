@@ -86,42 +86,6 @@ paths:
       summary: Get the list of Voyager migrations
       tags:
       - voyager-info
-  /migration_assesment:
-    get:
-      description: Get Voyager data migration metrics
-      operationId: GetVoyagerMigrationAssesmentDetails
-      parameters:
-      - description: uuid of the voyager migration task
-        explode: false
-        in: query
-        name: uuid
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: form
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/API_for_Plan_and_Asses_page'
-          description: Response for Plan and Asses page
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-      summary: Get Voyager data migration metrics
-      tags:
-      - voyager-info
   /migrate_schema:
     get:
       description: Get Voyager data migration metrics
@@ -1023,12 +987,6 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
       description: API Error
-    VoyagerAssesmentResponse:
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/API_for_Plan_and_Asses_page'
-      description: Response for Plan and Asses page
     MigrateSchemaResponse:
       content:
         application/json:
@@ -1304,65 +1262,8 @@ components:
           $ref: '#/components/schemas/ApiError_error'
       title: API Error
       type: object
-    AssesmentComplexityInfo:
-      description: Assesment complexity details
-      example:
-        schema: schema
-        table_count: 6
-        complexity: complexity
-        sql_objects_count: 0
-      properties:
-        schema:
-          type: string
-        sql_objects_count:
-          type: integer
-        table_count:
-          type: integer
-        complexity:
-          type: string
-      title: Assesment complexity details
-      type: object
-    MigrationAssesmentInfo:
-      description: Details for Voyager migrations assesment
-      example:
-        complexity_overview:
-        - schema: schema
-          table_count: 6
-          complexity: complexity
-          sql_objects_count: 0
-        - schema: schema
-          table_count: 6
-          complexity: complexity
-          sql_objects_count: 0
-        assesment_status: true
-        top_errors:
-        - top_errors
-        - top_errors
-        operating_system: operating_system
-        top_suggestions:
-        - top_suggestions
-        - top_suggestions
-      properties:
-        assesment_status:
-          type: boolean
-        top_errors:
-          items:
-            type: string
-          type: array
-        top_suggestions:
-          items:
-            type: string
-          type: array
-        complexity_overview:
-          items:
-            $ref: '#/components/schemas/AssesmentComplexityInfo'
-          type: array
-        operating_system:
-          type: string
-      title: Details for Voyager migrations assesment
-      type: object
-    ErrorsAndSuggestionsDetails:
-      description: Errors and suggestions details
+    AnalysisIssueDetails:
+      description: Details of issues in Schema Analysis Report
       example:
         issueType: issueType
         reason: reason
@@ -1371,11 +1272,12 @@ components:
         filePath: filePath
         suggestion: suggestion
         objectName: objectName
-        objectType: objectType
+        minimum_versions_fixed_in:
+        - minimum_versions_fixed_in
+        - minimum_versions_fixed_in
+        docs_link: docs_link
       properties:
         issueType:
-          type: string
-        objectType:
           type: string
         objectName:
           type: string
@@ -1389,40 +1291,58 @@ components:
           type: string
         GH:
           type: string
-      title: Errors and Suggestions details
-      type: object
-    UnsupportedSqlWithDetails:
-      description: Schema for Suggested refactoring tab in Migrate Schema page
-      example:
-        suggestions_errors:
-        - issueType: issueType
-          reason: reason
-          GH: GH
-          sqlStatement: sqlStatement
-          filePath: filePath
-          suggestion: suggestion
-          objectName: objectName
-          objectType: objectType
-        - issueType: issueType
-          reason: reason
-          GH: GH
-          sqlStatement: sqlStatement
-          filePath: filePath
-          suggestion: suggestion
-          objectName: objectName
-          objectType: objectType
-        unsupported_type: unsupported_type
-        count: 0
-      properties:
-        suggestions_errors:
-          items:
-            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
-          type: array
-        unsupported_type:
+        docs_link:
           type: string
-        count:
+        minimum_versions_fixed_in:
+          items:
+            type: string
+          type: array
+      title: Analysis Issue Details
+      type: object
+    SqlObjectsDetails:
+      description: Sql obejcts type and count
+      example:
+        invalidCount: 6
+        totalCount: 0
+        issues:
+        - issueType: issueType
+          reason: reason
+          GH: GH
+          sqlStatement: sqlStatement
+          filePath: filePath
+          suggestion: suggestion
+          objectName: objectName
+          minimum_versions_fixed_in:
+          - minimum_versions_fixed_in
+          - minimum_versions_fixed_in
+          docs_link: docs_link
+        - issueType: issueType
+          reason: reason
+          GH: GH
+          sqlStatement: sqlStatement
+          filePath: filePath
+          suggestion: suggestion
+          objectName: objectName
+          minimum_versions_fixed_in:
+          - minimum_versions_fixed_in
+          - minimum_versions_fixed_in
+          docs_link: docs_link
+        objectNames: objectNames
+        objectType: objectType
+      properties:
+        objectType:
+          type: string
+        totalCount:
           type: integer
-      title: Schema for Suggested refactoring tab in Migrate Schema page
+        invalidCount:
+          type: integer
+        objectNames:
+          type: string
+        issues:
+          items:
+            $ref: '#/components/schemas/AnalysisIssueDetails'
+          type: array
+      title: Sql Objects
       type: object
     RefactoringCount:
       description: Count of automatic, manual and invalid SQL objects displayed in
@@ -1430,8 +1350,8 @@ components:
       example:
         sql_object_type: sql_object_type
         invalid: 5
-        automatic: 1
-        manual: 6
+        automatic: 5
+        manual: 1
       properties:
         sql_object_type:
           type: string
@@ -1443,79 +1363,24 @@ components:
           type: integer
       title: Count of automatic, manual and invalid SQL objects
       type: object
-    RecommendedRefactoringGraph:
-      description: Refectoring recommendations for migrating SQL objects
-      example:
-        refactor_details:
-        - sql_object_type: sql_object_type
-          invalid: 5
-          automatic: 1
-          manual: 6
-        - sql_object_type: sql_object_type
-          invalid: 5
-          automatic: 1
-          manual: 6
-      properties:
-        refactor_details:
-          items:
-            $ref: '#/components/schemas/RefactoringCount'
-          type: array
-      title: Refectoring recommendations per SQL object type
-      type: object
     SchemaAnalysisReport:
       description: Voyager data migration metrics details
       example:
-        unsupported_features:
-        - suggestions_errors:
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          unsupported_type: unsupported_type
-          count: 0
-        - suggestions_errors:
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          unsupported_type: unsupported_type
-          count: 0
+        target_db_version: target_db_version
         recommended_refactoring:
-          refactor_details:
-          - sql_object_type: sql_object_type
-            invalid: 5
-            automatic: 1
-            manual: 6
-          - sql_object_type: sql_object_type
-            invalid: 5
-            automatic: 1
-            manual: 6
-        unsupported_datatypes:
-        - suggestions_errors:
+        - sql_object_type: sql_object_type
+          invalid: 5
+          automatic: 5
+          manual: 1
+        - sql_object_type: sql_object_type
+          invalid: 5
+          automatic: 5
+          manual: 1
+        voyager_version: voyager_version
+        sql_objects:
+        - invalidCount: 6
+          totalCount: 0
+          issues:
           - issueType: issueType
             reason: reason
             GH: GH
@@ -1523,7 +1388,10 @@ components:
             filePath: filePath
             suggestion: suggestion
             objectName: objectName
-            objectType: objectType
+            minimum_versions_fixed_in:
+            - minimum_versions_fixed_in
+            - minimum_versions_fixed_in
+            docs_link: docs_link
           - issueType: issueType
             reason: reason
             GH: GH
@@ -1531,10 +1399,15 @@ components:
             filePath: filePath
             suggestion: suggestion
             objectName: objectName
-            objectType: objectType
-          unsupported_type: unsupported_type
-          count: 0
-        - suggestions_errors:
+            minimum_versions_fixed_in:
+            - minimum_versions_fixed_in
+            - minimum_versions_fixed_in
+            docs_link: docs_link
+          objectNames: objectNames
+          objectType: objectType
+        - invalidCount: 6
+          totalCount: 0
+          issues:
           - issueType: issueType
             reason: reason
             GH: GH
@@ -1542,7 +1415,10 @@ components:
             filePath: filePath
             suggestion: suggestion
             objectName: objectName
-            objectType: objectType
+            minimum_versions_fixed_in:
+            - minimum_versions_fixed_in
+            - minimum_versions_fixed_in
+            docs_link: docs_link
           - issueType: issueType
             reason: reason
             GH: GH
@@ -1550,174 +1426,51 @@ components:
             filePath: filePath
             suggestion: suggestion
             objectName: objectName
-            objectType: objectType
-          unsupported_type: unsupported_type
-          count: 0
-        unsupported_functions:
-        - suggestions_errors:
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          unsupported_type: unsupported_type
-          count: 0
-        - suggestions_errors:
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          unsupported_type: unsupported_type
-          count: 0
+            minimum_versions_fixed_in:
+            - minimum_versions_fixed_in
+            - minimum_versions_fixed_in
+            docs_link: docs_link
+          objectNames: objectNames
+          objectType: objectType
       properties:
-        unsupported_functions:
+        voyager_version:
+          type: string
+        target_db_version:
+          type: string
+        sql_objects:
           items:
-            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
-          type: array
-        unsupported_features:
-          items:
-            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
-          type: array
-        unsupported_datatypes:
-          items:
-            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
+            $ref: '#/components/schemas/SqlObjectsDetails'
           type: array
         recommended_refactoring:
-          $ref: '#/components/schemas/RecommendedRefactoringGraph'
+          items:
+            $ref: '#/components/schemas/RefactoringCount'
+          type: array
       title: Schema Analysis report
-      type: object
-    SqlObjectsDetails:
-      description: Sql obejcts type and count
-      example:
-        invalidCount: 2
-        totalCount: 5
-        objectNames: objectNames
-        objectDetails: objectDetails
-        objectType: objectType
-      properties:
-        objectType:
-          type: string
-        totalCount:
-          type: integer
-        invalidCount:
-          type: integer
-        objectNames:
-          type: string
-        objectDetails:
-          type: string
-      title: Sql Objects
       type: object
     MigrateSchemaTaskInfo:
       description: Voyager data migration metrics details
       example:
         import_schema: import_schema
-        suggestions_errors:
-        - issueType: issueType
-          reason: reason
-          GH: GH
-          sqlStatement: sqlStatement
-          filePath: filePath
-          suggestion: suggestion
-          objectName: objectName
-          objectType: objectType
-        - issueType: issueType
-          reason: reason
-          GH: GH
-          sqlStatement: sqlStatement
-          filePath: filePath
-          suggestion: suggestion
-          objectName: objectName
-          objectType: objectType
         migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         overall_status: overall_status
         analyze_schema: analyze_schema
-        sql_objects:
-        - invalidCount: 2
-          totalCount: 5
-          objectNames: objectNames
-          objectDetails: objectDetails
-          objectType: objectType
-        - invalidCount: 2
-          totalCount: 5
-          objectNames: objectNames
-          objectDetails: objectDetails
-          objectType: objectType
         export_schema: export_schema
         analysis_history:
-        - unsupported_features:
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
+        - target_db_version: target_db_version
           recommended_refactoring:
-            refactor_details:
-            - sql_object_type: sql_object_type
-              invalid: 5
-              automatic: 1
-              manual: 6
-            - sql_object_type: sql_object_type
-              invalid: 5
-              automatic: 1
-              manual: 6
-          unsupported_datatypes:
-          - suggestions_errors:
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 5
+            manual: 1
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 5
+            manual: 1
+          voyager_version: voyager_version
+          sql_objects:
+          - invalidCount: 6
+            totalCount: 0
+            issues:
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1725,7 +1478,10 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1733,10 +1489,15 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
+            objectNames: objectNames
+            objectType: objectType
+          - invalidCount: 6
+            totalCount: 0
+            issues:
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1744,7 +1505,10 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1752,99 +1516,27 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          unsupported_functions:
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-        - unsupported_features:
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
+            objectNames: objectNames
+            objectType: objectType
+        - target_db_version: target_db_version
           recommended_refactoring:
-            refactor_details:
-            - sql_object_type: sql_object_type
-              invalid: 5
-              automatic: 1
-              manual: 6
-            - sql_object_type: sql_object_type
-              invalid: 5
-              automatic: 1
-              manual: 6
-          unsupported_datatypes:
-          - suggestions_errors:
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 5
+            manual: 1
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 5
+            manual: 1
+          voyager_version: voyager_version
+          sql_objects:
+          - invalidCount: 6
+            totalCount: 0
+            issues:
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1852,7 +1544,10 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1860,10 +1555,15 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
+            objectNames: objectNames
+            objectType: objectType
+          - invalidCount: 6
+            totalCount: 0
+            issues:
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1871,7 +1571,10 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1879,100 +1582,28 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          unsupported_functions:
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
+            objectNames: objectNames
+            objectType: objectType
         current_analysis_report:
-          unsupported_features:
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
+          target_db_version: target_db_version
           recommended_refactoring:
-            refactor_details:
-            - sql_object_type: sql_object_type
-              invalid: 5
-              automatic: 1
-              manual: 6
-            - sql_object_type: sql_object_type
-              invalid: 5
-              automatic: 1
-              manual: 6
-          unsupported_datatypes:
-          - suggestions_errors:
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 5
+            manual: 1
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 5
+            manual: 1
+          voyager_version: voyager_version
+          sql_objects:
+          - invalidCount: 6
+            totalCount: 0
+            issues:
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1980,7 +1611,10 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1988,10 +1622,15 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
+            objectNames: objectNames
+            objectType: objectType
+          - invalidCount: 6
+            totalCount: 0
+            issues:
             - issueType: issueType
               reason: reason
               GH: GH
@@ -1999,7 +1638,10 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
             - issueType: issueType
               reason: reason
               GH: GH
@@ -2007,48 +1649,12 @@ components:
               filePath: filePath
               suggestion: suggestion
               objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          unsupported_functions:
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
-          - suggestions_errors:
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            - issueType: issueType
-              reason: reason
-              GH: GH
-              sqlStatement: sqlStatement
-              filePath: filePath
-              suggestion: suggestion
-              objectName: objectName
-              objectType: objectType
-            unsupported_type: unsupported_type
-            count: 0
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              docs_link: docs_link
+            objectNames: objectNames
+            objectType: objectType
       properties:
         migration_uuid:
           format: uuid
@@ -2061,19 +1667,11 @@ components:
           type: string
         import_schema:
           type: string
-        suggestions_errors:
-          items:
-            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
-          type: array
         current_analysis_report:
           $ref: '#/components/schemas/SchemaAnalysisReport'
         analysis_history:
           items:
             $ref: '#/components/schemas/SchemaAnalysisReport'
-          type: array
-        sql_objects:
-          items:
-            $ref: '#/components/schemas/SqlObjectsDetails'
           type: array
       title: Details for export schema, import schema and analyze schema steps
       type: object
@@ -2143,8 +1741,11 @@ components:
         summary: summary
         estimated_migration_time: estimated_migration_time
         migration_complexity: migration_complexity
+        migration_comlexity_explanation: migration_comlexity_explanation
       properties:
         migration_complexity:
+          type: string
+        migration_comlexity_explanation:
           type: string
         estimated_migration_time:
           type: string
@@ -2267,46 +1868,120 @@ components:
     UnsupportedSqlObjectData:
       description: Unsupported SQL Object Data
       example:
+        object_type: object_type
         object_name: object_name
         sql_statement: sql_statement
       properties:
+        object_type:
+          type: string
         object_name:
           type: string
         sql_statement:
           type: string
       title: Unsupported SQL Object Data
       type: object
-    UnsupportedSqlInfo:
-      description: Unsupported SQL Info
+    AssessmentIssueInfo:
+      description: Assessment Issues of a particular issue type (migration caveat,
+        datatype, etc)
       example:
-        unsupported_type: unsupported_type
+        impact: impact
         objects:
-        - object_name: object_name
+        - object_type: object_type
+          object_name: object_name
           sql_statement: sql_statement
-        - object_name: object_name
+        - object_type: object_type
+          object_name: object_name
           sql_statement: sql_statement
+        name: name
         count: 1
+        description: description
+        minimum_versions_fixed_in:
+        - minimum_versions_fixed_in
+        - minimum_versions_fixed_in
+        type: type
         docs_link: docs_link
       properties:
-        unsupported_type:
+        type:
+          type: string
+        name:
+          type: string
+        description:
           type: string
         count:
           type: integer
+        impact:
+          type: string
         objects:
           items:
             $ref: '#/components/schemas/UnsupportedSqlObjectData'
           type: array
         docs_link:
           type: string
-      title: Unsupported SQL Info
+        minimum_versions_fixed_in:
+          items:
+            type: string
+          type: array
+      title: Assessment Sub Issue Info
+      type: object
+    AssessmentCategoryInfo:
+      description: Assessment Issues aggrageted based on Issue Category (migration
+        caveat,datatype,etc)
+      example:
+        category_description: category_description
+        category: category
+        issues:
+        - impact: impact
+          objects:
+          - object_type: object_type
+            object_name: object_name
+            sql_statement: sql_statement
+          - object_type: object_type
+            object_name: object_name
+            sql_statement: sql_statement
+          name: name
+          count: 1
+          description: description
+          minimum_versions_fixed_in:
+          - minimum_versions_fixed_in
+          - minimum_versions_fixed_in
+          type: type
+          docs_link: docs_link
+        - impact: impact
+          objects:
+          - object_type: object_type
+            object_name: object_name
+            sql_statement: sql_statement
+          - object_type: object_type
+            object_name: object_name
+            sql_statement: sql_statement
+          name: name
+          count: 1
+          description: description
+          minimum_versions_fixed_in:
+          - minimum_versions_fixed_in
+          - minimum_versions_fixed_in
+          type: type
+          docs_link: docs_link
+      properties:
+        category:
+          type: string
+        category_description:
+          type: string
+        issues:
+          items:
+            $ref: '#/components/schemas/AssessmentIssueInfo'
+          type: array
+      title: Assessment Issue Info
       type: object
     MigrationAssessmentReport:
       description: Details of the migration assessment report
       example:
+        target_db_version: target_db_version
         summary:
           summary: summary
           estimated_migration_time: estimated_migration_time
           migration_complexity: migration_complexity
+          migration_comlexity_explanation: migration_comlexity_explanation
         target_recommendations:
           target_cluster_recommendation:
             memory_per_node: 7
@@ -2320,79 +1995,106 @@ components:
             total_size_sharded_tables: 1
             no_of_sharded_tables: 7
           recommendation_summary: recommendation_summary
-        unsupported_features:
-        - unsupported_type: unsupported_type
-          objects:
-          - object_name: object_name
-            sql_statement: sql_statement
-          - object_name: object_name
-            sql_statement: sql_statement
-          count: 1
-          docs_link: docs_link
-        - unsupported_type: unsupported_type
-          objects:
-          - object_name: object_name
-            sql_statement: sql_statement
-          - object_name: object_name
-            sql_statement: sql_statement
-          count: 1
-          docs_link: docs_link
         recommended_refactoring:
-          refactor_details:
-          - sql_object_type: sql_object_type
-            invalid: 5
-            automatic: 1
-            manual: 6
-          - sql_object_type: sql_object_type
-            invalid: 5
-            automatic: 1
-            manual: 6
+        - sql_object_type: sql_object_type
+          invalid: 5
+          automatic: 5
+          manual: 1
+        - sql_object_type: sql_object_type
+          invalid: 5
+          automatic: 5
+          manual: 1
+        assessment_issues:
+        - category_description: category_description
+          category: category
+          issues:
+          - impact: impact
+            objects:
+            - object_type: object_type
+              object_name: object_name
+              sql_statement: sql_statement
+            - object_type: object_type
+              object_name: object_name
+              sql_statement: sql_statement
+            name: name
+            count: 1
+            description: description
+            minimum_versions_fixed_in:
+            - minimum_versions_fixed_in
+            - minimum_versions_fixed_in
+            type: type
+            docs_link: docs_link
+          - impact: impact
+            objects:
+            - object_type: object_type
+              object_name: object_name
+              sql_statement: sql_statement
+            - object_type: object_type
+              object_name: object_name
+              sql_statement: sql_statement
+            name: name
+            count: 1
+            description: description
+            minimum_versions_fixed_in:
+            - minimum_versions_fixed_in
+            - minimum_versions_fixed_in
+            type: type
+            docs_link: docs_link
+        - category_description: category_description
+          category: category
+          issues:
+          - impact: impact
+            objects:
+            - object_type: object_type
+              object_name: object_name
+              sql_statement: sql_statement
+            - object_type: object_type
+              object_name: object_name
+              sql_statement: sql_statement
+            name: name
+            count: 1
+            description: description
+            minimum_versions_fixed_in:
+            - minimum_versions_fixed_in
+            - minimum_versions_fixed_in
+            type: type
+            docs_link: docs_link
+          - impact: impact
+            objects:
+            - object_type: object_type
+              object_name: object_name
+              sql_statement: sql_statement
+            - object_type: object_type
+              object_name: object_name
+              sql_statement: sql_statement
+            name: name
+            count: 1
+            description: description
+            minimum_versions_fixed_in:
+            - minimum_versions_fixed_in
+            - minimum_versions_fixed_in
+            type: type
+            docs_link: docs_link
+        operating_system: operating_system
+        voyager_version: voyager_version
         assessment_status: true
         source_environment:
           total_memory: total_memory
           total_disk_size: total_disk_size
           no_of_connections: no_of_connections
           total_vcpu: total_vcpu
-        unsupported_functions:
-        - unsupported_type: unsupported_type
-          objects:
-          - object_name: object_name
-            sql_statement: sql_statement
-          - object_name: object_name
-            sql_statement: sql_statement
-          count: 1
-          docs_link: docs_link
-        - unsupported_type: unsupported_type
-          objects:
-          - object_name: object_name
-            sql_statement: sql_statement
-          - object_name: object_name
-            sql_statement: sql_statement
-          count: 1
-          docs_link: docs_link
         source_database:
           table_size: 0
           total_index_size: 5
           table_row_count: 6
           total_table_size: 1
-        unsupported_data_types:
-        - unsupported_type: unsupported_type
-          objects:
-          - object_name: object_name
-            sql_statement: sql_statement
-          - object_name: object_name
-            sql_statement: sql_statement
-          count: 1
-          docs_link: docs_link
-        - unsupported_type: unsupported_type
-          objects:
-          - object_name: object_name
-            sql_statement: sql_statement
-          - object_name: object_name
-            sql_statement: sql_statement
-          count: 1
-          docs_link: docs_link
       properties:
+        operating_system:
+          type: string
+        voyager_version:
+          type: string
+        target_db_version:
+          type: string
         assessment_status:
           type: boolean
         summary:
@@ -2404,18 +2106,12 @@ components:
         target_recommendations:
           $ref: '#/components/schemas/TargetClusterRecommendationDetails'
         recommended_refactoring:
-          $ref: '#/components/schemas/RecommendedRefactoringGraph'
-        unsupported_data_types:
           items:
-            $ref: '#/components/schemas/UnsupportedSqlInfo'
+            $ref: '#/components/schemas/RefactoringCount'
           type: array
-        unsupported_functions:
+        assessment_issues:
           items:
-            $ref: '#/components/schemas/UnsupportedSqlInfo'
-          type: array
-        unsupported_features:
-          items:
-            $ref: '#/components/schemas/UnsupportedSqlInfo'
+            $ref: '#/components/schemas/AssessmentCategoryInfo'
           type: array
       title: Details of the migration assessment report
       type: object
@@ -4014,119 +3710,30 @@ components:
       - ybdb_api
       title: Get Restore Details
       type: object
-    API_for_Plan_and_Asses_page:
-      example:
-        data:
-          complexity_overview:
-          - schema: schema
-            table_count: 6
-            complexity: complexity
-            sql_objects_count: 0
-          - schema: schema
-            table_count: 6
-            complexity: complexity
-            sql_objects_count: 0
-          assesment_status: true
-          top_errors:
-          - top_errors
-          - top_errors
-          operating_system: operating_system
-          top_suggestions:
-          - top_suggestions
-          - top_suggestions
-      properties:
-        data:
-          $ref: '#/components/schemas/MigrationAssesmentInfo'
-      title: API for Plan and Asses page
-      type: object
     Individual_Migration_Task_Info:
       example:
         data:
           import_schema: import_schema
-          suggestions_errors:
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
-          - issueType: issueType
-            reason: reason
-            GH: GH
-            sqlStatement: sqlStatement
-            filePath: filePath
-            suggestion: suggestion
-            objectName: objectName
-            objectType: objectType
           migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           overall_status: overall_status
           analyze_schema: analyze_schema
-          sql_objects:
-          - invalidCount: 2
-            totalCount: 5
-            objectNames: objectNames
-            objectDetails: objectDetails
-            objectType: objectType
-          - invalidCount: 2
-            totalCount: 5
-            objectNames: objectNames
-            objectDetails: objectDetails
-            objectType: objectType
           export_schema: export_schema
           analysis_history:
-          - unsupported_features:
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
+          - target_db_version: target_db_version
             recommended_refactoring:
-              refactor_details:
-              - sql_object_type: sql_object_type
-                invalid: 5
-                automatic: 1
-                manual: 6
-              - sql_object_type: sql_object_type
-                invalid: 5
-                automatic: 1
-                manual: 6
-            unsupported_datatypes:
-            - suggestions_errors:
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 5
+              manual: 1
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 5
+              manual: 1
+            voyager_version: voyager_version
+            sql_objects:
+            - invalidCount: 6
+              totalCount: 0
+              issues:
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4134,7 +3741,10 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4142,10 +3752,15 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
+              objectNames: objectNames
+              objectType: objectType
+            - invalidCount: 6
+              totalCount: 0
+              issues:
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4153,7 +3768,10 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4161,99 +3779,27 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            unsupported_functions:
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-          - unsupported_features:
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
+              objectNames: objectNames
+              objectType: objectType
+          - target_db_version: target_db_version
             recommended_refactoring:
-              refactor_details:
-              - sql_object_type: sql_object_type
-                invalid: 5
-                automatic: 1
-                manual: 6
-              - sql_object_type: sql_object_type
-                invalid: 5
-                automatic: 1
-                manual: 6
-            unsupported_datatypes:
-            - suggestions_errors:
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 5
+              manual: 1
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 5
+              manual: 1
+            voyager_version: voyager_version
+            sql_objects:
+            - invalidCount: 6
+              totalCount: 0
+              issues:
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4261,7 +3807,10 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4269,10 +3818,15 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
+              objectNames: objectNames
+              objectType: objectType
+            - invalidCount: 6
+              totalCount: 0
+              issues:
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4280,7 +3834,10 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4288,100 +3845,28 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            unsupported_functions:
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
+              objectNames: objectNames
+              objectType: objectType
           current_analysis_report:
-            unsupported_features:
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
+            target_db_version: target_db_version
             recommended_refactoring:
-              refactor_details:
-              - sql_object_type: sql_object_type
-                invalid: 5
-                automatic: 1
-                manual: 6
-              - sql_object_type: sql_object_type
-                invalid: 5
-                automatic: 1
-                manual: 6
-            unsupported_datatypes:
-            - suggestions_errors:
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 5
+              manual: 1
+            - sql_object_type: sql_object_type
+              invalid: 5
+              automatic: 5
+              manual: 1
+            voyager_version: voyager_version
+            sql_objects:
+            - invalidCount: 6
+              totalCount: 0
+              issues:
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4389,7 +3874,10 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4397,10 +3885,15 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
+              objectNames: objectNames
+              objectType: objectType
+            - invalidCount: 6
+              totalCount: 0
+              issues:
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4408,7 +3901,10 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
               - issueType: issueType
                 reason: reason
                 GH: GH
@@ -4416,48 +3912,12 @@ components:
                 filePath: filePath
                 suggestion: suggestion
                 objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            unsupported_functions:
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
-            - suggestions_errors:
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              - issueType: issueType
-                reason: reason
-                GH: GH
-                sqlStatement: sqlStatement
-                filePath: filePath
-                suggestion: suggestion
-                objectName: objectName
-                objectType: objectType
-              unsupported_type: unsupported_type
-              count: 0
+                minimum_versions_fixed_in:
+                - minimum_versions_fixed_in
+                - minimum_versions_fixed_in
+                docs_link: docs_link
+              objectNames: objectNames
+              objectType: objectType
       properties:
         data:
           $ref: '#/components/schemas/MigrateSchemaTaskInfo'
@@ -4466,10 +3926,12 @@ components:
     API_for_migration_assessment_page:
       example:
         data:
+          target_db_version: target_db_version
           summary:
             summary: summary
             estimated_migration_time: estimated_migration_time
             migration_complexity: migration_complexity
+            migration_comlexity_explanation: migration_comlexity_explanation
           target_recommendations:
             target_cluster_recommendation:
               memory_per_node: 7
@@ -4483,78 +3945,99 @@ components:
               total_size_sharded_tables: 1
               no_of_sharded_tables: 7
             recommendation_summary: recommendation_summary
-          unsupported_features:
-          - unsupported_type: unsupported_type
-            objects:
-            - object_name: object_name
-              sql_statement: sql_statement
-            - object_name: object_name
-              sql_statement: sql_statement
-            count: 1
-            docs_link: docs_link
-          - unsupported_type: unsupported_type
-            objects:
-            - object_name: object_name
-              sql_statement: sql_statement
-            - object_name: object_name
-              sql_statement: sql_statement
-            count: 1
-            docs_link: docs_link
           recommended_refactoring:
-            refactor_details:
-            - sql_object_type: sql_object_type
-              invalid: 5
-              automatic: 1
-              manual: 6
-            - sql_object_type: sql_object_type
-              invalid: 5
-              automatic: 1
-              manual: 6
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 5
+            manual: 1
+          - sql_object_type: sql_object_type
+            invalid: 5
+            automatic: 5
+            manual: 1
+          assessment_issues:
+          - category_description: category_description
+            category: category
+            issues:
+            - impact: impact
+              objects:
+              - object_type: object_type
+                object_name: object_name
+                sql_statement: sql_statement
+              - object_type: object_type
+                object_name: object_name
+                sql_statement: sql_statement
+              name: name
+              count: 1
+              description: description
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              type: type
+              docs_link: docs_link
+            - impact: impact
+              objects:
+              - object_type: object_type
+                object_name: object_name
+                sql_statement: sql_statement
+              - object_type: object_type
+                object_name: object_name
+                sql_statement: sql_statement
+              name: name
+              count: 1
+              description: description
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              type: type
+              docs_link: docs_link
+          - category_description: category_description
+            category: category
+            issues:
+            - impact: impact
+              objects:
+              - object_type: object_type
+                object_name: object_name
+                sql_statement: sql_statement
+              - object_type: object_type
+                object_name: object_name
+                sql_statement: sql_statement
+              name: name
+              count: 1
+              description: description
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              type: type
+              docs_link: docs_link
+            - impact: impact
+              objects:
+              - object_type: object_type
+                object_name: object_name
+                sql_statement: sql_statement
+              - object_type: object_type
+                object_name: object_name
+                sql_statement: sql_statement
+              name: name
+              count: 1
+              description: description
+              minimum_versions_fixed_in:
+              - minimum_versions_fixed_in
+              - minimum_versions_fixed_in
+              type: type
+              docs_link: docs_link
+          operating_system: operating_system
+          voyager_version: voyager_version
           assessment_status: true
           source_environment:
             total_memory: total_memory
             total_disk_size: total_disk_size
             no_of_connections: no_of_connections
             total_vcpu: total_vcpu
-          unsupported_functions:
-          - unsupported_type: unsupported_type
-            objects:
-            - object_name: object_name
-              sql_statement: sql_statement
-            - object_name: object_name
-              sql_statement: sql_statement
-            count: 1
-            docs_link: docs_link
-          - unsupported_type: unsupported_type
-            objects:
-            - object_name: object_name
-              sql_statement: sql_statement
-            - object_name: object_name
-              sql_statement: sql_statement
-            count: 1
-            docs_link: docs_link
           source_database:
             table_size: 0
             total_index_size: 5
             table_row_count: 6
             total_table_size: 1
-          unsupported_data_types:
-          - unsupported_type: unsupported_type
-            objects:
-            - object_name: object_name
-              sql_statement: sql_statement
-            - object_name: object_name
-              sql_statement: sql_statement
-            count: 1
-            docs_link: docs_link
-          - unsupported_type: unsupported_type
-            objects:
-            - object_name: object_name
-              sql_statement: sql_statement
-            - object_name: object_name
-              sql_statement: sql_statement
-            count: 1
-            docs_link: docs_link
       properties:
         data:
           $ref: '#/components/schemas/MigrationAssessmentReport'

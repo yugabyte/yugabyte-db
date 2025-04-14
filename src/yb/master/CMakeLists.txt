@@ -69,6 +69,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
+  async_rpc_tasks_base.cc
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
   backfill_index.cc
@@ -83,7 +84,9 @@ set(MASTER_SRCS
   catalog_manager_util.cc
   clone/clone_state_entity.cc
   clone/clone_state_manager.cc
+  clone/clone_tasks.cc
   cluster_balance.cc
+  cluster_balance_activity_info.cc
   cluster_balance_util.cc
   encryption_manager.cc
   flush_manager.cc
@@ -260,6 +263,7 @@ ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(catalog_manager_mini_cluster_test)
 ADD_YB_TEST(clone/clone_state_manager-test)
+ADD_YB_TEST(cluster_balance_activity_info-test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(load_balancer_mocked-test)

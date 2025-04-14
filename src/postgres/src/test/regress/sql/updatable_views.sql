@@ -845,6 +845,7 @@ CREATE VIEW rw_view1 AS
 
 INSERT INTO rw_view1 VALUES (null, null, 1.1, null); -- should fail
 INSERT INTO rw_view1 (s, c, a) VALUES (null, null, 1.1); -- should fail
+INSERT INTO rw_view1 (s, c, a) VALUES (default, default, 1.1); -- should fail
 INSERT INTO rw_view1 (a) VALUES (1.1) RETURNING a, s, c; -- OK
 UPDATE rw_view1 SET s = s WHERE a = 1.1; -- should fail
 UPDATE rw_view1 SET a = 1.05 WHERE a = 1.1 RETURNING s; -- OK
@@ -1424,6 +1425,23 @@ DROP TABLE t2;
 DROP TABLE t1;
 
 --
+-- Test sub-select in nested security barrier views, per bug #17972
+--
+CREATE TABLE t1 (a int);
+CREATE VIEW v1 WITH (security_barrier = true) AS
+  SELECT * FROM t1;
+CREATE RULE v1_upd_rule AS ON UPDATE TO v1 DO INSTEAD
+  UPDATE t1 SET a = NEW.a WHERE a = OLD.a;
+CREATE VIEW v2 WITH (security_barrier = true) AS
+  SELECT * FROM v1 WHERE EXISTS (SELECT 1);
+
+EXPLAIN (COSTS OFF) UPDATE v2 SET a = 1;
+
+DROP VIEW v2;
+DROP VIEW v1;
+DROP TABLE t1;
+
+--
 -- Test CREATE OR REPLACE VIEW turning a non-updatable view into an
 -- auto-updatable view and adding check options in a single step
 --
@@ -1716,6 +1734,16 @@ insert into base_tab_def_view values (15, default, default, default, default),
                                      (16, default, default, default, default);
 insert into base_tab_def_view values (17), (default);
 select * from base_tab_def order by a, c NULLS LAST;
+
+-- Test a DO ALSO INSERT ... SELECT rule
+drop rule base_tab_def_view_ins_rule on base_tab_def_view;
+create rule base_tab_def_view_ins_rule as on insert to base_tab_def_view
+  do also insert into base_tab_def (a, b, e) select new.a, new.b, 'xxx';
+truncate base_tab_def;
+insert into base_tab_def_view values (1, default, default, default, default);
+insert into base_tab_def_view values (2, default, default, default, default),
+                                     (3, default, default, default, default);
+select * from base_tab_def order by a, e nulls first;
 
 drop view base_tab_def_view;
 drop table base_tab_def;

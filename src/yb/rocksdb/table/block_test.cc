@@ -502,10 +502,10 @@ TEST_F(BlockTest, GetMiddleKey) {
       const auto get_expected_middle_key = [&](const int num_keys) {
         const auto num_restarts = get_num_restarts(num_keys);
         if (num_restarts > 1) {
-          const auto restart_idx = (num_restarts - yb::to_underlying(middle_policy)) / 2;
+          const auto restart_idx = (num_restarts - std::to_underlying(middle_policy)) / 2;
           return 1 + (restart_idx * block_restart_interval);
         } else {
-          const auto key_idx = (num_keys - yb::to_underlying(middle_policy)) / 2;
+          const auto key_idx = (num_keys - std::to_underlying(middle_policy)) / 2;
           return 1 + key_idx;
         }
       };

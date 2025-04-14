@@ -1,5 +1,5 @@
 import { YBModal } from '../../common/forms/fields';
-import { PROTECTION_LEVELS } from './KeyManagementConfiguration';
+import { CipherTrustAuthType, KmsProvider, PROTECTION_LEVELS } from './KeyManagementConfiguration';
 import { GCP_KMS_REGIONS_FLATTENED } from '../PublicCloud/views/providerRegionsData';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
@@ -189,11 +189,37 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
     return data;
   };
 
+  const getForCipherTrust = () => {
+    const {
+      CIPHERTRUST_MANAGER_URL,
+      AUTH_TYPE,
+      USERNAME,
+      PASSWORD,
+      REFRESH_TOKEN,
+      KEY_NAME,
+      KEY_ALGORITHM,
+      KEY_SIZE
+    } = credentials;
+    return [
+      { label: 'CipherTrust Manager URL', value: CIPHERTRUST_MANAGER_URL },
+      ...(AUTH_TYPE === CipherTrustAuthType.PASSWORD
+        ? [
+            { label: 'Username', value: USERNAME },
+            { label: 'Password', value: PASSWORD }
+          ]
+        : [{ label: 'Refresh Token', value: REFRESH_TOKEN }]),
+      { label: 'Key Name', value: KEY_NAME },
+      { label: 'Key Algorithm', value: KEY_ALGORITHM },
+      { label: 'Key Size', value: KEY_SIZE }
+    ];
+  };
+
   const getDetails = () => {
-    if (provider === 'AWS') return getForAWS();
+    if (provider === KmsProvider.AWS) return getForAWS();
     if (provider === 'SMARTKEY') return getForSmartKey();
-    if (provider === 'GCP') return getForGCP();
-    if (provider === 'AZU') return getForAzure();
+    if (provider === KmsProvider.GCP) return getForGCP();
+    if (provider === KmsProvider.AZU) return getForAzure();
+    if (provider === KmsProvider.CIPHERTRUST) return getForCipherTrust();
 
     return getForHashicorp();
   };

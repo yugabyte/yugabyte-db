@@ -41,7 +41,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
 
-#include "yb/client/client_fwd.h"
+#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
@@ -49,7 +49,9 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
@@ -90,12 +92,15 @@
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/ysql_lease_poller.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/stateful_services/pg_cron_leader_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
@@ -170,6 +175,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
     "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
     "Ysql Connection Manager process as a child process.");
 
+DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_pools, 10000,
+    "Max total pools supported in YSQL Connection Manager.");
+
 DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_UNKNOWN_bool(tserver_enable_metrics_snapshotter, false,
@@ -233,6 +241,9 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "version that is retrieved from a tserver-master heartbeat response.");
 
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
+DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
+    "Maximum number of invalidation messages we keep for a given database.");
 
 DECLARE_bool(enable_pg_cron);
 
@@ -351,8 +362,11 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
   }
-  if (PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_manager_ = std::make_unique<tablet::TSLocalLockManager>();
+  if (opts.server_type == TabletServerOptions::kServerType &&
+      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
+  } else {
+    ts_local_lock_manager_ = nullptr;
   }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
@@ -444,6 +458,7 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   opts_.SetMasterAddresses(new_master_addresses);
 
   heartbeater_->set_master_addresses(new_master_addresses);
+  ysql_lease_poller_->set_master_addresses(new_master_addresses);
 
   return Status::OK();
 }
@@ -464,6 +479,8 @@ Status TabletServer::Init() {
   log_prefix_ = Format("P $0: ", permanent_uuid());
 
   heartbeater_ = CreateHeartbeater(opts_, this);
+
+  ysql_lease_poller_ = std::make_unique<YsqlLeaseClient>(*this, opts_.GetMasterAddresses());
 
   if (GetAtomicFlag(&FLAGS_allow_encryption_at_rest)) {
     // Create the encrypted environment that will allow users to enable encryption.
@@ -518,27 +535,32 @@ Status TabletServer::Init() {
     pg_table_mutation_count_sender_.reset(new TableMutationCountSender(this));
   }
 
+  if (!FLAGS_enable_ysql) {
+    RETURN_NOT_OK(SkipSharedMemoryNegotiation());
+  }
+
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
 
   initted_.store(true, std::memory_order_release);
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();
+  auto shared = shared_object();
   if (!bound_addresses.empty()) {
     ServerRegistrationPB reg;
     RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
-    shared_object().SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
+    shared->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
   }
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
   RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
   if (PREDICT_FALSE(FLAGS_TEST_pg_auth_key != 0)) {
-    shared_object().SetPostgresAuthKey(FLAGS_TEST_pg_auth_key);
+    shared->SetPostgresAuthKey(FLAGS_TEST_pg_auth_key);
   } else {
-    shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
+    shared->SetPostgresAuthKey(RandomUniformInt<uint64_t>());
   }
 
-  shared_object().SetTserverUuid(fs_manager()->uuid());
+  shared->SetTserverUuid(fs_manager()->uuid());
 
   return Status::OK();
 }
@@ -646,7 +668,7 @@ Status TabletServer::RegisterServices() {
   auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
         *this, tablet_manager_->client_future(), clock(),
         std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
-        messenger(), permanent_uuid(), &options(), xcluster_context_.get(),
+        messenger(), permanent_uuid(), options(), xcluster_context_.get(),
         &pg_node_level_mutation_counter_);
   PgClientServiceIf* pg_client_service_if = &pg_client_service_holder->impl;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service_if;
@@ -712,6 +734,7 @@ Status TabletServer::Start() {
   RETURN_NOT_OK(tablet_manager_->Start());
 
   RETURN_NOT_OK(heartbeater_->Start());
+  RETURN_NOT_OK(ysql_lease_poller_->Start());
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
@@ -743,6 +766,7 @@ void TabletServer::Shutdown() {
 
   maintenance_manager_->Shutdown();
   WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
+  WARN_NOT_OK(ysql_lease_poller_->Stop(), "Failed to stop ysql lease client thread");
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
@@ -762,15 +786,59 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shut down complete. Bye!";
 }
 
-Status TabletServer::BootstrapDdlObjectLocks(
-    const master::ClientOperationLeaseUpdatePB& lease_update) {
+tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
+  std::lock_guard l(lock_);
+  ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
+  return ts_local_lock_manager_;
+}
+
+bool TabletServer::HasBootstrappedLocalLockManager() const {
+  auto lock_manager = ts_local_lock_manager();
+  return lock_manager && lock_manager->IsBootstrapped();
+}
+
+Status TabletServer::ProcessLeaseUpdate(
+    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
   VLOG(2) << __func__;
-  // todo(zdrudi):
-  // Need to track the lease. Process the other fields of ClientOperationLeaseUpdatePB.
-  if (!lease_update.has_ddl_lock_entries() || !ts_local_lock_manager_) {
-    return Status::OK();
+  auto lock_manager = ts_local_lock_manager();
+  if (lease_refresh_info.has_ddl_lock_entries() && lock_manager) {
+    if (lock_manager->IsBootstrapped()) {
+      // Reset the local lock manager to bootstrap from the given DDL lock entries.
+      lock_manager = ResetAndGetTSLocalLockManager();
+    }
+    RETURN_NOT_OK(lock_manager->BootstrapDdlObjectLocks(lease_refresh_info.ddl_lock_entries()));
   }
-  return ts_local_lock_manager_->BootstrapDdlObjectLocks(lease_update.ddl_lock_entries());
+  // It is safer to end the pg-sessions after resetting the local lock manager.
+  // This way, if a new session gets created it will also be reset. But that is better than
+  // having it the other way around, and having an old-session that is not reset.
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info, time);
+  }
+  return Status::OK();
+}
+
+
+Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
+  if (!YSQLLeaseEnabled()) {
+    return STATUS(NotSupported, "YSQL lease is not enabled");
+  }
+  auto pg_client_service = pg_client_service_.lock();
+  if (!pg_client_service) {
+    RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
+  }
+  auto lease_info = pg_client_service->impl.GetYSQLLeaseInfo();
+  GetYSQLLeaseInfoResponsePB resp;
+  resp.set_is_live(lease_info.is_live);
+  if (lease_info.is_live) {
+    resp.set_lease_epoch(lease_info.lease_epoch);
+  }
+  return resp;
+}
+
+bool TabletServer::YSQLLeaseEnabled() const {
+  return GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
+         GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease);
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
@@ -925,7 +993,7 @@ rocksdb::Env* TabletServer::GetRocksDBEnv() {
 }
 
 uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
-  return shared_object().postgres_auth_key();
+  return shared_object()->postgres_auth_key();
 }
 
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
@@ -950,6 +1018,58 @@ Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
   return Status::OK();
 }
 
+Status TabletServer::GetTserverCatalogMessageLists(
+    const GetTserverCatalogMessageListsRequestPB& req,
+    GetTserverCatalogMessageListsResponsePB *resp) const {
+  SharedLock l(lock_);
+  const auto db_oid = req.db_oid();
+  const auto ysql_catalog_version = req.ysql_catalog_version();
+  const auto num_catalog_versions = req.num_catalog_versions();
+  DCHECK_GT(db_oid, 0);
+  DCHECK_GT(num_catalog_versions, 0);
+  auto it = ysql_db_invalidation_messages_map_.find(db_oid);
+  if (it == ysql_db_invalidation_messages_map_.end()) {
+    DCHECK_EQ(resp->entries_size(), 0);
+    LOG(WARNING) << "Could not find messages for database " << db_oid;
+    return Status::OK();
+  }
+  const auto& messages_vec = it->second;
+  uint64_t expected_version = ysql_catalog_version + 1;
+  std::set<uint64_t> current_versions;
+  for (const auto& info : messages_vec) {
+    DCHECK(current_versions.insert(info.first).second);
+    if (info.first <= ysql_catalog_version) {
+      continue;
+    }
+    if (info.first == expected_version) {
+      auto* entry = resp->add_entries();
+      if (info.second.has_value()) {
+        entry->set_message_list(info.second.value());
+      }
+      ++expected_version;
+    }
+    if (expected_version > ysql_catalog_version + num_catalog_versions) {
+      break;
+    }
+  }
+  // We find a consecutive list (without any holes) matching with what the client asks for.
+  if (resp->entries_size() == static_cast<int32_t>(num_catalog_versions)) {
+    return Status::OK();
+  }
+
+  if (resp->entries_size() < static_cast<int32_t>(num_catalog_versions)) {
+    LOG(INFO) << "Could not find a matching consecutive list"
+              << ", db_oid: " << db_oid
+              << ", ysql_catalog_version: " << ysql_catalog_version
+              << ", num_catalog_versions: " << num_catalog_versions
+              << ", current_versions: " << yb::ToString(current_versions);
+    // Clear any entries that might have matched and added to ensure PG backend
+    // will do a full catalog cache refresh.
+    resp->mutable_entries()->Clear();
+  }
+  return Status::OK();
+}
+
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
     std::lock_guard l(lock_);
@@ -962,7 +1082,7 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
       return;
     }
     ysql_catalog_version_ = new_version;
-    shared_object().SetYsqlCatalogVersion(new_version);
+    shared_object()->SetYsqlCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
   }
   if (FLAGS_log_ysql_catalog_versions) {
@@ -973,13 +1093,13 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
 }
 
 void TabletServer::SetYsqlDBCatalogVersions(
-  const master::DBCatalogVersionDataPB& db_catalog_version_data) {
+  const tserver::DBCatalogVersionDataPB& db_catalog_version_data) {
   DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
   std::lock_guard l(lock_);
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
-  std::unordered_set<uint32_t> db_oids_updated;
+  std::unordered_map<uint32_t, uint64_t> db_oids_updated;
   std::unordered_set<uint32_t> db_oids_deleted;
   for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
     const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
@@ -1019,7 +1139,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
           !catalog_version_table_in_perdb_mode_.value()) {
         LOG(INFO) << "set pg_yb_catalog_version table in perdb mode";
         catalog_version_table_in_perdb_mode_ = true;
-        shared_object().SetCatalogVersionTableInPerdbMode(true);
+        shared_object()->SetCatalogVersionTableInPerdbMode(true);
       }
     } else {
       DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);
@@ -1034,7 +1154,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
         existing_entry.last_breaking_version = new_breaking_version;
         existing_entry.new_version_ignored_count = 0;
         row_updated = true;
-        db_oids_updated.insert(db_oid);
+        db_oids_updated.insert({db_oid, new_version});
         shm_index = existing_entry.shm_index;
         CHECK(
             shm_index >= 0 &&
@@ -1100,7 +1220,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     if (row_inserted || row_updated) {
       catalog_changed = true;
       // Set the new catalog version in shared memory at slot shm_index.
-      shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_version);
+      shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_version);
       if (FLAGS_log_ysql_catalog_versions) {
         LOG_WITH_FUNC(INFO) << "set db " << db_oid
                             << " catalog version: " << new_version
@@ -1119,9 +1239,12 @@ void TabletServer::SetYsqlDBCatalogVersions(
       // issue.
       if (db_oid == kTemplate1Oid) {
         ysql_catalog_version_ = new_version;
-        shared_object().SetYsqlCatalogVersion(new_version);
+        shared_object()->SetYsqlCatalogVersion(new_version);
         ysql_last_breaking_catalog_version_ = new_breaking_version;
       }
+      // Create the entry of db_oid if not exists.
+      ysql_db_invalidation_messages_map_.insert(make_pair(
+          db_oid, std::deque<std::pair<uint64_t, std::optional<std::string>>>()));
     }
   }
   if (!catalog_version_table_in_perdb_mode_.has_value() &&
@@ -1131,7 +1254,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     // true (i.e., from global mode to perdb mode).
     LOG(INFO) << "set pg_yb_catalog_version table in global mode";
     catalog_version_table_in_perdb_mode_ = false;
-    shared_object().SetCatalogVersionTableInPerdbMode(false);
+    shared_object()->SetCatalogVersionTableInPerdbMode(false);
   }
 
   // We only do full catalog report for now, remove entries that no longer exist.
@@ -1149,10 +1272,11 @@ void TabletServer::SetYsqlDBCatalogVersions(
       // Mark the corresponding shared memory array db_catalog_versions_ slot as free.
       (*ysql_db_catalog_version_index_used_)[shm_index] = false;
       it = ysql_db_catalog_version_map_.erase(it);
+      ysql_db_invalidation_messages_map_.erase(db_oid);
       // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
       // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
       // the shared memory file to examine its contents).
-      shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
+      shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
     } else {
       ++it;
     }
@@ -1180,6 +1304,105 @@ void TabletServer::SetYsqlDBCatalogVersions(
       InvalidatePgTableCache();
     } else {
       InvalidatePgTableCache(db_oids_updated, db_oids_deleted);
+    }
+  }
+}
+
+void TabletServer::ResetCatalogVersionsFingerprint() {
+  LOG(INFO) << "reset catalog_versions_fingerprint_";
+  catalog_versions_fingerprint_.store(std::nullopt, std::memory_order_release);
+}
+
+void TabletServer::SetYsqlDBCatalogInvalMessages(
+  const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
+  if (db_catalog_inval_messages_data.db_catalog_inval_messages_size() == 0) {
+    return;
+  }
+  std::lock_guard l(lock_);
+  uint32_t current_db_oid = 0;
+  InvalidationMessagesQueue *db_message_lists = nullptr;
+  InvalidationMessagesQueue::iterator it;
+  bool check_done = false;
+  // ysql_db_invalidation_messages_map_ is just an extended history of pg_yb_invalidation_messages
+  // except message_time column. Merge the incoming db_catalog_inval_messages_data from the
+  // heartbeat response which has an ordered array of (db_oid, current_version, messages) into
+  // ysql_db_invalidation_messages_map_.
+  for (const auto& db_inval_messages : db_catalog_inval_messages_data.db_catalog_inval_messages()) {
+    const uint32_t db_oid = db_inval_messages.db_oid();
+    const uint64_t current_version = db_inval_messages.current_version();
+    // db_catalog_inval_messages_data has the message history in a sorted order of
+    // (db_oid, current_version).
+    if (current_db_oid != db_oid) {
+      // We see a new db_oid, start processing its message history. Note that db_message_lists
+      // is for the DB that we have just completed processing. We may have appended more messages
+      // to its queue that exceeded the max size.
+      if (db_message_lists) {
+        VLOG(2) << "db_oid " << current_db_oid << " message queue size: "
+                << db_message_lists->size();
+        while (db_message_lists->size() > FLAGS_ysql_max_invalidation_message_queue_size) {
+          db_message_lists->pop_front();
+        }
+      }
+
+      check_done = false;
+      current_db_oid = db_oid;
+      // Find the entry for the db_oid in ysql_db_invalidation_messages_map_ if there is one.
+      auto it2 = ysql_db_invalidation_messages_map_.find(db_oid);
+      if (it2 != ysql_db_invalidation_messages_map_.end()) {
+        // The db_oid isn't new and it is already exists in ysql_db_invalidation_messages_map_.
+        db_message_lists = &it2->second;
+        // The messages are in ascending order of current_version. We may have a picture like
+        // Existing: x, x+1, x+2, ..., x+i, x+i+1, x+i+2
+        // Incoming:                   x+i, x+i+1, x+i+2, x+i+3, ... x+i+j
+        // Find the position of x+i.
+        it = std::find_if(
+            db_message_lists->begin(), db_message_lists->end(),
+            [current_version](const std::pair<uint64_t, std::optional<std::string>>& p) {
+              return p.first == current_version;
+            });
+      } else {
+        // The db_oid does not exist in ysql_db_invalidation_messages_map_ yet. This is possible
+        // because at master side we read pg_yb_catalog_version and pg_yb_invalidation_messages
+        // separately (not a transactional read). As a result, a newly created database may not
+        // have been entered into pg_yb_catalog_version yet at the time when master reading
+        // pg_yb_catalog_version but by the time master reads pg_yb_invalidation_messages
+        // the new database is already inserted there. This case should be rare so we
+        // skip processing this db_oid.
+        db_message_lists = nullptr;
+        LOG(WARNING) << "db_oid " << db_oid << " not found in ysql_db_invalidation_messages_map_";
+      }
+    }
+    if (!db_message_lists) {
+      continue;
+    }
+    // We should see the suffix of db_message_lists matches the prefix of incoming one.
+    const std::optional<std::string>& message_list = db_inval_messages.has_message_list() ?
+        std::optional<std::string>(db_inval_messages.message_list()) : std::nullopt;
+    if (!check_done && it != db_message_lists->end()) {
+      if (it->first == current_version) {
+        VLOG(2) << "current_version matched: " << current_version;
+      } else {
+        LOG(DFATAL) << "current_version mismatch";
+      }
+      // same version should have same message.
+      if (it->second != message_list) {
+        LOG(DFATAL) << "message_list mismatch";
+      }
+      // Keep moving until we pass the common section x+i, x+i+1, x+i+2 as shown in the
+      // above example.
+      ++it;
+    } else {
+      // Append the new message starting from x+i+3 to the end of the queue of db_oid.
+      db_message_lists->emplace_back(std::make_pair(current_version, message_list));
+      check_done = true;
+    }
+  }
+  // Note that db_message_lists is for the last DB that we have just completed processing.
+  // We may have appended more messages to its queue that exceeded the max size.
+  if (db_message_lists) {
+    VLOG(2) << "db_oid " << current_db_oid << " message queue size: " << db_message_lists->size();
+    while (db_message_lists->size() > FLAGS_ysql_max_invalidation_message_queue_size) {
+      db_message_lists->pop_front();
     }
   }
 }
@@ -1271,7 +1494,7 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
     }
   }
 
-  std::string leader = heartbeater_->get_leader_master_hostport();
+  std::string leader = heartbeater_->get_master_leader_hostport().ToString();
   for (const auto& resolved_master_entry : resolved_addr_map) {
     auto master_entry = peer_status->Add();
     auto master = resolved_master_entry.second;
@@ -1296,7 +1519,7 @@ void TabletServer::InvalidatePgTableCache() {
 }
 
 void TabletServer::InvalidatePgTableCache(
-    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
     const std::unordered_set<uint32_t>& db_oids_deleted) {
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
@@ -1630,7 +1853,7 @@ Result<std::vector<TserverMetricsInfoPB>> TabletServer::GetMetrics() const {
 }
 
 void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
-  SharedObject().SetCronLeaderLease(cron_leader_lease_end);
+  SharedObject()->SetCronLeaderLease(cron_leader_lease_end);
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
@@ -1644,6 +1867,10 @@ Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLoc
   auto pg_client_service = pg_client_service_.lock();
   RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
   return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
+}
+
+Result<std::string> TabletServer::GetUniverseUuid() const {
+  return fs_manager_->GetUniverseUuidFromTserverInstanceMetadata();
 }
 
 PgClientServiceImpl* TabletServer::TEST_GetPgClientService() {

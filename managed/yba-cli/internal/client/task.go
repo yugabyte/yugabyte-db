@@ -22,32 +22,31 @@ import (
 )
 
 // GetCustomerTaskStatus fetches the customer task status
-func (a *AuthAPIClient) GetCustomerTaskStatus(taskUUID string) (
-	ybaclient.CustomerTasksApiApiTaskStatusRequest) {
+func (a *AuthAPIClient) GetCustomerTaskStatus(
+	taskUUID string,
+) ybaclient.CustomerTasksApiApiTaskStatusRequest {
 	return a.APIClient.CustomerTasksApi.TaskStatus(a.ctx, a.CustomerUUID, taskUUID)
 }
 
 // ListFailedSubtasks fetches the customer failed task status
-func (a *AuthAPIClient) ListFailedSubtasks(taskUUID string) (
-	ybaclient.CustomerTasksApiApiListFailedSubtasksRequest) {
+func (a *AuthAPIClient) ListFailedSubtasks(
+	taskUUID string,
+) ybaclient.CustomerTasksApiApiListFailedSubtasksRequest {
 	return a.APIClient.CustomerTasksApi.ListFailedSubtasks(a.ctx, a.CustomerUUID, taskUUID)
 }
 
 // RetryTask triggers retry universe/provider API
-func (a *AuthAPIClient) RetryTask(tUUID string) (
-	ybaclient.CustomerTasksApiApiRetryTaskRequest) {
+func (a *AuthAPIClient) RetryTask(tUUID string) ybaclient.CustomerTasksApiApiRetryTaskRequest {
 	return a.APIClient.CustomerTasksApi.RetryTask(a.ctx, a.CustomerUUID, tUUID)
 }
 
 // AbortTask triggers abort task API
-func (a *AuthAPIClient) AbortTask(tUUID string) (
-	ybaclient.CustomerTasksApiApiAbortTaskRequest) {
+func (a *AuthAPIClient) AbortTask(tUUID string) ybaclient.CustomerTasksApiApiAbortTaskRequest {
 	return a.APIClient.CustomerTasksApi.AbortTask(a.ctx, a.CustomerUUID, tUUID)
 }
 
 // TasksList triggers abort task API
-func (a *AuthAPIClient) TasksList() (
-	ybaclient.CustomerTasksApiApiTasksListRequest) {
+func (a *AuthAPIClient) TasksList() ybaclient.CustomerTasksApiApiTasksListRequest {
 	return a.APIClient.CustomerTasksApi.TasksList(a.ctx, a.CustomerUUID)
 }
 
@@ -130,8 +129,12 @@ func (a *AuthAPIClient) WaitForTaskCI(taskUUID, message string) error {
 				if allowed {
 					r, response, errR := a.ListFailedSubtasks(taskUUID).Execute()
 					if errR != nil {
-						errMessage := util.ErrorFromHTTPResponse(response, errR, "ListFailedSubtasks",
-							"Get Failed Tasks")
+						errMessage := util.ErrorFromHTTPResponse(
+							response,
+							errR,
+							"ListFailedSubtasks",
+							"Get Failed Tasks",
+						)
 						return errMessage
 					}
 
@@ -233,8 +236,12 @@ func (a *AuthAPIClient) WaitForTaskProgressBar(taskUUID, message string) error {
 				if allowed {
 					r, response, errR := a.ListFailedSubtasks(taskUUID).Execute()
 					if errR != nil {
-						errMessage := util.ErrorFromHTTPResponse(response, errR, "ListFailedSubtasks",
-							"Get Failed Tasks")
+						errMessage := util.ErrorFromHTTPResponse(
+							response,
+							errR,
+							"ListFailedSubtasks",
+							"Get Failed Tasks",
+						)
 						return errMessage
 					}
 

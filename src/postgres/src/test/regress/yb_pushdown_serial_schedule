@@ -4,7 +4,7 @@
 # LARGE TABLE Testsuite
 # Test for table whose index key columns are not in the same order with the table.
 ####################################################################################################
-test: yb_dml_systable_scan
-test: yb_create_table_scattering_keys
-test: yb_large_copy
-test: yb_dml_key_pushdown
+test: yb.orig.dml_systable_scan
+test: yb.orig.create_table_scattering_keys
+test: yb.orig.large_copy
+test: yb.orig.dml_key_pushdown

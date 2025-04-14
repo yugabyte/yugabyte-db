@@ -22,22 +22,16 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/casts.h"
-
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_util.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_fwd.h"
 #include "yb/util/status_log.h"
 
 #include "yb/util/flags/flag_tags.h"

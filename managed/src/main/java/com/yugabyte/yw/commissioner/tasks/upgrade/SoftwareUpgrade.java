@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -30,12 +31,16 @@ import lombok.extern.slf4j.Slf4j;
 public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
 
   private final XClusterUniverseService xClusterUniverseService;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   protected SoftwareUpgrade(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
-    super(baseTaskDependencies);
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
+    super(baseTaskDependencies, softwareUpgradeHelper);
     this.xClusterUniverseService = xClusterUniverseService;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Override

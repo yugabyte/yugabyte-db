@@ -177,7 +177,7 @@ Default: `""`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -263,7 +263,7 @@ To read this table, take your node's available memory in GiB, call it _M_, and f
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
 
-The defaults for the master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
+The defaults for [flags controlling memory division in a TServer](#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
 
 | flag | default |
 | :--- | :--- |
@@ -795,13 +795,13 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-Default: `READ COMMITTED` {{<tags/feature/ea>}}
+Default: `READ COMMITTED`
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). [Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --yb_enable_read_committed_isolation
 
-{{<tags/feature/ea>}} Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 Default: `false`
 
@@ -911,7 +911,7 @@ Default: `262144` (256kB, type: int32)
 
 ##### --ysql_yb_bnl_batch_size
 
-Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
@@ -1108,17 +1108,7 @@ Specifies which RPC compression algorithm to use. Requires `enable_stream_compre
 
 3: LZ4
 
-In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead.
-
-To upgrade from an older version that doesn't support RPC compression (such as 2.4), to a newer version that does (such as 2.6), you need to do the following:
-
-- Rolling restart to upgrade YugabyteDB to a version that supports compression.
-
-- Rolling restart to enable compression, on both YB-Master and YB-TServer, by setting `enable_stream_compression=true`.
-
-  Note that you can omit this step if the YugabyteDB version you are upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and later (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
-
-- Rolling restart to set the compression algorithm to use, on both YB-Master and YB-TServer, such as by setting `stream_compression_algo=3`.
+In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead. However, the default is set to 0, to avoid latency penalty on workloads.
 
 ## Security flags
 
@@ -1376,7 +1366,7 @@ Default: `true`
 
 Interval in seconds at which the table list in the publication will be refreshed.
 
-Default: `3600`
+Default: `900`
 
 ##### --cdc_stream_records_threshold_size_bytes
 
@@ -1795,7 +1785,7 @@ Default: true
 
 ##### yb_enable_bitmapscan
 
-{{<tags/feature/tp>}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+{{<tags/feature/ea idea="1092">}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
@@ -1808,19 +1798,19 @@ Default: false
 
 ##### yb_bnl_batch_size
 
-Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 Default: 1024
 
 ##### yb_enable_batchednl
 
-{{<tags/feature/ea>}} Enable or disable the query planner's use of batched nested loop join.
+Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<tags/feature/ea>}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
+{{<tags/feature/ea idea="483">}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
 
@@ -1855,6 +1845,19 @@ Default: 1024
 {{<tags/feature/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
+
+##### yb_insert_on_conflict_read_batch_size
+
+{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+
+- temporary relations
+- foreign relations
+- system relations
+- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
+
+The higher the number, the more batching is done. 1024 is recommended.
+
+Default: 0 (disabled)
 
 ##### yb_read_from_followers
 

@@ -84,7 +84,7 @@ static void ShutdownExprContext(ExprContext *econtext, bool isCommit);
  * Principally, this creates the per-query memory context that will be
  * used to hold all working data that lives till the end of the query.
  * Note that the per-query context will become a child of the caller's
- * GetCurrentMemoryContext().
+ * CurrentMemoryContext.
  * ----------------
  */
 EState *
@@ -97,7 +97,7 @@ CreateExecutorState(void)
 	/*
 	 * Create the per-query context for this Executor run.
 	 */
-	qcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	qcontext = AllocSetContextCreate(CurrentMemoryContext,
 									 "ExecutorState",
 									 ALLOCSET_DEFAULT_SIZES);
 
@@ -201,6 +201,8 @@ CreateExecutorState(void)
 
 	estate->yb_exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
 	estate->yb_exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
+
+	estate->yb_exec_params.yb_index_check = false;
 
 	return estate;
 }
@@ -409,13 +411,13 @@ CreateStandaloneExprContext(void)
 	econtext->ecxt_innertuple = NULL;
 	econtext->ecxt_outertuple = NULL;
 
-	econtext->ecxt_per_query_memory = GetCurrentMemoryContext();
+	econtext->ecxt_per_query_memory = CurrentMemoryContext;
 
 	/*
 	 * Create working memory for expression evaluation in this context.
 	 */
 	econtext->ecxt_per_tuple_memory =
-		AllocSetContextCreate(GetCurrentMemoryContext(),
+		AllocSetContextCreate(CurrentMemoryContext,
 							  "ExprContext",
 							  ALLOCSET_DEFAULT_SIZES);
 
@@ -510,7 +512,7 @@ MakePerTupleExprContext(EState *estate)
 /* ----------------------------------------------------------------
  *				 miscellaneous node-init support functions
  *
- * Note: all of these are expected to be called with GetCurrentMemoryContext()
+ * Note: all of these are expected to be called with CurrentMemoryContext
  * equal to the per-query memory context.
  * ----------------------------------------------------------------
  */
@@ -824,7 +826,7 @@ ExecInitRangeTable(EState *estate, List *rangeTable)
  * ExecGetRangeTableRelation
  *		Open the Relation for a range table entry, if not already done
  *
- * The Relations will be closed again in ExecEndPlan().
+ * The Relations will be closed in ExecEndPlan().
  */
 Relation
 ExecGetRangeTableRelation(EState *estate, Index rti)
@@ -1377,7 +1379,7 @@ ExecGetExtraUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 	{
 		ListCell   *lc;
 
-		/* In some code paths we can reach here before initializing the info */
+		/* Compute the info if we didn't already */
 		if (relinfo->ri_GeneratedExprs == NULL)
 			ExecInitStoredGenerated(relinfo, estate, CMD_UPDATE);
 		foreach(lc, estate->es_resultrelinfo_extra)
@@ -1392,10 +1394,25 @@ ExecGetExtraUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 	return NULL;
 }
 
-/* Return columns being updated, including generated columns */
+/*
+ * Return columns being updated, including generated columns
+ *
+ * The bitmap is allocated in per-tuple memory context. It's up to the caller to
+ * copy it into a different context with the appropriate lifespan, if needed.
+ */
 Bitmapset *
 ExecGetAllUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 {
-	return bms_union(ExecGetUpdatedCols(relinfo, estate),
-					 ExecGetExtraUpdatedCols(relinfo, estate));
+
+	Bitmapset	   *ret;
+	MemoryContext	oldcxt;
+
+	oldcxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
+	ret = bms_union(ExecGetUpdatedCols(relinfo, estate),
+					ExecGetExtraUpdatedCols(relinfo, estate));
+
+	MemoryContextSwitchTo(oldcxt);
+
+	return ret;
 }

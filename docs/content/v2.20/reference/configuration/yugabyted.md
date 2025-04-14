@@ -402,7 +402,7 @@ Use the `yugabyted demo connect` sub-command to load the  [Northwind sample data
 
 #### destroy
 
-Use the `yuagbyted demo destroy` sub-command to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This sub-command also deletes the `yb_demo_northwind` database.
+Use the `yugabyted demo destroy` sub-command to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This sub-command also deletes the `yb_demo_northwind` database.
 
 #### Flags
 
@@ -441,8 +441,6 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql) workloads in your local environment.
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
-
-If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent. You also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="v2.20" >}} release directory.
 
 #### Syntax
 
@@ -513,10 +511,6 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 --read_replica *read_replica_node*
 : Use this flag to start a read replica node.
-
---backup_daemon *backup-daemon-process*
-: Enable or disable the backup daemon with yugabyted start. Default: `false`
-: If you start a cluster using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="v2.20" >}} release directory.
 
 --enable_pg_parity_early_access *PostgreSQL-compatibilty*
 : Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`

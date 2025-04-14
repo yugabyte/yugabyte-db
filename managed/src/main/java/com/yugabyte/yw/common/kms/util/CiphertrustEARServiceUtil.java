@@ -2,11 +2,13 @@ package com.yugabyte.yw.common.kms.util;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.util.CiphertrustManagerClient.AuthType;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -153,16 +155,42 @@ public class CiphertrustEARServiceUtil {
     return randomBytes;
   }
 
+  public EncryptionKey encryptKeyWithEncryptionContext(ObjectNode authConfig, byte[] keyBytes) {
+    Map<String, Object> encryptResponse = encryptKey(authConfig, keyBytes);
+    Object cipherTextObject = encryptResponse.get("ciphertext");
+    String cipherTextString = "";
+    if (cipherTextObject != null && cipherTextObject instanceof String) {
+      cipherTextString = cipherTextObject.toString();
+    }
+    if (cipherTextString.isEmpty()) {
+      log.error("Error encrypting key with CIPHERTRUST KMS. Got empty ciphertext.");
+      return null;
+    }
+    byte[] cipherTextBytes = Base64.getDecoder().decode(cipherTextString);
+    ObjectMapper mapper = new ObjectMapper();
+    ObjectNode encryptionContext = mapper.convertValue(encryptResponse, ObjectNode.class);
+    return new EncryptionKey(cipherTextBytes, encryptionContext);
+  }
+
   public Map<String, Object> encryptKey(ObjectNode authConfig, byte[] keyBytes) {
     CiphertrustManagerClient ciphertrustManagerClient = getCiphertrustManagerClient(authConfig);
     // Recheck the conversion from bytes -> string once again.
     Map<String, Object> encryptResponse =
         ciphertrustManagerClient.encryptText(Base64.getEncoder().encodeToString(keyBytes));
-    if (encryptResponse == null || encryptResponse.isEmpty()) {
+    if (encryptResponse == null
+        || encryptResponse.isEmpty()
+        || !encryptResponse.containsKey("ciphertext")) {
       log.error("Error encrypting key with CIPHERTRUST KMS.");
       return null;
     }
     return encryptResponse;
+  }
+
+  public byte[] decryptKeyWithEncryptionContext(
+      ObjectNode authConfig, ObjectNode encryptionContext) {
+    Map<String, Object> encryptedKeyMaterial =
+        new ObjectMapper().convertValue(encryptionContext, Map.class);
+    return decryptKey(authConfig, encryptedKeyMaterial);
   }
 
   public byte[] decryptKey(ObjectNode authConfig, Map<String, Object> encryptedKeyMaterial) {
@@ -174,6 +202,17 @@ public class CiphertrustEARServiceUtil {
       return null;
     }
     return Base64.getDecoder().decode(decryptResponse);
+  }
+
+  public void testEncryptAndDecrypt(ObjectNode authConfig) {
+    byte[] randomTestKey = generateRandomBytes(32);
+    Map<String, Object> encryptedKeyMaterial = encryptKey(authConfig, randomTestKey);
+    byte[] decryptedKeyBytes = decryptKey(authConfig, encryptedKeyMaterial);
+    if (!Arrays.equals(randomTestKey, decryptedKeyBytes)) {
+      String errMsg = "Encrypt and decrypt operations gave different outputs in CipherTrust KMS.";
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
   }
 
   public String getConfigFieldValue(ObjectNode authConfig, String fieldName) {
@@ -228,17 +267,6 @@ public class CiphertrustEARServiceUtil {
               + " size from {} to {} in the KMS config.",
           authConfigKeySize,
           actualKeySize);
-    }
-  }
-
-  public void testEncryptAndDecrypt(ObjectNode authConfig) {
-    byte[] randomTestKey = generateRandomBytes(32);
-    Map<String, Object> encryptedKeyMaterial = encryptKey(authConfig, randomTestKey);
-    byte[] decryptedKeyBytes = decryptKey(authConfig, encryptedKeyMaterial);
-    if (!Arrays.equals(randomTestKey, decryptedKeyBytes)) {
-      String errMsg = "Encrypt and decrypt operations gave different outputs in CipherTrust KMS.";
-      log.error(errMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
   }
 

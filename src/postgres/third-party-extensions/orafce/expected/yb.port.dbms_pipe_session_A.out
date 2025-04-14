@@ -1,0 +1,116 @@
+\set ECHO none
+ERROR:  advisory locks feature is currently in preview
+HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_locks to true and add it to the list of allowed preview flags i.e. GFlag allowed_preview_flags_csv. If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.
+CONTEXT:  PL/pgSQL function inline_code_block line 4 at IF
+ pack_message 
+--------------
+ 
+(1 row)
+
+ send_message 
+--------------
+            0
+(1 row)
+
+SELECT createImplicitPipe();
+ createimplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- Bulk send messages
+SELECT bulkSend();
+ bulksend 
+----------
+ 
+(1 row)
+
+-- An explicit private pipe
+SELECT notify('recv_private1_notifier');
+ notify 
+--------
+ 
+(1 row)
+
+SELECT createExplicitPipe('private_pipe_1',3);
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- An explicit private pipe
+SELECT notify('recv_private2_notifier');
+ notify 
+--------
+ 
+(1 row)
+
+SELECT createExplicitPipe('private_pipe_2',3);
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- An explicit public pipe (uses two-argument create_pipe)
+SELECT notify('recv_public1_notifier');
+ notify 
+--------
+ 
+(1 row)
+
+SELECT createExplicitPipe('public_pipe_3',2);
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- An explicit public pipe (uses one-argument create_pipe)
+SELECT notify('recv_public2_notifier');
+ notify 
+--------
+ 
+(1 row)
+
+SELECT createExplicitPipe('public_pipe_4',1);
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+-- tests send_message(text)
+SELECT checkSend1();
+ checksend1 
+------------
+ 
+(1 row)
+
+-- tests send_message(text,integer)
+SELECT checkSend2();
+ checksend2 
+------------
+ 
+(1 row)
+
+SELECT notifyDropTemp();
+ notifydroptemp 
+----------------
+ 
+(1 row)
+
+-- tests unique_session_name()
+SELECT checkUniqueSessionNameA();
+ checkuniquesessionnamea 
+-------------------------
+ 
+(1 row)
+
+DROP FUNCTION createImplicitPipe();
+DROP FUNCTION createExplicitPipe(text,integer);
+DROP FUNCTION createPipe(text,integer);
+DROP FUNCTION checkSend1();
+DROP FUNCTION checkSend2();
+DROP FUNCTION checkUniqueSessionNameA();
+DROP FUNCTION bulkSend();
+DROP FUNCTION notifyDropTemp();
+DROP FUNCTION notify(text);
+DROP FUNCTION send(text);

@@ -31,7 +31,7 @@ static_assert(arraysize(kTimeoutMsgs) == kElementsInTimeoutCode,
 } // namespace
 
 const std::string& TimeoutErrorTag::ToMessage(Value value) {
-  return kTimeoutMsgs[yb::to_underlying(value)];
+  return kTimeoutMsgs[std::to_underlying(value)];
 }
 
 static const std::string kTimeoutErrorCategoryName = "timeout";

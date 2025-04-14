@@ -96,7 +96,7 @@ extern PGDLLIMPORT int plan_cache_mode;
  * that have no reason to be saved at all.  We therefore support a "oneshot"
  * variant that does no data copying or invalidation checking.  In this case
  * there are no separate memory contexts: the CachedPlanSource struct and
- * all subsidiary data live in the caller's GetCurrentMemoryContext(), and there
+ * all subsidiary data live in the caller's CurrentMemoryContext, and there
  * is no way to free memory short of clearing that entire context.  A oneshot
  * plan is always treated as unsaved.
  *

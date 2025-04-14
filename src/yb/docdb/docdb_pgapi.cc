@@ -30,6 +30,7 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -123,7 +124,7 @@ Status DocPgAddVarRef(size_t column_idx,
                       int32_t collid,
                       std::map<int, const DocPgVarRef> *var_map) {
   if (var_map->find(attno) != var_map->end()) {
-    VLOG(1) << "Attribute " << attno << " is already processed";
+    VLOG(2) << "Attribute " << attno << " is already processed";
     return Status::OK();
   }
   var_map->emplace(std::piecewise_construct,
@@ -133,16 +134,28 @@ Status DocPgAddVarRef(size_t column_idx,
                      .var_type = DocPgGetTypeEntity({typid, typmod}),
                      .var_type_attrs = {typmod},
                    }));
-  VLOG(1) << "Attribute " << attno << " has been processed";
+  VLOG(2) << "Attribute " << attno << " has been processed";
   return Status::OK();
 }
 
 Status DocPgPrepareExpr(const std::string& expr_str,
                         YbgPreparedExpr *expr,
-                        DocPgVarRef *ret_type) {
+                        DocPgVarRef *ret_type,
+                        const std::optional<int> version) {
   char *expr_cstring = const_cast<char *>(expr_str.c_str());
-  VLOG(1) << "Deserialize " << expr_cstring;
-  PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr));
+  VLOG(1) << "Deserialize expr with version " << version.value_or(YbgGetPgVersion())
+          << ": " << expr_cstring;
+
+  switch (version.value_or(YbgGetPgVersion())) {
+    case 15:
+    case 11:
+      // TODO(#24730): Allow for PG11 or PG15 serializations here, once we're able to handle them.
+      PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr));
+      break;
+    default:
+      return STATUS_FORMAT(InternalError, "Unsupported expression version: $0", version);
+  }
+
   if (ret_type != nullptr) {
     int32_t typid;
     int32_t typmod;
@@ -153,7 +166,7 @@ Status DocPgPrepareExpr(const std::string& expr_str,
       .var_type = DocPgGetTypeEntity({typid, typmod}),
       .var_type_attrs = {typmod},
     };
-    VLOG(1) << "Processed expression return type";
+    VLOG(2) << "Processed expression return type";
   }
   return Status::OK();
 }
@@ -167,7 +180,7 @@ Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
   int32_t min_attno = var_map.begin()->first;
   int32_t max_attno = var_map.rbegin()->first;
 
-  VLOG(2) << "Allocating expr context: (" << min_attno << ", " << max_attno << ")";
+  VLOG(3) << "Allocating expr context: (" << min_attno << ", " << max_attno << ")";
   PG_RETURN_NOT_OK(YbgExprContextCreate(min_attno, max_attno, expr_ctx));
   return Status::OK();
 }
@@ -203,7 +216,7 @@ Status DocPgPrepareExprCtx(const dockv::PgTableRow& table_row,
       PG_RETURN_NOT_OK(PgValueToDatumHelper(
           arg_ref.var_type, arg_ref.var_type_attrs, *val, &datum));
     }
-    VLOG(1) << "Adding value for attno " << attno;
+    VLOG(2) << "Adding value for attno " << attno;
     PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, attno, datum, is_null));
   }
   return Status::OK();
@@ -825,30 +838,30 @@ char *get_record_string_value(
       auto elem_type = get_range_array_element_type(att->atttypid);
       if (elem_type == TSTZRANGEOID) {
         values[i] = (uintptr_t)get_range_array_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), tz);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), tz);
       } else {
         values[i] = (uintptr_t)get_range_array_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), nullptr);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), nullptr);
       }
       curr_att_modified = true;
     } else if (get_array_element_type(att->atttypid) != kPgInvalidOid) {
       auto elem_type = get_array_element_type(att->atttypid);
       if (elem_type == TIMESTAMPTZOID) {
         values[i] = (uintptr_t)get_array_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), tz);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), tz);
       } else {
         values[i] = (uintptr_t)get_array_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), nullptr);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), nullptr);
       }
       curr_att_modified = true;
     } else if (get_range_element_type(att->atttypid) != kPgInvalidOid) {
       auto elem_type = get_range_element_type(att->atttypid);
       if (elem_type == TIMESTAMPTZOID) {
         values[i] = (uintptr_t)get_range_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), tz, att->atttypid);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), tz, att->atttypid);
       } else {
         values[i] = (uintptr_t)get_range_string_value(
-            values[i], elem_type, GetOutFuncName(att->atttypid), nullptr, att->atttypid);
+            values[i], elem_type, YBCGetOutFuncName(att->atttypid), nullptr, att->atttypid);
       }
       curr_att_modified = true;
     }
@@ -1470,7 +1483,7 @@ Status SetValueFromQLBinaryHelper(
       string label = "";
       if (enum_oid_label_map.find((uint32_t)enum_oid) != enum_oid_label_map.end()) {
         label = enum_oid_label_map.at((uint32_t)enum_oid);
-        VLOG(1) << "For enum oid: " << enum_oid << " found label" << label;
+        VLOG(2) << "For enum oid: " << enum_oid << " found label" << label;
       } else {
         LOG(INFO) << "For enum oid: " << enum_oid << " no label found in cache";
         return STATUS_SUBSTITUTE(CacheMissError, "enum");  // Do not change the message.

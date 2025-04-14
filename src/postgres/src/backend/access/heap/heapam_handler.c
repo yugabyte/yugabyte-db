@@ -45,7 +45,7 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/yb_scan.h"
 
 static void reform_and_rewrite_tuple(HeapTuple tuple,
@@ -847,7 +847,7 @@ heapam_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 				break;
 			case HEAPTUPLE_RECENTLY_DEAD:
 				*tups_recently_dead += 1;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case HEAPTUPLE_LIVE:
 				/* Live or recently dead, must copy it */
 				isdead = false;
@@ -1192,7 +1192,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 	BlockNumber previous_blkno = InvalidBlockNumber;
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	int			yb_tuples_done = 0;
 
 	/*
@@ -2192,9 +2192,11 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	 * Ignore any claimed entries past what we think is the end of the
 	 * relation. It may have been extended after the start of our scan (we
 	 * only hold an AccessShareLock, and it could be inserts from this
-	 * backend).
+	 * backend).  We don't take this optimization in SERIALIZABLE isolation
+	 * though, as we need to examine all invisible tuples reachable by the
+	 * index.
 	 */
-	if (page >= hscan->rs_nblocks)
+	if (!IsolationIsSerializable() && page >= hscan->rs_nblocks)
 		return false;
 
 	/*

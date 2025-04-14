@@ -14,8 +14,9 @@
 #ifndef PROCSIGNAL_H
 #define PROCSIGNAL_H
 
-#include "postgres.h"
 #include "storage/backendid.h"
+
+/* YB includes */
 #include "storage/proc.h"
 
 
@@ -37,6 +38,9 @@ typedef enum
 	PROCSIG_WALSND_INIT_STOPPING,	/* ask walsenders to prepare for shutdown  */
 	PROCSIG_BARRIER,			/* global barrier interrupt  */
 	PROCSIG_LOG_MEMORY_CONTEXT, /* ask backend to log the memory contexts */
+	YB_PROCSIG_LOG_CATCACHE_STATS, /* ask backend to log the catcache stats */
+	PROCSIG_LOG_HEAP_SNAPSHOT,  /* ask backend to log the heap snapshot */
+	PROCSIG_LOG_HEAP_SNAPSHOT_PEAK, /* ask backend to log the peak heap snapshot */
 
 	/* Recovery conflict reasons */
 	PROCSIG_RECOVERY_CONFLICT_DATABASE,
@@ -70,7 +74,6 @@ extern void ProcessProcSignalBarrier(void);
 
 extern void procsignal_sigusr1_handler(SIGNAL_ARGS);
 
-extern void CleanupProcSignalState(int status, Datum arg);
 extern void CleanupProcSignalStateForProc(PGPROC *proc);
 
 #endif							/* PROCSIGNAL_H */

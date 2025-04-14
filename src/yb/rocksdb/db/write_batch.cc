@@ -1029,7 +1029,7 @@ Result<size_t> DirectInsert(
   }
   DirectWriteHandlerImpl direct_write_handler(
       current->mem(), mem_table_inserter->sequence_, handler_for_logging);
-  RETURN_NOT_OK(writer->Apply(&direct_write_handler));
+  RETURN_NOT_OK(writer->Apply(direct_write_handler));
   auto result = direct_write_handler.Complete();
   mem_table_inserter->CheckMemtableFull();
   return result;

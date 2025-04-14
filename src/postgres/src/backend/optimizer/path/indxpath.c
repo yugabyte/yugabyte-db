@@ -35,15 +35,18 @@
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
+#include "parser/parsetree.h"
+#include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/rel.h"
+
 
 /* XXX see PartCollMatchesExprColl */
 #define IndexCollMatchesExprColl(idxcollation, exprcollation) \
@@ -208,7 +211,7 @@ static bool ec_member_matches_indexcol(PlannerInfo *root, RelOptInfo *rel,
 									   void *arg);
 static bool is_hash_column_in_lsm_index(const IndexOptInfo *index, int columnIndex);
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
-static bool yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo);
+static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
 
 /*
  * create_index_paths()
@@ -1134,7 +1137,7 @@ yb_hash_code_on_left(ScalarArrayOpExpr *saop)
 
 	Assert(leftop != NULL);
 
-	return IsA(leftop, FuncExpr) && ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID;
+	return IsA(leftop, FuncExpr) && ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE;
 }
 
 /*
@@ -2398,6 +2401,10 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 	if (!enable_indexonlyscan)
 		return false;
 
+	/* YB: Index-only scans are not supported for copartitioned indexes. */
+	if (index->yb_amiscopartitioned)
+		return false;
+
 	/*
 	 * Check that all needed attributes of the relation are available from the
 	 * index.
@@ -2805,7 +2812,7 @@ match_clause_to_index(PlannerInfo *root,
 	}
 
 	if (IsYugaByteEnabled() && yb_bitmap_idx_pushdowns &&
-		yb_can_pushdown_as_filter(index, rinfo))
+		yb_can_pushdown_as_filter(root, index, rinfo))
 	{
 		rinfo->yb_pushable = true;
 		*yb_bitmap_idx_pushdowns = lappend(*yb_bitmap_idx_pushdowns, rinfo);
@@ -2819,7 +2826,9 @@ match_clause_to_index(PlannerInfo *root,
  *	  operations aren't indexable but are valid as filters.
  */
 static bool
-yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo)
+yb_can_pushdown_as_filter(PlannerInfo *root,
+						  IndexOptInfo *index,
+						  RestrictInfo *rinfo)
 {
 	List	   *colrefs = NIL;
 	int			required_relid;
@@ -2830,7 +2839,8 @@ yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo)
 		return false;
 
 	/* Can DocDB evaluate this operation? */
-	if (!YbCanPushdownExpr(rinfo->clause, &colrefs))
+	if (!YbCanPushdownExpr(rinfo->clause, &colrefs,
+						   planner_rt_fetch(index->rel->relid, root)->relid))
 		return false;
 
 	/* Do all of the clause's referenced attributes exist in the index? */
@@ -2845,7 +2855,7 @@ is_yb_hash_code_call(Node *clause)
 {
 	return (clause &&
 			IsA(clause, FuncExpr) &&
-			(((FuncExpr *) clause)->funcid == YB_HASH_CODE_OID));
+			(((FuncExpr *) clause)->funcid == F_YB_HASH_CODE));
 }
 
 
@@ -4276,8 +4286,19 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(list_length(exprlist) == list_length(oprlist));
 
+	List *ybIndexList = rel->indexlist;
+	if (list_length(ybIndexList) < list_length(rel->ybHintsOrigIndexlist))
+	{
+		/*
+		 * 'ybHintsOrigIndexlist' holds the original set of indexes for the relation.
+		 * rel->indexlist may have been pruned by the hint code but we need all indexes
+		 * to prove uniqueness of columns.
+		 */
+		ybIndexList = rel->ybHintsOrigIndexlist;
+	}
+
 	/* Short-circuit if no indexes... */
-	if (rel->indexlist == NIL)
+	if (ybIndexList == NIL)
 		return false;
 
 	/*
@@ -4322,17 +4343,20 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 		return false;
 
 	/* Examine each index of the relation ... */
-	foreach(ic, rel->indexlist)
+	foreach(ic, ybIndexList)
 	{
 		IndexOptInfo *ind = (IndexOptInfo *) lfirst(ic);
 		int			c;
 
 		/*
 		 * If the index is not unique, or not immediately enforced, or if it's
-		 * a partial index that doesn't match the query, it's useless here.
+		 * a partial index, it's useless here.  We're unable to make use of
+		 * predOK partial unique indexes due to the fact that
+		 * check_index_predicates() also makes use of join predicates to
+		 * determine if the partial index is usable. Here we need proofs that
+		 * hold true before any joins are evaluated.
 		 */
-		if (!ind->unique || !ind->immediate ||
-			(ind->indpred != NIL && !ind->predOK))
+		if (!ind->unique || !ind->immediate || ind->indpred != NIL)
 			continue;
 
 		/*
@@ -4520,7 +4544,7 @@ match_index_to_operand(Node *operand,
 			 */
 			FuncExpr   *fn = (FuncExpr *) operand;
 
-			if (fn->funcid == YB_HASH_CODE_OID
+			if (fn->funcid == F_YB_HASH_CODE
 				&& fn->args->length > 0
 				&& index->nhashcolumns == fn->args->length)
 			{

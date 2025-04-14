@@ -456,9 +456,7 @@ for storing <acronym>TOAST</acronym>-able columns on disk:
     <listitem>
      <para>
       <literal>PLAIN</literal> prevents either compression or
-      out-of-line storage; furthermore it disables use of single-byte headers
-      for varlena types.
-      This is the only possible strategy for
+      out-of-line storage.  This is the only possible strategy for
       columns of non-<acronym>TOAST</acronym>-able data types.
      </para>
     </listitem>
@@ -1136,7 +1134,7 @@ data. Empty in ordinary tables.</entry>
   if columns used by indexes are not updated.  You can
   increase the likelihood of sufficient page space for
   <acronym>HOT</acronym> updates by decreasing a table's <link
-  linkend="sql-createtable"><literal>fillfactor</literal></link>.
+  linkend="reloption-fillfactor"><literal>fillfactor</literal></link>.
   If you don't, <acronym>HOT</acronym> updates will still happen because
   new rows will naturally migrate to new pages and existing pages with
   sufficient free space for new row versions.  The system view <link

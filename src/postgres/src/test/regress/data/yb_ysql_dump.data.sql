@@ -2,11 +2,12 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.1.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.1.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -31,6 +32,14 @@ SET row_security = off;
 \set use_roles true
 \endif
 
+-- YB: disable auto analyze to avoid conflicts with catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+END IF;
+END $$;
+
 --
 -- Name: hint_plan; Type: SCHEMA; Schema: -; Owner: yugabyte_test
 --
@@ -50,6 +59,250 @@ CREATE SCHEMA hint_plan;
 DROP EXTENSION IF EXISTS pg_hint_plan;
 SELECT pg_catalog.binary_upgrade_create_empty_extension('pg_hint_plan', 'hint_plan', false, '1.5.1', '{16546,16545}', '{"",""}', ARRAY[]::pg_catalog.text[]);
 
+
+--
+-- Name: overflow; Type: TYPE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16659'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16658'::pg_catalog.oid);
+
+CREATE TYPE public.overflow AS ENUM (
+);
+
+-- For binary upgrade, must preserve pg_enum oids and sortorders
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16660'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1'::real);
+ALTER TYPE public.overflow ADD VALUE 'A';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16663'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.5'::real);
+ALTER TYPE public.overflow ADD VALUE 'B';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16665'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.75'::real);
+ALTER TYPE public.overflow ADD VALUE 'C';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16667'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.875'::real);
+ALTER TYPE public.overflow ADD VALUE 'D';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16669'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.9375'::real);
+ALTER TYPE public.overflow ADD VALUE 'E';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16671'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.96875'::real);
+ALTER TYPE public.overflow ADD VALUE 'F';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16673'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.984375'::real);
+ALTER TYPE public.overflow ADD VALUE 'G';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16675'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.9921875'::real);
+ALTER TYPE public.overflow ADD VALUE 'H';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16677'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99609375'::real);
+ALTER TYPE public.overflow ADD VALUE 'I';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16679'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.998046875'::real);
+ALTER TYPE public.overflow ADD VALUE 'J';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16681'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.9990234375'::real);
+ALTER TYPE public.overflow ADD VALUE 'K';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16683'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99951171875'::real);
+ALTER TYPE public.overflow ADD VALUE 'L';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16685'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.999755859375'::real);
+ALTER TYPE public.overflow ADD VALUE 'M';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16687'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.9998779296875'::real);
+ALTER TYPE public.overflow ADD VALUE 'N';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16689'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99993896484375'::real);
+ALTER TYPE public.overflow ADD VALUE 'O';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16691'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99996948242188'::real);
+ALTER TYPE public.overflow ADD VALUE 'P';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16693'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99998474121094'::real);
+ALTER TYPE public.overflow ADD VALUE 'Q';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16695'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999237060547'::real);
+ALTER TYPE public.overflow ADD VALUE 'R';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16697'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999618530273'::real);
+ALTER TYPE public.overflow ADD VALUE 'S';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16699'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999809265137'::real);
+ALTER TYPE public.overflow ADD VALUE 'T';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16701'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999904632568'::real);
+ALTER TYPE public.overflow ADD VALUE 'U';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16703'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999952316284'::real);
+ALTER TYPE public.overflow ADD VALUE 'V';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16705'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999976158142'::real);
+ALTER TYPE public.overflow ADD VALUE 'W';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16707'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999988079071'::real);
+ALTER TYPE public.overflow ADD VALUE 'X';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16662'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('2'::real);
+ALTER TYPE public.overflow ADD VALUE 'Z';
+
+
+
+\if :use_roles
+    ALTER TYPE public.overflow OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: underflow; Type: TYPE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16709'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16708'::pg_catalog.oid);
+
+CREATE TYPE public.underflow AS ENUM (
+);
+
+-- For binary upgrade, must preserve pg_enum oids and sortorders
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16710'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1'::real);
+ALTER TYPE public.underflow ADD VALUE 'A';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16757'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000011920929'::real);
+ALTER TYPE public.underflow ADD VALUE 'C';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16755'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000023841858'::real);
+ALTER TYPE public.underflow ADD VALUE 'D';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16753'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000047683716'::real);
+ALTER TYPE public.underflow ADD VALUE 'E';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16751'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000095367432'::real);
+ALTER TYPE public.underflow ADD VALUE 'F';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16749'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000190734863'::real);
+ALTER TYPE public.underflow ADD VALUE 'G';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16747'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000381469727'::real);
+ALTER TYPE public.underflow ADD VALUE 'H';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16745'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000762939453'::real);
+ALTER TYPE public.underflow ADD VALUE 'I';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16743'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00001525878906'::real);
+ALTER TYPE public.underflow ADD VALUE 'J';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16741'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00003051757812'::real);
+ALTER TYPE public.underflow ADD VALUE 'K';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16739'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00006103515625'::real);
+ALTER TYPE public.underflow ADD VALUE 'L';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16737'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.0001220703125'::real);
+ALTER TYPE public.underflow ADD VALUE 'M';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16735'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.000244140625'::real);
+ALTER TYPE public.underflow ADD VALUE 'N';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16733'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00048828125'::real);
+ALTER TYPE public.underflow ADD VALUE 'O';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16731'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.0009765625'::real);
+ALTER TYPE public.underflow ADD VALUE 'P';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16729'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.001953125'::real);
+ALTER TYPE public.underflow ADD VALUE 'Q';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16727'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00390625'::real);
+ALTER TYPE public.underflow ADD VALUE 'R';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16725'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.0078125'::real);
+ALTER TYPE public.underflow ADD VALUE 'S';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16723'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.015625'::real);
+ALTER TYPE public.underflow ADD VALUE 'T';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16721'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.03125'::real);
+ALTER TYPE public.underflow ADD VALUE 'U';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16719'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.0625'::real);
+ALTER TYPE public.underflow ADD VALUE 'V';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16717'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.125'::real);
+ALTER TYPE public.underflow ADD VALUE 'W';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16715'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.25'::real);
+ALTER TYPE public.underflow ADD VALUE 'X';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16713'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.5'::real);
+ALTER TYPE public.underflow ADD VALUE 'Y';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16712'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('2'::real);
+ALTER TYPE public.underflow ADD VALUE 'Z';
+
+
+
+\if :use_roles
+    ALTER TYPE public.underflow OWNER TO yugabyte_test;
+\endif
 
 \if :use_tablespaces
     SET default_tablespace = '';
@@ -283,6 +536,173 @@ SPLIT INTO 3 TABLETS;
 \endif
 
 --
+-- Name: level0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16621'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16620'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16619'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16619'::pg_catalog.oid);
+
+CREATE TABLE public.level0 (
+    c1 integer,
+    c2 text NOT NULL,
+    c3 text,
+    c4 text,
+    CONSTRAINT level0_c1_cons CHECK ((c1 > 0)),
+    CONSTRAINT level0_c1_cons2 CHECK ((c1 IS NULL)) NO INHERIT
+)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level1_0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16624'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16623'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16622'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16622'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16625'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16625'::pg_catalog.oid);
+
+CREATE TABLE public.level1_0 (
+    c1 integer NOT NULL,
+    CONSTRAINT level1_0_pkey PRIMARY KEY(c1 ASC)
+)
+INHERITS (public.level0);
+
+
+\if :use_roles
+    ALTER TABLE public.level1_0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level1_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16629'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16628'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16627'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16627'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16630'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16630'::pg_catalog.oid);
+
+CREATE TABLE public.level1_1 (
+    c2 text,
+    CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
+    CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
+)
+INHERITS (public.level0)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level1_1 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level2_0; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16635'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16634'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16633'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16633'::pg_catalog.oid);
+
+CREATE TABLE public.level2_0 (
+    c1 integer,
+    c2 text,
+    c3 text NOT NULL
+)
+INHERITS (public.level1_0)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level2_0 OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: level2_1; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16638'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16637'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16636'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16636'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16639'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16639'::pg_catalog.oid);
+
+CREATE TABLE public.level2_1 (
+    c1 integer,
+    c2 text,
+    c3 text NOT NULL,
+    c4 text NOT NULL,
+    CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
+)
+INHERITS (public.level1_0, public.level1_1)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.level2_1 OWNER TO yugabyte_test;
+\endif
+
+--
 -- Name: p1; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
@@ -365,6 +785,7 @@ SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16590'::pg_catalog.
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
 SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16589'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16589'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
@@ -1729,6 +2150,51 @@ COPY public.hash_tbl_pk_with_multiple_included_columns (col1, col2, col3, col4) 
 
 
 --
+-- Data for Name: level0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level0 (c1, c2, c3, c4) FROM stdin;
+\N	0	\N	\N
+\.
+
+
+--
+-- Data for Name: level1_0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level1_0 (c1, c2, c3, c4) FROM stdin;
+2	1_0	1_0	\N
+\.
+
+
+--
+-- Data for Name: level1_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level1_1 (c1, c2, c3, c4) FROM stdin;
+\N	1_1	\N	1_1
+\.
+
+
+--
+-- Data for Name: level2_0; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level2_0 (c1, c2, c3, c4) FROM stdin;
+1	2_0	2_0	\N
+\.
+
+
+--
+-- Data for Name: level2_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.level2_1 (c1, c2, c3, c4) FROM stdin;
+2	2_1	2_1	2_1
+\.
+
+
+--
 -- Data for Name: p1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -2176,6 +2642,30 @@ CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING 
 
 
 --
+-- Name: level1_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16632'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16632'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC);
+
+
+--
+-- Name: level2_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16641'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16641'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC);
+
+
+--
 -- Name: non_unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
@@ -2486,6 +2976,84 @@ GRANT SELECT ON TABLE public.rls_private TO rls_user;
 GRANT ALL ON TABLE public.rls_public TO PUBLIC;
 \endif
 
+
+--
+-- Name: TABLE tbl13; Type: ACL; Schema: public; Owner: yugabyte_test
+--
+
+\if :use_roles
+GRANT ALL ON TABLE public.tbl13 TO regress_rls_alice WITH GRANT OPTION;
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT ALL ON TABLE public.tbl13 TO tablegroup_test_user;
+RESET SESSION AUTHORIZATION;
+\endif
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT ALL ON FUNCTIONS  TO PUBLIC;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: yugabyte_test
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test IN SCHEMA public GRANT SELECT ON TABLES  TO PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test IN SCHEMA public GRANT UPDATE ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT DELETE ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: rls_user
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user IN SCHEMA public GRANT SELECT ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TYPES; Type: DEFAULT ACL; Schema: -; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice REVOKE ALL ON TYPES  FROM PUBLIC;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR SCHEMAS; Type: DEFAULT ACL; Schema: -; Owner: yugabyte_test
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE yugabyte_test GRANT USAGE ON SCHEMAS  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: -; Owner: regress_rls_alice
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice GRANT SELECT ON TABLES  TO rls_user;
+
+
+--
+-- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: -; Owner: rls_user
+--
+
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user REVOKE ALL ON TABLES  FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user GRANT SELECT,REFERENCES,TRIGGER,TRUNCATE,UPDATE ON TABLES  TO rls_user;
+
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+END IF;
+END $$;
 
 --
 -- YSQL database dump complete

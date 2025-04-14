@@ -1,0 +1,1573 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 9000000;
+SET documentdb.next_collection_id TO 9000;
+SET documentdb.next_collection_index_id TO 9000;
+-- $setIntersection operator: basic test:
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[1,2,3],[2,3,4]]} }');
+                                 bson_dollar_project                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [["a","b","c"],["a","d","c"]]} }');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ "a", "c" ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"a" : { "$setIntersection" : [[1.1,2.2,3.3],[1.1,2.2,4.4]]} }');
+                                                   bson_dollar_project                                                   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberDouble" : "2.2000000000000001776" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+(1 row)
+
+-- $setIntersection operator: No matching element:
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[1,2,3],[4,5,6]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"a" : { "$setIntersection" : [[1,1,2],[3,3,4]]} }');
+     bson_dollar_project     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [  ] }
+(1 row)
+
+-- $setIntersection operator: Nested Elements:
+-- NOTE: MongoDB does not recurse into arrays and considers only the first/outer-level array
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[[1,{"a":1, "b":1}],2,3],[4,[1,{"a":1, "b":1}],6]]} }');
+                                                       bson_dollar_project                                                        
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ [ { "$numberInt" : "1" }, { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } ] ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[{"a":[1,2,3],"b":1},2,3],[4,{"a":[1,2,3],"b":1},6]]} }');
+                                                                   bson_dollar_project                                                                    
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "1" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[[1,2,3]],[[3,2,1]]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[{"a":1,"b":1}],[{"b":1,"a":1}]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[["a","b","c"]],[["a","b","c"]]]} }');
+                   bson_dollar_project                   
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ [ "a", "b", "c" ] ] }
+(1 row)
+
+---- $setIntersection operator: decimal,double and long:
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[1.1,2.1,3.1],[2.10,3.10,4.0]]} }');
+                                                        bson_dollar_project                                                         
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "3.1000000000000000888" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[1.1,2.1,3.1],[2.10,3.10,4.0]]} }');
+                                                        bson_dollar_project                                                         
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "3.1000000000000000888" } ] }
+(1 row)
+
+---- $setIntersection operator: same value with different type:
+-- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ { "$numberLong" : "1" },2,3],[1,2,3]]} }');
+                                              bson_dollar_project                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "2" }, { "$numberLong" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ { "$numberDecimal" : "1" },2,3],[1,2,3]]} }');
+                                               bson_dollar_project                                                
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "2" }, { "$numberDecimal" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ 1,2,3],[{ "$numberDecimal" : "1" },2,3]]} }');
+                                             bson_dollar_project                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ 1.1],[{ "$numberDecimal" : "1.1" }]]} }'); -- 1.1 is not fixed integer and type is different so not considering both as equal.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[ 1.00],[{ "$numberDecimal" : "1.00" }]]} }');
+                        bson_dollar_project                        
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberDouble" : "1.0" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[1],[{ "$numberDecimal" : "1.00" }]]} }');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[1],[1.00]]} }');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+---- $setIntersection operator: Null,Nan,Infinity,undefined and undefined path:
+select bson_dollar_project('{"_id":"1" }', '{"setIntersection" : { "$setIntersection" : [null]} }');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "_id" : "1", "setIntersection" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setIntersection" : { "$setIntersection" : ["$a"]} }');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "_id" : "1", "setIntersection" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setIntersection" : { "$setIntersection" : null} }');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "_id" : "1", "setIntersection" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setIntersection" : { "$setIntersection" : [[1,2,3],null]} }');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "_id" : "1", "setIntersection" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setIntersection" : { "$setIntersection" : [{ "$undefined" : true }]} }');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "_id" : "1", "setIntersection" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setIntersection" : { "$setIntersection" : { "$undefined" : true }} }');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "_id" : "1", "setIntersection" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"setIntersection" : { "$setIntersection" : ["$undefinePath", [1]] } }');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "_id" : "1", "setIntersection" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"intersection" : { "$setIntersection" : [[null, { "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"},{ "$numberDouble" : "NaN"},{ "$numberDouble" : "-NaN"}],[null,{ "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"},{ "$numberDouble" : "-NaN"}]]} }');
+                                                             bson_dollar_project                                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ null, { "$numberDouble" : "NaN" }, { "$numberDouble" : "Infinity" }, { "$numberDouble" : "-Infinity" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setIntersection" : { "$setIntersection" : [[NaN],[{"$numberDouble": "-NaN"}]]} }');
+                         bson_dollar_project                          
+---------------------------------------------------------------------
+ { "_id" : "1", "setIntersection" : [ { "$numberDouble" : "NaN" } ] }
+(1 row)
+
+---- $setIntersection operator: literals and operators:
+select bson_dollar_project('{"_id":"1", "a" :[1,2,3]}', '{"intersection" : { "$setIntersection" : ["$a",[2,3,4]]} }');
+                                 bson_dollar_project                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [ {"$slice" : [[1,2,3,4,5,6,7],2,5]} ,[2,3,4]]} }');
+                                 bson_dollar_project                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "4" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1","a":[1,2,3] }', '{"intersection" : { "$setIntersection" : [ {"$slice" : ["$a",0,3]} ,[2,3,4]]} }');
+                                 bson_dollar_project                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+---- $setIntersection operator: Other BsonType Binary, code, DateTime, Timestamp, Minkey, Maxkey:
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "zg==", "subType": "01"}}] ]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "01"}}] ]} }');
+                                      bson_dollar_project                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$binary" : { "base64" : "ww==", "subType" : "01" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "02"}}] ]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 1 } }]]} }');
+                                  bson_dollar_project                                   
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$timestamp" : { "t" : 1670981326, "i" : 1 } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$timestamp" : { "t": 1770981326, "i": 1 } }], [{"$timestamp" : { "t": 1870981326, "i": 1 } }]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 2 } }]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+                                   bson_dollar_project                                   
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$date" : { "$numberLong" : "1548833410136" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$date": "2019-01-30T07:30:10.135Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "639926cee6bda3127f153bf1"}]]} }');
+                              bson_dollar_project                              
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$oid" : "639926cee6bda3127f153bf1" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "739926cee6bda3127f153bf1"}]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{ "$code": "var a = 1;"}],[{ "$code": "var a = 1;"}]]} }');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$code" : "var a = 1;" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{ "$code": "var a = 1;"}],[{ "$code": "var b = 1;"}]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}]]} }');
+                                                       bson_dollar_project                                                        
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" } } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test2", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "447f000000c1de008ec19ceb" }}}]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$maxKey" : 1}],[{"$maxKey" : 1}]]} }');
+                   bson_dollar_project                   
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$maxKey" : 1 } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$minKey" : 1}],[{"$minKey" : 1}]]} }');
+                   bson_dollar_project                   
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [ { "$minKey" : 1 } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"intersection" : { "$setIntersection" : [[{"$minKey" : 1}],[{"$maxKey" : 1}]]} }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "_id" : "1", "intersection" : [  ] }
+(1 row)
+
+---- $setIntersection operator: Negative:
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"intersection" : { "$setIntersection" : {} } }');
+ERROR:  All operands of $setIntersection must be arrays. One argument is of type: object
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"intersection" : { "$setIntersection" : 1 } }');
+ERROR:  All operands of $setIntersection must be arrays. One argument is of type: int
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"intersection" : { "$setIntersection" : [1] } }');
+ERROR:  All operands of $setIntersection must be arrays. One argument is of type: int
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"intersection" : { "$setIntersection" : [[1],{}]} }');
+ERROR:  All operands of $setIntersection must be arrays. One argument is of type: object
+-- $setUnion operator: basic test:
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1,2,3],[2,3,4]]} }');
+                                                      bson_dollar_project                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [["a","b","c"],["a","d","c"]]} }');
+                bson_dollar_project                
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ "b", "a", "c", "d" ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1.1,2.2,3.3],[1.1,2.2,4.4]]} }');
+                                                                                                    bson_dollar_project                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberDouble" : "2.2000000000000001776" }, { "$numberDouble" : "3.2999999999999998224" }, { "$numberDouble" : "4.4000000000000003553" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+(1 row)
+
+-- $setUnion operator: No matching element:
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1,2,3],[4,5,6]]} }');
+                                                                              bson_dollar_project                                                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "6" }, { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1,1,2],[3,3,4]]} }');
+                                                      bson_dollar_project                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+-- $setUnion operator: Nested Elements:
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[[1,{"a":1, "b":1}],2,3],[4,[1,{"a":1, "b":1}],6]]} }');
+                                                                                                    bson_dollar_project                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "6" }, { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "3" }, [ { "$numberInt" : "1" }, { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } ] ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[{"a":[1,2,3],"b":1},2,3],[4,{"a":[1,2,3],"b":1},6]]} }');
+                                                                                                                bson_dollar_project                                                                                                                
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "6" }, { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "3" }, { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : { "$numberInt" : "1" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[[1,2,3]],[[3,2,1]]]} }');
+                                                                                  bson_dollar_project                                                                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "3" }, { "$numberInt" : "2" }, { "$numberInt" : "1" } ] ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[{"a":1,"b":1}],[{"b":1,"a":1}]]} }');
+                                                                      bson_dollar_project                                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "b" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }, { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[["a","b","c"]],[["a","b","c"]]]} }');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ [ "a", "b", "c" ] ] }
+(1 row)
+
+---- $setUnion operator: decimal,double and long:
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1.1,2.1,3.1],[2.10,3.10,4.0]]} }');
+                                                                                           bson_dollar_project                                                                                           
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberDouble" : "4.0" }, { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "3.1000000000000000888" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1.1,2.1,3.1],[2.10,3.10,4.0]]} }');
+                                                                                           bson_dollar_project                                                                                           
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberDouble" : "4.0" }, { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "3.1000000000000000888" } ] }
+(1 row)
+
+---- $setUnion operator: same value with different type:
+-- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ { "$numberLong" : "1" },2,3],[1,2,3]]} }');
+                                          bson_dollar_project                                           
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberLong" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ { "$numberDecimal" : "1" },2,3],[1,2,3]]} }');
+                                            bson_dollar_project                                            
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberDecimal" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ 1,2,3],[{ "$numberDecimal" : "1" },2,3]]} }');
+                                          bson_dollar_project                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ 1.1],[{ "$numberDecimal" : "1.1" }]]} }'); -- 1.1 is not fixed integer and type is different so not considering both as equal.
+                                            bson_dollar_project                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberDecimal" : "1.1" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[ 1.00],[{ "$numberDecimal" : "1.00" }]]} }');
+                    bson_dollar_project                     
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberDouble" : "1.0" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1],[{ "$numberDecimal" : "1.00" }]]} }');
+                  bson_dollar_project                  
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1],[1.00]]} }');
+                  bson_dollar_project                  
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+---- $setUnion operator: Null,Nan,Infinity,undefined and undefined path:
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [null]} }');
+       bson_dollar_project       
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : ["$a"]} }');
+       bson_dollar_project       
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : null} }');
+       bson_dollar_project       
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[1,2,3],null]} }');
+       bson_dollar_project       
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [{ "$undefined" : true }]} }');
+       bson_dollar_project       
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : { "$undefined" : true }} }');
+       bson_dollar_project       
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"setUnion" : { "$setUnion" : ["$undefinePath", [1]] } }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setUnion" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[null, { "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"},{ "$numberDouble" : "NaN"},{ "$numberDouble" : "-NaN"}],[null,{ "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"},{ "$numberDouble" : "-NaN"}]]} }');
+                                                          bson_dollar_project                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ null, { "$numberDouble" : "NaN" }, { "$numberDouble" : "Infinity" }, { "$numberDouble" : "-Infinity" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"union" : { "$setUnion" : [[NaN],[{"$numberDouble": "-NaN"}]]} }');
+                    bson_dollar_project                     
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberDouble" : "NaN" } ] }
+(1 row)
+
+---- $setUnion operator: literals and operators:
+select bson_dollar_project('{"_id":"1", "a" :[1,2,3]}', '{"union" : { "$setUnion" : ["$a",[2,3,4]]} }');
+                                                      bson_dollar_project                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [ {"$slice" : [[1,2,3,4,5,6,7],2,5]} ,[2,3,4]]} }');
+                                                                              bson_dollar_project                                                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "6" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "7" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1","a":[1,2,3] }', '{"union" : { "$setUnion" : [ {"$slice" : ["$a",0,3]} ,[2,3,4]]} }');
+                                                      bson_dollar_project                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+---- $setUnion operator: Other BsonType Binary, code, DateTime, Timestamp, Minkey, Maxkey:
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "zg==", "subType": "01"}}] ]} }');
+                                                               bson_dollar_project                                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$binary" : { "base64" : "zg==", "subType" : "01" } }, { "$binary" : { "base64" : "ww==", "subType" : "01" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "01"}}] ]} }');
+                                  bson_dollar_project                                   
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$binary" : { "base64" : "ww==", "subType" : "01" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "02"}}] ]} }');
+                                                               bson_dollar_project                                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$binary" : { "base64" : "ww==", "subType" : "01" } }, { "$binary" : { "base64" : "ww==", "subType" : "02" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 1 } }]]} }');
+                               bson_dollar_project                               
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$timestamp" : { "t" : 1670981326, "i" : 1 } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$timestamp" : { "t": 1770981326, "i": 1 } }], [{"$timestamp" : { "t": 1870981326, "i": 1 } }]]} }');
+                                                        bson_dollar_project                                                        
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$timestamp" : { "t" : 1770981326, "i" : 1 } }, { "$timestamp" : { "t" : 1870981326, "i" : 1 } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 2 } }]]} }');
+                                                        bson_dollar_project                                                        
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$timestamp" : { "t" : 1670981326, "i" : 2 } }, { "$timestamp" : { "t" : 1670981326, "i" : 1 } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+                               bson_dollar_project                                
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$date" : { "$numberLong" : "1548833410136" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$date": "2019-01-30T07:30:10.135Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+                                                         bson_dollar_project                                                         
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$date" : { "$numberLong" : "1548833410136" } }, { "$date" : { "$numberLong" : "1548833410135" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "639926cee6bda3127f153bf1"}]]} }');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$oid" : "639926cee6bda3127f153bf1" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "739926cee6bda3127f153bf1"}]]} }');
+                                               bson_dollar_project                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$oid" : "639926cee6bda3127f153bf1" }, { "$oid" : "739926cee6bda3127f153bf1" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{ "$code": "var a = 1;"}],[{ "$code": "var a = 1;"}]]} }');
+                    bson_dollar_project                    
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$code" : "var a = 1;" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{ "$code": "var a = 1;"}],[{ "$code": "var b = 1;"}]]} }');
+                                  bson_dollar_project                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$code" : "var a = 1;" }, { "$code" : "var b = 1;" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}]]} }');
+                                                    bson_dollar_project                                                    
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" } } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test2", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}]]} }');
+                                                                                                  bson_dollar_project                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$dbPointer" : { "$ref" : "db.test2", "$id" : { "$oid" : "347f000000c1de008ec19ceb" } } }, { "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" } } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "447f000000c1de008ec19ceb" }}}]]} }');
+                                                                                                  bson_dollar_project                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" } } }, { "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "447f000000c1de008ec19ceb" } } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$maxKey" : 1}],[{"$maxKey" : 1}]]} }');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$maxKey" : 1 } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$minKey" : 1}],[{"$minKey" : 1}]]} }');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$minKey" : 1 } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"union" : { "$setUnion" : [[{"$minKey" : 1}],[{"$maxKey" : 1}]]} }');
+                         bson_dollar_project                         
+---------------------------------------------------------------------
+ { "_id" : "1", "union" : [ { "$minKey" : 1 }, { "$maxKey" : 1 } ] }
+(1 row)
+
+---- $setUnion operator: Negative:
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"union" : { "$setUnion" : {} } }');
+ERROR:  All operands of $setUnion must be arrays. One argument is of type: object
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"union" : { "$setUnion" : 1 } }');
+ERROR:  All operands of $setUnion must be arrays. One argument is of type: int
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"union" : { "$setUnion" : [1] } }');
+ERROR:  All operands of $setUnion must be arrays. One argument is of type: int
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"union" : { "$setUnion" : [[1],{}]} }');
+ERROR:  All operands of $setUnion must be arrays. One argument is of type: object
+-- $setEquals operator: basic test:
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[],[]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[1,2,3],[1,2,3]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [["a","b","c"],["a","b","c"]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[1.1,2.1,3.1],[1.1,2.1,3.1]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[1,2,3],[1,2,4]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [["a","b","c"],["b","b","c"]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[1.1,2.1,3.1],[1.2,2.2,3.2]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[],[],[]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[1,2,3],[1,2,3,4],[1,2,3,4,5]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[1,2,3],[1,2,3],[1,2,3],[1,2,3],[1,2,3]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+-- $setEquals operator: Nested test:
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[[1,2],[1,2]],[[1,2],[1,2]]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[[1,2],[1,2]],[[2,3],[1,2]]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[1,2,1,2],[[2,3],[1,2]]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{"a":1},{"b":1}],[{"a":1},{"b":1}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{"a":1},{"b":1}],[{"a":1},{"b":2}]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+-- $setEquals operator: same value with different type:
+-- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{ "$numberLong" : "1" }],[1]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{ "$numberLong" : "1" },{ "$numberDouble" : "1.0" }],[1],[{ "$numberDecimal" : "1.0" }]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"setEqual" : { "$setEquals" : [[{ "$numberDouble" : "1.1" }],[1.1],[{ "$numberDecimal" : "1.1" }]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+--$setEquals with operators and literals
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5], "b" : [1,2,3,4,5]  }', '{"setEqual" : { "$setEquals" : [["$a"],["$b"]] } }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5], "b" : [1,2,3,4]  }', '{"setEqual" : { "$setEquals" : [["$a"],["$b"]] } }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5], "b" : [1,2,3,4]  }', '{"setEqual" : { "$setEquals" : [[{"$slice": ["$a",1,3]}],[{"$slice": ["$b",1,3]}]] } }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5], "b" : [1,2,3,4]  }', '{"setEqual" : { "$setEquals" : [[{"$slice": ["$a",1,4]}],[{"$slice": ["$b",1,3]}]] } }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+---- $setEquals operator: Other BsonType Binary, code, DateTime, Timestamp, Minkey, Maxkey:
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "zg==", "subType": "01"}}] ]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "01"}}] ]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [ [{"$binary": { "base64": "ww==", "subType": "01"}}], [{"$binary": { "base64": "ww==", "subType": "02"}}] ]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 1 } }]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$timestamp" : { "t": 1770981326, "i": 1 } }], [{"$timestamp" : { "t": 1870981326, "i": 1 } }]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$timestamp" : { "t": 1670981326, "i": 1 } }], [{"$timestamp" : { "t": 1670981326, "i": 2 } }]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$date": "2019-01-30T07:30:10.135Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "639926cee6bda3127f153bf1"}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$oid": "639926cee6bda3127f153bf1"}],[{"$oid": "739926cee6bda3127f153bf1"}]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{ "$code": "var a = 1;"}],[{ "$code": "var a = 1;"}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{ "$code": "var a = 1;"}],[{ "$code": "var b = 1;"}]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test2", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}],[{ "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "447f000000c1de008ec19ceb" }}}]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$maxKey" : 1}],[{"$maxKey" : 1}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$minKey" : 1}],[{"$minKey" : 1}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[{"$minKey" : 1}],[{"$maxKey" : 1}]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "setEqual" : false }
+(1 row)
+
+-- $setEquals operator: Negative test:
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : {} } }');
+ERROR:  $setEquals needs at least two arguments had: 1
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : 1 } }');
+ERROR:  $setEquals needs at least two arguments had: 1
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [1] } }');
+ERROR:  $setEquals needs at least two arguments had: 1
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : ["$a",[1,2,3]] } }');
+ERROR:  All operands of $setEquals must be arrays. One argument is of type: missing
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[1,2,3],"$a"] } }');
+ERROR:  All operands of $setEquals must be arrays. One argument is of type: missing
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[1],{}]} }');
+ERROR:  All operands of $setEquals must be arrays. One argument is of type: object
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : null} }');
+ERROR:  $setEquals needs at least two arguments had: 1
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : { "$undefined" : true}} }');
+ERROR:  $setEquals needs at least two arguments had: 1
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [null]} }');
+ERROR:  $setEquals needs at least two arguments had: 1
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [null,null]} }');
+ERROR:  All operands of $setEquals must be arrays. One argument is of type: null
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [[1,2,3],null]} }');
+ERROR:  All operands of $setEquals must be arrays. One argument is of type: null
+select bson_dollar_project('{"_id":"1" }', '{"setEqual" : { "$setEquals" : [{ "$undefined" : true}]} }');
+ERROR:  $setEquals needs at least two arguments had: 1
+-- $setDifference operator: basic test:
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[],[]]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1,2,3],[]]} }');
+                                            bson_dollar_project                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[],[1,2,3]]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1,2],[1,2]]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1,1,2,2,3,3],[1,2]]} }');
+                    bson_dollar_project                     
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1,2,3,4],[1,2]]} }');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1,2,3,4],[1,2,5,6,7]]} }');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+(1 row)
+
+---- $setDifference operator: same value with different type:
+-- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$numberDecimal" :  "1.0"},{"$numberDouble" :  "2.0"},3,4],[1,2]]} }');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$numberDecimal" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4],[1.1,2.1]]} }');
+                                                              bson_dollar_project                                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberDecimal" : "1.1" }, { "$numberDecimal" : "2.1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$numberDouble" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4],[{"$numberDouble" :  "1.1"},{"$numberDecimal" :  "2.1"}]]} }');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$numberLong" :  "1"},{"$numberDouble" :  "2.0"},3,4],[1,2]]} }');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+(1 row)
+
+-- $setDifference operator: different types and Nested case:
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [["a","b","c"],["a"]]} }');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ "b", "c" ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[null, { "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"},{ "$numberDouble" : "NaN"},{ "$numberDouble" : "-NaN"}],[]]} }');
+                                                            bson_dollar_project                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ null, { "$numberDouble" : "Infinity" }, { "$numberDouble" : "-Infinity" }, { "$numberDouble" : "NaN" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[null, { "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"},{ "$numberDouble" : "NaN"}],[{ "$numberDouble" : "-NaN"}]]} }');
+                                              bson_dollar_project                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ null, { "$numberDouble" : "Infinity" }, { "$numberDouble" : "-Infinity" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$maxKey" : 1}],[{"$maxKey" : 1}]]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$minKey" : 1}],[{"$minKey" : 1}]]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [  ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$minKey" : 1}],[{"$maxKey" : 1}]]} }');
+                  bson_dollar_project                  
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$minKey" : 1 } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.137Z"}] ]} }');
+                                  bson_dollar_project                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$date" : { "$numberLong" : "1548833410136" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[[1,2],[1,2,3]],[[1,2]]]} }');
+                                              bson_dollar_project                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[{"a":1},{"b":1}],[{"a":1},{"b":2}]]} }');
+                         bson_dollar_project                          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "b" : { "$numberInt" : "1" } } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [null,null]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1,2,3],null]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [null,[1,2,3]]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : ["$a",[1,2,3]]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [{"$undefined": true},[1,2,3]]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : null }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1,2,3],{"$undefined": true}]} }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : null }
+(1 row)
+
+-- $setDifference operator: with Inner Operators :
+select bson_dollar_project('{"_id":"1", "a": [1,2,3], "b": [1,2]}', '{"difference" : { "$setDifference" : ["$a","$b"]} }');
+                    bson_dollar_project                     
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "3" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a": [1,2,3,5], "b": [1,2,3,4]}', '{"difference" : { "$setDifference" : ["$a","$b"]} }');
+                    bson_dollar_project                     
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "5" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5], "b" : [1,2,3,4]  }', '{"difference" : { "$setDifference" : [{"$slice": ["$a",1,6]},{"$slice": ["$b",1,6]}] } }');
+                    bson_dollar_project                     
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [ { "$numberInt" : "5" } ] }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5], "b" : [1,2,3,4]  }', '{"difference" : { "$setDifference" : [{"$slice": ["$a",1,3]},{"$slice": ["$b",1,3]}] } }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "_id" : "1", "difference" : [  ] }
+(1 row)
+
+-- $setDifference operator: Negative Cases :
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[],[],[]]} }');
+ERROR:  Expression $setDifference takes exactly 2 arguments. 3 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [1,2,3]} }');
+ERROR:  Expression $setDifference takes exactly 2 arguments. 3 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : []} }');
+ERROR:  Expression $setDifference takes exactly 2 arguments. 0 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [1]} }');
+ERROR:  Expression $setDifference takes exactly 2 arguments. 1 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [null]} }');
+ERROR:  Expression $setDifference takes exactly 2 arguments. 1 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [{"$undefined": true}]} }');
+ERROR:  Expression $setDifference takes exactly 2 arguments. 1 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : null} }');
+ERROR:  Expression $setDifference takes exactly 2 arguments. 1 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [1,2]} }');
+ERROR:  both operands of $setDifference must be arrays. First argument is of type: int
+select bson_dollar_project('{"_id":"1"}', '{"difference" : { "$setDifference" : [[1],2]} }');
+ERROR:  both operands of $setDifference must be arrays. Second argument is of type: int
+-- $setIsSubset operator: basic test:
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[],[]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[1,2,3],[]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[],[1,2,3]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[1,2],[1,2,3,4]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[1,1,2,2,3,3],[1,2,3,4,3]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[1,2,3,4],[1,2]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[1,2,3,4],[1,2,5,6,7]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : false }
+(1 row)
+
+---- $setIsSubset operator: same value with different type:
+-- In Native Mongo : if type is different is value is not fixed integer then it is not considering that as a match, e.g, double's 1.1 is not equals to decimal's 1.1
+-- In Native Mongo : if type is different and values can be converted to fixed integer  then only it is considering as a match, e.g, double's 1.0 is equals to decimal's 1.0 
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$numberDecimal" :  "1.0"},{"$numberDouble" :  "2.0"},3,4],[1,2,4,3]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$numberDecimal" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4],[1.1,2.1,3,4,5]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$numberDouble" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4],[{"$numberDouble" :  "1.1"},{"$numberDecimal" :  "2.1"},3,4,5]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$numberLong" :  "1"},{"$numberDouble" :  "2.0"}],[1,2,3,4]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+-- $setIsSubset operator: different types and Nested case:
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [["a","b","c"],["a","b","c","d"]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[null, { "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"}],[null, { "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"},{ "$numberDouble" : "NaN"},{ "$numberDouble" : "-NaN"}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{ "$numberDouble" : "-NaN"}],[null, { "$numberDouble" : "Infinity"},{ "$numberDouble" : "-Infinity"},{ "$numberDouble" : "NaN"}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$maxKey" : 1}],[{"$maxKey" : 1}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$minKey" : 1}],[{"$minKey" : 1}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$minKey" : 1}],[{"$maxKey" : 1}]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"$date": "2019-01-30T07:30:10.136Z"}], [{"$date": "2019-01-30T07:30:10.136Z"}] ]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[[1,2],[1,2,3]],[[1,2],[1,2,3],[1,2,3,4]]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"a":1},{"b":1}],[{"a":1},{"b":1},{"c":2}]]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[{"a":1},{"b":2}],[{"a":1},{"b":1},{"c":2}]]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : false }
+(1 row)
+
+-- $setIsSubset operator: with Inner Operators :
+select bson_dollar_project('{"_id":"1", "a": [1,2,3], "b": [1,2,3,4]}', '{"isSubset" : { "$setIsSubset" : ["$a","$b"]} }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a": [1,2,3,5], "b": [1,2,3,4]}', '{"isSubset" : { "$setIsSubset" : ["$a","$b"]} }');
+         bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : false }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5], "b" : [1,2,3,4,5,6]  }', '{"isSubset" : { "$setIsSubset" : [{"$slice": ["$a",1,6]},{"$slice": ["$b",1,6]}] } }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5], "b" : [1,2,3,4]  }', '{"isSubset" : { "$setIsSubset" : [{"$slice": ["$a",1,3]},{"$slice": ["$b",1,3]}] } }');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "_id" : "1", "isSubset" : true }
+(1 row)
+
+-- $setIsSubset operator: Negative Cases :
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[],[],[]]} }');
+ERROR:  Expression $setIsSubset takes exactly 2 arguments. 3 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [1,2,3]} }');
+ERROR:  Expression $setIsSubset takes exactly 2 arguments. 3 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : []} }');
+ERROR:  Expression $setIsSubset takes exactly 2 arguments. 0 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [1]} }');
+ERROR:  Expression $setIsSubset takes exactly 2 arguments. 1 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [null]} }');
+ERROR:  Expression $setIsSubset takes exactly 2 arguments. 1 were passed in.
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [1,2]} }');
+ERROR:  both operands of $setIsSubset must be arrays. First argument is of type: int
+select bson_dollar_project('{"_id":"1"}', '{"isSubset" : { "$setIsSubset" : [[1],2]} }');
+ERROR:  both operands of $setIsSubset must be arrays. Second argument is of type: int
+select bson_dollar_project('{"_id":"1" }', '{"isSubset" : { "$setIsSubset" : null} }');
+ERROR:  Expression $setIsSubset takes exactly 2 arguments. 1 were passed in.
+select bson_dollar_project('{"_id":"1" }', '{"isSubset" : { "$setIsSubset" : [[1,2,3],null]} }');
+ERROR:  both operands of $setIsSubset must be arrays. Second argument is of type: null
+select bson_dollar_project('{"_id":"1" }', '{"isSubset" : { "$setIsSubset" : [[1,2,3],"$a"]} }');
+ERROR:  both operands of $setIsSubset must be arrays. Second argument is of type: missing
+select bson_dollar_project('{"_id":"1" }', '{"isSubset" : { "$setIsSubset" : ["$a",[1,2,3]]} }');
+ERROR:  both operands of $setIsSubset must be arrays. First argument is of type: missing
+select bson_dollar_project('{"_id":"1" }', '{"isSubset" : { "$setIsSubset" : { "$undefined" : true}} }');
+ERROR:  Expression $setIsSubset takes exactly 2 arguments. 1 were passed in.
+--$allElementsTrue : Test for True Outputs
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true,true]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1,"app", 11.2, {"$numberLong":"10"}, {"$numberDouble":"10"}, {"$numberDecimal":"10"}, [1,2,3], {"X": "Y"}]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a" : 1, "b" : "test"}', '{"result": { "$allElementsTrue": [["$a", "$b"]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, {"$numberDouble" : "0.1"}, 10]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, {"$numberDecimal" : "0.1"}, 10]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[-1, -2.9, {"$numberDecimal" : "0.1"}, 10]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[1, {"$add": [0,1]}]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+--$allElementsTrue : Test for False Outputs
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[false]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true,false]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, 0, 10]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, null, 10]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, "$b", 10]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, {"$undefined" : true}, 10]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, {"$numberDouble" : "0.0"}, 10]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, {"$numberDecimal" : "0.0"}, 10]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[true, 1, {"$numberLong" : "0"}, 10]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[false, 0, 0, 1]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[1, {"$add": [0,0]}]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+--$allElementsTrue : Negative Test
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [1]}}');
+ERROR:  $allElementsTrue's argument must be an array, but is int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": ["a"]}}');
+ERROR:  $allElementsTrue's argument must be an array, but is string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [null]}}');
+ERROR:  $allElementsTrue's argument must be an array, but is null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [{"$undefined" : true}]}}');
+ERROR:  $allElementsTrue's argument must be an array, but is undefined
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[1,2,3],[3,4,5]]}}');
+ERROR:  Expression $allElementsTrue takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [[1,2,3],1]}}');
+ERROR:  Expression $allElementsTrue takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": [1, [1,2,3]]}}');
+ERROR:  Expression $allElementsTrue takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$allElementsTrue": ["$b"]}}');
+ERROR:  $allElementsTrue's argument must be an array, but is missing
+--$anyElementTrue : Test for True Outputs
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[true]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[true,false]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[0,true,false]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[0,false,null,"$b",{"$undefined": true}, true]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[true, 1,"app", 11.2, {"$numberLong":"10"}, {"$numberDouble":"10"}, {"$numberDecimal":"10"}, [1,2,3], {"X": "Y"}]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a" : 1, "b" : "test"}', '{"result": { "$anyElementTrue": [["$a", "$b"]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[true, 1, {"$numberDouble" : "0.1"}, 10]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[true, 1, {"$numberDecimal" : "0.1"}, 10]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false, 1, {"$undefined" : true}, 10]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false, null, {"$numberDouble" : "0.1"}, 0]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false, "$b", {"$numberDecimal" : "1.0"}, 0]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false, {"$numberLong" : "1"}, 0]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[0, {"$add": [0,1]}]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+--$anyElementTrue : Test for False Outputs
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false,false]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[0,false,null,"$b",{"$undefined": true}, {"$numberDecimal" : "0.0"}, {"$numberDouble" : "0.0"}, {"$numberLong" : "0"}]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false, 0, {"$undefined" : true}]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false, 0, {"$numberDouble" : "0.0"}]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false,{"$numberDecimal" : "0.0"}]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false, {"$numberLong" : "0"}]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[false, 0, null]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[0, {"$add": [0,0]}]]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+--$anyElementTrue : Negative Test
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [1]}}');
+ERROR:  $anyElementTrue's argument must be an array, but is int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": ["a"]}}');
+ERROR:  $anyElementTrue's argument must be an array, but is string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [null]}}');
+ERROR:  $anyElementTrue's argument must be an array, but is null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [{"$undefined" : true}]}}');
+ERROR:  $anyElementTrue's argument must be an array, but is undefined
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[1,2,3],[3,4,5]]}}');
+ERROR:  Expression $anyElementTrue takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [[1,2,3],1]}}');
+ERROR:  Expression $anyElementTrue takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": [1, [1,2,3]]}}');
+ERROR:  Expression $anyElementTrue takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$anyElementTrue": ["$b"]}}');
+ERROR:  $anyElementTrue's argument must be an array, but is missing

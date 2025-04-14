@@ -85,6 +85,14 @@ public class SupportBundleHandler {
               + ". Continuing without it.");
     }
 
+    if (bundleData.components.contains(ComponentType.SystemLogs)
+        && cloudType.equals(CloudType.kubernetes)) {
+      bundleData.components.remove(ComponentType.SystemLogs);
+      log.warn(
+          "Component 'SystemLogs' is not applicable for kubernetes universes. Continuing without"
+              + " it.");
+    }
+
     if (bundleData.components.contains(ComponentType.CoreFiles) && !allowCoresCollection) {
       throw new PlatformServiceException(
           BAD_REQUEST,

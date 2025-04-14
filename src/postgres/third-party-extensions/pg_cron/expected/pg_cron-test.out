@@ -32,27 +32,27 @@ SELECT cron.schedule(repeat('a', 1000), '');
 ERROR:  invalid schedule: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Invalid input: missing parts
-SELECT cron.schedule('* * * *', 'SELECT 1'); 
+SELECT cron.schedule('* * * *', 'SELECT 1');
 ERROR:  invalid schedule: * * * *
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Invalid input: trailing characters
-SELECT cron.schedule('5 secondc', 'SELECT 1'); 
+SELECT cron.schedule('5 secondc', 'SELECT 1');
 ERROR:  invalid schedule: 5 secondc
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
-SELECT cron.schedule('50 seconds c', 'SELECT 1'); 
+SELECT cron.schedule('50 seconds c', 'SELECT 1');
 ERROR:  invalid schedule: 50 seconds c
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Invalid input: seconds out of range
-SELECT cron.schedule('-1 seconds', 'SELECT 1'); 
+SELECT cron.schedule('-1 seconds', 'SELECT 1');
 ERROR:  invalid schedule: -1 seconds
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
-SELECT cron.schedule('0 seconds', 'SELECT 1'); 
+SELECT cron.schedule('0 seconds', 'SELECT 1');
 ERROR:  invalid schedule: 0 seconds
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
-SELECT cron.schedule('60 seconds', 'SELECT 1'); 
+SELECT cron.schedule('60 seconds', 'SELECT 1');
 ERROR:  invalid schedule: 60 seconds
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
-SELECT cron.schedule('10000000000 seconds', 'SELECT 1'); 
+SELECT cron.schedule('10000000000 seconds', 'SELECT 1');
 ERROR:  invalid schedule: 10000000000 seconds
 HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Try to update pg_cron on restart
@@ -234,25 +234,25 @@ select * from public.test;
 (0 rows)
 
 -- valid interval jobs
-SELECT cron.schedule('1 second', 'SELECT 1'); 
+SELECT cron.schedule('1 second', 'SELECT 1');
  schedule 
 ----------
         1
 (1 row)
 
-SELECT cron.schedule(' 30 sEcOnDs ', 'SELECT 1'); 
+SELECT cron.schedule(' 30 sEcOnDs ', 'SELECT 1');
  schedule 
 ----------
         2
 (1 row)
 
-SELECT cron.schedule('59 seconds', 'SELECT 1'); 
+SELECT cron.schedule('59 seconds', 'SELECT 1');
  schedule 
 ----------
         3
 (1 row)
 
-SELECT cron.schedule('17  seconds ', 'SELECT 1'); 
+SELECT cron.schedule('17  seconds ', 'SELECT 1');
  schedule 
 ----------
         4

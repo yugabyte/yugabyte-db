@@ -238,7 +238,8 @@ public class PlatformInstanceController extends AuthenticatedController {
     replicationManager.saveLocalHighAvailabilityConfig(config.get());
 
     // Restore the backup.
-    if (!replicationManager.restoreBackup(backup.get())) {
+    // For K8s, restore Yba DB inline instead of restoring after restart
+    if (!replicationManager.restoreBackup(backup.get(), false /* k8sRestoreYbaDbOnRestart */)) {
       throw new PlatformServiceException(BAD_REQUEST, "Could not restore backup");
     }
 

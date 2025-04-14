@@ -194,6 +194,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private static final String CATALOG_VERSION_TABLE        = "pg_yb_catalog_version";
   private static final String MIGRATIONS_TABLE             = "pg_yb_migration";
   private static final String LOGICAL_CLIENT_VERSION_TABLE = "pg_yb_logical_client_version";
+  private static final String INVALIDATION_MESSAGES_TABLE  = "pg_yb_invalidation_messages";
 
   /** Guaranteed to be greated than any real OID, needed for sorted entities to appear at the end */
   private static final long PLACEHOLDER_OID = 1234567890L;
@@ -720,7 +721,28 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + "         WHEN stakind3 = 5 THEN stanumbers3"
           + "         WHEN stakind4 = 5 THEN stanumbers4"
           + "         WHEN stakind5 = 5 THEN stanumbers5"
-          + "     END AS elem_count_histogram"
+          + "     END AS elem_count_histogram,"
+          + "     CASE"
+          + "         WHEN stakind1 = 6 THEN stavalues1"
+          + "         WHEN stakind2 = 6 THEN stavalues2"
+          + "         WHEN stakind3 = 6 THEN stavalues3"
+          + "         WHEN stakind4 = 6 THEN stavalues4"
+          + "         WHEN stakind5 = 6 THEN stavalues5"
+          + "     END AS range_length_histogram,"
+          + "     CASE"
+          + "         WHEN stakind1 = 6 THEN stanumbers1[1]"
+          + "         WHEN stakind2 = 6 THEN stanumbers2[1]"
+          + "         WHEN stakind3 = 6 THEN stanumbers3[1]"
+          + "         WHEN stakind4 = 6 THEN stanumbers4[1]"
+          + "         WHEN stakind5 = 6 THEN stanumbers5[1]"
+          + "     END AS range_empty_frac,"
+          + "     CASE"
+          + "         WHEN stakind1 = 7 THEN stavalues1"
+          + "         WHEN stakind2 = 7 THEN stavalues2"
+          + "         WHEN stakind3 = 7 THEN stavalues3"
+          + "         WHEN stakind4 = 7 THEN stavalues4"
+          + "         WHEN stakind5 = 7 THEN stavalues5"
+          + "     END AS range_bounds_histogram"
           + " FROM pg_statistic s JOIN pg_class c ON (c.oid = s.starelid)"
           + "      JOIN pg_attribute a ON (c.oid = attrelid AND attnum = s.staattnum)"
           + "      LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)"
@@ -959,7 +981,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotent() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     upgradeCheckingIdempotency(false /* useSingleConnection */);
@@ -974,7 +996,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     // Ensures there's never more that one connection opened by an upgrade.
@@ -1039,7 +1061,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       preSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     boolean snapshot_has_pg_yb_tablegroup = false;
@@ -1248,6 +1270,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
       postSnapshot.catalog.remove(MIGRATIONS_TABLE);
       postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
+
+      // Some migration script contains a DDL such as CREATE OR REPLACE VIEW, which is
+      // not skipped when the migration script is run again (In contrast, CREATE TABLE
+      // IF NOT EXISTS will skip re-executing CREATE TABLE when run again). Re-executing
+      // the DDL will leave different rows in pg_yb_invalidation_messages.
+      preSnapshot.catalog.remove(INVALIDATION_MESSAGES_TABLE);
+      postSnapshot.catalog.remove(INVALIDATION_MESSAGES_TABLE);
 
       assertSysCatalogSnapshotsEquals(preSnapshot, postSnapshot);
     }
@@ -1940,7 +1969,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     SysCatalogSnapshot simplifiedMigratedSnapshot = simplifyCatalogSnapshot.apply(migratedSnapshot);
 
     List<String> tablesToSkip = Arrays.asList(
-      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE);
+      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE,
+      INVALIDATION_MESSAGES_TABLE);
 
     simplifiedMigratedSnapshot.catalog.forEach((tableName, migratedRows) -> {
       if (tablesToSkip.contains(tableName))

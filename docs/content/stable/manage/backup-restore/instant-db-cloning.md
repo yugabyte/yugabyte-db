@@ -27,20 +27,21 @@ Cloning has two main use cases:
 
 ## Enable database cloning
 
-To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true. Because cloning is in {{<tags/feature/ea idea="990">}} (YCQL keyspace cloning is {{<tags/feature/tp idea="990">}}), you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
+To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true.
 
-For example, to set these flags when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
+For example, to set the flag when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
 
 ```sh
---master_flags "allowed_preview_flags_csv={enable_db_clone},enable_db_clone=true"
+--master_flags "enable_db_clone=true"
 ```
 
 You can also set the runtime flags while the yb-master process is running using the yb-ts-cli [set_flag](../../../admin/yb-ts-cli/#set-flag) command as follows:
 
 ```sh
-./bin/yb-ts-cli --server-address=master_host:7100 set_flag allowed_preview_flags_csv enable_db_clone
 ./bin/yb-ts-cli --server-address=127.0.0.1:7100 set_flag enable_db_clone true
 ```
+
+Note: Database cloning is {{<tags/feature/tp idea="990">}} in versions of 2024.2 prior to v2024.2.2; to enable the feature, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
 
 ## Clone databases
 
@@ -287,7 +288,4 @@ Although creating a clone database is quick and initially doesn't take up much a
 
 ## Limitations
 
-- Cloning is not currently supported for databases that use sequences. See GitHub issue [21467](https://github.com/yugabyte/yugabyte-db/issues/21467) for tracking.
 - Cloning to a time before dropping Materialized views is not currently supported. See GitHub issue [23740](https://github.com/yugabyte/yugabyte-db/issues/23740) for tracking.
-- Cloning to a time before table rewrite operation is not currently supported. See GitHub issue [24385](https://github.com/yugabyte/yugabyte-db/issues/24385) for tracking.
-- Cloning to a time before rename of index column is not currently supported. See GitHub issue [24127](https://github.com/yugabyte/yugabyte-db/issues/24127) for tracking.

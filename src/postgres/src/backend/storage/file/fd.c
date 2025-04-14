@@ -103,6 +103,9 @@
 #include "utils/guc.h"
 #include "utils/resowner_private.h"
 
+/* YB includes */
+#include "yb_terminated_queries.h"
+
 /* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */
 #if defined(HAVE_SYNC_FILE_RANGE)
 #define PG_FLUSH_DATA_WORKS 1
@@ -2208,14 +2211,8 @@ FileWrite(File file, char *buffer, int amount, off_t offset,
 				snprintf(query_termination_message, sizeof(query_termination_message),
 						 "temporary file size exceeds temp_file_limit (%dkB)", temp_file_limit);
 
-#ifdef YB_TODO
+				yb_report_query_termination(query_termination_message, MyProcPid);
 
-				/*
-				 * Postgres changed the implemenation for stats. Need to
-				 * rework.
-				 */
-				pgstat_report_query_termination(query_termination_message, MyProcPid);
-#endif
 				ereport(ERROR,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
 						 errmsg("temporary file size exceeds temp_file_limit (%dkB)",
@@ -3455,7 +3452,6 @@ SyncDataDirectory(void)
 	 */
 	xlog_is_symlink = false;
 
-#ifndef WIN32
 	{
 		struct stat st;
 
@@ -3467,10 +3463,6 @@ SyncDataDirectory(void)
 		else if (S_ISLNK(st.st_mode))
 			xlog_is_symlink = true;
 	}
-#else
-	if (pgwin32_is_junction("pg_wal"))
-		xlog_is_symlink = true;
-#endif
 
 #ifdef HAVE_SYNCFS
 	if (recovery_init_sync_method == RECOVERY_INIT_SYNC_METHOD_SYNCFS)

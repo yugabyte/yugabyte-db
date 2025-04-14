@@ -21,6 +21,7 @@ import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../act
 import { abortTask, retryTasks } from './api';
 import { doesTaskSupportsDiffData } from '../../TaskUtils';
 import { TaskDrawerCompProps } from './dtos';
+import { TaskStates } from '../../dtos';
 
 const useStyles = makeStyles(() => ({
   root: {
@@ -103,7 +104,7 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
           {t('retry')}
         </YBButton>
       )}
-      {currentTask?.abortable && (
+      {currentTask?.abortable && currentTask?.status !== TaskStates.ABORT && (
         <YBButton
           variant="secondary"
           onClick={() => {
@@ -161,7 +162,7 @@ const AbortConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose, onSub
   );
 };
 
-const RetryConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose, onSubmit }) => {
+export const RetryConfirmModal: FC<ConfirmationModalProps> = ({ visible, onClose, onSubmit }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'taskDetails.actions'
   });

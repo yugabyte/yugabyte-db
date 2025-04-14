@@ -43,6 +43,9 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
+
 namespace yb::pggate {
 namespace {
 
@@ -307,10 +310,25 @@ class PgOperationBuffer::Impl {
     if (target.Empty()) {
       target.Reserve(buffering_settings_.max_batch_size);
     }
+    DCHECK_EQ(buffering_settings_.max_batch_size % buffering_settings_.multiple, 0);
 
     const auto& write_request = op->write_request();
     const auto& packed_rows = write_request.packed_rows();
     const auto& table_relfilenode_id = table.relfilenode_id();
+
+    const size_t payload = write_request.SerializedSize();
+    const size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
+                            FLAGS_max_buffer_size_to_rpc_limit_ratio;
+    if (keys_.size() % buffering_settings_.multiple == 0 &&
+        total_bytes_in_buffer_ + payload >= max_size) {
+      // The data size in buffer exceeds the limit, need to flush buffer.
+      // For copy on colocated tables that use fast-path transaction, we pefform the check only
+      // when the op comes from a row rather than an index. This makes the check very simple,
+      // but it should be sufficient to catch common cases where the average row size is large,
+      // causing the buffer size to exceed the RPC limit with the default batch size.
+      RETURN_NOT_OK(SendBuffer());
+    }
+
     if (!packed_rows.empty()) {
       // Optimistically assume that we don't have conflicts with existing operations.
       bool has_conflict = false;
@@ -348,6 +366,7 @@ class PgOperationBuffer::Impl {
       }
     }
     target.Add(std::move(op), table);
+    total_bytes_in_buffer_ += write_request.SerializedSize();
     return keys_.size() >= buffering_settings_.max_batch_size ? SendBuffer() : Status::OK();
   }
 
@@ -415,6 +434,7 @@ class PgOperationBuffer::Impl {
     ops_.Swap(&ops);
     txn_ops_.Swap(&txn_ops);
     keys_.swap(keys);
+    total_bytes_in_buffer_ = 0;
 
     const auto ops_count = keys.size();
     bool ops_sent = VERIFY_RESULT(SendOperations(
@@ -475,6 +495,7 @@ class PgOperationBuffer::Impl {
   BufferableOperations ops_;
   BufferableOperations txn_ops_;
   RowKeys keys_;
+  uint32_t total_bytes_in_buffer_ = 0;
   InFlightOps in_flight_ops_;
 };
 

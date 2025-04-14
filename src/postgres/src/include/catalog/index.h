@@ -17,8 +17,9 @@
 #include "catalog/objectaddress.h"
 #include "nodes/execnodes.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/tableam.h"
+
 
 #define DEFAULT_INDEX_TYPE	"btree"
 

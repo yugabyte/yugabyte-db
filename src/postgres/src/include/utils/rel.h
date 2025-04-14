@@ -28,8 +28,9 @@
 #include "utils/relcache.h"
 #include "utils/reltrigger.h"
 
-/* YB includes. */
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 
 /*
  * LockRelId and LockInfo really belong to lmgr.h, but it's more convenient

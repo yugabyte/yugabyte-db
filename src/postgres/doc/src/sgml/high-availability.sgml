@@ -648,7 +648,7 @@ protocol to make nodes agree on a serializable transactional order.
     later disconnected, the standby goes back to step 1 and tries to
     restore the file from the archive again. This loop of retries from the
     archive, <filename>pg_wal</filename>, and via streaming replication goes on until the server
-    is stopped or failover is triggered by a trigger file.
+    is stopped or is promoted.
    </para>
 
    <para>
@@ -1296,7 +1296,7 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
     <varname>synchronous_commit</varname> is set to <literal>on</literal>,
     <literal>remote_apply</literal> or <literal>remote_write</literal> will wait for
     responses from. Such transaction commits may never be completed
-    if any one of synchronous standbys should crash.
+    if any one of the synchronous standbys should crash.
    </para>
 
    <para>
@@ -1617,7 +1617,8 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
      <listitem>
       <para>
        Data Manipulation Language (DML): <command>INSERT</command>,
-       <command>UPDATE</command>, <command>DELETE</command>, <command>COPY FROM</command>,
+       <command>UPDATE</command>, <command>DELETE</command>,
+       <command>MERGE</command>, <command>COPY FROM</command>,
        <command>TRUNCATE</command>.
        Note that there are no allowed actions that result in a trigger
        being executed during recovery.  This restriction applies even to

@@ -29,6 +29,18 @@ my %defs =
 				 'populate_joinrel_with_paths'],
 	   head => make_join_rel_head()});
 
+# YB note
+# The objdump command above assumes that the postgres binary in PATH is built
+# from the source tree this pg_hint_plan extension is compiled for and that
+# the binary has the source file names with full path in it.
+# These assumptions don't hold in YB build environment so modify $srcpath to
+# point at the postgres source root.
+# TODO: This is a short term solution. The value should come from an env var, 
+#       etc. specified by the build system.
+#
+# See https://github.com/yugabyte/yugabyte-db/issues/26360.
+# 
+=begin
 open (my $in, '-|', "objdump -W `which postgres`") || die "failed to objdump";
 while (<$in>)
 {
@@ -39,6 +51,9 @@ while (<$in>)
 	}
 }
 close($in);
+=cut
+
+$srcpath = '../../';
 
 die "source path not found" if (! defined $srcpath);
 #printf("Source path = %s\n", $srcpath);
@@ -53,7 +68,7 @@ for my $fname (@sources)
 	my $f = $srcpath.$fname;
 	my $source;
 
-	open ($in, '<', $f) || die "failed to open $f: $!";
+	open (my $in, '<', $f) || die "failed to open $f: $!";
 	while (<$in>)
 	{
 		$source .= $_;

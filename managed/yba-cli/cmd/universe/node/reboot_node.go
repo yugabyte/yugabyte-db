@@ -16,8 +16,8 @@ import (
 // rebootNodeCmd represents the universe command
 var rebootNodeCmd = &cobra.Command{
 	Use:     "reboot",
-	Short:   "Reboot a node instance in YugabyteDB Anywhere universe",
-	Long:    "Reboot a node instance in YugabyteDB Anywhere universe.",
+	Short:   "Reboot a node in YugabyteDB Anywhere universe",
+	Long:    "Reboot a node in YugabyteDB Anywhere universe.",
 	Example: `yba universe node reboot --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
@@ -27,7 +27,7 @@ var rebootNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to reboot node instance"+
+				formatter.Colorize("No universe name found to reboot node"+
 					"\n", formatter.RedColor))
 		}
 		nodeName, err := cmd.Flags().GetString("node-name")

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,7 +27,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/clone/clone_state_entity.h"
@@ -170,14 +169,9 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
         deadline);
   }
 
-  // Pick tserver to execute ClonePgSchema operation
-  // TODO(Yamen): modify to choose the tserver the closest to the master leader.
-  Result<TSDescriptorPtr> PickTserver() override {
-    const auto& tservers = catalog_manager_->GetAllLiveNotBlacklistedTServers();
-    if (tservers.empty()) {
-      return STATUS_FORMAT(RuntimeError, "No live tservers available");
-    }
-    return tservers[0];
+  // Pick tserver to execute PG operations.
+  Result<TSDescriptorPtr> GetClosestLiveTserver() override {
+    return catalog_manager_->GetClosestLiveTserver();
   }
 
   TSDescriptorVector GetTservers() override {
@@ -412,7 +406,7 @@ Status CloneStateManager::ClonePgSchemaObjects(
   }
 
   // Pick one of the live tservers to send ysql_dump and ysqlsh requests to.
-  auto ts = VERIFY_RESULT(external_funcs_->PickTserver());
+  auto ts = VERIFY_RESULT(external_funcs_->GetClosestLiveTserver());
   // Deadline passed to the ClonePgSchemaTask (including rpc time and callback execution deadline)
   auto deadline = MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms;
   RETURN_NOT_OK(external_funcs_->ScheduleClonePgSchemaTask(
@@ -706,7 +700,7 @@ Status CloneStateManager::EnableDbConnections(const CloneStateInfoPtr& clone_sta
     }
     return Status::OK();
   };
-  auto ts = VERIFY_RESULT(external_funcs_->PickTserver());
+  auto ts = VERIFY_RESULT(external_funcs_->GetClosestLiveTserver());
   LOG(INFO) << Format(
       "Scheduling enable DB Connections Task for database:$0 ",
       clone_state->LockForRead()->pb.target_namespace_name());

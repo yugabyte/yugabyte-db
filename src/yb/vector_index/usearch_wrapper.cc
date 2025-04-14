@@ -155,8 +155,9 @@ class UsearchIndex :
     // Since it always allocate power of 2, we use this weird logic to make it pick minimal
     // power of 2 that is greater or equals than num_vectors.
     auto rounded_num_vectors = unum::usearch::ceil2(num_vectors);
+    auto num_members = std::max<size_t>(rounded_num_vectors * 2 / 3, 1);
     index_.reserve(unum::usearch::index_limits_t(
-        rounded_num_vectors * 2 / 3, max_concurrent_inserts + max_concurrent_reads));
+      num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
     return Status::OK();
   }
@@ -164,19 +165,28 @@ class UsearchIndex :
   Status DoInsert(VectorId vector_id, const Vector& v) {
     auto add_result = index_.add(vector_id, v.data());
     RSTATUS_DCHECK(
-        add_result, RuntimeError, "Failed to add a vector: $0", add_result.error.release());
+        add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
+        add_result.error.release());
     return Status::OK();
   }
 
-  size_t MaxVectors() const override {
+  size_t Size() const override {
+    return index_.size();
+  }
+
+  size_t Capacity() const override {
     return index_.limits().members;
   }
 
   Status DoSaveToFile(const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
     VLOG_WITH_FUNC(2) << path << ", size: " << index_.size();
-    if (!index_.save(output_file_t(path.c_str()))) {
-      return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
+    try {
+      if (!index_.save(output_file_t(path.c_str()))) {
+        return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
+      }
+    } catch(std::exception& exc) {
+      return STATUS_FORMAT(IOError, "Failed to save index to file $0: $1", path, exc.what());
     }
     return Status::OK();
   }
@@ -218,7 +228,7 @@ class UsearchIndex :
     // TODO(vector_index) do it in more efficient way
     Vector result(dimensions_);
     SCHECK_EQ(
-        index_.get(vector_id, result.data()), 1, InvalidArgument,
+        index_.get(vector_id, result.data()), 1, NotFound,
         Format("Vector $0 is missing in index", vector_id));
     return result;
   }

@@ -210,9 +210,9 @@ ERROR:  partman is not a valid partitioning type for pg_partman
 
 The pg_partman `create_parent()` function requires an access exclusive lock on the parent table to create new child partitions. Currently, access exclusive locks are not supported in YugabyteDB, and are disabled in this function.
 
-### ADVISORY LOCKS
+### Advisory locks
 
-Advisory locks, used in some pg_partman functions to create, drop/delete partitioned tables, are not supported in YugabyteDB. Attempts to acquire these locks are disabled.
+[Advisory locks](../../../transactions/explicit-locking/#advisory-locks), used in some pg_partman functions to create or drop/delete partitioned tables, are not currently supported in pg_partman in YugabyteDB. Attempts to acquire these locks are disabled.
 
 ### Background worker process
 

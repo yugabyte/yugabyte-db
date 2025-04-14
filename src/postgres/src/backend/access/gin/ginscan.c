@@ -36,10 +36,10 @@ ginbeginscan(Relation rel, int nkeys, int norderbys)
 	so = (GinScanOpaque) palloc(sizeof(GinScanOpaqueData));
 	so->keys = NULL;
 	so->nkeys = 0;
-	so->tempCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->tempCtx = AllocSetContextCreate(CurrentMemoryContext,
 										"Gin scan temporary context",
 										ALLOCSET_DEFAULT_SIZES);
-	so->keyCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->keyCtx = AllocSetContextCreate(CurrentMemoryContext,
 									   "Gin scan key context",
 									   ALLOCSET_DEFAULT_SIZES);
 	initGinState(&so->ginstate, scan->indexRelation);

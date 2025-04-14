@@ -260,10 +260,10 @@ func (server *RPCServer) SubmitTask(
 	ctx context.Context,
 	req *pb.SubmitTaskRequest,
 ) (*pb.SubmitTaskResponse, error) {
-	res := &pb.SubmitTaskResponse{}
 	taskID := req.GetTaskId()
 	username := req.GetUser()
 	cmdInput := req.GetCommandInput()
+	res := &pb.SubmitTaskResponse{TaskId: taskID}
 	if cmdInput != nil {
 		// Handle generic shell commands.
 		cmd := cmdInput.GetCommand()

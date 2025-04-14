@@ -31,12 +31,12 @@ menu:
     title="Tune performance"
     body="Optimize migration job performance using tuneable parameters with yb-voyager."
     href="performance/"
-    icon="fa-light fa-chart-line-up">}}
+    icon="fa-thin fa-chart-line-up">}}
 
    {{<index/item
     title="Diagnostics reporting"
     body="Monitor migration diagnostics securely with yb-voyager commands."
     href="diagnostics-report/"
-    icon="fa-sharp fa-light fa-stethoscope">}}
+    icon="fa-sharp fa-thin fa-stethoscope">}}
 
 {{</index/block>}}

@@ -35,6 +35,7 @@ class YBPgsqlOp;
 
 namespace tserver {
 
+class DbServerBase;
 class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
@@ -45,7 +46,10 @@ class PgResponseCache;
 class PgSequenceCache;
 class PgSharedMemoryPool;
 class SharedExchange;
+class SharedMemoryManager;
 class SharedMemorySegmentHandle;
+class TSLocalLockManager;
+using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 class TSTabletManager;
 class TableMutationCountSender;
 class TabletPeerLookupIf;

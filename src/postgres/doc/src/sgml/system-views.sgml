@@ -2927,15 +2927,36 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
       <para>
        The last sequence value written to disk.  If caching is used,
        this value can be greater than the last value handed out from the
-       sequence.  Null if the sequence has not been read from yet.  Also, if
-       the current user does not have <literal>USAGE</literal>
-       or <literal>SELECT</literal> privilege on the sequence, the value is
-       null.
+       sequence.
       </para></entry>
      </row>
     </tbody>
    </tgroup>
   </table>
+
+  <para>
+   The <structfield>last_value</structfield> column will read as null if any of
+   the following are true:
+   <itemizedlist>
+    <listitem>
+     <para>
+      The sequence has not been read from yet.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The current user does not have <literal>USAGE</literal> or
+      <literal>SELECT</literal> privilege on the sequence.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The sequence is unlogged and the server is a standby.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
  </sect1>
 
  <sect1 id="view-pg-settings">
@@ -3712,6 +3733,45 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
        non-null elements.  (Null for scalar types.)
       </para></entry>
      </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>range_length_histogram</structfield> <type>anyarray</type>
+      </para>
+      <para>
+       A histogram of the lengths of non-empty and non-null range values of a
+       range type column. (Null for non-range types.)
+      </para>
+      <para>
+       This histogram is calculated using the <literal>subtype_diff</literal>
+       range function regardless of whether range bounds are inclusive.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>range_empty_frac</structfield> <type>float4</type>
+      </para>
+      <para>
+       Fraction of column entries whose values are empty ranges.
+       (Null for non-range types.)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>range_bounds_histogram</structfield> <type>anyarray</type>
+      </para>
+      <para>
+       A histogram of lower and upper bounds of non-empty and non-null range
+       values. (Null for non-range types.)
+      </para>
+      <para>
+       These two histograms are represented as a single array of ranges, whose
+       lower bounds represent the histogram of lower bounds, and upper bounds
+       represent the histogram of upper bounds.
+      </para></entry>
+     </row>
     </tbody>
    </tgroup>
   </table>
@@ -3741,7 +3801,7 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
    and <link linkend="catalog-pg-statistic-ext-data"><structname>pg_statistic_ext_data</structname></link>
    catalogs.  This view allows access only to rows of
    <link linkend="catalog-pg-statistic-ext"><structname>pg_statistic_ext</structname></link> and <link linkend="catalog-pg-statistic-ext-data"><structname>pg_statistic_ext_data</structname></link>
-   that correspond to tables the user has permission to read, and therefore
+   that correspond to tables the user owns, and therefore
    it is safe to allow public read access to this view.
   </para>
 
@@ -3952,7 +4012,7 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
    and <link linkend="catalog-pg-statistic-ext-data"><structname>pg_statistic_ext_data</structname></link>
    catalogs.  This view allows access only to rows of
    <link linkend="catalog-pg-statistic-ext"><structname>pg_statistic_ext</structname></link> and <link linkend="catalog-pg-statistic-ext-data"><structname>pg_statistic_ext_data</structname></link>
-   that correspond to tables the user has permission to read, and therefore
+   that correspond to tables the user owns, and therefore
    it is safe to allow public read access to this view.
   </para>
 

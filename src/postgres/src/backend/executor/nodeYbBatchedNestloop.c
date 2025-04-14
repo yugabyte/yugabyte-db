@@ -33,10 +33,10 @@
 
 #include <math.h>
 
+#include "access/relation.h"
 #include "executor/execdebug.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBatchedNestloop.h"
-#include "access/relation.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/tuplesort.h"
@@ -206,7 +206,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 				elog(DEBUG2, "rescanning inner plan");
 				ExecReScan(innerPlan);
 
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BNL_NEWINNER:
 				/*
 				 * we have an outerTuple batch, try to get the next inner tuple.
@@ -227,7 +227,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 
 				bnlstate->bnl_currentstatus = BNL_MATCHING;
 
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BNL_MATCHING:
 				Assert(!TupIsNull(econtext->ecxt_innertuple));
 
@@ -523,7 +523,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->js.ps.inneropsset = inneropsset;
 
 	/* Per batch memory context for the hash table to work with */
-	MemoryContext tablecxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext tablecxt = AllocSetContextCreate(CurrentMemoryContext,
 												   "BNL_HASHTABLE",
 												   ALLOCSET_DEFAULT_SIZES);
 

@@ -24,24 +24,29 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
-
 #include "access/genam.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "catalog/pg_type.h"
-
 #include "pgstat.h"
 #include "utils/memutils.h"
+#include "ybvector.h"
 
 /*
  * Bind search keys to the ANN scan. These include
  * - the query vector
  * - the prefetch size (how many nearest neighbours we expect to return)
  */
-static void bindAnnSearchKeys(IndexScanDesc scan, Relation rel, int nkeys,
-							  int norderbys, YbVectorScanOpaque so)
+static void bindAnnSearchKeys(YbScanDesc yb_scan, IndexScanDesc scan,
+							  Relation rel, int nkeys, int norderbys,
+							  YbVectorScanOpaque so)
 {
+	if (scan->orderByData->sk_flags & SK_ISNULL)
+	{
+		yb_scan->quit_scan = true;
+		return;
+	}
+
 	int ind_dim = TupleDescAttr(scan->indexRelation->rd_att, 0)->atttypmod;
 	int vec_dim = ((Vector*) scan->orderByData->sk_argument)->dim;
 	if (ind_dim != vec_dim)
@@ -110,7 +115,8 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 		memmove(scan->orderByData, orderbys, scan->numberOfOrderBys * sizeof(ScanKeyData));
 
 	if (norderbys > 0)
-		bindAnnSearchKeys(scan, scan->heapRelation, nscankeys, norderbys, so);
+		bindAnnSearchKeys(ybScan, scan, scan->heapRelation, nscankeys,
+						  norderbys, so);
 
 	so->first = true;
 }

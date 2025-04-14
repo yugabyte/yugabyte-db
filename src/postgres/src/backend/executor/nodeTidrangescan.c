@@ -24,7 +24,7 @@
 #include "storage/bufmgr.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "utils/builtins.h"
 
 
@@ -78,13 +78,13 @@ MakeTidOpExpr(OpExpr *expr, TidRangeScanState *tidstate)
 	{
 		case TIDLessEqOperator:
 			tidopexpr->inclusive = true;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case TIDLessOperator:
 			tidopexpr->exprtype = invert ? TIDEXPR_LOWER_BOUND : TIDEXPR_UPPER_BOUND;
 			break;
 		case TIDGreaterEqOperator:
 			tidopexpr->inclusive = true;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case TIDGreaterOperator:
 			tidopexpr->exprtype = invert ? TIDEXPR_UPPER_BOUND : TIDEXPR_LOWER_BOUND;
 			break;

@@ -57,7 +57,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --num-volumes ints                                 [Optional] Number of volumes to be mounted on this instance at the default path. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [1,1])
       --volume-size ints                                 [Optional] The size of each volume in each instance. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [100,100])
       --mount-points stringArray                         [Optional] Disk mount points. Provide comma-separated strings for each cluster as a separate flag, in the following format: "--mount-points 'mount-point-1-for-primary-cluster,mount-point-2-for-primary-cluster' --mount-points 'mount-point-1-for-read-replica,mount-point-2-for-read-replica'". Defaults to null for aws, azure, gcp. Fetches the first available instance mount points for onprem providers.
-      --storage-type stringArray                         [Optional] Storage type (EBS for AWS) used for this instance. Provide the storage type  of volumes for each cluster as a separate flag. Defaults to "GP3" for aws, "Premium_LRS" for azure and "Persistent" for gcp.
+      --storage-type stringArray                         [Optional] Storage type (EBS for AWS) used for this instance. Provide the storage type  of volumes for each cluster as a separate flag. Run "yba provider [aws/azure/gcp] instance-type supported-storage" to check list of supported storage types. Defaults to "GP3" for aws, "Premium_LRS" for azure and "Persistent" for gcp.
       --storage-class stringArray                        [Optional] Name of the storage class, supported for Kubernetes. Provide the storage type of volumes for each cluster as a separate flag. Defaults to "standard".
       --disk-iops ints                                   [Optional] Desired IOPS for the volumes mounted on this instance, supported only for AWS. Provide the number of volumes for each cluster as a separate flag or as comma separated values. (default [3000,3000])
       --throughput ints                                  [Optional] Desired throughput for the volumes mounted on this instance in MB/s, supported only for AWS. Provide throughput for each cluster as a separate flag or as comma separated values. (default [125,125])
@@ -72,8 +72,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --dedicated-master-storage-class string            [Optional] Name of the storage class for the master instance. Defaults to "standard".
       --dedicated-master-disk-iops int                   [Optional] Desired IOPS for the volumes mounted on this instance, supported only for AWS. (default 3000)
       --dedicated-master-throughput int                  [Optional] Desired throughput for the volumes mounted on this instance in MB/s, supported only for AWS. (default 125)
-      --k8s-master-mem-size float64Slice                 [Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size for each cluster as a separate flag or as comma separated values. (default [4.000000,4.000000])
-      --k8s-master-cpu-core-count float64Slice           [Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count for each cluster as a separate flag or as comma separated values. (default [2.000000,2.000000])
+      --k8s-master-mem-size float                        [Optional] Memory size of the kubernetes master node in GB. (default 4)
+      --k8s-master-cpu-core-count float                  [Optional] CPU core count of the kubernetes master node. (default 2)
       --use-spot-instance                                [Optional] Use spot instances for cloud provider based universe nodes. (default false)
       --spot-price float                                 [Optional] Max price willing to pay for spot instances.
       --assign-public-ip                                 [Optional] Assign Public IPs to the DB servers for connections over the internet. (default true)
@@ -108,6 +108,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --yql-server-rpc-port int                          [Optional] YQL Server RPC Port. (default 9042)
       --ysql-server-http-port int                        [Optional] YSQL Server HTTP Port. (default 13000)
       --ysql-server-rpc-port int                         [Optional] YSQL Server RPC Port. (default 5433)
+      --connection-pooling string                        This is a preview flag (may change in future). [Optional] Connection Pooling setting for the universe. Enable "yb.universe.allow_connection_pooling" runtime configuration to allow enabling connection pooling in universes. Allowed values: enable, disable. (default "disable")
+      --internal-ysql-server-rpc-port int                This is a preview flag (may change in future). [Optional] Internal YSQL Server RPC Port used when connection pooling is enabled. (default 6433)
   -h, --help                                             help for create
 ```
 
@@ -115,10 +117,13 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
 
 ```
   -a, --apiToken string    YugabyteDB Anywhere api token.
-      --config string      Config file, defaults to $HOME/.yba-cli.yaml
+      --ca-cert string     CA certificate file path for secure connection to YugabyteDB Anywhere. Required when the endpoint is https and --insecure is not set.
+      --config string      Full path to a specific configuration file for YBA CLI. If provided, this takes precedence over the directory specified via --directory, and the generated files are added to the same path. If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.
       --debug              Use debug mode, same as --logLevel debug.
+      --directory string   Directory containing YBA CLI configuration and generated files. If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. Defaults to '$HOME/.yba-cli/'.
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
+      --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)

@@ -118,7 +118,6 @@
 
 #include "access/transam.h"
 #include "access/xact.h"
-#include "common/pg_yb_common.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
@@ -134,9 +133,11 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 
-/*  YB includes. */
+/* YB includes */
+#include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 #include "ybgate/ybgate_status.h"
+
 
 /* In this module, access gettext() via err_gettext() */
 #undef _
@@ -222,11 +223,6 @@ typedef struct YbgErrorData
 	int			nargs;
 	int			argsize;
 	int			sqlerrcode;		/* encoded ERRSTATE */
-	uint16_t	yb_txn_errcode; /* YB transaction error cast to uint16, as
-								 * returned by static_cast of
-								 * TransactionErrorTag::Decode of
-								 * Status::ErrorData(TransactionErrorTag::kCategory)
-								 * */
 	const char *filename;		/* __FILE__ of ereport() call */
 	int			lineno;			/* __LINE__ of ereport() call */
 	const char *funcname;		/* __func__ of ereport() call */
@@ -876,7 +872,7 @@ errfinish(const char *filename, int lineno, const char *funcname)
 		CritSectionCount = 0;	/* should be unnecessary, but... */
 
 		/*
-		 * Note that we leave GetCurrentMemoryContext() set to ErrorContext. The
+		 * Note that we leave CurrentMemoryContext set to ErrorContext. The
 		 * handler should reset it to something else soon.
 		 */
 
@@ -1031,18 +1027,20 @@ errcode(int sqlerrcode)
 }
 
 int
-yb_txn_errcode(uint16_t txn_errcode)
+yb_external_errcode(int sqlerrcode)
 {
-	RETURN_IF_MULTITHREADED_MODE();
+	if (yb_enable_extended_sql_codes)
+		return sqlerrcode;
 
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+	if (sqlerrcode == ERRCODE_YB_TXN_ABORTED ||
+		sqlerrcode == ERRCODE_YB_RESTART_READ ||
+		sqlerrcode == ERRCODE_YB_TXN_CONFLICT)
+		return ERRCODE_T_R_SERIALIZATION_FAILURE;
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+	if (sqlerrcode == ERRCODE_YB_DEADLOCK)
+		return ERRCODE_T_R_DEADLOCK_DETECTED;
 
-	edata->yb_txn_errcode = txn_errcode;
-
-	return 0;					/* return value does not matter */
+	return sqlerrcode;
 }
 
 /*
@@ -1097,6 +1095,10 @@ errcode_for_file_access(void)
 			/* Insufficient resources */
 		case ENOSPC:			/* No space left on device */
 			edata->sqlerrcode = ERRCODE_DISK_FULL;
+			break;
+
+		case ENOMEM:			/* Out of memory */
+			edata->sqlerrcode = ERRCODE_OUT_OF_MEMORY;
 			break;
 
 		case ENFILE:			/* File table overflow */
@@ -2071,7 +2073,7 @@ static ErrorData *
 ybg_status_to_edata(void)
 {
 	YbgStatus	ybg_status = YBCPgGetThreadLocalErrStatus();
-	MemoryContext mctx = GetCurrentMemoryContext();
+	MemoryContext mctx = CurrentMemoryContext;
 
 	/*
 	 * In multi-thread mode current memory context may be null, as well as the
@@ -2161,13 +2163,27 @@ CopyErrorData(void)
 	 */
 	CHECK_STACK_DEPTH();
 
-	Assert(GetCurrentMemoryContext() != ErrorContext);
+	Assert(CurrentMemoryContext != ErrorContext);
 
 	/* Copy the struct itself */
 	newedata = (ErrorData *) palloc(sizeof(ErrorData));
 	memcpy(newedata, edata, sizeof(ErrorData));
 
-	/* Make copies of separately-allocated fields */
+	/*
+	 * Make copies of separately-allocated strings.  Note that we copy even
+	 * theoretically-constant strings such as filename.  This is because those
+	 * could point into JIT-created code segments that might get unloaded at
+	 * transaction cleanup.  In some cases we need the copied ErrorData to
+	 * survive transaction boundaries, so we'd better copy those strings too.
+	 */
+	if (newedata->filename)
+		newedata->filename = pstrdup(newedata->filename);
+	if (newedata->funcname)
+		newedata->funcname = pstrdup(newedata->funcname);
+	if (newedata->domain)
+		newedata->domain = pstrdup(newedata->domain);
+	if (newedata->context_domain)
+		newedata->context_domain = pstrdup(newedata->context_domain);
 	if (newedata->message)
 		newedata->message = pstrdup(newedata->message);
 	if (newedata->detail)
@@ -2180,6 +2196,8 @@ CopyErrorData(void)
 		newedata->context = pstrdup(newedata->context);
 	if (newedata->backtrace)
 		newedata->backtrace = pstrdup(newedata->backtrace);
+	if (newedata->message_id)
+		newedata->message_id = pstrdup(newedata->message_id);
 	if (newedata->schema_name)
 		newedata->schema_name = pstrdup(newedata->schema_name);
 	if (newedata->table_name)
@@ -2202,7 +2220,7 @@ CopyErrorData(void)
 	}
 
 	/* Use the calling context for string allocation */
-	newedata->assoc_context = GetCurrentMemoryContext();
+	newedata->assoc_context = CurrentMemoryContext;
 
 	return newedata;
 }
@@ -2546,7 +2564,7 @@ GetErrorContextStack(void)
 	 * Set up assoc_context to be the caller's context, so any allocations
 	 * done (which will include edata->context) will use their context.
 	 */
-	edata->assoc_context = GetCurrentMemoryContext();
+	edata->assoc_context = CurrentMemoryContext;
 
 	/*
 	 * Call any context callback functions to collect the context information
@@ -2842,13 +2860,13 @@ write_eventlog(int level, const char *line, int len)
 	 *
 	 * Since we palloc the structure required for conversion, also fall
 	 * through to writing unconverted if we have not yet set up
-	 * GetCurrentMemoryContext().
+	 * CurrentMemoryContext.
 	 *
 	 * Also verify that we are not on our way into error recursion trouble due
 	 * to error messages thrown deep inside pgwin32_message_to_UTF16().
 	 */
 	if (!in_error_recursion_trouble() &&
-		GetCurrentMemoryContext() != NULL &&
+		CurrentMemoryContext != NULL &&
 		GetMessageEncoding() != GetACPEncoding())
 	{
 		utf16 = pgwin32_message_to_UTF16(line, len, NULL);
@@ -2903,11 +2921,11 @@ write_console(const char *line, int len)
 	 *
 	 * Since we palloc the structure required for conversion, also fall
 	 * through to writing unconverted if we have not yet set up
-	 * GetCurrentMemoryContext().
+	 * CurrentMemoryContext.
 	 */
 	if (!in_error_recursion_trouble() &&
 		!redirection_done &&
-		GetCurrentMemoryContext() != NULL)
+		CurrentMemoryContext != NULL)
 	{
 		WCHAR	   *utf16;
 		int			utf16len;
@@ -3244,12 +3262,12 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				{
 					char		strfbuf[128];
 
-					snprintf(strfbuf, sizeof(strfbuf) - 1, "%lx.%x",
-							 (long) (MyStartTime), MyProcPid);
+					snprintf(strfbuf, sizeof(strfbuf) - 1, "%" INT64_MODIFIER "x.%x",
+							 MyStartTime, MyProcPid);
 					appendStringInfo(buf, "%*s", padding, strfbuf);
 				}
 				else
-					appendStringInfo(buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
+					appendStringInfo(buf, "%" INT64_MODIFIER "x.%x", MyStartTime, MyProcPid);
 				break;
 			case 'p':
 				if (padding != 0)
@@ -4165,6 +4183,34 @@ write_stderr(const char *fmt,...)
 
 
 /*
+ * Write a message to STDERR using only async-signal-safe functions.  This can
+ * be used to safely emit a message from a signal handler.
+ *
+ * TODO: It is likely possible to safely do a limited amount of string
+ * interpolation (e.g., %s and %d), but that is not presently supported.
+ */
+void
+write_stderr_signal_safe(const char *str)
+{
+	int			nwritten = 0;
+	int			ntotal = strlen(str);
+
+	while (nwritten < ntotal)
+	{
+		int			rc;
+
+		rc = write(STDERR_FILENO, str + nwritten, ntotal - nwritten);
+
+		/* Just give up on error.  There isn't much else we can do. */
+		if (rc == -1)
+			return;
+
+		nwritten += rc;
+	}
+}
+
+
+/*
  * Adjust the level of a recovery-related message per trace_recovery_messages.
  *
  * The argument is the default log level of the message, eg, DEBUG2.  (This
@@ -4235,8 +4281,8 @@ yb_additional_errmsg(const char *fmt,...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	Assert(GetCurrentMemoryContext() == edata->assoc_context ||
-		   GetCurrentMemoryContext() == ErrorContext);
+	Assert(CurrentMemoryContext == edata->assoc_context ||
+		   CurrentMemoryContext == ErrorContext);
 	EVALUATE_MESSAGE(edata->domain, message, true /* appendval */ ,
 					 false /* translateit */ );
 }

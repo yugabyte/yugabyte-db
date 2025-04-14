@@ -22,6 +22,8 @@ var TableCmd = &cobra.Command{
 }
 
 func init() {
+	TableCmd.Flags().SortFlags = false
+
 	TableCmd.AddCommand(listTableCmd)
 	TableCmd.AddCommand(describeTableCmd)
 	TableCmd.AddCommand(namespace.NamespaceCmd)

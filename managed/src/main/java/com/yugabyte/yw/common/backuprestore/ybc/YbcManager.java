@@ -11,7 +11,6 @@ import com.google.inject.Singleton;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.FileHelperService;
@@ -49,7 +48,6 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -274,7 +272,7 @@ public class YbcManager {
     String certFile = universe.getCertificateNodetoNode();
     UUID providerUUID = UUID.fromString(c.userIntent.provider);
     List<String> tsIPs =
-        tsNodes.parallelStream().map(nD -> nD.cloudInfo.private_ip).collect(Collectors.toList());
+        tsNodes.stream().map(nD -> nD.cloudInfo.private_ip).collect(Collectors.toList());
 
     YbcClient ybcClient = null;
     Map<FieldDescriptor, Object> currentThrottleParamsMap = null;
@@ -869,7 +867,7 @@ public class YbcManager {
       nodeIPs = nodeIPListOverride;
     } else {
       nodeIPs.addAll(
-          universe.getRunningTserversInPrimaryCluster().parallelStream()
+          universe.getRunningTserversInPrimaryCluster().stream()
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }
@@ -1008,7 +1006,7 @@ public class YbcManager {
     String architecture =
         kubernetesManagerFactory
             .getManager()
-            .performYbcAction(
+            .executeCommandInPodContainer(
                 config,
                 nodeDetails.cloudInfo.kubernetesNamespace,
                 nodeDetails.cloudInfo.kubernetesPodName,
@@ -1084,7 +1082,7 @@ public class YbcManager {
       Map<String, String> config, NodeDetails nodeDetails, List<String> commandArgs) {
     kubernetesManagerFactory
         .getManager()
-        .performYbcAction(
+        .executeCommandInPodContainer(
             config,
             nodeDetails.cloudInfo.kubernetesNamespace,
             nodeDetails.cloudInfo.kubernetesPodName,
@@ -1183,10 +1181,6 @@ public class YbcManager {
     params.rootCA = universe.getUniverseDetails().rootCA;
     params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
     params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
-
-    if (UniverseTaskBase.isYsqlMajorUpgradeStateInPreFinalizeState(universe, gFlagsValidation)) {
-      params.ysqlMajorVersionUpgradeState = YsqlMajorVersionUpgradeState.PRE_FINALIZE;
-    }
 
     // Add testing flag.
     params.itestS3PackagePath = universe.getUniverseDetails().itestS3PackagePath;

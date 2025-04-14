@@ -48,14 +48,14 @@ namespace {
 void StatementsPathHandler(shared_ptr<CQLServiceImpl> service,
                      const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::PRETTY);
+  JsonWriter jw(output, JsonWriter::PRETTY_ESCAPE_STR);
   service->DumpStatementMetricsAsJson(&jw);
 }
 
 void ResetStatementsPathHandler(shared_ptr<CQLServiceImpl> service,
                                 const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::PRETTY);
+  JsonWriter jw(output, JsonWriter::PRETTY_ESCAPE_STR);
 
   jw.StartObject();
   jw.String("statements");

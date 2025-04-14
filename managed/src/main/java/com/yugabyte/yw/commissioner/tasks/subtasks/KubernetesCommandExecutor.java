@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
@@ -40,6 +41,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -55,6 +57,9 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.UpgradeDetails;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
@@ -182,6 +187,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private final ReleaseManager releaseManager;
   private final FileHelperService fileHelperService;
   private final YbcManager ybcManager;
+  private final OtelCollectorConfigGenerator otelCollectorConfigGenerator;
 
   @Inject
   protected KubernetesCommandExecutor(
@@ -189,12 +195,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       KubernetesManagerFactory kubernetesManagerFactory,
       ReleaseManager releaseManager,
       FileHelperService fileHelperService,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      OtelCollectorConfigGenerator otelCollectorConfigGenerator) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.releaseManager = releaseManager;
     this.fileHelperService = fileHelperService;
     this.ybcManager = ybcManager;
+    this.otelCollectorConfigGenerator = otelCollectorConfigGenerator;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -227,6 +235,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String newDiskSize;
     public boolean useNewTserverDiskSize;
     public boolean useNewMasterDiskSize;
+    public YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -252,6 +261,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public boolean usePreviousGflagsChecksum = false;
     public boolean createNamespacedService = false;
     public Set<String> deleteServiceNames;
+    // Opentelemetry collector related params
+    public AuditLogConfig auditLogConfig = null;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
 
@@ -753,7 +764,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
-    Yaml yaml = new Yaml();
+    Yaml yaml = new Yaml(new SkipNullRepresenter());
 
     // TODO: decide if the user wants to expose all the services or just master.
     overrides = yaml.load(environment.resourceAsStream("k8s-expose-all.yml"));
@@ -1216,6 +1227,32 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .equals("true")) {
       masterGFlags.put(GFlagsUtil.MASTER_JOIN_EXISTING_UNIVERSE, "true");
     }
+    if (primaryClusterIntent.enableYSQL) {
+      if (primaryClusterIntent.enableYSQLAuth) {
+        masterGFlags.put("ysql_enable_auth", "true");
+        if (masterGFlags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)
+            && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+          /*
+           * Preprocess the ysql_hba_conf_csv flag for IdP specific use case.
+           * Refer Design Doc:
+           * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
+           */
+          GFlagsUtil.processHbaConfFlagIfRequired(
+              null, masterGFlags, confGetter, taskUniverseDetails.getUniverseUUID());
+        }
+        GFlagsUtil.mergeCSVs(
+            masterGFlags,
+            Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust"),
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            false);
+        masterGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
+      }
+      if (taskParams().ysqlMajorVersionUpgradeState != null
+          && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+              taskParams().ysqlMajorVersionUpgradeState)) {
+        masterGFlags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
+      }
+    }
     if (!masterGFlags.isEmpty()) {
       gflagOverrides.put("master", masterGFlags);
     }
@@ -1241,12 +1278,25 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // If given, use it as an override.
         int internalYsqlServerRpcPort = DEFAULT_INTERNAL_YSQL_SERVER_RPC_PORT;
         tserverGFlags.put("enable_ysql_conn_mgr", "true");
-        tserverGFlags.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
+        String ybdbVersion = userIntent.ybSoftwareVersion;
+        if (Util.compareYBVersions(
+                ybdbVersion,
+                Util.CONNECTION_POOLING_DB_PREVIEW_FLAG_STABLE_VERSION,
+                Util.CONNECTION_POOLING_DB_PREVIEW_FLAG_PREVIEW_VERSION,
+                true)
+            < 0) {
+          tserverGFlags.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
+        }
         tserverGFlags.put("ysql_conn_mgr_port", String.valueOf(ysqlServerRpcPort));
         tserverGFlags.put(
             "pgsql_proxy_bind_address",
             (primaryClusterIntent.enableIPV6 ? "[::]:" : "0.0.0.0:")
                 + String.valueOf(internalYsqlServerRpcPort));
+      }
+      if (taskParams().ysqlMajorVersionUpgradeState != null
+          && UpgradeDetails.ALLOWED_UPGRADE_STATE_TO_SET_COMPATIBILITY_FLAG.contains(
+              taskParams().ysqlMajorVersionUpgradeState)) {
+        tserverGFlags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, "11");
       }
     }
 
@@ -1256,8 +1306,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     tserverGFlags.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
     if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
       tserverGFlags.put("ysql_enable_auth", "true");
-      Map<String, String> DEFAULT_YSQL_HBA_CONF_MAP =
-          Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
       if (tserverGFlags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)
           && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
         /*
@@ -1275,7 +1323,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 : taskUniverseDetails.getPrimaryCluster().uuid);
       }
       GFlagsUtil.mergeCSVs(
-          tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV, false);
+          tserverGFlags,
+          Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust"),
+          GFlagsUtil.YSQL_HBA_CONF_CSV,
+          false);
       tserverGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
@@ -1317,6 +1368,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           tserverGFlags, TIMESTAMP_HISTORY_RETENTION_GFLAG_MAP);
     }
 
+    // Add overrides for OpenTelemetry
+    if (primaryClusterIntent.auditLogConfig != null) {
+      AuditLogConfig auditLogConfig = primaryClusterIntent.auditLogConfig;
+      tserverGFlags.put(
+          GFlagsUtil.YSQL_PG_CONF_CSV,
+          GFlagsUtil.mergeCSVs(
+              tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
+              GFlagsUtil.getYsqlPgConfCsv(auditLogConfig),
+              true));
+      overrides.put(
+          "otelCollector",
+          otelCollectorConfigGenerator.getOtelHelmValues(
+              auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
+    }
+
     if (!tserverGFlags.isEmpty()) {
       gflagOverrides.put("tserver", tserverGFlags);
     }
@@ -1325,6 +1392,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("gflags", gflagOverrides);
     }
 
+    Map<String, Object> masterOverrides = new HashMap<>();
+    Map<String, Object> tserverOverrides = new HashMap<>();
+
     // Gflags checksum override
     if (taskParams().usePreviousGflagsChecksum) {
       if (MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
@@ -1332,14 +1402,32 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
       String masterGflagsChecksum =
           taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.MASTER, "");
+      masterOverrides.put("gflagsChecksum", masterGflagsChecksum);
       String tserverGflagsChecksum =
           taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.TSERVER, "");
-      Map<String, Object> masterOverrides = new HashMap<>();
-      masterOverrides.put("gflagsChecksum", masterGflagsChecksum);
-      overrides.put("master", masterOverrides);
-
-      Map<String, Object> tserverOverrides = new HashMap<>();
       tserverOverrides.put("gflagsChecksum", tserverGflagsChecksum);
+    }
+
+    if (taskParams().ysqlMajorVersionUpgradeState != null
+        && taskParams()
+            .ysqlMajorVersionUpgradeState
+            .equals(YsqlMajorVersionUpgradeState.IN_PROGRESS)) {
+      List<Object> masterExtraEnv = new ArrayList<>();
+      masterExtraEnv.add(
+          ImmutableMap.of(
+              "name",
+              "PGPASSFILE",
+              "value",
+              Util.getDataDirectoryPath(
+                      universeFromDB, universeFromDB.getMasterLeaderNode(), this.config)
+                  + "/yw-data/.pgpass"));
+      masterOverrides.put("extraEnv", masterExtraEnv);
+    }
+
+    if (!masterOverrides.isEmpty()) {
+      overrides.put("master", masterOverrides);
+    }
+    if (!tserverOverrides.isEmpty()) {
       overrides.put("tserver", tserverOverrides);
     }
 

@@ -40,7 +40,7 @@ type: indexpage
 
   {{<index/item
     title="Review common error messages"
-    body="Familiarize yourself with error messages that are common to all YugabytDB components."
+    body="Familiarize yourself with error messages that are common to all YugabyteDB components."
     href="trouble-common/"
     icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 

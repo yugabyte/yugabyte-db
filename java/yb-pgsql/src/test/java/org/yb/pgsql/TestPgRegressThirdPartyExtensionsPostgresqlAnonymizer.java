@@ -24,12 +24,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
 import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBTestRunnerNonTsanAsan;
+import org.yb.YBTestRunner;
 
-/**
- * TODO: Fix memory leaks in postgresql_anonymizer and enable ASAN tests
- */
-@RunWith(value=YBTestRunnerNonTsanAsan.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BasePgRegressTest {
 
   private static final File regress_schedule = new File(
@@ -62,5 +59,10 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
   @Test
   public void schedule2() throws Exception {
     runPgRegressTest(regress_schedule, "yb_schedule_2");
+  }
+
+  @Test
+  public void schedule3() throws Exception {
+    runPgRegressTest(regress_schedule, "yb_schedule_3");
   }
 }

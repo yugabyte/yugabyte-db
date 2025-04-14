@@ -21,7 +21,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 bool
@@ -36,8 +36,11 @@ YbRaiseAdvisoryLocksNotSupported(void)
 	if (!yb_silence_advisory_locks_not_supported_error)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("advisory locks are not yet implemented"),
-				 errhint("If the app doesn't need strict functionality, this error can be silenced "
+				 errmsg("advisory locks feature is currently in preview"),
+				 errhint("To enable this preview feature, set the GFlag "
+						 "ysql_yb_enable_advisory_locks to true and add it to the list of "
+						 "allowed preview flags i.e. GFlag allowed_preview_flags_csv. "
+						 "If the app doesn't need strict functionality, this error can be silenced "
 						 "by using the GFlag yb_silence_advisory_locks_not_supported_error. "
 						 "See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.")));
 }
@@ -58,11 +61,26 @@ GetYBAdvisoryLockId(LOCKTAG tag)
 	return lock;
 }
 
+/*  Returns true if lock is released, false if lock is not found. */
+bool
+HandleStatusIgnoreLockNotFound(YbcStatus status, YbcAdvisoryLockMode mode)
+{
+	if (status && YBCStatusPgsqlError(status) == ERRCODE_YB_TXN_LOCK_NOT_FOUND)
+	{
+		const char *lock_type = (mode == YB_ADVISORY_LOCK_SHARED) ? "ShareLock" : "ExclusiveLock";
+		elog(WARNING, "you don't own a lock of type %s", lock_type);
+		YBCFreeStatus(status);
+		return false;
+	}
+	HandleYBStatus(status);
+	return true;
+}
+
 /*  Returns true if lock is acquired, false if lock is skipped. */
 bool
 HandleStatusIgnoreSkipLocking(YbcStatus status)
 {
-	if (status && YBCIsTxnSkipLockingError(YBCStatusTransactionError(status)))
+	if (status && YBCStatusPgsqlError(status) == ERRCODE_YB_TXN_SKIP_LOCKING)
 	{
 		YBCFreeStatus(status);
 		return false;
@@ -93,8 +111,8 @@ do { \
 #define ReleaseYBAdvisoryLock(tag, mode) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
-		PG_RETURN_BOOL(HandleStatusIgnoreSkipLocking( \
-			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode))); \
+		PG_RETURN_BOOL(HandleStatusIgnoreLockNotFound( \
+			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode), mode)); \
 	YbRaiseAdvisoryLocksNotSupported(); \
 } while(0)
 

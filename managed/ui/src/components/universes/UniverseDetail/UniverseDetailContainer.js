@@ -20,7 +20,7 @@ import {
   abortTaskResponse,
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure
+  fetchCustomerTasksFailure,
 } from '../../../actions/tasks';
 import {
   fetchRunTimeConfigs,

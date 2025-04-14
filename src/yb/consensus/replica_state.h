@@ -39,6 +39,7 @@
 #include <vector>
 
 #include <boost/atomic.hpp>
+#include <boost/function.hpp>
 
 #include "yb/common/hybrid_time.h"
 
@@ -62,9 +63,6 @@ class ThreadPool;
 namespace consensus {
 
 class RetryableRequests;
-
-YB_DEFINE_ENUM(SetMajorityReplicatedLeaseExpirationFlag,
-               (kResetOldLeaderLease)(kResetOldLeaderHtLease));
 
 YB_STRONGLY_TYPED_BOOL(CouldStop);
 
@@ -123,7 +121,7 @@ class ReplicaState {
 
   ~ReplicaState();
 
-  Status StartUnlocked(const OpIdPB& last_in_wal);
+  Status StartUnlocked(const OpId& last_in_wal);
 
   // Should be used only to assert that the update_lock_ is held.
   bool IsLocked() const WARN_UNUSED_RESULT;
@@ -374,29 +372,34 @@ class ReplicaState {
   // The update_lock_ must be held.
   ReplicaState::State state() const;
 
-  // Update the point in time we have to wait until before starting to act as a leader in case
+  // Update the point in time we have to wait until we can start acting as a leader in case
   // we win an election.
   void UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
-      const CoarseTimeLease& lease, const PhysicalComponentLease& ht_lease);
+      const CoarseTimeLeaseUpdate& lease, const PhysicalComponentLeaseUpdate& ht_lease);
+
+  void UpdateOldLeaderLeaseExpirationAfterElectionUnlocked(
+      const std::vector<CoarseTimeLeaseUpdate>& leases,
+      const std::vector<PhysicalComponentLeaseUpdate>& ht_leases);
 
   Status SetMajorityReplicatedLeaseExpirationUnlocked(
       const MajorityReplicatedData& majority_replicated_data,
-      EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags);
+      const boost::function<bool(const std::string&)>& filter);
 
   // Checks two conditions:
   // - That the old leader definitely does not have a lease.
   // - That this leader has a committed lease.
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(
-      MonoDelta* remaining_old_leader_lease = nullptr, CoarseTimePoint* now = nullptr) const;
+      MonoDelta* remaining_old_leader_lease = nullptr, CoarseTimePoint* now = nullptr,
+      bool check_no_op_committed = false) const;
 
   LeaderLeaseStatus GetHybridTimeLeaseStatusAtUnlocked(MicrosTime micros_time) const;
 
-  // Get the remaining duration of the old leader's lease. Optionally, return the current time in
-  // the "now" output parameter. In case the old leader's lease has already expired or is not known,
-  // returns an uninitialized MonoDelta value.
-  MonoDelta RemainingOldLeaderLeaseDuration(CoarseTimePoint* now = nullptr) const;
+  // Get the remaining duration of the old leader's lease.
+  // Returns the most advanced lease information left after cleanup.
+  CoarseTimeLeaseUpdate RemainingOldLeaderLease(CoarseTimePoint* now = nullptr) const;
+  PhysicalComponentLeaseUpdate RemainingOldLeaderHtLease(MicrosTime physical_component) const;
 
-  MonoDelta RemainingMajorityReplicatedLeaderLeaseDuration() const;
+  MonoDelta RemainingMajorityReplicatedLeaderLeaseDuration(CoarseTimePoint now) const;
 
   const PhysicalComponentLease& old_leader_ht_lease() const {
     return old_leader_ht_lease_;
@@ -424,8 +427,7 @@ class ReplicaState {
 
   OpId MinRetryableRequestOpId();
 
-  Result<bool> RegisterRetryableRequest(
-    const ConsensusRoundPtr& round, tablet::IsLeaderSide is_leader_side);
+  Result<bool> RegisterRetryableRequest(const ConsensusRoundPtr& round);
 
   RestartSafeCoarseMonoClock& Clock();
 
@@ -469,8 +471,7 @@ class ReplicaState {
   // Applies committed config change.
   void ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round);
 
-  consensus::LeaderState RefreshLeaderStateCacheUnlocked(
-      CoarseTimePoint* now) const ATTRIBUTE_NONNULL(2);
+  consensus::LeaderState RefreshLeaderStateCacheUnlocked(CoarseTimePoint& now) const;
 
   PendingOperations::iterator FindPendingOperation(int64_t index);
 

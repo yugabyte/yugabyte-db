@@ -23,12 +23,14 @@
 
 #include "access/tableam.h"
 #include "access/xact.h"
-#include "access/yb_scan.h"
 #include "executor/executor.h"
 #include "executor/nodeLockRows.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "utils/rel.h"
+
+/* YB includes */
+#include "access/yb_scan.h"
 
 
 /* ----------------------------------------------------------------

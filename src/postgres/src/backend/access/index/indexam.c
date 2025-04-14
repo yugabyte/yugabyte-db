@@ -66,9 +66,11 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
+#include "catalog/pg_am.h"
+#include "catalog/pg_opfamily.h"
+#include "pg_yb_utils.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
@@ -76,18 +78,23 @@
  * Note: the ReindexIsProcessingIndex() check in RELATION_CHECKS is there
  * to check that we don't try to scan or do retail insertions into an index
  * that is currently being rebuilt or pending rebuild.  This helps to catch
- * things that don't work when reindexing system catalogs.  The assertion
+ * things that don't work when reindexing system catalogs, as well as prevent
+ * user errors like index expressions that access their own tables.  The check
  * doesn't prevent the actual rebuild because we don't use RELATION_CHECKS
  * when calling the index AM's ambuild routine, and there is no reason for
  * ambuild to call its subsidiary routines through this file.
  * ----------------------------------------------------------------
  */
 #define RELATION_CHECKS \
-( \
-	AssertMacro(RelationIsValid(indexRelation)), \
-	AssertMacro(PointerIsValid(indexRelation->rd_indam)), \
-	AssertMacro(!ReindexIsProcessingIndex(RelationGetRelid(indexRelation))) \
-)
+do { \
+	Assert(RelationIsValid(indexRelation)); \
+	Assert(PointerIsValid(indexRelation->rd_indam)); \
+	if (unlikely(ReindexIsProcessingIndex(RelationGetRelid(indexRelation)))) \
+		ereport(ERROR, \
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
+				 errmsg("cannot access index \"%s\" while it is being reindexed", \
+						RelationGetRelationName(indexRelation)))); \
+} while(0)
 
 #define SCAN_CHECKS \
 ( \
@@ -123,7 +130,76 @@ do { \
 static IndexScanDesc index_beginscan_internal(Relation indexRelation,
 											  int nkeys, int norderbys, Snapshot snapshot,
 											  ParallelIndexScanDesc pscan, bool temp_snap);
+static inline void validate_relation_kind(Relation r);
 
+/*
+ * Wrapper on the top of index_open(), used during yb_index_check(). Given a
+ * base relation id, it creates a dummy primary key index object such
+ * that:
+ *   - indexrelid and indrelid both point to the base relation
+ *   - index key: ybctid column
+ */
+Relation
+yb_dummy_baserel_index_open(Oid relationId, LOCKMODE lockmode)
+{
+	Relation relation;
+
+	relation = relation_open(relationId, lockmode);
+
+	if (relation->rd_rel->relkind == RELKIND_RELATION ||
+		relation->rd_rel->relkind == RELKIND_MATVIEW)
+	{
+		Assert(!relation->rd_index);
+		Assert(!relation->rd_indam);
+		Assert(!relation->rd_opfamily);
+		int natts = 1;
+		Form_pg_index pg_index =
+			palloc0(sizeof(FormData_pg_index) + natts * sizeof(int16));
+		pg_index->indexrelid = RelationGetRelid(relation);
+		pg_index->indrelid = RelationGetRelid(relation);
+		pg_index->indnatts = natts;
+		pg_index->indnkeyatts = natts;
+		pg_index->indisunique = true;
+		pg_index->indisprimary = true;
+		pg_index->indimmediate = true;
+		pg_index->indisvalid = true;
+		pg_index->indisready = true;
+		pg_index->indislive = true;
+		pg_index->indkey.ndim = 1;
+		pg_index->indkey.dataoffset = 0; /* never any nulls */
+		pg_index->indkey.elemtype = INT2OID;
+		pg_index->indkey.dim1 = natts;
+		pg_index->indkey.lbound1 = 0;
+		pg_index->indkey.values[0] = YBTupleIdAttributeNumber;
+
+		relation->rd_index = pg_index;
+		relation->rd_indam = GetIndexAmRoutineByAmId(LSM_AM_OID, false);
+		relation->rd_opfamily = palloc0(sizeof(Oid) * pg_index->indnkeyatts);
+		relation->rd_opfamily[0] = BYTEA_LSM_FAM_OID;
+	}
+	return relation;
+}
+
+/*
+ * Free the dummy index object created for yb_index_check().
+ */
+void
+yb_free_dummy_baserel_index(Relation relation)
+{
+	if (!(relation->rd_rel->relkind == RELKIND_RELATION ||
+		  relation->rd_rel->relkind == RELKIND_MATVIEW))
+		return;
+
+	Assert(relation->rd_index);
+	Assert(relation->rd_indam);
+	Assert(relation->rd_opfamily);
+	pfree(relation->rd_index);
+	pfree(relation->rd_indam);
+	pfree(relation->rd_opfamily);
+	relation->rd_index = NULL;
+	relation->rd_indam = NULL;
+	relation->rd_opfamily = NULL;
+}
 
 /* ----------------------------------------------------------------
  *				   index_ interface functions
@@ -151,12 +227,30 @@ index_open(Oid relationId, LOCKMODE lockmode)
 
 	r = relation_open(relationId, lockmode);
 
-	if (r->rd_rel->relkind != RELKIND_INDEX &&
-		r->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not an index",
-						RelationGetRelationName(r))));
+	validate_relation_kind(r);
+
+	return r;
+}
+
+/* ----------------
+ *		try_index_open - open a index relation by relation OID
+ *
+ *		Same as index_open, except return NULL instead of failing
+ *		if the relation does not exist.
+ * ----------------
+ */
+Relation
+try_index_open(Oid relationId, LOCKMODE lockmode)
+{
+	Relation	r;
+
+	r = try_relation_open(relationId, lockmode);
+
+	/* leave if index does not exist */
+	if (!r)
+		return NULL;
+
+	validate_relation_kind(r);
 
 	return r;
 }
@@ -183,6 +277,24 @@ index_close(Relation relation, LOCKMODE lockmode)
 	if (lockmode != NoLock)
 		UnlockRelationId(&relid, lockmode);
 }
+
+/* ----------------
+ *		validate_relation_kind - check the relation's kind
+ *
+ *		Make sure relkind is an index or a partitioned index.
+ * ----------------
+ */
+static inline void
+validate_relation_kind(Relation r)
+{
+	if (r->rd_rel->relkind != RELKIND_INDEX &&
+		r->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is not an index",
+						RelationGetRelationName(r))));
+}
+
 
 /* ----------------
  *		index_insert - insert an index tuple into a relation

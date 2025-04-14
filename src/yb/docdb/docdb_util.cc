@@ -13,6 +13,8 @@
 
 #include "yb/docdb/docdb_util.h"
 
+#include "yb/common/entity_ids.h"
+
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
@@ -177,7 +179,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
         partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_,
         /* applier= */ nullptr);
     DirectWriteToWriteBatchHandler handler(rocksdb_write_batch);
-    RETURN_NOT_OK(writer.Apply(&handler));
+    RETURN_NOT_OK(writer.Apply(handler));
     intra_txn_write_id_ = writer.intra_txn_write_id();
   } else {
     // TODO: this block has common code with docdb::PrepareExternalWriteBatch and probably

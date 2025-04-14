@@ -17,7 +17,6 @@
  */
 
 #include "json_util.h"
-
 #include "utils/fmgrprotos.h"
 
 void

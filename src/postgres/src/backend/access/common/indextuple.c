@@ -22,6 +22,7 @@
 #include "access/itup.h"
 #include "access/toast_internals.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*
@@ -39,7 +40,7 @@
   *		index_form_tuple
   *
   *		As index_form_tuple_context, but allocates the returned tuple in the
-  *		GetCurrentMemoryContext().
+  *		CurrentMemoryContext.
   * ----------------
   */
 IndexTuple
@@ -48,7 +49,7 @@ index_form_tuple(TupleDesc tupleDescriptor,
 				 bool *isnull)
 {
 	return index_form_tuple_context(tupleDescriptor, values, isnull,
-									GetCurrentMemoryContext());
+									CurrentMemoryContext);
 }
 
 /* ----------------

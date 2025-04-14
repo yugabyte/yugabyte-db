@@ -14,3 +14,6 @@
   text-align: center;
   vertical-align: middle;
 }
+.react-bs-table table th, .react-bs-table table td.task-type-column {
+  padding-left: 5px !important;
+}

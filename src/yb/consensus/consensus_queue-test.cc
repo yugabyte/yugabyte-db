@@ -107,6 +107,8 @@ class ConsensusQueueTest : public YBTest {
     CloseAndReopenQueue();
   }
 
+  virtual void SetupConsensus() { consensus_.reset(new TestRaftConsensusQueueIface()); }
+
   void CloseAndReopenQueue() {
     // Blow away the memtrackers before creating the new queue. Otherwise we will get an error
     // trying to create a duplicate log cache memtracker.
@@ -121,7 +123,7 @@ class ConsensusQueueTest : public YBTest {
                                       clock_,
                                       nullptr /* consensus_context */,
                                       std::move(notify_observers_strand)));
-    consensus_.reset(new TestRaftConsensusQueueIface());
+    SetupConsensus();
     queue_->RegisterObserver(consensus_.get());
   }
 
@@ -900,7 +902,7 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
             rb_req.bootstrap_source_private_addr()[0].ShortDebugString());
 }
 
-// Tests that ReadReplicatedMessagesForCDC() only reads messages until the last known
+// Tests that TestReadReplicatedMessagesForCDC() only reads messages until the last known
 // committed index.
 TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   auto start_op_id = MakeOpIdForIndex(3); // Starting after the normal first index.
@@ -946,6 +948,88 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   int start = 10;
   read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(start)));
   ASSERT_EQ(last_committed_index - start, read_result.messages.size());
+}
+
+class DelayedCommitObserver : public TestRaftConsensusQueueIface {
+ public:
+  explicit DelayedCommitObserver(OpId max_commit_op_id) : max_commit_op_id_(max_commit_op_id) {}
+
+  void UpdateMajorityReplicated(
+      const MajorityReplicatedData& data, OpId* committed_index,
+      OpId* last_applied_op_id) override {
+    TestRaftConsensusQueueIface::UpdateMajorityReplicated(
+        data, committed_index, last_applied_op_id);
+    if (committed_index->index > max_commit_op_id_.index) {
+      *committed_index = max_commit_op_id_;
+      *last_applied_op_id = max_commit_op_id_;
+    }
+  }
+
+ private:
+  OpId max_commit_op_id_;
+};
+
+class ConsensusQueueDelayedCommitTest : public ConsensusQueueTest {
+ public:
+  const OpId kMaxCommitOpId = MakeOpIdForIndex(kNumMessages - 20);
+
+  ConsensusQueueDelayedCommitTest() = default;
+
+  void SetupConsensus() override { consensus_.reset(new DelayedCommitObserver(kMaxCommitOpId)); }
+};
+
+TEST_F(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster) {
+  const auto start_op_id = MakeOpIdForIndex(3);  // Starting after the normal first index.
+  queue_->Init(start_op_id);
+  queue_->SetLeaderMode(start_op_id, start_op_id.term, start_op_id, BuildRaftConfigPBForTests(2));
+  queue_->TrackPeer(kPeerUuid);
+
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, start_op_id.index, kNumMessages);
+
+  // Wait for the local peer to append all messages.
+  WaitForLocalPeerToAckIndex(kNumMessages);
+
+  // Since only the local log might have ACKed at this point,
+  // the committed_index should be MinimumOpId().
+  queue_->TEST_WaitForNotificationToFinish();
+  ASSERT_EQ(queue_->TEST_GetCommittedIndex(), start_op_id);
+  ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), start_op_id);
+
+  ThreadSafeArena arena;
+  LWConsensusResponsePB response(&arena);
+  response.ref_responder_uuid(kPeerUuid);
+
+  const auto received_op_id = MakeOpIdForIndex(kNumMessages - 10);
+
+  // Ack last_committed_index messages.
+  SetLastReceivedAndLastCommitted(&response, received_op_id, kMaxCommitOpId.index);
+  ASSERT_TRUE(queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response));
+  queue_->TEST_WaitForNotificationToFinish();
+  ASSERT_EQ(queue_->TEST_GetCommittedIndex(), kMaxCommitOpId);
+  consensus_->WaitForMajorityReplicatedIndex(received_op_id.index);
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), received_op_id);
+  ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), kMaxCommitOpId);
+
+  auto read_wal_for_xcluster = [this](const yb::OpId& last_op_id) {
+    return queue_->ReadReplicatedMessagesForXCluster(
+        last_op_id, /*deadline=*/CoarseTimePoint::max(), /*fetch_single_entry=*/false);
+  };
+
+  // Read from the start_op_id
+  auto read_result = ASSERT_RESULT(read_wal_for_xcluster(MakeOpIdForIndex(3)));
+  ASSERT_EQ(kMaxCommitOpId.index - start_op_id.index, read_result.result.messages.size());
+  ASSERT_EQ(received_op_id.index, read_result.majority_replicated_index);
+
+  // Start reading from 0.0 and ensure that we get the first known OpID.
+  read_result = ASSERT_RESULT(read_wal_for_xcluster(MakeOpIdForIndex(0)));
+  ASSERT_EQ(kMaxCommitOpId.index - start_op_id.index, read_result.result.messages.size());
+  ASSERT_EQ(received_op_id.index, read_result.majority_replicated_index);
+
+  // Read from some index > 0
+  int start = 10;
+  read_result = ASSERT_RESULT(read_wal_for_xcluster(MakeOpIdForIndex(start)));
+  ASSERT_EQ(kMaxCommitOpId.index - start, read_result.result.messages.size());
+  ASSERT_EQ(received_op_id.index, read_result.majority_replicated_index);
 }
 
 }  // namespace consensus

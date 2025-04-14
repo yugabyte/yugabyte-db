@@ -12,8 +12,6 @@
  */
 #include "postgres.h"
 
-#include <assert.h>
-
 #include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/table.h"
@@ -41,9 +39,11 @@
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
+#include <assert.h>
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_pg_authid_oid = InvalidOid;

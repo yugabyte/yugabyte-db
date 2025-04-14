@@ -224,7 +224,9 @@ void XClusterConsumer::Shutdown() {
 }
 
 void XClusterConsumer::SetRateLimiterSpeed() {
-  rate_limiter_->SetBytesPerSecond(GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB);
+  WARN_NOT_OK(ResultToStatus(rate_limiter_->SetBytesPerSecond(
+      FLAGS_apply_changes_max_send_rate_mbps * 1_MB)),
+      "Rate limiter set bytes per second failed");
 }
 
 void XClusterConsumer::RunThread() {
@@ -295,8 +297,10 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
   decltype(uuid_master_addrs_) old_uuid_master_addrs;
   uuid_master_addrs_.swap(old_uuid_master_addrs);
 
+  std::unordered_set<NamespaceId> target_namespaces_in_automatic_mode;
   if (!consumer_registry) {
     LOG_WITH_PREFIX(INFO) << "Given empty xCluster consumer registry: removing Pollers";
+    xcluster_context_.UpdateTargetNamespacesInAutomaticModeSet(target_namespaces_in_automatic_mode);
     YB_PROFILE(run_thread_cond_.notify_all());
     return;
   }
@@ -323,8 +327,25 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
     }
     uuid_master_addrs_[replication_group_id] = std::move(hp);
 
+    if (producer_entry_pb.automatic_ddl_mode()) {
+      for (const auto& [_, stream_entry_pb] : producer_entry_pb.stream_map()) {
+        const auto& consumer_table_id = stream_entry_pb.consumer_table_id();
+        // In automatic mode, every namespace that is being replicated to has a stream for the table
+        // sequences_data; we use the alias of that table to extract the namespace ID.
+        if (xcluster::IsSequencesDataAlias(consumer_table_id)) {
+          auto namespace_id = xcluster::GetReplicationNamespaceBelongsTo(consumer_table_id);
+          if (namespace_id) {
+            target_namespaces_in_automatic_mode.insert(*namespace_id);
+          } else {
+            LOG_WITH_FUNC(DFATAL) << "Bad sequences_data alias: " << consumer_table_id;
+          }
+        }
+      }
+    }
+
     UpdateReplicationGroupInMemState(replication_group_id, producer_entry_pb);
   }
+  xcluster_context_.UpdateTargetNamespacesInAutomaticModeSet(target_namespaces_in_automatic_mode);
   // Wake up the background thread to stop old pollers and start new ones.
   YB_PROFILE(run_thread_cond_.notify_all());
 }
@@ -780,6 +801,7 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
 
     VLOG_WITH_FUNC(2) << "Key: " << key.ToString()
                       << ", Producer TableId: " << producer_info.table_id
+                      << ", Producer TabletId: " << producer_info.tablet_id
                       << ", SafeTime: " << safe_time.ToDebugString();
     session->Apply(std::move(op));
   }

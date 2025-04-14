@@ -14,10 +14,11 @@
 #pragma once
 
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-
 #include "yb/master/xcluster/master_xcluster_types.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
+
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_fwd.h"
 
@@ -123,7 +124,8 @@ class XClusterTargetManager {
   Result<XClusterInboundReplicationGroupStatus> GetUniverseReplicationInfo(
       const xcluster::ReplicationGroupId& replication_group_id) const;
 
-  Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch);
+  Status ClearXClusterFieldsAfterYsqlDDL(
+      TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch);
 
   void NotifyAutoFlagsConfigChanged();
 
@@ -199,7 +201,8 @@ class XClusterTargetManager {
   Status DeleteUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
       bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
-      const LeaderEpoch& epoch);
+      const LeaderEpoch& epoch,
+      std::unordered_map<NamespaceId, uint32_t> source_namespace_id_to_oid_to_bump_above);
 
   Status AddTableToReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& source_table_id,
@@ -213,6 +216,14 @@ class XClusterTargetManager {
   Status InsertPackedSchemaForXClusterTarget(
       const TableId& table_id, const SchemaPB& packed_schema_to_insert,
       uint32_t current_schema_version, const LeaderEpoch& epoch);
+
+  Status InsertHistoricalColocatedSchemaPacking(
+      const InsertHistoricalColocatedSchemaPackingRequestPB* req,
+      InsertHistoricalColocatedSchemaPackingResponsePB* resp, const LeaderEpoch& epoch);
+
+  Status ProcessCreateTableReq(
+      const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
+      const NamespaceId& namespace_id) const;
 
  private:
   // Gets the replication group status for the given replication group id. Does not populate the

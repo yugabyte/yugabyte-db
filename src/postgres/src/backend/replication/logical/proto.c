@@ -20,7 +20,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*
@@ -428,8 +428,7 @@ logicalrep_write_insert(StringInfo out, TransactionId xid, Relation rel,
 	pq_sendint32(out, RelationGetRelid(rel));
 
 	if (IsYugaByteEnabled())
-		elog(DEBUG2, "proto: INSERT newtuple: %s",
-			 YbTupleTableSlotToString(newslot));
+		elog(DEBUG2, "proto: INSERT newtuple: %s", YbSlotToString(newslot));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newslot, binary, columns,
@@ -492,8 +491,7 @@ logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 
 		if (IsYugaByteEnabled())
 			elog(DEBUG2, "proto: UPDATE oldtuple: %s",
-				 YbTupleTableSlotToStringWithIsOmitted(oldslot,
-													   yb_old_is_omitted));
+				 YbSlotToStringWithIsOmitted(oldslot, yb_old_is_omitted));
 
 		logicalrep_write_tuple(out, rel, oldslot, binary, columns,
 							   yb_old_is_omitted);
@@ -501,8 +499,7 @@ logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 
 	if (IsYugaByteEnabled())
 		elog(DEBUG2, "proto: UPDATE newtuple: %s",
-			 YbTupleTableSlotToStringWithIsOmitted(newslot,
-												   yb_new_is_omitted));
+			 YbSlotToStringWithIsOmitted(newslot, yb_new_is_omitted));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newslot, binary, columns,
@@ -578,8 +575,7 @@ logicalrep_write_delete(StringInfo out, TransactionId xid, Relation rel,
 		pq_sendbyte(out, 'K');	/* old key follows */
 
 	if (IsYugaByteEnabled())
-		elog(DEBUG2, "proto: DELETE oldtuple: %s",
-			 YbTupleTableSlotToString(oldslot));
+		elog(DEBUG2, "proto: DELETE oldtuple: %s", YbSlotToString(oldslot));
 
 	logicalrep_write_tuple(out, rel, oldslot, binary, columns,
 						   NULL /* yb_is_omitted */ );
@@ -1235,9 +1231,11 @@ logicalrep_read_stream_abort(StringInfo in, TransactionId *xid,
 /*
  * Get string representing LogicalRepMsgType.
  */
-char *
+const char *
 logicalrep_message_type(LogicalRepMsgType action)
 {
+	static char	err_unknown[20];
+
 	switch (action)
 	{
 		case LOGICAL_REP_MSG_BEGIN:
@@ -1280,7 +1278,12 @@ logicalrep_message_type(LogicalRepMsgType action)
 			return "STREAM PREPARE";
 	}
 
-	elog(ERROR, "invalid logical replication message type \"%c\"", action);
+	/*
+	 * This message provides context in the error raised when applying a
+	 * logical message. So we can't throw an error here. Return an unknown
+	 * indicator value so that the original error is still reported.
+	 */
+	snprintf(err_unknown, sizeof(err_unknown), "??? (%d)", action);
 
-	return NULL;				/* keep compiler quiet */
+	return err_unknown;
 }

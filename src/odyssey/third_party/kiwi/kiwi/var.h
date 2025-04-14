@@ -450,8 +450,8 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 			continue;
 
 		/* SET key=quoted_value; */
-		int size = 4 + (var->name_len - 1) + 1 + 1;
-		if (query_len < size)
+		int size = 4 + (var->name_len - 1) + 1;
+		if (query_len < pos + size)
 			return -1;
 		memcpy(query + pos, "SET ", 4);
 		pos += 4;
@@ -472,12 +472,16 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 			if (strlen(var->value) == 0 || strcmp(var->value, "\"\"") == 0)
 			{
 				memcpy(query + pos, "\'\'", 2);
+				if (query_len < pos + 2)
+					return -1;
 				pos += 2;
 			}
 			else
 			{
 				int copy_len = var->value_len - 1;
 				memcpy(query + pos, var->value, copy_len);
+				if (query_len < pos + copy_len)
+					return -1;
 				pos += copy_len;
 			}
 		}
@@ -491,6 +495,8 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 			pos += quote_len;
 		}
 
+		if (query_len < pos + 1)
+			return -1;
 		memcpy(query + pos, ";", 1);
 		pos += 1;
 	}

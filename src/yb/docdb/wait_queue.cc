@@ -33,7 +33,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/lock_util.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/intent.h"
 #include "yb/gutil/stl_util.h"
@@ -406,6 +406,9 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   }
 
   bool ShouldReRunConflictResolution() {
+    if (CoarseMonoClock::Now() > deadline_) {
+      return true;
+    }
     auto refresh_waiter_timeout = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms) * 1ms;
     if (IsSingleShard()) {
       if (refresh_waiter_timeout.count() > 0) {
@@ -509,7 +512,7 @@ struct WaitingTxn : public std::enable_shared_from_this<WaitingTxn> {
     return waiters_;
   }
 
-  const TabletId& GetStatusTablet() EXCLUDES(mutex_) {
+  TabletId GetStatusTablet() EXCLUDES(mutex_) {
     SharedLock l(mutex_);
     return status_tablet_;
   }
@@ -685,7 +688,7 @@ class BlockerData {
 
   const TransactionId& id() const { return id_; }
 
-  const TabletId& status_tablet() EXCLUDES(mutex_) {
+  TabletId status_tablet() EXCLUDES(mutex_) {
     SharedLock r_lock(mutex_);
     return status_tablet_;
   }
@@ -728,7 +731,6 @@ class BlockerData {
     }
 
     if (txn_status_response.ok()) {
-      DCHECK(!txn_status_response->status_time.is_special() || IsAbortedUnlocked());
       txn_status_ht_ = txn_status_response->status_time;
       if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set &&
           PREDICT_TRUE(!FLAGS_TEST_skip_waiter_resumption_on_blocking_subtxn_rollback)) {
@@ -741,9 +743,10 @@ class BlockerData {
 
     if (should_signal) {
       if (txn_status_ht_.is_special()) {
-        DCHECK(IsAbortedUnlocked())
-          << "Unexpected special status ht in blocker " << txn_status_or_res_
-          << " @ " << txn_status_ht_;
+        // We might see kMax for status COMITTED. Edit the below check on failures, if encountered.
+        DCHECK(IsAbortedUnlocked() || IsPromotedUnlocked())
+            << "Unexpected special status ht in blocker " << txn_status_or_res_
+            << " @ " << txn_status_ht_;
         txn_status_ht_ = now;
       }
       return GetWaitersToSignalUnlocked();
@@ -1636,13 +1639,15 @@ class WaitQueue::Impl {
         promoted_blocker = blocker_it->second.lock();
       }
     }
-
+    // If the participant processes the promotion message before the first transaction status
+    // response of RunningTransaction, we get the status ht as kMin.
+    const auto resume_ht = res.status_time == HybridTime::kMin ? clock_->Now() : res.status_time;
     // Check if the promoted transaction is an active waiter, and make it re-enter the wait queue
     // to ensure its wait-for relationships are re-registered with its new transaction coordinator,
     // corresponding to its new status tablet.
     if (waiting_txn) {
       for (const auto& waiter_data : waiting_txn->PurgeWaiters()) {
-        waiter_runner_.Submit(waiter_data, Status::OK(), res.status_time);
+        waiter_runner_.Submit(waiter_data, Status::OK(), resume_ht);
       }
     }
 
@@ -1666,7 +1671,7 @@ class WaitQueue::Impl {
             << "Did not find waiter to signal during promotion " << waiter->id
             << ", request_id: " << waiter->request_id;
         for (const auto& waiter_to_signal : waiters_to_signal) {
-          waiter_runner_.Submit(waiter_to_signal, Status::OK(), res.status_time);
+          waiter_runner_.Submit(waiter_to_signal, Status::OK(), resume_ht);
         }
       }
     }
@@ -1738,6 +1743,7 @@ class WaitQueue::Impl {
     }
     waiter_runner_.CompleteShutdown();
     rpcs_.Shutdown();
+    thread_pool_token_.reset();
     SharedLock l(mutex_);
     LOG_IF(DFATAL, !shutting_down_)
         << "Called CompleteShutdown() while not in shutting_down_ state.";
@@ -2226,9 +2232,10 @@ WaitQueue::WaitQueue(
     const server::ClockPtr& clock,
     const MetricEntityPtr& metrics,
     std::unique_ptr<ThreadPoolToken> thread_pool_token,
-    rpc::Messenger* messenger):
-  impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
-                 metrics, std::move(thread_pool_token), messenger)) {}
+    rpc::Messenger* messenger)
+    : impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
+                     metrics, std::move(thread_pool_token), messenger)) {
+}
 
 WaitQueue::~WaitQueue() = default;
 

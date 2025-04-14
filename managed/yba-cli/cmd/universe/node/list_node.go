@@ -31,7 +31,7 @@ var listNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to list node instance"+
+				formatter.Colorize("No universe name found to list node"+
 					"\n", formatter.RedColor))
 		}
 	},
@@ -70,7 +70,7 @@ var listNodeCmd = &cobra.Command{
 		}
 		if len(nodes) < 1 {
 			if util.IsOutputType(formatter.TableFormatKey) {
-				logrus.Info("No universe node instances found\n")
+				logrus.Info("No universe nodes found\n")
 			} else {
 				logrus.Info("[]\n")
 			}

@@ -25,14 +25,13 @@
  */
 
 #include "c.h"
+
+#include "catalog/pg_operator_d.h"
 #include "utils/fmgroids.h"
 
 const uint32 yb_funcs_safe_for_pushdown[] = {
 	F_RANDOM
 };
-
-const int	yb_funcs_safe_for_pushdown_count = (sizeof(yb_funcs_safe_for_pushdown) /
-												sizeof(yb_funcs_safe_for_pushdown[0]));
 
 const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	/* to_tsany.c */
@@ -83,5 +82,152 @@ const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	F_SHA512
 };
 
-const int	yb_funcs_unsafe_for_pushdown_count = (sizeof(yb_funcs_unsafe_for_pushdown) /
-												  sizeof(yb_funcs_unsafe_for_pushdown[0]));
+#define COMPARISON_AND_ARITHMETIC_OPS(prefix) \
+	COMPARISON_OPS(prefix), \
+	ARITHMETIC_OPS(prefix)
+
+#define COMPARISON_OPS(prefix) \
+	EQUALITY_OPS(prefix), \
+	INEQUALITY_OPS(prefix)
+
+#define EQUALITY_OPS(prefix) \
+	F_##prefix##EQ, \
+	F_##prefix##NE
+
+#define INEQUALITY_OPS(prefix) \
+	F_##prefix##LT, \
+	F_##prefix##LE, \
+	F_##prefix##GE, \
+	F_##prefix##GT
+
+#define ARITHMETIC_OPS(prefix) \
+	F_##prefix##MUL, \
+	F_##prefix##DIV, \
+	F_##prefix##PL, \
+	F_##prefix##MI
+
+#define UNARY_MINUS_AND_ABS(prefix) \
+	F_##prefix##UM, \
+	F_##prefix##ABS, \
+	F_ABS_##prefix \
+
+const uint32 yb_funcs_safe_for_mixed_mode_pushdown[] = {
+	COMPARISON_AND_ARITHMETIC_OPS(INT2),
+	UNARY_MINUS_AND_ABS(INT2),
+	COMPARISON_AND_ARITHMETIC_OPS(INT24),
+	COMPARISON_AND_ARITHMETIC_OPS(INT28),
+	COMPARISON_AND_ARITHMETIC_OPS(INT4),
+	UNARY_MINUS_AND_ABS(INT4),
+	COMPARISON_AND_ARITHMETIC_OPS(INT42),
+	COMPARISON_AND_ARITHMETIC_OPS(INT48),
+	COMPARISON_AND_ARITHMETIC_OPS(INT8),
+	UNARY_MINUS_AND_ABS(INT8),
+	COMPARISON_AND_ARITHMETIC_OPS(INT82),
+	COMPARISON_AND_ARITHMETIC_OPS(INT84),
+
+	COMPARISON_AND_ARITHMETIC_OPS(FLOAT4),
+	UNARY_MINUS_AND_ABS(FLOAT4),
+	COMPARISON_AND_ARITHMETIC_OPS(FLOAT48),
+	COMPARISON_AND_ARITHMETIC_OPS(FLOAT8),
+	UNARY_MINUS_AND_ABS(FLOAT8),
+	COMPARISON_AND_ARITHMETIC_OPS(FLOAT84),
+
+	F_INT2_INT4,
+	F_INT2_INT8,
+	F_INT2_FLOAT4,
+	F_INT2_FLOAT8,
+	F_INT2_NUMERIC,
+	F_INT4_INT2,
+	F_INT4_INT8,
+	F_INT4_FLOAT4,
+	F_INT4_FLOAT8,
+	F_INT4_NUMERIC,
+	F_INT8_INT2,
+	F_INT8_INT4,
+	F_INT8_FLOAT4,
+	F_INT8_FLOAT8,
+	F_INT8_NUMERIC,
+	F_FLOAT4_INT2,
+	F_FLOAT4_INT4,
+	F_FLOAT4_INT8,
+	F_FLOAT4_FLOAT8,
+	F_FLOAT4_NUMERIC,
+	F_FLOAT8_INT2,
+	F_FLOAT8_INT4,
+	F_FLOAT8_INT8,
+	F_FLOAT8_FLOAT4,
+	F_FLOAT8_NUMERIC,
+	F_NUMERIC_INT2,
+	F_NUMERIC_INT4,
+	F_NUMERIC_INT8,
+	F_NUMERIC_FLOAT4,
+	F_NUMERIC_FLOAT8,
+
+	F_CHAR_TEXT,
+	F_TEXT_CHAR,
+	F_TEXT_BPCHAR,
+	F_BPCHAR_BPCHAR_INT4_BOOL, /* adjust char() to typmod length */
+
+	COMPARISON_OPS(BPCHAR),
+
+	F_BOOL_INT4,
+	F_INT4_BOOL,
+
+	COMPARISON_OPS(BOOL),
+
+	COMPARISON_OPS(NUMERIC_),
+	F_NUMERIC_ADD,
+	F_NUMERIC_SUB,
+	F_NUMERIC_MUL,
+	F_NUMERIC_DIV,
+	F_NUMERIC_UMINUS,
+	F_NUMERIC_ABS,
+	F_ABS_NUMERIC,
+
+	EQUALITY_OPS(TEXT),
+	INEQUALITY_OPS(TEXT_),
+
+	COMPARISON_OPS(UUID_),
+
+	COMPARISON_OPS(TIME_),
+	COMPARISON_OPS(TIMETZ_),
+	COMPARISON_OPS(TIMESTAMP_),
+	COMPARISON_OPS(TIMESTAMPTZ_),
+	COMPARISON_OPS(DATE_),
+	COMPARISON_OPS(INTERVAL_),
+
+	F_INT2MOD,
+	F_INT4MOD,
+	F_INT8MOD,
+	F_NUMERIC_MOD,
+	F_MOD_INT2_INT2,
+	F_MOD_INT4_INT4,
+	F_MOD_INT8_INT8,
+	F_MOD_NUMERIC_NUMERIC,
+
+	F_TEXTLIKE,
+	F_TEXTNLIKE,
+	F_LIKE_TEXT_TEXT,
+	F_NOTLIKE_TEXT_TEXT,
+	F_BPCHARLIKE,
+	F_BPCHARNLIKE,
+	F_TEXTICLIKE,
+	F_TEXTICNLIKE,
+	F_BPCHARICLIKE,
+	F_BPCHARICNLIKE,
+	F_TEXTREGEXEQ,
+	F_TEXTREGEXNE,
+
+	F_ASCII,
+
+	F_SUBSTRING_TEXT_TEXT,
+	F_SUBSTRING_TEXT_TEXT_TEXT,
+	F_SUBSTRING_TEXT_INT4,
+	F_SUBSTRING_TEXT_INT4_INT4,
+};
+
+#define DEFINE_ARRAY_SIZE(array) const int array##_count = lengthof(array)
+
+DEFINE_ARRAY_SIZE(yb_funcs_safe_for_pushdown);
+DEFINE_ARRAY_SIZE(yb_funcs_unsafe_for_pushdown);
+DEFINE_ARRAY_SIZE(yb_funcs_safe_for_mixed_mode_pushdown);

@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -55,7 +56,8 @@ var preflightNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
+		providerListRequest = providerListRequest.Name(providerName).
+			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
@@ -148,7 +150,22 @@ var preflightNodesCmd = &cobra.Command{
 			}
 			for _, u := range universeList {
 				details := u.GetUniverseDetails()
-				primaryCluster := details.GetClusters()[0]
+				primaryCluster := universeutil.FindClusterByType(
+					details.GetClusters(),
+					util.PrimaryClusterType,
+				)
+				if primaryCluster == (ybaclient.Cluster{}) {
+					logrus.Debug(
+						formatter.Colorize(
+							fmt.Sprintf(
+								"No primary cluster found in universe %s (%s)\n",
+								u.GetName(),
+								u.GetUniverseUUID(),
+							),
+							formatter.YellowColor,
+						))
+					continue
+				}
 				userIntent := primaryCluster.GetUserIntent()
 				if userIntent.GetProvider() == providerUUID {
 					onprem.UniverseList = append(onprem.UniverseList, u)

@@ -4,7 +4,7 @@
 ####################################################################################################
 # Tests for materialized views
 ####################################################################################################
-# Dependencies for `yb_pg_matview`
-test: yb_pg_test_setup
+# Dependencies for `yb.port.matview`
+test: yb.port.test_setup
 
-test: yb_pg_matview
+test: yb.port.matview

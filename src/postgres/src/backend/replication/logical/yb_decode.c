@@ -182,9 +182,9 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.yb_table_oid = yb_record->table_oid;
 
 	change->data.tp.clear_toast_afterwards = true;
-	/* YB_TODO: Do the right thing for the last parameter, toast_insert. */
+	/* YB does not support on-disk TOASTing, so toast_insert will always be false. */
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
-							 ctx->reader->ReadRecPtr, change, false);
+							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 }
 
 /*
@@ -351,9 +351,8 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.yb_table_oid = yb_record->table_oid;
 
 	change->data.tp.clear_toast_afterwards = true;
-	/* YB_TODO: Do the right thing for the last parameter, toast_insert. */
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
-							 ctx->reader->ReadRecPtr, change, false);
+							 ctx->reader->ReadRecPtr, change, false  /* toast_insert */ );
 
 	RelationClose(relation);
 }
@@ -393,9 +392,8 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.yb_table_oid = yb_record->table_oid;
 
 	change->data.tp.clear_toast_afterwards = true;
-	/* YB_TODO: Do the right thing for the last parameter, toast_insert. */
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
-							 ctx->reader->ReadRecPtr, change, false);
+							 ctx->reader->ReadRecPtr, change, false  /* toast_insert */ );
 }
 
 /*
@@ -559,9 +557,9 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 			}
 
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
 			{
 				bool		needs_invalidation = false;
@@ -599,9 +597,9 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 			/* Nothing to handle for these types. */
 		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			return;
 	}

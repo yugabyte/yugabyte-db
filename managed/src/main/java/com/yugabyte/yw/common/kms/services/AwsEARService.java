@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.kms.algorithms.AwsAlgorithm;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
@@ -99,9 +100,9 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
   }
 
   @Override
-  protected byte[] createKeyWithService(
+  protected EncryptionKey createKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
-    byte[] result = null;
+    EncryptionKey result = null;
     final String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
     if (cmkId != null) {
       // Skip for YBM use case
@@ -114,13 +115,16 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
       }
       switch (config.type) {
         case CMK:
-          result = AwsEARServiceUtil.getCMK(configUUID, cmkId).getKeyArn().getBytes();
+          result =
+              new EncryptionKey(AwsEARServiceUtil.getCMK(configUUID, cmkId).getKeyArn().getBytes());
           break;
         default:
         case DATA_KEY:
           String algorithm = "AES";
           int keySize = 256;
-          result = generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize, cmkId);
+          result =
+              new EncryptionKey(
+                  generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize, cmkId));
           break;
       }
     }
@@ -128,9 +132,9 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
   }
 
   @Override
-  protected byte[] rotateKeyWithService(
+  protected EncryptionKey rotateKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
-    byte[] result = null;
+    EncryptionKey result = null;
     final String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
     if (cmkId != null) {
       // Skip for YBM use case
@@ -143,13 +147,16 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
       }
       String algorithm = "AES";
       int keySize = 256;
-      result = generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize, cmkId);
+      result =
+          new EncryptionKey(
+              generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize, cmkId));
     }
     return result;
   }
 
   @Override
-  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
+  public byte[] retrieveKeyWithService(
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
     byte[] keyVal = null;
     try {
       keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef, null);
@@ -166,7 +173,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
 
   @Override
   protected byte[] validateRetrieveKeyWithService(
-      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext, ObjectNode authConfig) {
     byte[] keyVal = null;
     try {
       keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef, authConfig);
@@ -182,7 +189,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
   }
 
   @Override
-  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+  public EncryptionKey encryptKeyWithService(UUID configUUID, byte[] universeKey) {
     byte[] encryptedUniverseKey = null;
     try {
       encryptedUniverseKey = AwsEARServiceUtil.encryptUniverseKey(configUUID, universeKey);
@@ -197,7 +204,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
       LOG.error(errMsg, e);
       throw new RuntimeException(errMsg, e);
     }
-    return encryptedUniverseKey;
+    return new EncryptionKey(encryptedUniverseKey);
   }
 
   @Override

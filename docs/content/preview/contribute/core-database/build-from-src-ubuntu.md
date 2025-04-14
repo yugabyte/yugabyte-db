@@ -111,8 +111,8 @@ sudo mkdir /opt/yb-build
 # variables are set appropriately when switching users).
 sudo chown "$USER" /opt/yb-build
 mkdir ~/tools
-curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.tar.gz" | tar xzC ~/tools
-source <(echo 'export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"' \
+curl -L "https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-x86_64.tar.gz" | tar xzC ~/tools
+source <(echo 'export PATH="$HOME/tools/cmake-3.31.0-linux-x86_64/bin:$PATH"' \
          | tee -a "$shellrc")
 source <(echo 'export PATH="/usr/lib/go-1.20/bin:$PATH"' \
          | tee -a "$shellrc")
@@ -167,15 +167,6 @@ sudo apt install -y libffi-dev python3 python3-dev python3-venv
 ### CMake 3
 
 {{% readfile "includes/cmake.md" %}}
-
-The CMake version in the package manager is too old (3.16), so manually download a release as follows:
-
-```sh
-mkdir ~/tools
-curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.tar.gz" | tar xzC ~/tools
-# Also add the following line to your .bashrc or equivalent.
-export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
-```
 
 ### Java
 

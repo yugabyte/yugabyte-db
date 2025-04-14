@@ -19,31 +19,27 @@
  *
  *--------------------------------------------------------------------------------------------------
  */
-
-
 #include "postgres.h"
 
-#include "optimizer/ybplan.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_am_d.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/yb_catalog_version.h"
 #include "executor/ybExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/print.h"
+#include "optimizer/ybplan.h"
+#include "pg_yb_utils.h"
 #include "utils/datum.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#include "utils/lsyscache.h"
-
-/* YB includes. */
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "catalog/catalog.h"
-#include "catalog/pg_am_d.h"
-#include "catalog/yb_catalog_version.h"
-#include "pg_yb_utils.h"
 
 /*
  * A mapping between columns and their position/index on the col_info_list.
@@ -290,7 +286,7 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 }
 
 /*
- * extract_pushdown_clauses
+ * yb_extract_pushdown_clauses
  *	  Extract actual clauses from RestrictInfo list and distribute them
  * 	  between three groups:
  *	  - local_quals - conditions not eligible for pushdown. They are evaluated
@@ -307,60 +303,51 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
  *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
  *	  point to valid lists. The output parameters idx_remote_quals and
  *	  idx_colrefs may be NULL if the indexinfo is NULL.
+ *    - relid is the OID of the relation being scanned.
  */
 void
-extract_pushdown_clauses(List *restrictinfo_list,
-						 IndexOptInfo *indexinfo,
-						 bool bitmapindex,
-						 List **local_quals,
-						 List **rel_remote_quals,
-						 List **rel_colrefs,
-						 List **idx_remote_quals,
-						 List **idx_colrefs)
+yb_extract_pushdown_clauses(List *restrictinfo_list,
+							IndexOptInfo *indexinfo, bool bitmapindex,
+							List **local_quals, List **rel_remote_quals,
+							List **rel_colrefs, List **idx_remote_quals,
+							List **idx_colrefs, Oid relid)
 {
 	ListCell   *lc;
 
 	foreach(lc, restrictinfo_list)
 	{
 		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+		List *colrefs = NIL;
 
 		/* ignore pseudoconstants */
 		if (ri->pseudoconstant)
 			continue;
 
-		if (ri->yb_pushable)
+		bool pushable = YbCanPushdownExpr(ri->clause, &colrefs, relid);
+		/*
+		 * If clause was found pushable before, that shouldn't change.
+		 * Opposite is possible, join condition may be moved to inner and have
+		 * outer references replaced with Params.
+		 */
+		Assert(!ri->yb_pushable || pushable);
+		if (!pushable)
+			*local_quals = lappend(*local_quals, ri->clause);
+		/*
+		 * If there are both main and secondary (index) relations,
+		 * determine one to pushdown the condition. It is more efficient
+		 * to apply filter earlier, so prefer index, if it has all the
+		 * necessary columns.
+		 */
+		else if (indexinfo == NULL ||
+				 !is_index_only_attribute_nums(colrefs, indexinfo, bitmapindex))
 		{
-			List	   *colrefs = NIL;
-			bool		pushable PG_USED_FOR_ASSERTS_ONLY;
-
-			/*
-			 * Find column references. It has already been determined that
-			 * the expression is pushable.
-			 */
-			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
-			Assert(pushable);
-
-			/*
-			 * If there are both main and secondary (index) relations,
-			 * determine one to pushdown the condition. It is more efficient
-			 * to apply filter earlier, so prefer index, if it has all the
-			 * necessary columns.
-			 */
-			if (indexinfo == NULL ||
-				!is_index_only_attribute_nums(colrefs, indexinfo, bitmapindex))
-			{
-				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
-				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
-			}
-			else
-			{
-				*idx_colrefs = list_concat(*idx_colrefs, colrefs);
-				*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
-			}
+			*rel_colrefs = list_concat(*rel_colrefs, colrefs);
+			*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
 		}
 		else
 		{
-			*local_quals = lappend(*local_quals, ri->clause);
+			*idx_colrefs = list_concat(*idx_colrefs, colrefs);
+			*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
 		}
 	}
 }

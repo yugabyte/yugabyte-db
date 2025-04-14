@@ -37,7 +37,12 @@ var listTaskCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) != 0 {
 			r, response, err := authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Task", "List - List Universes")
+				errMessage := util.ErrorFromHTTPResponse(
+					response,
+					err,
+					"Task",
+					"List - List Universes",
+				)
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			if len(r) < 1 {

@@ -45,7 +45,6 @@ static TupleTableSlot *
 YbBitmapTableNext(YbBitmapTableScanState *node)
 {
 	YbTIDBitmap *ybtbm;
-	TableScanDesc tsdesc;
 	TupleTableSlot *slot;
 	YbTBMIterateResult *ybtbmres;
 	ExprContext *econtext;
@@ -102,8 +101,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	if (!node->ss.ss_currentScanDesc)
 		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(node);
 
-	tsdesc = node->ss.ss_currentScanDesc;
-	ybScan = (YbScanDesc) tsdesc;
+	ybScan = (YbScanDesc) node->ss.ss_currentScanDesc;
 
 	/*
 	 * If the bitmaps have exceeded work_mem just select everything from the

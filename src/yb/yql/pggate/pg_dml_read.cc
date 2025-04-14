@@ -47,6 +47,8 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+#include "ybgate/ybgate_api.h"
+
 namespace yb::pggate {
 namespace {
 
@@ -260,6 +262,11 @@ Status PgDmlRead::AppendQual(PgExpr* qual, bool is_for_secondary_index) {
         qual, /* is_for_secondary_index= */ false);
   }
 
+  auto version = yb_major_version_upgrade_compatibility > 0
+      ? yb_major_version_upgrade_compatibility
+      : YbgGetPgVersion();
+  read_req_->set_expression_serialization_version(version);
+
   // Populate the expr_pb with data from the qual expression.
   // Side effect of PrepareForRead is to call PrepareColumnForRead on "this" being passed in
   // for any column reference found in the expression. However, the serialized Postgres expressions,
@@ -405,6 +412,15 @@ void PgDmlRead::SetRequestedYbctids(std::reference_wrapper<const std::vector<Sli
   SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids));
 }
 
+void PgDmlRead::SetHoldingRequestedYbctids(const std::vector<Slice>& ybctids) {
+  HoldingYbctidProvider ybctid_holder(&arena());
+  size_t size = ybctids.size();
+  ybctid_holder.reserve(size);
+  for (size_t i = 0; i < size; i++)
+    ybctid_holder.append(ybctids[i]);
+  SetYbctidProvider(std::make_unique<HoldingYbctidProvider>(ybctid_holder));
+}
+
 Status PgDmlRead::ANNBindVector(PgExpr* vector) {
   auto vec_options = read_req_->mutable_vector_idx_options();
   return vector->EvalTo(vec_options->mutable_vector());
@@ -412,6 +428,11 @@ Status PgDmlRead::ANNBindVector(PgExpr* vector) {
 
 Status PgDmlRead::ANNSetPrefetchSize(int32_t prefetch_size) {
   read_req_->mutable_vector_idx_options()->set_prefetch_size(prefetch_size);
+  return Status::OK();
+}
+
+Status PgDmlRead::HnswSetReadOptions(int ef_search) {
+  read_req_->mutable_vector_idx_options()->mutable_hnsw_options()->set_ef_search(ef_search);
   return Status::OK();
 }
 

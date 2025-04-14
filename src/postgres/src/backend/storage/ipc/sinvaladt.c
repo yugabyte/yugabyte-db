@@ -27,7 +27,7 @@
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*
@@ -514,7 +514,7 @@ SIInsertDataEntries(const SharedInvalidationMessage *data, int n)
 			SharedInvalidationMessage *dest = &segP->buffer[max % MAXNUMMESSAGES];
 
 			*dest = *data++;
-			dest->yb_header.sender_pid = getpid();
+			dest->yb_header.yb_sender_pid = getpid();
 			max++;
 		}
 
@@ -712,7 +712,7 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 	 * leading to "Catalog snapshot used for this transaction has been
 	 * invalidated" error in backend B. To reduce such likehood, we try to
 	 * avoid resetState for backend B if possible: backend B only processes
-	 * an invalidation message when the sender_pid of the message matches
+	 * an invalidation message when the yb_sender_pid of the message matches
 	 * backend B's pid.
 	 */
 	ProcState **yb_reset_candidates = NULL;
@@ -788,8 +788,9 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 				SharedInvalidationMessage *msg = &segP->buffer[next %
 															   MAXNUMMESSAGES];
 
-				if (msg->yb_header.sender_pid == procPid)
+				if (msg->yb_header.yb_sender_pid == procPid)
 				{
+					elog(LOG, "resetState of %d", procPid);
 					stateP->resetState = true;
 					break;
 				}
@@ -852,6 +853,47 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 		if (!callerHasWriteLock)
 			LWLockRelease(SInvalWriteLock);
 	}
+}
+
+/*
+ * SIResetAll
+ *		Mark all active backends as "reset"
+ *
+ * Use this when we don't know what needs to be invalidated.  It's a
+ * cluster-wide InvalidateSystemCaches().  This was a back-branch-only remedy
+ * to avoid a WAL format change.
+ *
+ * The implementation is like SICleanupQueue(false, MAXNUMMESSAGES + 1), with
+ * one addition.  SICleanupQueue() assumes minFree << MAXNUMMESSAGES, so it
+ * assumes hasMessages==true for any backend it resets.  We're resetting even
+ * fully-caught-up backends, so we set hasMessages.
+ */
+void
+SIResetAll(void)
+{
+	SISeg	   *segP = shmInvalBuffer;
+	int			i;
+
+	LWLockAcquire(SInvalWriteLock, LW_EXCLUSIVE);
+	LWLockAcquire(SInvalReadLock, LW_EXCLUSIVE);
+
+	for (i = 0; i < segP->lastBackend; i++)
+	{
+		ProcState  *stateP = &segP->procState[i];
+
+		if (stateP->procPid == 0 || stateP->sendOnly)
+			continue;
+
+		/* Consuming the reset will update "nextMsgNum" and "signaled". */
+		stateP->resetState = true;
+		stateP->hasMessages = true;
+	}
+
+	segP->minMsgNum = segP->maxMsgNum;
+	segP->nextThreshold = CLEANUP_MIN;
+
+	LWLockRelease(SInvalReadLock);
+	LWLockRelease(SInvalWriteLock);
 }
 
 

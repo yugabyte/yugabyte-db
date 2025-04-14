@@ -1,4 +1,5 @@
 import { FC, useState, useRef, FocusEvent } from 'react';
+import { useDispatch } from 'react-redux';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -8,17 +9,22 @@ import { toast } from 'react-toastify';
 import { Box, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { InheritRRDialog } from './InheritRRDialog';
 import { ModifiedFlagsDialog } from './ModifiedFlagsDialog';
-import { YBModal, YBToggle, YBRadioGroupField, YBInputField } from '../../../../components';
+import {
+  YBModal,
+  YBToggle,
+  YBRadioGroupField,
+  YBInputField,
+  YBButton
+} from '../../../../components';
 import { api } from '../../../../features/universe/universe-form/utils/api';
-import { Universe } from '../../universe-form/utils/dto';
 import {
   getAsyncCluster,
   getCurrentVersion,
   getPrimaryCluster,
   transformFlagArrayToObject,
-  createErrorMessage
+  createErrorMessage,
+  transitToUniverse
 } from '../../universe-form/utils/helpers';
-import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import {
   transformToEditFlagsForm,
   EditGflagsFormValues,
@@ -26,11 +32,16 @@ import {
   EditGflagPayload
 } from './GflagHelper';
 import { GFlagsField } from '../../universe-form/form/fields';
+import { Universe } from '../../universe-form/utils/dto';
+import { PRECHECK_UPGRADE_TYPE } from '../../universe-form/utils/dto';
+import { useIsTaskNewUIEnabled } from '../../../tasks/TaskUtils';
+import { showTaskInDrawer } from '../../../../../actions/tasks';
 import { useFormMainStyles } from '../../universe-form/universeMainStyle';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { isPGEnabledFromIntent } from '../../universe-form/utils/helpers';
+import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 
 import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
 
@@ -104,12 +115,15 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   const [isPrimary, setIsPrimary] = useState(true);
   const [openInheritRRModal, setOpenInheritRRModal] = useState(false);
   const [openWarningModal, setWarningModal] = useState(false);
+
   const classes = useStyles();
+  const dispatch = useDispatch();
   const globalClasses = useFormMainStyles();
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
   const asyncCluster = getAsyncCluster(universeDetails);
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const asyncClusterCopy = _.cloneDeep(asyncCluster);
-  const currentVersion = getCurrentVersion(universeDetails) || '';
+  const currentVersion = getCurrentVersion(universeDetails) ?? '';
   const { gFlags, asyncGflags, inheritFlagsFromPrimary } = transformToEditFlagsForm(universeData);
   const initialGflagSet = useRef({ gFlags, asyncGflags, inheritFlagsFromPrimary });
   const isPGSupported = primaryCluster?.userIntent
@@ -141,79 +155,92 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
     else return primaryFlags.some((f) => !f?.tags?.includes('runtime'));
   };
 
-  const handleFormSubmit = handleSubmit(async (values) => {
-    const newUniverseData = await api.fetchUniverse(universeUUID);
-    const newGflagSet = transformToEditFlagsForm(newUniverseData);
+  const handleFormSubmit = (runOnlyPrechecks = false) =>
+    handleSubmit(async (values) => {
+      const newUniverseData = await api.fetchUniverse(universeUUID);
+      const newGflagSet = transformToEditFlagsForm(newUniverseData);
 
-    if (_.isEqual(initialGflagSet.current, newGflagSet) || openWarningModal) {
-      setWarningModal(false);
-      const { gFlags, asyncGflags, inheritFlagsFromPrimary } = values;
-      const payload: EditGflagPayload = {
-        nodePrefix,
-        universeUUID,
-        sleepAfterMasterRestartMillis: values.timeDelay * 1000,
-        sleepAfterTServerRestartMillis: values.timeDelay * 1000,
-        taskType: 'GFlags',
-        upgradeOption: values?.upgradeOption,
-        ybSoftwareVersion: currentVersion,
-        clusters: []
-      };
-
-      if (isRollingUpgrade) {
-        payload.rollMaxBatchSize = {
-          primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize.primaryBatchSize,
-          readReplicaBatchSize:
-            values.numNodesToUpgradePrimary ?? rollMaxBatchSize.readReplicaBatchSize
+      if (_.isEqual(initialGflagSet.current, newGflagSet) || openWarningModal) {
+        setWarningModal(false);
+        const { gFlags, asyncGflags, inheritFlagsFromPrimary } = values;
+        const payload: EditGflagPayload = {
+          nodePrefix,
+          universeUUID,
+          sleepAfterMasterRestartMillis: values.timeDelay * 1000,
+          sleepAfterTServerRestartMillis: values.timeDelay * 1000,
+          taskType: PRECHECK_UPGRADE_TYPE.GFLAGS,
+          upgradeOption: values?.upgradeOption,
+          ybSoftwareVersion: currentVersion,
+          clusters: []
         };
-      }
-
-      if (primaryCluster && !_.isEmpty(primaryCluster)) {
-        const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
-        primaryCluster.userIntent.specificGFlags = {
-          ...primaryCluster.userIntent.specificGFlags,
-          inheritFromPrimary: false,
-          perProcessFlags: {
-            value: {
-              MASTER: masterGFlags,
-              TSERVER: tserverGFlags
-            }
-          }
-        };
-        delete primaryCluster.userIntent.masterGFlags;
-        delete primaryCluster.userIntent.tserverGFlags;
-        payload.clusters = [primaryCluster];
-      }
-      if (asyncClusterCopy && !_.isEmpty(asyncClusterCopy)) {
-        if (inheritFlagsFromPrimary) {
-          asyncClusterCopy.userIntent.specificGFlags = {
-            inheritFromPrimary: true,
-            perProcessFlags: {}
+        if (isRollingUpgrade) {
+          payload.rollMaxBatchSize = {
+            primaryBatchSize: values.numNodesToUpgradePrimary ?? rollMaxBatchSize.primaryBatchSize,
+            readReplicaBatchSize:
+              values.numNodesToUpgradePrimary ?? rollMaxBatchSize.readReplicaBatchSize
           };
-        } else {
-          const { tserverGFlags } = transformFlagArrayToObject(asyncGflags);
-          asyncClusterCopy.userIntent.specificGFlags = {
+        }
+
+        if (primaryCluster && !_.isEmpty(primaryCluster)) {
+          const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
+          primaryCluster.userIntent.specificGFlags = {
+            ...primaryCluster.userIntent.specificGFlags,
             inheritFromPrimary: false,
             perProcessFlags: {
               value: {
+                MASTER: masterGFlags,
                 TSERVER: tserverGFlags
               }
             }
           };
+          delete primaryCluster.userIntent.masterGFlags;
+          delete primaryCluster.userIntent.tserverGFlags;
+          payload.clusters = [primaryCluster];
         }
-        delete asyncClusterCopy.userIntent.masterGFlags;
-        delete asyncClusterCopy.userIntent.tserverGFlags;
-        payload.clusters.push(asyncClusterCopy);
+        if (asyncClusterCopy && !_.isEmpty(asyncClusterCopy)) {
+          if (inheritFlagsFromPrimary) {
+            asyncClusterCopy.userIntent.specificGFlags = {
+              inheritFromPrimary: true,
+              perProcessFlags: {}
+            };
+          } else {
+            const { tserverGFlags } = transformFlagArrayToObject(asyncGflags);
+            asyncClusterCopy.userIntent.specificGFlags = {
+              inheritFromPrimary: false,
+              perProcessFlags: {
+                value: {
+                  TSERVER: tserverGFlags
+                }
+              }
+            };
+          }
+          delete asyncClusterCopy.userIntent.masterGFlags;
+          delete asyncClusterCopy.userIntent.tserverGFlags;
+          payload.clusters.push(asyncClusterCopy);
+        }
+        payload.runOnlyPrechecks = runOnlyPrechecks;
+        try {
+          const response = await api.upgradeGflags(payload, universeUUID);
+          if ('taskUUID' in response) {
+            const taskUUID = response.taskUUID;
+            runOnlyPrechecks &&
+              toast.success(t('universeActions.precheckInitiatedMsg'), {
+                autoClose: TOAST_AUTO_DISMISS_INTERVAL
+              });
+            if (isNewTaskUIEnabled) {
+              dispatch(showTaskInDrawer(taskUUID));
+            } else {
+              transitToUniverse(universeUUID);
+            }
+          }
+          onClose();
+        } catch (error) {
+          toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
+        }
+      } else {
+        setWarningModal(true);
       }
-      try {
-        await api.upgradeGflags(payload, universeUUID);
-        onClose();
-      } catch (error) {
-        toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
-      }
-    } else {
-      setWarningModal(true);
-    }
-  });
+    });
 
   const handleInheritFlagsToggle = (event: any) => {
     if (event.target.checked) {
@@ -308,18 +335,45 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
       size="lg"
       overrideHeight={800}
       overrideWidth={1100}
-      cancelLabel={t('common.cancel')}
-      submitLabel={t('common.applyChanges')}
       title={t('universeForm.gFlags.title')}
       onClose={onClose}
-      onSubmit={handleFormSubmit}
-      submitTestId="EditGflags-Submit"
-      cancelTestId="EditGflags-Close"
-      buttonProps={{
-        primary: {
-          disabled: !canEditGFlags
-        }
-      }}
+      footerAccessory={
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            width: '100%'
+          }}
+        >
+          <YBButton
+            type="button"
+            variant="secondary"
+            data-testid="EditGFlagsModal-Cancel"
+            onClick={onClose}
+          >
+            {t('common.cancel')}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            onClick={handleFormSubmit(true)}
+            data-testid="EditGFlagsModal-Precheck"
+          >
+            {t('universeActions.runPrecheckOnlyButton')}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="primary"
+            disabled={!canEditGFlags}
+            onClick={handleFormSubmit()}
+            data-testid="EditGFlagsModal-UpgradeButton"
+          >
+            {t('common.applyChanges')}
+          </YBButton>
+        </div>
+      }
       submitButtonTooltip={!canEditGFlags ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
@@ -443,7 +497,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
             setWarningModal(false);
             window.location.reload();
           }}
-          onCancel={handleFormSubmit}
+          onCancel={handleFormSubmit()}
           open={openWarningModal}
         />
       </FormProvider>

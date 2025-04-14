@@ -19,12 +19,15 @@
 
 #include "common/keywords.h"
 #include "fe_utils/string_utils.h"
+#include "mb/pg_wchar.h"
 
 static PQExpBuffer defaultGetLocalPQExpBuffer(void);
 
 /* Globals exported by this file */
 int			quote_all_identifiers = 0;
 PQExpBuffer (*getLocalPQExpBuffer) (void) = defaultGetLocalPQExpBuffer;
+
+static int	fmtIdEncoding = -1;
 
 
 /*
@@ -55,18 +58,53 @@ defaultGetLocalPQExpBuffer(void)
 }
 
 /*
+ * Set the encoding that fmtId() and fmtQualifiedId() use.
+ *
+ * This is not safe against multiple connections having different encodings,
+ * but there is no real other way to address the need to know the encoding for
+ * fmtId()/fmtQualifiedId() input for safe escaping. Eventually we should get
+ * rid of fmtId().
+ */
+void
+setFmtEncoding(int encoding)
+{
+	fmtIdEncoding = encoding;
+}
+
+/*
+ * Return the currently configured encoding for fmtId() and fmtQualifiedId().
+ */
+static int
+getFmtEncoding(void)
+{
+	if (fmtIdEncoding != -1)
+		return fmtIdEncoding;
+
+	/*
+	 * In assertion builds it seems best to fail hard if the encoding was not
+	 * set, to make it easier to find places with missing calls. But in
+	 * production builds that seems like a bad idea, thus we instead just
+	 * default to UTF-8.
+	 */
+	Assert(fmtIdEncoding != -1);
+
+	return PG_UTF8;
+}
+
+/*
  *	Quotes input string if it's not a legitimate SQL identifier as-is.
  *
- *	Note that the returned string must be used before calling fmtId again,
+ *	Note that the returned string must be used before calling fmtIdEnc again,
  *	since we re-use the same return buffer each time.
  */
 const char *
-fmtId(const char *rawid)
+fmtIdEnc(const char *rawid, int encoding)
 {
 	PQExpBuffer id_return = getLocalPQExpBuffer();
 
 	const char *cp;
 	bool		need_quotes = false;
+	size_t		remaining = strlen(rawid);
 
 	/*
 	 * These checks need to match the identifier production in scan.l. Don't
@@ -80,7 +118,8 @@ fmtId(const char *rawid)
 	else
 	{
 		/* otherwise check the entire string */
-		for (cp = rawid; *cp; cp++)
+		cp = rawid;
+		for (size_t i = 0; i < remaining; i++, cp++)
 		{
 			if (!((*cp >= 'a' && *cp <= 'z')
 				  || (*cp >= '0' && *cp <= '9')
@@ -116,19 +155,127 @@ fmtId(const char *rawid)
 	else
 	{
 		appendPQExpBufferChar(id_return, '"');
-		for (cp = rawid; *cp; cp++)
+
+		cp = &rawid[0];
+		while (remaining > 0)
 		{
-			/*
-			 * Did we find a double-quote in the string? Then make this a
-			 * double double-quote per SQL99. Before, we put in a
-			 * backslash/double-quote pair. - thomas 2000-08-05
-			 */
-			if (*cp == '"')
-				appendPQExpBufferChar(id_return, '"');
-			appendPQExpBufferChar(id_return, *cp);
+			int			charlen;
+
+			/* Fast path for plain ASCII */
+			if (!IS_HIGHBIT_SET(*cp))
+			{
+				/*
+				 * Did we find a double-quote in the string? Then make this a
+				 * double double-quote per SQL99. Before, we put in a
+				 * backslash/double-quote pair. - thomas 2000-08-05
+				 */
+				if (*cp == '"')
+					appendPQExpBufferChar(id_return, '"');
+				appendPQExpBufferChar(id_return, *cp);
+				remaining--;
+				cp++;
+				continue;
+			}
+
+			/* Slow path for possible multibyte characters */
+			charlen = pg_encoding_mblen(encoding, cp);
+
+			if (remaining < charlen ||
+				pg_encoding_verifymbchar(encoding, cp, charlen) == -1)
+			{
+				/*
+				 * Multibyte character is invalid.  It's important to verify
+				 * that as invalid multibyte characters could e.g. be used to
+				 * "skip" over quote characters, e.g. when parsing
+				 * character-by-character.
+				 *
+				 * Replace the character's first byte with an invalid
+				 * sequence. The invalid sequence ensures that the escaped
+				 * string will trigger an error on the server-side, even if we
+				 * can't directly report an error here.
+				 *
+				 * It would be a bit faster to verify the whole string the
+				 * first time we encounter a set highbit, but this way we can
+				 * replace just the invalid data, which probably makes it
+				 * easier for users to find the invalidly encoded portion of a
+				 * larger string.
+				 */
+				if (enlargePQExpBuffer(id_return, 2))
+				{
+					pg_encoding_set_invalid(encoding,
+											id_return->data + id_return->len);
+					id_return->len += 2;
+					id_return->data[id_return->len] = '\0';
+				}
+
+				/*
+				 * Handle the following bytes as if this byte didn't exist.
+				 * That's safer in case the subsequent bytes contain
+				 * characters that are significant for the caller (e.g. '>' in
+				 * html).
+				 */
+				remaining--;
+				cp++;
+			}
+			else
+			{
+				for (int i = 0; i < charlen; i++)
+				{
+					appendPQExpBufferChar(id_return, *cp);
+					remaining--;
+					cp++;
+				}
+			}
 		}
+
 		appendPQExpBufferChar(id_return, '"');
 	}
+
+	return id_return->data;
+}
+
+/*
+ *	Quotes input string if it's not a legitimate SQL identifier as-is.
+ *
+ *	Note that the returned string must be used before calling fmtId again,
+ *	since we re-use the same return buffer each time.
+ *
+ *  NB: This assumes setFmtEncoding() previously has been called to configure
+ *  the encoding of rawid. It is preferable to use fmtIdEnc() with an
+ *  explicit encoding.
+ */
+const char *
+fmtId(const char *rawid)
+{
+	return fmtIdEnc(rawid, getFmtEncoding());
+}
+
+/*
+ * fmtQualifiedIdEnc - construct a schema-qualified name, with quoting as
+ * needed.
+ *
+ * Like fmtId, use the result before calling again.
+ *
+ * Since we call fmtId and it also uses getLocalPQExpBuffer() we cannot
+ * use that buffer until we're finished with calling fmtId().
+ */
+const char *
+fmtQualifiedIdEnc(const char *schema, const char *id, int encoding)
+{
+	PQExpBuffer id_return;
+	PQExpBuffer lcl_pqexp = createPQExpBuffer();
+
+	/* Some callers might fail to provide a schema name */
+	if (schema && *schema)
+	{
+		appendPQExpBuffer(lcl_pqexp, "%s.", fmtIdEnc(schema, encoding));
+	}
+	appendPQExpBufferStr(lcl_pqexp, fmtIdEnc(id, encoding));
+
+	id_return = getLocalPQExpBuffer();
+
+	appendPQExpBufferStr(id_return, lcl_pqexp->data);
+	destroyPQExpBuffer(lcl_pqexp);
 
 	return id_return->data;
 }
@@ -140,26 +287,15 @@ fmtId(const char *rawid)
  *
  * Since we call fmtId and it also uses getLocalPQExpBuffer() we cannot
  * use that buffer until we're finished with calling fmtId().
+ *
+ * NB: This assumes setFmtEncoding() previously has been called to configure
+ * the encoding of schema/id. It is preferable to use fmtQualifiedIdEnc()
+ * with an explicit encoding.
  */
 const char *
 fmtQualifiedId(const char *schema, const char *id)
 {
-	PQExpBuffer id_return;
-	PQExpBuffer lcl_pqexp = createPQExpBuffer();
-
-	/* Some callers might fail to provide a schema name */
-	if (schema && *schema)
-	{
-		appendPQExpBuffer(lcl_pqexp, "%s.", fmtId(schema));
-	}
-	appendPQExpBufferStr(lcl_pqexp, fmtId(id));
-
-	id_return = getLocalPQExpBuffer();
-
-	appendPQExpBufferStr(id_return, lcl_pqexp->data);
-	destroyPQExpBuffer(lcl_pqexp);
-
-	return id_return->data;
+	return fmtQualifiedIdEnc(schema, id, getFmtEncoding());
 }
 
 
@@ -218,6 +354,7 @@ appendStringLiteral(PQExpBuffer buf, const char *str,
 	size_t		length = strlen(str);
 	const char *source = str;
 	char	   *target;
+	size_t		remaining = length;
 
 	if (!enlargePQExpBuffer(buf, 2 * length + 2))
 		return;
@@ -225,10 +362,10 @@ appendStringLiteral(PQExpBuffer buf, const char *str,
 	target = buf->data + buf->len;
 	*target++ = '\'';
 
-	while (*source != '\0')
+	while (remaining > 0)
 	{
 		char		c = *source;
-		int			len;
+		int			charlen;
 		int			i;
 
 		/* Fast path for plain ASCII */
@@ -240,39 +377,55 @@ appendStringLiteral(PQExpBuffer buf, const char *str,
 			/* Copy the character */
 			*target++ = c;
 			source++;
+			remaining--;
 			continue;
 		}
 
 		/* Slow path for possible multibyte characters */
-		len = PQmblen(source, encoding);
+		charlen = PQmblen(source, encoding);
 
-		/* Copy the character */
-		for (i = 0; i < len; i++)
+		if (remaining < charlen ||
+			pg_encoding_verifymbchar(encoding, source, charlen) == -1)
 		{
-			if (*source == '\0')
-				break;
-			*target++ = *source++;
+			/*
+			 * Multibyte character is invalid.  It's important to verify that
+			 * as invalid multibyte characters could e.g. be used to "skip"
+			 * over quote characters, e.g. when parsing
+			 * character-by-character.
+			 *
+			 * Replace the character's first byte with an invalid sequence.
+			 * The invalid sequence ensures that the escaped string will
+			 * trigger an error on the server-side, even if we can't directly
+			 * report an error here.
+			 *
+			 * We know there's enough space for the invalid sequence because
+			 * the "target" buffer is 2 * length + 2 long, and at worst we're
+			 * replacing a single input byte with two invalid bytes.
+			 *
+			 * It would be a bit faster to verify the whole string the first
+			 * time we encounter a set highbit, but this way we can replace
+			 * just the invalid data, which probably makes it easier for users
+			 * to find the invalidly encoded portion of a larger string.
+			 */
+			pg_encoding_set_invalid(encoding, target);
+			target += 2;
+
+			/*
+			 * Handle the following bytes as if this byte didn't exist. That's
+			 * safer in case the subsequent bytes contain important characters
+			 * for the caller (e.g. '>' in html).
+			 */
+			source++;
+			remaining--;
 		}
-
-		/*
-		 * If we hit premature end of string (ie, incomplete multibyte
-		 * character), try to pad out to the correct length with spaces. We
-		 * may not be able to pad completely, but we will always be able to
-		 * insert at least one pad space (since we'd not have quoted a
-		 * multibyte character).  This should be enough to make a string that
-		 * the server will error out on.
-		 */
-		if (i < len)
+		else
 		{
-			char	   *stop = buf->data + buf->maxlen - 2;
-
-			for (; i < len; i++)
+			/* Copy the character */
+			for (i = 0; i < charlen; i++)
 			{
-				if (target >= stop)
-					break;
-				*target++ = ' ';
+				*target++ = *source++;
+				remaining--;
 			}
-			break;
 		}
 	}
 
@@ -616,16 +769,22 @@ appendPsqlMetaConnect(PQExpBuffer buf, const char *dbname)
 		}
 	}
 
-	appendPQExpBufferStr(buf, "\\connect ");
 	if (complex)
 	{
 		PQExpBufferData connstr;
 
 		initPQExpBuffer(&connstr);
+
+		/*
+		 * Force the target psql's encoding to SQL_ASCII.  We don't really
+		 * know the encoding of the database name, and it doesn't matter as
+		 * long as psql will forward it to the server unchanged.
+		 */
+		appendPQExpBufferStr(buf, "\\encoding SQL_ASCII\n");
+		appendPQExpBufferStr(buf, "\\connect -reuse-previous=on ");
+
 		appendPQExpBufferStr(&connstr, "dbname=");
 		appendConnStrVal(&connstr, dbname);
-
-		appendPQExpBufferStr(buf, "-reuse-previous=on ");
 
 		/*
 		 * As long as the name does not contain a newline, SQL identifier
@@ -633,12 +792,15 @@ appendPsqlMetaConnect(PQExpBuffer buf, const char *dbname)
 		 * involve psql-interpreted single quotes, which behaved differently
 		 * before PostgreSQL 9.2.
 		 */
-		appendPQExpBufferStr(buf, fmtId(connstr.data));
+		appendPQExpBufferStr(buf, fmtIdEnc(connstr.data, PG_SQL_ASCII));
 
 		termPQExpBuffer(&connstr);
 	}
 	else
-		appendPQExpBufferStr(buf, fmtId(dbname));
+	{
+		appendPQExpBufferStr(buf, "\\connect ");
+		appendPQExpBufferStr(buf, fmtIdEnc(dbname, PG_SQL_ASCII));
+	}
 	appendPQExpBufferChar(buf, '\n');
 }
 

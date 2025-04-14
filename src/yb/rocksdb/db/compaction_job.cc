@@ -266,7 +266,7 @@ CompactionJob::CompactionJob(
   if (wait_state_) {
     wait_state_->UpdateMetadata(
         {.root_request_id = yb::Uuid::Generate(),
-         .query_id = yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForCompaction),
+         .query_id = std::to_underlying(yb::ash::FixedQueryId::kQueryIdForCompaction),
          .rpc_request_id = job_id_});
     wait_state_->UpdateAuxInfo({.tablet_id = db_options_.tablet_id, .method = "Compaction"});
     SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
@@ -1057,7 +1057,7 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    LOG(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
+    LOG_WITH_PREFIX(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
@@ -1327,6 +1327,10 @@ void CompactionJob::LogCompaction() {
            << "input_data_size" << compaction->CalculateTotalInputSize()
            << "is_full_compaction" << compaction->is_full_compaction();
   }
+}
+
+const std::string& CompactionJob::LogPrefix() const {
+  return db_options_.info_log->Prefix();
 }
 
 }  // namespace rocksdb

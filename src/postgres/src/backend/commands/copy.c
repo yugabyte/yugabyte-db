@@ -41,14 +41,14 @@
 #include "utils/rel.h"
 #include "utils/rls.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
 #include "executor/ybModifyTable.h"
-#include "port/pg_bswap.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
+#include "port/pg_bswap.h"
 
 int			yb_default_copy_from_rows_per_transaction = DEFAULT_BATCH_ROWS_PER_TRANSACTION;
 
@@ -130,7 +130,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 
 		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
 			IsYugaByteEnabled())
-			SetTxnWithPGRel();
+			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 
 		relid = RelationGetRelid(rel);
 
@@ -255,11 +255,14 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 
 			/*
 			 * Build RangeVar for from clause, fully qualified based on the
-			 * relation which we have opened and locked.
+			 * relation which we have opened and locked.  Use "ONLY" so that
+			 * COPY retrieves rows from only the target table not any
+			 * inheritance children, the same as when RLS doesn't apply.
 			 */
 			from = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 								pstrdup(RelationGetRelationName(rel)),
 								-1);
+			from->inh = false;	/* apply ONLY */
 
 			/* Build query */
 			select = makeNode(SelectStmt);
@@ -406,7 +409,7 @@ defGetCopyHeaderChoice(DefElem *def, bool is_from)
  *
  * This is exported so that external users of the COPY API can sanity-check
  * a list of options.  In that usage, 'opts_out' can be passed as NULL and
- * the collected data is just leaked until GetCurrentMemoryContext() is reset.
+ * the collected data is just leaked until CurrentMemoryContext is reset.
  *
  * Note that additional checking, such as whether column names listed in FORCE
  * QUOTE actually exist, has to be applied later.  This just checks for

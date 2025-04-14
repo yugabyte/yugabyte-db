@@ -325,7 +325,7 @@ class YBClient::Data {
   void CreateXClusterStream(
       YBClient* client, const TableId& table_id,
       const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
-      master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
+      master::SysCDCStreamEntryPB_State state, cdc::StreamModeTransactional transactional,
       CoarseTimePoint deadline, CreateCDCStreamCallback callback);
 
   void DeleteCDCStream(
@@ -359,6 +359,14 @@ class YBClient::Data {
 
   void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
+      StdStatusCallback callback);
+
+  void AcquireObjectLocksGlobalAsync(
+      YBClient* client, master::AcquireObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+      StdStatusCallback callback);
+
+  void ReleaseObjectLocksGlobalAsync(
+      YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
       StdStatusCallback callback);
 
   void GetTableLocations(

@@ -31,12 +31,19 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_string(certs_dir);
+DECLARE_string(ysql_hba_conf_csv);
 
 namespace yb {
 
 class ExternalMiniClusterSecureTest :
     public MiniClusterTestWithClient<ExternalMiniCluster> {
  public:
+
+  void SetUp(bool enable_ysql) {
+    enable_ysql_ = enable_ysql;
+    ExternalMiniClusterSecureTest::SetUp();
+  }
+
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
@@ -47,7 +54,7 @@ class ExternalMiniClusterSecureTest :
 
     MiniClusterTestWithClient::SetUp();
 
-    ASSERT_NO_FATALS(StartSecure(&cluster_, &secure_context_, &messenger_));
+    ASSERT_NO_FATALS(StartSecure(&cluster_, &secure_context_, &messenger_, enable_ysql_));
 
     ASSERT_OK(CreateClient());
 
@@ -130,6 +137,7 @@ class ExternalMiniClusterSecureTest :
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<CppCassandraDriver> driver_;
   client::TableHandle table_;
+  bool enable_ysql_ = true;
 };
 
 TEST_F(ExternalMiniClusterSecureTest, Simple) {
@@ -174,17 +182,15 @@ TEST_F_EX(ExternalMiniClusterSecureTest, InsecureCql, ExternalMiniClusterSecureA
 class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterSecureTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
-    ExternalMiniClusterSecureTest::SetUp();
+    // TODO: enable ysql after #26138 is fixed
+    ExternalMiniClusterSecureTest::SetUp(false);
   }
 };
 
-TEST_F_EX(ExternalMiniClusterSecureTest, YbAdmin, ExternalMiniClusterSecureWithClientCertsTest) {
-  ASSERT_OK(CallYBAdmin("127.0.0.100", "list_tables"));
-}
-
-TEST_F_EX(ExternalMiniClusterSecureTest, YbTsCli, ExternalMiniClusterSecureWithClientCertsTest) {
+TEST_F_EX(ExternalMiniClusterSecureTest, YbTools, ExternalMiniClusterSecureWithClientCertsTest) {
   ASSERT_OK(CallYBTSCli("127.0.0.100", "list_tablets",
                         cluster_->tablet_server(0)->bound_rpc_addr()));
+  ASSERT_OK(CallYBAdmin("127.0.0.100", "list_tables"));
 }
 
 class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest {
@@ -260,6 +266,66 @@ TEST_F_EX(ExternalMiniClusterSecureTest, ReloadCertificates, ExternalMiniCluster
   ReplaceToolCertificates();
   ASSERT_OK(CallYBTSCliAllServers("127.0.0.100", "reload_certificates"));
   TestCql(JoinPathSegments("CA2", "ca.crt"));
+}
+
+class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecureTest {
+
+  public:
+  void SetUpFlags() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =
+      JoinPathSegments(env_util::GetRootDir("test_certs"), "test_certs/intermediate1");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) = "hostssl all all all cert";
+  }
+
+  void VerifyToolsAndYsqlsh() {
+    ASSERT_OK(CallYBTSCli("127.0.0.6", "list_tablets",
+        cluster_->tablet_server(0)->bound_rpc_addr()));
+    ASSERT_OK(CallYBAdmin("127.0.0.6", "list_tables"));
+
+    auto sslparam = Format("sslmode=verify-full sslrootcert=$0 sslcert=$1 sslkey=$2",
+        JoinPathSegments(FLAGS_certs_dir, "ca.crt"),
+        JoinPathSegments(FLAGS_certs_dir, "ysql.crt"),
+        JoinPathSegments(FLAGS_certs_dir, "ysql.key")
+    );
+
+    auto ysqlsh_command = ToStringVector(
+        GetPgToolPath("ysqlsh"), "-h", cluster_->ysql_hostport(0).host(),
+        "-p", cluster_->ysql_hostport(0).port(),
+        sslparam, "-c", "select now();"
+    );
+    LOG(INFO) << "Running " << ToString(ysqlsh_command);
+    Subprocess proc(ysqlsh_command[0], ysqlsh_command);
+    proc.SetEnv("PGPASSWORD", "yugabyte");
+    ASSERT_OK(proc.Run());
+  }
+};
+
+
+class ExternalMiniClusterSecureWithInterCAServerCertTest :
+  public ExternalMiniClusterSecureWithInterCATest {
+
+  public:
+  void SetUpFlags() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =  JoinPathSegments(
+        env_util::GetRootDir("test_certs"), "test_certs/intermediate2");
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) = "hostssl all all all cert";
+    }
+
+};
+
+// ca.crt contains both root and intermediate CA certs
+// node.crt contains just the server cert signed by the intermediate CA
+TEST_F_EX(ExternalMiniClusterSecureTest, YbIntermediateInCACert,
+  ExternalMiniClusterSecureWithInterCATest) {
+  VerifyToolsAndYsqlsh();
+}
+
+// ca.crt contains only root CA cert
+// node.crt contains the server cert signed by the intermediate CA
+// concatenated with the intermediate CA cert
+TEST_F_EX(ExternalMiniClusterSecureTest, YbIntermediateInServerCert,
+  ExternalMiniClusterSecureWithInterCAServerCertTest) {
+  VerifyToolsAndYsqlsh();
 }
 
 } // namespace yb

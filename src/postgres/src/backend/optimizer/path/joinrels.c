@@ -175,9 +175,21 @@ join_search_one_level(PlannerInfo *root, int level)
 			 * We can ignore relations without join clauses here, unless they
 			 * participate in join-order restrictions --- then we might have
 			 * to force a bushy join plan.
+			 *
+			 * YB : Also want any join that is in Leading Hint. If you hint
+			 * a bushy join that needs a cross join then the ybFindHintedJoin()
+			 * check is required here. E.g.
+			 *
+			 * leading(((t1 t2) (t3 t4)))
+			 * select * from t1, t2, t3, t4  where a1=a2 and a3=a4;
+			 *
+			 * The standard PG join search will not try (t1 t2) join (t3 t4)
+			 * but we need to since it is hinted.
 			 */
 			if (old_rel->joininfo == NIL && !old_rel->has_eclass_joins &&
-				!has_join_restriction(root, old_rel))
+				!has_join_restriction(root, old_rel) &&
+				!ybFindHintedJoin(root, old_rel->relids, NULL,
+						true /* try swapped */ ))
 				continue;
 
 			if (k == other_level)
@@ -202,9 +214,13 @@ join_search_one_level(PlannerInfo *root, int level)
 					 * OK, we can build a rel of the right level from this
 					 * pair of rels.  Do so if there is at least one relevant
 					 * join clause or join order restriction.
+					 *
+					 * YB : Also want any join that is in Leading Hint.
 					 */
 					if (have_relevant_joinclause(root, old_rel, new_rel) ||
-						have_join_order_restriction(root, old_rel, new_rel))
+						have_join_order_restriction(root, old_rel, new_rel)  ||
+						ybFindHintedJoin(root, old_rel->relids, new_rel->relids,
+								true /* try swapped */ ))
 					{
 						(void) make_join_rel(root, old_rel, new_rel);
 					}
@@ -307,7 +323,9 @@ make_rels_by_clause_joins(PlannerInfo *root,
 
 		if (!bms_overlap(old_rel->relids, other_rel->relids) &&
 			(have_relevant_joinclause(root, old_rel, other_rel) ||
-			 have_join_order_restriction(root, old_rel, other_rel)))
+			have_join_order_restriction(root, old_rel, other_rel) ||
+			ybFindHintedJoin(root, old_rel->relids, other_rel->relids,
+					true /* try swapped */ )))
 		{
 			(void) make_join_rel(root, old_rel, other_rel);
 		}

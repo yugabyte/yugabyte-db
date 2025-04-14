@@ -14,7 +14,6 @@
  */
 #include "postgres.h"
 
-#include "access/sysattr.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
@@ -24,6 +23,9 @@
 #include "nodes/pathnodes.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+
+/* YB includes */
+#include "access/sysattr.h"
 
 static bool expression_returns_set_walker(Node *node, void *context);
 static int	leftmostLoc(int loc1, int loc2);
@@ -2186,6 +2188,8 @@ expression_tree_walker(Node *node,
 					return true;
 				if (walker(wc->endOffset, context))
 					return true;
+				if (walker(wc->runCondition, context))
+					return true;
 			}
 			break;
 		case T_CTECycleClause:
@@ -2470,6 +2474,8 @@ query_tree_walker(Query *query,
 			if (walker(wc->startOffset, context))
 				return true;
 			if (walker(wc->endOffset, context))
+				return true;
+			if (walker(wc->runCondition, context))
 				return true;
 		}
 	}
@@ -3117,6 +3123,7 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->orderClause, wc->orderClause, List *);
 				MUTATE(newnode->startOffset, wc->startOffset, Node *);
 				MUTATE(newnode->endOffset, wc->endOffset, Node *);
+				MUTATE(newnode->runCondition, wc->runCondition, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -3466,6 +3473,7 @@ query_tree_mutator(Query *query,
 			FLATCOPY(newnode, wc, WindowClause);
 			MUTATE(newnode->startOffset, wc->startOffset, Node *);
 			MUTATE(newnode->endOffset, wc->endOffset, Node *);
+			MUTATE(newnode->runCondition, wc->runCondition, List *);
 
 			resultlist = lappend(resultlist, (Node *) newnode);
 		}
@@ -4053,8 +4061,6 @@ raw_expression_tree_walker(Node *node,
 				ColumnDef  *coldef = (ColumnDef *) node;
 
 				if (walker(coldef->typeName, context))
-					return true;
-				if (walker(coldef->compression, context))
 					return true;
 				if (walker(coldef->raw_default, context))
 					return true;

@@ -108,9 +108,12 @@ class PgDmlRead : public PgDml {
   // Execute.
   Status Exec(const YbcPgExecParameters* exec_params);
   void SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids);
+  void SetHoldingRequestedYbctids(const std::vector<Slice>& ybctids);
 
   Status ANNBindVector(PgExpr* vector);
   Status ANNSetPrefetchSize(int32_t prefetch_size);
+
+  Status HnswSetReadOptions(int ef_search);
 
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) override {
     DoSetCatalogCacheVersion(read_req_.get(), db_oid, version);

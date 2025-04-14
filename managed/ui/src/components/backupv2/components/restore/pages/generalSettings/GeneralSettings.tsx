@@ -159,7 +159,7 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     {
       enabled: enableVerifyDuplicateTable,
       onSuccess: (resp) => {
-        if (isDuplicateKeyspaceExistsinUniverse(preflightResponse, resp.data)) {
+        if (isDuplicateKeyspaceExistsinUniverse(preflightResponse, resp.data, generalSettings?.incrementalBackupProps, methods.getValues('selectedKeyspace.label'))) {
           methods.setValue('forceKeyspaceRename', true);
           methods.setValue('renameKeyspace', true);
         }

@@ -27,6 +27,7 @@
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_types.h"
 #include "yb/master/master_types.pb.h"
+#include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_retention_policy.h"
@@ -168,9 +169,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
       SnapshotScheduleRestoration* restoration);
 
-  // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
+  // Returns a map from schedule id to a sorted vector of tablets' ids in this schedule.
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntryType type);
+      SysRowEntryType type, IncludeHiddenTables includeHiddenTables = IncludeHiddenTables::kFalse);
 
   Result<std::vector<SnapshotScheduleId>> GetSnapshotSchedules(
       SysRowEntryType type, const std::string& object_id);

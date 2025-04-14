@@ -6,7 +6,9 @@ package universe
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/edit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/node"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/readreplica"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/security"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/table"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
@@ -27,12 +29,26 @@ var UniverseCmd = &cobra.Command{
 func init() {
 	UniverseCmd.AddCommand(listUniverseCmd)
 	UniverseCmd.AddCommand(describeUniverseCmd)
+	UniverseCmd.AddCommand(readreplica.DeleteReadReplicaUniverseCmd)
+	UniverseCmd.AddCommand(readreplica.CreateReadReplicaUniverseCmd)
 	UniverseCmd.AddCommand(deleteUniverseCmd)
 	UniverseCmd.AddCommand(createUniverseCmd)
+	UniverseCmd.AddCommand(pauseUniverseCmd)
+	UniverseCmd.AddCommand(resumeUniverseCmd)
 	UniverseCmd.AddCommand(upgrade.UpgradeUniverseCmd)
 	UniverseCmd.AddCommand(upgrade.RestartCmd)
 	UniverseCmd.AddCommand(node.NodeCmd)
 	UniverseCmd.AddCommand(security.SecurityUniverseCmd)
 	UniverseCmd.AddCommand(runSampleAppsUniverseCmd)
 	UniverseCmd.AddCommand(table.TableCmd)
+	UniverseCmd.AddCommand(edit.EditUniverseCmd)
+
+	UniverseCmd.AddGroup(&cobra.Group{
+		ID:    "action",
+		Title: "Action Commands",
+	})
+	UniverseCmd.AddGroup(&cobra.Group{
+		ID:    "read-replica",
+		Title: "Read Replica Commands",
+	})
 }

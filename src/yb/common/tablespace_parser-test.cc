@@ -40,6 +40,8 @@
 using std::string;
 using std::vector;
 
+DECLARE_bool(enable_tablespace_validation);
+
 namespace yb {
 
 // Test the tablespace info parsing.
@@ -244,6 +246,39 @@ TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
     ASSERT_EQ(replication_info.multi_affinitized_leaders(2).zones_size(), 1);
     ASSERT_EQ(replication_info.multi_affinitized_leaders(2).zones(0).placement_zone(), "z3");
   }
+}
+
+TEST(TablespaceParserTest, TestDisabledTablespaceValidation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablespace_validation) = false;
+
+  // Check that we still have some basic validation checks.
+  const string invalid_placement = R"#(replica_placement={"num_replicas":"incorrect"})#";
+  auto result = TablespaceParser::FromQLValue({invalid_placement});
+  ASSERT_NOK_STR_CONTAINS(result, "Invalid or missing \"num_replicas\" field");
+
+  // Should be able to create replication info, despite the duplicate placement blocks, when
+  // FLAGS_enable_tablespace_validation is false.
+  const string& zone1 = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
+  const string& zone1_copy = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
+  const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
+  const string format =
+      R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
+  const auto duplicate_placement = strings::Substitute(format, zone1, zone1_copy, zone3);
+  ASSERT_RESULT(TablespaceParser::FromQLValue({duplicate_placement}));
+}
+
+TEST(TablespaceParserTest, TestDuplicatePlacementBlocks) {
+  const string& zone1 = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
+  const string& zone1_copy = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
+  const string& zone3 = R"#("cloud":"c1","region":"r1","zone":"z3","min_num_replicas":1)#";
+  const string format =
+      R"#(replica_placement={"num_replicas":3,"placement_blocks": [{$0},{$1},{$2}]})#";
+  const auto duplicate_placement = strings::Substitute(format, zone1, zone1_copy, zone3);
+
+  // Should fail to create replication info because of duplicate placement blocks.
+  auto result = TablespaceParser::FromQLValue({duplicate_placement});
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Duplicate placement block");
 }
 
 } // namespace yb

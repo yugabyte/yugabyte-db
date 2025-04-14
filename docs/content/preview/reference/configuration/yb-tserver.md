@@ -177,7 +177,7 @@ Default: `""`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -263,7 +263,7 @@ To read this table, take your node's available memory in GiB, call it _M_, and f
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
 
-The defaults for the master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
+The defaults for [flags controlling memory division in a TServer](#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
 
 | flag | default |
 | :--- | :--- |
@@ -332,7 +332,7 @@ Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-def
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
+With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, --evict_failed_followers), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -430,7 +430,7 @@ Default: `64`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
 ## Sharding flags
 
@@ -819,7 +819,7 @@ Valid values are `connection` and `server`.
 
 This flag requires the YB-TServer `yb_enable_sequence_pushdown` flag to be true (the default). Otherwise, the default behavior will occur regardless of this flag's value.
 
-For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/func_nextval/) page.
+For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/sequence_functions/func_nextval/) page.
 
 Default: `connection`
 
@@ -903,7 +903,7 @@ Default: `262144` (256kB, type: int32)
 
 ##### --ysql_yb_bnl_batch_size
 
-Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
@@ -1042,6 +1042,12 @@ The time interval, in seconds, to retain history/older versions of data. Point-i
 
 Default: `900` (15 minutes)
 
+##### --timestamp_syscatalog_history_retention_interval_sec
+
+The time interval, in seconds, to retain history/older versions of the system catalog.
+
+Default: `4 * 3600` (4 hours)
+
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
 Rate control across all tablets being remote bootstrapped from or to this process.
@@ -1100,17 +1106,7 @@ Specifies which RPC compression algorithm to use. Requires `enable_stream_compre
 
 3: LZ4
 
-In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead.
-
-To upgrade from an older version that doesn't support RPC compression (such as 2.4), to a newer version that does (such as 2.6), you need to do the following:
-
-- Rolling restart to upgrade YugabyteDB to a version that supports compression.
-
-- Rolling restart to enable compression, on both YB-Master and YB-TServer, by setting `enable_stream_compression=true`.
-
-  Note that you can omit this step if the YugabyteDB version you are upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and later (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
-
-- Rolling restart to set the compression algorithm to use, on both YB-Master and YB-TServer, such as by setting `stream_compression_algo=3`.
+In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead. However, the default is set to 0, to avoid latency penalty on workloads.
 
 ## Security flags
 
@@ -1208,10 +1204,12 @@ To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set
 --ssl_protocols = tls12,tls13
 ```
 
-In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
+By default, PostgreSQL uses a default minimum version for TLS of v1.2, as set using the [ssl_min_protocol_version](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION) configuration parameter.
+
+As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify a different minimum TLS version for Master and TServer, you should update the `ssl_min_protocol_version` parameter. For example:
 
 ```sh
---ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.3'"
 ```
 
 ## Packed row flags
@@ -1368,7 +1366,7 @@ Default: `true`
 
 Interval in seconds at which the table list in the publication will be refreshed.
 
-Default: `3600`
+Default: `900`
 
 ##### --cdc_stream_records_threshold_size_bytes
 
@@ -1415,6 +1413,8 @@ Default: `false`
 For tables with a `default_time_to_live` table property, sets a size threshold at which files will no longer be considered for compaction. Files over this threshold will still be considered for expiration. Disabled if value is `0`.
 
 Ideally, `rocksdb_max_file_size_for_compaction` should strike a balance between expiring data at a reasonable frequency and not creating too many SST files (which can impact read performance). For instance, if 90 days worth of data is stored, consider setting this flag to roughly the size of one day's worth of data.
+
+If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accomodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
 
 Default: `0`
 
@@ -1650,6 +1650,26 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
+## Advisory lock flags
+
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+
+To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+
+##### --ysql_yb_enable_advisory_locks
+
+Enables advisory locking.
+
+This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
+
+Default: false
+
+##### --num_advisory_locks_tablets
+
+Number of tablets used for the advisory locks table. It must be set before ysql_yb_enable_advisory_locks is set to true on the cluster.
+
+Default: 1
+
 ## Advanced flags
 
 ##### --allowed_preview_flags_csv
@@ -1777,7 +1797,7 @@ Default: `1GB`
 
 PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
 
-Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
+Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with `AND` or `OR` operators to create a final bitmap that is used to collect rows from the main table.
 
 Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
 
@@ -1800,7 +1820,7 @@ Default: false
 
 ##### yb_bnl_batch_size
 
-Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 Default: 1024
 
@@ -1848,6 +1868,19 @@ Default: 1024
 
 Default: true
 
+##### yb_insert_on_conflict_read_batch_size
+
+{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+
+- temporary relations
+- foreign relations
+- system relations
+- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
+
+The higher the number, the more batching is done. 1024 is recommended.
+
+Default: 0 (disabled)
+
 ##### yb_read_from_followers
 
 Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
@@ -1881,6 +1914,16 @@ Enables skipping updates to columns that are part of secondary indexes and const
 This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
 
 Default: true
+
+##### yb_read_time
+
+Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
+
+To reset the session to normal behavior (current time), set `yb_read_time` to 0.
+
+Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
+
+Default: 0
 
 ## Admin UI
 

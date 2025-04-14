@@ -536,6 +536,6 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
 ## YugabyteDB Kubernetes Operator
 
-A preliminary version of the YugabyteDB Kubernetes Operator is available in [Tech Preview](/preview/releases/versioning/#tech-preview-tp) (not recommended for production use) in v2024.1 and in [Early Access](/preview/releases/versioning/#early-access-ea) in v2024.2. The operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
+The YugabyteDB Kubernetes Operator {{<tags/feature/ea idea="831">}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
 
 For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.

@@ -139,7 +139,7 @@ public class CreateBackupScheduleTest extends CommissionerBaseTest {
         params.scheduleName);
     PlatformServiceException ex =
         assertThrows(PlatformServiceException.class, () -> submitTask(params));
-    assertEquals("Schedule with same name already exists", ex.getMessage());
+    assertEquals("Schedule with same name test already exists", ex.getMessage());
   }
 
   @Test

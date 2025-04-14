@@ -18,7 +18,6 @@
 #include "postgres.h"
 
 #include "access/stratnum.h"
-#include "access/sysattr.h"
 #include "catalog/pg_opfamily.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -28,6 +27,9 @@
 #include "optimizer/paths.h"
 #include "partitioning/partbounds.h"
 #include "utils/lsyscache.h"
+
+/* YB includes */
+#include "access/sysattr.h"
 
 
 static bool pathkey_is_redundant(PathKey *new_pathkey, List *pathkeys);

@@ -126,7 +126,7 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   pb->set_is_static(col_schema.is_static());
   pb->set_is_counter(col_schema.is_counter());
   pb->set_order(col_schema.order());
-  pb->set_sorting_type(to_underlying(col_schema.sorting_type()));
+  pb->set_sorting_type(std::to_underlying(col_schema.sorting_type()));
   pb->set_pg_type_oid(col_schema.pg_type_oid());
   pb->set_marked_for_deletion(col_schema.marked_for_deletion());
   // We only need to process the *hash* primary key here. The regular primary key is set by the

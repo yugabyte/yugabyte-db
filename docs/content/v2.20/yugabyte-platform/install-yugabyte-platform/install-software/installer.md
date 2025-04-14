@@ -48,6 +48,8 @@ After the installation is complete, you can use YBA Installer to manage your ins
 
 Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
 
+Installation requires a license file. To obtain your license, contact your sales representative. If you are not yet a customer and want to try YugabyteDB Anywhere, [book a demo](https://www.yugabyte.com/demo/).
+
 {{< warning title="Keep the control plane separate from the data plane" >}}
 Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
 {{< /warning >}}
@@ -56,7 +58,6 @@ Don't install YugabyteDB Anywhere on servers that you will use for database clus
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from {{% support-platform %}}.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -95,7 +96,7 @@ tar -xf yba_installer_full-{{<yb-version version="v2.20" format="build">}}-linux
 cd yba_installer_full-{{<yb-version version="v2.20" format="build">}}/
 ```
 
-This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
+This bundle provides everything needed (except your license), to complete a fresh install of YBA:
 
 - `yba-ctl` executable binary is used to perform all of the YBA Installer workflows.
 - `yba-ctl.yml.reference` is a YAML reference for the available configuration options for both YBA Installer and YugabyteDB Anywhere.
@@ -135,8 +136,6 @@ You can change some configuration options post-installation using the [reconfigu
 
 ### Provide a license
 
-YBA Installer requires a valid license before installing. To obtain a license, contact {{% support-platform %}}.
-
 Provide the license to YBA Installer by running the `license` command as follows:
 
 ```sh
@@ -171,7 +170,7 @@ sudo ./yba-ctl preflight
 
 Some checks, such as CPU or memory, can be skipped, though this is not recommended for a production installation. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
 
-If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `–skip_preflight <name>[,<name2>]`. For example:
+If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `--skip_preflight <name>[,<name2>]`. For example:
 
 ```sh
 sudo ./yba-ctl preflight --skip_preflight cpu
@@ -185,7 +184,7 @@ To perform an install, run the `install` command. Once started, an install can t
 sudo ./yba-ctl install
 ```
 
-You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license) :
+You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license):
 
 ```sh
 sudo ./yba-ctl install -l /path/to/license
@@ -204,6 +203,72 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 ```
 
 The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YBA to start. After the install succeeds, you can immediately start using YBA.
+
+### Use a stand-alone data disk
+
+{{<tags/feature/ea idea="1829">}}By default, YugabyteDB Anywhere stores its data in `/opt/yugabyte/data`. You can also use a stand-alone data disk for YugabyteDB Anywhere data.
+
+Using a stand-alone data disk allows you to swap your YugabyteDB Anywhere data between installations for tasks such as boot disk replacement.
+
+#### Prerequisites
+
+- The data disk should have a minimum of 200GB free space. If you use a data disk, the root disk does not need the full size requirement.
+- The data disk should be formatted and have a filesystem. YBA Installer does not format, partition, or run mkfs on the disk.
+- If you are replacing a data disk, the data on the replacement must be from the same or earlier version of YugabyteDB Anywhere. YugabyteDB Anywhere will not start if you attempt to use a data disk from a later version of YugabyteDB Anywhere.
+
+Note that if you run [clean –-all](#clean-uninstall), the data disk will be cleaned, regardless of the installation type.
+
+#### New installation
+
+To have YugabyteDB Anywhere use a new stand-alone data disk, do the following:
+
+1. Mount the data disk to `/opt/yugabyte/data`. For example:
+
+    ```sh
+    mount /dev/sdb1 /opt/yugabyte/data
+    ```
+
+1. Install YugabyteDB Anywhere.
+
+    ```sh
+    sudo ./yba-ctl install
+    ```
+
+1. Add the mount to `/etc/fstab`.
+
+#### Existing installation
+
+To use an existing data disk, first unmount the disk from the existing YugabyteDB Anywhere installation as follows:
+
+1. Run `sudo yba-ctl stop` to stop YugabyteDB Anywhere.
+
+1. Unmount the data disk:
+
+    ```sh
+    unmount /opt/yugabyte/data
+    ```
+
+1. Optionally, with the disk unmounted you can safely clean up the YugabyteDB Anywhere installation by running `sudo yba-ctl clean --all`.
+
+The disk is now ready to be reused with a new installation.
+
+To use the data disk with a new installation, do the following:
+
+1. Install YugabyteDB Anywhere using the `--without-data` option:
+
+    ```sh
+    sudo ./yba-ctl install --without-data
+    ```
+
+1. Mount the data disk to `/opt/yugabyte/data`. For example:
+
+    ```sh
+    mount /dev/sdb1 /opt/yugabyte/data
+    ```
+
+1. Start YugabyteDB Anywhere by running `sudo yba-ctl start`.
+
+1. Add the mount to `/etc/fstab`.
 
 ## Manage a YBA installation
 
@@ -298,7 +363,7 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-To delete all data, run `clean` with the `–-all` flag as follows:
+To delete all data, run `clean` with the `--all` flag as follows:
 
 ```sh
 sudo yba-ctl clean --all

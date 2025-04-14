@@ -3,5 +3,5 @@
 ####################################################################################################
 # This testsuite contains testcases pertinent to YB ANALYZE command.
 ####################################################################################################
-test: yb_analyze
-test: yb_analyze_system_tables
+test: yb.orig.analyze
+test: yb.orig.analyze_system_tables

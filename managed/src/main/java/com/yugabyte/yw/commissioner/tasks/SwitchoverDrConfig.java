@@ -136,6 +136,7 @@ public class SwitchoverDrConfig extends EditDrConfig {
               false /* deleteSourcePitrConfigs */,
               false /* deleteTargetPitrConfigs */);
         }
+        createDrConfigWebhookCallTask(switchoverXClusterConfig.getDrConfig());
 
         // After all the other subtasks are done, set the DR states to show replication is
         // happening.

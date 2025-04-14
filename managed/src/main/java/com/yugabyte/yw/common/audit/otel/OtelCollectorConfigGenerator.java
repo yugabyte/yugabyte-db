@@ -25,6 +25,7 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.Base64;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.AllArgsConstructor;
@@ -134,17 +135,62 @@ public class OtelCollectorConfigGenerator {
                         nodeParams.nodeName,
                         logLinePrefix));
       }
-
       yaml.dump(collectorConfigFormat, writer);
     } catch (Exception e) {
       throw new RuntimeException("Error creating OpenTelemetry collector config file", e);
     }
   }
 
+  public Map<String, Object> getOtelHelmValues(
+      AuditLogConfig auditLogConfig, String logLinePrefix) {
+    // For K8s, we don't need to generate the entire config file.
+    // We just need exporterCofigs and receiverConfigs.
+    Map<String, Object> otelConfig = new HashMap<>();
+
+    if (!auditLogConfig.isExportActive()) {
+      otelConfig.put("enabled", false);
+    } else {
+
+      otelConfig.put("enabled", true);
+      // Recievers
+      Map<String, Object> receivers = new HashMap<>();
+      OtelCollectorConfigFormat.RegexOperator regexOperator = getRegexOperator(logLinePrefix);
+      if (auditLogConfig.getYsqlAuditConfig() != null
+          && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
+        Map<String, Object> ysqlReciever = new HashMap<>();
+        ysqlReciever.put("regex", regexOperator.getRegex());
+        ysqlReciever.put("timestamp", regexOperator.getTimestamp());
+        ysqlReciever.put("lineStartPattern", generateLineStartPattern(logLinePrefix));
+        receivers.put("ysql", ysqlReciever);
+      }
+      otelConfig.put("recievers", receivers);
+
+      // Exporters
+      OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
+      List<Object> secretEnv = new ArrayList<>();
+      if (CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
+        auditLogConfig
+            .getUniverseLogsExporterConfig()
+            .forEach(
+                config -> {
+                  TelemetryProvider telemetryProvider =
+                      telemetryProviderService.getOrBadRequest(config.getExporterUuid());
+                  String exporterName =
+                      appendExporterConfig(
+                          telemetryProvider,
+                          collectorConfigFormat.getExporters(),
+                          new ArrayList<>());
+                  appendSecretEnv(telemetryProvider, secretEnv);
+                });
+        otelConfig.put("exporters", collectorConfigFormat.getExporters());
+        otelConfig.put("secretEnv", secretEnv);
+      }
+    }
+    return otelConfig;
+  }
+
   private OtelCollectorConfigFormat.Receiver createYsqlReceiver(
       Provider provider, String logPrefix) {
-    AuditLogRegexGenerator.LogRegexResult regexResult =
-        auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ false);
     // Filter only single/multi-line audit logs
     OtelCollectorConfigFormat.FilterOperator filterOperator =
         new OtelCollectorConfigFormat.FilterOperator();
@@ -152,33 +198,8 @@ public class OtelCollectorConfigGenerator {
     filterOperator.setExpr("body not matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\"");
 
     // Parse attributes from audit logs
-    OtelCollectorConfigFormat.RegexOperator regexOperator =
-        new OtelCollectorConfigFormat.RegexOperator();
-    regexOperator.setType("regex_parser");
-    regexOperator.setRegex(regexResult.getRegex());
-    regexOperator.setOn_error("drop");
-    OtelCollectorConfigFormat.OperatorTimestamp timestamp =
-        new OtelCollectorConfigFormat.OperatorTimestamp();
-    if (regexResult
-        .getTokens()
-        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITHOUT_MS)) {
-      timestamp.setParse_from("attributes.timestamp_without_ms");
-      timestamp.setLayout("%Y-%m-%d %H:%M:%S %Z");
-      regexOperator.setTimestamp(timestamp);
-    } else if (regexResult
-        .getTokens()
-        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITH_MS)) {
-      timestamp.setParse_from("attributes.timestamp_with_ms");
-      timestamp.setLayout("%Y-%m-%d %H:%M:%S.%L %Z");
-      regexOperator.setTimestamp(timestamp);
-    } else if (regexResult
-        .getTokens()
-        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITH_MS_EPOCH)) {
-      timestamp.setParse_from("attributes.timestamp_with_ms_epoch");
-      timestamp.setLayout_type("epoch");
-      timestamp.setLayout("s.ms");
-      regexOperator.setTimestamp(timestamp);
-    }
+    OtelCollectorConfigFormat.RegexOperator regexOperator = getRegexOperator(logPrefix);
+
     OtelCollectorConfigFormat.FileLogReceiver receiver =
         createFileLogReceiver("ysql", ImmutableList.of(filterOperator, regexOperator));
     receiver.setInclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/postgresql-*.log"));
@@ -194,12 +215,7 @@ public class OtelCollectorConfigGenerator {
     // Logic is we first split the lines by either normal log prefix or audit log prefix.
     // Then apply more strict audit log regex patterns to filter only the audit logs.
     MultilineConfig multilineConfig = new MultilineConfig();
-    multilineConfig.setLine_start_pattern(
-        "([A-Z]\\d{4})|("
-            + auditLogRegexGenerator
-                .generateAuditLogRegex(logPrefix, /*onlyPrefix*/ true)
-                .getRegex()
-            + ")");
+    multilineConfig.setLine_start_pattern(generateLineStartPattern(logPrefix));
     receiver.setMultiline(multilineConfig);
     return receiver;
   }
@@ -258,6 +274,45 @@ public class OtelCollectorConfigGenerator {
     return receiver;
   }
 
+  private OtelCollectorConfigFormat.RegexOperator getRegexOperator(String logPrefix) {
+    AuditLogRegexGenerator.LogRegexResult regexResult =
+        auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ false);
+    OtelCollectorConfigFormat.RegexOperator regexOperator =
+        new OtelCollectorConfigFormat.RegexOperator();
+    regexOperator.setType("regex_parser");
+    regexOperator.setRegex(regexResult.getRegex());
+    regexOperator.setOn_error("drop");
+    OtelCollectorConfigFormat.OperatorTimestamp timestamp =
+        new OtelCollectorConfigFormat.OperatorTimestamp();
+    if (regexResult
+        .getTokens()
+        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITHOUT_MS)) {
+      timestamp.setParse_from("attributes.timestamp_without_ms");
+      timestamp.setLayout("%Y-%m-%d %H:%M:%S %Z");
+      regexOperator.setTimestamp(timestamp);
+    } else if (regexResult
+        .getTokens()
+        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITH_MS)) {
+      timestamp.setParse_from("attributes.timestamp_with_ms");
+      timestamp.setLayout("%Y-%m-%d %H:%M:%S.%L %Z");
+      regexOperator.setTimestamp(timestamp);
+    } else if (regexResult
+        .getTokens()
+        .contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITH_MS_EPOCH)) {
+      timestamp.setParse_from("attributes.timestamp_with_ms_epoch");
+      timestamp.setLayout_type("epoch");
+      timestamp.setLayout("s.ms");
+      regexOperator.setTimestamp(timestamp);
+    }
+    return regexOperator;
+  }
+
+  private String generateLineStartPattern(String logPrefix) {
+    return "([A-Z]\\d{4})|("
+        + auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ true).getRegex()
+        + ")";
+  }
+
   @Data
   @AllArgsConstructor
   public static class RenamePair {
@@ -291,75 +346,8 @@ public class OtelCollectorConfigGenerator {
     List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
     OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
         new OtelCollectorConfigFormat.AttributesProcessor();
-    switch (telemetryProvider.getConfig().getType()) {
-      case DATA_DOG:
-        DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
-        OtelCollectorConfigFormat.DataDogExporter dataDogExporter =
-            new OtelCollectorConfigFormat.DataDogExporter();
-        OtelCollectorConfigFormat.DataDogApiConfig apiConfig =
-            new OtelCollectorConfigFormat.DataDogApiConfig();
-        apiConfig.setKey(dataDogConfig.getApiKey());
-        apiConfig.setSite(dataDogConfig.getSite());
-        dataDogExporter.setApi(apiConfig);
-        exporterName = "datadog/" + telemetryProvider.getUuid();
-        exporters.put(exporterName, setExporterCommonConfig(dataDogExporter, true, true));
 
-        // Add Datadog specific labels.
-        attributeActions.add(
-            new OtelCollectorConfigFormat.AttributeAction("ddsource", "yugabyte", "upsert", null));
-        attributeActions.add(
-            new OtelCollectorConfigFormat.AttributeAction(
-                "service", "yb-otel-collector", "upsert", null));
-        break;
-      case SPLUNK:
-        SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();
-        OtelCollectorConfigFormat.SplunkExporter splunkExporter =
-            new OtelCollectorConfigFormat.SplunkExporter();
-        splunkExporter.setToken(splunkConfig.getToken());
-        splunkExporter.setEndpoint(splunkConfig.getEndpoint());
-        splunkExporter.setSource(splunkConfig.getSource());
-        splunkExporter.setSourcetype(splunkConfig.getSourceType());
-        splunkExporter.setIndex(splunkConfig.getIndex());
-        exporterName = "splunk_hec/" + telemetryProvider.getUuid();
-        OtelCollectorConfigFormat.TlsSettings tlsSettings =
-            new OtelCollectorConfigFormat.TlsSettings();
-        tlsSettings.setInsecure_skip_verify(true);
-        splunkExporter.setTls(tlsSettings);
-        exporters.put(exporterName, setExporterCommonConfig(splunkExporter, true, true));
-        break;
-      case AWS_CLOUDWATCH:
-        AWSCloudWatchConfig awsCloudWatchConfig =
-            (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        OtelCollectorConfigFormat.AWSCloudWatchExporter awsCloudWatchExporter =
-            new OtelCollectorConfigFormat.AWSCloudWatchExporter();
-        awsCloudWatchExporter.setEndpoint(awsCloudWatchConfig.getEndpoint());
-        awsCloudWatchExporter.setRegion(awsCloudWatchConfig.getRegion());
-        awsCloudWatchExporter.setLog_group_name(awsCloudWatchConfig.getLogGroup());
-        awsCloudWatchExporter.setLog_stream_name(awsCloudWatchConfig.getLogStream());
-        exporterName = "awscloudwatchlogs/" + telemetryProvider.getUuid();
-        exporters.put(exporterName, setExporterCommonConfig(awsCloudWatchExporter, false, true));
-        break;
-      case GCP_CLOUD_MONITORING:
-        GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
-            (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-        OtelCollectorConfigFormat.GCPCloudMonitoringExporter gcpCloudMonitoringExporter =
-            new OtelCollectorConfigFormat.GCPCloudMonitoringExporter();
-        gcpCloudMonitoringExporter.setProject(gcpCloudMonitoringConfig.getProject());
-        OtelCollectorConfigFormat.GCPCloudMonitoringLog log =
-            new OtelCollectorConfigFormat.GCPCloudMonitoringLog();
-        log.setDefault_log_name("YugabyteDB");
-        gcpCloudMonitoringExporter.setLog(log);
-        exporterName = "googlecloud/" + telemetryProvider.getUuid();
-        // TODO add retry config to GCP provider once it's supported by Otel COllector
-        exporters.put(
-            exporterName, setExporterCommonConfig(gcpCloudMonitoringExporter, true, false));
-        break;
-      default:
-        throw new IllegalArgumentException(
-            "Exporter type "
-                + telemetryProvider.getConfig().getType().name()
-                + " is not supported.");
-    }
+    exporterName = appendExporterConfig(telemetryProvider, exporters, attributeActions);
 
     // Add some common collector labels.
     attributeActions.add(
@@ -463,6 +451,87 @@ public class OtelCollectorConfigGenerator {
         .put("logs/" + telemetryProvider.getUuid(), pipeline);
   }
 
+  private String appendExporterConfig(
+      TelemetryProvider telemetryProvider,
+      Map<String, OtelCollectorConfigFormat.Exporter> exporters,
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions) {
+    String exporterName;
+    switch (telemetryProvider.getConfig().getType()) {
+      case DATA_DOG:
+        DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.DataDogExporter dataDogExporter =
+            new OtelCollectorConfigFormat.DataDogExporter();
+        OtelCollectorConfigFormat.DataDogApiConfig apiConfig =
+            new OtelCollectorConfigFormat.DataDogApiConfig();
+        apiConfig.setKey(dataDogConfig.getApiKey());
+        apiConfig.setSite(dataDogConfig.getSite());
+        dataDogExporter.setApi(apiConfig);
+        exporterName = "datadog/" + telemetryProvider.getUuid();
+        exporters.put(exporterName, setExporterCommonConfig(dataDogExporter, true, true));
+
+        // Add Datadog specific labels.
+        attributeActions.add(
+            new OtelCollectorConfigFormat.AttributeAction("ddsource", "yugabyte", "upsert", null));
+        attributeActions.add(
+            new OtelCollectorConfigFormat.AttributeAction(
+                "service", "yb-otel-collector", "upsert", null));
+        break;
+      case SPLUNK:
+        SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.SplunkExporter splunkExporter =
+            new OtelCollectorConfigFormat.SplunkExporter();
+        splunkExporter.setToken(splunkConfig.getToken());
+        splunkExporter.setEndpoint(splunkConfig.getEndpoint());
+        splunkExporter.setSource(splunkConfig.getSource());
+        splunkExporter.setSourcetype(splunkConfig.getSourceType());
+        splunkExporter.setIndex(splunkConfig.getIndex());
+        exporterName = "splunk_hec/" + telemetryProvider.getUuid();
+        OtelCollectorConfigFormat.TlsSettings tlsSettings =
+            new OtelCollectorConfigFormat.TlsSettings();
+        tlsSettings.setInsecure_skip_verify(true);
+        splunkExporter.setTls(tlsSettings);
+
+        exporters.put(exporterName, setExporterCommonConfig(splunkExporter, true, true));
+
+        break;
+      case AWS_CLOUDWATCH:
+        AWSCloudWatchConfig awsCloudWatchConfig =
+            (AWSCloudWatchConfig) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.AWSCloudWatchExporter awsCloudWatchExporter =
+            new OtelCollectorConfigFormat.AWSCloudWatchExporter();
+        awsCloudWatchExporter.setEndpoint(awsCloudWatchConfig.getEndpoint());
+        awsCloudWatchExporter.setRegion(awsCloudWatchConfig.getRegion());
+        awsCloudWatchExporter.setLog_group_name(awsCloudWatchConfig.getLogGroup());
+        awsCloudWatchExporter.setLog_stream_name(awsCloudWatchConfig.getLogStream());
+
+        exporterName = "awscloudwatchlogs/" + telemetryProvider.getUuid();
+        exporters.put(exporterName, setExporterCommonConfig(awsCloudWatchExporter, false, true));
+
+        break;
+      case GCP_CLOUD_MONITORING:
+        GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
+            (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.GCPCloudMonitoringExporter gcpCloudMonitoringExporter =
+            new OtelCollectorConfigFormat.GCPCloudMonitoringExporter();
+        gcpCloudMonitoringExporter.setProject(gcpCloudMonitoringConfig.getProject());
+        OtelCollectorConfigFormat.GCPCloudMonitoringLog log =
+            new OtelCollectorConfigFormat.GCPCloudMonitoringLog();
+        log.setDefault_log_name("YugabyteDB");
+        gcpCloudMonitoringExporter.setLog(log);
+        exporterName = "googlecloud/" + telemetryProvider.getUuid();
+        // TODO add retry config to GCP provider once it's supported by Otel COllector
+        exporters.put(
+            exporterName, setExporterCommonConfig(gcpCloudMonitoringExporter, true, false));
+        break;
+      default:
+        throw new IllegalArgumentException(
+            "Exporter type "
+                + telemetryProvider.getConfig().getType().name()
+                + " is not supported.");
+    }
+    return exporterName;
+  }
+
   private OtelCollectorConfigFormat.Exporter setExporterCommonConfig(
       OtelCollectorConfigFormat.Exporter exporter,
       boolean setQueueEnabled,
@@ -473,6 +542,7 @@ public class OtelCollectorConfigGenerator {
       retryConfig.setEnabled(true);
       retryConfig.setInitial_interval("1m");
       retryConfig.setMax_interval("1800m");
+      retryConfig.setMax_elapsed_time("1800m");
       exporter.setRetry_on_failure(retryConfig);
     }
     OtelCollectorConfigFormat.QueueConfig queueConfig = new OtelCollectorConfigFormat.QueueConfig();
@@ -507,5 +577,41 @@ public class OtelCollectorConfigGenerator {
       return mountPoints.split(",")[0];
     }
     return "/mnt/d0";
+  }
+
+  private void appendSecretEnv(TelemetryProvider telemetryProvider, List<Object> secretEnv) {
+    switch (telemetryProvider.getConfig().getType()) {
+      case AWS_CLOUDWATCH:
+        AWSCloudWatchConfig awsCloudWatchConfig =
+            (AWSCloudWatchConfig) telemetryProvider.getConfig();
+        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
+          String encodedAccessKey =
+              Base64.getEncoder().encodeToString(awsCloudWatchConfig.getAccessKey().getBytes());
+          secretEnv.add(
+              ImmutableMap.of("envName", "AWS_ACCESS_KEY_ID", "envValue", encodedAccessKey));
+        }
+        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
+          String encodedSecretKey =
+              Base64.getEncoder().encodeToString(awsCloudWatchConfig.getSecretKey().getBytes());
+          secretEnv.add(
+              ImmutableMap.of("envName", "AWS_SECRET_ACCESS_KEY", "envValue", encodedSecretKey));
+        }
+        break;
+      case GCP_CLOUD_MONITORING:
+        GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
+            (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
+        if (gcpCloudMonitoringConfig.getCredentials() != null) {
+          String encodedCredentials =
+              Base64.getEncoder()
+                  .encodeToString(gcpCloudMonitoringConfig.getCredentials().toString().getBytes());
+          secretEnv.add(
+              ImmutableMap.of(
+                  "envName",
+                  "GOOGLE_APPLICATION_CREDENTIALS_CONTENT",
+                  "envValue",
+                  encodedCredentials));
+        }
+        break;
+    }
   }
 }

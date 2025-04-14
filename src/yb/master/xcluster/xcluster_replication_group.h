@@ -108,5 +108,24 @@ Status DeleteUniverseReplication(
     DeleteUniverseReplicationResponsePB* resp, CatalogManager& catalog_manager,
     const LeaderEpoch& epoch);
 
+// Checks for existing compatible historical schema packings, otherwise adds a new one.
+// Returns the last compatible target schema version.
+Result<uint32> AddHistoricalPackedSchemaForColocatedTable(
+    UniverseReplicationInfo& universe, const NamespaceId& namespace_id,
+    const TableId& parent_table_id, const ColocationId& colocation_id,
+    const SchemaVersion& source_schema_version, const SchemaPB& schema,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch);
+
+// Gets compatible historical schema packings for the table and updates the table info.
+// Note that this may also bump up the starting schema version of this table (to be +1 of the
+// historical schema packings).
+Status UpdateColocatedTableWithHistoricalSchemaPackings(
+    UniverseReplicationInfo& universe, SysTablesEntryPB& table_pb, const TableId& table_id,
+    const NamespaceId& namespace_id, const ColocationId colocation_id);
+
+Status CleanupColocatedTableHistoricalSchemaPackings(
+    UniverseReplicationInfo& universe, const NamespaceId& namespace_id,
+    const ColocationId& colocation_id, CatalogManager& catalog_manager, const LeaderEpoch& epoch);
+
 }  // namespace master
 }  // namespace yb

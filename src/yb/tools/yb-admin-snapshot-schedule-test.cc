@@ -91,7 +91,7 @@ constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
 constexpr char pg15_old_sys_catalog_snapshot_name[] =
-    "initial_sys_catalog_snapshot_2.25.0.0-pg15-alpha-2";
+    "initial_sys_catalog_snapshot_2025.1.0.0-pg15-12-2";
 constexpr char pg11_old_sys_catalog_snapshot_name[] =
     "initial_sys_catalog_snapshot_2.0.9.0";
 
@@ -3352,6 +3352,7 @@ class YbAdminSnapshotScheduleTestWithYsqlRetention : public YbAdminSnapshotSched
         "--timestamp_syscatalog_history_retention_interval_sec=0");
     opts->extra_master_flags.emplace_back(
         "--timestamp_syscatalog_history_retention_interval_sec=0");
+    opts->extra_master_flags.emplace_back("--enable_db_clone=true");
   }
 };
 
@@ -3408,6 +3409,43 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetentionWithFastPitr,
   // Tables should exist now.
   for (int i = 1; i <= 10; i++) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
+  }
+}
+
+// Clone to a time earlier than the creation time of the last 2 snapshots of the schedule.
+// The default retention is disabled to make sure the schedule retention is the only factor
+// controlling the retention policy.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, SysCatalogRetentionWithClone,
+    YbAdminSnapshotScheduleTestWithYsqlRetention) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kNotColocated, 30s, 600s));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  // Create 10 tables.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0(id INT PRIMARY KEY, name TEXT)", i));
+  }
+  // Note down the time.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE t$0", i));
+  }
+
+  // Wait for at least one more snapshot.
+  ASSERT_OK(WaitForMoreSnapshots(schedule_id, 300s, 2, "Wait for 2 more snapshots"));
+
+  // Flush and compact sys catalog. The original create table entries should not be
+  // removed.
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 300s));
+  // Clone to time noted above.
+  auto target_db_name = "target_db";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", target_db_name,
+      client::kTableName.namespace_name(), time.ToInt64()));
+  auto target_conn = ASSERT_RESULT(PgConnect(target_db_name));
+  // Tables should exist now.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(target_conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
   }
 }
 
@@ -5502,6 +5540,45 @@ TEST_F(YbAdminSnapshotScheduleFailoverTests, LeaderFailoverRestoreSnapshot) {
   rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
   LOG(INFO) << "Rows after restoration: " << rows;
   ASSERT_EQ(rows, "1,before");
+}
+
+// Tests that if the master leader crashes while dropping a table (after marking the table as
+// HIDING), the table is marked as HIDDEN when the new leader reloads the sys.catalog. i.e ensure
+// that the table is never stuck in HIDING state.
+TEST_F(YbAdminSnapshotScheduleTest, DroppedTableMarkedHiddenAfterFailover) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention + 1s));
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(
+      client::kv_table_test::CreateTable(client::Transactional::kTrue, 3, client_.get(), &table_));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_crash_after_table_marked_deleting", "true"));
+  LOG(INFO) << "Delete table";
+  ASSERT_NOK(client_->DeleteTable(client::kTableName));
+  LOG(INFO) << "Stepping down the master leader";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  MonoDelta timeout = 30s;
+  // Wait until the table is marked as hidden.
+  ASSERT_OK(Wait(
+      [&]() -> Result<bool> {
+        auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+        master::ListTablesRequestPB req;
+        master::ListTablesResponsePB resp;
+        rpc::RpcController controller;
+        controller.set_timeout(timeout);
+        req.set_include_not_running(true);
+        RETURN_NOT_OK(proxy.ListTables(req, &resp, &controller));
+        RETURN_NOT_OK(ResponseStatus(resp));
+        for (const auto& table : resp.tables()) {
+          if (table.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE &&
+              table.relation_type() != master::RelationType::SYSTEM_TABLE_RELATION &&
+              !table.hidden()) {
+            LOG(INFO) << "Not yet hidden table: " << table.ShortDebugString();
+            return false;
+          }
+        }
+        LOG(INFO) << "All Tables are Hidden";
+        return true;
+      },
+      CoarseMonoClock::now() + timeout, "Are Tables Hidden"));
 }
 
 class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {

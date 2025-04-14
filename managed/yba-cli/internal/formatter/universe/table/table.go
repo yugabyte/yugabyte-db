@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultTableListing = "table {{.TableName}}\t{{.TableUUID}}\t{{.TableID}}" +
+	defaultTableListing = "table {{.TableName}}\t{{.TableUUID}}" +
 		"\t{{.TableType}}\t{{.SizeBytes}}\t{{.WalSizeBytes}}\t{{.KeySpace}}\t{{.PgSchemaName}}"
 
 	tableNameHeader = "Table Name"
@@ -106,7 +106,6 @@ func NewTableContext() *Context {
 		"PgSchemaName":       pgSchemaNameHeader,
 		"RelationType":       relationTypeHeader,
 		"SizeBytes":          sizeBytesHeader,
-		"TableID":            tableIDHeader,
 		"TableSpace":         tableSpaceHeader,
 		"TableType":          tableTypeHeader,
 		"WalSizeBytes":       walSizeBytesHeader,

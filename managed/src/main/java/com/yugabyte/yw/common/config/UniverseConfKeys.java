@@ -47,6 +47,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Integer> nodeCheckTimeoutDdlSec =
+      new ConfKeyInfo<>(
+          "yb.health.nodeCheckTimeoutDdlSec",
+          ScopeType.UNIVERSE,
+          "Node Checkout Time for DDL check",
+          "The timeout (in seconds) for node check operation as part of universe health check in"
+              + " case DDL atomicity check is performed",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
       new ConfKeyInfo<>(
           "yb.health.ddl_atomicity_check_enabled",
@@ -1161,6 +1171,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration>
+      xclusterDbScopedDeleteReplicationOnSourceTimeoutDuringFailover =
+          new ConfKeyInfo<>(
+              "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout",
+              ScopeType.UNIVERSE,
+              "Maximum timeout for yb client RPC call to delete the outbound replication on the"
+                  + " source universe during failover task execution",
+              "If the source universe is down, this RPC call will time out during failover"
+                  + " operation, increasing the failover task execution time; The lower the value,"
+                  + " the less time the failover task will take to complete. If it is set to zero,"
+                  + " this subtask during failover will be skipped providing a faster failover"
+                  + " execution time.",
+              ConfDataType.DurationType,
+              ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.creationEnabled",
@@ -1482,4 +1506,87 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipOpentelemetryOperatorCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_otel_operator_check",
+          ScopeType.UNIVERSE,
+          "Skip OpenTelemetry Operator Check",
+          "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
+          ScopeType.UNIVERSE,
+          "Wait Attempts for major catalog upgrade",
+          "Wait Attempts for major catalog upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDisableDBApis =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.allow_disable",
+          ScopeType.UNIVERSE,
+          "Allow users to disable DB APIs",
+          "Allow users to disable DB APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockboundCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clockbound synchronization check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> clockboundCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.timeout",
+          ScopeType.UNIVERSE,
+          "Clockbound synchronization check timeout",
+          "Clockbound synchronization check timeout",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryDelay =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_delay",
+          ScopeType.UNIVERSE,
+          "Delay between failed create tablespaces operation retry",
+          "Delay between failed create tablespaces operation retry",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryTimeout =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for create tablespaces task retries",
+          "Timeout for create tablespaces task retries",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> createTablespacesMinRetries =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.min_retries",
+          ScopeType.UNIVERSE,
+          "Minimal number of retries for create tablespaces task",
+          "Minimal number of retries for create tablespaces task",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> unexpectedServersCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.health_checks.unexpected_servers_check_enabled",
+          ScopeType.UNIVERSE,
+          "Whether to alert for unexpected masters/tservers in universe",
+          "Whether to alert for unexpected masters/tservers in universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> verifyClusterUUIDOnStart =
+      new ConfKeyInfo<>(
+          "yb.checks.verify_cluster_uuid.enabled",
+          ScopeType.UNIVERSE,
+          "Check if process has correct gflag on start",
+          "Check if process has correct gflag on start",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

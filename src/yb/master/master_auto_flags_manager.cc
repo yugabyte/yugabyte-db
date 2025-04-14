@@ -16,13 +16,14 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/util/scope_exit.h"
 
 DEFINE_NON_RUNTIME_int32(limit_auto_flag_promote_for_new_universe,
-    yb::to_underlying(yb::AutoFlagClass::kExternal),
+    std::to_underlying(yb::AutoFlagClass::kExternal),
     "The maximum class value up to which AutoFlags are promoted during new cluster creation. "
     "Value should be in the range [0-3]. Will not promote any AutoFlags if set to 0.");
 TAG_FLAG(limit_auto_flag_promote_for_new_universe, stable);

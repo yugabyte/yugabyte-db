@@ -26,7 +26,7 @@ The PgExercises sample database is based on the sample dataset used for the [Pos
 
 The PostgreSQL Exercises website includes 81 exercises designed to be used as a companion to the official PostgreSQL documentation. The exercises on the PgExercises site range from simple SELECT statements and WHERE clauses, through JOINs and CASE statements, then on to aggregations, window functions, and recursive queries.
 
-For further details about the data, see the [PostgresSQL Exercises' Getting Started page](https://pgexercises.com/gettingstarted.html).
+For further details about the data, see the [PostgreSQL Exercises' Getting Started page](https://pgexercises.com/gettingstarted.html).
 
 The `exercises` database consists of three tables (for members, bookings, and facilities) and the table relationships as shown in the entity relationship diagram.
 
@@ -106,7 +106,7 @@ exercises=# SELECT * FROM bookings LIMIT 5;
 
 ## Explore the PgExercises database
 
-You are now ready to start working through the [PostgreSQL Exercises](https://pgexercises.com/) exercises using YugabyteDB as the backend. The 81 exercises at the PostgreSQL Exercises website are broken into the following major sections.
+You are now ready to start working through the [PostgreSQL Exercises](https://pgexercises.com/) using YugabyteDB as the backend. The 81 exercises at the PostgreSQL Exercises website are broken into the following major sections.
 
 - [Simple SQL Queries](https://pgexercises.com/questions/basic/)
 - [JOINs and Subqueries](https://pgexercises.com/questions/joins/)

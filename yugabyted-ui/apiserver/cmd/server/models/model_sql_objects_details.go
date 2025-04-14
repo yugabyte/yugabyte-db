@@ -11,5 +11,5 @@ type SqlObjectsDetails struct {
 
     ObjectNames string `json:"objectNames"`
 
-    ObjectDetails string `json:"objectDetails"`
+    Issues []AnalysisIssueDetails `json:"issues"`
 }

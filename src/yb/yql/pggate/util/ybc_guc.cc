@@ -31,11 +31,15 @@ bool yb_binary_restore = false;
 
 bool yb_ignore_pg_class_oids = true;
 
+bool yb_ignore_relfilenode_ids = true;
+
 bool yb_pushdown_strict_inequality = true;
 
 bool yb_pushdown_is_not_null = true;
 
 bool yb_enable_pg_locks = true;
+
+bool yb_pg_locks_integrate_advisory_locks = true;
 
 bool yb_run_with_explain_analyze = false;
 
@@ -46,6 +50,8 @@ bool yb_enable_replication_commands = true;
 bool yb_enable_replication_slot_consumption = true;
 
 bool yb_allow_replication_slot_lsn_types = true;
+
+bool yb_allow_replication_slot_ordering_modes = true;
 
 bool yb_enable_alter_table_rewrite = true;
 
@@ -73,7 +79,7 @@ int yb_locks_txn_locks_per_tablet = 200;
 
 int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
 
-int yb_walsender_poll_sleep_duration_empty_ms = 1 * 1000;
+int yb_walsender_poll_sleep_duration_empty_ms = 10;
 
 int yb_reorderbuffer_max_changes_in_memory = 4096;
 
@@ -81,10 +87,13 @@ int yb_explicit_row_locking_batch_size = 1;
 
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
+bool yb_disable_catalog_version_check = false;
 
 int yb_read_after_commit_visibility = 0;
 
 bool yb_allow_block_based_sampling_algorithm = true;
+
+bool yb_allow_separate_requests_for_sampling_stages = true;
 
 // TODO(#24089): Once code duplication between yb_guc and ybc_util is removed, we should be able
 // to use YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING instead of 1 and do it in one place.
@@ -92,4 +101,22 @@ int32_t yb_sampling_algorithm = 1 /* YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING 
 
 bool yb_refresh_matview_in_place = false;
 
+// When set to a non-zero value to indicate the yb universe will have PostgreSQL running different
+// versions.
+// This should be set during the Upgrade and Rollback Phases of the YSQL major upgrade. This is set
+// before the YSQL major upgrade starts, and can be reset as soon as the upgrade reaches the
+// Monitoring phase.
+// Use YBCPgYsqlMajorVersionUpgradeInProgress in order to know if the YSQL major upgrade is in
+// progress.
 int yb_major_version_upgrade_compatibility = 0;
+
+// Indicates that the upgrade to the PostgreSQL version 15 has been completed.
+// Use YBCPgYsqlMajorVersionUpgradeInProgress in order to know if the YSQL major upgrade is in
+// progress.
+bool yb_upgrade_to_pg15_completed = true;
+
+bool yb_disable_auto_analyze = false;
+
+bool yb_extension_upgrade = false;
+
+bool yb_mixed_mode_expression_pushdown = true;

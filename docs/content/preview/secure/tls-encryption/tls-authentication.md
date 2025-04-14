@@ -38,7 +38,7 @@ hostssl all all all md5 clientcert=verify-full
 ```
 
 {{< note title="Note" >}}
-To use the client certificate only for verification (signed by the CA) but not for authentication, you can set `clientcert` to verify-ca.
+To use the client certificate only for verification (signed by the CA) but not for authentication, you can set `clientcert` to `verify-ca`.
 {{< /note >}}
 
 The `ysql_hba_conf_csv` rules are added above the auto-generated rules in the `ysql_hba.conf` file, so if they do not match the connection type, database, user, or host, then the auto-generated rules (that is, from the table above) may still be used.

@@ -24,7 +24,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "yb_ash.h"
+#include "postgres.h"
 
 #include <arpa/inet.h>
 
@@ -35,6 +35,7 @@
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
@@ -49,11 +50,10 @@
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
-
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
 /* The number of columns in different versions of the view */
@@ -184,8 +184,9 @@ YbAshInit(void)
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] =
-		YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	query_id_stack.query_ids[0] = MyProc->isBackgroundWorker
+		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
+		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	query_id_stack.num_query_ids_not_pushed = 0;
 }
 

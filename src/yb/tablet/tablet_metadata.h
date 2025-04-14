@@ -47,6 +47,8 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/key_bounds.h"
+
 #include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
 
@@ -103,6 +105,9 @@ struct TableInfo {
   // Partition schema of the table.
   dockv::PartitionSchema partition_schema;
 
+  // Id of operation that added this table to the tablet.
+  OpId op_id;
+
   // Hybrid time when this table was added to the tablet.
   HybridTime hybrid_time;
 
@@ -139,6 +144,7 @@ struct TableInfo {
             const std::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
             dockv::PartitionSchema partition_schema,
+            const OpId& op_id,
             HybridTime ht,
             TableId pg_table_id,
             SkipTableTombstoneCheck skip_table_tombstone_check);
@@ -406,7 +412,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   docdb::KeyBounds MakeKeyBounds() const;
 
-  const std::string& wal_dir() const { return wal_dir_; }
+  Result<docdb::EncodedPartitionBounds> MakeEncodedPartitionBounds() const;
+
+  std::string wal_dir() const {
+    std::lock_guard lock(data_mutex_);
+    return wal_dir_;
+  }
 
   Status set_namespace_id(const NamespaceId& namespace_id);
 
@@ -548,7 +559,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const OpId& op_id,
       HybridTime ht,
       const TableId& pg_table_id,
-      const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
+      const SkipTableTombstoneCheck skip_table_tombstone_check,
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings)
+      EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 

@@ -550,6 +550,11 @@ bool TableInfo::is_unique_index() const {
                                 : l->pb.is_unique_index();
 }
 
+bool TableInfo::is_vector_index() const {
+  auto l = LockForRead();
+  return l->is_vector_index();
+}
+
 Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
   return GetPgsqlTableOid(id());
 }
@@ -704,7 +709,7 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
         "Two tablets $0, $1 with the same partition key start and split depth: $2 and $3",
         tablet->id(), old_tablet->tablet_id(),
         tablet_meta.ShortDebugString(), old_tablet_lock->pb.ShortDebugString());
-    LOG(DFATAL) << msg;
+    LOG_WITH_PREFIX(DFATAL) << msg;
     return STATUS(IllegalState, msg);
   }
   return Status::OK();
@@ -901,12 +906,6 @@ Status TableInfo::GetCreateTableErrorStatus() const {
   return create_table_error_;
 }
 
-std::size_t TableInfo::NumLBTasks() const {
-  const auto tasks = GetTasks();
-  return std::count_if(
-      tasks.begin(), tasks.end(), [](const auto& task) { return task->started_by_lb(); });
-}
-
 std::size_t TableInfo::NumPartitions() const {
   SharedLock<decltype(lock_)> l(lock_);
   return partitions_.size();
@@ -996,17 +995,6 @@ Result<bool> TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) cons
   return false;
 }
 
-TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
-  if (!IsColocatedUserTable()) {
-    return nullptr;
-  }
-  SharedLock<decltype(lock_)> l(lock_);
-  if (!tablets_.empty()) {
-    return tablets_.begin()->second.lock();
-  }
-  return nullptr;
-}
-
 std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
   std::vector<qlexpr::IndexInfo> result;
   auto l = LockForRead();
@@ -1036,7 +1024,7 @@ bool TableInfo::UsesTablespacesForPlacement() const {
   bool is_regular_ysql_table =
       l->pb.table_type() == PGSQL_TABLE_TYPE &&
       l->namespace_id() != kPgSequencesDataNamespaceId &&
-      !IsColocatedUserTable() &&
+      !IsSecondaryTable() &&
       !IsColocationParentTable();
   return is_transaction_table_using_tablespaces ||
          is_regular_ysql_table ||
@@ -1055,7 +1043,7 @@ bool TableInfo::IsTablegroupParentTable() const {
   return IsTablegroupParentTableId(table_id_);
 }
 
-bool TableInfo::IsColocatedUserTable() const {
+bool TableInfo::IsSecondaryTable() const {
   return colocated() && !IsColocationParentTable();
 }
 
@@ -1197,7 +1185,7 @@ bool PersistentTableInfo::is_index() const {
 }
 
 bool PersistentTableInfo::is_vector_index() const {
-  return pb.index_info().has_vector_idx_options();
+  return pb.has_index_info() && pb.index_info().has_vector_idx_options();
 }
 
 const std::string& PersistentTableInfo::indexed_table_id() const {
@@ -1360,6 +1348,41 @@ const DdlLogEntryPB& DdlLogEntry::new_pb() const {
 
 std::string DdlLogEntry::id() const {
   return DocHybridTime(HybridTime(pb_.time()), kMaxWriteId).EncodedInDocDbFormat();
+}
+
+// ================================================================================================
+// ObjectLockInfo
+// ================================================================================================
+
+std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLease(
+    const NodeInstancePB& instance) {
+  auto l = LockForWrite();
+  {
+    std::lock_guard l(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+  if (l->pb.lease_info().live_lease() &&
+      l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
+    return std::nullopt;
+  }
+  auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
+  lease_info.set_live_lease(true);
+  lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
+  lease_info.set_instance_seqno(instance.instance_seqno());
+  return std::move(l);
+}
+
+void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
+  MetadataCowWrapper<PersistentObjectLockInfo>::Load(metadata);
+  {
+    std::lock_guard l(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+}
+
+MonoTime ObjectLockInfo::last_ysql_lease_refresh() const {
+  std::lock_guard l(mutex_);
+  return last_ysql_lease_refresh_;
 }
 
 // ================================================================================================

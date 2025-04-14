@@ -20,6 +20,7 @@
 | "Enable Certificate Config Validation" | "yb.tls.enable_config_validation" | "CUSTOMER" | "Certificate configuration validation during the addition of new certificates." | "Boolean" |
 | "Default Metric Graph Point Count" | "yb.metrics.default_points" | "CUSTOMER" | "Default Metric Graph Point Count, if step is not defined in the query" | "Integer" |
 | "Fetch Batch Size of Task Info" | "yb.task_info_db_query_batch_size" | "CUSTOMER" | "Knob that can be used to make lesser number of calls to DB" | "Integer" |
+| "Use Ansible for provisioning" | "yb.node_agent.use_ansible_provisioning" | "CUSTOMER" | "If enabled use Ansible for provisioning" | "Boolean" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |
@@ -57,6 +58,8 @@
 | "Enable YBC" | "ybc.provider.enabled" | "PROVIDER" | "Enable YBC for universes created with this provider" | "Boolean" |
 | "Configure OpenTelemetry metrics port" | "yb.universe.otel_collector_metrics_port" | "PROVIDER" | "OpenTelemetry metrics port" | "Integer" |
 | "Default service scope for K8s universe" | "yb.universe.default_service_scope_for_k8s" | "PROVIDER" | "The default service scope for K8s service endpoints. Can be AZ/Namespaced. 'AZ' will create a service in each Availability zone, whereas 'Namespaced' will create one service per Namespace" | "String" |
+| "Show Hyperdisk storage types" | "yb.gcp.show_hyperdisks_storage_type" | "PROVIDER" | "Show Hyperdisk storage types during create/edit universe flow." | "Boolean" |
+| "Configure Clockbound when using cloud providers" | "yb.provider.configure_clockbound_cloud_provisioning" | "PROVIDER" | "Configure clockbound when creating cloud provider based Universes" | "Boolean" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
@@ -91,6 +94,7 @@
 | "Shell Output Max Directory Size" | "yb.logs.shell.output_dir_max_size" | "GLOBAL" | "Output logs for shell commands are written to tmp folder.This setting defines rotation policy based on directory size." | "Bytes" |
 | "Max Size of each log message" | "yb.logs.max_msg_size" | "GLOBAL" | "We limit the length of each log line as sometimes we dump entire output of script. If you want to debug something specific and the script output isgetting truncated in application log then increase this limit" | "Bytes" |
 | "KMS Refresh Interval" | "yb.kms.refresh_interval" | "GLOBAL" | "Default refresh interval for the KMS providers." | "Duration" |
+| "Percentage of Hashicorp vault TTL to renew the token after" | "yb.kms.hcv_token_renew_percent" | "GLOBAL" | "HashiCorp Vault tokens expire when their TTL is reached. This setting renews the token after it has used the specified percentage of its original TTL. Default: 70%." | "Integer" |
 | "Start Master On Stop Node" | "yb.start_master_on_stop_node" | "GLOBAL" | "Auto-start master process on a similar available node on stopping a master node" | "Boolean" |
 | "Start Master On Remove Node" | "yb.start_master_on_remove_node" | "GLOBAL" | "Auto-start master process on a similar available node on removal of a master node" | "Boolean" |
 | "Server certificate verification for LDAPs/LDAP-TLS" | "yb.security.ldap.enforce_server_cert_verification" | "GLOBAL" | "Enforce server certificate verification for LDAPs/LDAP-TLS" | "Boolean" |
@@ -124,9 +128,6 @@
 | "Devops command timeout" | "yb.devops.command_timeout" | "GLOBAL" | "Devops command timeout" | "Duration" |
 | "Node destroy command timeout" | "yb.node_ops.destroy_server_timeout" | "GLOBAL" | "Timeout for node destroy command before failing." | "Duration" |
 | "YBC Compatible DB Version" | "ybc.compatible_db_version" | "GLOBAL" | "Minimum YBDB version which supports YBC" | "String" |
-| "Prometheus auth enabled" | "yb.metrics.auth" | "GLOBAL" | "Enables basic authentication for Prometheus web UI/APIs access" | "Boolean" |
-| "Prometheus auth username" | "yb.metrics.auth_username" | "GLOBAL" | "Username, used for request authentication against embedded Prometheus" | "String" |
-| "Prometheus auth password" | "yb.metrics.auth_password" | "GLOBAL" | "Password, used for request authentication against embedded Prometheus" | "String" |
 | "Force YBC Shutdown during upgrade" | "ybc.upgrade.force_shutdown" | "GLOBAL" | "For YBC Shutdown during upgrade" | "Boolean" |
 | "Enable strict mode to ignore deprecated YBA APIs" | "yb.api.mode.strict" | "GLOBAL" | "Will ignore deprecated APIs" | "Boolean" |
 | "Enable safe mode to ignore preview YBA APIs" | "yb.api.mode.safe" | "GLOBAL" | "Will ignore preview APIs" | "Boolean" |
@@ -158,11 +159,14 @@
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
 | "Number of cloud YBA backups to retain" | "yb.auto_yba_backups.num_cloud_retention" | "GLOBAL" | "When continuous backups feature is enabled only the most recent n backups will be retained in the storage bucket" | "Integer" |
 | "Standby Prometheus scrape interval" | "yb.metrics.scrape_interval_standby" | "GLOBAL" | "Need to increase it in case federation metrics request takes more time  than main Prometheus scrape period to complete" | "String" |
-| "Use YNP for provisioning" | "yb.node_agent.use_ynp_provisioning" | "GLOBAL" | "If enabled use YNP for provisioning" | "Boolean" |
 | "Enable viewing metrics in timezone selected at the metrics page" | "yb.ui.metrics.enable_timezone" | "GLOBAL" | "Enable viewing metrics in timezone selected at the metrics page and will be preserved at session level" | "Boolean" |
+| "Enable Path Access Style for Amazon S3" | "yb.ui.feature_flags.enable_path_style_access" | "GLOBAL" | "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible storage." | "Boolean" |
+| "Restore YBA postgres metadata during Yugaware container restart" | "yb.ha.k8s_restore_skip_dump_file_delete" | "GLOBAL" | "Restore YBA postgres metadata during Yugaware container restart" | "Boolean" |
+| "Node Agent Server Cert Expiry Notice" | "yb.node_agent.server_cert_expiry_notice" | "GLOBAL" | "Duration to start notifying about expiry before node agent server cert actually expires" | "Duration" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
+| "Node Checkout Time for DDL check" | "yb.health.nodeCheckTimeoutDdlSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check in case DDL atomicity check is performed" | "Integer" |
 | "DDL Atomicity Check Enabled" | "yb.health.ddl_atomicity_check_enabled" | "UNIVERSE" | "If we want to perform DDL atomicity check for the universe periodically" | "Boolean" |
 | "DDL Atomicity Check Interval" | "yb.health.ddl_atomicity_interval_sec" | "UNIVERSE" | "The interval (in seconds) between DDL atomicity checks" | "Integer" |
 | "YB Upgrade Blacklist Leaders" | "yb.upgrade.blacklist_leaders" | "UNIVERSE" | "Determines (boolean) whether we enable/disable leader blacklisting when performing universe/node tasks" | "Boolean" |
@@ -274,6 +278,7 @@
 | "Verify current cluster state (from db perspective) before running task" | "yb.task.verify_cluster_state" | "UNIVERSE" | "Verify current cluster state (from db perspective) before running task" | "Boolean" |
 | "Wait time for xcluster/DR replication setup and edit RPCs" | "yb.xcluster.operation_timeout" | "UNIVERSE" | "Wait time for xcluster/DR replication setup and edit RPCs." | "Duration" |
 | "Maximum timeout for xCluster bootstrap producer RPC call" | "yb.xcluster.bootstrap_producer_timeout" | "UNIVERSE" | "If the RPC call to create the bootstrap streams on the source universe does not return before this timeout, the task will retry with exponential backoff until it fails." | "Duration" |
+| "Maximum timeout for yb client RPC call to delete the outbound replication on the source universe during failover task execution" | "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout" | "UNIVERSE" | "If the source universe is down, this RPC call will time out during failover operation, increasing the failover task execution time; The lower the value, the less time the failover task will take to complete. If it is set to zero, this subtask during failover will be skipped providing a faster failover execution time." | "Duration" |
 | "Flag to enable db scoped xCluster replication creation" | "yb.xcluster.db_scoped.creationEnabled" | "UNIVERSE" | "If flag is enabled, allows DR creation with db scoped xCluster replication" | "Boolean" |
 | "Leaderless tablets check enabled" | "yb.checks.leaderless_tablets.enabled" | "UNIVERSE" | " Whether to run CheckLeaderlessTablets subtask before running universe tasks" | "Boolean" |
 | "Leaderless tablets check timeout" | "yb.checks.leaderless_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the CheckLeaderlessTablets subtask" | "Duration" |
@@ -302,3 +307,12 @@
 | "Use S3 IAM roles attached to DB node for Backup/Restore" | "yb.backup.s3.use_db_nodes_iam_role_for_backup" | "UNIVERSE" | "Use S3 IAM roles attached to DB node for Backup/Restore" | "Boolean" |
 | "Queue Wait Time for Tasks" | "yb.task.queue_wait_time" | "UNIVERSE" | "Wait time for a queued task before the running task can be evicted forcefully." | "Duration" |
 | "Common Name Required for Certificates" | "yb.tls.cert_manager.common_name_required" | "UNIVERSE" | "If true, YBA will add commonName to the CertificateRequest sent to cert manager." | "Boolean" |
+| "Skip OpenTelemetry Operator Check" | "yb.universe.skip_otel_operator_check" | "UNIVERSE" | "If true, YBA will skip checking for Opentelemetry operator installation on the cluster." | "Boolean" |
+| "Wait Attempts for major catalog upgrade" | "yb.upgrade.wait_attempts_for_major_catalog_upgrade" | "UNIVERSE" | "Wait Attempts for major catalog upgrade" | "Integer" |
+| "Allow users to disable DB APIs" | "yb.configure_db_api.allow_disable" | "UNIVERSE" | "Allow users to disable DB APIs" | "Boolean" |
+| "Enable Clockbound synchronization check" | "yb.checks.clockbound.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
+| "Clockbound synchronization check timeout" | "yb.checks.clockbound.timeout" | "UNIVERSE" | "Clockbound synchronization check timeout" | "Duration" |
+| "Delay between failed create tablespaces operation retry" | "yb.task.create_tablespaces.retry_delay" | "UNIVERSE" | "Delay between failed create tablespaces operation retry" | "Duration" |
+| "Timeout for create tablespaces task retries" | "yb.task.create_tablespaces.retry_timeout" | "UNIVERSE" | "Timeout for create tablespaces task retries" | "Duration" |
+| "Minimal number of retries for create tablespaces task" | "yb.task.create_tablespaces.min_retries" | "UNIVERSE" | "Minimal number of retries for create tablespaces task" | "Integer" |
+| "Whether to alert for unexpected masters/tservers in universe" | "yb.health_checks.unexpected_servers_check_enabled" | "UNIVERSE" | "Whether to alert for unexpected masters/tservers in universe" | "Boolean" |

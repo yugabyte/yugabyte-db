@@ -45,23 +45,27 @@ int mm_loop_step(mm_loop_t *loop)
 			return 0;
 	}
 
-	/* get minimal timer timeout */
-	int timeout = UINT32_MAX;
+	/*
+	 get minimal timer timeout
+	 in case of no timers - just poll for 1 sec,
+	 this will not create cpu load
+	*/
+	int timeout_ms = 1000;
 	mm_timer_t *next;
 	next = mm_clock_timer_min(&loop->clock);
 	if (next) {
 		int64_t diff = next->timeout - loop->clock.time_ms;
 		if (diff <= 0)
-			timeout = 0;
+			timeout_ms = 0;
 		else
-			timeout = diff;
+			timeout_ms = diff;
 	}
 
 	/* run timers */
 	mm_clock_step(&loop->clock);
 
 	/* poll for events */
-	rc = loop->poll->iface->step(loop->poll, timeout);
+	rc = loop->poll->iface->step(loop->poll, timeout_ms);
 	if (rc == -1)
 		return -1;
 

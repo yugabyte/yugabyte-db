@@ -27,9 +27,8 @@
 #include "access/gin_private.h"
 #include "access/relation.h"
 #include "access/reloptions.h"
-#include "c.h"
-#include "nodes/execnodes.h"
 #include "commands/yb_cmds.h"
+#include "nodes/execnodes.h"
 #include "nodes/nodes.h"
 #include "utils/index_selfuncs.h"
 

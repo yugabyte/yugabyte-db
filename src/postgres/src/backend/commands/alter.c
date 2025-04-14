@@ -53,7 +53,6 @@
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
-#include "commands/tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
@@ -61,12 +60,16 @@
 #include "miscadmin.h"
 #include "parser/parse_func.h"
 #include "rewrite/rewriteDefine.h"
+#include "storage/lmgr.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+
+/* YB includes */
+#include "commands/yb_tablegroup.h"
 
 static Oid	AlterObjectNamespace_internal(Relation rel, Oid objid, Oid nspOid);
 
@@ -962,7 +965,9 @@ AlterObjectOwner_internal(Relation rel, Oid objectId, Oid new_ownerId)
 	Oid			old_ownerId;
 	Oid			namespaceId = InvalidOid;
 
-	oldtup = get_catalog_object_by_oid(rel, Anum_oid, objectId);
+	/* Search tuple and lock it. */
+	oldtup =
+		get_catalog_object_by_oid_extended(rel, Anum_oid, objectId, true);
 	if (oldtup == NULL)
 		elog(ERROR, "cache lookup failed for object %u of catalog \"%s\"",
 			 objectId, RelationGetRelationName(rel));
@@ -1061,15 +1066,34 @@ AlterObjectOwner_internal(Relation rel, Oid objectId, Oid new_ownerId)
 		/* Perform actual update */
 		CatalogTupleUpdate(rel, &newtup->t_self, newtup);
 
-		/* Update owner dependency reference */
+		UnlockTuple(rel, &oldtup->t_self, InplaceUpdateTupleLock);
+
+		/*
+		 * Update owner dependency reference.  When working on a large object,
+		 * we have to translate back to the OID conventionally used for LOs'
+		 * classId.
+		 */
 		if (classId == LargeObjectMetadataRelationId)
 			classId = LargeObjectRelationId;
+
 		changeDependencyOnOwner(classId, objectId, new_ownerId);
 
 		/* Release memory */
 		pfree(values);
 		pfree(nulls);
 		pfree(replaces);
+	}
+	else
+	{
+		UnlockTuple(rel, &oldtup->t_self, InplaceUpdateTupleLock);
+
+		/*
+		 * No need to change anything.  But when working on a large object, we
+		 * have to translate back to the OID conventionally used for LOs'
+		 * classId, or the post-alter hook (if any) will get confused.
+		 */
+		if (classId == LargeObjectMetadataRelationId)
+			classId = LargeObjectRelationId;
 	}
 
 	InvokeObjectPostAlterHook(classId, objectId, 0);

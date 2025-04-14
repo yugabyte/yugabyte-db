@@ -33,6 +33,7 @@ DECLARE_bool(ysql_conn_mgr_version_matching);
 DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
 DECLARE_int32(ysql_conn_mgr_max_query_size);
 DECLARE_int32(ysql_conn_mgr_wait_timeout_ms);
+DECLARE_int32(ysql_conn_mgr_max_pools);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
@@ -40,11 +41,6 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
     "the Ysql Connection Manager. If a database connection remains idle without serving a "
     "client connection for a duration equal to or exceeding the value provided, "
     "it will be automatically closed by the Ysql Connection Manager.");
-
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_client_connections, 10000,
-    "Total number of concurrent client connections that the Ysql Connection Manager allows.");
-
-DEFINE_validator(ysql_conn_mgr_max_client_connections, FLAG_GT_VALUE_VALIDATOR(1));
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_num_workers, 0,
   "Number of worker threads used by Ysql Connection Manager. If set as 0 (default value), "
@@ -234,6 +230,9 @@ Status YsqlConnMgrWrapper::Start() {
 
   proc_->SetEnv(
       "YB_YSQL_CONN_MGR_WAIT_TIMEOUT_MS", std::to_string(FLAGS_ysql_conn_mgr_wait_timeout_ms));
+
+  proc_->SetEnv(
+      "YB_YSQL_CONN_MGR_MAX_POOLS", std::to_string(FLAGS_ysql_conn_mgr_max_pools));
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats) {

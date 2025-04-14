@@ -24,6 +24,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
@@ -74,6 +75,8 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
 
     // Add a fake node to the universe with a node name
     node.nodeName = "u-n1";
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.private_ip = "fake_ip";
     this.universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),
@@ -115,8 +118,6 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
         .thenCallRealMethod();
     when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(

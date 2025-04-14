@@ -46,7 +46,9 @@ func NewKeyspaceLocationFormat(source string) formatter.Format {
 }
 
 // SetKeyspaceLocation initializes the context with the keyspace location data
-func (k *KeyspaceLocationContext) SetKeyspaceLocation(keyspaceLocation ybaclient.KeyspaceTablesList) {
+func (k *KeyspaceLocationContext) SetKeyspaceLocation(
+	keyspaceLocation ybaclient.KeyspaceTablesList,
+) {
 	k.k = keyspaceLocation
 }
 
@@ -68,7 +70,11 @@ func (k *KeyspaceLocationContext) Write(index int) error {
 		logrus.Errorf("%s", err.Error())
 		return err
 	}
-	k.Output.Write([]byte(formatter.Colorize(fmt.Sprintf("Keyspace %d Details", index+1), formatter.BlueColor)))
+	k.Output.Write(
+		[]byte(
+			formatter.Colorize(fmt.Sprintf("Keyspace %d Details", index+1), formatter.BlueColor),
+		),
+	)
 	k.Output.Write([]byte("\n"))
 	if err := k.ContextFormat(tmpl, kc.KeyspaceLocation); err != nil {
 		logrus.Errorf("%s", err.Error())

@@ -24,6 +24,8 @@ DECLARE_uint32(num_advisory_locks_tablets);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_uint64(refresh_waiter_timeout_ms);
+DECLARE_int32(pg_client_extra_timeout_ms);
 
 namespace yb::pgwrapper {
 
@@ -256,6 +258,55 @@ TEST_F(PgAdvisoryLockTest, SessionLockDeadlockWithRowLocks) {
   ASSERT_NOK(status_future.get());
   ASSERT_OK(conn2.RollbackTransaction());
   ASSERT_OK(conn1.CommitTransaction());
+}
+
+TEST_F(PgAdvisoryLockTest, YB_DISABLE_TEST_IN_TSAN(PgLocksSanityTest)) {
+  constexpr int kMinTxnAgeMs = 0;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo SELECT generate_series(0, 11), 0"));
+
+  ASSERT_OK(conn.Fetch("select pg_advisory_lock(10)"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn.Execute("UPDATE foo SET v=v+1 where k=1"));
+
+  // Ensure that the active locks are visible in pg_locks.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 2);
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
+}
+
+TEST_F(PgAdvisoryLockTest, VerifyLockTimeout) {
+  constexpr int kLockTimeoutDurationMs = 3000;
+  constexpr int kExtraTimeoutMs = 1000;
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.Fetch("SELECT pg_advisory_lock(10);"));
+
+  ASSERT_OK(conn2.ExecuteFormat("SET lock_timeout='$0ms';", kLockTimeoutDurationMs));
+  std::future<Status> conn2_session_lock_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("SELECT pg_advisory_lock(10);"));
+    return Status::OK();
+  });
+
+  // Wait briefly to confirm that conn2 is actually blocking on the lock.
+  ASSERT_EQ(conn2_session_lock_future.wait_for(
+      std::chrono::seconds(1)), std::future_status::timeout);
+
+  auto expected_timeout_ms =
+      kLockTimeoutDurationMs + FLAGS_pg_client_extra_timeout_ms + kExtraTimeoutMs;
+  ASSERT_EQ(conn2_session_lock_future.wait_for(
+      std::chrono::milliseconds(expected_timeout_ms * kTimeMultiplier)), std::future_status::ready);
+
+  // Verify the lock attempt fails with advisory lock timeout error.
+  Status result = conn2_session_lock_future.get();
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "Timed out waiting for Acquire Advisory Lock");
 }
 
 } // namespace yb::pgwrapper

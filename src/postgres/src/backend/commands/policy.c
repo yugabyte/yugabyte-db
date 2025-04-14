@@ -19,7 +19,6 @@
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/xact.h"
-#include "c.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -202,7 +201,7 @@ void
 RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cache)
 {
 	MemoryContext rscxt;
-	MemoryContext oldcxt = GetCurrentMemoryContext();
+	MemoryContext oldcxt = CurrentMemoryContext;
 	RowSecurityDesc *rsdesc;
 	Relation	catalog;
 	ScanKeyData skey;
@@ -216,7 +215,7 @@ RelationBuildRowSecurity(Relation relation, const YbTupleCache *yb_pg_policy_cac
 	 * a relcache flush.  However, to cover the possibility of an error
 	 * partway through, we don't make the context long-lived till we're done.
 	 */
-	rscxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	rscxt = AllocSetContextCreate(CurrentMemoryContext,
 								  "row security descriptor",
 								  ALLOCSET_SMALL_SIZES);
 	MemoryContextCopyAndSetIdentifier(rscxt,

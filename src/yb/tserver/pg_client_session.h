@@ -68,6 +68,7 @@ namespace tserver {
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (AcquireObjectLock) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network
@@ -82,6 +83,7 @@ namespace tserver {
 YB_STRONGLY_TYPED_BOOL(IsDDL);
 
 struct PgClientSessionContext {
+  // xcluster_context is nullptr on master.
   const TserverXClusterContextIf* xcluster_context;
   YsqlAdvisoryLocksTable& advisory_locks_table;
   PgMutationCounter* pg_node_level_mutation_counter;
@@ -91,6 +93,7 @@ struct PgClientSessionContext {
   PgSequenceCache& sequence_cache;
   PgSharedMemoryPool& shared_mem_pool;
   const EventStatsPtr& stats_exchange_response_size;
+  const std::string& instance_uuid;
 };
 
 class PgClientSession final {
@@ -104,7 +107,8 @@ class PgClientSession final {
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
       client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-      uint64_t id, rpc::Scheduler& scheduler);
+      uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+      rpc::Scheduler& scheduler);
   ~PgClientSession();
 
   uint64_t id() const;
@@ -118,6 +122,7 @@ class PgClientSession final {
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
   void StartShutdown();
+  bool ReadyToShutdown() const;
   void CompleteShutdown();
 
   Result<ReadHybridTime> GetTxnSnapshotReadTime(

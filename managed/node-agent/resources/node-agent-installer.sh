@@ -323,11 +323,11 @@ stop_systemd_service() {
   fi
   if [ -n "$UNIT_FILE_PRESENT" ]; then
     if [ "$USER_SCOPED_UNIT" = "false" ] && [ "$SUDO_ACCESS" = "true" ]; then
-      run_as_super_user systemctl stop yb-node-agent
-      run_as_super_user systemctl disable yb-node-agent
+      run_as_super_user systemctl stop yb-node-agent >/dev/null 2>&1
+      run_as_super_user systemctl disable yb-node-agent >/dev/null 2>&1
     elif [ "$USER_SCOPED_UNIT" = "true" ]; then
-      systemctl --user stop yb-node-agent
-      systemctl --user disable yb-node-agent
+      systemctl --user stop yb-node-agent >/dev/null 2>&1
+      systemctl --user disable yb-node-agent >/dev/null 2>&1
     fi
   fi
   set -e
@@ -518,6 +518,8 @@ main() {
           exit 1
         fi
       fi
+      # Disable existing node-agent if it exists and is running.
+      stop_systemd_service
       download_package
       NODE_AGENT_CONFIG_ARGS+=(--api_token "$API_TOKEN" --url "$PLATFORM_URL" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
@@ -556,7 +558,7 @@ main() {
         echo "$NODE_AGENT_CERT_PATH is not found."
         exit 1
       fi
-      # Disable existing node-agent if sudo access is available.
+      # Disable existing node-agent if it exists and is running.
       stop_systemd_service
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \

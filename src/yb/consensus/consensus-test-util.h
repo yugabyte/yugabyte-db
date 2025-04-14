@@ -179,7 +179,7 @@ class TestPeerProxy : public PeerProxy {
   // We currently only support one request of each method being in flight at a time.
   virtual void RegisterCallback(Method method, const rpc::ResponseCallback& callback) {
     std::lock_guard lock(lock_);
-    CHECK(callbacks_.emplace(method, callback).second) << "Method: " << to_underlying(method);
+    CHECK(callbacks_.emplace(method, callback).second) << "Method: " << std::to_underlying(method);
   }
 
   // Answer the peer.
@@ -188,7 +188,7 @@ class TestPeerProxy : public PeerProxy {
     {
       std::lock_guard lock(lock_);
       auto it = callbacks_.find(method);
-      CHECK(it != callbacks_.end()) << "Method: " << to_underlying(method);
+      CHECK(it != callbacks_.end()) << "Method: " << std::to_underlying(method);
       callback = std::move(it->second);
       callbacks_.erase(it);
       // Drop the lock before submitting to the pool, since the callback itself may

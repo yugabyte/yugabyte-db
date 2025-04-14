@@ -22,8 +22,8 @@
 
 #pragma once
 
-#include "nodes/execnodes.h"
 #include "executor/tuptable.h"
+#include "nodes/execnodes.h"
 
 /**
  * YSQL guc variables that can be used to enable non transactional writes.
@@ -31,6 +31,14 @@
  * See also the corresponding entries in guc.c.
  */
 extern bool yb_disable_transactional_writes;
+
+/**
+ * YSQL guc variables that can be used to enable/disable fast-path transaction
+ * on colocated tables for copy.
+ * e.g. 'SET yb_fast_path_for_colocated_copy=true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_fast_path_for_colocated_copy;
 
 /**
  * YSQL guc variables that can be used to enable upsert mode for writes.
@@ -260,6 +268,11 @@ extern YbcPgYBTupleIdDescriptor *YBCBuildUniqueIndexYBTupleId(Relation unique_in
  * Returns if a table has secondary indices.
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
+
+/*
+ * Returns the number of seconday indices excluding primary indexes.
+ */
+extern int YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo);
 
 /*
  * Returns whether the current slot satisfies the partial index's predicate.

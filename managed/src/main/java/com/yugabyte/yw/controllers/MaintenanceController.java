@@ -83,6 +83,12 @@ public class MaintenanceController extends AuthenticatedController {
       response = MaintenanceWindow.class,
       responseContainer = "List",
       nickname = "listOfMaintenanceWindows")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "ListMaintenanceWindowsRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.filters.MaintenanceWindowApiFilter",
+          required = true))
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

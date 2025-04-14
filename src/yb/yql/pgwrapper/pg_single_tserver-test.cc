@@ -45,23 +45,24 @@
 DEFINE_test_flag(int32, scan_tests_num_rows, 0,
                  "Number of rows to load for various scanning tests, or 0 for default.");
 
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
-DECLARE_uint64(sst_files_soft_limit);
-DECLARE_uint64(sst_files_hard_limit);
+DECLARE_bool(TEST_skip_applying_truncate);
 DECLARE_bool(rocksdb_use_logging_iterator);
+DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
-DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_use_packed_row_v2);
-DECLARE_int64(global_memstore_size_mb_max);
-DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
+DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
-DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(txn_max_apply_batch_records);
-DECLARE_bool(TEST_skip_applying_truncate);
-DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(global_memstore_size_mb_max);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(sst_files_hard_limit);
+DECLARE_uint64(sst_files_soft_limit);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -886,9 +887,25 @@ class PgFastBackwardScanTest
     // A helper functor to execute a select statement for the test.
     auto fetch_and_validate = [this, &conn, &table_name, with_nulls](
         const std::string& expected_without_nulls, const std::string& expected_with_nulls) {
+      const auto stmt =
+          Format("SELECT c_1, c_5, r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).starts_with("Index Scan Backward"), RuntimeError, "");
+
       return FetchAndValidate(conn,
           Format("SELECT c_1, c_5, r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name),
           with_nulls ? expected_with_nulls : expected_without_nulls);
+    };
+    auto fetch_and_validate_pk_only = [this, &conn, &table_name](const std::string& expected) {
+      const auto stmt = Format("SELECT r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).starts_with("Index Scan Backward"), RuntimeError, "");
+
+      return FetchAndValidate(conn, stmt, expected);
     };
 
     // Create table.
@@ -921,6 +938,7 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "1, 5, 3; 1, 5, 2; 1, 5, 1", "NULL, 5, 3; NULL, 5, 2; NULL, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("3; 2; 1"));
 
     if (intents_usage == IntentsUsage::kMixed) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
@@ -935,6 +953,7 @@ class PgFastBackwardScanTest
         "256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; NULL, 5, 2; 4096, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 2; 1"));
 
     // Re-insert data for the deleted rows.
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(3), 16383)));
@@ -943,6 +962,7 @@ class PgFastBackwardScanTest
         "256, 260, 5; 256, 260, 4; 16384, 16388, 3; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; 16384, 16388, 3; NULL, 5, 2; 4096, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 3; 2; 1"));
 
     // Delete the same records again.
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r = 3", table_name));
@@ -950,11 +970,13 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; NULL, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 2; 1"));
 
     // Delete records from the intents DB in such way the very first row would be in regular DB.
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r IN (4, 5, 6)", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
     ASSERT_OK(fetch_and_validate("1, 5, 2; 4096, 5, 1", "NULL, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate_pk_only("2; 1"));
 
     // Insert some data which would be positioned before all the existing rows.
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(0), 65535)));
@@ -962,6 +984,7 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "1, 5, 2; 4096, 5, 1; 65536, 65540, 0", "NULL, 5, 2; 4096, 5, 1; 65536, 65540, 0"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("2; 1; 0"));
 
     if (intents_usage != IntentsUsage::kRegularOnly) {
       ASSERT_OK(conn.CommitTransaction());
@@ -971,6 +994,7 @@ class PgFastBackwardScanTest
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE h = 1 AND r >= 0", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
     ASSERT_OK(fetch_and_validate("", ""));
+    ASSERT_OK(fetch_and_validate_pk_only(""));
 
     LOG_WITH_FUNC(INFO) << "Done";
   }
@@ -1842,6 +1866,27 @@ TEST_F(PgSingleTServerTest, BoundedBackwardScanWithLargeTransaction) {
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO test (key, k2, value) SELECT i, i, -i FROM generate_series(1, $0) AS i",
       kNumRows));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
+  ASSERT_EQ(result, "1");
+}
+
+TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 10;
+  constexpr int kNumRows = 20;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key BIGINT, k2 BIGINT, value BIGINT, PRIMARY KEY (k2 ASC, key ASC))"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 10;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test (key, k2, value) SELECT i, i, -i FROM generate_series(1, $0) AS i",
+      kNumRows));
+  std::this_thread::sleep_for(1s);
+  ASSERT_OK(cluster_->RestartSync());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 0;
+  std::this_thread::sleep_for(1s);
+  ASSERT_OK(cluster_->FlushTablets());
+  conn = ASSERT_RESULT(Connect());
   auto result = ASSERT_RESULT(conn.FetchAllAsString(
       "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
   ASSERT_EQ(result, "1");

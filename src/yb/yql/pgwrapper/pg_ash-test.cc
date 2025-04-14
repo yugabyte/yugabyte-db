@@ -129,7 +129,7 @@ class PgBgWorkersTest : public PgAshSingleNode {
     "--allowed_preview_flags_csv=ysql_yb_enable_query_diagnostics");
     options->extra_tserver_flags.push_back("--ysql_yb_enable_query_diagnostics=true");
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
-        to_underlying(ash::WaitStateCode::kCatalogRead)));
+        std::to_underlying(ash::WaitStateCode::kCatalogRead)));
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
         2 * kSamplingIntervalMs));
     PgAshSingleNode::UpdateMiniClusterOptions(options);
@@ -323,6 +323,28 @@ TEST_F(PgAshTest, NoMemoryLeaks) {
       SleepFor(10ms);
     }
   }
+}
+
+TEST_F(PgAshTest, UniqueRpcRequestId) {
+  const int NumKeys = 100;
+  ASSERT_OK(conn_->Execute("CREATE TABLE bankaccounts (id INT PRIMARY KEY, balance INT)"));
+  ASSERT_OK(conn_->Execute("CREATE INDEX bankaccountsidx ON bankaccounts (id, balance)"));
+  for (size_t i = 0; i < NumKeys; ++i) {
+    ASSERT_OK(conn_->Execute(Format(
+        "INSERT INTO bankaccounts VALUES ($0, $1)", i, i)));
+  }
+  for (size_t i = 0; i < NumKeys; ++i) {
+    ASSERT_OK(conn_->Execute(Format("DELETE FROM bankaccounts WHERE id = $0", i)));
+  }
+  const std::string query =
+      "SELECT count(*) "
+      "FROM yb_active_session_history "
+      "WHERE rpc_request_id IS NOT NULL "
+      "GROUP BY sample_time, rpc_request_id "
+      "ORDER BY count DESC "
+      "LIMIT 1";
+  auto count = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGUint64>(query));
+  ASSERT_EQ(count, 1);
 }
 
 TEST_F_EX(PgWaitEventAuxTest, NewDatabaseRPCs, PgNewDatabaseWaitEventAux) {
@@ -548,7 +570,8 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
       "YbAshCircularBuffer",
       "YbAshMetadata",
       "YbQueryDiagnostics",
-      "YbQueryDiagnosticsCircularBuffer"};
+      "YbQueryDiagnosticsCircularBuffer",
+      "YbTerminatedQueries"};
 
   std::unordered_set<std::string> yb_events;
   for (const auto& code : ash::WaitStateCodeList()) {
@@ -588,7 +611,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
       "pg_cron",
       "pg_cron launcher",
       "parallel worker",
-      "yb_query_diagnostics bgworker"};
+      "yb_query_diagnostics database connection bgworker"};
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = TRUE", kColocatedDB));
 
@@ -669,6 +692,68 @@ TEST_F(PgBgWorkersTest, ValidateIdleWaitEventsNotPresent) {
   for (const auto& wait_event : wait_events) {
     ASSERT_EQ(pg_idle_wait_events.contains(wait_event), false);
   }
+}
+
+TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
+  constexpr auto kDefaultQueryId = 5;
+  constexpr auto kBgWorkerQueryId = 7;
+  constexpr auto kTableName = "test_table";
+  const auto insert_query = Format(
+      "INSERT INTO $0 VALUES (1)", kTableName);
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->Execute(insert_query));
+
+  const auto queryid = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT%'"));
+
+  // start the query diagnostics worker for a random query id
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT yb_query_diagnostics(query_id => $0, "
+      "diagnostics_interval_sec => 10)", queryid));
+
+  // keep executing insert query
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &insert_query]() {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop) {
+      ASSERT_OK(conn.Execute(insert_query));
+      SleepFor(30ms);
+    }
+  });
+
+  int pid = 0;
+
+  ASSERT_OK(WaitFor([this, &pid]() -> Result<bool> {
+    auto rows = VERIFY_RESULT((conn_->FetchRows<int32_t>(
+        "SELECT pid FROM pg_stat_activity WHERE backend_type = "
+        "'yb_query_diagnostics database connection bgworker'")));
+    if (!rows.empty()) {
+      pid = rows[0];
+      return true;
+    }
+    return false;
+  }, 30s, "Wait for query diagnostics bg worker"));
+
+  ASSERT_NE(pid, 0);
+
+  // wait for ASH samples
+  SleepFor(10s);
+
+  constexpr auto kQueryString =
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE "
+      "pid = $0 AND query_id = $1";
+
+  const auto default_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kDefaultQueryId)));
+
+  ASSERT_EQ(default_query_id_cnt, 0);
+
+  const auto bgworker_query_id_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(kQueryString, pid, kBgWorkerQueryId)));
+
+  ASSERT_GE(bgworker_query_id_cnt, 1);
 }
 
 }  // namespace yb::pgwrapper

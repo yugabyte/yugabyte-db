@@ -23,6 +23,7 @@
 #define YBTIDBITMAP_H
 
 #include "postgres.h"
+
 #include "nodes/nodes.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

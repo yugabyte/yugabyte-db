@@ -26,8 +26,8 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
 #include "commands/yb_cmds.h"
+#include "ybvector.h"
 
 static void
 ybdummyannbindcolumnschema(YbcPgStatement handle,

@@ -13,10 +13,10 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
-	tablegroup.o \
 	yb_builtin.o \
 	yb_cmds.o \
 	yb_profile.o \
+	yb_tablegroup.o \
 	\
 	aggregatecmds.o \
 	alter.o \

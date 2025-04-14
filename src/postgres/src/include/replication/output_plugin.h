@@ -9,8 +9,10 @@
 #ifndef OUTPUT_PLUGIN_H
 #define OUTPUT_PLUGIN_H
 
-#include "postgres_ext.h"
 #include "replication/reorderbuffer.h"
+
+/* YB includes */
+#include "postgres_ext.h"
 
 struct LogicalDecodingContext;
 struct OutputPluginCallbacks;

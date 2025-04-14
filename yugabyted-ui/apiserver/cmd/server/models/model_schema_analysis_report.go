@@ -3,11 +3,11 @@ package models
 // SchemaAnalysisReport - Voyager data migration metrics details
 type SchemaAnalysisReport struct {
 
-    UnsupportedFunctions []UnsupportedSqlWithDetails `json:"unsupported_functions"`
+    VoyagerVersion string `json:"voyager_version"`
 
-    UnsupportedFeatures []UnsupportedSqlWithDetails `json:"unsupported_features"`
+    TargetDbVersion string `json:"target_db_version"`
 
-    UnsupportedDatatypes []UnsupportedSqlWithDetails `json:"unsupported_datatypes"`
+    SqlObjects []SqlObjectsDetails `json:"sql_objects"`
 
-    RecommendedRefactoring RecommendedRefactoringGraph `json:"recommended_refactoring"`
+    RecommendedRefactoring []RefactoringCount `json:"recommended_refactoring"`
 }

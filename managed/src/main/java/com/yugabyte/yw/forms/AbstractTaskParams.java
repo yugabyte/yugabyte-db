@@ -5,13 +5,14 @@ package com.yugabyte.yw.forms;
 import static com.yugabyte.yw.common.Util.getYbaVersion;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
 
 public class AbstractTaskParams implements ITaskParams {
 
-  private String platformVersion = getYbaVersion();
+  @JsonProperty private String platformVersion = getYbaVersion();
 
   @ApiModelProperty(value = "Previous task UUID of a retry")
   private UUID previousTaskUUID;

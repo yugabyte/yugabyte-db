@@ -19,7 +19,8 @@ var setKeyCmd = &cobra.Command{
 	Use:     "set",
 	Aliases: []string{"put"},
 	Short:   "Set a YugabyteDB Anywhere runtime configuration scope key value",
-	Long:    "Set a runtime configuration scope key value in YugabyteDB Anywhere ",
+	Long: "Set a runtime configuration scope key value in YugabyteDB Anywhere " +
+		"Run \"yba runtime-config key-info list\" to get the list of keys in a scope type.",
 	Example: `yba runtime-config scope key set --uuid <scope> --name <key-name> --value <value>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		scopeNameFlag, err := cmd.Flags().GetString("uuid")

@@ -17,6 +17,7 @@ import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBModalForm } from '../../common/forms';
 import { YBButton } from '../../common/forms/fields';
+import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import { handleCACertErrMsg } from '../../customCACerts';
 
 interface BackupDeleteProps {
@@ -33,14 +34,15 @@ const isIncrementalBackupInProgress = (backupList: IBackup[]) => {
 
 export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible, onHide }) => {
   const queryClient = useQueryClient();
+  const interceptBackupLink = useInterceptBackupTaskLinks();
   const delBackup = useMutation((backupList: IBackup[]) => deleteBackup(backupList), {
     onSuccess: (resp: any) => {
       toast.success(
         <span>
           Backup is queued for deletion. Click &nbsp;
-          <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+          {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
             here
-          </a>
+          </a>)}
           &nbsp; for task details
         </span>
       );

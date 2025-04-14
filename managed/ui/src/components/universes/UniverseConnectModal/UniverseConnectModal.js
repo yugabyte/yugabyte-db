@@ -132,7 +132,6 @@ class UniverseConnectModal extends Component {
 
       const ysqlServiceUrl = getUniverseEndpoint(universeId) + '/ysqlservers';
       const ycqlServiceUrl = getUniverseEndpoint(universeId) + '/yqlservers';
-      const yedisServiceUrl = getUniverseEndpoint(universeId) + '/redisservers';
       const endpointsContent = (
         <Fragment>
           <FlexContainer className="btn-group-cnt endpoint-buttons">
@@ -143,10 +142,6 @@ class UniverseConnectModal extends Component {
             {(userIntent.enableYCQL ||
               isEnabled(currentCustomer.data.features, 'universe.defaultYCQL')) && (
               <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, 'YCQL')}</FlexShrink>
-            )}
-            {(userIntent.enableYEDIS ||
-              isEnabled(currentCustomer.data.features, 'universe.defaultYEDIS', 'disabled')) && (
-              <FlexShrink>{this.renderEndpointUrl(yedisServiceUrl, 'YEDIS')}</FlexShrink>
             )}
           </FlexContainer>
           <YBCodeBlock
@@ -197,18 +192,6 @@ class UniverseConnectModal extends Component {
                     <td>YCQL Shell</td>
                     <td>: </td>
                     <td>{isTLSEnabled ? yCqlTLSConnection : ycqlConnection}</td>
-                  </tr>
-                )}
-                {(userIntent.enableYEDIS ||
-                  isEnabled(
-                    currentCustomer.data.features,
-                    'universe.defaultYEDIS',
-                    'disabled'
-                  )) && (
-                  <tr>
-                    <td>YEDIS Shell</td>
-                    <td>: </td>
-                    <td>bin/redis-cli</td>
                   </tr>
                 )}
               </tbody>

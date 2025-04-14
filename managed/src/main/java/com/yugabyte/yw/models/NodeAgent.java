@@ -476,15 +476,34 @@ public class NodeAgent extends Model {
   @JsonIgnore
   public PublicKey getPublicKey() {
     try {
-      CertificateFactory factory = CertificateFactory.getInstance("X.509");
-      X509Certificate cert =
-          (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(getServerCert()));
+      X509Certificate cert = getServerX509Cert();
       return cert.getPublicKey();
     } catch (RuntimeException e) {
       throw e;
     } catch (Exception e) {
       throw new RuntimeException(e.getMessage(), e);
     }
+  }
+
+  @JsonIgnore
+  public X509Certificate getServerX509Cert() {
+    try {
+      CertificateFactory factory = CertificateFactory.getInstance("X.509");
+      return (X509Certificate)
+          factory.generateCertificate(new ByteArrayInputStream(getServerCert()));
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
+  }
+
+  @JsonIgnore
+  public Date getServerCertExpiry() {
+    // TODO Cache this to avoid doing expensive work in periodic calls.
+    return CertificateHelper.extractDatesFromCertBundle(
+            Collections.singletonList(getServerX509Cert()))
+        .getRight();
   }
 
   @JsonIgnore

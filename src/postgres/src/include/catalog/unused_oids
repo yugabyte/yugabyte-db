@@ -37,6 +37,9 @@ my $FirstGenbkiObjectId =
   Catalog::FindDefinedSymbol('access/transam.h', '..', 'FirstGenbkiObjectId');
 push @{$oids}, $FirstGenbkiObjectId;
 
+# YB: BSONOID
+push @{$oids}, 8095;
+
 # YB: We also reserve 8078 for VECTOROID
 push @{$oids}, 8078;
 

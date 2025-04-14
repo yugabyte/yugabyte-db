@@ -326,10 +326,10 @@ since callers are not required to re-use an FmgrInfo struct.
 But in performance-critical paths they normally will do so.)
 
 If the handler wants to allocate memory to hold fn_extra data, it should
-NOT do so in GetCurrentMemoryContext(), since the current context may well be
+NOT do so in CurrentMemoryContext, since the current context may well be
 much shorter-lived than the context where the FmgrInfo is.  Instead,
 allocate the memory in context flinfo->fn_mcxt, or in a long-lived cache
 context.  fn_mcxt normally points at the context that was
-GetCurrentMemoryContext() at the time the FmgrInfo structure was created;
+CurrentMemoryContext at the time the FmgrInfo structure was created;
 in any case it is required to be a context at least as long-lived as the
 FmgrInfo itself.

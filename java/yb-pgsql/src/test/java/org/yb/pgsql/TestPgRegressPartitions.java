@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.util.YBTestRunnerNonTsanOnly;
@@ -24,6 +25,14 @@ public class TestPgRegressPartitions extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
+  }
+
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    flags.put("ysql_enable_inheritance", "true");
+    return flags;
   }
 
   @Test

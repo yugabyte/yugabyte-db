@@ -56,79 +56,85 @@ public class UpdateConsistencyCheck extends UniverseTaskBase {
   }
 
   public void createConsistencyCheckTable(Universe universe, NodeDetails node) {
-    String createQuery =
-        String.format(
-            "CREATE TABLE IF NOT EXISTS %s (seq_num INT, task_uuid UUID, yw_uuid UUID, yw_host"
-                + " VARCHAR, PRIMARY KEY (task_uuid HASH, seq_num DESC)) SPLIT INTO 1 TABLETS;",
-            CONSISTENCY_CHECK_TABLE_NAME);
-    RunQueryFormData runQueryFormData = new RunQueryFormData();
-    runQueryFormData.setDbName(SYSTEM_PLATFORM_DB);
-    runQueryFormData.setQuery(createQuery);
-    JsonNode ysqlResponse =
-        ysqlQueryExecutor.executeQueryInNodeShell(
-            universe,
-            runQueryFormData,
-            node,
-            confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
-    int retries = 0;
-    // Retry loop
-    while (ysqlResponse != null && ysqlResponse.has("error") && retries < 5) {
-      retries += 1;
-      ysqlResponse =
+    try {
+      String createQuery =
+          String.format(
+              "CREATE TABLE IF NOT EXISTS %s (seq_num INT, task_uuid UUID, yw_uuid UUID, yw_host"
+                  + " VARCHAR, PRIMARY KEY (task_uuid HASH, seq_num DESC)) SPLIT INTO 1 TABLETS;",
+              CONSISTENCY_CHECK_TABLE_NAME);
+      RunQueryFormData runQueryFormData = new RunQueryFormData();
+      runQueryFormData.setDbName(SYSTEM_PLATFORM_DB);
+      runQueryFormData.setQuery(createQuery);
+      JsonNode ysqlResponse =
           ysqlQueryExecutor.executeQueryInNodeShell(
               universe,
               runQueryFormData,
-              CommonUtils.getARandomLiveOrToBeRemovedTServer(universe),
+              node,
               confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
-    }
-    if (ysqlResponse != null && ysqlResponse.has("error")) {
-      TaskType taskType = getTaskExecutor().getTaskType(getClass());
-      if (taskType == TaskType.CreateUniverse || taskType == TaskType.CreateKubernetesUniverse) {
-        log.error(
-            "Could not create initial consistency check table for new universe {}.",
-            universe.getName());
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, ysqlResponse.get("error").asText());
-      } else {
-        log.warn(
-            "Could not create consistency check table for existing universe {}, skipping. Is the"
-                + " universe healthy?",
-            universe.getName());
-        return;
+      int retries = 0;
+      // Retry loop
+      while (ysqlResponse != null && ysqlResponse.has("error") && retries < 5) {
+        retries += 1;
+        ysqlResponse =
+            ysqlQueryExecutor.executeQueryInNodeShell(
+                universe,
+                runQueryFormData,
+                CommonUtils.getARandomLiveOrToBeRemovedTServer(universe),
+                confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
       }
-    }
-    runQueryFormData.setQuery(
-        String.format(
-            "INSERT INTO %s (seq_num, task_uuid, yw_uuid, yw_host) VALUES (0, '%s', '%s',"
-                + " '%s')",
-            CONSISTENCY_CHECK_TABLE_NAME,
-            getTaskUUID(),
-            configHelper.getYugawareUUID(),
-            Util.getYwHostnameOrIP()));
-    ysqlResponse =
-        ysqlQueryExecutor.executeQueryInNodeShell(
-            universe,
-            runQueryFormData,
-            node,
-            confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
-    retries = 0;
-    // retry loop
-    while (ysqlResponse != null && ysqlResponse.has("error") && retries < 5) {
-      retries += 1;
-      node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
+      if (ysqlResponse != null && ysqlResponse.has("error")) {
+        TaskType taskType = getTaskExecutor().getTaskType(getClass());
+        if (taskType == TaskType.CreateUniverse || taskType == TaskType.CreateKubernetesUniverse) {
+          log.error(
+              "Could not create initial consistency check table for new universe {}.",
+              universe.getName());
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, ysqlResponse.get("error").asText());
+        } else {
+          log.warn(
+              "Could not create consistency check table for existing universe {}, skipping. Is the"
+                  + " universe healthy?",
+              universe.getName());
+          return;
+        }
+      }
+      runQueryFormData.setQuery(
+          String.format(
+              "INSERT INTO %s (seq_num, task_uuid, yw_uuid, yw_host) VALUES (0, '%s', '%s',"
+                  + " '%s')",
+              CONSISTENCY_CHECK_TABLE_NAME,
+              getTaskUUID(),
+              configHelper.getYugawareUUID(),
+              Util.getYwHostnameOrIP()));
       ysqlResponse =
           ysqlQueryExecutor.executeQueryInNodeShell(
               universe,
               runQueryFormData,
               node,
               confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
+      retries = 0;
+      // retry loop
+      while (ysqlResponse != null && ysqlResponse.has("error") && retries < 5) {
+        retries += 1;
+        node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
+        ysqlResponse =
+            ysqlQueryExecutor.executeQueryInNodeShell(
+                universe,
+                runQueryFormData,
+                node,
+                confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
+      }
+      if (ysqlResponse != null && ysqlResponse.has("error")) {
+        log.warn("Could not perform inital insert into consistency check table.");
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, ysqlResponse.get("error").asText());
+      }
+      // Update local YBA sequence number with initial value
+      updateUniverseSeqNum(universe, 0);
+    } catch (IllegalStateException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Could not find valid tserver to create consistency check table.");
     }
-    if (ysqlResponse != null && ysqlResponse.has("error")) {
-      log.warn("Could not perform inital insert into consistency check table.");
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ysqlResponse.get("error").asText());
-    }
-    // Update local YBA sequence number with initial value
-    updateUniverseSeqNum(universe, 0);
   }
 
   @Override
@@ -234,14 +240,24 @@ public class UpdateConsistencyCheck extends UniverseTaskBase {
       int retries = 0;
       // Retry loop
       while (ysqlResponse != null && ysqlResponse.has("error") && retries < 5) {
-        node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
-        retries += 1;
-        ysqlResponse =
-            ysqlQueryExecutor.executeQueryInNodeShell(
-                universe,
-                runQueryFormData,
-                node,
-                confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
+        try {
+          node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
+          retries += 1;
+          ysqlResponse =
+              ysqlQueryExecutor.executeQueryInNodeShell(
+                  universe,
+                  runQueryFormData,
+                  node,
+                  confGetter.getConfForScope(
+                      universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
+
+        } catch (IllegalStateException e) {
+          log.warn(
+              "Could not find valid tserver, skipping consistency check for universe {} ({}).",
+              universeName,
+              universeUUID);
+          return;
+        }
       }
       // Testing hook for CustomerTaskManager.handlePendingConsistencyTasks
       if (confGetter.getConfForScope(universe, UniverseConfKeys.consistencyCheckPendingTest)) {

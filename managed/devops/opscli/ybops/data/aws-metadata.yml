@@ -13,89 +13,89 @@ credential_vars:
 region_cidr_format: '{}.0.0/16'
 regions:
   af-south-1:
-    arm_image: ami-0bacdeb42d9c1bf3b
+    arm_image: ami-09834fbd2dc666920
     cidr_prefix: '10.108'
-    image: ami-08a65ea2498d4c72a
+    image: ami-036743371b5e41c9c
   ap-east-1:
-    arm_image: ami-0a3e629841a283e51
+    arm_image: ami-027cdced32a35c527
     cidr_prefix: '10.110'
-    image: ami-0f44afe0758e0e47e
+    image: ami-075bbc8b771e8108d
   ap-northeast-1:
-    arm_image: ami-0f49472533caa5255
+    arm_image: ami-0b3b629dbd9cf1100
     cidr_prefix: '172.154'
-    image: ami-084a27c1f05eebe1c
+    image: ami-0d9da98839203a9d1
   ap-northeast-2:
-    arm_image: ami-0ee9834ddc42cf17b
+    arm_image: ami-0f1a6209375ffd93a
     cidr_prefix: '172.155'
-    image: ami-07df6c380f74027d0
+    image: ami-0f91c601f23c45b4f
   ap-northeast-3:
-    arm_image: ami-0ef5f0949ba620518
+    arm_image: ami-0961e02359873defc
     cidr_prefix: '10.107'
-    image: ami-01d1c79786709e761
+    image: ami-0bcf63727763a2ed9
   ap-south-1:
-    arm_image: ami-03898f75b165f132c
+    arm_image: ami-0b7cc54067cd3e91a
     cidr_prefix: '10.105'
-    image: ami-0fdca321b3fa2b50b
+    image: ami-0d068a70490a20c1c
   ap-south-2:
-    arm_image: ami-0bedf9f879ce088e9
+    arm_image: ami-047a89c5aee4cebc0
     cidr_prefix: '10.116'
-    image: ami-040ae225608015c5b
+    image: ami-0f9e00589602c21ba
   ap-southeast-1:
-    arm_image: ami-0e4c7a66512af744e
+    arm_image: ami-06d86da0f1b640515
     cidr_prefix: '172.156'
-    image: ami-0dfa63cfc8cd611b4
+    image: ami-0f9bb76db27240e62
   ap-southeast-2:
-    arm_image: ami-00ea8b63fc725c17e
+    arm_image: ami-0f8ba0bbd90cb1d3b
     cidr_prefix: '172.157'
-    image: ami-01074489961547d8c
+    image: ami-09b2b8c2f2f4a70f4
   ap-southeast-3:
-    arm_image: ami-0061dc0eeca030fb2
+    arm_image: ami-066bb66e716815bdf
     cidr_prefix: '10.113'
-    image: ami-090c62882af22aa4a
+    image: ami-0aa833e72a2c881cb
   ca-central-1:
-    arm_image: ami-07b2a7086cb67fe42
+    arm_image: ami-07f33d54e5e973ae0
     cidr_prefix: '10.104'
-    image: ami-01a022f3c0fda8bd8
+    image: ami-0edb4085b6dabf43d
   eu-central-1:
-    arm_image: ami-07333c329a088e328
+    arm_image: ami-0586654b55673cd0f
     cidr_prefix: '172.158'
-    image: ami-03862a1a8e9a38e8b
+    image: ami-08bd4cbd965e93710
   eu-north-1:
-    arm_image: ami-0e2d4044652fd2e2e
+    arm_image: ami-06034f3f28c27131b
     cidr_prefix: '10.112'
-    image: ami-0d4df048a7f5281d1
+    image: ami-0dd5f119e9d1a4f09
   eu-south-1:
-    arm_image: ami-07027d25a0ade3086
+    arm_image: ami-0b022ea5b0565ede0
     cidr_prefix: '10.111'
-    image: ami-0f0a3326801ec04f9
+    image: ami-07559a57c71ba882a
   eu-west-1:
-    arm_image: ami-0dbfaf9cfbbb7bd62
+    arm_image: ami-04543874bcefc5140
     cidr_prefix: '172.159'
-    image: ami-0cb24550f232c82e2
+    image: ami-0fc3222eb8007aa25
   eu-west-2:
-    arm_image: ami-068dea0642406d904
+    arm_image: ami-00390d6906b6264fc
     cidr_prefix: '10.102'
-    image: ami-090cf74a9a38c4d88
+    image: ami-07553454fd840b3b6
   eu-west-3:
-    arm_image: ami-0525888bdaf4caa26
+    arm_image: ami-0fdfd0f893e066eee
     cidr_prefix: '10.103'
-    image: ami-07c6b902dd2603071
+    image: ami-0d5621f4988b09a08
   me-south-1:
-    arm_image: ami-01e311d14a8dbcb44
+    arm_image: ami-0c90500bdcb1624cc
     cidr_prefix: '10.109'
-    image: ami-0ec646fa0b7f9154e
+    image: ami-0b6d8cf2511047705
   sa-east-1:
-    arm_image: ami-07a8c6e5bcf745981
+    arm_image: ami-02ec63f5718863cf0
     cidr_prefix: '10.100'
-    image: ami-076dbee51dc9f0db3
+    image: ami-068f5dd0cf9d3b37f
   us-east-1:
-    arm_image: ami-0f70235b4a086efc0
+    arm_image: ami-03f349361fe97c020
     cidr_prefix: '172.152'
-    image: ami-036c8456e3a8ee61f
+    image: ami-04588d67f856d6aad
   us-east-2:
-    arm_image: ami-09bf236dc97f9d790
+    arm_image: ami-03da06dc6e3abc333
     cidr_prefix: '10.101'
-    image: ami-09c1f7216794a763f
+    image: ami-0481085d153c9a850
   us-gov-east-1:
     cidr_prefix: '10.114'
     image: ami-00c6b007ba906a530
@@ -103,13 +103,13 @@ regions:
     cidr_prefix: '10.115'
     image: ami-08b470dba6016d395
   us-west-1:
-    arm_image: ami-0764cf7af33d75d43
+    arm_image: ami-01b7c45c7d2ab8874
     cidr_prefix: '172.150'
-    image: ami-093665c1153ba1981
+    image: ami-00b3c9e5ff5096b93
   us-west-2:
-    arm_image: ami-05494b4d23d5d4c12
+    arm_image: ami-0feb5348a9974d9a4
     cidr_prefix: '172.151'
-    image: ami-03f03db0b24a9f0b6
+    image: ami-00ce8e80b02149455
 sg_rules:
 - from_port: 22
   ip_protocol: tcp

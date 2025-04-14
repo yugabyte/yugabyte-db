@@ -142,7 +142,7 @@ Before deploying a multi-region YugabyteDB cluster, ensure to remove any existin
     mkdir ~/yugabyte-volume
     ```
 
-1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker-compose stop` to stop the YugaPlus application containers.
+1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker compose stop` to stop the YugaPlus application containers.
 
 The **yugabyted** tool lets you deploy and configure multi-region YugabyteDB clusters on your local machine. This is useful for emulating a multi-region cluster configuration locally for development and testing.
 
@@ -266,7 +266,7 @@ Bring back the application using the smart driver:
 1. Start the application:
 
     ```shell
-    docker-compose up
+    docker compose up
     ```
 
 After the backend container is started, it will use Flyway again to apply the movie recommendations service's schema and data.

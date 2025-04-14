@@ -28,12 +28,11 @@
 #include "datatype/timestamp.h" /* for TimestampTz */
 #include "pgtime.h"				/* for pg_time_t */
 
-#include "postgres.h"			/* for HeapTuple */
-#include "access/htup.h"		/* for HeapTuple */
-
+/* YB includes */
 #ifndef FRONTEND
 #include "storage/proc.h"		/* for MyProc */
 #endif
+
 
 #define InvalidPid				(-1)
 
@@ -100,6 +99,15 @@ extern PGDLLIMPORT volatile sig_atomic_t IdleInTransactionSessionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t IdleSessionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t ProcSignalBarrierPending;
 extern PGDLLIMPORT volatile sig_atomic_t LogMemoryContextPending;
+extern PGDLLIMPORT volatile sig_atomic_t YbLogCatcacheStatsPending;
+extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
+extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
 extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
 
 extern PGDLLIMPORT volatile sig_atomic_t CheckClientConnectionPending;
@@ -378,6 +386,8 @@ typedef enum BackendType
 
 extern PGDLLIMPORT BackendType MyBackendType;
 
+#define AmRegularBackendProcess()	(MyBackendType == B_BACKEND)
+
 extern const char *GetBackendTypeDesc(BackendType backendType);
 
 extern void SetDatabasePath(const char *path);
@@ -389,7 +399,10 @@ extern char *GetUserNameFromId(Oid roleid, bool noerr);
 extern Oid	GetUserId(void);
 extern Oid	GetOuterUserId(void);
 extern Oid	GetSessionUserId(void);
+extern bool GetSessionUserIsSuperuser(void);
 extern Oid	GetAuthenticatedUserId(void);
+extern bool GetAuthenticatedUserIsSuperuser(void);
+extern void SetAuthenticatedUserId(Oid userid, bool is_superuser);
 extern void GetUserIdAndSecContext(Oid *userid, int *sec_context);
 extern void SetUserIdAndSecContext(Oid userid, int sec_context);
 extern bool InLocalUserIdChange(void);

@@ -26,9 +26,17 @@ public class BasePgRegressTest extends BasePgSQLTest {
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
   @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("TEST_hide_details_for_pg_regress", "true");
+    return flagMap;
+  }
+
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     appendToYsqlPgConf(flagMap, "compute_query_id=regress");
+    flagMap.put("TEST_hide_details_for_pg_regress", "true");
     return flagMap;
   }
 

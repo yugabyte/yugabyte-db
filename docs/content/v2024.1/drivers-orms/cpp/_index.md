@@ -14,7 +14,7 @@ showRightNav: true
 
 ## Supported projects
 
-The following projects are recommended for implementing Rust applications using the YugabyteDB YSQL/YCQL API.
+The following projects are recommended for implementing C++ applications using the YugabyteDB YSQL/YCQL API.
 
 | Project | Example apps |
 | :------ | :----------- |

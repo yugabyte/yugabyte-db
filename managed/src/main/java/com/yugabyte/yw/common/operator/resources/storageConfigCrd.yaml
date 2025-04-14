@@ -85,6 +85,15 @@ spec:
                         Azure SAS token for the Azure storage configuration. Deprecated, use
                         azure_storage_sas_token_secret instead
                       type: string
+                    AWS_HOST_BASE:
+                      description: |
+                        Host of S3 bucket configuration. Valid for S3 compatible storages.
+                      type: string
+                    PATH_STYLE_ACCESS:
+                      description: |
+                        Use path style access for S3 bucket configuration. Valid for S3 compatible
+                        storages.
+                      type: boolean
                   required:
                   - BACKUP_LOCATION
                 awsSecretAccessKeySecret:

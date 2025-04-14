@@ -235,6 +235,8 @@ pqsecure_raw_read(PGconn *conn, void *ptr, size_t len)
 	int			result_errno = 0;
 	char		sebuf[PG_STRERROR_R_BUFLEN];
 
+	SOCK_ERRNO_SET(0);
+
 	n = recv(conn->sock, ptr, len, 0);
 
 	if (n < 0)
@@ -260,6 +262,11 @@ pqsecure_raw_read(PGconn *conn, void *ptr, size_t len)
 									 libpq_gettext("server closed the connection unexpectedly\n"
 												   "\tThis probably means the server terminated abnormally\n"
 												   "\tbefore or while processing the request.\n"));
+				break;
+
+			case 0:
+				/* If errno didn't get set, treat it as regular EOF */
+				n = 0;
 				break;
 
 			default:
@@ -413,7 +420,7 @@ retry_masked:
 				/* Set flag for EPIPE */
 				REMEMBER_EPIPE(spinfo, true);
 
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			case ECONNRESET:
 				conn->write_failed = true;

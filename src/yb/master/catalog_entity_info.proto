@@ -25,6 +25,7 @@ import "yb/common/transaction.proto";
 import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/dockv/dockv.proto";
 import "yb/master/master_types.proto";
 
 message BackfillJobPB {
@@ -181,9 +182,25 @@ message SysTablesEntryPB {
   // Time when an admin compaction was last requested. Raw representation of a HybridTime.
   optional fixed64 last_full_compaction_request_time = 41;
 
-  // Set by DDL Replication to link the table to the original table in the source cluster.
-  // Cleared after table creation completes.
-  optional bytes xcluster_source_table_id = 42;
+  message XClusterTableInfo {
+    // Set by DDL Replication to link the table to the original table in the source cluster.
+    // Cleared after table creation completes.
+    optional bytes xcluster_source_table_id = 1;
+
+    // Stores a list of old schema packings for automatic mode xCluster target colocated tables.
+    // These tables are processed before being created and require a source->target packed schema
+    // mapping.
+    // To handle this, we store processed schemas and insert them as old_schema_packings when the
+    // table is created. This allows us to have schema versions to use for the mapping that persists
+    // before and after the table is created.
+    // This is cleaned up after the table is created.
+    repeated dockv.SchemaPackingPB xcluster_colocated_old_schema_packings = 2;
+
+    // If set, use this time for the index backfill time.
+    optional fixed64 xcluster_backfill_hybrid_time = 3;
+  }
+
+  optional XClusterTableInfo xcluster_table_info = 42;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -300,7 +317,7 @@ message SysNamespaceEntryPB {
   optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 
   // For Postgres:
-  optional uint32 next_pg_oid = 3; // Next oid to assign.
+  optional uint32 next_normal_pg_oid = 3; // Next normal space oid to assign.
 
   // True if the namespace is colocated.
   optional bool colocated = 4 [ default = false ];
@@ -335,6 +352,8 @@ message SysNamespaceEntryPB {
       [ default = NEXT_VER_RUNNING ];
 
   optional uint32 clone_request_seq_no = 7;
+
+  optional uint32 next_secondary_pg_oid = 9; // Next secondary space oid to assign.
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -381,6 +400,9 @@ message SysClusterConfigEntryPB {
   // opposed to cluster_uuid which can be passed in as a flag). If not already set, it is set on
   // the VisitSysCatalog path.
   optional string universe_uuid = 8;
+  // This field is bumped to invalidate all the TServer OID caches.
+  // Note that this is for every database and applies only to YSQL.
+  optional uint32 oid_cache_invalidations_count = 9 [default = 0];
 }
 
 message SysObjectLockEntryPB {
@@ -389,13 +411,10 @@ message SysObjectLockEntryPB {
     // object_id -> Locks taken
     map<uint64, LockTypesPB> objects = 1;
   }
-  message DBObjectsMapPB {
-    // db_id -> map of objects/locks-taken
-    map<uint64, ObjectLocksMapPB> dbs = 1;
-  }
   message SubtxnDBMapPB {
-    // subtxn -> DB ...
-    map<uint32, DBObjectsMapPB> subtxns = 1;
+    optional uint64 db_id = 1;
+    // subtxn -> object locks ...
+    map<uint32, ObjectLocksMapPB> subtxns = 2;
   }
   message TransactionSubtxnMapPB {
     // txn_id -> subtxn ...
@@ -407,6 +426,17 @@ message SysObjectLockEntryPB {
 
   // lease_epoch -> Transaction ...
   map<uint64, TransactionSubtxnMapPB> lease_epochs = 1;
+
+  message LeaseInfoPB {
+    // Whether the lease is currently live.
+    optional bool live_lease = 1;
+
+    optional uint64 lease_epoch = 2;
+
+    // The instance_seqno of the tserver process to which this lease was granted.
+    optional int64 instance_seqno = 3;
+  }
+  optional LeaseInfoPB lease_info = 2;
 }
 
 message SysXClusterConfigEntryPB {
@@ -594,6 +624,8 @@ message SysCDCStreamEntryPB {
 
   optional ReplicationSlotLsnType cdcsdk_ysql_replication_slot_lsn_type =
       13 [default = ReplicationSlotLsnType_UNSPECIFIED];
+  optional ReplicationSlotOrderingMode cdcsdk_ysql_replication_slot_ordering_mode =
+      14 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 }
 
 
@@ -764,6 +796,16 @@ message SysUniverseReplicationEntryPB {
       required string producer_namespace_id = 2;
     }
     repeated NamespaceInfo namespace_infos = 13;
+
+    message HistoricalSchemaPackingPB {
+      repeated dockv.SchemaPackingPB old_schema_packings = 1;
+    }
+    message TargetNamespaceInfoPB {
+      // Colocation id to historical schema packings mapping.
+      map<uint32, HistoricalSchemaPackingPB> colocated_historical_schema_packings = 1;
+    }
+    // Target namespace id -> TargetNamespaceInfoPB.
+    map<string, TargetNamespaceInfoPB> target_namespace_infos = 2;
   }
 
   optional DBScopeInfo db_scoped_info = 13;
@@ -976,10 +1018,6 @@ message SysTabletServerEntryPB {
   // registered in memory before persistence was enabled to re-register and have their entry
   // persisted.
   optional bool persisted = 6;
-
-  optional bool live_client_operation_lease = 7;
-
-  optional uint64 lease_epoch = 8;
 
   optional VersionInfoPB version_info = 9;
 }

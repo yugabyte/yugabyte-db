@@ -68,6 +68,8 @@ DECLARE_bool(use_parent_table_id_field);
 namespace yb {
 namespace master {
 
+class RetryingRpcTask;
+
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
 // Per table structure for external cluster snapshot importing to this cluster.
@@ -573,8 +575,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
 
   bool IsXClusterDDLReplicationTable() const {
-    return IsXClusterDDLReplicationDDLQueueTable() ||
-           IsXClusterDDLReplicationReplicatedDDLsTable();
+    return IsXClusterDDLReplicationDDLQueueTable() || IsXClusterDDLReplicationReplicatedDDLsTable();
   }
 
   Result<uint32_t> GetPgTableOid(const std::string& id) const;
@@ -679,6 +680,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // For index table
   bool is_local_index() const;
   bool is_unique_index() const;
+  bool is_vector_index() const;
 
   void set_is_system() { is_system_ = true; }
   bool is_system() const { return is_system_; }
@@ -771,9 +773,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   Result<TabletInfos> GetTabletsIncludeInactive() const;
   size_t TabletCount(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
-  // Get the tablet of the table. The table must satisfy IsColocatedUserTable.
-  TabletInfoPtr GetColocatedUserTablet() const;
-
   // Get info of the specified index.
   qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
   std::vector<qlexpr::IndexInfo> GetIndexInfos() const;
@@ -822,8 +821,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Get the Status of the last error from the current CreateTable.
   Status GetCreateTableErrorStatus() const;
 
-  std::size_t NumLBTasks() const;
-
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
   bool UsesTablespacesForPlacement() const;
@@ -831,7 +828,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsColocationParentTable() const;
   bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
-  bool IsColocatedUserTable() const;
+
+  // A table is a primary table if it appears in the table_id field of every tablet which hosts it.
+  // Examples of primary tables are:
+  //   non-colocated, user tables
+  //   the parent table of a colocated database
+  // Secondary tables are non-primary tables which are not on the master tablet.
+  // Examples of secondary tables are:
+  //   colocated user tables
+  //   vector indices
+  bool IsSecondaryTable() const;
   bool IsSequencesSystemTable() const;
   bool IsSequencesSystemTable(const ReadLock& lock) const;
   bool IsXClusterDDLReplicationDDLQueueTable() const;
@@ -1065,9 +1071,19 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
+  std::optional<ObjectLockInfo::WriteLock> RefreshYsqlOperationLease(const NodeInstancePB& instance)
+      EXCLUDES(mutex_);
+
+  virtual void Load(const SysObjectLockEntryPB& metadata) override;
+
+  MonoTime last_ysql_lease_refresh() const EXCLUDES(mutex_);
+
  private:
   // The ID field is used in the sys_catalog table.
   const std::string ts_uuid_;
+
+  mutable simple_spinlock mutex_;
+  MonoTime last_ysql_lease_refresh_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(ObjectLockInfo);
 };

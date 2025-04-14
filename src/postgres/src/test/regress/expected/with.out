@@ -636,6 +636,21 @@ SELECT t1.id, t2.path, t2 FROM t AS t1 JOIN t AS t2 ON
  16 | {3,7,11,16} | (16,"{3,7,11,16}")
 (16 rows)
 
+CREATE TEMP TABLE duplicates (a INT NOT NULL);
+INSERT INTO duplicates VALUES(1), (1);
+-- Try out a recursive UNION case where the non-recursive part's table slot
+-- uses TTSOpsBufferHeapTuple and contains duplicate rows.
+WITH RECURSIVE cte (a) as (
+	SELECT a FROM duplicates
+	UNION
+	SELECT a FROM cte
+)
+SELECT a FROM cte;
+ a 
+---
+ 1
+(1 row)
+
 -- SEARCH clause
 create temp table graph0( f int, t int, label text );
 insert into graph0 values
@@ -1976,6 +1991,46 @@ WITH RECURSIVE x(n) AS (SELECT n FROM x UNION ALL SELECT 1)
 ERROR:  recursive reference to query "x" must not appear within its non-recursive term
 LINE 1: WITH RECURSIVE x(n) AS (SELECT n FROM x UNION ALL SELECT 1)
                                               ^
+-- allow this, because we historically have
+WITH RECURSIVE x(n) AS (
+  WITH x1 AS (SELECT 1 AS n)
+    SELECT 0
+    UNION
+    SELECT * FROM x1)
+	SELECT * FROM x;
+ n 
+---
+ 0
+ 1
+(2 rows)
+
+-- but this should be rejected
+WITH RECURSIVE x(n) AS (
+  WITH x1 AS (SELECT 1 FROM x)
+    SELECT 0
+    UNION
+    SELECT * FROM x1)
+	SELECT * FROM x;
+ERROR:  recursive reference to query "x" must not appear within a subquery
+LINE 2:   WITH x1 AS (SELECT 1 FROM x)
+                                    ^
+-- and this too
+WITH RECURSIVE x(n) AS (
+  (WITH x1 AS (SELECT 1 FROM x) SELECT * FROM x1)
+  UNION
+  SELECT 0)
+	SELECT * FROM x;
+ERROR:  recursive reference to query "x" must not appear within its non-recursive term
+LINE 2:   (WITH x1 AS (SELECT 1 FROM x) SELECT * FROM x1)
+                                     ^
+-- and this
+WITH RECURSIVE x(n) AS (
+  SELECT 0 UNION SELECT 1
+  ORDER BY (SELECT n FROM x))
+	SELECT * FROM x;
+ERROR:  ORDER BY in a recursive query is not implemented
+LINE 3:   ORDER BY (SELECT n FROM x))
+                   ^
 CREATE TEMPORARY TABLE y (a INTEGER);
 INSERT INTO y SELECT generate_series(1, 10);
 -- LEFT JOIN
@@ -3015,28 +3070,30 @@ WITH cte_basic AS MATERIALIZED (SELECT 1 a, 'cte_basic val' b)
 MERGE INTO m USING (select 0 k, 'merge source SubPlan' v offset 0) o ON m.k=o.k
 WHEN MATCHED THEN UPDATE SET v = (SELECT b || ' merge update' FROM cte_basic WHERE cte_basic.a = m.k LIMIT 1)
 WHEN NOT MATCHED THEN INSERT VALUES(o.k, o.v);
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Merge on public.m
    CTE cte_basic
      ->  Result
            Output: 1, 'cte_basic val'::text
    ->  Hash Right Join
-         Output: m.ctid, (0), ('merge source SubPlan'::text)
-         Hash Cond: (m.k = (0))
+         Output: m.ctid, o.k, o.v, o.*
+         Hash Cond: (m.k = o.k)
          ->  Seq Scan on public.m
                Output: m.ctid, m.k
          ->  Hash
-               Output: (0), ('merge source SubPlan'::text)
-               ->  Result
-                     Output: 0, 'merge source SubPlan'::text
+               Output: o.k, o.v, o.*
+               ->  Subquery Scan on o
+                     Output: o.k, o.v, o.*
+                     ->  Result
+                           Output: 0, 'merge source SubPlan'::text
    SubPlan 2
      ->  Limit
            Output: ((cte_basic.b || ' merge update'::text))
            ->  CTE Scan on cte_basic
                  Output: (cte_basic.b || ' merge update'::text)
                  Filter: (cte_basic.a = m.k)
-(19 rows)
+(21 rows)
 
 -- InitPlan
 WITH cte_init AS MATERIALIZED (SELECT 1 a, 'cte_init val' b)
@@ -3056,8 +3113,8 @@ WITH cte_init AS MATERIALIZED (SELECT 1 a, 'cte_init val' b)
 MERGE INTO m USING (select 1 k, 'merge source InitPlan' v offset 0) o ON m.k=o.k
 WHEN MATCHED THEN UPDATE SET v = (SELECT b || ' merge update' FROM cte_init WHERE a = 1 LIMIT 1)
 WHEN NOT MATCHED THEN INSERT VALUES(o.k, o.v);
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Merge on public.m
    CTE cte_init
      ->  Result
@@ -3069,15 +3126,17 @@ WHEN NOT MATCHED THEN INSERT VALUES(o.k, o.v);
                  Output: (cte_init.b || ' merge update'::text)
                  Filter: (cte_init.a = 1)
    ->  Hash Right Join
-         Output: m.ctid, (1), ('merge source InitPlan'::text)
-         Hash Cond: (m.k = (1))
+         Output: m.ctid, o.k, o.v, o.*
+         Hash Cond: (m.k = o.k)
          ->  Seq Scan on public.m
                Output: m.ctid, m.k
          ->  Hash
-               Output: (1), ('merge source InitPlan'::text)
-               ->  Result
-                     Output: 1, 'merge source InitPlan'::text
-(19 rows)
+               Output: o.k, o.v, o.*
+               ->  Subquery Scan on o
+                     Output: o.k, o.v, o.*
+                     ->  Result
+                           Output: 1, 'merge source InitPlan'::text
+(21 rows)
 
 -- MERGE source comes from CTE:
 WITH merge_source_cte AS MATERIALIZED (SELECT 15 a, 'merge_source_cte val' b)
@@ -3111,14 +3170,14 @@ WHEN NOT MATCHED THEN INSERT VALUES(o.a, o.b || (SELECT merge_source_cte.*::text
      ->  CTE Scan on merge_source_cte merge_source_cte_2
            Output: ((merge_source_cte_2.*)::text || ' merge insert'::text)
    ->  Hash Right Join
-         Output: m.ctid, merge_source_cte.a, merge_source_cte.b
+         Output: m.ctid, merge_source_cte.a, merge_source_cte.b, merge_source_cte.*
          Hash Cond: (m.k = merge_source_cte.a)
          ->  Seq Scan on public.m
                Output: m.ctid, m.k
          ->  Hash
-               Output: merge_source_cte.a, merge_source_cte.b
+               Output: merge_source_cte.a, merge_source_cte.b, merge_source_cte.*
                ->  CTE Scan on merge_source_cte
-                     Output: merge_source_cte.a, merge_source_cte.b
+                     Output: merge_source_cte.a, merge_source_cte.b, merge_source_cte.*
 (20 rows)
 
 DROP TABLE m;

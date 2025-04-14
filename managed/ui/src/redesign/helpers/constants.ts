@@ -77,9 +77,12 @@ export const RuntimeConfigKey = {
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
   PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
   ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling',
+  USE_ANSIBLE_PROVISIONING: 'yb.node_agent.use_ansible_provisioning',
   RF_CHANGE_FEATURE_FLAG: 'yb.ui.feature_flags.enable_rf_change',
   NODE_AGENT_CLIENT_ENABLE: 'yb.node_agent.client.enabled',
-  NODE_AGENT_ENABLER_SCAN_INTERVAL: 'yb.node_agent.enabler.scan_interval'
+  NODE_AGENT_ENABLER_SCAN_INTERVAL: 'yb.node_agent.enabler.scan_interval',
+  HYPERDISKS_STORAGE_TYPE: 'yb.gcp.show_hyperdisks_storage_type',
+  CIPHERTRUST_KMS_ENABLE: 'yb.kms.allow_ciphertrust'
 } as const;
 
 /**
@@ -118,7 +121,7 @@ export const UNIVERSE_ACTION_TO_FROZEN_TASK_MAP = {
   ENCRYPTION_IN_TRANSIT: 'TlsToggle_Universe',
   INSTALL_NODE_AGENT: 'Install_NodeAgent',
 
-  // xCluster replication Tab - refer to the button where you can disbale (check api is called from)
+  // xCluster replication Tab - refer to the button where you can disable (check api is called from)
   CONFIGURE_REPLICATION: 'Create_XClusterConfig',
   RESTART_REPLICATION: 'Restart_XClusterConfig',
   EDIT_REPLICATION: 'Edit_XClusterConfig',
@@ -126,10 +129,10 @@ export const UNIVERSE_ACTION_TO_FROZEN_TASK_MAP = {
   SYNC_REPLICATION: 'Sync_XClusterConfig',
 
   // xCluster DR tab -
-  // refer to the button where you can disbale (Refer to api.ts for APIs like restartDrConfig, initiateFailover etc)
+  // refer to the button where you can disable (Refer to api.ts for APIs like restartDrConfig, initiateFailover etc)
   CONFIGURE_DR: 'Create_DrConfig',
   DELETE_DR: 'Delete_DrConfig',
-  SWITCHIVER_DR: 'Switchover_DrConfig',
+  SWITCHOVER_DR: 'Switchover_DrConfig',
   FAILOVER_DR: 'Failover_DrConfig',
   EDIT_DR: 'Edit_DrConfig',
   SYNC_DR: 'Sync_DrConfig',
@@ -182,7 +185,7 @@ export const UNIVERSE_TASKS = {
   // xCluster DR actions
   CONFIGURE_DR: 'CONFIGURE_DR',
   DELETE_DR: 'DELETE_DR',
-  SWITCHIVER_DR: 'SWITCHIVER_DR',
+  SWITCHOVER_DR: 'SWITCHOVER_DR',
   FAILOVER_DR: 'FAILOVER_DR',
   EDIT_DR: 'EDIT_DR',
   SYNC_DR: 'SYNC_DR',

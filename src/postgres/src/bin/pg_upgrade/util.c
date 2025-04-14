@@ -18,6 +18,8 @@ LogOpts		log_opts;
 
 static void pg_log_v(eLogType type, const char *fmt, va_list ap) pg_attribute_printf(2, 0);
 
+bool yb_current_check_failed = false;
+bool yb_has_check_fatal = false;
 
 /*
  * report_status()
@@ -118,6 +120,8 @@ prep_status(const char *fmt,...)
 {
 	va_list		args;
 	char		message[MAX_STRING];
+
+	yb_current_check_failed = false;
 
 	va_start(args, fmt);
 	vsnprintf(message, sizeof(message), fmt, args);
@@ -331,4 +335,41 @@ bool
 is_yugabyte_enabled()
 {
 	return true;
+}
+
+int
+yb_fprintf_and_log(FILE *stream, const char *fmt, ...)
+{
+	int len;
+	va_list args;
+
+	if (!yb_current_check_failed)
+	{
+		pg_log(PG_REPORT, "%s\n\n", "fatal");
+		yb_current_check_failed = true;
+	}
+
+	va_start(args, fmt);
+	pg_log_v(PG_REPORT, fmt, args);
+	va_end(args);
+
+	va_start(args, fmt);
+	len = pg_vfprintf(stream, fmt, args);
+	va_end(args);
+
+	return len;
+}
+
+void
+yb_fatal(const char *fmt, ...)
+{
+	va_list args;
+
+	pg_log(PG_REPORT, "\n");
+
+	va_start(args, fmt);
+	pg_log_v(user_opts.check ? PG_REPORT : PG_FATAL, fmt, args);
+	va_end(args);
+
+	yb_has_check_fatal = true;
 }

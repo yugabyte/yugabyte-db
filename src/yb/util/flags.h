@@ -101,6 +101,8 @@ namespace yb {
 // See gflags.h for more information.
 void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 
+void RegisterGlobalFlagsCallbacksOnce();
+
 // Reads the given file and updates the value of all flags specified in the file. Returns true on
 // success, false otherwise.
 bool RefreshFlagsFile(const std::string& filename);

@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
@@ -27,7 +28,6 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-import org.yb.util.Pair;
 
 @Slf4j
 public class EnableEncryptionAtRest extends AbstractTaskBase {
@@ -81,22 +81,28 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         // This is for both the following cases:
         // 1. Universe key creation when no universe key exists on the universe.
         // 2. Universe key rotation if the given KMS config equals the active one.
-        byte[] universeKeyRef =
+        EncryptionKey universeKeyRef =
             keyManager.generateUniverseKey(
                 kmsConfigUUID, universeUUID, taskParams().encryptionAtRestConfig);
 
-        if (universeKeyRef == null || universeKeyRef.length == 0) {
+        if (universeKeyRef == null
+            || universeKeyRef.getKeyBytes() == null
+            || universeKeyRef.getKeyBytes().length == 0) {
           throw new RuntimeException("Error occurred creating universe key");
         }
 
         byte[] universeKeyVal =
-            keyManager.getUniverseKey(universeUUID, kmsConfigUUID, universeKeyRef);
+            keyManager.getUniverseKey(
+                universeUUID,
+                kmsConfigUUID,
+                universeKeyRef.getKeyBytes(),
+                universeKeyRef.getEncryptionContext());
 
         if (universeKeyVal == null || universeKeyVal.length == 0) {
           throw new RuntimeException("Error occurred retrieving universe key from ref");
         }
 
-        String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef);
+        String encodedKeyRef = Base64.getEncoder().encodeToString(universeKeyRef.getKeyBytes());
 
         List<HostAndPort> masterAddrs =
             Arrays.stream(hostPorts.split(","))
@@ -119,13 +125,14 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         }
 
         client.enableEncryptionAtRestInMemory(encodedKeyRef);
-        Pair<Boolean, String> isEncryptionEnabled = client.isEncryptionEnabled();
+        org.yb.util.Pair<Boolean, String> isEncryptionEnabled = client.isEncryptionEnabled();
         if (!isEncryptionEnabled.getFirst()
             || !isEncryptionEnabled.getSecond().equals(encodedKeyRef)) {
           throw new RuntimeException("Error occurred enabling encryption at rest");
         }
 
-        EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfigUUID, universeKeyRef);
+        EncryptionAtRestUtil.activateKeyRef(
+            universeUUID, kmsConfigUUID, universeKeyRef.getKeyBytes());
       } else if (!kmsConfigUUID.equals(activeKmsHistory.getConfigUuid())) {
         // Master key rotation case, when the given KMS config differs from the active one.
 
@@ -144,7 +151,8 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
               ybService,
               universeUUID,
               activeKmsHistory.getConfigUuid(),
-              Base64.getDecoder().decode(activeKmsHistory.getUuid().keyRef));
+              Base64.getDecoder().decode(activeKmsHistory.getUuid().keyRef),
+              activeKmsHistory.getEncryptionContext());
         }
 
         log.info(

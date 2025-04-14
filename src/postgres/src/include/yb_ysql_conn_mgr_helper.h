@@ -22,10 +22,11 @@
  * ----------
  */
 #include "postgres.h"
-#include "miscadmin.h"
 
 #include <ctype.h>
 #include <float.h>
+
+#include "miscadmin.h"
 
 #pragma once
 
@@ -110,8 +111,8 @@ extern bool yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 
 extern void YbSendFatalForLogicalConnectionPacket();
 
-extern bool YbGetNumYsqlConnMgrConnections(const char *db_name,
-										   const char *user_name,
+extern bool YbGetNumYsqlConnMgrConnections(const Oid db_oid,
+										   const Oid user_oid,
 										   uint32_t *num_logical_conn,
 										   uint32_t *num_physical_conn);
 

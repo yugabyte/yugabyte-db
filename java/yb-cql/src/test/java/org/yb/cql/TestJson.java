@@ -210,7 +210,6 @@ public class TestJson extends BaseCQLTest {
     runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, 'abc');");
     runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, 1);");
     runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, 2.0);");
-    runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, null);");
     runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, true);");
     runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, false);");
     runInvalidStmt("INSERT INTO test_json(c1, c2) values (123, '{a:1, \"b\":2}');");
@@ -308,7 +307,6 @@ public class TestJson extends BaseCQLTest {
     runInvalidStmt("SELECT * FROM test_json WHERE c2->'a1'->0 = 1");
     runInvalidStmt("SELECT * FROM test_json WHERE c2->'a2' = '{a:1}'");
     runInvalidStmt("SELECT * FROM test_json WHERE c2->'a3' = ''");
-    runInvalidStmt("SELECT * FROM test_json WHERE c2->'a'->'e' = null");
     runInvalidStmt("SELECT * FROM test_json WHERE c2->'a'->'c' = false");
     runInvalidStmt("SELECT * FROM test_json WHERE c2->'a'->>'f' = hello");
 
@@ -504,6 +502,30 @@ public class TestJson extends BaseCQLTest {
         " = 1");
     // Subscript args with json not allowed.
     runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'r' = '200', c2[0] = '1' WHERE c1 = 1");
+
+    // Test NULL in JSONB.
+    // Test INSERT.
+    session.execute("INSERT INTO test_json(c1) values (9);");
+    assertQuery("SELECT * FROM test_json WHERE c1 = 9", "Row[9, NULL]");
+    session.execute("INSERT INTO test_json(c1, c2) values (10, null);");
+    assertQuery("SELECT * FROM test_json WHERE c1 = 10", "Row[10, NULL]");
+    // Test UPDATE.
+    session.execute("INSERT INTO test_json(c1, c2) values (11, '{}');");
+    assertQuery("SELECT * FROM test_json WHERE c1 = 11", "Row[11, {}]");
+    session.execute("UPDATE test_json SET c2 = null WHERE c1 = 11");
+    assertQuery("SELECT * FROM test_json WHERE c1 = 11", "Row[11, NULL]");
+    // Compare with NULL. Note: absent value is interpreted as NULL.
+    assertEquals(3, session.execute("SELECT * FROM test_json WHERE c2 = null")
+        .all().size());
+    // Note: absent value is interpreted as NULL.
+    assertEquals(11, session.execute("SELECT * FROM test_json WHERE c2->'xx'->'yy'->'zz' = null")
+        .all().size());
+    assertQuery("SELECT c2->'a'->'e' FROM test_json WHERE c1 = 1",
+        "Row[{\"y1\":1,\"y2\":{\"z1\":1}}]");
+    assertEquals(10, session.execute("SELECT * FROM test_json WHERE c2->'a'->'e' = null")
+        .all().size());
+    assertEquals(1, session.execute("SELECT * FROM test_json WHERE c2->'a'->'c' = 'false'")
+        .all().size());
 
     // Test delete with conditions.
     // Test deletes that don't apply.

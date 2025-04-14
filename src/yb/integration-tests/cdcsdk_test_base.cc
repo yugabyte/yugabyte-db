@@ -103,54 +103,6 @@ Status CDCSDKTestBase::CreateDatabase(
   return Status::OK();
 }
 
-Status CDCSDKTestBase::InitPostgres(PostgresMiniCluster* cluster) {
-  auto pg_ts = RandomElement(cluster->mini_cluster_->mini_tablet_servers());
-  auto port = cluster->mini_cluster_->AllocateFreePort();
-  pgwrapper::PgProcessConf pg_process_conf =
-      VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-          AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-          pg_ts->server()->GetSharedMemoryFd()));
-  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-  pg_process_conf.force_disable_log_file = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
-      cluster->mini_cluster_->AllocateFreePort();
-
-  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
-            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
-            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-  cluster->pg_supervisor_ =
-      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
-  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
-
-  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-  return Status::OK();
-}
-
-Status CDCSDKTestBase::InitPostgres(
-    PostgresMiniCluster* cluster, const size_t pg_ts_idx, uint16_t pg_port) {
-  auto pg_ts = cluster->mini_cluster_->mini_tablet_server(pg_ts_idx);
-  pgwrapper::PgProcessConf pg_process_conf =
-      VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-          AsString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
-          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-          pg_ts->server()->GetSharedMemoryFd()));
-  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-  pg_process_conf.force_disable_log_file = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
-      cluster->mini_cluster_->AllocateFreePort();
-
-  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
-            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
-            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-  cluster->pg_supervisor_ =
-      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
-  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
-
-  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-  return Status::OK();
-}
-
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
     uint32_t replication_factor, uint32_t num_masters, bool colocated,
@@ -192,9 +144,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   RETURN_NOT_OK(WaitForInitDb(test_cluster()));
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
   if (set_pgsql_proxy_bind_address) {
-    RETURN_NOT_OK(InitPostgres(&test_cluster_, pg_ts_idx, pg_port));
+    RETURN_NOT_OK(test_cluster_.InitPostgres(pg_ts_idx, pg_port));
   } else {
-    RETURN_NOT_OK(InitPostgres(&test_cluster_));
+    RETURN_NOT_OK(test_cluster_.InitPostgres());
   }
   RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 

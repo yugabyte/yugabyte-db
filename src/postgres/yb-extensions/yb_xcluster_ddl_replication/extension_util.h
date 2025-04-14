@@ -20,7 +20,8 @@
 #define YB_XCLUSTER_DDL_REPLICATION_UTIL
 
 #include "postgres.h"
-#include "utils/guc.h"
+
+#include "tcop/deparse_utility.h"
 #include "utils/memutils.h"
 
 #define EXTENSION_NAME			   "yb_xcluster_ddl_replication"
@@ -30,7 +31,7 @@
 #define INIT_MEM_CONTEXT_AND_SPI_CONNECT(desc) \
 	do \
 	{ \
-		context_new = AllocSetContextCreate(GetCurrentMemoryContext(), desc, \
+		context_new = AllocSetContextCreate(CurrentMemoryContext, desc, \
 											ALLOCSET_DEFAULT_SIZES); \
 		context_old = MemoryContextSwitchTo(context_new); \
 		GetUserIdAndSecContext(&save_userid, &save_sec_context); \
@@ -58,16 +59,37 @@
 
 /* Global variables. */
 extern const char *kManualReplicationErrorMsg;
-extern bool TEST_AllowColocatedObjects;
 
 /* Get int64 value from string extension variable. */
-int64		GetInt64FromVariable(const char *var, const char *var_name);
+extern int64 GetInt64FromVariable(const char *var, const char *var_name);
 
 /*
  * XClusterExtensionOwner returns the oid of the user that owns the extension.
  * This is used in INIT_MEM_CONTEXT_AND_SPI_CONNECT to allow the extension to
  * update its objects.
  */
-Oid			XClusterExtensionOwner(void);
+extern Oid XClusterExtensionOwner(void);
+
+extern Oid SPI_GetOid(HeapTuple spi_tuple, int column_id);
+
+/* Returns InvalidOid (0) if value doesn't exist/is null. */
+extern Oid SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id);
+
+extern char *SPI_GetText(HeapTuple spi_tuple, int column_id);
+
+extern bool SPI_GetBool(HeapTuple spi_tuple, int column_id);
+
+extern CollectedCommand *GetCollectedCommand(HeapTuple spi_tuple, int column_id);
+
+extern char *SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id,
+									 int element_index);
+
+/* If true, any object in this schema is a temporary object. */
+extern bool IsTempSchema(const char *schema_name);
+
+/* Returns the relation's colocation id or 0 if not colocated. */
+extern Oid GetColocationIdFromRelation(Relation *rel);
+
+extern char *get_typname(Oid pg_type_oid);
 
 #endif

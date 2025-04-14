@@ -67,6 +67,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_NAMESPACED_SERVICE_SUPPORT_STABLE = "2024.2.0.0-b1";
   public static String MIN_VERSION_CUSTOM_ISSUER_SUPPORT_PREVIEW = "2.25.1.0-b109";
   public static String MIN_VERSION_CUSTOM_ISSUER_SUPPORT_STABLE = "2024.2.2.0-b1";
+  public static String MIN_VERSION_OTEL_SUPPORT_STABLE = "2025.1.0.0-b0";
+  public static String MIN_VERSION_OTEL_SUPPORT_PREVIEW = "2.25.1.0-b133";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -91,6 +93,15 @@ public class KubernetesUtil {
             universeSoftwareVersion,
             MIN_VERSION_CUSTOM_ISSUER_SUPPORT_STABLE,
             MIN_VERSION_CUSTOM_ISSUER_SUPPORT_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  public static boolean isExporterSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_OTEL_SUPPORT_STABLE,
+            MIN_VERSION_OTEL_SUPPORT_PREVIEW,
             true)
         >= 0;
   }

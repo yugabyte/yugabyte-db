@@ -330,6 +330,13 @@ scoped_refptr<Trace> Trace::MaybeGetNewTrace() {
   return ret;
 }
 
+bool Trace::must_print() const {
+  std::lock_guard l(lock_);
+  return must_print_ || std::any_of(
+                            child_traces_.begin(), child_traces_.end(),
+                            [](const auto& child_trace) { return child_trace->must_print(); });
+}
+
 scoped_refptr<Trace>  Trace::MaybeGetNewTraceForParent(Trace* parent) {
   if (parent) {
     scoped_refptr<Trace> trace(new Trace);

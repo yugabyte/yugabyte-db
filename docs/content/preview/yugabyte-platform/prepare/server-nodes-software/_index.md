@@ -32,21 +32,66 @@ YugabyteDB Anywhere supports deploying YugabyteDB on a variety of [operating sys
 
 AlmaLinux OS 8 disk images are used by default, but you can specify a custom disk image and OS.
 
+On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle Enterprise Linux 8.x, Amazon Linux 2), additionally, add the following line to `/etc/systemd/system.conf` and `/etc/systemd/user.conf`:
+
+```sh
+DefaultLimitNOFILE=1048576
+```
+
+You must reboot the system for these two settings to take effect.
+
 ### Additional software
 
 YugabyteDB Anywhere requires the following additional software to be pre-installed on nodes:
 
-- Python 3.6-3.8
-- Install the python selinux package corresponding to your version of python. For example, using pip, you can install as follows:
-
-  `python3 -m pip install selinux`
-
-  Alternately, if you are using the default version of python3, you might be able to install the python3-libselinux package.
-
-- OpenSSH Server. Allowing SSH is recommended but optional. Using SSH can be skipped in some on-premises deployment approaches; all other workflows require it. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
+- OpenSSH Server. Allowing SSH is optional. Using SSH is required in some [legacy on-premises deployment](../server-nodes-software/software-on-prem-legacy/) approaches. [Tectia SSH](../../create-deployments/connect-to-universe/#enable-tectia-ssh) is also supported.
 - tar
 - unzip
 - policycoreutils-python-utils
+
+#### Python
+
+Install Python 3.8 on the nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
+
+Install the Python SELinux package corresponding to your version of Python. You can use pip to do this. Ensure the version of pip matches the version of Python.
+
+For example, you can install Python as follows:
+
+```sh
+sudo yum install python38
+sudo pip3.8 install selinux
+sudo ln -s /usr/bin/python3.8 /usr/bin/python
+sudo rm /usr/bin/python3
+sudo ln -s /usr/bin/python3.8 /usr/bin/python3
+python3 -c "import selinux; import sys; print(sys.version)"
+```
+
+```output
+> 3.8.19 (main, Sep 11 2024, 00:00:00)
+> [GCC 11.5.0 20240719 (Red Hat 11.5.0-2)]
+```
+
+Alternately, if you are using the default version of python3, you might be able to install the python3-libselinux package.
+
+#### CA certificates
+
+By default, YugabyteDB Anywhere can automatically generate and copy self-signed TLS certificates used for node-to-node encryption in transit to universe nodes when the universe is created.
+
+However, if you want to use your own CA certificates, you must manually copy them to universe nodes. (CA certificates can only be used with on-premises universes.)
+
+In your certificate authority UI (for example, Venafi), generate the following:
+
+- Server certificates to use for node-to-node encryption; that is, for the VMs to be used for universes.
+
+    These certificates must be copied to each of the VMs you will use in your universes.
+
+- A certificate to use for client-to-node encryption; that is, for encrypting traffic between the database cluster and applications and clients.
+
+    This certificate must also be copied to your application client.
+
+In addition, you add the certificates to YugabyteDB Anywhere.
+
+For more information, refer to [CA certificates](../../security/enable-encryption-in-transit/add-certificate-ca/).
 
 ### Additional software for airgapped deployment
 
@@ -59,3 +104,4 @@ Additionally, if not connected to the public Internet (that is, airgapped); and 
 - libatomic (for Redhat-based aarch64)
 - libatomic1, libncurses6 (for Debian-based aarch64)
 - chrony (for time synchronization). When using a Public Cloud Provider, chrony is the only choice. When using an On-Premises provider, chrony is recommended; ntpd and systemd-timesyncd are also supported.
+- polkit (for YBA versions including v2024.2 and later)

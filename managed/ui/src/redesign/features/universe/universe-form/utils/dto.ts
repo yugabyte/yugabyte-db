@@ -50,6 +50,7 @@ export interface CommunicationPorts {
   ysqlServerHttpPort: number;
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
+  ybControllerrRpcPort: number;
 }
 
 export enum StorageType {
@@ -61,7 +62,9 @@ export enum StorageType {
   StandardSSD_LRS = 'StandardSSD_LRS',
   Premium_LRS = 'Premium_LRS',
   PremiumV2_LRS = 'PremiumV2_LRS',
-  UltraSSD_LRS = 'UltraSSD_LRS'
+  UltraSSD_LRS = 'UltraSSD_LRS',
+  Hyperdisk_Balanced = 'Hyperdisk_Balanced',
+  Hyperdisk_Extreme = 'Hyperdisk_Extreme'
 }
 export interface DeviceInfo {
   volumeSize: number;
@@ -245,6 +248,7 @@ export interface UniverseDetails {
   prevYBSoftwareConfig: { softwareVersion: string };
   universePaused: boolean;
   xclusterInfo: any;
+  runOnlyPrechecks?: boolean;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
@@ -313,6 +317,7 @@ export interface CommunicationPorts {
   ysqlServerRpcPort: number;
   nodeExporterPort: number;
   internalYsqlServerRpcPort?: number;
+  ybControllerrRpcPort: number;
 }
 
 export interface DeviceInfo {
@@ -533,7 +538,7 @@ export interface InstanceConfigFormValue {
   enableYCQLAuth: boolean;
   ycqlPassword?: string;
   ycqlConfirmPassword?: string;
-  enableYEDIS: boolean;
+  enableYEDIS?: boolean;
   kmsConfig: string | null;
   arch?: ArchitectureType | null;
   imageBundleUUID?: string | null;
@@ -593,7 +598,8 @@ export const DEFAULT_COMMUNICATION_PORTS: CommunicationPorts = {
   ysqlServerHttpPort: 13000,
   ysqlServerRpcPort: 5433,
   internalYsqlServerRpcPort: 6433,
-  nodeExporterPort: 9300
+  nodeExporterPort: 9300,
+  ybControllerrRpcPort: 18018
 };
 
 export const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {
@@ -884,6 +890,19 @@ export interface ImageBundle {
     version: string;
   };
   active: true;
+}
+
+export enum PRECHECK_UPGRADE_TYPE {
+  SOFTWARE = 'Software', // Upgrade database version
+  SYSTEMD = 'Systemd', // Upgrade to systemd
+  VMIMAGE = 'VMImage', // Upgade linux version
+  RESTART = 'Restart', // Restart universe
+  CERTS = 'Certs', // Rotate certificates
+  TOGGLE_TLS = 'ToggleTls', // Edit security
+  RESIZE_NODE = 'ResizeNode', // Resize node
+  REBOOT = 'Reboot', // Reboot universe
+  THIRDPARTY = 'ThirdPartyPackages', // Third party packages upgrade
+  GFLAGS = 'GFlags' // Edit flags
 }
 
 //-------------------------------------------------------- Remaining types - Field/API Ends -------------------------------------------------------------------

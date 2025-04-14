@@ -705,7 +705,7 @@ Status Subprocess::Call(string* output, string* error) {
   }
 
   for (const auto fd_type : read_fds) {
-    SetFdShared(to_underlying(fd_type), SubprocessStreamMode::kPiped);
+    SetFdShared(std::to_underlying(fd_type), SubprocessStreamMode::kPiped);
   }
 
   RETURN_NOT_OK_PREPEND(Start(), "Unable to fork " + argv_[0]);
@@ -717,7 +717,7 @@ Status Subprocess::Call(string* output, string* error) {
   char buf[1024];
   ssize_t n;
   for (const auto fd_type : read_fds) {
-    int fd = CheckAndOffer(to_underlying(fd_type));
+    int fd = CheckAndOffer(std::to_underlying(fd_type));
     auto* stream = (fd_type == StdFdType::kOut) ? output : error;
     do {
       n = read(fd, buf, arraysize(buf));

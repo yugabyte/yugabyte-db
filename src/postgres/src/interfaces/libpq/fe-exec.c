@@ -18,9 +18,6 @@
 #include <fcntl.h>
 #include <limits.h>
 
-/* Yugabyte includes */
-#include <stdatomic.h>
-
 #ifdef WIN32
 #include "win32.h"
 #else
@@ -30,6 +27,9 @@
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "mb/pg_wchar.h"
+
+/* YB includes */
+#include <stdatomic.h>
 
 /* keep this in same order as ExecStatusType in libpq-fe.h */
 char	   *const pgresStatus[] = {
@@ -849,6 +849,8 @@ pqSaveWriteError(PGconn *conn)
  * using whatever is in conn->errorMessage.  In any case, clear the async
  * result storage, and update our notion of how much error text has been
  * returned to the application.
+ *
+ * Note that in no case (not even OOM) do we return NULL.
  */
 PGresult *
 pqPrepareAsyncResult(PGconn *conn)
@@ -2122,29 +2124,21 @@ PQgetResult(PGconn *conn)
 
 			/*
 			 * We're about to return the NULL that terminates the round of
-			 * results from the current query; prepare to send the results
-			 * of the next query, if any, when we're called next.  If there's
-			 * no next element in the command queue, this gets us in IDLE
-			 * state.
+			 * results from the current query; prepare to send the results of
+			 * the next query, if any, when we're called next.  If there's no
+			 * next element in the command queue, this gets us in IDLE state.
 			 */
 			pqPipelineProcessQueue(conn);
 			res = NULL;			/* query is complete */
 			break;
 
 		case PGASYNC_READY:
-
-			/*
-			 * For any query type other than simple query protocol, we advance
-			 * the command queue here.  This is because for simple query
-			 * protocol we can get the READY state multiple times before the
-			 * command is actually complete, since the command string can
-			 * contain many queries.  In simple query protocol, the queue
-			 * advance is done by fe-protocol3 when it receives ReadyForQuery.
-			 */
-			if (conn->cmd_queue_head &&
-				conn->cmd_queue_head->queryclass != PGQUERY_SIMPLE)
-				pqCommandQueueAdvance(conn);
 			res = pqPrepareAsyncResult(conn);
+
+			/* Advance the queue as appropriate */
+			pqCommandQueueAdvance(conn, false,
+								  res->resultStatus == PGRES_PIPELINE_SYNC);
+
 			if (conn->pipelineStatus != PQ_PIPELINE_OFF)
 			{
 				/*
@@ -2164,7 +2158,7 @@ PQgetResult(PGconn *conn)
 				 * (In other words: we don't return a NULL after a pipeline
 				 * sync.)
 				 */
-				if (res && res->resultStatus == PGRES_PIPELINE_SYNC)
+				if (res->resultStatus == PGRES_PIPELINE_SYNC)
 					pqPipelineProcessQueue(conn);
 			}
 			else
@@ -3043,18 +3037,44 @@ PQexitPipelineMode(PGconn *conn)
 
 /*
  * pqCommandQueueAdvance
- *		Remove one query from the command queue, when we receive
- *		all results from the server that pertain to it.
+ *		Remove one query from the command queue, if appropriate.
+ *
+ * If we have received all results corresponding to the head element
+ * in the command queue, remove it.
+ *
+ * In simple query protocol we must not advance the command queue until the
+ * ReadyForQuery message has been received.  This is because in simple mode a
+ * command can have multiple queries, and we must process result for all of
+ * them before moving on to the next command.
+ *
+ * Another consideration is synchronization during error processing in
+ * extended query protocol: we refuse to advance the queue past a SYNC queue
+ * element, unless the result we've received is also a SYNC.  In particular
+ * this protects us from advancing when an error is received at an
+ * inappropriate moment.
  */
 void
-pqCommandQueueAdvance(PGconn *conn)
+pqCommandQueueAdvance(PGconn *conn, bool isReadyForQuery, bool gotSync)
 {
 	PGcmdQueueEntry *prevquery;
 
 	if (conn->cmd_queue_head == NULL)
 		return;
 
-	/* delink from queue */
+	/*
+	 * If processing a query of simple query protocol, we only advance the
+	 * queue when we receive the ReadyForQuery message for it.
+	 */
+	if (conn->cmd_queue_head->queryclass == PGQUERY_SIMPLE && !isReadyForQuery)
+		return;
+
+	/*
+	 * If we're waiting for a SYNC, don't advance the queue until we get one.
+	 */
+	if (conn->cmd_queue_head->queryclass == PGQUERY_SYNC && !gotSync)
+		return;
+
+	/* delink element from queue */
 	prevquery = conn->cmd_queue_head;
 	conn->cmd_queue_head = conn->cmd_queue_head->next;
 
@@ -3062,7 +3082,7 @@ pqCommandQueueAdvance(PGconn *conn)
 	if (conn->cmd_queue_head == NULL)
 		conn->cmd_queue_tail = NULL;
 
-	/* and make it recyclable */
+	/* and make the queue element recyclable */
 	prevquery->next = NULL;
 	pqRecycleCmdQueueEntry(conn, prevquery);
 }
@@ -3086,6 +3106,7 @@ pqPipelineProcessQueue(PGconn *conn)
 			return;
 
 		case PGASYNC_IDLE:
+
 			/*
 			 * If we're in IDLE mode and there's some command in the queue,
 			 * get us into PIPELINE_IDLE mode and process normally.  Otherwise
@@ -3273,6 +3294,14 @@ PQsendFlushRequest(PGconn *conn)
 	{
 		return 0;
 	}
+
+	/*
+	 * Give the data a push (in pipeline mode, only if we're past the size
+	 * threshold).  In nonblock mode, don't complain if we're unable to send
+	 * it all; PQgetResult() will do any additional flushing needed.
+	 */
+	if (pqPipelineFlush(conn) < 0)
+		return 0;
 
 	return 1;
 }
@@ -3951,15 +3980,16 @@ PQescapeStringInternal(PGconn *conn,
 {
 	const char *source = from;
 	char	   *target = to;
-	size_t		remaining = length;
+	size_t		remaining = strnlen(from, length);
+	bool		already_complained = false;
 
 	if (error)
 		*error = 0;
 
-	while (remaining > 0 && *source != '\0')
+	while (remaining > 0)
 	{
 		char		c = *source;
-		int			len;
+		int			charlen;
 		int			i;
 
 		/* Fast path for plain ASCII */
@@ -3976,39 +4006,70 @@ PQescapeStringInternal(PGconn *conn,
 		}
 
 		/* Slow path for possible multibyte characters */
-		len = pg_encoding_mblen(encoding, source);
+		charlen = pg_encoding_mblen(encoding, source);
 
-		/* Copy the character */
-		for (i = 0; i < len; i++)
+		if (remaining < charlen ||
+			pg_encoding_verifymbchar(encoding, source, charlen) == -1)
 		{
-			if (remaining == 0 || *source == '\0')
-				break;
-			*target++ = *source++;
-			remaining--;
-		}
-
-		/*
-		 * If we hit premature end of string (ie, incomplete multibyte
-		 * character), try to pad out to the correct length with spaces. We
-		 * may not be able to pad completely, but we will always be able to
-		 * insert at least one pad space (since we'd not have quoted a
-		 * multibyte character).  This should be enough to make a string that
-		 * the server will error out on.
-		 */
-		if (i < len)
-		{
+			/*
+			 * Multibyte character is invalid.  It's important to verify that
+			 * as invalid multibyte characters could e.g. be used to "skip"
+			 * over quote characters, e.g. when parsing
+			 * character-by-character.
+			 *
+			 * Report an error if possible, and replace the character's first
+			 * byte with an invalid sequence. The invalid sequence ensures
+			 * that the escaped string will trigger an error on the
+			 * server-side, even if we can't directly report an error here.
+			 *
+			 * This isn't *that* crucial when we can report an error to the
+			 * caller; but if we can't or the caller ignores it, the caller
+			 * will use this string unmodified and it needs to be safe for
+			 * parsing.
+			 *
+			 * We know there's enough space for the invalid sequence because
+			 * the "to" buffer needs to be at least 2 * length + 1 long, and
+			 * at worst we're replacing a single input byte with two invalid
+			 * bytes.
+			 *
+			 * It would be a bit faster to verify the whole string the first
+			 * time we encounter a set highbit, but this way we can replace
+			 * just the invalid data, which probably makes it easier for users
+			 * to find the invalidly encoded portion of a larger string.
+			 */
 			if (error)
 				*error = 1;
-			if (conn)
-				appendPQExpBufferStr(&conn->errorMessage,
-									 libpq_gettext("incomplete multibyte character\n"));
-			for (; i < len; i++)
+			if (conn && !already_complained)
 			{
-				if (((size_t) (target - to)) / 2 >= length)
-					break;
-				*target++ = ' ';
+				if (remaining < charlen)
+					appendPQExpBufferStr(&conn->errorMessage,
+										 libpq_gettext("incomplete multibyte character"));
+				else
+					appendPQExpBufferStr(&conn->errorMessage,
+										 libpq_gettext("invalid multibyte character"));
+				/* Issue a complaint only once per string */
+				already_complained = true;
 			}
-			break;
+
+			pg_encoding_set_invalid(encoding, target);
+			target += 2;
+
+			/*
+			 * Handle the following bytes as if this byte didn't exist. That's
+			 * safer in case the subsequent bytes contain important characters
+			 * for the caller (e.g. '>' in html).
+			 */
+			source++;
+			remaining--;
+		}
+		else
+		{
+			/* Copy the character */
+			for (i = 0; i < charlen; i++)
+			{
+				*target++ = *source++;
+				remaining--;
+			}
 		}
 	}
 
@@ -4063,9 +4124,10 @@ PQescapeInternal(PGconn *conn, const char *str, size_t len, bool as_ident)
 	char	   *rp;
 	int			num_quotes = 0; /* single or double, depending on as_ident */
 	int			num_backslashes = 0;
-	int			input_len;
-	int			result_size;
+	size_t		input_len = strnlen(str, len);
+	size_t		result_size;
 	char		quote_char = as_ident ? '"' : '\'';
+	bool		validated_mb = false;
 
 	/* We must have a connection, else fail immediately. */
 	if (!conn)
@@ -4074,8 +4136,12 @@ PQescapeInternal(PGconn *conn, const char *str, size_t len, bool as_ident)
 	if (conn->cmd_queue_head == NULL)
 		pqClearConnErrorState(conn);
 
-	/* Scan the string for characters that must be escaped. */
-	for (s = str; (s - str) < len && *s != '\0'; ++s)
+	/*
+	 * Scan the string for characters that must be escaped and for invalidly
+	 * encoded data.
+	 */
+	s = str;
+	for (size_t remaining = input_len; remaining > 0; remaining--, s++)
 	{
 		if (*s == quote_char)
 			++num_quotes;
@@ -4088,21 +4154,42 @@ PQescapeInternal(PGconn *conn, const char *str, size_t len, bool as_ident)
 			/* Slow path for possible multibyte characters */
 			charlen = pg_encoding_mblen(conn->client_encoding, s);
 
-			/* Multibyte character overruns allowable length. */
-			if ((s - str) + charlen > len || memchr(s, 0, charlen) != NULL)
+			if (charlen > remaining)
 			{
 				appendPQExpBufferStr(&conn->errorMessage,
 									 libpq_gettext("incomplete multibyte character\n"));
 				return NULL;
 			}
 
+			/*
+			 * If we haven't already, check that multibyte characters are
+			 * valid. It's important to verify that as invalid multi-byte
+			 * characters could e.g. be used to "skip" over quote characters,
+			 * e.g. when parsing character-by-character.
+			 *
+			 * We check validity once, for the whole remainder of the string,
+			 * when we first encounter any multi-byte character. Some
+			 * encodings have optimized implementations for longer strings.
+			 */
+			if (!validated_mb)
+			{
+				if (pg_encoding_verifymbstr(conn->client_encoding, s, remaining)
+					!= remaining)
+				{
+					appendPQExpBufferStr(&conn->errorMessage,
+										 libpq_gettext("invalid multibyte character\n"));
+					return NULL;
+				}
+				validated_mb = true;
+			}
+
 			/* Adjust s, bearing in mind that for loop will increment it. */
 			s += charlen - 1;
+			remaining -= charlen - 1;
 		}
 	}
 
 	/* Allocate output buffer. */
-	input_len = s - str;
 	result_size = input_len + num_quotes + 3;	/* two quotes, plus a NUL */
 	if (!as_ident && num_backslashes > 0)
 		result_size += num_backslashes + 2;
@@ -4148,7 +4235,8 @@ PQescapeInternal(PGconn *conn, const char *str, size_t len, bool as_ident)
 	}
 	else
 	{
-		for (s = str; s - str < input_len; ++s)
+		s = str;
+		for (size_t remaining = input_len; remaining > 0; remaining--, s++)
 		{
 			if (*s == quote_char || (!as_ident && *s == '\\'))
 			{
@@ -4166,6 +4254,7 @@ PQescapeInternal(PGconn *conn, const char *str, size_t len, bool as_ident)
 					*rp++ = *s;
 					if (--i == 0)
 						break;
+					remaining--;
 					++s;		/* for loop will provide the final increment */
 				}
 			}

@@ -1724,6 +1724,7 @@ void CDCServiceImpl::GetChanges(
   }
 
   bool report_tablet_split = false;
+  HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   CDCThroughputMetrics throughput_metrics;
   // Read the latest changes from the Log.
   if (record.GetSourceType() == XCLUSTER) {
@@ -1733,11 +1734,24 @@ void CDCServiceImpl::GetChanges(
     }
     TEST_SYNC_POINT("GetChanges::AfterFirstValidateAutoFlagsConfigVersion1");
     TEST_SYNC_POINT("GetChanges::AfterFirstValidateAutoFlagsConfigVersion2");
-    status = GetChangesForXCluster(
-        stream_id, req->tablet_id(), from_op_id, tablet_peer,
-        std::bind(
-            &CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster, this, producer_tablet, _1),
-        mem_tracker, get_changes_deadline, &record, &msgs_holder, resp, &last_readable_index);
+    XClusterGetChangesContext get_changes_context = {
+        .stream_id = stream_id,
+        .tablet_id = req->tablet_id(),
+        .from_op_id = from_op_id,
+        .tablet_peer = tablet_peer,
+        .update_on_split_op_func =
+            std::bind(
+                &CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster, this, producer_tablet,
+                _1),
+        .mem_tracker = mem_tracker,
+        .deadline = get_changes_deadline,
+        .stream_metadata = &record,
+        .msgs_holder = &msgs_holder,
+        .resp = resp,
+        .have_more_messages = &have_more_messages,
+        .last_readable_opid_index = &last_readable_index,
+    };
+    status = GetChangesForXCluster(get_changes_context);
 
     // Check AutoFlags version again if we are sending any records back.
     if (resp->records_size() > 0 && !ValidateAutoFlagsConfigVersion(*req, *resp, context)) {
@@ -1986,7 +2000,7 @@ void CDCServiceImpl::GetChanges(
   // Update relevant GetChanges metrics before handing off the Response.
   UpdateTabletMetrics(
       *resp, producer_tablet, tablet_peer, from_op_id, record, last_readable_index,
-      throughput_metrics);
+      have_more_messages, throughput_metrics);
 
   if (report_tablet_split) {
     RPC_STATUS_RETURN_ERROR(
@@ -3024,8 +3038,8 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
         }
         auto tablet_peer = context_->LookupTablet(tablet_id);
         if (!tablet_peer) {
-          LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
-                       << ". Will not update its peers in this round";
+          VLOG(2) << "Could not find tablet peer for tablet_id: " << tablet_id
+                  << ". Will not update its peers in this round";
           continue;
         }
 
@@ -3102,12 +3116,8 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     bool enable_update_local_peer_min_index, bool ignore_rpc_failures) {
   auto tablet_peer_result = context_->GetTablet(tablet_id);
   if (!tablet_peer_result.ok()) {
-    if (tablet_peer_result.status().IsNotFound()) {
-      VLOG(2) << "Did not find tablet peer for tablet " << tablet_id;
-    } else {
-      LOG(WARNING) << "Error getting tablet_peer for tablet " << tablet_id << ": "
-                   << tablet_peer_result.status();
-    }
+    VLOG(2) << "Did not find tablet peer for tablet " << tablet_id << " : "
+            << tablet_peer_result.status();
     return STATUS_FORMAT(NotFound, "Tablet peer not found");
   }
 
@@ -3399,8 +3409,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
           "Failed to remove an expired table entry from stream");
     }
 
-    rate_limiter_->SetBytesPerSecond(
-        GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB);
+    WARN_NOT_OK(ResultToStatus(rate_limiter_->SetBytesPerSecond(
+        FLAGS_xcluster_get_changes_max_send_rate_mbps * 1_MB)),
+        "Rate limiter set bytes per second failed");
 
   } while (sleep_while_not_stopped());
 }
@@ -3429,14 +3440,14 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
     }
     auto tablet_peer_result = GetServingTablet(tablet_id);
     if (!tablet_peer_result.ok()) {
-      LOG(WARNING) << "Could not delete the entry for stream" << stream_id << " and the tablet "
-                   << tablet_id;
+      VLOG(2) << "Could not delete the entry for stream" << stream_id << " and the tablet "
+              << tablet_id;
       continue;
     }
     if ((*tablet_peer_result)->IsLeaderAndReady()) {
       Status s = cdc_state_table_->DeleteEntries({{tablet_id, stream_id}});
       if (!s.ok()) {
-        LOG(WARNING) << "Unable to flush operations to delete cdc streams: " << s;
+        VLOG(2) << "Unable to flush operations to delete cdc streams: " << s;
         return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
       }
       LOG(INFO) << "CDC state table entry for tablet " << tablet_id << " and streamid " << stream_id
@@ -3475,9 +3486,9 @@ Status CDCServiceImpl::CleanupExpiredTables(const TableIdToStreamIdMap& expired_
 
     auto tablet_peer = context_->LookupTablet(tablet_id);
     if (!tablet_peer) {
-      LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
-                   << ", for table: " << table_id
-                   << ". Will not remove its entries from state table in this round.";
+      VLOG(2) << "Could not find tablet peer for tablet_id: " << tablet_id
+              << ", for table: " << table_id
+              << ". Will not remove its entries from state table in this round.";
       continue;
     }
 
@@ -4292,9 +4303,11 @@ void CDCServiceImpl::UpdateTabletMetrics(
     const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
     const StreamMetadata& stream_metadata, int64_t last_readable_index,
+    HaveMoreMessages have_more_messages,
     const CDCThroughputMetrics& throughput_metrics) {
   if (stream_metadata.GetSourceType() == XCLUSTER) {
-    UpdateTabletXClusterMetrics(resp, producer_tablet, tablet_peer, op_id, last_readable_index);
+    UpdateTabletXClusterMetrics(resp, producer_tablet, tablet_peer, op_id, last_readable_index,
+                                have_more_messages);
   } else {
     UpdateTabletCDCSDKMetrics(
         resp, producer_tablet, tablet_peer, throughput_metrics,
@@ -4305,7 +4318,7 @@ void CDCServiceImpl::UpdateTabletMetrics(
 void CDCServiceImpl::UpdateTabletXClusterMetrics(
     const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
-    int64_t last_readable_index) {
+    int64_t last_readable_index, HaveMoreMessages have_more_messages) {
   auto tablet_metric_result =
       GetXClusterTabletMetrics(*tablet_peer.get(), producer_tablet.stream_id);
   if (!tablet_metric_result) {
@@ -4321,16 +4334,23 @@ void CDCServiceImpl::UpdateTabletXClusterMetrics(
   tablet_metric->last_checkpoint_opid_index->set_value(op_id.index);
   tablet_metric->last_getchanges_time->set_value(GetCurrentTimeMicros());
 
+  auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
   const auto records_size = resp.records_size();
   if (records_size <= 0) {
     tablet_metric->rpc_heartbeats_responded->Increment();
-    // If there are no more entries to be read, that means we're caught up.
-    auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
-    tablet_metric->last_read_physicaltime->set_value(last_replicated_micros);
-    tablet_metric->last_checkpoint_physicaltime->set_value(last_replicated_micros);
-    tablet_metric->last_caughtup_physicaltime->set_value(GetCurrentTimeMicros());
-    tablet_metric->async_replication_sent_lag_micros->set_value(0);
-    tablet_metric->async_replication_committed_lag_micros->set_value(0);
+    if (!have_more_messages) {
+      // If there are no more entries to be read, that means we're caught up.
+      tablet_metric->last_read_physicaltime->set_value(last_replicated_micros);
+      tablet_metric->last_checkpoint_physicaltime->set_value(last_replicated_micros);
+      tablet_metric->last_caughtup_physicaltime->set_value(GetCurrentTimeMicros());
+      tablet_metric->async_replication_sent_lag_micros->set_value(1);
+      tablet_metric->async_replication_committed_lag_micros->set_value(1);
+    } else {
+      auto replication_lag = std::max<int64_t>(
+          1, last_replicated_micros - tablet_metric->last_read_physicaltime->value());
+      tablet_metric->async_replication_sent_lag_micros->set_value(replication_lag);
+      tablet_metric->async_replication_committed_lag_micros->set_value(replication_lag);
+    }
     return;
   }
 
@@ -4343,7 +4363,6 @@ void CDCServiceImpl::UpdateTabletXClusterMetrics(
   // Only count bytes responded if we are including a response payload.
   tablet_metric->rpc_payload_bytes_responded->Increment(resp.ByteSize());
   // Get the physical time of the last committed record on producer.
-  auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
   tablet_metric->async_replication_sent_lag_micros->set_value(
       last_replicated_micros - last_record_micros);
 
@@ -4904,6 +4923,60 @@ bool IsIntentGCError(Status status) {
   return false;
 }
 
+Status CDCServiceImpl::PersistActivePidInSlotEntry(
+    const xrepl::StreamId& stream_id, uint64_t active_pid) {
+  cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
+  entry.active_pid = active_pid;
+  RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+  return Status::OK();
+}
+
+void CDCServiceImpl::GetLagMetrics(
+    const GetLagMetricsRequestPB* req, GetLagMetricsResponsePB* resp, rpc::RpcContext context) {
+  auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
+  std::shared_ptr<CDCSDKVirtualWAL> virtual_wal;
+  {
+    std::lock_guard l(mutex_);
+    if (session_virtual_wal_.empty() ||
+        session_virtual_wal_.find(stream_to_session_[stream_id]) ==
+            session_virtual_wal_.end()) {
+      resp->set_lag_metric(-1);
+      context.RespondSuccess();
+      return;
+    }
+    virtual_wal = session_virtual_wal_[stream_to_session_[stream_id]];
+  }
+  auto tablet_ids = virtual_wal->GetTabletIdsFromVirtualWAL();
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  for (auto& tablet_id : tablet_ids) {
+    tablet_peer = context_->LookupTablet(tablet_id);
+    if (tablet_peer) {
+      break;
+    }
+  }
+
+  if (!tablet_peer) {
+    resp->set_lag_metric(-1);
+    context.RespondSuccess();
+    return;
+  }
+
+  auto tablet = tablet_peer->shared_tablet();
+  const auto key = GetXreplMetricsKey(stream_id);
+
+  auto metrics_raw = tablet->GetAdditionalMetadata(key);
+  if (!metrics_raw) {
+    resp->set_lag_metric(-1);
+    context.RespondSuccess();
+    return;
+  }
+
+  auto lag_metric_value = std::static_pointer_cast<xrepl::CDCSDKTabletMetrics>(metrics_raw)
+                              .get()->cdcsdk_flush_lag->value();
+  resp->set_lag_metric(lag_metric_value);
+  context.RespondSuccess();
+}
+
 void CDCServiceImpl::InitVirtualWALForCDC(
     const InitVirtualWALForCDCRequestPB* req, InitVirtualWALForCDCResponsePB* resp,
     rpc::RpcContext context) {
@@ -4985,7 +5058,14 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     virtual_wal = std::make_shared<CDCSDKVirtualWAL>(
         this, stream_id, session_id, lsn_type, consistent_snapshot_time);
     session_virtual_wal_[session_id] = virtual_wal;
+    stream_to_session_[stream_id] = session_id;
   }
+
+  Status curr_status = PersistActivePidInSlotEntry(stream_id, req->active_pid());
+  RPC_CHECK_AND_RETURN_ERROR(
+    curr_status.ok(),
+    STATUS_FORMAT(InternalError, "Failed to populate active_pid for stream: $0", stream_id),
+    resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   std::unordered_set<TableId> table_list;
   for (const auto& table_id : req->table_id()) {
@@ -5107,7 +5187,12 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
         STATUS_FORMAT(
             NotFound, "Virtual WAL instance not found for the session_id: $0", session_id),
         resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
-
+    const auto& stream_id = session_virtual_wal_[session_id]->GetStreamId();
+    const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
+    stream_to_session_.erase(stream_id);
+    if (!curr_status.ok()) {
+      VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
+    }
     session_virtual_wal_.erase(session_id);
   }
 
@@ -5151,6 +5236,12 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
     std::lock_guard l(mutex_);
 
     for (auto it = session_ids.begin(); it != session_ids.end(); ++it) {
+      const auto& stream_id = session_virtual_wal_[*it]->GetStreamId();
+      const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
+      stream_to_session_.erase(stream_id);
+      if (!curr_status.ok()) {
+        VLOG(2) << "Failed to reset active_pid for stream_id: " << stream_id;
+      }
       if (session_virtual_wal_.erase(*it)) {
         LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
       }
@@ -5278,13 +5369,13 @@ void CDCServiceImpl::UpdatePublicationTableList(
 void CDCServiceImpl::LogGetChangesLagForCDCSDK(
     const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp) {
   auto current_clock_time_ht = HybridTime::FromMicros(GetCurrentTimeMicros());
-  int64_t getchanges_call_lag_in_ms = -1;
+  MonoDelta getchanges_call_lag;
   if (resp.safe_hybrid_time() != -1) {
-    getchanges_call_lag_in_ms =
-        current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(resp.safe_hybrid_time())) / 1000;
+    getchanges_call_lag =
+        current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(resp.safe_hybrid_time()));
   }
 
-  int64_t commit_time_lag_in_ms = -1;
+  MonoDelta commit_time_lag;
   uint64_t commit_record_ct = 0;
   uint64_t safepoint_ct = 0;
   // If there are no commit records in the response, we take the safepoint record's commit_time.
@@ -5299,17 +5390,14 @@ void CDCServiceImpl::LogGetChangesLagForCDCSDK(
   }
 
   if (commit_record_ct > 0) {
-    commit_time_lag_in_ms =
-        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(commit_record_ct))) / 1000;
+    commit_time_lag = current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(commit_record_ct));
   } else if (safepoint_ct > 0) {
-    commit_time_lag_in_ms =
-        (current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(safepoint_ct))) / 1000;
+    commit_time_lag = current_clock_time_ht.PhysicalDiff(HybridTime::FromPB(safepoint_ct));
   }
 
   VLOG(3) << "stream_id: " << stream_id << ", GetChanges call lag: "
-          << ((getchanges_call_lag_in_ms != -1) ? Format("$0 ms", getchanges_call_lag_in_ms) : "-1")
-          << ", Commit time lag: "
-          << ((commit_time_lag_in_ms != -1) ? Format("$0 ms", commit_time_lag_in_ms) : "-1");
+          << getchanges_call_lag.ToPrettyString()
+          << ", Commit time lag: " << commit_time_lag.ToPrettyString();
 }
 }  // namespace cdc
 }  // namespace yb

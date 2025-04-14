@@ -49,12 +49,14 @@
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
+#include "commands/extension.h"
 #include "commands/proclang.h"
 #include "executor/execdesc.h"
 #include "executor/executor.h"
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
 #include "parser/analyze.h"
 #include "parser/parse_coerce.h"
@@ -76,8 +78,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
-#include "commands/extension.h"
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*
@@ -2397,6 +2398,33 @@ CallStmtResultDesc(CallStmt *stmt)
 	tupdesc = build_function_result_tupdesc_t(tuple);
 
 	ReleaseSysCache(tuple);
+
+	/*
+	 * The result of build_function_result_tupdesc_t has the right column
+	 * names, but it just has the declared output argument types, which is the
+	 * wrong thing in polymorphic cases.  Get the correct types by examining
+	 * stmt->outargs.  We intentionally keep the atttypmod as -1 and the
+	 * attcollation as the type's default, since that's always the appropriate
+	 * thing for function outputs; there's no point in considering any
+	 * additional info available from outargs.  Note that tupdesc is null if
+	 * there are no outargs.
+	 */
+	if (tupdesc)
+	{
+		Assert(tupdesc->natts == list_length(stmt->outargs));
+		for (int i = 0; i < tupdesc->natts; i++)
+		{
+			Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+			Node	   *outarg = (Node *) list_nth(stmt->outargs, i);
+
+			TupleDescInitEntry(tupdesc,
+							   i + 1,
+							   NameStr(att->attname),
+							   exprType(outarg),
+							   -1,
+							   0);
+		}
+	}
 
 	return tupdesc;
 }

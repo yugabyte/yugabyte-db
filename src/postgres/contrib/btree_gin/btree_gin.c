@@ -89,7 +89,7 @@ gin_btree_extract_query(FunctionCallInfo fcinfo,
 		case BTGreaterEqualStrategyNumber:
 		case BTGreaterStrategyNumber:
 			*ptr_partialmatch = true;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case BTEqualStrategyNumber:
 			entries[0] = datum;
 			break;
@@ -306,9 +306,9 @@ leftmostvalue_interval(void)
 {
 	Interval   *v = palloc(sizeof(Interval));
 
-	v->time = DT_NOBEGIN;
-	v->day = 0;
-	v->month = 0;
+	v->time = PG_INT64_MIN;
+	v->day = PG_INT32_MIN;
+	v->month = PG_INT32_MIN;
 	return IntervalPGetDatum(v);
 }
 

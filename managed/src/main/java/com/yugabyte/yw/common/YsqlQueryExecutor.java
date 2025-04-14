@@ -595,9 +595,14 @@ public class YsqlQueryExecutor {
       if (response.get("error").asText().contains(match)) {
         throw new RecoverableException("consistency_check table does not exist");
       }
-      node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
-      retries += 1;
-      response = executeQueryInNodeShell(universe, ysqlQuery, node);
+      try {
+        node = CommonUtils.getARandomLiveOrToBeRemovedTServer(universe);
+        retries += 1;
+        response = executeQueryInNodeShell(universe, ysqlQuery, node);
+      } catch (IllegalStateException e) {
+        LOG.warn("Could not find valid tserver querying consistency info.");
+        return null;
+      }
     }
     if (response != null && response.has("result")) {
       ObjectMapper mapper = new ObjectMapper();

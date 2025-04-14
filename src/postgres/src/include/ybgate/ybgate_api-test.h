@@ -26,8 +26,8 @@
 
 #pragma once
 
-#include "ybgate/ybgate_api.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "ybgate/ybgate_api.h"
 
 #ifdef __cplusplus
 extern "C"

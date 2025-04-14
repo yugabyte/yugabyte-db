@@ -25,6 +25,8 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/jsonwriter.h"
+#include "yb/util/metrics.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_log.h"
@@ -36,8 +38,7 @@ DbServerBase::DbServerBase(
     std::string name, const server::ServerBaseOptions& options,
     const std::string& metrics_namespace, std::shared_ptr<MemTracker> mem_tracker)
     : RpcAndWebServerBase(std::move(name), options, metrics_namespace, std::move(mem_tracker)),
-      shared_object_(new tserver::TServerSharedObject(
-          CHECK_RESULT(tserver::TServerSharedObject::Create()))) {
+      shared_mem_manager_(new SharedMemoryManager()) {
   MemTracker::GetRootTracker()->LogMemoryLimits();
 }
 
@@ -52,7 +53,7 @@ Status DbServerBase::Init() {
       mem_tracker(), messenger());
   SetupAsyncClientInit(async_client_init_.get());
 
-  return Status::OK();
+  return shared_mem_manager_->InitializeTServer(permanent_uuid());
 }
 
 Status DbServerBase::Start() {
@@ -117,12 +118,24 @@ void DbServerBase::EnsureTransactionPoolCreated() {
   transaction_pool_.store(transaction_pool_holder_.get(), std::memory_order_release);
 }
 
-tserver::TServerSharedData& DbServerBase::shared_object() {
-  return **shared_object_;
+Status DbServerBase::StartSharedMemoryNegotiation() {
+  return shared_mem_manager_->PrepareNegotiationTServer();
 }
 
-int DbServerBase::GetSharedMemoryFd() {
-  return shared_object_->GetFd();
+Status DbServerBase::StopSharedMemoryNegotiation() {
+  return shared_mem_manager_->ShutdownNegotiator();
+}
+
+Status DbServerBase::SkipSharedMemoryNegotiation() {
+  return shared_mem_manager_->SkipNegotiation();
+}
+
+int DbServerBase::SharedMemoryNegotiationFd() {
+  return shared_mem_manager_->NegotiationFd();
+}
+
+ConcurrentPointerReference<TServerSharedData> DbServerBase::shared_object() const {
+  return shared_mem_manager_->SharedData();
 }
 
 void DbServerBase::WriteMainMetaCacheAsJson(JsonWriter* writer) {

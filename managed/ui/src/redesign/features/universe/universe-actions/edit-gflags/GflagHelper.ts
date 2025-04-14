@@ -32,6 +32,7 @@ export interface EditGflagPayload {
   upgradeOption: UpgradeOptions;
   ybSoftwareVersion: string;
   rollMaxBatchSize?: RollMaxBatchSize;
+  runOnlyPrechecks?: boolean;
 }
 
 export interface GFlagGroupObject {

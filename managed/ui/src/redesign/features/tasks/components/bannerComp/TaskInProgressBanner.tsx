@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Divider, Typography, makeStyles } from '@material-ui/core';
 import { AlertVariant, YBAlert, YBButton } from '../../../../components';
 import { YBProgress, YBProgressBarState } from '../../../../components/YBProgress/YBLinearProgress';
+import { getTaskTitle } from '../../TaskUtils';
 import { useBannerCommonStyles } from './BannerStyles';
 import { TaskBannerCompProps } from './dtos';
 
@@ -50,7 +51,7 @@ export const TaskInProgressBanner: FC<TaskBannerCompProps> = ({ currentTask, vie
         text={
           <div className={clsx(commonStyles.flex, classes.content)}>
             <div className={commonStyles.flex}>
-              <Typography variant="body1">{currentTask.title}...</Typography>
+              <Typography variant="body1">{getTaskTitle(currentTask)}...</Typography>
               <Typography variant="body2">{t('opNotAvailable')}</Typography>
             </div>
             <div className={commonStyles.flex}>

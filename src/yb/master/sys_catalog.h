@@ -48,9 +48,8 @@
 
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_constants.h"
-
-#include "yb/tablet/snapshot_coordinator.h"
 
 #include "yb/tserver/tablet_memory_manager.h"
 
@@ -81,12 +80,6 @@ class MasterOptions;
 class VisitorBase;
 class SysCatalogWriter;
 
-struct PgTypeInfo {
-  char typtype;
-  uint32_t typbasetype;
-  PgTypeInfo(char typtype_, uint32_t typbasetype_) : typtype(typtype_), typbasetype(typbasetype_) {}
-};
-
 struct PgTableReadData {
   TableId table_id;
   tablet::TabletPtr tablet;
@@ -110,7 +103,7 @@ struct PgTableReadData {
 //   as a "normal table", instead we have Master APIs to query the table.
 class SysCatalogTable {
  public:
-  typedef Callback<Status()> ElectedLeaderCallback;
+  using ElectedLeaderCallback = Callback<Status ()>;
 
   // 'leader_cb_' is invoked whenever this node is elected as a leader
   // of the consensus configuration for this tablet, including for local standalone
@@ -237,7 +230,7 @@ class SysCatalogTable {
     return Status::OK();
   }
 
-  typedef std::function<Status(const ReadHybridTime&, HybridTime*)> ReadRestartFn;
+  using ReadRestartFn = std::function<Status (const ReadHybridTime &, HybridTime *)>;
   Status ReadWithRestarts(
       const ReadRestartFn& fn,
       tablet::RequireLease require_lease = tablet::RequireLease::kTrue) const;
@@ -256,6 +249,9 @@ class SysCatalogTable {
   Status ReadYsqlAllDBCatalogVersions(
       const TableId& ysql_catalog_table_id,
       DbOidToCatalogVersionMap* versions);
+  // Read the ysql catalog cache invalidation messages info for all databases from the
+  // pg_yb_invalidation_messages catalog table.
+  Result<DbOidVersionToMessageListMap> ReadYsqlCatalogInvalationMessages();
 
   // Read the pg_class catalog table. There is a separate pg_class table in each
   // YSQL database, read the information in the pg_class table for the database
@@ -304,6 +300,10 @@ class SysCatalogTable {
   // Read the pg_yb_tablegroup catalog and return the OID of the tablegroup named <grpname>.
   Result<uint32_t> ReadPgYbTablegroupOid(const uint32_t database_oid,
                                          const std::string& grpname);
+
+  // Scan database database_oid's catalog tables to find the highest normal space OID that xCluster
+  // needs to preserve and return it.
+  Result<uint32_t> ReadHighestNormalPreservableOid(uint32_t database_oid);
 
   // Copy the content of co-located tables in sys catalog as a batch.
   Status CopyPgsqlTables(const std::vector<TableId>& source_table_ids,

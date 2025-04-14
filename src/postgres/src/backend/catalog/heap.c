@@ -74,7 +74,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/pg_authid.h"
 #include "catalog/pg_init_privs.h"
 #include "catalog/pg_yb_tablegroup.h"
@@ -234,7 +234,61 @@ static const FormData_pg_attribute a6 = {
 	.attislocal = true,
 };
 
-static const FormData_pg_attribute *SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6};
+static const FormData_pg_attribute a7 = {
+	.attname = {"ybctid"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBTupleIdAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = TYPALIGN_INT,
+	.attstorage = TYPSTORAGE_EXTENDED,
+	.attnotnull = true,
+	.attislocal = true,
+};
+
+static const FormData_pg_attribute *SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7};
+
+static const FormData_pg_attribute yb_a1 = {
+	.attname = {"ybuniqueidxkeysuffix"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBUniqueIdxKeySuffixAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = TYPALIGN_INT,
+	.attstorage = TYPSTORAGE_EXTENDED,
+	.attnotnull = false,
+	.attislocal = true,
+};
+
+static const FormData_pg_attribute yb_a2 = {
+	.attname = {"ybidxbasectid"},
+	.atttypid = BYTEAOID,
+	.attlen = -1,
+	.attnum = YBIdxBaseTupleIdAttributeNumber,
+	.attcacheoff = -1,
+	.atttypmod = -1,
+	.attbyval = false,
+	.attalign = TYPALIGN_INT,
+	.attstorage = TYPSTORAGE_EXTENDED,
+	.attnotnull = true,
+	.attislocal = true,
+};
+
+
+static const FormData_pg_attribute *YbSysAtt[] = {&yb_a1, &yb_a2};
+
+const FormData_pg_attribute *
+YbSystemAttributeDefinition(AttrNumber attno)
+{
+	int index = attno - YBSystemFirstLowInvalidAttributeNumber - 1;
+	if (index < 0 || index >= lengthof(YbSysAtt))
+		elog(ERROR, "invalid YB system attribute number %d", attno);
+	return YbSysAtt[index];
+}
 
 /*
  * This function returns a Form_pg_attribute pointer for a system attribute.
@@ -244,6 +298,8 @@ static const FormData_pg_attribute *SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6};
 const FormData_pg_attribute *
 SystemAttributeDefinition(AttrNumber attno)
 {
+	if (attno <= YBFirstLowInvalidAttributeNumber)
+		return YbSystemAttributeDefinition(attno);
 	if (attno >= 0 || attno < -(int) lengthof(SysAtt))
 		elog(ERROR, "invalid system attribute number %d", attno);
 	return SysAtt[-attno - 1];
@@ -597,6 +653,9 @@ CheckAttributeType(const char *attname,
 {
 	char		att_typtype = get_typtype(atttypid);
 	Oid			att_typelem;
+
+	/* since this function recurses, it could be driven to stack overflow */
+	check_stack_depth();
 
 	if (att_typtype == TYPTYPE_PSEUDO)
 	{
@@ -1334,12 +1393,18 @@ heap_create_with_catalog(const char *relname,
 	 */
 	if (!OidIsValid(relid))
 	{
-		bool		heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
-
+		bool		yb_heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore &&
+			!yb_extension_upgrade;
 		if (yb_binary_restore && !yb_ignore_pg_class_oids)
-			heap_pg_class_oids_supplied = true;
+			yb_heap_pg_class_oids_supplied = true;
+
+		bool		yb_heap_relfilenode_supplied = IsBinaryUpgrade && !yb_binary_restore &&
+			!yb_extension_upgrade;
+		if (yb_binary_restore && !yb_ignore_relfilenode_ids)
+			yb_heap_relfilenode_supplied = true;
+
 		/* Use binary-upgrade override for pg_class.oid and relfilenode */
-		if (heap_pg_class_oids_supplied)
+		if (yb_heap_pg_class_oids_supplied)
 		{
 			/*
 			 * Indexes are not supported here; they use
@@ -1375,7 +1440,13 @@ heap_create_with_catalog(const char *relname,
 				relid = binary_upgrade_next_heap_pg_class_oid;
 				binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 
-				if (RELKIND_HAS_STORAGE(relkind) && !yb_binary_restore)
+				/*
+				 * YB: The parent partition has DocDB storage, so we preserve
+				 * its relfilenode when upgrading.
+				 */
+				if ((RELKIND_HAS_STORAGE(relkind) ||
+					 (IsYugaByteEnabled() && relkind == RELKIND_PARTITIONED_TABLE)) &&
+					 yb_heap_relfilenode_supplied)
 				{
 					if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
 						ereport(ERROR,
@@ -1419,6 +1490,13 @@ heap_create_with_catalog(const char *relname,
 						"during YSQL upgrade"),
 				 errhint("Only a small subset is allowed due to BKI restrictions.")));
 	}
+
+	/*
+	 * Other sessions' catalog scans can't find this until we commit.  Hence,
+	 * it doesn't hurt to hold AccessExclusiveLock.  Do it here so callers
+	 * can't accidentally vary in their lock mode or acquisition timing.
+	 */
+	LockRelationOid(relid, AccessExclusiveLock);
 
 	/*
 	 * Determine the relation's initial permissions.
@@ -2567,7 +2645,8 @@ AddRelationNewConstraints(Relation rel,
 			elog(ERROR, "shared relations can not have DEFAULT constraints");
 
 		/* If the DEFAULT is volatile we cannot use a missing value */
-		if (colDef->missingMode && contain_volatile_functions((Node *) expr))
+		if (colDef->missingMode &&
+			contain_volatile_functions_after_planning((Expr *) expr))
 			colDef->missingMode = false;
 
 		defOid = StoreAttrDefault(rel, colDef->attnum, expr, is_internal,
@@ -3005,9 +3084,11 @@ cookDefault(ParseState *pstate,
 
 	if (attgenerated)
 	{
+		/* Disallow refs to other generated columns */
 		check_nested_generated(pstate, expr);
 
-		if (contain_mutable_functions(expr))
+		/* Disallow mutable functions */
+		if (contain_mutable_functions_after_planning((Expr *) expr))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("generation expression is not immutable")));
@@ -3747,6 +3828,14 @@ StorePartitionBound(Relation rel, Relation parent, PartitionBoundSpec *bound)
 								 new_val, new_null, new_repl);
 	/* Also set the flag */
 	((Form_pg_class) GETSTRUCT(newtuple))->relispartition = true;
+
+	/*
+	 * We already checked for no inheritance children, but reset
+	 * relhassubclass in case it was left over.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_RELATION && rel->rd_rel->relhassubclass)
+		((Form_pg_class) GETSTRUCT(newtuple))->relhassubclass = false;
+
 	CatalogTupleUpdate(classRel, &newtuple->t_self, newtuple);
 	heap_freetuple(newtuple);
 	table_close(classRel, RowExclusiveLock);

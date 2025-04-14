@@ -41,18 +41,16 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
-#include "utils/builtins.h"
 
+/* YB includes */
 #include "access/htup_details.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
+#include "utils/builtins.h"	/* TODO: may not be needed */
 #include "utils/syscache.h"
-#include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-
-/* Yugabyte includes */
-#include "catalog/pg_authid.h"
 
 /*----------------------------------------------------------------
  * Global authentication functions
@@ -1025,15 +1023,13 @@ CheckPWChallengeAuth(Port *port, const char **logdetail)
 
 	if (shadow_pass)
 		pfree(shadow_pass);
-
-	/*
-	 * If get_role_password() returned error, return error, even if the
-	 * authentication succeeded.
-	 */
-	if (!shadow_pass)
+	else
 	{
+		/*
+		 * If get_role_password() returned error, authentication better not
+		 * have succeeded.
+		 */
 		Assert(auth_result != STATUS_OK);
-		return STATUS_ERROR;
 	}
 
 	if (auth_result == STATUS_OK)
@@ -2208,7 +2204,7 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
 				ereport(LOG,
 						(errmsg("error from underlying PAM layer: %s",
 								msg[i]->msg)));
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case PAM_TEXT_INFO:
 				/* we don't bother to log TEXT_INFO messages */
 				if ((reply[i].resp = strdup("")) == NULL)

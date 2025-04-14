@@ -21,6 +21,7 @@
 namespace yb {
 namespace ql {
 
+class QLMetrics;
 class QLProcessor;
 class QLSession;
 class Statement;

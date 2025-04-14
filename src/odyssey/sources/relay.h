@@ -148,7 +148,7 @@ static inline int yb_od_skip_relay(char *data)
 {
 	kiwi_header_t *header;
 	header = (kiwi_header_t *)data;
-	if (header->type == YB_ROLE_OID_PARAMETER_STATUS)
+	if (header->type == YB_CONN_MGR_PARAMETER_STATUS)
 		return 1;
 	return 0;
 }

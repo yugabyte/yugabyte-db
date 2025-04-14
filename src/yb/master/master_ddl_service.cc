@@ -61,6 +61,7 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (ListUDTypes)
     (ReportYsqlDdlTxnStatus)
     (TruncateTable)
+    (RefreshYsqlLease)
   )
 
   void AcquireObjectLocksGlobal(

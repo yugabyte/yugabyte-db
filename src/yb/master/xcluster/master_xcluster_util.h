@@ -62,9 +62,9 @@ YB_DEFINE_ENUM(XClusterDDLReplicationRole, (kSource)(kTarget));
 
 Status SetupDDLReplicationExtension(
     CatalogManagerIf& catalog_manager, const std::string& database_name,
-    XClusterDDLReplicationRole role, CoarseTimePoint deadline, StdStatusCallback callback);
+    XClusterDDLReplicationRole role, StdStatusCallback callback);
 
-Status DropDDLReplicationExtension(
+Status DropDDLReplicationExtensionIfExists(
     CatalogManagerIf& catalog_manager, const NamespaceId& namespace_id, StdStatusCallback callback);
 
 }  // namespace yb::master

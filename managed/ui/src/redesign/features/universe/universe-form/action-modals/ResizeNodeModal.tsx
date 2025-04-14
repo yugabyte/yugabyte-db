@@ -44,7 +44,7 @@ export const ResizeNodeModal: FC<RNModalProps> = ({ open, isPrimary, universeDat
       (c) => c.clusterType === (isPrimary ? ClusterType.PRIMARY : ClusterType.ASYNC)
     );
     if (cluster && universeData) {
-      let payload = {
+      const payload = {
         clusters: [cluster],
         nodePrefix: universeData?.nodePrefix,
         sleepAfterMasterRestartMillis: formValues.timeDelay * 1000,

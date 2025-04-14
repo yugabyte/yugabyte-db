@@ -13,6 +13,12 @@ type: indexpage
 showRightNav: true
 ---
 
+{{< page-finder/head text="Encryption in transit" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/tls-encryption/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/" >}}
+{{< /page-finder/head >}}
+
 YugabyteDB Anywhere allows you to protect data in transit by using the following:
 
 - Node-to-Node TLS to encrypt inter-node communication between YB-Master and YB-TServer nodes.
@@ -20,35 +26,23 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 ## Manage certificates
 
-Use YugabyteDB Anywhere to manage certificates used for encryption in transit.
+YugabyteDB Anywhere supports the following certificates for encryption in transit:
 
-{{<index/block>}}
+- [Self-signed certificates created and managed by YugabyteDB Anywhere](auto-certificate/). YugabyteDB Anywhere can automatically create self-signed certificates and copy them to universe nodes.
+- [Custom self-signed certificates](add-certificate-self/). Create and upload your own self-signed certificates for use with universes.
+- [CA certificates](add-certificate-ca/). For on-premises universes, you can upload your own CA certificates. You must manually copy the certificates to universe nodes.
+- [Hashicorp vault](add-certificate-hashicorp/).
+- [Kubernetes cert-manager](add-certificate-kubernetes/). Use cert-manager for securing Kubernetes universes.
 
-  {{<index/item
-    title="Automatically generated certificates"
-    body="YugabyteDB Anywhere can create and manage universe certificates."
-    href="auto-certificate/"
-    icon="fa-thin fa-certificate">}}
+## Rotate certificates
 
-  {{<index/item
-    title="Add certificates"
-    body="Upload your own certificates to secure data transfer on your universes."
-    href="add-certificate-self/"
-    icon="fa-thin fa-file-certificate">}}
+YugabyteDB Anywhere automatically alerts you 30 days before the expiry of any certificate. You can view the time to expiry of certificates by navigating to your universe **Health** tab.
 
-  {{<index/item
-    title="Rotate certificates"
-    body="Update the certificates on universes when they expire."
-    href="rotate-certificates/"
-    icon="fa-thin fa-rotate">}}
+You must rotate (refresh) TLS certificates before they expire to avoid service interruption.
 
-  {{<index/item
-    title="Trust Store"
-    body="Add certificates to the YugabyteDB Anywhere Trust Store to validate connections from other services."
-    href="trust-store/"
-    icon="fa-thin fa-shop-lock">}}
-
-{{</index/block>}}
+{{<lead link="rotate-certificates/">}}
+For information on rotating certificates, refer to [Rotate certificates](rotate-certificates/).
+{{</lead>}}
 
 ## Enable encryption in transit
 
@@ -77,11 +71,21 @@ To enforce the minimum TLS version of 1.2, you need to specify all available sub
 ssl_protocols = tls12,tls13
 ```
 
-In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer flag:
+By default, PostgreSQL uses a default minimum version for TLS of v1.2, as set using the [ssl_min_protocol_version](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION) configuration parameter.
 
-```shell
---ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify a different minimum TLS version for Master and TServer, you should update the `ssl_min_protocol_version` parameter. For example:
+
+```sh
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.3'"
 ```
+
+## Trust store
+
+Add certificates to the YugabyteDB Anywhere Trust Store to validate connections from other services.
+
+{{<lead link="trust-store/">}}
+See [Trust store](trust-store/)
+{{</lead>}}
 
 ## Learn more
 

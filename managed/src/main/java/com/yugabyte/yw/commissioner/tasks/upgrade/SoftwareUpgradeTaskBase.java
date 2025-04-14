@@ -2,15 +2,13 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -38,16 +36,18 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.YBClient;
-import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
 
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
+
   @Inject
-  protected SoftwareUpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
+  protected SoftwareUpgradeTaskBase(
+      BaseTaskDependencies baseTaskDependencies, SoftwareUpgradeHelper softwareUpgradeHelper) {
     super(baseTaskDependencies);
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @Override
@@ -227,14 +227,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
 
   protected void createYbcInstallTask(
       Universe universe, List<NodeDetails> nodes, String newVersion) {
-    createYbcInstallTask(universe, nodes, newVersion, null /* ysqlMajorVersionUpgradeState */);
-  }
-
-  protected void createYbcInstallTask(
-      Universe universe,
-      List<NodeDetails> nodes,
-      String newVersion,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     createYbcSoftwareInstallTasks(nodes, newVersion, getTaskSubGroupType());
     // Start yb-controller process and wait for it to get responsive.
     createStartYbcProcessTasks(
@@ -353,22 +345,29 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
 
     // Preliminary checks for upgrades.
-    createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createCheckUpgradeTask(newVersion);
 
     // PreCheck for Available Memory on tserver nodes.
     long memAvailableLimit =
         confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
     // No need to run the check if the minimum allowed is 0.
     if (memAvailableLimit > 0) {
-      createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit);
     }
 
-    createLocaleCheckTask(new ArrayList<>(universe.getNodes()))
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createLocaleCheckTask(new ArrayList<>(universe.getNodes()));
 
-    createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion)
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion);
+
+    String currentVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    // Skip PG Upgrade check on tserver nodes if it is an retry task.
+    // Pre-check will still be executed after the master upgrade as part of main task.
+    if (softwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
+            universe, currentVersion, newVersion)
+        && taskParams().getPreviousTaskUUID() == null) {
+      createPGUpgradeTServerCheckTask(newVersion);
+    }
 
     addBasicPrecheckTasks();
   }
@@ -447,54 +446,50 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return false;
   }
 
-  protected YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState(Universe universe) {
-    try (YBClient client =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
-      GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
-      if (resp.hasError()) {
-        log.error("Error while getting YSQL major version catalog upgrade state: ", resp);
-        throw new RuntimeException(
-            "Error while getting YSQL major version catalog upgrade state: "
-                + resp.getServerError().toString());
-      }
-      return resp.getState();
-    } catch (Exception e) {
-      log.error("Error while getting YSQL major version catalog upgrade state: ", e);
-      throw new RuntimeException(e);
-    }
-  }
-
   protected void createGFlagsUpgradeTaskForYSQLMajorUpgrade(
       Universe universe, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
-    createGFlagsUpgradeTaskForYSQLMajorUpgrade(
-        universe, universe.getTServers(), ysqlMajorVersionUpgradeState);
-  }
-
-  protected void createGFlagsUpgradeTaskForYSQLMajorUpgrade(
-      Universe universe,
-      List<NodeDetails> nodes,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     // Set the flag in memory for all the nodes.
+
     createSetYBMajorVersionUpgradeCompatibility(
         universe,
-        nodes,
+        ServerType.MASTER,
+        universe.getMasters(),
+        UpgradeDetails.getMajorUpgradeCompatibilityFlagValue(ysqlMajorVersionUpgradeState));
+
+    createSetYBMajorVersionUpgradeCompatibility(
+        universe,
+        ServerType.TSERVER,
+        universe.getTServers(),
         UpgradeDetails.getMajorUpgradeCompatibilityFlagValue(ysqlMajorVersionUpgradeState));
 
     // Update server.conf for all the nodes.
-    createServerConfUpdateTaskForYsqlMajorUpgrade(universe, nodes, ysqlMajorVersionUpgradeState);
+    createServerConfUpdateTaskForYsqlMajorUpgrade(universe, ysqlMajorVersionUpgradeState);
   }
 
-  protected void createServerConfUpdateTaskForYsqlMajorUpgrade(
-      Universe universe,
-      List<NodeDetails> nodes,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+  private void createServerConfUpdateTaskForYsqlMajorUpgrade(
+      Universe universe, YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup updateGFlagsTaskGroup =
+    SubTaskGroup updateMasterGFlagsTaskGroup =
         createSubTaskGroup(subGroupDescription, SubTaskGroupType.UpdatingGFlags);
-    for (NodeDetails node : nodes) {
+    for (NodeDetails node : universe.getMasters()) {
+      Map<String, String> gFlags =
+          GFlagsUtil.getGFlagsForNode(
+              node,
+              ServerType.MASTER,
+              findCluster(universe, node.placementUuid),
+              universe.getUniverseDetails().clusters);
+      Cluster cluster = findCluster(universe, node.placementUuid);
+      updateMasterGFlagsTaskGroup.addSubTask(
+          getServerConfUpdateTaskForYsqlMajorUpgradePerNode(
+              cluster.userIntent, node, ServerType.MASTER, gFlags, ysqlMajorVersionUpgradeState));
+    }
+    getRunnableTask().addSubTaskGroup(updateMasterGFlagsTaskGroup);
+    SubTaskGroup updateTServerGFlagsTaskGroup =
+        createSubTaskGroup(subGroupDescription, SubTaskGroupType.UpdatingGFlags);
+    for (NodeDetails node : universe.getTServers()) {
       Map<String, String> gFlags =
           GFlagsUtil.getGFlagsForNode(
               node,
@@ -502,11 +497,11 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
               findCluster(universe, node.placementUuid),
               universe.getUniverseDetails().clusters);
       Cluster cluster = findCluster(universe, node.placementUuid);
-      updateGFlagsTaskGroup.addSubTask(
+      updateTServerGFlagsTaskGroup.addSubTask(
           getServerConfUpdateTaskForYsqlMajorUpgradePerNode(
               cluster.userIntent, node, ServerType.TSERVER, gFlags, ysqlMajorVersionUpgradeState));
     }
-    getRunnableTask().addSubTaskGroup(updateGFlagsTaskGroup);
+    getRunnableTask().addSubTaskGroup(updateTServerGFlagsTaskGroup);
   }
 
   private AnsibleConfigureServers getServerConfUpdateTaskForYsqlMajorUpgradePerNode(
@@ -528,59 +523,10 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return task;
   }
 
-  protected void createSetYBMajorVersionUpgradeCompatibility(
-      Universe universe, List<NodeDetails> nodes, String flagValue) {
-    if (nodes.isEmpty()) {
-      return;
-    }
-    createSetFlagInMemoryTasks(
-            nodes,
-            ServerType.TSERVER,
-            (node, params) -> {
-              params.force = true;
-              // Override only major version upgrade compatibility flag.
-              params.gflags =
-                  ImmutableMap.of(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
-            })
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-  }
-
   protected Cluster findCluster(Universe universe, UUID placementUuid) {
     return universe.getUniverseDetails().clusters.stream()
         .filter(cluster -> cluster.uuid.equals(placementUuid))
         .findFirst()
         .orElse(null);
-  }
-
-  protected boolean isYsqlMajorVersionUpgrade(
-      Universe universe, String currentVersion, String newVersion) {
-    return gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion)
-        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
-  }
-
-  protected boolean isSuperUserRequiredForCatalogUpgrade(
-      Universe universe, String currentVersion, String newVersion) {
-    UniverseDefinitionTaskParams.Cluster primaryCluster =
-        universe.getUniverseDetails().getPrimaryCluster();
-    return isYsqlMajorVersionUpgrade(universe, currentVersion, newVersion)
-        && primaryCluster.userIntent.enableYSQLAuth
-        && (primaryCluster.userIntent.dedicatedNodes
-            || primaryCluster.userIntent.providerType.equals(CloudType.kubernetes));
-  }
-
-  protected Runnable getFinalizeYSQLMajorUpgradeTask(Universe universe) {
-    return () -> {
-      createGFlagsUpgradeTaskForYSQLMajorUpgrade(
-          universe, YsqlMajorVersionUpgradeState.FINALIZE_IN_PROGRESS);
-
-      if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
-        String currentVersion =
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-        String oldVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
-        if (isSuperUserRequiredForCatalogUpgrade(universe, oldVersion, currentVersion)) {
-          createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
-        }
-      }
-    };
   }
 }

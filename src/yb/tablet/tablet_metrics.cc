@@ -301,42 +301,42 @@ TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_en
     gauges_(kElementsInTabletGauges) {
 
   for (const auto& stat : kEventStats) {
-    event_stats_[to_underlying(stat.event_stat)] = stat.prototype->Instantiate(table_entity);
+    event_stats_[std::to_underlying(stat.event_stat)] = stat.prototype->Instantiate(table_entity);
   }
 
   for (const auto& counter : kCounters) {
-    counters_[to_underlying(counter.counter)] = counter.prototype->Instantiate(tablet_entity);
+    counters_[std::to_underlying(counter.counter)] = counter.prototype->Instantiate(tablet_entity);
   }
 
   for (const auto& gauge : kGauges) {
-    gauges_[to_underlying(gauge.gauge)] = gauge.prototype->Instantiate(tablet_entity, 0);
+    gauges_[std::to_underlying(gauge.gauge)] = gauge.prototype->Instantiate(tablet_entity, 0);
   }
 }
 
 uint64_t TabletMetricsImpl::Get(TabletCounters counter) const {
-  return counters_[to_underlying(counter)]->value();
+  return counters_[std::to_underlying(counter)]->value();
 }
 
 int64_t TabletMetricsImpl::Get(TabletGauges gauge) const {
-  return gauges_[to_underlying(gauge)]->value();
+  return gauges_[std::to_underlying(gauge)]->value();
 }
 
 void TabletMetricsImpl::IncrementBy(TabletCounters counter, uint64_t amount) {
-  counters_[to_underlying(counter)]->IncrementBy(amount);
+  counters_[std::to_underlying(counter)]->IncrementBy(amount);
 }
 
 void TabletMetricsImpl::IncrementBy(TabletGauges gauge, int64_t amount) {
-  gauges_[to_underlying(gauge)]->IncrementBy(amount);
+  gauges_[std::to_underlying(gauge)]->IncrementBy(amount);
 }
 
 void TabletMetricsImpl::IncrementBy(
     TabletEventStats event_stats, uint64_t value, uint64_t amount) {
-  event_stats_[to_underlying(event_stats)]->IncrementBy(value, amount);
+  event_stats_[std::to_underlying(event_stats)]->IncrementBy(value, amount);
 }
 
 void TabletMetricsImpl::AddAggregateStats(
     TabletEventStats event_stats, const AggregateStats& other) {
-  event_stats_[to_underlying(event_stats)]->Add(other);
+  event_stats_[std::to_underlying(event_stats)]->Add(other);
 }
 
 } // namespace
@@ -352,35 +352,35 @@ ScopedTabletMetrics::ScopedTabletMetrics()
 ScopedTabletMetrics::~ScopedTabletMetrics() { }
 
 uint64_t ScopedTabletMetrics::Get(TabletCounters counter) const {
-  return counters_[to_underlying(counter)];
+  return counters_[std::to_underlying(counter)];
 }
 
 int64_t ScopedTabletMetrics::Get(TabletGauges gauge) const {
-  return gauges_[to_underlying(gauge)];
+  return gauges_[std::to_underlying(gauge)];
 }
 
 void ScopedTabletMetrics::IncrementBy(TabletCounters counter, uint64_t amount) {
-  counters_[to_underlying(counter)] += amount;
+  counters_[std::to_underlying(counter)] += amount;
 }
 
 void ScopedTabletMetrics::IncrementBy(TabletGauges gauge, int64_t amount) {
-  gauges_[to_underlying(gauge)] += amount;
+  gauges_[std::to_underlying(gauge)] += amount;
 }
 
 void ScopedTabletMetrics::IncrementBy(
     TabletEventStats event_stats, uint64_t value, uint64_t amount) {
-  stats_[to_underlying(event_stats)].IncrementBy(value, amount);
+  stats_[std::to_underlying(event_stats)].IncrementBy(value, amount);
 }
 
 void ScopedTabletMetrics::AddAggregateStats(
     TabletEventStats event_stats, const AggregateStats& other) {
-  stats_[to_underlying(event_stats)].Add(other);
+  stats_[std::to_underlying(event_stats)].Add(other);
 }
 
 void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
   auto* metrics = response->mutable_metrics();
   for (const auto& counter : kCounters) {
-    auto value = counters_[to_underlying(counter.counter)];
+    auto value = counters_[std::to_underlying(counter.counter)];
     // Don't send unchanged statistics.
     if (value != 0) {
       auto* metric = metrics->add_counter_metrics();
@@ -389,7 +389,7 @@ void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
     }
   }
   for (const auto& gauge : kGauges) {
-    auto value = gauges_[to_underlying(gauge.gauge)];
+    auto value = gauges_[std::to_underlying(gauge.gauge)];
     if (value != 0) {
       auto* metric = metrics->add_gauge_metrics();
       metric->set_metric(gauge.pggate_index);
@@ -397,7 +397,7 @@ void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
     }
   }
   for (const auto& event_stat : kEventStats) {
-    const auto& value = stats_[to_underlying(event_stat.event_stat)];
+    const auto& value = stats_[std::to_underlying(event_stat.event_stat)];
     if (value.TotalCount() != 0) {
       auto* metric = metrics->add_event_metrics();
       metric->set_metric(event_stat.pggate_index);
@@ -410,7 +410,7 @@ void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
 size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
   size_t dumped = 0;
   for (const auto& counter : kCounters) {
-    auto value = counters_[to_underlying(counter.counter)];
+    auto value = counters_[std::to_underlying(counter.counter)];
     // Don't dump unchanged statistics.
     if (value != 0) {
       const auto* name = counter.prototype->name();
@@ -419,7 +419,7 @@ size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
     }
   }
   for (const auto& gauge : kGauges) {
-    auto value = gauges_[to_underlying(gauge.gauge)];
+    auto value = gauges_[std::to_underlying(gauge.gauge)];
     if (value != 0) {
       const auto* name = gauge.prototype->name();
       (*out) << name << ": " << value << '\n';
@@ -427,7 +427,7 @@ size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
     }
   }
   for (const auto& event_stat : kEventStats) {
-    const auto& value = stats_[to_underlying(event_stat.event_stat)];
+    const auto& value = stats_[std::to_underlying(event_stat.event_stat)];
     if (value.TotalCount() != 0) {
       const auto* name = event_stat.prototype->name();
       (*out) << name << ": "

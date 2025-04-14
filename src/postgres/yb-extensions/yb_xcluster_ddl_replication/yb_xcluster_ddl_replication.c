@@ -21,15 +21,13 @@
 #include "access/xact.h"
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
-#include "nodes/pg_list.h"
 #include "executor/spi.h"
-#include "utils/fmgrprotos.h"
-
-#include "pg_yb_utils.h"
-
 #include "extension_util.h"
 #include "json_util.h"
+#include "nodes/pg_list.h"
+#include "pg_yb_utils.h"
 #include "source_ddl_end_handler.h"
+#include "utils/fmgrprotos.h"
 
 PG_MODULE_MAGIC;
 
@@ -52,15 +50,21 @@ static const struct config_enum_entry replication_roles[] = {
 
 static int	ReplicationRole = REPLICATION_ROLE_DISABLED;
 static bool EnableManualDDLReplication = false;
-char	   *DDLQueuePrimaryKeyStartTime = NULL;
+char	   *DDLQueuePrimaryKeyDDLEndTime = NULL;
 char	   *DDLQueuePrimaryKeyQueryId = NULL;
-bool		TEST_AllowColocatedObjects = false;
 
 /* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
 
 /* Per DDL Variables. */
-static bool should_replicate_ddl = false;
+
+/*
+ * This is updated as the DDL triggers run, ending up with the decision of
+ * whether or not to replicate the DDL that is currently running.
+ *
+ * Once this becomes true, it remains true for the rest of the DDL.
+ */
+static bool yb_should_replicate_ddl = false;
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -93,10 +97,10 @@ _PG_init(void)
 							 0,
 							 NULL, NULL, NULL);
 
-	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_start_time",
+	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_ddl_end_time",
 							   gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
 							   NULL,
-							   &DDLQueuePrimaryKeyStartTime,
+							   &DDLQueuePrimaryKeyDDLEndTime,
 							   "",
 							   PGC_SUSET,
 							   0,
@@ -110,16 +114,6 @@ _PG_init(void)
 							   PGC_SUSET,
 							   0,
 							   NULL, NULL, NULL);
-
-	/* YB_TODO(jhe): Remove this flag once colocated objects are supported. */
-	DefineCustomBoolVariable("yb_xcluster_ddl_replication.TEST_allow_colocated_objects",
-							 gettext_noop("Allow colocated objects to be replicated."),
-							 NULL,
-							 &TEST_AllowColocatedObjects,
-							 false,
-							 PGC_USERSET,
-							 0,
-							 NULL, NULL, NULL);
 }
 
 bool
@@ -137,7 +131,7 @@ IsReplicationTarget()
 }
 
 void
-InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
+InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 				Jsonb *yb_data)
 {
 	const int	kNumArgs = 3;
@@ -147,12 +141,12 @@ InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf,
-					 "INSERT INTO %s.%s (start_time, query_id, yb_data) values "
+					 "INSERT INTO %s.%s (ddl_end_time, query_id, yb_data) values "
 					 "($1,$2,$3)",
 					 EXTENSION_NAME, table_name);
 
 	arg_types[0] = INT8OID;
-	arg_vals[0] = Int64GetDatum(start_time);
+	arg_vals[0] = Int64GetDatum(ddl_end_time);
 
 	arg_types[1] = INT8OID;
 	arg_vals[1] = Int64GetDatum(query_id);
@@ -169,14 +163,26 @@ InsertIntoTable(const char *table_name, int64 start_time, int64 query_id,
 }
 
 void
-InsertIntoDDLQueue(Jsonb *yb_data)
+InsertIntoReplicatedDDLs(int64 ddl_end_time, int64 query_id)
 {
-	/* Compute the transaction start time in micros since epoch. */
-	TimestampTz epoch_time = (GetCurrentTransactionStartTimestamp() -
-							  SetEpochTimestamp());
+	/* Create memory context for handling json creation + query execution. */
+	MemoryContext context_new,
+				context_old;
+	Oid			save_userid;
+	int			save_sec_context;
 
-	/* Use random int for the query_id. */
-	InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, random(), yb_data);
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.InsertIntoReplicatedDDLs context");
+
+	JsonbParseState *state = NULL;
+
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	(void) AddStringJsonEntry(state, "query", debug_query_string);
+	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
+
+	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, ddl_end_time, query_id, jsonb);
+
+	CLOSE_MEM_CONTEXT_AND_SPI;
 }
 
 bool
@@ -319,16 +325,46 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	}
 	else
 	{
-		should_replicate_ddl |= ProcessSourceEventTriggerDDLCommands(state);
+		yb_should_replicate_ddl |= ProcessSourceEventTriggerDDLCommands(state);
 	}
 
-	if (should_replicate_ddl)
+	if (yb_should_replicate_ddl)
 	{
 		/* Construct the jsonb and insert completed row into ddl_queue table. */
 		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 		Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
-		InsertIntoDDLQueue(jsonb);
+		/*
+		 * Compute the current time in micros since epoch.
+		 * This is the ddl_end time, which is after all the docdb schema changes for
+		 * the DDL have occurred (note that the pg catalog changes are not yet
+		 * visible as the txn hasn't committed yet).
+		 * Current time also give us a distinct and ordered time for DDLs within a
+		 * transaction, as opposed to using now(), which is the same within a txn.
+		 *
+		 * TODO (#25999): We will also use this time as the safe time to run the DDL
+		 * on the target, by waiting for other pollers to catch up to this safe time
+		 * before running the DDL. Since this time is after the docdb schema is
+		 * applied, we are fine at this point to catch up the pg catalog changes.
+		 */
+		TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
+		int64 query_id = random();
+
+		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
+
+		if (ReplicationRole == REPLICATION_ROLE_SOURCE)
+		{
+			/*
+			 * Also insert into the replicated_ddls table to handle switchovers.
+			 *
+			 * During switchover, we have a middle state with A target <-> B target.
+			 * In this state, A is polling from B, and so ddl_queue on A could try to
+			 * process its ddl_queue entries. But since we write to replicated_ddls on
+			 * A, the ddl_queue handler will see that all DDLs in the queue have been
+			 * processed.
+			 */
+			InsertIntoReplicatedDDLs(epoch_time, query_id);
+		}
 	}
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
@@ -344,30 +380,12 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	 * We expect ddl_queue_primary_key_* variables to have been set earlier in
 	 * the transaction by the ddl_queue handler.
 	 */
-	int64		pkey_start_time = GetInt64FromVariable(DDLQueuePrimaryKeyStartTime,
-													   "ddl_queue_primary_key_start_time");
+	int64		pkey_ddl_end_time = GetInt64FromVariable(DDLQueuePrimaryKeyDDLEndTime,
+															 "ddl_queue_primary_key_ddl_end_time");
 	int64		pkey_query_id = GetInt64FromVariable(DDLQueuePrimaryKeyQueryId,
 													 "ddl_queue_primary_key_query_id");
 
-	/* Create memory context for handling json creation + query execution. */
-	MemoryContext context_new,
-				context_old;
-	Oid			save_userid;
-	int			save_sec_context;
-
-	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleTargetDDLEnd context");
-
-	JsonbParseState *state = NULL;
-
-	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
-	(void) AddStringJsonEntry(state, "query", debug_query_string);
-	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
-	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
-
-	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, pkey_start_time, pkey_query_id,
-					jsonb);
-
-	CLOSE_MEM_CONTEXT_AND_SPI;
+	InsertIntoReplicatedDDLs(pkey_ddl_end_time, pkey_query_id);
 }
 
 void
@@ -384,7 +402,7 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceSQLDrop context");
 
-	should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
+	yb_should_replicate_ddl |= ProcessSourceEventTriggerDroppedObjects();
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
@@ -411,23 +429,22 @@ HandleSourceTableRewrite(EventTriggerData *trig_data)
 void
 HandleSourceDDLStart(EventTriggerData *trig_data)
 {
-	/*
-	 * Do some initial checks here before the source query runs.
-	 * Also reset should_replicate_ddl for this new DDL.
-	 */
+	/* By default we don't replicate. */
+	yb_should_replicate_ddl = false;
 	if (EnableManualDDLReplication)
 	{
 		/*
 		 * Always replicate manual DDLs regardless of what they are.
 		 * Will show up on the target with a manual_replication field set.
 		 */
-		should_replicate_ddl = true;
+		yb_should_replicate_ddl = true;
 		return;
 	}
 
+	/*
+	 * Do some initial checks here before the source query runs.
+	 */
 	DisallowMultiStatementQueries(trig_data->tag);
-	should_replicate_ddl = false;
-
 	ClearRewrittenTableOidList();
 }
 

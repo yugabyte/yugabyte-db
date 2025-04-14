@@ -100,6 +100,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   @Override
   public void run() {
     Throwable th = null;
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     try {
       checkUniverseVersion();
       // TODO: Would it make sense to have a precheck k8s task that does
@@ -194,6 +197,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universeDetails.getPrimaryCluster().userIntent.replicationFactor
               != primaryCluster.userIntent.replicationFactor;
 
+      // Delete old PDB policy for the universe.
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(true /* deletePDB */);
+      }
+
       // Update the user intent.
       // This writes new state of nodes to DB.
       updateUniverseNodesAndSettings(universe, taskParams(), false);
@@ -240,8 +248,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         createMasterLeaderStepdownTask();
       }
 
-      // Update PDB policy for the universe.
-      createPodDisruptionBudgetPolicyTask(false /* deletePDB */, true /* updatePDB */);
+      // Create new PDB policy for the universe.
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(false /* deletePDB */);
+      }
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
@@ -345,6 +355,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createResizeDiskTask(
           universe.getName(),
           curPlacement,
+          newCluster.uuid,
           existingMasterAddresses,
           newIntent,
           isReadOnlyCluster,
@@ -557,14 +568,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newIntent.ybSoftwareVersion,
           universeOverrides,
           azOverrides,
-          true,
-          true,
           newNamingStyle,
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
-          PodUpgradeParams.DEFAULT);
+          PodUpgradeParams.DEFAULT,
+          null /* ysqlMajorVersionUpgradeState */);
 
       upgradePodsTask(
           universe.getName(),
@@ -575,14 +585,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newIntent.ybSoftwareVersion,
           universeOverrides,
           azOverrides,
-          false,
-          true,
           newNamingStyle,
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
-          PodUpgradeParams.DEFAULT);
+          PodUpgradeParams.DEFAULT,
+          null /* ysqlMajorVersionUpgradeState */);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
           universe.getName(),
@@ -593,14 +602,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newIntent.ybSoftwareVersion,
           universeOverrides,
           azOverrides,
-          false,
-          true,
           newNamingStyle,
           isReadOnlyCluster,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
-          PodUpgradeParams.DEFAULT);
+          PodUpgradeParams.DEFAULT,
+          null /* ysqlMajorVersionUpgradeState */);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
       // and tserver_master_addrs flag on tserver without restart.
@@ -857,6 +865,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   protected void createResizeDiskTask(
       String universeName,
       KubernetesPlacement placement,
+      UUID clusterUUID,
       String masterAddresses,
       UserIntent userIntent,
       boolean isReadOnlyCluster,
@@ -898,6 +907,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           usePreviousGflagsChecksum,
           ServerType.TSERVER);
     }
+    // persist the disk size changes to the universe
+    createPersistResizeNodeTask(userIntent, clusterUUID, true /* onlyPersistDeviceInfo */);
   }
 
   /**
@@ -1034,7 +1045,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 false /* usePreviousGflagsChecksum */,
                 null /* previousGflagsChecksumMap */,
                 false /* useNewMasterDiskSize */,
-                false /* useNewTserverDiskSize */));
+                false /* useNewTserverDiskSize */,
+                null /* ysqlMajorVersionUpgradeState */));
         // Add subtask to pvcExpand subtask group
         pvcExpand.addSubTask(
             getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -1058,7 +1070,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 false /* usePreviousGflagsChecksum */,
                 null /* previousGflagsChecksumMap */,
                 false /* useNewMasterDiskSize */,
-                false /* useNewTserverDiskSize */));
+                false /* useNewTserverDiskSize */,
+                null /* ysqlMajorVersionUpgradeState */));
       }
       // This helm upgrade will only create the new statefulset with the new disk size, nothing else
       // should change here and this is idempotent, since its a helm_upgrade.
@@ -1100,7 +1113,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               usePreviousGflagsChecksum,
               previousGflagsChecksumMap,
               true /* useNewMasterDiskSize */,
-              serverType == ServerType.TSERVER ? true : false /* useNewTserverDiskSize */));
+              serverType == ServerType.TSERVER ? true : false /* useNewTserverDiskSize */,
+              null /* ysqlMajorVersionUpgradeState */));
       // Add subtask to postExpansionValidate subtask group
       postExpansionValidate.addSubTask(
           createPostExpansionValidateTask(

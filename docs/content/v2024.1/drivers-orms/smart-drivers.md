@@ -122,12 +122,12 @@ If your cluster has read replicas, smart drivers can distribute (or exclude) con
 
 To support this, the load balance property accepts the following additional values.
 
-| Value | Description |
+| Load&nbsp;balance&nbsp;setting | Description |
 | :--- | :--- |
 | any | Distribute connections equally across all nodes in the cluster, irrespective of type (primary or read replica). This is an alias for value _true_. |
 | only-primary | Create connections equally across only primary nodes. If none are available, fail. |
 | only-rr | Create connections equally across only read replica nodes. If none are available, fail. |
-| prefer&#8209;primary | Create connections equally across primary nodes. If none are available, create them equally across the available read replica nodes. |
+| prefer-primary | Create connections equally across primary nodes. If none are available, create them equally across the available read replica nodes. |
 | prefer-rr | Create connections equally across read replica nodes. If none are available, create them equally across the available primary nodes. |
 
 To see how nodes would be selected for connections using these values, see [Order of node selection for new connections](#order-of-node-selection-for-new-connections).
@@ -143,6 +143,8 @@ For example, using the _Go_ smart driver, you can change the interval to four mi
 ```
 
 (Note that the parameter names may be different depending on the driver you're using.)
+
+Keep in mind that when a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Your application must either explicitly request new connections or, if you are using a [pooling solution](#connection-pooling), you can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
 
 ### Topology-aware load balancing
 

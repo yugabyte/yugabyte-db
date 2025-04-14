@@ -26,19 +26,21 @@ ADD_YB_LIBRARY(dockv_proto
         NONLINK_DEPS ${DOCKV_PROTO_TGTS})
 
 set(DOCKV_SRCS
+    doc_bson.cc
     doc_key.cc
     doc_kv_util.cc
     doc_path.cc
     doc_ttl_util.cc
+    doc_vector_id.cc
     expiration.cc
     intent.cc
     key_bytes.cc
-    pg_key_decoder.cc
-    pg_row.cc
     packed_row.cc
     packed_value.cc
     partial_row.cc
     partition.cc
+    pg_key_decoder.cc
+    pg_row.cc
     primitive_value.cc
     primitive_value_util.cc
     reader_projection.cc
@@ -46,7 +48,6 @@ set(DOCKV_SRCS
     subdocument.cc
     value.cc
     value_packing_v2.cc
-    vector_id.cc
     )
 
 set(DOCKV_DEPS dockv_proto vector_index yb_common yb_pggate_util yb_util)

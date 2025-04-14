@@ -3,8 +3,8 @@
 #include <math.h>
 #include <regex.h>
 
-#include "utils/jsonb.h"
 #include "utils/builtins.h"
+#include "utils/jsonb.h"
 #include "utils/memutils.h"
 
 #define MAX_INTERVAL_LEN 100
@@ -104,7 +104,7 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 	percentile = percentile > 0.0 ? percentile : 0.0;
 	percentile = percentile < 100.0 ? percentile : 100.0;
 
-	MemoryContext tmpContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	MemoryContext tmpContext = AllocSetContextCreate(CurrentMemoryContext,
 													 "JSONB processing temporary context", ALLOCSET_DEFAULT_SIZES);
 	MemoryContext oldContext = MemoryContextSwitchTo(tmpContext);
 

@@ -719,7 +719,6 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation, const bool colo
 
 class PgLibPqFailoverDuringInitDb : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // Use small clock skew, to decrease number of read restarts.
     options->allow_crashes_during_init_db = true;
     options->extra_master_flags.push_back("--TEST_fail_initdb_after_snapshot_restore=true");
   }
@@ -981,7 +980,18 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
 
     uint64_t ver_orig;
     RETURN_NOT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
-    for (int i = 1; i <= FLAGS_num_iter; i++) {
+    auto enable_inval_messages = VERIFY_RESULT(
+        cluster_->tablet_server(0)->GetFlag("ysql_yb_enable_invalidation_messages"));
+    auto num_iter = FLAGS_num_iter;
+    // When using invalidation messages, each DDL takes longer time to complete
+    // because in addition to incrementing the catalog version, it also needs to
+    // insert the associated invalidation messages. Reduce the number of iterations
+    // to reduce the chance of test timeout.
+    if (enable_inval_messages == "true") {
+      num_iter /= 1.2;
+    }
+    LOG(INFO) << "num_iter: " << num_iter;
+    for (int i = 1; i <= num_iter; i++) {
       LOG(INFO) << "ITERATION " << i;
       RETURN_NOT_OK(BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER"));
       LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
@@ -3248,14 +3258,12 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_NOK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
   ASSERT_NOK(conn2.Fetch("SELECT 1"));
 
-#ifdef YB_TODO // yb_terminated_queries is not yet supported in PG15
   // validate that this query is added to yb_terminated_queries
   auto conn3 = ASSERT_RESULT(Connect());
   const string get_yb_terminated_queries =
     "SELECT query_text, termination_reason FROM yb_terminated_queries";
   auto row = ASSERT_RESULT((conn3.FetchRow<std::string, std::string>(get_yb_terminated_queries)));
   ASSERT_EQ(row, (decltype(row){"SELECT pg_stat_statements_reset()", "Terminated by SIGKILL"}));
-#endif
 }
 
 TEST_F_EX(PgLibPqTest,
@@ -3611,7 +3619,7 @@ TEST_P(PgOidCollisionTest, MaterializedViewPgOidCollisionFromTservers) {
 // Conn2: CREATE TABLE danger (k INT, v INT);
 // Conn2: INSERT INTO danger SELECT i, i from generate_series(1, 100) i;
 // This test will fail in DEBUG builds because table ID reuse will trigger certain DCHECK failure.
-TEST_P(PgOidCollisionTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MetaCachePgOidCollisionFromTservers)) {
+TEST_P(PgOidCollisionTest, YB_RELEASE_ONLY_TEST(MetaCachePgOidCollisionFromTservers)) {
   const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
   RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
   const string dbname = "db2";
@@ -4056,111 +4064,6 @@ static std::optional<std::string> GetCatalogTableNameFromIndexName(const string&
   return std::nullopt;
 }
 
-struct YsqlMetric {
-  std::string name;
-  std::unordered_map<std::string, std::string> labels;
-  int64_t value;
-  int64_t time;
-  std::string type;
-  std::string description;
-
-  YsqlMetric(
-      std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
-      int64_t time, std::string type = "", std::string description = "")
-      : name(std::move(name)),
-        labels(std::move(labels)),
-        value(value),
-        time(time),
-        type(type),
-        description(description) {}
-};
-
-static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics_output) {
-  // Splits a metric line into name, labels, value and timestamp.
-  // Example line:
-  // metric_name{label_1="value_1",label_2="value_2"} 123 456
-  const std::regex metric_regex(R"((\w+)\{([^}]+)\}\s+(\d+)\s+(\d+))");
-
-  // Splits the list of labels into individual label-value pairs.
-  const std::regex label_regex(R"((\w+)=\"([^\"]+)\")");
-
-  // Parses the HELP and TYPE lines into the metric name and the description/type.
-  // HELP and TYPE lines are formatted as:
-  // # HELP <metric_name> <description>
-  // # TYPE <metric_name> <type>
-  const std::regex help_regex(R"(# HELP (\S+) (.+))");
-  const std::regex type_regex(R"(# TYPE (\S+) (\w+))");
-
-  std::vector<YsqlMetric> parsed_metrics;
-  std::istringstream stream(metrics_output);
-  std::string line;
-  std::unordered_map<std::string, std::string> descriptions;
-  std::unordered_map<std::string, std::string> types;
-
-  while (std::getline(stream, line)) {
-    std::smatch help_match;
-    std::smatch type_match;
-    std::smatch metric_match;
-
-    if (std::regex_search(line, help_match, help_regex)) {
-      descriptions[help_match[1].str()] = help_match[2].str();
-    } else if (std::regex_search(line, type_match, type_regex)) {
-      types[type_match[1].str()] = type_match[2].str();
-    } else if (std::regex_search(line, metric_match, metric_regex)) {
-      std::unordered_map<std::string, std::string> labels;
-      const std::string labels_str = metric_match[2].str();
-      auto search_start = labels_str.cbegin();
-      std::smatch label_match;
-
-      while (std::regex_search(search_start, labels_str.cend(), label_match, label_regex)) {
-        labels[label_match[1].str()] = label_match[2].str();
-        search_start = label_match.suffix().first;
-      }
-
-      std::string metric_name = metric_match[1].str();
-
-      parsed_metrics.emplace_back(
-          metric_name, std::move(labels), std::stoll(metric_match[3].str()),
-          std::stoll(metric_match[4].str()), types[metric_name], descriptions[metric_name]);
-    }
-  }
-
-  return parsed_metrics;
-}
-
-// Parse metrics from the JSON output of the /metrics endpoint.
-// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
-static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output) {
-  std::vector<YsqlMetric> parsed_metrics;
-
-  // Parse the JSON string
-  rapidjson::Document document;
-  document.Parse(metrics_output.c_str());
-
-  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
-  const auto& server = document[0];
-  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
-  const auto& metrics = server["metrics"];
-  for (const auto& metric : metrics.GetArray()) {
-    EXPECT_TRUE(
-        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
-        metric.HasMember("rows"));
-    std::unordered_map<std::string, std::string> labels;
-    if (metric.HasMember("table_name")) {
-      labels["table_name"] = metric["table_name"].GetString();
-    } else {
-      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
-    }
-
-    parsed_metrics.emplace_back(
-        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
-        0  // JSON doesn't include timestamp
-    );
-  }
-
-  return parsed_metrics;
-}
-
 TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   auto conn = ASSERT_RESULT(Connect());
   // Make a new connection to see more cache misses (by default we will only
@@ -4307,7 +4210,9 @@ TEST_F(PgBackendsSessionExpireTest, UnknownSessionFatal) {
   // expiry of sessions. By reducing the session expiration time to 1s and sleeping for a little
   // over 2x the duration, we can ensure that the session has indeed expired.
   SleepFor((kHeartbeatTimeout * 2) + 100ms);
-  ASSERT_NOK(conn.Execute(query));
+  auto result = conn.Fetch(query);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "server closed the connection unexpectedly");
   ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
 
   // "Unknown Session" is an InvalidArgument error.
@@ -4512,58 +4417,47 @@ TEST_F_EX(PgLibPqTest, BlockDangerousRoles, PgLibPqBlockDangerousRolesTest) {
 
 class BatchInsertOnConflictTest : public PgLibPqTestRF1 {
  protected:
-  void RunConflictingIOCTxn(PGConn& conn, IsolationLevel isolation_level, int32_t expected_price) {
-    thread_holder_.AddThreadFunctor([this, &conn, isolation_level, expected_price]() -> void {
+  static auto MakeConflictingIOCTxnFunctor(
+      PGConn& conn, IsolationLevel isolation_level, int32_t expected_price) {
+    return [&conn, isolation_level, expected_price] {
       ASSERT_OK(conn.StartTransaction(isolation_level));
-      ASSERT_OK(conn.Execute(kIOCQuery));
+      ASSERT_OK(conn.Execute(
+          "INSERT INTO products VALUES (1, 'oats', 10) ON CONFLICT (id) "
+          "DO UPDATE SET price = products.price + 5"));
       const int32_t price = ASSERT_RESULT(conn.FetchRow<int32_t>(
           "SELECT price FROM products WHERE id = 1"));
 
       ASSERT_EQ(price, expected_price);
       ASSERT_OK(conn.CommitTransaction());
-    });
+    };
   }
 
-  void StartMainTxn(PGConn& conn, IsolationLevel isolation_level = READ_COMMITTED) {
-    ASSERT_OK(conn.StartTransaction(isolation_level));
-    ASSERT_OK(conn.Execute("UPDATE products SET price = price + 5 WHERE id = 1"));
+  static Status StartMainTxn(PGConn& conn) {
+    RETURN_NOT_OK(conn.StartTransaction(READ_COMMITTED));
+    return conn.Execute("UPDATE products SET price = price + 5 WHERE id = 1");
   }
-
-  void CommitMainTxnAfterWait(PGConn& conn) {
-    std::this_thread::sleep_for(RandomUniformInt(1, 10) * 100ms);
-    ASSERT_OK(conn.CommitTransaction());
-  }
-
-  constexpr static auto kInsertOnConflictBatchSize = 1024;
-  const std::vector<IsolationLevel> kIsolationLevels = {
-    READ_COMMITTED, SNAPSHOT_ISOLATION, SERIALIZABLE_ISOLATION
-  };
-  const std::string kIOCQuery = "INSERT INTO products VALUES (1, 'oats', 10) ON CONFLICT (id) "
-                                "DO UPDATE SET price = products.price + 5";
-  TestThreadHolder thread_holder_;
 };
 
-TEST_F(BatchInsertOnConflictTest, InsertOnConflictWithQueryRestart) {
-  PGConn conn1 = ASSERT_RESULT(Connect());
-  PGConn conn2 = ASSERT_RESULT(Connect());
+TEST_F_EX(PgLibPqTest, InsertOnConflictWithQueryRestart, BatchInsertOnConflictTest) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn2.Execute("CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT)"));
+  ASSERT_OK(conn2.Execute("INSERT INTO products VALUES (1, 'oats', 10)"));
+  ASSERT_OK(conn2.ExecuteFormat("SET yb_insert_on_conflict_read_batch_size TO $0", 1024));
+
   int32_t expected_price = 10;
-
-  // Setup
-  ASSERT_OK(conn1.Execute("DROP TABLE IF EXISTS products"));
-  ASSERT_OK(conn1.Execute("CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT)"));
-  ASSERT_OK(conn1.Execute("INSERT INTO products VALUES (1, 'oats', 10)"));
-  ASSERT_OK(conn2.Execute(
-      Format("SET yb_insert_on_conflict_read_batch_size TO $0", kInsertOnConflictBatchSize)));
-
   // Test that a query retried due to a kConflict error correctly clears the insert on conflict
   // buffer between retries. Not clearing the buffer would result in an incorrect "command cannot
   // affect row a second time" error.
-  for (IsolationLevel isolation_level : kIsolationLevels) {
+  for (auto isolation_level : {READ_COMMITTED, SNAPSHOT_ISOLATION, SERIALIZABLE_ISOLATION}) {
     expected_price += 10;
-    StartMainTxn(conn1);
-    RunConflictingIOCTxn(conn2, isolation_level, expected_price);
-    CommitMainTxnAfterWait(conn1);
-    thread_holder_.WaitAndStop(2s * kTimeMultiplier);
+    ASSERT_OK(StartMainTxn(conn1));
+    ThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor(MakeConflictingIOCTxnFunctor(
+        conn2, isolation_level, expected_price));
+    std::this_thread::sleep_for(RandomUniformInt(1, 10) * 100ms);
+    ASSERT_OK(conn1.CommitTransaction());
   }
 }
 
@@ -4572,6 +4466,7 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET yb_binary_restore = true"));
   ASSERT_OK(conn.Execute("SET yb_ignore_pg_class_oids = false"));
+  ASSERT_OK(conn.Execute("SET yb_ignore_relfilenode_ids = false"));
 
   uint32_t next_oid = 16384;
 
@@ -4583,20 +4478,30 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
       "SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('$0'::pg_catalog.oid)",
       next_oid++));
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
+
     // Restore table.
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(id int)", table));
 
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
     // Restore first index of the table.
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 on $1(id)", table, table));
 
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
     // Restore second index of the table.
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 on $1(id)", table, table));
   }
@@ -4604,10 +4509,51 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   // Turn off restore simulation and run regular "ALTER TABLE" operation.
   ASSERT_OK(conn.ExecuteFormat("SET yb_binary_restore = false"));
   ASSERT_OK(conn.ExecuteFormat("SET yb_ignore_pg_class_oids = true"));
+
   // This DDL used to show "Duplicate table" error due to OID collision because the OID
   // 16393 was already used by yugabyte.t2_idx2 and is reused as relfilenode for t3_idx1
   // during table rewrite.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t3 ALTER COLUMN id TYPE TEXT"));
+}
+
+TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+  conn = ASSERT_RESULT(ConnectToDB("db1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t(k int, c1 INT, c2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_c1_idx ON base_t(c1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_c2_idx ON base_t(c2)"));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+    "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
+  LOG(INFO) << "result: " << result;
+  ASSERT_OK(conn.Execute("ALTER TABLE base_t ADD PRIMARY KEY (k)"));
+  result = ASSERT_RESULT(conn.FetchAllAsString(
+    "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
+  LOG(INFO) << "result: " << result;
+  std::string tmpname = std::tmpnam(nullptr);
+  auto hostport = cluster_->ysql_hostport(0);
+  std::string ysql_dump_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump"));
+  std::string ysql_dump_cmd = Format(
+    "$0 --include-yb-metadata --serializable-deferrable --create --schema-only "
+    "--dbname db1 --file $1 -h $2 -p $3",
+    ysql_dump_path, tmpname, hostport.host(), hostport.port());
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("DROP DATABASE db1"));
+  std::string ysqlsh_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysqlsh"));
+  std::string ysqlsh_cmd = Format(
+    "$0 -f $1 -h $2 -p $3", ysqlsh_path, tmpname, hostport.host(), hostport.port());
+  LOG(INFO) << "Executing " << ysqlsh_cmd;
+  ASSERT_EQ(system(ysqlsh_cmd.c_str()), 0);
+  conn = ASSERT_RESULT(ConnectToDB("db1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t_dummy1(k INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t_faulty(k INT, c1 INT, c2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_faulty_c1_idx ON base_t_faulty(c1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_faulty_c2_idx ON base_t_faulty(c2)"));
+  std::string rm_cmd = Format("rm -f $0", tmpname);
+  LOG(INFO) << "Executing " << rm_cmd;
+  ASSERT_EQ(system(rm_cmd.c_str()), 0);
 }
 
 TEST_F(PgLibPqTest, TablePartitionByCollationTextColumn) {

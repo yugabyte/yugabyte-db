@@ -23,7 +23,7 @@
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
 
-/* YB includes. */
+/* YB includes */
 #include "common/pg_yb_common.h"
 
 
@@ -128,7 +128,7 @@ printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	 * datatype output routines, and should be faster than retail pfree's
 	 * anyway.
 	 */
-	myState->tmpcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	myState->tmpcontext = AllocSetContextCreate(CurrentMemoryContext,
 												"printtup",
 												ALLOCSET_DEFAULT_SIZES);
 

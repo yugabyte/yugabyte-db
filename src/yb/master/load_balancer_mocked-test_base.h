@@ -27,8 +27,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(load_balancer_count_move_as_add);
-
 DECLARE_bool(load_balancer_ignore_cloud_info_similarity);
 
 namespace yb {
@@ -84,7 +82,7 @@ class LoadBalancerMockedBase : public YBTest {
     cb_.SetBlacklistAndPendingDeleteTS();
 
     const auto& table = tables_.FindTableOrNull(cur_table_uuid_);
-    const auto& replication_info = VERIFY_RESULT(cb_.GetTableReplicationInfo(table));
+    const auto replication_info = cb_.GetTableReplicationInfo(table);
     RETURN_NOT_OK(cb_.PopulateReplicationInfo(table, replication_info));
 
     cb_.InitializeTSDescriptors();
@@ -92,7 +90,7 @@ class LoadBalancerMockedBase : public YBTest {
     int adds = 0;
     int removes = 0;
     int stepdowns = 0;
-    RETURN_NOT_OK(cb_.CountPendingTasksUnlocked(cur_table_uuid_, &adds, &removes, &stepdowns));
+    RETURN_NOT_OK(CountPendingTasksUnlocked(table, &adds, &removes, &stepdowns));
 
     RETURN_NOT_OK(cb_.AnalyzeTabletsUnlocked(cur_table_uuid_));
     return PendingTasks { adds, removes, stepdowns };
@@ -135,10 +133,10 @@ class LoadBalancerMockedBase : public YBTest {
   }
 
   Status CountPendingTasksUnlocked(
-      const TableId& table_uuid, int* pending_add_replica_tasks, int* pending_remove_replica_tasks,
+      const TableInfoPtr& table, int* pending_add_replica_tasks, int* pending_remove_replica_tasks,
       int* pending_stepdown_leader_tasks)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
-    return cb_.CountPendingTasksUnlocked(table_uuid, pending_add_replica_tasks,
+    return cb_.CountPendingTasksUnlocked(table, pending_add_replica_tasks,
         pending_remove_replica_tasks, pending_stepdown_leader_tasks);
   }
 
@@ -146,12 +144,11 @@ class LoadBalancerMockedBase : public YBTest {
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     // Only do one add at most. If we do an add then we'll call AddReplica which will update state.
     int remaining_adds = 1;
-    uint32_t master_errors = 0;
     bool task_added = false;
-    cb_.ProcessUnderReplicatedTablets(
-        remaining_adds, master_errors, task_added, out_tablet_id, out_to_ts);
+    cb_.ProcessUnderReplicatedTablets(remaining_adds, task_added, out_tablet_id, out_to_ts);
 
-    SCHECK_EQ(master_errors, 0, IllegalState, "ProcessUnderReplicatedTablets hit an error");
+    SCHECK(cb_.global_state_->activity_info_.GetWarningsSummary().empty(), IllegalState,
+        "ProcessUnderReplicatedTablets hit an error");
     SCHECK_NE(remaining_adds, task_added, IllegalState, "task_added and remaining_adds mismatch");
     return task_added;
   }
@@ -276,10 +273,10 @@ class LoadBalancerMockedBase : public YBTest {
       SCHECK_EQ(expected_to_ts, to_ts, IllegalState, "To ts mismatch");
     }
 
-    if (!from_ts.empty() && GetAtomicFlag(&FLAGS_load_balancer_count_move_as_add)) {
+    if (!from_ts.empty()) {
       SCHECK_EQ(1, cb_.get_total_over_replication() - over_replication_at_start, IllegalState,
                 "Overreplication count mismatch");
-      RETURN_NOT_OK(cb_.RemoveReplica(tablet_id, from_ts));
+      RETURN_NOT_OK(cb_.RemoveReplica(tablet_id, from_ts, "Remove replica for move"));
     }
     return Status::OK();
   }

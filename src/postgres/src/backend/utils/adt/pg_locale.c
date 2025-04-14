@@ -78,7 +78,7 @@
 #include <shlwapi.h>
 #endif
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 #define		MAX_L10N_DATA		80
@@ -101,6 +101,9 @@ char	   *localized_abbrev_days[7 + 1];
 char	   *localized_full_days[7 + 1];
 char	   *localized_abbrev_months[12 + 1];
 char	   *localized_full_months[12 + 1];
+
+/* is the databases's LC_CTYPE the C locale? */
+bool		database_ctype_is_c = false;
 
 /* indicates whether locale information cache is valid */
 static bool CurrentLocaleConvValid = false;
@@ -1736,7 +1739,7 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 		locale_t	loc;
 
 		/* Look up FreeBSD collation version. */
-		loc = newlocale(LC_COLLATE, collcollate, NULL);
+		loc = newlocale(LC_COLLATE_MASK, collcollate, NULL);
 		if (loc)
 		{
 			collversion =
@@ -1774,7 +1777,7 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 							collcollate,
 							GetLastError())));
 		}
-		collversion = psprintf("%d.%d,%d.%d",
+		collversion = psprintf("%lu.%lu,%lu.%lu",
 							   (version.dwNLSVersion >> 8) & 0xFFFF,
 							   version.dwNLSVersion & 0xFF,
 							   (version.dwDefinedVersion >> 8) & 0xFFFF,
@@ -1782,6 +1785,23 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 #endif
 	}
 
+	/* MacOS specific YB change to make unit test results stable. */
+	if (IsYugaByteEnabled())
+	{
+#ifdef __APPLE__
+		if (!collversion &&
+			yb_test_collation &&
+			collprovider == COLLPROVIDER_LIBC &&
+			pg_strcasecmp("C", collcollate) != 0 &&
+			pg_strncasecmp("C.", collcollate, 2) != 0 &&
+			pg_strcasecmp("POSIX", collcollate) != 0)
+			collversion = "2.28";
+#endif
+	}
+
+	if (yb_test_collation)
+		/* Make unit test output stable across different OS types and versions. */
+		return collversion ? "yb-test-2.28" : NULL;
 	return collversion;
 }
 

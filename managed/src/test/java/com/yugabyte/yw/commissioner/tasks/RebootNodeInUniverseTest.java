@@ -348,5 +348,6 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.RebootNodeInUniverse,
         taskParams);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

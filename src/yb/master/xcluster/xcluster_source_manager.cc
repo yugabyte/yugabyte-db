@@ -18,7 +18,9 @@
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
 
+#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
+
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
@@ -48,6 +50,7 @@ DEFINE_test_flag(
 DECLARE_int32(master_yb_client_default_timeout_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
+DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
 using namespace std::placeholders;
@@ -207,6 +210,25 @@ XClusterSourceManager::InitOutboundReplicationGroup(
                 CoarseMonoClock::now() +
                     MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec));
           },
+      .set_normal_oid_counter_above_all_normal_oids_func =
+          [this](NamespaceId namespace_id) {
+            return SetNormalOidCounterAboveAllNormalOids(namespace_id);
+          },
+      .get_normal_oid_higher_than_any_used_normal_oid_func =
+          [client_future = master_.client_future()](NamespaceId namespace_id) -> Result<uint32_t> {
+        auto* yb_client = client_future.get();
+        SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
+        // While automatic mode xCluster replication is running, we have an invariant that all
+        // normal space OIDs are smaller than the next normal space OID that master allocates.
+        //
+        // Accordingly, we can just allocate a normal OID from master and return it here.
+        uint32_t begin_oid;
+        uint32_t end_oid;
+        RETURN_NOT_OK(yb_client->ReservePgsqlOids(
+            namespace_id, /*next_oid=*/0, /*count=*/1, &begin_oid, &end_oid,
+            /*use_secondary_space=*/false));
+        return begin_oid;
+      },
       .get_namespace_func =
           [&catalog_manager = catalog_manager_](const NamespaceIdentifierPB& ns_identifier) {
             return catalog_manager.FindNamespace(ns_identifier);
@@ -216,6 +238,13 @@ XClusterSourceManager::InitOutboundReplicationGroup(
               const NamespaceId& namespace_id, bool include_sequences_data) {
             return GetTablesEligibleForXClusterReplication(
                 catalog_manager, namespace_id, include_sequences_data);
+          },
+      .is_automatic_mode_switchover_func =
+          [xcluster_manager = master_.xcluster_manager()](NamespaceId namespace_id) {
+            // If a namespace under automatic replication mode is both a source and target at the
+            // same time, then it is currently undergoing automatic mode switchover.
+            return xcluster_manager->IsNamespaceInAutomaticModeSource(namespace_id) &&
+                   xcluster_manager->IsNamespaceInAutomaticModeTarget(namespace_id);
           },
       .create_xcluster_streams_func =
           std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2),
@@ -242,7 +271,7 @@ XClusterSourceManager::InitOutboundReplicationGroup(
       .setup_ddl_replication_extension_func =
           std::bind(&XClusterSourceManager::SetupDDLReplicationExtension, this, _1, _2),
       .drop_ddl_replication_extension_func =
-          std::bind(&XClusterSourceManager::DropDDLReplicationExtension, this, _1, _2),
+          std::bind(&XClusterSourceManager::DropDDLReplicationExtensionIfExists, this, _1, _2),
   };
 
   return std::make_shared<XClusterOutboundReplicationGroup>(
@@ -509,6 +538,22 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
   std::vector<TableId> table_ids;
 };
 
+Status XClusterSourceManager::SetNormalOidCounterAboveAllNormalOids(NamespaceId namespace_id) {
+  auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  VLOG(1) << "Calling ReadHighestNormalPreservableOid on database OID " << database_oid;
+  auto highest_oid = VERIFY_RESULT(sys_catalog_.ReadHighestNormalPreservableOid(database_oid));
+  auto* yb_client = master_.client_future().get();
+  SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
+  VLOG(1) << "Bumping normal space OID for database OID " << database_oid << " above "
+          << highest_oid;
+  uint32_t begin_oid, end_oid;
+  RETURN_NOT_OK(yb_client->ReservePgsqlOids(
+      namespace_id, /*next_oid=*/highest_oid, /*count=*/1, &begin_oid, &end_oid,
+      /*use_secondary_space=*/false));
+  VLOG(1) << "Invalidating TServer OID caches for database OID " << database_oid;
+  return catalog_manager_.InvalidateTserverOidCaches();
+}
+
 Result<std::unique_ptr<XClusterCreateStreamsContext>>
 XClusterSourceManager::CreateStreamsForDbScoped(
     const std::vector<TableId>& table_ids, const LeaderEpoch& epoch) {
@@ -695,7 +740,7 @@ void XClusterSourceManager::PopulateTabletDeleteRetainerInfoForTableDrop(
   // cdc_wal_retention_time_secs.
 
   // Only the parent colocated table is replicated via xCluster.
-  if (table_info.IsColocatedUserTable()) {
+  if (table_info.IsSecondaryTable()) {
     return;
   }
 
@@ -1064,6 +1109,7 @@ Status XClusterSourceManager::PopulateXClusterStatus(
     group_status.replication_group_id = replication_info->Id();
     group_status.state = SysXClusterOutboundReplicationGroupEntryPB::State_Name(metadata.state());
     group_status.target_universe_info = metadata.target_universe_info().DebugString();
+    group_status.automatic_ddl_mode = metadata.automatic_ddl_mode();
 
     for (const auto& [namespace_id, namespace_status] : metadata.namespace_infos()) {
       XClusterOutboundReplicationGroupNamespaceStatus ns_status;
@@ -1175,7 +1221,7 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
         for (const auto& stream : tables_to_stream_map_.at(index_id)) {
           LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
                     << index_id << " to its end of WAL";
-          table_streams.push_back({index_id, stream->StreamId()});
+          table_streams.emplace_back(index_id, stream->StreamId());
         }
       }
     }
@@ -1301,13 +1347,22 @@ Status XClusterSourceManager::SetupDDLReplicationExtension(
     const NamespaceId& namespace_id, StdStatusCallback callback) const {
   auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
 
+  bool is_switchover =
+      catalog_manager_.GetXClusterManager()->IsNamespaceInAutomaticModeTarget(namespace_id);
+  if (is_switchover) {
+    // We need to remain as a target in order to finish draining any remaining DDLs.
+    // We will switch to source once we drop the reverse direction replication group.
+    LOG(INFO) << "Switchover detected for namespace " << namespace_id
+              << ", keeping extension replication role as a Target.";
+    callback(Status::OK());
+    return Status::OK();
+  }
+
   return master::SetupDDLReplicationExtension(
-      catalog_manager_, namespace_name, XClusterDDLReplicationRole::kSource,
-      CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
-      std::move(callback));
+      catalog_manager_, namespace_name, XClusterDDLReplicationRole::kSource, std::move(callback));
 }
 
-Status XClusterSourceManager::DropDDLReplicationExtension(
+Status XClusterSourceManager::DropDDLReplicationExtensionIfExists(
     const NamespaceId& namespace_id,
     const xcluster::ReplicationGroupId& drop_replication_group_id) const {
   // Check that there are no other automatic mode replication groups for this namespace.
@@ -1319,8 +1374,18 @@ Status XClusterSourceManager::DropDDLReplicationExtension(
       return Status::OK();
     }
   }
+
+  // Also check if we are doing a switchover, in which case the extension should remain as a target.
+  bool is_switchover =
+      catalog_manager_.GetXClusterManager()->IsNamespaceInAutomaticModeTarget(namespace_id);
+  if (is_switchover) {
+    LOG(INFO) << "Switchover detected for namespace " << namespace_id
+              << ", not dropping yb_xcluster_ddl_replication extension.";
+    return Status::OK();
+  }
+
   Synchronizer sync;
-  RETURN_NOT_OK(master::DropDDLReplicationExtension(
+  RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
       catalog_manager_, namespace_id,
       [&sync](const Status& status) { sync.AsStdStatusCallback()(status); }));
   return sync.Wait();

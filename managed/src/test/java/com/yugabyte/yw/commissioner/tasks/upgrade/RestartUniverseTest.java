@@ -69,6 +69,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
         TaskType.RestartUniverse,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 
   private MockUpgrade initMockUpgrade() {

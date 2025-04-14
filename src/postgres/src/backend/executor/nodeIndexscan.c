@@ -33,9 +33,6 @@
 #include "access/relscan.h"
 #include "access/tableam.h"
 #include "catalog/pg_am.h"
-#include "catalog/pg_opfamily.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "lib/pairingheap.h"
@@ -47,11 +44,15 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "optimizer/clauses.h"
+#include "utils/fmgroids.h"
 
 /*
  * When an ordering operator is used, tuples fetched from the index that
@@ -927,7 +928,12 @@ ExecEndIndexScan(IndexScanState *node)
 	if (indexScanDesc)
 		index_endscan(indexScanDesc);
 	if (indexRelationDesc)
+	{
+		if (node->ss.ps.state->yb_exec_params.yb_index_check)
+			yb_free_dummy_baserel_index(indexRelationDesc);
+
 		index_close(indexRelationDesc, NoLock);
+	}
 }
 
 /* ----------------------------------------------------------------
@@ -1088,8 +1094,12 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 
 	/* Open the index relation. */
 	lockmode = exec_rt_fetch(node->scan.scanrelid, estate)->rellockmode;
-	indexstate->iss_RelationDesc = index_open(node->indexid, lockmode);
 
+	if (!estate->yb_exec_params.yb_index_check)
+		indexstate->iss_RelationDesc = index_open(node->indexid, lockmode);
+	else
+		indexstate->iss_RelationDesc =
+			yb_dummy_baserel_index_open(node->indexid, lockmode);
 	/*
 	 * Initialize index-specific scan state
 	 */
@@ -1176,7 +1186,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 			SortSupport orderbysort = &indexstate->iss_SortSupport[i];
 
 			/* Initialize sort support */
-			orderbysort->ssup_cxt = GetCurrentMemoryContext();
+			orderbysort->ssup_cxt = CurrentMemoryContext;
 			orderbysort->ssup_collation = orderbyColl;
 			/* See cmp_orderbyvals() comments on NULLS LAST */
 			orderbysort->ssup_nulls_first = false;
@@ -1374,7 +1384,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			Assert(leftop != NULL);
 
 			if (IsA(leftop, FuncExpr)
-				&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+				&& ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE)
 			{
 				flags |= YB_SK_IS_HASHED;
 			}
@@ -1511,7 +1521,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				 * Check for yb_hash_code() and set flag if present.
 				 */
 				if (IsA(leftop, FuncExpr)
-					&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+					&& ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE)
 					flags |= YB_SK_IS_HASHED;
 
 				if (!(IsA(leftop, Var) &&

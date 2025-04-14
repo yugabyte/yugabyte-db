@@ -121,7 +121,7 @@ void InsertData(DataContainer* container,
   result.reserve(cols.size());
   for (const auto& c : cols) {
     const auto attr = c.attr_num();
-    if (attr > 0 || (fetch_ybctid && attr == to_underlying(PgSystemAttrNum::kYBTupleId))) {
+    if (attr > 0 || (fetch_ybctid && attr == std::to_underlying(PgSystemAttrNum::kYBTupleId))) {
       result.push_back(&c);
     }
   }
@@ -393,7 +393,7 @@ class Loader {
     if (index) {
       const PgTable index_target(index);
       for (const auto& column : index_target.columns()) {
-        if (column.attr_num() == to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId)) {
+        if (column.attr_num() == std::to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId)) {
           auto& index_req = *req.mutable_index_request();
           index_req.dup_table_id(index->relfilenode_id().GetYbTableId());
           SetupPaging(&index_req);

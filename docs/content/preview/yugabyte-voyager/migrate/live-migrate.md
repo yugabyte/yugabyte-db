@@ -667,6 +667,10 @@ Refer to [export data](../../reference/data-migration/export-data/#export-data) 
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
+{{<note title="Table list cannot be changed during migration resumption">}}
+In any resumption scenario using the `export data` command, altering the list of tables to be migrated is not allowed. The command will result in an error if the table set is modified, thereby preventing unnecessary failure.
+{{</note>}}
+
 #### get data-migration-report
 
 Run the `yb-voyager get data-migration-report --export-dir <EXPORT_DIR>` command to get a consolidated report of the overall progress of data migration concerning all the databases involved (source and target).
@@ -868,3 +872,5 @@ DROP USER ybvoyager;
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.
+- Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.
+- For Oracle, only the values of identity columns on the migrating tables will be restored. The user will have to resume other sequences manually.

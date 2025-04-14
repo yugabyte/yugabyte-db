@@ -215,7 +215,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   FilterKeysToLock<SharedLockManager>(&determine_keys_to_lock_result.lock_batch);
   VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
                     << determine_keys_to_lock_result.ToString();
-  const MonoTime start_time = (tablet_metrics != nullptr) ? MonoTime::Now() : MonoTime();
+  const MonoTime start_time = MonoTime::NowIf(tablet_metrics != nullptr);
   result.lock_batch = LockBatch(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
   auto lock_status = result.lock_batch.status();

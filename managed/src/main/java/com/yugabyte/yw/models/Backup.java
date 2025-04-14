@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -130,6 +131,7 @@ public class Backup extends Model {
           .put(BackupState.InProgress, BackupState.FailedToDelete)
           .put(BackupState.QueuedForDeletion, BackupState.FailedToDelete)
           .put(BackupState.DeleteInProgress, BackupState.FailedToDelete)
+          .put(BackupState.DeleteInProgress, BackupState.QueuedForDeletion)
           .put(BackupState.Failed, BackupState.FailedToDelete)
           .put(BackupState.Completed, BackupState.FailedToDelete)
           .put(BackupState.InProgress, BackupState.Stopping)
@@ -376,9 +378,23 @@ public class Backup extends Model {
     backup.setState(BackupState.InProgress);
     backup.setCategory(category);
     backup.setVersion(version);
+    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+    Date date = new Date();
+    String backupLocationTS = tsFormat.format(date);
     if (params.scheduleUUID != null) {
       backup.scheduleUUID = params.scheduleUUID;
       backup.scheduleName = params.scheduleName;
+      // Set kubernetes resource name in RFC 1123
+      if (params.getKubernetesResourceDetails() != null) {
+        KubernetesResourceDetails details = params.getKubernetesResourceDetails();
+        String type = (params.baseBackupUUID != null) ? "incremental" : "full";
+        details.name =
+            params.scheduleName
+                + "-"
+                + type
+                + "-"
+                + (new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss")).format(date);
+      }
     }
     if (params.scheduleUUID == null && params.baseBackupUUID != null) {
       // Set PIT enabled conditionally for manually added incremental backups
@@ -389,8 +405,6 @@ public class Backup extends Model {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
       backup.setExpiryTimeUnit(params.expiryTimeUnit);
     }
-    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-    String backupLocationTS = tsFormat.format(new Date());
     if (params.backupList != null) {
       params.backupUuid = backup.getBackupUUID();
       params.baseBackupUUID = backup.getBaseBackupUUID();
@@ -492,7 +506,7 @@ public class Backup extends Model {
       List<BackupTableParams> paramsCollection,
       BackupTableParams incrementalParam,
       TableType backupType) {
-    return paramsCollection.parallelStream()
+    return paramsCollection.stream()
         .filter(
             backupParams ->
                 incrementalParam.getKeyspace().equals(backupParams.getKeyspace())
@@ -610,7 +624,7 @@ public class Backup extends Model {
     List<BackupTableParams> params = getBackupParamsCollection();
     if (CollectionUtils.isNotEmpty(params)) {
       oParams =
-          params.parallelStream()
+          params.stream()
               .filter(bP -> bP.backupParamsIdentifier.equals(paramsIdentifier))
               .findAny();
     }

@@ -51,12 +51,15 @@ int od_deploy(od_client_t *client, char *context)
 	od_server_t *server = client->server;
 	od_route_t *route = client->route;
 
-#if YB_ENABLED == TRUE
+#if (YB_ENABLED == TRUE) && !defined(YB_GUC_SUPPORT_VIA_SHMEM)
 	/* compare and set options which are differs from server */
 	int query_count;
 	query_count = 0;
 
 	char *query = malloc(yb_max_query_size + 1);
+	if (query == NULL) {
+		return -1;
+	}
 	query[yb_max_query_size] = '\0';
 	int query_size;
 	query_size = kiwi_vars_cas(&client->vars, &server->vars, query,

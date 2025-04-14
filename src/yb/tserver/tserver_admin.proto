@@ -251,6 +251,12 @@ message FlushTabletsRequestPB {
 
   // Only flush/compact regular RocksDB, not intents RocksDB.
   optional bool regular_only = 6;
+
+  // Performs operation only for the given vector indexes for the specified tablets.
+  repeated bytes vector_index_ids = 7;
+
+  // Whether we want to perform operation for all vector indexes for the specified tablets.
+  optional bool all_vector_indexes = 8;
 }
 
 message FlushTabletsResponsePB {
@@ -367,6 +373,13 @@ message EnableDbConnsResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message GetPgSocketDirRequestPB {}
+
+message GetPgSocketDirResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional HostPortPB pg_socket_dir = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -421,4 +434,7 @@ service TabletServerAdminService {
 
   // For test purposes: returns TryAgain error until specified number of calls is done.
   rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);
+
+  rpc GetPgSocketDir(GetPgSocketDirRequestPB)
+      returns (GetPgSocketDirResponsePB);
 }

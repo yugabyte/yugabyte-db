@@ -626,7 +626,7 @@ initialize_environment(void)
 	/*
 	 * Set timezone and datestyle for datetime-related tests
 	 */
-	setenv("PGTZ", "PST8PDT", 1);
+	setenv("PGTZ", "America/Los_Angeles", 1);
 	setenv("PGDATESTYLE", "Postgres, MDY", 1);
 
 	/*
@@ -1127,7 +1127,7 @@ spawn_process(const char *cmdline)
 		comspec = "CMD";
 
 	memset(&pi, 0, sizeof(pi));
-	cmdline2 = psprintf("\"%s\" /c \"%s\"", comspec, cmdline);
+	cmdline2 = psprintf("\"%s\" /d /c \"%s\"", comspec, cmdline);
 
 	if ((restrictedToken =
 		 CreateRestrictedProcess(cmdline2, &pi)) == 0)

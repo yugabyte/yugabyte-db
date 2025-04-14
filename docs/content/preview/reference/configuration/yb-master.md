@@ -179,7 +179,7 @@ Default: `true`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -376,7 +376,7 @@ Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-def
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-master configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
+With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, --evict_failed_followers), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-master configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -470,7 +470,7 @@ Default: `64`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
 ## Load balancing flags
 
@@ -737,7 +737,7 @@ Default: `1`
 
 ##### --enable_tablet_split_of_pitr_tables
 
-Enables automatic tablet splitting of tables covered by Point In Time Recovery schedules.
+Enables automatic tablet splitting of tables covered by Point-In-Time Recovery schedules.
 
 Default: `true`
 
@@ -909,10 +909,12 @@ To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set
 --ssl_protocols = tls12,tls13
 ```
 
-In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
+By default, PostgreSQL uses a default minimum version for TLS of v1.2, as set using the [ssl_min_protocol_version](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION) configuration parameter.
+
+As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify a different minimum TLS version for Master and TServer, you should update the `ssl_min_protocol_version` parameter. For example:
 
 ```sh
---ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.3'"
 ```
 
 ## Change data capture (CDC) flags
@@ -932,6 +934,18 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
 Default: `28800` (8 hours)
+
+##### --cdc_intent_retention_ms
+
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+
+Default: `28800000` (8 hours)
+
+##### --cdcsdk_tablet_not_of_interest_timeout_secs
+
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+Default: `14400` (4 hours)
 
 ##### --enable_tablet_split_of_cdcsdk_streamed_tables
 
@@ -1040,6 +1054,20 @@ database, the cost of reading `table pg_yb_catalog_version` becomes more
 expensive when the number of yb-tservers, or the number of databases goes up.
 
 {{< /note >}}
+
+## Advisory lock flags
+
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+
+To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+
+##### --ysql_yb_enable_advisory_locks
+
+Enables advisory locking.
+
+This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
+
+Default: false
 
 ## Advanced flags
 

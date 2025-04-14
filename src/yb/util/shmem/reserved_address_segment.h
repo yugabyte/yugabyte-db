@@ -49,7 +49,7 @@ class ReservedAddressSegment;
 // process, so it is likely that the old address segment can be reused.
 class AddressSegmentNegotiator {
  public:
-  static constexpr size_t kDefaultRegionSize = 256_GB;
+  static constexpr size_t kDefaultRegionSize = 64_GB;
 
   explicit AddressSegmentNegotiator(size_t region_size = kDefaultRegionSize);
 

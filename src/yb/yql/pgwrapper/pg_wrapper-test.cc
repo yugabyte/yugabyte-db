@@ -743,5 +743,30 @@ TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) 
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String with a \n char'"));
 }
 
+TEST_F(PgWrapperTest, GetPgSocketDir) {
+  auto proxy = cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0);
+
+  tserver::GetPgSocketDirRequestPB req;
+  tserver::GetPgSocketDirResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(10s);
+
+  ASSERT_OK(proxy.GetPgSocketDir(req, &resp, &rpc));
+  LOG(INFO) << "GetPgSocketDir response: " << resp.DebugString();
+  ASSERT_FALSE(resp.has_error());
+
+  auto socket_dir = HostPortFromPB(resp.pg_socket_dir());
+
+  PGConnBuilder builder(
+      {.host = socket_dir.host(),
+       .port = socket_dir.port(),
+       .dbname = "yugabyte",
+       .user = "yugabyte"});
+  auto conn = ASSERT_RESULT(builder.Connect());
+
+  auto result = ASSERT_RESULT(conn.FetchRow<PGUint32>("SELECT 1"));
+  ASSERT_EQ(result, 1);
+}
+
 }  // namespace pgwrapper
 }  // namespace yb

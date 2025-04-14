@@ -22,13 +22,14 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "executor/executor.h"
-#include "utils/syscache.h"
 #include "utils/rel.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
 #include "executor/ybModifyTable.h"
 #include "miscadmin.h"
+#include "pg_yb_utils.h"
+#include "utils/syscache.h"
 
 /*
  * CatalogOpenIndexes - open the indexes on a system catalog.
