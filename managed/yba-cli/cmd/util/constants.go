@@ -591,6 +591,33 @@ const (
 	LDAPGroupMappingType = "LDAP"
 )
 
+// GlobalScopeUUID is the UUID for global scope
+const GlobalScopeUUID = "00000000-0000-0000-0000-000000000000"
+
+// LDAP SSL Types
+const (
+	// LdapSSLType - LDAPS
+	LDAPWithSSL = "ldaps"
+	// LdapSSLType - StartTLS
+	LDAPWithStartTLS = "starttls"
+	// LdapSSLType - None
+	LDAPWithoutSSL = "none"
+)
+
+// LDAP TLS Versions
+const (
+	LdapTLSVersion1   = "TLSv1"
+	LdapTLSVersion1_1 = "TLSv1_1"
+	LdapTLSVersion1_2 = "TLSv1_2"
+)
+
+// LDAP Group Search Scopes
+const (
+	LdapGroupSearchScopeObject   = "OBJECT"
+	LdapGroupSearchScopeOneLevel = "ONELEVEL"
+	LdapGroupSearchScopeSubtree  = "SUBTREE"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
