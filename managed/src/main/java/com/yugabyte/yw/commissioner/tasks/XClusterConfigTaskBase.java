@@ -2289,24 +2289,70 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           e);
     }
 
-    xClusterConfig
-        .getTableDetails()
-        .forEach(
-            tableConfig -> {
-              if (tableConfig.getStatus().getCode() != 4) {
-                if (tableConfig.getStatus().getCode() > 0) {
-                  log.warn(
-                      "In xCluster config {}, table {} is not in Running status",
-                      xClusterConfig,
-                      tableConfig);
-                } else {
-                  log.error(
-                      "In xCluster config {}, table {} is in bad status",
-                      xClusterConfig,
-                      tableConfig);
+    try {
+      // Compute a map from dbName to xClusterNamespaceConfig. The dbName is unique in each
+      // xCluster config because each config can support only one type, YSQL or YCQL.
+      Map<String, XClusterNamespaceConfig> dbNameToXClusterNamespaceConfigMap =
+          xClusterConfig.getType() == XClusterConfig.ConfigType.Db
+              ? xClusterConfig.getNamespaces().stream()
+                  .collect(
+                      Collectors.toMap(
+                          xClusterNamespaceConfig ->
+                              xClusterNamespaceConfig.getSourceNamespaceInfo().name,
+                          Function.identity()))
+              : null;
+      xClusterConfig
+          .getTableDetails()
+          .forEach(
+              tableConfig -> {
+                if (tableConfig.getStatus().getCode() != 4) {
+                  if (tableConfig.getStatus().getCode() > 0) {
+                    log.warn(
+                        "In xCluster config {}, table {} is not in Running status",
+                        xClusterConfig,
+                        tableConfig);
+                  } else if (tableConfig.getStatus().getCode() == 0) {
+                    if (Objects.nonNull(dbNameToXClusterNamespaceConfigMap)) {
+                      XClusterNamespaceConfig xClusterNamespaceConfig =
+                          dbNameToXClusterNamespaceConfigMap.get(
+                              tableConfig.getSourceTableInfo().keySpace);
+                      if (xClusterNamespaceConfig != null
+                          && xClusterNamespaceConfig.getStatus()
+                              == XClusterNamespaceConfig.Status.Running) {
+                        xClusterNamespaceConfig.setStatus(XClusterNamespaceConfig.Status.Warning);
+                      }
+                    }
+                    log.warn(
+                        "In xCluster config {}, table {} is not in Running status",
+                        xClusterConfig,
+                        tableConfig);
+                  } else {
+                    if (Objects.nonNull(dbNameToXClusterNamespaceConfigMap)) {
+                      XClusterNamespaceConfig xClusterNamespaceConfig =
+                          dbNameToXClusterNamespaceConfigMap.get(
+                              tableConfig.getSourceTableInfo().keySpace);
+                      if (xClusterNamespaceConfig != null
+                          && (xClusterNamespaceConfig.getStatus()
+                                  == XClusterNamespaceConfig.Status.Running
+                              || xClusterNamespaceConfig.getStatus()
+                                  == XClusterNamespaceConfig.Status.Warning)) {
+                        xClusterNamespaceConfig.setStatus(XClusterNamespaceConfig.Status.Error);
+                      }
+                    }
+                    log.error(
+                        "In xCluster config {}, table {} is in bad status",
+                        xClusterConfig,
+                        tableConfig);
+                  }
                 }
-              }
-            });
+              });
+    } catch (Exception e) {
+      log.error(
+          "Error setting the namespace status based on its tables replication status for xCluster"
+              + " config {}",
+          xClusterConfig.getUuid(),
+          e);
+    }
 
     if (confGetter.getGlobalConf(GlobalConfKeys.xClusterTableStatusLoggingEnabled)) {
       log.info(
