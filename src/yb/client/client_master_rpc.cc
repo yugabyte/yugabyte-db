@@ -38,16 +38,16 @@ ClientMasterRpcBase::ClientMasterRpcBase(YBClient::Data* client_data, CoarseTime
 void ClientMasterRpcBase::SendRpc() {
   DCHECK(retained_self_ != client_data_->rpcs_.InvalidHandle());
 
+  auto deadline = retrier().deadline();
   auto now = CoarseMonoClock::Now();
-  if (retrier().deadline() < now) {
+  if (deadline < now) {
     Finished(STATUS_FORMAT(TimedOut, "Request $0 timed out after deadline expired", *this));
     return;
   }
 
-  // TODO: https://github.com/yugabyte/yugabyte-db/issues/26722.
-  auto rpc_deadline = now + client_data_->default_rpc_timeout_;
   mutable_retrier()->mutable_controller()->set_deadline(
-      std::min(rpc_deadline, retrier().deadline()));
+      deadline != CoarseTimePoint::max() ? deadline : now + client_data_->default_rpc_timeout_);
+
   CallRemoteMethod();
 }
 
