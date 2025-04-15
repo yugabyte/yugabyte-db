@@ -88,13 +88,13 @@ YugabyteDB is a high-performance distributed SQL database for powering global, i
   >}}
 
   {{< sections/3-box-card
-    title="Articles"
-    linkText1="Distributed SQL 101"
-    linkUrl1="https://www.yugabyte.com/distributed-sql/"
+    title="Resource guide"
+    linkText1="Introducing YugabyteDB"
+    linkUrl1="preview/reference/get-started-guide/#introducing-yugabytedb/"
     linkText2="Scale a Single-Server Database"
     linkUrl2="https://www.yugabyte.com/postgresql/distributed-postgresql/"
-    linkText3="Local Reads in YugabyteDB"
-    linkUrl3="https://dev.to/yugabyte/local-reads-from-yugabytedb-raft-followers-5mk/"
+    linkText3="Database operations"
+    linkUrl3="/preview/reference/get-started-guide/#database-operations"
   >}}
 
 {{< /sections/3-boxes >}}
@@ -179,13 +179,13 @@ Learn about YugabyteDB and how it supports mission-critical applications.
   >}}
 
   {{< sections/3-box-card
-    title="Articles"
+    title="Resource guide"
     linkText1="Distributed SQL 101"
     linkUrl1="https://www.yugabyte.com/distributed-sql/"
     linkText2="Scale a Single-Server Database"
     linkUrl2="https://www.yugabyte.com/postgresql/distributed-postgresql/"
-    linkText3="Local Reads in YugabyteDB"
-    linkUrl3="https://dev.to/yugabyte/local-reads-from-yugabytedb-raft-followers-5mk/"
+    linkText3="Database operations"
+    linkUrl3="/preview/resources/get-started-guide/#database-operations"
   >}}
 
 {{< /sections/3-boxes >}}

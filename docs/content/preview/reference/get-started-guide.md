@@ -1,16 +1,22 @@
-<!---
+---
 title: How to get started with YugabyteDB
-headerTitle: How to get started with YugabyteDB
+headerTitle: Resource guide
 linkTitle: Guide to resources
 description: Find resources for getting started with YugabyteDB.
 headcontent: Find resources for getting started with YugabyteDB
+menu:
+  preview:
+    identifier: get-started-guide
+    parent: reference
+    weight: 2600
+type: indexpage
 type: docs
 unversioned: true
-private: true
---->
+---
 
 Find resources for getting started, migrating existing databases, using your database, and architecting for scalability, reliability, and security.
 
+<!--
 <ul class="nav yb-pills">
 
   <li>
@@ -33,9 +39,47 @@ Find resources for getting started, migrating existing databases, using your dat
   </li>
 
 </ul>
+-->
 
 ## Introducing YugabyteDB
 
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Blogs"
+    linkText1="How 7 Real-World Customers are Using YugabyteDB Aeon"
+    linkUrl1="https://www.yugabyte.com/blog/customers-use-yugabytedb-managed/"
+    linkText2="Unlocking the Power of Event Streaming with YugabyteDB"
+    linkUrl2="https://www.yugabyte.com/blog/companies-use-yugabytedb-event-streaming/"
+    linkText3="Data Replication in YugabyteDB"
+    linkUrl3="https://www.yugabyte.com/blog/data-replication/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Videos"
+    linkText1="Introducing YugabyteDB"
+    linkUrl1="https://www.youtube.com/watch?v=j24p07Frw00"
+    linkText2="Global Applications with YugabyteDB"
+    linkUrl2="https://www.youtube.com/watch?v=jqZxUydBaMQ"
+    linkText3="Architecting Highly Available and Resilient Systems of Record"
+    linkUrl3="https://www.youtube.com/watch?v=34n6QSa-_Pc"
+  >}}
+
+  {{< sections/3-box-card
+    title="Articles"
+    linkText1="Distributed SQL 101"
+    linkUrl1="https://www.yugabyte.com/distributed-sql/"
+    linkText2="Scale a Single-Server Database"
+    linkUrl2="https://www.yugabyte.com/postgresql/distributed-postgresql/"
+    linkText3="Local Reads in YugabyteDB"
+    linkUrl3="https://dev.to/yugabyte/local-reads-from-yugabytedb-raft-followers-5mk/"
+    linkText4="Distributed SQL vs Sharded Postgres"
+    linkUrl4="https://www.linkedin.com/pulse/distributed-things-postgresql-franck-pachot-4fr7e/"
+    linkText5="Distributed SQL vs NoSQL vs NewSQL"
+    linkUrl5="https://www.linkedin.com/pulse/distributed-sql-architecture-what-oracle-didnt-grasp-franck-pachot-ngghe/"
+  >}}
+{{< /sections/3-boxes >}}
+
+<!--
 **Video**: [Introducing YugabyteDB: The Distributed SQL Database for Mission-Critical Applications](https://www.youtube.com/watch?v=j24p07Frw00)
 : Learn about YugabyteDB and how it supports mission-critical applications.
 
@@ -63,7 +107,7 @@ Find resources for getting started, migrating existing databases, using your dat
 : Real world use cases for streaming data with YugabyteDB.
 
 **Video**: [Architecting a Highly Available and Resilient Systems of Record](https://www.youtube.com/watch?v=34n6QSa-_Pc)
-: Learn how YugabyteDB can be deployed as a system of record and integrates into the broader data ecosystem.
+: Learn how YugabyteDB can be deployed as a system of record and integrates into the broader data ecosystem. -->
 
 ### Features and architecture
 
