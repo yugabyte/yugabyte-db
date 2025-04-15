@@ -21,7 +21,10 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Counter;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -69,6 +72,57 @@ public class NodeAgentEnabler {
       "node_agent.enabler.universe_installer";
   private static final String NODE_INSTALLER_POOL_NAME = "node_agent.enabler.node_installer";
   private static final Duration SCANNER_INITIAL_DELAY = Duration.ofMinutes(5);
+
+  // Metric names.
+  private static final String NODE_AGENT_INSTALL_RUN = "ybp_nodeagent_bg_install_run_count";
+  private static final String NODE_AGENT_INSTALL_FAILURE = "ybp_nodeagent_bg_install_failure_count";
+  private static final String NODE_AGENT_INSTALL_SUCCESS = "ybp_nodeagent_bg_install_success_count";
+  private static final String NODE_AGENT_MIGRATE_FAILURE = "ybp_nodeagent_bg_migrate_failure_count";
+  private static final String NODE_AGENT_MIGRATE_SUCCESS = "ybp_nodeagent_bg_migrate_success_count";
+
+  // Counters.
+  private static final Counter NODE_AGENT_INSTALL_RUN_COUNT =
+      Counter.build(NODE_AGENT_INSTALL_RUN, "Number of background node agent installation runs")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_NAME.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName())
+          .register(CollectorRegistry.defaultRegistry);
+  private static Counter NODE_AGENT_INSTALL_FAILURE_COUNT =
+      Counter.build(
+              NODE_AGENT_INSTALL_FAILURE, "Number of failed background node agent installations")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_NAME.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName())
+          .register(CollectorRegistry.defaultRegistry);
+  private static Counter NODE_AGENT_INSTALL_SUCCESS_COUNT =
+      Counter.build(
+              NODE_AGENT_INSTALL_SUCCESS,
+              "Number of successful background node agent installations")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_NAME.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName())
+          .register(CollectorRegistry.defaultRegistry);
+  private static Counter NODE_AGENT_MIGRATE_FAILURE_COUNT =
+      Counter.build(NODE_AGENT_MIGRATE_FAILURE, "Number of failed background node agent migrations")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_NAME.labelName())
+          .register(CollectorRegistry.defaultRegistry);
+  private static Counter NODE_AGENT_MIGRATE_SUCCESS_COUNT =
+      Counter.build(
+              NODE_AGENT_MIGRATE_SUCCESS, "Number of successful background node agent migrations")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_NAME.labelName())
+          .register(CollectorRegistry.defaultRegistry);
 
   private final RuntimeConfGetter confGetter;
   private final PlatformExecutorFactory platformExecutorFactory;
@@ -652,6 +706,13 @@ public class NodeAgentEnabler {
                 node -> {
                   try {
                     String nodeIp = node.cloudInfo.private_ip;
+                    NODE_AGENT_INSTALL_RUN_COUNT
+                        .labels(
+                            getCustomerUuid().toString(),
+                            getUniverseUuid().toString(),
+                            getUniverseName(),
+                            nodeIp)
+                        .inc();
                     Optional<NodeAgent> nodeAgentOpt = NodeAgent.maybeGetByIp(nodeIp);
                     if (!nodeAgentOpt.isPresent()) {
                       return nodeAgentInstaller.install(getCustomerUuid(), getUniverseUuid(), node);
@@ -752,8 +813,9 @@ public class NodeAgentEnabler {
             futures.entrySet().stream()
                 .allMatch(
                     entry -> {
+                      boolean installSucceeded = false;
                       try {
-                        return entry.getValue().get(5, TimeUnit.SECONDS);
+                        installSucceeded = entry.getValue().get(5, TimeUnit.SECONDS);
                       } catch (Exception e) {
                         log.error(
                             "Error in getting the execution result for IP {} in universe {} - {}",
@@ -761,19 +823,49 @@ public class NodeAgentEnabler {
                             getUniverseUuid(),
                             e.getMessage());
                       }
-                      return false;
+                      if (installSucceeded) {
+                        NODE_AGENT_INSTALL_SUCCESS_COUNT
+                            .labels(
+                                getCustomerUuid().toString(),
+                                getUniverseUuid().toString(),
+                                getUniverseName(),
+                                entry.getKey())
+                            .inc();
+                      } else {
+                        NODE_AGENT_INSTALL_FAILURE_COUNT
+                            .labels(
+                                getCustomerUuid().toString(),
+                                getUniverseUuid().toString(),
+                                getUniverseName(),
+                                entry.getKey())
+                            .inc();
+                      }
+                      return installSucceeded;
                     });
         // Clear on normal exit.
         futures.clear();
         if (allSucceeded) {
+          boolean migrateSucceeded = false;
           try {
-            return nodeAgentInstaller.migrate(getCustomerUuid(), getUniverseUuid());
+            migrateSucceeded = nodeAgentInstaller.migrate(getCustomerUuid(), getUniverseUuid());
           } catch (Exception e) {
             log.error(
                 "Error in migrating to node agent for universe {} - {}",
                 getUniverseUuid(),
                 e.getMessage());
           }
+          if (migrateSucceeded) {
+            NODE_AGENT_MIGRATE_SUCCESS_COUNT
+                .labels(
+                    getCustomerUuid().toString(), getUniverseUuid().toString(), getUniverseName())
+                .inc();
+          } else {
+            NODE_AGENT_MIGRATE_FAILURE_COUNT
+                .labels(
+                    getCustomerUuid().toString(), getUniverseUuid().toString(), getUniverseName())
+                .inc();
+          }
+          return migrateSucceeded;
         }
       } catch (InterruptedException e) {
         log.error(
