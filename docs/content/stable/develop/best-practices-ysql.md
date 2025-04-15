@@ -186,6 +186,10 @@ Set up different pools with different load balancing policies as needed for your
 For more information, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
 {{</lead>}}
 
+### DDLs and connection pools
+
+Note that, in some special cases, connection pools may trigger unexpected errors while running a sequence of DDL operations. Due to the distributed nature of YugabyteDB, it may take a while for the result of a DDL to fully propagate to all caches on all nodes in the cluster. In rare cases, a DDL that runs on a postgres connection right away after a previous DDL statement completed running on a different postgres connection may see errors such as `duplicate key value violates unique constraint "pg_attribute_relid_attnum_index"`, as described [here](https://github.com/yugabyte/yugabyte-db/issues/12449). It is recommended to use a single connection while running a sequence of DDL operations as is common with application migration scripts with tools such as Flyway or Active Record Migrations.
+
 ## Use YSQL Connection Manager
 
 YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/ea idea="1368">}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
@@ -246,7 +250,7 @@ YSQL also supports JSONB expression indexes, which can be used to speed up data 
 
 {{< /note >}}
 
-## Paralleling across tablets
+## Parallelizing across tablets
 
 For large or batch SELECT or DELETE that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
 
