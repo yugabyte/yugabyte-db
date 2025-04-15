@@ -244,17 +244,24 @@ If topology keys are specified, and `fallback-to-topology-keys-only` is true, no
 {{% /tab %}}
 {{</tabpane >}}
 
-### Multiple Cluster Connection
+### Connect to multiple clusters
 
-For deployments involving multiple YugabyteDB clusters, smart drivers support seamless load balancing of connections on each of the clusters from a single client application. By specifying multiple JDBC URLs, the driver intelligently distributes traffic based on the connection url:
+For deployments where a single client application needs to connect to more than one YugabyteDB cluster (for example, xCluster or two completely independent clusters), the smart driver can connect to multiple clusters while keeping connections balanced in each connected cluster. The smart driver identifies the cluster from the URL used to connect, and ensures load in the cluster is evenly balanced. You don't need to specify any additional properties.
+
+For example:
 
 ```java
-url1 = "jdbc:yugabytedb://127.0.0.1:5433/database_name?load-balance=true&yb-servers-refresh-interval=30";
-url2 = "jdbc:yugabytedb://127.0.0.10:5433/database_name?load-balance=true&yb-servers-refresh-interval=30";
+String url1Cluster1 = "jdbc:yugabytedb://<host-in-cluster1>:5433/database_name?load-balance=true";
+String url1Cluster2 = "jdbc:yugabytedb://<host-in-cluster2>:5433/database_name?load-balance=only-primary&topology-keys=aws.us-east-1.*";
+
+String url2Cluster1 = "jdbc:yugabytedb://<another-host-in-cluster1>:5433/database_name?load-balance=true";
 ```
 
-This capability is supported in YugabyteDB versions 2024.1.6.0, 2024.2.3.0, and 2.25.2.0. You may include at most one cluster that is not on one of these supported versions.  
-Currently, this multi-cluster load balancing feature is available only in the Java (JDBC) smart driver.
+The application can make connections using any of the URLs, and the driver will ensure the connection to the least loaded server in the respective cluster.
+
+Multi-cluster is supported in YugabyteDB v2024.1.6.0, v2024.2.3.0, and v2.25.2.0. You can also include a _maximum of one_ URL for a cluster running an older (unsupported) version of YugabyteDB.
+
+Currently, multi-cluster load balancing is available only in the Java (JDBC) smart driver (v42.7.3-yb-4 or later).
 
 ## Connection pooling
 
