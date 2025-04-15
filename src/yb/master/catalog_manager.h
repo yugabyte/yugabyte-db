@@ -2568,6 +2568,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UDTypeMap& type_map,
       const LeaderEpoch& epoch,
       bool is_clone,
+      bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data);
   Status ImportSnapshotCreateAndWaitForTables(
       const SnapshotInfoPB& snapshot_pb,
@@ -2575,12 +2576,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UDTypeMap& type_map,
       const LeaderEpoch& epoch,
       bool is_clone,
+      bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data,
       CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(
-      const SnapshotInfoPB& snapshot_pb,
+      const SnapshotInfoPB& snapshot_pb, bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data);
-  void ImportSnapshotRemoveInvalidIndexes(ExternalTableSnapshotDataMap* tables_data);
+  // Removes base and index tables that are invalid from the map. This includes DocDB tables that
+  // are uncommitted in pg layer.
+  void ImportSnapshotRemoveInvalidTables(
+      bool use_relfilenode, ExternalTableSnapshotDataMap* tables_data);
 
   void DeleteNewUDtype(
       const UDTypeId& udt_id, const std::unordered_set<UDTypeId>& type_ids_to_delete);
@@ -2618,20 +2623,26 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ImportTableEntry(
       const NamespaceMap& namespace_map,
       const UDTypeMap& type_map,
-      const ExternalTableSnapshotDataMap& table_map,
+      const LeaderEpoch& epoch,
+      bool is_clone,
+      bool use_relfilenode,
+      ExternalTableSnapshotDataMap* table_map,
+      ExternalTableSnapshotData* table_data);
+  // Get the restore target table id and add it to table_data by using the backup source table id
+  // and name. Returns a bool whether the table is a colocated parent table. Used in ycql backups
+  // or older ysql backups formats where relfilenode is not preserved.
+  Result<bool> ImportTableEntryByName(
+      const NamespaceId& new_namespace_id,
+      const UDTypeMap& type_map,
+      ExternalTableSnapshotDataMap* table_map,
       const LeaderEpoch& epoch,
       bool is_clone,
       ExternalTableSnapshotData* table_data);
-
   // Construct the colocation parent table id at restore side in case of the legacy 'colocated'
   // database at backup side. This code can be deprecated once restoring old backups of legacy
   // 'colocated' DBs is not supported.
   Result<TableId> GetRestoreTargetParentTableForLegacyColocatedDb(
       const NamespaceId& restore_target_namespace_id);
-  // Construct the tablegroup id at restore side (in case of colocation or tablegroups)
-  Result<TableId> GetRestoreTargetTablegroupId(
-      const NamespaceId& restore_target_namespace_id, const TableId& backup_source_tablegroup_id);
-
   // Update the colocated user table info to point to the new parent tablet. Add the colocated table
   // to the in-memory vector of table_ids_ of the parent tablet as the tablet is recreated in clone
   // and doesn't have table ids.
@@ -2639,7 +2650,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
       const LeaderEpoch& epoch);
   Status PreprocessTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
-  Status ImportTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
+  Status ImportTabletEntry(
+      const SysRowEntry& entry, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map);
 
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, CollectFlags flags);
