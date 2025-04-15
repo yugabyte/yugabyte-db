@@ -114,9 +114,9 @@ You can add the following configuration flags while starting the [YB-Master](../
 
 To configure diagnostic collection for universes created using YugabyteDB Anywhere, refer to [Configure health check](../../yugabyte-platform/alerts-monitoring/set-up-alerts-health-check/#configure-health-check).
 
-| Flag | Default | Description |
-|:-----|:--------|:----------- |
-| `--callhome_collection_level` | `medium` | Collection level with possible values of `low`, `medium`, or `high`. |
-| `--callhome_interval_secs` | 3600 | Collection interval in seconds. |
-| `--callhome_url` | `https://diagnostics.yugabyte.com` | Endpoint where diagnostics information is reported. |
-| `--callhome_enabled` | `true` | Controls whether diagnostics information is collected and reported. Set to `false` to disable collection. |
+| <div style="width:250px">Flag</div> | Description |
+| :--- | :---------- |
+| `--callhome_collection_level` |  Collection level with possible values of `low`, `medium`, or `high`. Default is medium. |
+| `--callhome_interval_secs` | Collection interval in seconds. Default is 3600. |
+| `--callhome_url` | Endpoint where diagnostics information is reported. Default is `https://diagnostics.yugabyte.com`. |
+| `--callhome_enabled` | Controls whether diagnostics information is collected and reported. Set to `false` to disable collection. Default is true. |
