@@ -353,6 +353,10 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_expression_pushdown, true,
 DEFINE_NON_RUNTIME_bool(enable_pg_anonymizer, false,
     "Enables creation of the the PostgreSQL Anonymizer extension.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
+    "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
+    "upgrade. For example, IN, ANY, ALL.");
+
 DECLARE_bool(enable_pg_cron);
 
 DEFINE_RUNTIME_PG_FLAG(

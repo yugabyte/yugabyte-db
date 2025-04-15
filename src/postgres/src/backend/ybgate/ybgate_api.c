@@ -512,10 +512,12 @@ YbgExprContextAddColValue(YbgExprContext expr_ctx,
 }
 
 YbgStatus
-YbgPrepareExpr(char *expr_cstring, YbgPreparedExpr *expr)
+YbgPrepareExpr(char *expr_cstring, YbgPreparedExpr *expr,
+			   int yb_expression_version)
 {
 	PG_SETUP_ERROR_REPORTING();
-	*expr = (YbgPreparedExpr) stringToNode(expr_cstring);
+	*expr = (YbgPreparedExpr) ybDeserializeNode(expr_cstring,
+													yb_expression_version);
 	PG_STATUS_OK();
 }
 

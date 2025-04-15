@@ -122,3 +122,5 @@ bool yb_extension_upgrade = false;
 bool yb_mixed_mode_expression_pushdown = true;
 
 bool yb_debug_log_catcache_events = false;
+
+bool yb_mixed_mode_saop_pushdown = false;

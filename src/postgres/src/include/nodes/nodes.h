@@ -677,6 +677,10 @@ extern int *readIntCols(int numCols);
 extern Oid *readOidCols(int numCols);
 extern int16 *readAttrNumberCols(int numCols);
 
+/* YB expression pushdown */
+extern char *ybSerializeNode(const void *obj);
+extern void *ybDeserializeNode(const char *str, int yb_expression_version);
+
 /*
  * nodes/copyfuncs.c
  */

@@ -851,6 +851,10 @@ void* YBCPgGetThreadLocalStrTokPtr();
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
 
+int YBCPgGetThreadLocalYbExpressionVersion();
+
+void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version);
+
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
 
 void* YBCPgGetThreadLocalJumpBuffer();

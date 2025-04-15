@@ -2365,6 +2365,14 @@ void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   PgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
 }
 
+int YBCPgGetThreadLocalYbExpressionVersion() {
+  return PgGetThreadLocalYbExpressionVersion();
+}
+
+void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
+  PgSetThreadLocalYbExpressionVersion(yb_expr_version);
+}
+
 YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
   return PgGetThreadLocalRegexpCache();
 }

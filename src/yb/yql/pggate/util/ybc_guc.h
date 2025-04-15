@@ -273,6 +273,8 @@ extern bool yb_extension_upgrade;
 
 extern bool yb_mixed_mode_expression_pushdown;
 
+extern bool yb_mixed_mode_saop_pushdown;
+
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,
