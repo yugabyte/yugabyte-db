@@ -1344,7 +1344,7 @@ extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 
 extern bool YbInvalidationMessagesTableExists();
 
-extern bool yb_is_calling_internal_function_for_ddl;
+extern bool yb_is_calling_internal_sql_for_ddl;
 
 extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 

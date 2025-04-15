@@ -1015,7 +1015,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 			break;
 	}
 
-	if (!yb_is_calling_internal_function_for_ddl)
+	if (!yb_is_calling_internal_sql_for_ddl)
 		is_statement_executed = true;
 
 	/*

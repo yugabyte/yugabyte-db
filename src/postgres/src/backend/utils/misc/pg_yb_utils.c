@@ -6476,7 +6476,7 @@ YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 	 * tserver. Used in time-traveling queries as they might read old data
 	 * with old catalog version.
 	 */
-	if (yb_disable_catalog_version_check || yb_is_calling_internal_function_for_ddl)
+	if (yb_disable_catalog_version_check || yb_is_calling_internal_sql_for_ddl)
 		return;
 	HandleYBStatus(YBIsDBCatalogVersionMode()
 				   ? YBCPgSetDBCatalogCacheVersion(handle, MyDatabaseId, version)
@@ -7378,7 +7378,7 @@ YbInvalidationMessagesTableExists()
 	return cached_invalidation_messages_table_exists;
 }
 
-bool yb_is_calling_internal_function_for_ddl = false;
+bool yb_is_calling_internal_sql_for_ddl = false;
 
 char *
 YbGetPotentiallyHiddenOidText(Oid oid)
