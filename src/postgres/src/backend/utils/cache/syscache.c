@@ -1138,6 +1138,7 @@ static const char *yb_cache_table_name_table[] = {
 	"pg_type",
 	"pg_user_mapping",
 	"pg_yb_tablegroup",
+	"pg_inherits"
 };
 
 static_assert(YbNumCatalogCacheTables ==
@@ -1321,9 +1322,17 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	                                          0  /* nkeys */,
 	                                          NULL /* key */);
 
+	size_t		scanned = 0;
+	instr_time	start;
+
+	if (yb_debug_log_catcache_events)
+		INSTR_TIME_SET_CURRENT(start);
+
 	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
 	{
+		scanned++;
 		SetCatCacheTuple(cache, ntp, RelationGetDescr(relation));
+
 		if (idx_cache)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
@@ -1468,6 +1477,18 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		foreach (lc, list_of_lists)
 			SetCatCacheList(dest_cache, 1, lfirst(lc));
 		list_free_deep(list_of_lists);
+	}
+
+	if (yb_debug_log_catcache_events)
+	{
+		instr_time	duration;
+
+		INSTR_TIME_SET_CURRENT(duration);
+		INSTR_TIME_SUBTRACT(duration, start);
+		elog(LOG, "YbPreloadCatalogCache: %ld entries added for "
+			 "cache id %d, index oid %d (relation %s), took %ld us",
+			 scanned, cache->id, cache->cc_indexoid, cache->cc_relname,
+			 INSTR_TIME_GET_MICROSEC(duration));
 	}
 
 	/* Done: mark cache(s) as loaded. */

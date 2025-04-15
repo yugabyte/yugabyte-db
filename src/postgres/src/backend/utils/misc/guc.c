@@ -97,6 +97,7 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 #include "pg_yb_utils.h"
+#include "utils/syscache.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
@@ -172,7 +173,10 @@ static bool check_wal_consistency_checking(char **newval, void **extra,
 static void assign_wal_consistency_checking(const char *newval, void *extra);
 
 static bool check_default_replica_identity(char **newval, void **extra,
-							   GucSource source);
+										   GucSource source);
+static bool yb_check_neg_catcache_ids(char **newval, void **extra,
+									  GucSource source);
+static void yb_set_neg_catcache_ids(const char *newval, void *extra);
 
 #ifdef HAVE_SYSLOG
 static int	syslog_facility = LOG_LOCAL0;
@@ -603,6 +607,7 @@ static bool assert_enabled;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
+static char *yb_neg_catcache_ids_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -5444,6 +5449,18 @@ static struct config_string ConfigureNamesString[] =
 		&yb_default_replica_identity,
 		"CHANGE",
 		check_default_replica_identity, NULL, NULL
+	},
+	{
+		{"yb_neg_catcache_ids", PGC_SUSET, RESOURCES_MEM,
+			gettext_noop("Comma separated list of additional sys cache ids"
+						 " that are allowed to be negatively cached."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_neg_catcache_ids_string,
+		"",
+		yb_check_neg_catcache_ids,
+		yb_set_neg_catcache_ids, NULL
 	},
 
 	/* End-of-list marker */
@@ -13276,5 +13293,71 @@ assign_tcmalloc_sample_period(int newval, void *extra)
 	YBCSetTCMallocSamplingPeriod(newval);
 }
 
+static List *
+yb_neg_catcache_ids_to_list(const char *cache_ids_str)
+{
+	char	   *rawstring = pstrdup(cache_ids_str);
+	List	   *elemlist = NIL;
+
+	if (!SplitIdentifierString(rawstring, ',', &elemlist) ||
+		list_length(elemlist) == 0)
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("Expecting a comma separated string of syscache ids.");
+		list_free(elemlist);
+		pfree(rawstring);
+		return NIL;
+	}
+
+	List	   *neg_cache_ids_list = NIL;
+	ListCell   *l;
+
+	foreach(l, elemlist)
+	{
+		char	   *endptr;
+		long		cache_id = strtol((char *) lfirst(l), &endptr, 10);
+
+		if (*endptr != '\0' || cache_id < 0 || cache_id > SysCacheSize)
+		{
+			GUC_check_errdetail("Expecting a comma separated string of syscache ids.");
+			list_free(elemlist);
+			pfree(rawstring);
+			list_free(neg_cache_ids_list);
+			return NIL;
+		}
+		neg_cache_ids_list = lappend_int(neg_cache_ids_list, cache_id);
+	}
+	list_free(elemlist);
+	pfree(rawstring);
+	return neg_cache_ids_list;
+}
+
+static bool
+yb_check_neg_catcache_ids(char **newval, void **extra, GucSource source)
+{
+	if (newval == NULL || *newval == NULL || strlen(*newval) == 0)
+		return true;
+	List	   *neg_cache_ids_list = yb_neg_catcache_ids_to_list(*newval);
+
+	if (neg_cache_ids_list == NIL)
+		return false;
+	list_free(neg_cache_ids_list);
+	return true;
+}
+
+static void
+yb_set_neg_catcache_ids(const char *newval, void *extra)
+{
+	if (newval == NULL || strlen(newval) == 0)
+		YbSetAdditionalNegCacheIds(NIL);
+
+	List	   *neg_cache_ids_list = yb_neg_catcache_ids_to_list(newval);
+
+	if (neg_cache_ids_list != NIL)
+	{
+		YbSetAdditionalNegCacheIds(neg_cache_ids_list);
+		list_free(neg_cache_ids_list);
+	}
+}
 
 #include "guc-file.c"

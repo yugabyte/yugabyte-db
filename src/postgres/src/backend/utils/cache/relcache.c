@@ -1552,6 +1552,8 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		state->has_partitioned_tables |= relation->rd_rel->relkind ==
 										 RELKIND_PARTITIONED_TABLE;
 	}
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Inserted %d entries into relcache", num_tuples);
 
 	systable_endscan(scandesc);
 	heap_close(pg_class_desc, AccessShareLock);
@@ -2648,6 +2650,9 @@ static YBCStatus
 YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 						  YbRunWithPrefetcherContext *ctx)
 {
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Updating relcache");
+
 	YBLoadRelations(state);
 
 	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
@@ -3011,6 +3016,10 @@ YbPrefetchRequiredData(bool preload_rel_cache)
 static Relation
 RelationBuildDesc(Oid targetRelId, bool insertIt)
 {
+	instr_time	start;
+
+	if (yb_debug_log_catcache_events)
+		INSTR_TIME_SET_CURRENT(start);
 	Relation	relation;
 	Oid			relid;
 	HeapTuple	pg_class_tuple;
@@ -3182,6 +3191,17 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 
 	/* It's fully valid */
 	relation->rd_isvalid = true;
+
+	if (yb_debug_log_catcache_events && insertIt)
+	{
+		instr_time	duration;
+
+		INSTR_TIME_SET_CURRENT(duration);
+		INSTR_TIME_SUBTRACT(duration, start);
+		elog(LOG, "Rebuilding relcache entry for %s (oid %d) took %ld us",
+			 RelationGetRelationName(relation), RelationGetRelid(relation),
+			 INSTR_TIME_GET_MICROSEC(duration));
+	}
 
 	return relation;
 }
@@ -8105,6 +8125,9 @@ load_relcache_init_file(bool shared)
 		else
 			RelationCacheInsert(rels[relno], false);
 	}
+
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Loaded %d entries from relcache init file", num_rels);
 
 	pfree(rels);
 	FreeFile(fp);

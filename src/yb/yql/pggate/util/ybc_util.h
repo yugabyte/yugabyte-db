@@ -222,6 +222,8 @@ extern bool yb_refresh_matview_in_place;
 
 extern int yb_major_version_upgrade_compatibility;
 
+extern bool yb_debug_log_catcache_events;
+
 /*
  * Ease transition to YSQL by reducing read restart errors for new apps.
  *

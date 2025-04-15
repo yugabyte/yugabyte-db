@@ -38,9 +38,12 @@
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/resowner_private.h"
+#include "utils/syscache.h"
 #include "utils/yb_inheritscache.h"
 
 static HTAB *YbPgInheritsCache;
+
+static bool fully_loaded = false;
 
 static void
 FindChildren(Oid parentOid, List **childTuples)
@@ -226,6 +229,7 @@ void
 YbPreloadPgInheritsCache()
 {
 	Assert(YbPgInheritsCache);
+	elog(yb_debug_log_catcache_events ? LOG : DEBUG3, "YbPgInheritsCache: preload started.");
 	Relation relation = heap_open(InheritsRelationId, AccessShareLock);
 	HeapTuple	inheritsTuple;
 
@@ -259,6 +263,12 @@ YbPreloadPgInheritsCache()
 	}
 	systable_endscan(scan);
 	heap_close(relation, AccessShareLock);
+
+	fully_loaded = true;
+
+	elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
+		 "YbPgInheritsCache: preload complete. Parent cache has %ld entries",
+		 hash_get_num_entries(YbPgInheritsCache));
 }
 
 YbPgInheritsCacheEntry
@@ -270,10 +280,23 @@ GetYbPgInheritsCacheEntry(Oid parentOid)
 		YbPgInheritsCache, (void *)&parentOid, HASH_ENTER, &found);
 	if (!found)
 	{
-		elog(DEBUG3, "YbPgInheritsCache miss for parent %d", parentOid);
-		entry->parentOid = parentOid;
-		FindChildren(parentOid, &entry->childTuples);
 		entry->refcount = 1;
+		entry->parentOid = parentOid;
+		entry->childTuples = NIL;
+
+		/* If we are fully loaded, we don't need to attempt a lookup */
+		if (fully_loaded)
+		{
+			elog(DEBUG3, "YbPgInheritsCacheByParent neg hit for parentOid %d", parentOid);
+		}
+		else
+		{
+			elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
+					"YbPgInheritsCacheByParent miss for parent %d", parentOid);
+			YbNumCatalogCacheMisses++;
+			YbNumCatalogCacheTableMisses[YbAdhocCacheTable_pg_inherits]++;	
+			FindChildren(parentOid, &entry->childTuples);
+		}
 	}
 	else
 	{
@@ -306,6 +329,18 @@ GetYbPgInheritsChildCacheEntry(Oid relid)
 			return result;
 		}
 	}
+
+	// No parent has relid in its child entries
+	if (fully_loaded)
+	{
+		elog(yb_debug_log_catcache_events ? LOG : DEBUG3, 
+			"YbPgInheritsCacheByChild neg hit for oid %d", relid);
+		return NULL; 
+	} 
+	YbNumCatalogCacheMisses++;
+	YbNumCatalogCacheTableMisses[YbAdhocCacheTable_pg_inherits]++;
+	elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
+			"YbPgInheritsCacheByChild miss for oid %d", relid);
 	return GetYbChildCacheEntryMiss(relid);
 }
 
@@ -345,6 +380,8 @@ YbPgInheritsCacheDelete(YbPgInheritsCacheEntry entry)
 void
 YbPgInheritsCacheInvalidate(Oid relid)
 {
+	fully_loaded = false;
+
 	HASH_SEQ_STATUS status;
 	YbPgInheritsCacheEntry entry;
 

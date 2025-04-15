@@ -205,6 +205,8 @@ extern int yb_major_version_upgrade_compatibility;
 
 extern bool yb_mixed_mode_expression_pushdown;
 
+extern bool yb_debug_log_catcache_events;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

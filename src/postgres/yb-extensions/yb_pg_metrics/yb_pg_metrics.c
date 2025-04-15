@@ -191,7 +191,8 @@ typedef enum statementType
   CatCacheTableMisses_44,
   CatCacheTableMisses_45,
   CatCacheTableMisses_46,
-  CatCacheTableMisses_End = CatCacheTableMisses_46,
+  CatCacheTableMisses_47,
+  CatCacheTableMisses_End = CatCacheTableMisses_47,
   kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;

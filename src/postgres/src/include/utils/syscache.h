@@ -164,10 +164,15 @@ typedef enum YbCatalogCacheTable
 	YbCatalogCacheTable_pg_ts_template,
 	YbCatalogCacheTable_pg_type,
 	YbCatalogCacheTable_pg_user_mapping,
-	YbCatalogCacheTable_pg_yb_tablegroup
+	YbCatalogCacheTable_pg_yb_tablegroup,
+	YbAdhocCacheTable_pg_inherits
 
-#define YbNumCatalogCacheTables (YbCatalogCacheTable_pg_yb_tablegroup + 1)
+#define YbNumCatalogCacheTables (YbAdhocCacheTable_pg_inherits + 1)
 } YbCatalogCacheTable;
+
+
+extern long YbNumCatalogCacheMisses;
+extern long YbNumCatalogCacheTableMisses[];
 
 /* Used in IsYugaByteEnabled() mode only */
 extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
@@ -236,6 +241,8 @@ extern void SysCacheInvalidate(int cacheId, uint32 hashValue);
 extern bool RelationInvalidatesSnapshotsOnly(Oid relid);
 extern bool RelationHasSysCache(Oid relid);
 extern bool RelationSupportsSysCache(Oid relid);
+
+extern void YbSetAdditionalNegCacheIds(List *neg_cache_ids);
 
 /*
  * The use of the macros below rather than direct calls to the corresponding

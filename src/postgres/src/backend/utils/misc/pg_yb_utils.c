@@ -1470,8 +1470,6 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 
 bool yb_debug_report_error_stacktrace = false;
 
-bool yb_debug_log_catcache_events = false;
-
 bool yb_debug_log_internal_restarts = false;
 
 bool yb_test_system_catalogs_creation = false;
