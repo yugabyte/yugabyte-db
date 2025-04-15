@@ -174,11 +174,7 @@ To use the driver, do the following:
   Connection conn = ds.getConnection();
   ```
 
-### Multiple cluster connection:
-
-The YugabyteDB JDBC driver also supports connection load balancing on multiple cluster from single client application.
-
-For more information, see [Multiple Cluster Conection](../../smart-drivers/#multiple-cluster-connection)
+The driver also supports connection load balancing for multiple clusters from a single client application. For more information, refer to [Multiple Cluster Connection](../../smart-drivers/#multiple-cluster-connection)
 
 ## Try it out
 
