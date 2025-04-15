@@ -3,7 +3,7 @@ title: Administer YugabyteDB Anywhere
 headerTitle: Administer YugabyteDB Anywhere
 linkTitle: Administer
 description: Administer YugabyteDB Anywhere
-headcontent:
+headcontent: Manage your YugabyteDB Anywhere installation
 aliases:
   - /preview/yugabyte-platform/administer-yp
 menu:
@@ -13,6 +13,8 @@ menu:
     weight: 690
 type: indexpage
 ---
+
+For information on configuring alerts, health checks, and diagnostics reporting for universes ("call home"), refer to [Configure health check](../alerts-monitoring/set-up-alerts-health-check/#configure-health-check).
 
 {{<index/block>}}
 
