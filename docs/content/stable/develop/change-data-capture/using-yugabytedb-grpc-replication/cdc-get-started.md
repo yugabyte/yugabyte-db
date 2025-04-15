@@ -32,11 +32,11 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
     If CDC lags or is away for some time, the disk usage may grow and cause instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. For more information, see [Important configuration settings](#important-configuration-settings).
 
-## Deploying the YugabyteDB gRPC Connector
+## Deploy the YugabyteDB gRPC Connector
 
 To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
 
-- Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+- Download the Connector. You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases).
 - Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
 - Configure the Connector: Modify the connector configuration to suit your specific requirements.
 - Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
