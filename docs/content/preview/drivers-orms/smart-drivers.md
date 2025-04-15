@@ -44,7 +44,7 @@ YugabyteDB smart drivers have the following key features.
 | [Node type aware](#node-type-aware-load-balancing) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
 | [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
 | [Configurable&nbsp;refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
-| [Multi-cluster](#multiple-cluster-connection) | Connect to multiple clusters from a single client application. |
+| [Multi-cluster](#connect-to-multiple-clusters) | Connect to multiple clusters from a single client application. |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
