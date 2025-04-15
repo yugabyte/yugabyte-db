@@ -1,7 +1,7 @@
 ---
 title: How to get started with YugabyteDB
 headerTitle: Resource guide
-linkTitle: Guide to resources
+linkTitle: Resource guide
 description: Find resources for getting started with YugabyteDB.
 headcontent: Learn more about YugabyteDB with blogs, videos, and more
 menu:
@@ -148,7 +148,7 @@ Find resources for getting started, migrating existing databases, using your dat
   >}}
 
   {{< sections/3-box-card
-    title="Video Playlist"
+    title="Videos"
     linkText1="Database Migration using YugabyteDB Voyager"
     linkUrl1="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR"
   >}}
