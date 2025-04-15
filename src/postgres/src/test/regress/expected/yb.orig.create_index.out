@@ -1505,6 +1505,7 @@ DROP TABLE test_stats;
 -- for a newly attached partition.
 CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a)
     SPLIT AT VALUES ((5), (10)); -- split options are ignored.
+WARNING:  split options on a partitioned table will be ignored
 CREATE TABLE test_part_1 PARTITION OF test_part FOR VALUES FROM (1) TO (5);
 SELECT yb_get_range_split_clause('test_part_1'::regclass);
  yb_get_range_split_clause 
