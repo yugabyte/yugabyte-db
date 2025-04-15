@@ -15,6 +15,7 @@
 // This file contains flag definitions that should be known to master, tserver, and pggate
 // (linked into postgres).
 
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
@@ -116,9 +117,10 @@ DEFINE_UNKNOWN_bool(ysql_serializable_isolation_for_ddl_txn, false,
             "By default, repeatable read isolation is used. "
             "This flag should go away once full transactional DDL is implemented.");
 
-DEFINE_UNKNOWN_int32(ysql_select_parallelism, -1,
-            "Number of read requests to issue in parallel to tablets of a table "
-            "for SELECT.");
+DEFINE_RUNTIME_int32(ysql_select_parallelism, -1,
+    "Number of read requests to issue in parallel to tablets of a table for SELECT."
+    "Positive values will be used as is. -1 will use max(16, tserver_count * 2).");
+DEFINE_validator(ysql_select_parallelism, FLAG_NE_VALUE_VALIDATOR(0));
 
 DEFINE_UNKNOWN_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
