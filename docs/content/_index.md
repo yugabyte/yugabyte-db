@@ -57,7 +57,7 @@ YugabyteDB is a high-performance distributed SQL database for powering global, i
     title="Deploy"
     description="Explore YugabyteDB's flexible multi-region deployment topologies."
     buttonText="Deploy"
-    buttonUrl="/preview/explore/multi-region-deployments/"
+    buttonUrl="/preview/deploy/"
     imageAlt="Topologies"
     imageUrl="/icons/cloud.svg"
   >}}
@@ -89,7 +89,7 @@ YugabyteDB is a high-performance distributed SQL database for powering global, i
 
   {{< sections/3-box-card
     title="Resource guide"
-    linkText1="Introducing YugabyteDB"
+    linkText1="Distributed SQL 101"
     linkUrl1="preview/reference/get-started-guide/#introducing-yugabytedb/"
     linkText2="Scale a Single-Server Database"
     linkUrl2="https://www.yugabyte.com/postgresql/distributed-postgresql/"

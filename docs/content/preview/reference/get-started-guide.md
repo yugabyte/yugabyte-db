@@ -3,7 +3,7 @@ title: How to get started with YugabyteDB
 headerTitle: Resource guide
 linkTitle: Guide to resources
 description: Find resources for getting started with YugabyteDB.
-headcontent: Find resources for getting started with YugabyteDB
+headcontent: Learn more about YugabyteDB with blogs, videos, and more
 menu:
   preview:
     identifier: get-started-guide
@@ -56,8 +56,6 @@ Find resources for getting started, migrating existing databases, using your dat
 
   {{< sections/3-box-card
     title="Videos"
-    linkText1="Introducing YugabyteDB"
-    linkUrl1="https://www.youtube.com/watch?v=j24p07Frw00"
     linkText2="Global Applications with YugabyteDB"
     linkUrl2="https://www.youtube.com/watch?v=jqZxUydBaMQ"
     linkText3="Architecting Highly Available and Resilient Systems of Record"
@@ -107,7 +105,7 @@ Find resources for getting started, migrating existing databases, using your dat
 : Real world use cases for streaming data with YugabyteDB.
 
 **Video**: [Architecting a Highly Available and Resilient Systems of Record](https://www.youtube.com/watch?v=34n6QSa-_Pc)
-: Learn how YugabyteDB can be deployed as a system of record and integrates into the broader data ecosystem. -->
+: Learn how YugabyteDB can be deployed as a system of record and integrates into the broader data ecosystem. 
 
 ### Features and architecture
 
@@ -136,9 +134,28 @@ Find resources for getting started, migrating existing databases, using your dat
 
 **Article**: [Get started using Docker](https://github.com/FranckPachot/yugabyted-Compose)
 : Use Docker compose to start YugabyteDB with yugabyted.
+-->
 
 ## Migrate
 
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Blogs"
+    linkText1="Simplify Database Migration"
+    linkUrl1="https://www.yugabyte.com/blog/simplify-database-migration-voyager/"
+    linkText2="How to Overcome the Tough Challenges"
+    linkUrl2="https://www.yugabyte.com/blog/improve-postgresql/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Video Playlist"
+    linkText1="Database Migration using YugabyteDB Voyager"
+    linkUrl1="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR"
+  >}}
+
+{{< /sections/3-boxes >}}
+
+<!--
 **Playlist**: [Database Migration using YugabyteDB Voyager](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJuqQ2ZH1cnL1yxVEi9swwR)
 : Learn how you can migrate databases to YugabyteDB quickly and securely.
 
@@ -150,6 +167,7 @@ Find resources for getting started, migrating existing databases, using your dat
 
 **Blog**: [Improving PostgreSQL: How to Overcome the Tough Challenges with YugabyteDB](https://www.yugabyte.com/blog/improve-postgresql/)
 : Problem areas in PostgreSQL and how to resolve them in YugabyteDB.
+-->
 
 ## Database operations
 
