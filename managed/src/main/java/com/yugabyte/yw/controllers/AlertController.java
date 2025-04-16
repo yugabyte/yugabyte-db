@@ -60,7 +60,6 @@ import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
-import io.swagger.annotations.*;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -1220,8 +1219,7 @@ public class AlertController extends AuthenticatedController {
         definition.generateUUID();
         definition.setLabels(
             MetricLabelsBuilder.create()
-                .appendCustomer(customer)
-                .appendSource(getOrCreateUniverseForTestAlert(customer))
+                .fromUniverse(customer, getOrCreateUniverseForTestAlert(customer))
                 .getDefinitionLabels());
       } else {
         throw new PlatformServiceException(
