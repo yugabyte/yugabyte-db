@@ -131,6 +131,7 @@ UPDATE pg_index SET indisready = TRUE, indisvalid = TRUE, indislive = TRUE WHERE
 :force_cache_refresh
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
 ERROR:  index is missing some rows: expected 2005, actual 2004
+DETAIL:  index: 'abcd_b_c_d_idx'
 DELETE FROM abcd WHERE a = 2005; -- Reset
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
