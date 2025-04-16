@@ -2,16 +2,12 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.MetricFilter;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.prometheus.client.Collector;
 import io.prometheus.client.Collector.MetricFamilySamples;
@@ -22,10 +18,8 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStreamWriter;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -33,6 +27,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
+import kamon.Kamon;
+import kamon.module.Module;
+import kamon.prometheus.PrometheusReporter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.mvc.Controller;
@@ -43,10 +40,6 @@ import play.mvc.Results;
 @Slf4j
 public class MetricsController extends Controller {
 
-  private static final String KAMON_EMBEDDED_SERVER_HOST =
-      "kamon.prometheus.embedded-server.hostname";
-  private static final String KAMON_EMBEDDED_SERVER_PORT = "kamon.prometheus.embedded-server.port";
-
   @Inject
   public MetricsController(AppInit appInit) {
     // Bind AppInit so that the metrics are not published before the app initialisation completes.
@@ -55,11 +48,9 @@ public class MetricsController extends Controller {
 
   @Inject private MetricService metricService;
 
-  @Inject ApiHelper apiHelper;
-
-  @Inject Config config;
-
-  private Date lastKamonErrorPrinted = null;
+  private PrometheusReporter reporter =
+      new PrometheusReporter(PrometheusReporter.DefaultConfigPath(), Kamon.config());
+  private Module.Registration registry = Kamon.addReporter("YBA Metrics Reporter", reporter);
 
   @ApiOperation(
       notes = "Available since YBA version 2.8.0.0.",
@@ -85,19 +76,7 @@ public class MetricsController extends Controller {
   }
 
   private String getKamonMetrics() {
-    try {
-      String host = config.getString(KAMON_EMBEDDED_SERVER_HOST);
-      int port = config.getInt(KAMON_EMBEDDED_SERVER_PORT);
-      String url = "http://" + host + ":" + port + "/metrics";
-      return apiHelper.getBody(url);
-    } catch (Exception e) {
-      if (lastKamonErrorPrinted == null
-          || lastKamonErrorPrinted.before(CommonUtils.nowMinus(1, ChronoUnit.HOURS))) {
-        log.error("Failed to retrieve Kamon metrics", e);
-        lastKamonErrorPrinted = new Date();
-      }
-    }
-    return StringUtils.EMPTY;
+    return reporter.scrapeData();
   }
 
   private List<Collector.MetricFamilySamples> getPrecalculatedMetrics() {
@@ -139,10 +118,6 @@ public class MetricsController extends Controller {
   private Collector.MetricFamilySamples.Sample convert(Metric metric) {
     List<String> labelNames = new ArrayList<>(metric.getLabels().keySet());
     List<String> labelValues = new ArrayList<>(metric.getLabels().values());
-    if (metric.getCustomerUUID() != null) {
-      labelNames.add(KnownAlertLabels.CUSTOMER_UUID.labelName());
-      labelValues.add(metric.getCustomerUUID().toString());
-    }
     return new Collector.MetricFamilySamples.Sample(
         metric.getName(), labelNames, labelValues, metric.getValue());
   }
