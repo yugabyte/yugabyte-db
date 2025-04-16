@@ -355,6 +355,14 @@ DEFINE_NON_RUNTIME_bool(enable_pg_anonymizer, false,
 
 DECLARE_bool(enable_pg_cron);
 
+DEFINE_RUNTIME_PG_FLAG(
+    bool, yb_query_diagnostics_disable_database_connection_bgworker, false,
+    "Disables the background worker that establishes a database connection for query diagnostics. "
+    "If set to true, any diagnostics data requiring SPI or query execution will not be available.");
+
+TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, advanced);
+TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, hidden);
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;

@@ -3329,6 +3329,19 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_query_diagnostics_disable_database_connection_bgworker", PGC_SIGHUP, STATS_MONITORING,
+			gettext_noop("This disables creating extra bgworker "
+						 "which creates database connection for query diagnostics. "
+						 "If this is set to true, ASH and schema details are not dumped"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_query_diagnostics_disable_database_connection_bgworker,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

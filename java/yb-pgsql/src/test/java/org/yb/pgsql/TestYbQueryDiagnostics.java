@@ -2168,4 +2168,68 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
         }
     }
+
+    /*
+     * This test verifies the proper functioning of
+     * yb_query_diagnostics_disable_database_connection_bgworker flag
+     */
+    @Test
+    public void testDisablingDatabaseConnectionBgworker() throws Exception {
+        setUpQueryDiagnostics();
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            printQueryOutput(statement,
+                "SHOW yb_query_diagnostics_disable_database_connection_bgworker");
+
+            String queryid = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+
+            // This prevents us from "no query executed" warning
+            statement.execute("EXECUTE stmt('var1', 1, 1.1)");
+
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
+
+            assertTrue("schema_details file does not exist", Files.exists(schemaDetailsPath));
+            assertGreaterThan("schema_details.txt file is empty",
+                    Files.size(schemaDetailsPath), 0L);
+        }
+
+        setUpQueryDiagnostics(Collections.singletonMap(
+            "ysql_yb_query_diagnostics_disable_database_connection_bgworker", "true"));
+
+        try(Statement statement = connection.createStatement()) {
+            printQueryOutput(statement,
+                "SHOW yb_query_diagnostics_disable_database_connection_bgworker");
+
+            String queryid = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+
+            // This prevents us from "no query executed" warning
+            statement.execute("EXECUTE stmt('var1', 1, 1.1)");
+
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+
+            /*
+             * Sleep to ensure that non-existence of schema details file is not because
+             * database connection bgworker did exist but didn't finish, we want to test for
+             * database connection bgworker didn't exist.
+             */
+            Thread.sleep(10000);
+
+            Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
+
+            assertFalse("schema_details file should not exist", Files.exists(schemaDetailsPath));
+        }
+    }
 }
