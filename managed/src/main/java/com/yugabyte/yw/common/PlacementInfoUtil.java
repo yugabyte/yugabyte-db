@@ -552,7 +552,7 @@ public class PlacementInfoUtil {
       return true;
     }
     if (clusterOpType == UniverseConfigureTaskParams.ClusterOperationType.EDIT) {
-      Cluster currentCluster = universe.getUniverseDetails().getPrimaryCluster();
+      Cluster currentCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
       DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       DeviceInfo currentDeviceInfo = currentCluster.userIntent.getDeviceInfoForNode(node);
       if (!Objects.equals(newDeviceInfo, currentDeviceInfo) && newDeviceInfo != null) {
