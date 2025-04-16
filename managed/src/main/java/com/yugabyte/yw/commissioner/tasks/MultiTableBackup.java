@@ -87,8 +87,10 @@ public class MultiTableBackup extends UniverseTaskBase {
     tableBackupParams.ignoreErrors = true;
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
+    Customer customer = Customer.get(universe.getCustomerId());
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
-    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
+    MetricLabelsBuilder metricLabelsBuilder =
+        MetricLabelsBuilder.create().fromUniverse(customer, universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
@@ -449,7 +451,8 @@ public class MultiTableBackup extends UniverseTaskBase {
       schedule.stopSchedule();
       return;
     }
-    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
+    MetricLabelsBuilder metricLabelsBuilder =
+        MetricLabelsBuilder.create().fromUniverse(customer, universe);
     SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     Map<String, String> config = universe.getConfig();
     boolean shouldTakeBackup =
