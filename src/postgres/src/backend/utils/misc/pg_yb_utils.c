@@ -2498,7 +2498,7 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 			yb_switch_fallthrough();
 		case YB_DDL_MODE_BREAKING_CHANGE:
 			yb_switch_fallthrough();
-		case YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT:
+		case YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT:
 			return mode;
 	}
 	Assert(false);
@@ -3049,7 +3049,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	bool		is_version_increment = true;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
-	bool		is_online_schema_change = false;
+	bool		should_run_in_autonomous_transaction = false;
+	bool		is_top_level = (context == PROCESS_UTILITY_TOPLEVEL);
 
 	Node	   *parsetree = GetActualStmtNode(pstmt);
 	NodeTag		node_tag = nodeTag(parsetree);
@@ -3528,7 +3529,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 					is_altering_existing_data = true;
 				}
 				is_breaking_change = false;
-				is_online_schema_change = stmt->concurrent != YB_CONCURRENCY_DISABLED;
+				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level);
 				break;
 			}
 
@@ -3627,9 +3628,12 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 
 	if (!is_ddl)
 	{
-		/* Only clear up the DDL state if DDL, DML unification is disabled. */
+		/*
+		 * Only clear up the DDL state if the previous statement used a separate
+		 * DDL transaction.
+		 */
 		if (ddl_transaction_state.nesting_level == 0 &&
-			!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+			!ddl_transaction_state.use_regular_txn_block)
 		{
 			/*
 			 * Free up the altered_table_ids list separately which is allocated
@@ -3682,9 +3686,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	if (is_breaking_change)
 		aspects |= YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 
+	/*
+	 * TODO(#3109): SysCatalogModificationAspect doesn't seem to be the
+	 * appropriate place to return whether a statement should run as autonomous
+	 * transaction.
+	 * Find a better place to return this.
+	 */
 	if (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
-		is_online_schema_change)
-		aspects |= YB_SYS_CAT_MOD_ASPECT_ONLINE_SCHEMA_CHANGE;
+		should_run_in_autonomous_transaction)
+		aspects |= YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE;
 
 	return (YbDdlModeOptional)
 	{
@@ -3773,12 +3783,13 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	const bool	is_ddl = ddl_mode.has_value;
 	/*
 	 * Start a separate DDL transaction if
-	 * FLAGS_TEST_yb_ddl_transaction_block_enabled is false or if this
-	 * is an online schema change operation.
+	 * - FLAGS_TEST_yb_ddl_transaction_block_enabled is false or
+	 * - If we were asked to by YbGetDdlMode. Currently, only done for
+	 * CREATE INDEX outside of explicit transaction block.
 	 */
 	const bool use_separate_ddl_transaction =
 		is_ddl &&
-		(ddl_mode.value == YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT ||
+		(ddl_mode.value == YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT ||
 		 !*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
 
 	PG_TRY();
