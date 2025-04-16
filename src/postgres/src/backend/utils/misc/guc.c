@@ -2783,6 +2783,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_mixed_mode_saop_pushdown", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enable pushdown of scalar array operation expressions "
+						 "in mixed mode of a YSQL Major version upgrade. For "
+						 "example, IN, ANY, ALL."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_mixed_mode_saop_pushdown,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_extended_sql_codes", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Allow to return to the client SQL status codes "
 						 "defined by YugabyteDB (YBxxx). Those codes are used "

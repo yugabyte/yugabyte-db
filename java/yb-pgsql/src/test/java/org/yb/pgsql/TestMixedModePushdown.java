@@ -184,6 +184,10 @@ public class TestMixedModePushdown extends BasePgSQLTest {
       this(expr, behaviour, null);
     }
 
+    boolean isSaopExpression() {
+      return expr.contains("ANY") || expr.contains("ALL");
+    }
+
     String getExpectedError() {
       if (behaviour == Behaviour.kOperatorError) {
         return "No operator matches the given name and argument types";
@@ -207,12 +211,18 @@ public class TestMixedModePushdown extends BasePgSQLTest {
     }
   }
 
+  private void SetMixedModeSaopPushdown(String value) throws Exception {
+    Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+    for (HostAndPort tServer : tServers) {
+      LOG.info(String.format("Setting saop pushdown to %s for %s", value, tServer));
+      setServerFlag(tServer, "ysql_yb_mixed_mode_saop_pushdown", value);
+    }
+  }
+
   private void TestPushdowns(String prefix, List<Expression> expressions) throws Exception {
-    SetCompatibilityMode("0");
-    CheckExprs(prefix, expressions, false);
-    SetCompatibilityMode("11");
-    CheckExprs(prefix, expressions, true);
-    SetCompatibilityMode("0");
+    SetMixedModeSaopPushdown("true");
+    CheckExprs(prefix, expressions, "0");
+    CheckExprs(prefix, expressions, "11");
   }
 
   /* CheckFailure
@@ -250,13 +260,14 @@ public class TestMixedModePushdown extends BasePgSQLTest {
     );
   }
 
-  private void CheckExprs(String prefix, List<Expression> exprs, boolean compatibility)
-    throws SQLException {
+  private void CheckExprs(String prefix, List<Expression> exprs, String compatibility)
+      throws Exception {
+    SetCompatibilityMode(compatibility);
     for (Expression expr : exprs) {
       if (expr.behaviour == Behaviour.kNotPushable) {
         CheckFilters(prefix, kLocalFilter, expr);
       } else if (expr.behaviour == Behaviour.kPushable) {
-        if (compatibility)
+        if (compatibility == "11")
           CheckFilters(prefix, kLocalFilter, expr);
         else
           CheckFilters(prefix, kStorageFilter, expr);
@@ -265,6 +276,17 @@ public class TestMixedModePushdown extends BasePgSQLTest {
       } else {
         CheckFailure(prefix, expr);
       }
+    }
+
+    if (compatibility == "11") {
+      /* Retry any SAOP expressions with SAOP pushdown disabled */
+      SetMixedModeSaopPushdown("false");
+      for (Expression expr : exprs) {
+        if (expr.isSaopExpression()) {
+          CheckFilters(prefix, kLocalFilter, expr);
+        }
+      }
+      SetMixedModeSaopPushdown("true");
     }
   }
 
@@ -518,6 +540,24 @@ public class TestMixedModePushdown extends BasePgSQLTest {
   }
 
   @Test
+  public void TestScalarArrayOpExprs() throws Exception {
+    List<Expression> exprs = Arrays.asList(
+      String.format("(%s = ANY ('{1,2}'::integer[]))", kInt4Column),
+      String.format("(%s <> ALL ('{1,2}'::text[]))", kTextColumn),
+      String.format("((%s = ANY ('{1,2}'::integer[])) AND (%s = ANY ('{1,2}'::text[])))",
+                        kInt4Column, kTextColumn),
+      String.format("((%s = ANY ('{1,2}'::integer[])) OR (%s = ANY ('{1,2}'::text[])))",
+                        kInt4Column, kTextColumn),
+      String.format("(%s ~~ ANY ('{1%%,2%%}'::text[]))", kTextColumn)
+    ).stream().map(e -> new Expression(e, Behaviour.kMMPushable)).collect(Collectors.toList());
+
+    TestPushdowns(
+      String.format("EXPLAIN %s SELECT * FROM %s WHERE", kExplainArgs, kTableName),
+      exprs
+    );
+  }
+
+  @Test
   public void TestTableFilters() throws Exception {
     List<Expression> exprs = CreateExpressions();
 
@@ -528,7 +568,6 @@ public class TestMixedModePushdown extends BasePgSQLTest {
     for (String expr : Arrays.asList(
       String.format("((%s <-> '(1,1)'::point) < '1'::double precision)", kPointColumn),
       String.format("CASE WHEN (%s = 1) THEN true ELSE false END", kInt4Column),
-      String.format("(%s = ANY ('{1,2,3,4}'::integer[]))", kInt4Column),
       String.format("(%s = '1'::name)", kNameColumn)
     )) {
       exprs.add(new Expression(expr, Behaviour.kPushable));
@@ -614,8 +653,7 @@ public class TestMixedModePushdown extends BasePgSQLTest {
 
     for (String condition : Arrays.asList(
       String.format("((%s <-> '(1,1)'::point) < '1'::double precision)", kPointColumn),
-      String.format("CASE WHEN (%s = 1) THEN true ELSE false END", kInt4Column),
-      String.format("(%s = ANY ('{1,2,3,4}'::integer[]))", kInt4Column)
+      String.format("CASE WHEN (%s = 1) THEN true ELSE false END", kInt4Column)
     )) {
       exprs.add(new Expression(condition, Behaviour.kPushable));
     }

@@ -207,6 +207,8 @@ extern bool yb_mixed_mode_expression_pushdown;
 
 extern bool yb_debug_log_catcache_events;
 
+extern bool yb_mixed_mode_saop_pushdown;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

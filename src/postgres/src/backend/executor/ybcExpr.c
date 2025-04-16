@@ -430,7 +430,10 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 
 			/* ScalarArrayOpExprs changed serialization in PG15. */
 			if (yb_major_version_upgrade_compatibility == 11)
-				return true;
+			{
+				if (!yb_mixed_mode_saop_pushdown)
+					return true;
+			}
 			else if (yb_major_version_upgrade_compatibility > 0)
 				/* YB_UPGRADE: Handle this case for each new PG version. */
 				Assert(false);
