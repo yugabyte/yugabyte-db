@@ -1,7 +1,7 @@
 import logging
 import sys
 import argparse
-import importlib.metadata
+import pkg_resources
 import os
 import yaml
 import pprint
@@ -57,9 +57,9 @@ def load_json_or_file(json_or_path):
 
 
 def log_installed_packages(logger):
-    installed_packages = importlib.metadata.distributions()
+    installed_packages = pkg_resources.working_set
     for package in installed_packages:
-        logger.info("%s -- %s", package.metadata["Name"], package.version)
+        logger.info("%s -- %s", package.project_name, package.version)
 
 
 def main():

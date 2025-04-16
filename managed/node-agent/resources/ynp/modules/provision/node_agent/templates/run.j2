@@ -193,11 +193,12 @@ airgap_flag=""
 {% endif %}
 
 installer_dir="{{ yb_home_dir }}/.install"
-su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
--u {{ url }} -t {{ api_key }} --provider_id $provider_id \
---instance_type {{ instance_type_name }} --zone_name {{ provider_region_zone_name }} \
---node_name {{ node_name }} --region_name {{ provider_region_name }} --node_ip {{ node_external_fqdn }} \
---bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag"
+su - {{ yb_user }} -c "export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) \
+    && \"$installer_dir/node-agent-installer.sh\" -c install \
+    -u {{ url }} -t {{ api_key }} --provider_id $provider_id \
+    --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
+    --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
+    --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag"
 
 if [ $? -eq 0 ]; then
   echo "Node agent installation successful"
@@ -206,9 +207,10 @@ else
   exit 1
 fi
 
+loginctl enable-linger {{ yb_user }}
 # install node_agent service
-"$installer_dir/node-agent-installer.sh" -c install_service --user {{ yb_user }}
-
+su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install_service \
+     --user {{ yb_user }}"
 if [ $? -eq 0 ]; then
   echo "Node agent service installation successful"
 else

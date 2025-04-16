@@ -324,10 +324,12 @@ install_systemd_service() {
     USER_SCOPED_UNIT="true"
     SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
   fi
-  if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
-    modify_selinux
+  if [ "$USER_SCOPED_UNIT" = "false" ]; then
+     if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
+       modify_selinux
+     fi
+     modify_firewall
   fi
-  modify_firewall
   echo "* Installing Node Agent Systemd Service"
   # Define the path to the service file.
   SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
@@ -352,7 +354,7 @@ install_systemd_service() {
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
 
   [Install]
-  WantedBy=multi-user.target
+  WantedBy=default.target
 EOF
   else
     tee "$SERVICE_FILE_PATH" <<-EOF
@@ -370,7 +372,7 @@ EOF
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
 
   [Install]
-  WantedBy=multi-user.target
+  WantedBy=default.target
 EOF
   # Set the permissions after file creation. This is needed so that the service file
   # is executable during restart of systemd unit.

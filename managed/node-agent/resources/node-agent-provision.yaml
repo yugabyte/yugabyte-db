@@ -34,8 +34,7 @@ yba:
     cores: cores
     memory_size: size
     volume_size: size
-    mount_points:
-    - /mnt/d1
+    mount_points: []
 
 logging:
   level: INFO
