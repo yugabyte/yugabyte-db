@@ -665,7 +665,8 @@ yb_index_check_internal(Oid indexoid)
 		ereport(ERROR,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
 				 errmsg("index is missing some rows: expected %ld, actual %ld",
-						expected_index_rowcount, actual_index_rowcount)));
+						expected_index_rowcount, actual_index_rowcount),
+				 errdetail(IndRelDetail(indexrel))));
 
 	RelationClose(indexrel);
 	RelationClose(baserel);
