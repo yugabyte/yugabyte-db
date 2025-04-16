@@ -63,8 +63,12 @@
 #define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 3
 
 /* Network transfer cost */
-#define YB_DEFAULT_LOCAL_LATENCY_COST 10.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 800.0
+#define YB_DEFAULT_LOCAL_ROUNDTRIP_COST 20.0
+#define YB_DEFAULT_LOCAL_TRANSFER_COST 800.0
+#define YB_DEFAULT_INTER_REGION_ROUNDTRIP_COST (2 * YB_DEFAULT_LOCAL_ROUNDTRIP_COST)
+#define YB_DEFAULT_INTER_REGION_TRANSFER_COST (2 * YB_DEFAULT_LOCAL_TRANSFER_COST)
+#define YB_DEFAULT_INTER_ZONE_ROUNDTRIP_COST (1.1 * YB_DEFAULT_LOCAL_ROUNDTRIP_COST)
+#define YB_DEFAULT_INTER_ZONE_TRANSFER_COST (1.1 * YB_DEFAULT_LOCAL_TRANSFER_COST)
 
 /*
  * TODO : Since we cannot currently estimate the number of key value pairs per
@@ -112,8 +116,12 @@ extern PGDLLIMPORT double yb_random_block_cost;
 extern PGDLLIMPORT int yb_docdb_merge_cpu_cycles;
 extern PGDLLIMPORT int yb_docdb_remote_filter_overhead_cycles;
 extern PGDLLIMPORT double yb_docdb_next_cpu_cycles;
-extern PGDLLIMPORT double yb_local_latency_cost;
-extern PGDLLIMPORT double yb_local_throughput_cost;
+extern PGDLLIMPORT double yb_inter_region_roundtrip_cost;
+extern PGDLLIMPORT double yb_inter_region_transfer_cost;
+extern PGDLLIMPORT double yb_inter_zone_roundtrip_cost;
+extern PGDLLIMPORT double yb_inter_zone_transfer_cost;
+extern PGDLLIMPORT double yb_local_roundtrip_cost;
+extern PGDLLIMPORT double yb_local_transfer_cost;
 extern PGDLLIMPORT double yb_seek_cost_factor;
 
 extern PGDLLIMPORT double cpu_tuple_cost;
