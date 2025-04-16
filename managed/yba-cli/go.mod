@@ -12,7 +12,8 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.16.0
 	github.com/t-tomalak/logrus-easy-formatter v0.0.0-20190827215021-c074f06c5816
-	github.com/yugabyte/platform-go-client v0.0.0-20250404043431-39c3c967b34b
+	github.com/yugabyte/platform-go-client v0.0.0-20250416093707-04af1404a665
+	github.com/yugabyte/platform-go-client/v2 v2.0.0-20250416093707-04af1404a665
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/term v0.28.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -23,7 +24,6 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
-	github.com/yugabyte/platform-go-client/v2 v2.0.0-20250404081139-19d498961fe0 // indirect
 )
 
 require (
