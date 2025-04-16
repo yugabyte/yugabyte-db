@@ -334,7 +334,7 @@ public class AlertManager {
           log.warn(String.format("Channel %s skipped: %s", channel.getUuid(), e.getMessage()), e);
         }
         perChannelStatus.put(channel.getName(), "Misconfigured alert channel");
-        handleChannelSendError(channel, report);
+        handleChannelSendError(customer, channel, report);
         continue;
       }
 
@@ -347,19 +347,19 @@ public class AlertManager {
         handler.sendNotification(customer, tempAlert, channel, channelTemplates);
         atLeastOneSucceeded = true;
         perChannelStatus.put(channel.getName(), "Alert sent successfully");
-        setOkChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel);
+        setOkChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, customer, channel);
       } catch (PlatformServiceException e) {
         if (report.failuresByChannel(channel.getUuid()) == 0) {
           log.error(e.getMessage(), e);
         }
         perChannelStatus.put(channel.getName(), e.getMessage());
-        handleChannelSendError(channel, report);
+        handleChannelSendError(customer, channel, report);
       } catch (Exception e) {
         if (report.failuresByChannel(channel.getUuid()) == 0) {
           log.error(e.getMessage(), e);
         }
         perChannelStatus.put(channel.getName(), "Error sending notification: " + e.getMessage());
-        handleChannelSendError(channel, report);
+        handleChannelSendError(customer, channel, report);
       }
     }
 
@@ -374,23 +374,27 @@ public class AlertManager {
         : new SendNotificationResult(SendNotificationStatus.FAILED_TO_RESCHEDULE, resultMessage);
   }
 
-  private void handleChannelSendError(AlertChannel channel, AlertNotificationReport report) {
+  private void handleChannelSendError(
+      Customer customer, AlertChannel channel, AlertNotificationReport report) {
     report.failChannel(channel.getUuid());
-    setChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel, false);
+    setChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, customer, channel, false);
   }
 
   @VisibleForTesting
-  void setOkChannelStatusMetric(PlatformMetrics metric, AlertChannel channel) {
-    setChannelStatusMetric(metric, channel, true);
+  void setOkChannelStatusMetric(PlatformMetrics metric, Customer customer, AlertChannel channel) {
+    setChannelStatusMetric(metric, customer, channel, true);
   }
 
   @VisibleForTesting
-  void setChannelStatusMetric(PlatformMetrics metric, AlertChannel channel, boolean isSuccess) {
-    Metric statusMetric = buildMetricTemplate(metric, channel).setValue(isSuccess ? 1.0 : 0.0);
+  void setChannelStatusMetric(
+      PlatformMetrics metric, Customer customer, AlertChannel channel, boolean isSuccess) {
+    Metric statusMetric =
+        buildMetricTemplate(metric, customer, channel).setValue(isSuccess ? 1.0 : 0.0);
     metricService.save(statusMetric);
   }
 
-  private Metric buildMetricTemplate(PlatformMetrics metric, AlertChannel channel) {
+  private Metric buildMetricTemplate(
+      PlatformMetrics metric, Customer customer, AlertChannel channel) {
     return new Metric()
         .setExpireTime(
             nowPlusWithoutMillis(MetricService.DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
@@ -398,7 +402,7 @@ public class AlertManager {
         .setType(Metric.Type.GAUGE)
         .setName(metric.getMetricName())
         .setSourceUuid(channel.getUuid())
-        .setLabels(MetricLabelsBuilder.create().appendSource(channel).getMetricLabels());
+        .setLabels(MetricLabelsBuilder.create().fromChannel(customer, channel).getMetricLabels());
   }
 
   @Value
