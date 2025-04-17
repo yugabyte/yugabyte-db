@@ -616,9 +616,6 @@ extern int	StatementTimeout;
 /* Add stacktrace information to every YSQL error. */
 extern bool yb_debug_report_error_stacktrace;
 
-/* Log cache misses and cache refresh events. */
-extern bool yb_debug_log_catcache_events;
-
 /*
  * Log automatic statement (or transaction) restarts such as read-restarts and
  * schema-version restarts (e.g. catalog version mismatch errors).
@@ -768,7 +765,7 @@ extern bool yb_enable_docdb_vector_type;
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 
-extern bool yb_skip_data_insert_for_table_rewrite;
+extern bool yb_skip_data_insert_for_xcluster_target;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -1347,7 +1344,7 @@ extern bool YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists);
 
 extern bool YbInvalidationMessagesTableExists();
 
-extern bool yb_is_calling_internal_function_for_ddl;
+extern bool yb_is_calling_internal_sql_for_ddl;
 
 extern char *YbGetPotentiallyHiddenOidText(Oid oid);
 

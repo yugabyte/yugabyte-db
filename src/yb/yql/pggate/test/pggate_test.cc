@@ -362,6 +362,10 @@ static_assert(static_cast<int>(PersistentDataType::VECTOR) ==
                   static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_VECTOR),
               "DataType::VECTOR does not match YbcPgDataType::VECTOR");
 
+static_assert(static_cast<int>(PersistentDataType::BSON) ==
+                  static_cast<int>(YbcPgDataType::YB_YQL_DATA_TYPE_BSON),
+              "DataType::BSON does not match YbcPgDataType::BSON");
+
 // End of data type enum consistency checking
 // ------------------------------------------------------------------------------------------------
 

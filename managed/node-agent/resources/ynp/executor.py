@@ -14,6 +14,7 @@ class Executor:
         if not command_class:
             raise ValueError(f"Unsupported command: {self.args.command}")
         command_instance = command_class(self.config)
+
         # Need to validate only in case of onprem nodes.
         if self.args.extra_vars is None:
             command_instance.validate()
@@ -23,4 +24,4 @@ class Executor:
         elif self.args.preflight_check:
             command_instance.run_preflight_checks()
         else:
-            command_instance.execute()
+            command_instance.execute(self.args.specific_module)

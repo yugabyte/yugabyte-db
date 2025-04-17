@@ -303,7 +303,7 @@ TEST_F(PggateTestSequence, TestSequenceFetchMisc) {
                                  1, 150, false /* limits, cycle */,
                                  &fetch_first_val, &fetch_last_val);
   EXPECT_EQ(YBCStatusPgsqlError(fail),
-            to_underlying(YBPgErrorCode::YB_PG_SEQUENCE_GENERATOR_LIMIT_EXCEEDED));
+            std::to_underlying(YBPgErrorCode::YB_PG_SEQUENCE_GENERATOR_LIMIT_EXCEEDED));
   YBCFreeStatus(fail);
 
   CHECK_YBC_STATUS(FetchSequence(100 /* fetch_count */, 1 /* inc_by */,
@@ -328,7 +328,7 @@ TEST_F(PggateTestSequence, TestSequenceFetchMisc) {
                        1, 150, false /* limits, cycle */,
                        &fetch_first_val, &fetch_last_val);
   EXPECT_EQ(YBCStatusPgsqlError(fail),
-            to_underlying(YBPgErrorCode::YB_PG_SEQUENCE_GENERATOR_LIMIT_EXCEEDED));
+            std::to_underlying(YBPgErrorCode::YB_PG_SEQUENCE_GENERATOR_LIMIT_EXCEEDED));
   YBCFreeStatus(fail);
 
   CHECK_YBC_STATUS(FetchSequence(1 /* fetch_count */, 1 /* inc_by */,

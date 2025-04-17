@@ -508,9 +508,9 @@ DROP TABLE test_truncate;
 -- Test index methods
 CREATE TABLE test_method (k int PRIMARY KEY, v int);
 CREATE INDEX ON test_method USING btree (v);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 CREATE INDEX ON test_method USING hash (v);
-NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "hash" in YugabyteDB
 CREATE INDEX ON test_method USING foo (v);
 ERROR:  access method "foo" does not exist
 \d test_method

@@ -1406,7 +1406,7 @@ set enable_sort = true;
 -- btree
 drop index hidx;
 create index hidx on testhstore using btree (h);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 ERROR:  data type hstore has no default operator class for access method "lsm"
 HINT:  You must specify an operator class for the index or define a default operator class for the data type.
 set enable_seqscan=off;

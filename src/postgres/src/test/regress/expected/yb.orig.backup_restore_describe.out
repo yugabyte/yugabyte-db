@@ -26,3 +26,57 @@
  level1_1 |    | 1_1 |     | 1_1
 (2 rows)
 
+  typname  | enumlabel |  oid  | enumsortorder 
+-----------+-----------+-------+---------------
+ overflow  | A         | 16610 |             1
+ overflow  | B         | 16613 |           1.5
+ overflow  | C         | 16615 |          1.75
+ overflow  | D         | 16617 |         1.875
+ overflow  | E         | 16619 |        1.9375
+ overflow  | F         | 16621 |       1.96875
+ overflow  | G         | 16623 |      1.984375
+ overflow  | H         | 16625 |     1.9921875
+ overflow  | I         | 16627 |     1.9960938
+ overflow  | J         | 16629 |     1.9980469
+ overflow  | K         | 16631 |     1.9990234
+ overflow  | L         | 16633 |     1.9995117
+ overflow  | M         | 16635 |     1.9997559
+ overflow  | N         | 16637 |     1.9998779
+ overflow  | O         | 16639 |      1.999939
+ overflow  | P         | 16641 |     1.9999695
+ overflow  | Q         | 16643 |     1.9999847
+ overflow  | R         | 16645 |     1.9999924
+ overflow  | S         | 16647 |     1.9999962
+ overflow  | T         | 16649 |     1.9999981
+ overflow  | U         | 16651 |      1.999999
+ overflow  | V         | 16653 |     1.9999995
+ overflow  | W         | 16655 |     1.9999998
+ overflow  | X         | 16657 |     1.9999999
+ overflow  | Z         | 16612 |             2
+ underflow | A         | 16660 |             1
+ underflow | C         | 16707 |     1.0000001
+ underflow | D         | 16705 |     1.0000002
+ underflow | E         | 16703 |     1.0000005
+ underflow | F         | 16701 |      1.000001
+ underflow | G         | 16699 |     1.0000019
+ underflow | H         | 16697 |     1.0000038
+ underflow | I         | 16695 |     1.0000076
+ underflow | J         | 16693 |     1.0000153
+ underflow | K         | 16691 |     1.0000305
+ underflow | L         | 16689 |      1.000061
+ underflow | M         | 16687 |     1.0001221
+ underflow | N         | 16685 |     1.0002441
+ underflow | O         | 16683 |     1.0004883
+ underflow | P         | 16681 |     1.0009766
+ underflow | Q         | 16679 |     1.0019531
+ underflow | R         | 16677 |     1.0039062
+ underflow | S         | 16675 |     1.0078125
+ underflow | T         | 16673 |      1.015625
+ underflow | U         | 16671 |       1.03125
+ underflow | V         | 16669 |        1.0625
+ underflow | W         | 16667 |         1.125
+ underflow | X         | 16665 |          1.25
+ underflow | Y         | 16663 |           1.5
+ underflow | Z         | 16662 |             2
+(50 rows)
+

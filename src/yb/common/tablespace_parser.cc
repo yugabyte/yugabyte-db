@@ -19,18 +19,74 @@
 #include <rapidjson/document.h>
 
 #include "yb/gutil/strings/split.h"
+#include "yb/util/flags.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 
 using std::string;
 using std::vector;
 
+DEFINE_RUNTIME_bool(enable_tablespace_validation, true, "Whether to enable extended validation for "
+    "tablespaces. This can be set to false to allow ysql_dump to succeed when creating tablespaces "
+    "that were created before the checks.");
+
 namespace yb {
 
+// TODO(#26671): When we start using this for the yb-admin APIs as well, we should take into
+// account prefix placements (wildcards).
+// TODO(#12180): Support read replica validation.
+Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
+  // Only live replicas are validated right now.
+  const auto& live_replicas = replication_info.live_replicas();
+  if (live_replicas.num_replicas() <= 0) {
+    return STATUS_FORMAT(Corruption, "Invalid num_replicas: $0", live_replicas.num_replicas());
+  }
+
+  const auto& placements = live_replicas.placement_blocks();
+  if (placements.size() < 1) {
+    return STATUS_FORMAT(Corruption, "No placement blocks found in replication info.");
+  }
+
+  auto total_min_replicas = 0;
+  for (auto i = placements.begin(); i != placements.end(); ++i) {
+    if (i->min_num_replicas() <= 0) {
+      return STATUS_FORMAT(Corruption, "min_num_replicas ($0) must be > 0", i->min_num_replicas());
+    }
+    total_min_replicas += i->min_num_replicas();
+    // Check for duplicate placement blocks.
+    for (auto j = placements.begin(); j != i; ++j) {
+      if (pb_util::ArePBsEqual(i->cloud_info(), j->cloud_info(), nullptr /* diff_str */)) {
+        return STATUS_FORMAT(
+            Corruption, "Duplicate placement block found: $0", i->cloud_info().ShortDebugString());
+      }
+    }
+  }
+
+  if (total_min_replicas > live_replicas.num_replicas()) {
+    return STATUS_FORMAT(
+        Corruption,
+        "Sum of min_num_replicas fields ($0) exceeds the total replication factor "
+        "in the placement policy ($1)", total_min_replicas, live_replicas.num_replicas());
+  }
+
+  // Affinitized leader zones should be contiguous.
+  for (const auto& affinitized_leader : replication_info.multi_affinitized_leaders()) {
+    if (affinitized_leader.zones_size() == 0) {
+      return STATUS_FORMAT(
+          Corruption, "Empty affinitized leader zone set found in replication info "
+          "(leader preferences must be contiguous from 1..N): $0",
+          replication_info.ShortDebugString());
+    }
+  }
+
+  return Status::OK();
+}
+
 Result<ReplicationInfoPB> TablespaceParser::FromJson(
-    const string& placement_str, const rapidjson::Document& placement) {
+    const string& placement_str, const rapidjson::Document& placement,
+    bool fail_on_validation_error) {
   ReplicationInfoPB replication_info;
   PlacementInfoPB* live_placement_info = replication_info.mutable_live_replicas();
-  std::set<int> visited_priorities;
 
   if (!placement.IsObject()) {
     return STATUS_FORMAT(Corruption, "Invalid JSON object: $0. Expected object.", placement_str);
@@ -51,24 +107,9 @@ Result<ReplicationInfoPB> TablespaceParser::FromJson(
                          placement_str);
   }
   const rapidjson::Value& pb = placement["placement_blocks"];
-  if (pb.Size() < 1) {
-    return STATUS_FORMAT(Corruption,
-                         "\"placement_blocks\" field has empty value in the placement "
-                         "policy: $0", placement_str);
-  }
 
-  int64 total_min_replicas = 0;
   for (rapidjson::SizeType i = 0; i < pb.Size(); ++i) {
     const rapidjson::Value& placement = pb[i];
-    const std::unordered_set<string> allowed_keys =
-        {"cloud", "region", "zone", "min_num_replicas", "leader_preference"};
-    for (auto& item : placement.GetObject()) {
-      if (!allowed_keys.contains(item.name.GetString())) {
-        return STATUS_FORMAT(
-            Corruption, "Unexpected key ($0) in placement block. Placement policy: $1",
-            item.name.GetString(), placement_str);
-      }
-    }
     if (!placement.HasMember("cloud") || !placement.HasMember("region") ||
         !placement.HasMember("zone") || !placement.HasMember("min_num_replicas")) {
       return STATUS_FORMAT(
@@ -76,8 +117,7 @@ Result<ReplicationInfoPB> TablespaceParser::FromJson(
           "block. Placement policy: $0", placement_str);
     }
     if (!placement["cloud"].IsString() || !placement["region"].IsString() ||
-        !placement["zone"].IsString() || !placement["min_num_replicas"].IsInt() ||
-        placement["min_num_replicas"].GetInt() <= 0) {
+        !placement["zone"].IsString() || !placement["min_num_replicas"].IsInt()) {
       return STATUS_FORMAT(
           Corruption, "Invalid type/value for some key in placement block. Placement policy: $0",
           placement_str);
@@ -85,7 +125,6 @@ Result<ReplicationInfoPB> TablespaceParser::FromJson(
 
     auto* placement_block = live_placement_info->add_placement_blocks();
     placement_block->set_min_num_replicas(placement["min_num_replicas"].GetInt());
-    total_min_replicas += placement["min_num_replicas"].GetInt();
 
     auto* cloud_info = placement_block->mutable_cloud_info();
     cloud_info->set_placement_cloud(placement["cloud"].GetString());
@@ -101,8 +140,6 @@ Result<ReplicationInfoPB> TablespaceParser::FromJson(
       }
 
       const int priority = placement["leader_preference"].GetInt();
-      visited_priorities.insert(priority);
-
       while (replication_info.multi_affinitized_leaders_size() < priority) {
         replication_info.add_multi_affinitized_leaders();
       }
@@ -111,24 +148,19 @@ Result<ReplicationInfoPB> TablespaceParser::FromJson(
     }
   }
 
-  if (total_min_replicas > live_placement_info->num_replicas()) {
-    return STATUS_FORMAT(
-        Corruption,
-        "Sum of min_num_replicas fields exceeds the total replication factor "
-        "in the placement policy: $0",
-        placement_str);
+  auto status = ValidateReplicationInfo(replication_info);
+  if (fail_on_validation_error && FLAGS_enable_tablespace_validation) {
+    RETURN_NOT_OK(status);
+  } else {
+    if (!status.ok()) {
+      LOG(ERROR) << "Replication info validation failed: " << status;
+    }
   }
-
-  int size = static_cast<int>(visited_priorities.size());
-  if (size > 0 && (*(visited_priorities.rbegin()) != size)) {
-    return STATUS_FORMAT(
-        Corruption, "Values for leader_preference is non-contiguous in option: $0", placement_str);
-  }
-
   return replication_info;
 }
 
-Result<ReplicationInfoPB> TablespaceParser::FromString(const std::string& placement) {
+Result<ReplicationInfoPB> TablespaceParser::FromString(
+    const std::string& placement, bool fail_on_validation_error) {
   // Example value of placement:
   //   '{"num_replicas":3,
   //     "placement_blocks": [
@@ -142,11 +174,11 @@ Result<ReplicationInfoPB> TablespaceParser::FromString(const std::string& placem
     return STATUS_FORMAT(
         Corruption, "Json parsing of replica_placement option failed: $0", placement);
   }
-  return FromJson(placement, document);
+  return FromJson(placement, document, fail_on_validation_error);
 }
 
 Result<ReplicationInfoPB> TablespaceParser::FromQLValue(
-    const std::vector<std::string>& placements) {
+    const std::vector<std::string>& placements, bool fail_on_validation_error) {
   // Today, only one option is supported (replica_placement), so this array should have only one
   // option.
   if (placements.size() != 1) {

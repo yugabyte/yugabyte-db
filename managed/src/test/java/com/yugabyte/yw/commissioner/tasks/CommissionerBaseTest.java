@@ -87,6 +87,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -187,6 +188,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected ReleasesUtils mockReleasesUtils;
   protected NodeAgentManager mockNodeAgentManager;
   protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
+  protected GFlagsAuditHandler mockGFlagsAuditHandler;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -326,6 +328,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
     mockNodeAgentManager = mock(NodeAgentManager.class);
     mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
+    mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -369,6 +372,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(bind(NodeAgentManager.class).toInstance(mockNodeAgentManager))
                 .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
+                .overrides(bind(GFlagsAuditHandler.class).toInstance(mockGFlagsAuditHandler))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))

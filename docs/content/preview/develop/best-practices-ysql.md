@@ -66,7 +66,7 @@ For more details, see [Unique indexes](../../explore/ysql-language-features/inde
 
 Sequences in databases automatically generate incrementing numbers, perfect for generating unique values like order numbers, user IDs, check numbers, and so on. They prevent multiple application instances from concurrently generating duplicate values. However, generating sequences on a database that is spread across regions could have a latency impact on your applications.
 
-Enable [server-level caching](../../api/ysql/exprs/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
+Enable [server-level caching](../../api/ysql/exprs/sequence_functions/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
 
 {{<lead link="https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76">}}
 For a demo, see the YugabyteDB Friday Tech Talk on [Scaling sequences with server-level caching](https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76).

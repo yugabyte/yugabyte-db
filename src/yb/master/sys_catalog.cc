@@ -1126,8 +1126,11 @@ Result<std::pair<TablespaceId, boost::optional<ReplicationInfoPB>>> TryParseTabl
     auto placement_options = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
         options.value()));
 
-    // Fetch the status and print the tablespace option along with the status.
-    replication_info = VERIFY_RESULT(TablespaceParser::FromQLValue(placement_options));
+    // For upgrade safety, we only perform some basic checks here. This is because historical
+    // tablespaces may not pass all our new checks, and it is no automatic way to migrate them such
+    // that they do without knowing the user's intent.
+    replication_info = VERIFY_RESULT(TablespaceParser::FromQLValue(
+        placement_options, false /* fail_on_validation_error */));
   }
   return std::make_pair(tablespace_id, replication_info);
 }

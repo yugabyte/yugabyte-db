@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
@@ -13,10 +14,12 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
@@ -28,6 +31,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -687,6 +691,60 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             .get()
             .getErrorMessage(),
         containsString("AddMaster operation has not completed within PT30S"));
+  }
+
+  @Test
+  public void testCreateWrongMasterUniverseUUID_FAIL() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    UUID randomUUID = UUID.randomUUID();
+    localNodeManager.setAdditionalGFlags(
+        SpecificGFlags.construct(
+            Collections.singletonMap(GFlagsUtil.CLUSTER_UUID, randomUUID.toString()),
+            Collections.emptyMap()));
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    taskParams.expectedUniverseVersion = -1;
+    // CREATE
+    UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
+    TaskInfo taskInfo =
+        waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    String error = getAllErrorsStr(taskInfo);
+    assertThat(
+        error,
+        containsString(
+            String.format("for MASTER cluster_uuid gflag, found '%s'", randomUUID.toString())));
+  }
+
+  @Test
+  public void testCreateWrongTserverUniverseUUID_FAIL() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    UUID randomUUID = UUID.randomUUID();
+    localNodeManager.setAdditionalGFlags(
+        SpecificGFlags.construct(
+            Collections.emptyMap(),
+            Collections.singletonMap(GFlagsUtil.CLUSTER_UUID, randomUUID.toString())));
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    taskParams.expectedUniverseVersion = -1;
+    // CREATE
+    UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
+    TaskInfo taskInfo =
+        waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    String error = getAllErrorsStr(taskInfo);
+    assertThat(
+        error,
+        containsString(
+            String.format("for TSERVER cluster_uuid gflag, found '%s'", randomUUID.toString())));
   }
 
   private NodeDetails silentlyRemoveNode(Universe universe, boolean isMaster, boolean isTserver) {

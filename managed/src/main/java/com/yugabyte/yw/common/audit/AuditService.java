@@ -195,6 +195,14 @@ public class AuditService {
     MDC.remove("logType");
   }
 
+  public void updateAdditionalDetils(UUID taskUUID, JsonNode additionalDetails) {
+    Audit audit = Audit.getFromTaskUUID(taskUUID);
+    if (audit != null) {
+      audit.setAdditionalDetails(additionalDetails);
+      audit.save();
+    }
+  }
+
   public List<Audit> getAll(UUID customerUUID) {
     return Audit.getAll(customerUUID);
   }

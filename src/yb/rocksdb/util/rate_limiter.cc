@@ -80,12 +80,12 @@ GenericRateLimiter::~GenericRateLimiter() {
   stop_ = true;
   // TODO: create a convenience template for a fixed-size array indexed using an enum ?
   // https://github.com/yugabyte/yugabyte-db/issues/13399
-  requests_to_wait_ = static_cast<int32_t>(queue_[yb::to_underlying(IOPriority::kLow)].size() +
-                                           queue_[yb::to_underlying(IOPriority::kHigh)].size());
-  for (auto& r : queue_[yb::to_underlying(IOPriority::kHigh)]) {
+  requests_to_wait_ = static_cast<int32_t>(queue_[std::to_underlying(IOPriority::kLow)].size() +
+                                           queue_[std::to_underlying(IOPriority::kHigh)].size());
+  for (auto& r : queue_[std::to_underlying(IOPriority::kHigh)]) {
     YB_PROFILE(r->cv.Signal());
   }
-  for (auto& r : queue_[yb::to_underlying(IOPriority::kLow)]) {
+  for (auto& r : queue_[std::to_underlying(IOPriority::kLow)]) {
     YB_PROFILE(r->cv.Signal());
   }
   while (requests_to_wait_ > 0) {
@@ -129,7 +129,7 @@ void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {
 void GenericRateLimiter::RequestInternal(int64_t bytes, const yb::IOPriority priority) {
   assert(bytes <= refill_bytes_per_period_.load(std::memory_order_relaxed));
 
-  const auto pri = yb::to_underlying(priority);
+  const auto pri = std::to_underlying(priority);
   SCOPED_WAIT_STATUS(RocksDB_RateLimiter);
 
   MutexLock g(&request_mutex_);
@@ -179,10 +179,10 @@ void GenericRateLimiter::RequestInternal(int64_t bytes, const yb::IOPriority pri
     // (3) a previous waiter at the front of queue, who got notified by
     //     previous leader
     if (leader_ == nullptr &&
-        ((!queue_[yb::to_underlying(IOPriority::kHigh)].empty() &&
-            &r == queue_[yb::to_underlying(IOPriority::kHigh)].front()) ||
-         (!queue_[yb::to_underlying(IOPriority::kLow)].empty() &&
-            &r == queue_[yb::to_underlying(IOPriority::kLow)].front()))) {
+        ((!queue_[std::to_underlying(IOPriority::kHigh)].empty() &&
+            &r == queue_[std::to_underlying(IOPriority::kHigh)].front()) ||
+         (!queue_[std::to_underlying(IOPriority::kLow)].empty() &&
+            &r == queue_[std::to_underlying(IOPriority::kLow)].front()))) {
       leader_ = &r;
       timedout = r.cv.TimedWait(next_refill_us_);
     } else {
@@ -199,15 +199,15 @@ void GenericRateLimiter::RequestInternal(int64_t bytes, const yb::IOPriority pri
 
     // Make sure the waken up request is always the header of its queue
     assert(r.granted ||
-           (!queue_[yb::to_underlying(IOPriority::kHigh)].empty() &&
-            &r == queue_[yb::to_underlying(IOPriority::kHigh)].front()) ||
-           (!queue_[yb::to_underlying(IOPriority::kLow)].empty() &&
-            &r == queue_[yb::to_underlying(IOPriority::kLow)].front()));
+           (!queue_[std::to_underlying(IOPriority::kHigh)].empty() &&
+            &r == queue_[std::to_underlying(IOPriority::kHigh)].front()) ||
+           (!queue_[std::to_underlying(IOPriority::kLow)].empty() &&
+            &r == queue_[std::to_underlying(IOPriority::kLow)].front()));
     assert(leader_ == nullptr ||
-           (!queue_[yb::to_underlying(IOPriority::kHigh)].empty() &&
-            leader_ == queue_[yb::to_underlying(IOPriority::kHigh)].front()) ||
-           (!queue_[yb::to_underlying(IOPriority::kLow)].empty() &&
-            leader_ == queue_[yb::to_underlying(IOPriority::kLow)].front()));
+           (!queue_[std::to_underlying(IOPriority::kHigh)].empty() &&
+            leader_ == queue_[std::to_underlying(IOPriority::kHigh)].front()) ||
+           (!queue_[std::to_underlying(IOPriority::kLow)].empty() &&
+            leader_ == queue_[std::to_underlying(IOPriority::kLow)].front()));
 
     if (leader_ == &r) {
       // Waken up from TimedWait()
@@ -223,14 +223,14 @@ void GenericRateLimiter::RequestInternal(int64_t bytes, const yb::IOPriority pri
         if (r.granted) {
           // Current leader already got granted with quota. Notify header
           // of waiting queue to participate next round of election.
-          assert((queue_[yb::to_underlying(IOPriority::kHigh)].empty() ||
-                    &r != queue_[yb::to_underlying(IOPriority::kHigh)].front()) &&
-                 (queue_[yb::to_underlying(IOPriority::kLow)].empty() ||
-                    &r != queue_[yb::to_underlying(IOPriority::kLow)].front()));
-          if (!queue_[yb::to_underlying(IOPriority::kHigh)].empty()) {
-            YB_PROFILE(queue_[yb::to_underlying(IOPriority::kHigh)].front()->cv.Signal());
-          } else if (!queue_[yb::to_underlying(IOPriority::kLow)].empty()) {
-            YB_PROFILE(queue_[yb::to_underlying(IOPriority::kLow)].front()->cv.Signal());
+          assert((queue_[std::to_underlying(IOPriority::kHigh)].empty() ||
+                    &r != queue_[std::to_underlying(IOPriority::kHigh)].front()) &&
+                 (queue_[std::to_underlying(IOPriority::kLow)].empty() ||
+                    &r != queue_[std::to_underlying(IOPriority::kLow)].front()));
+          if (!queue_[std::to_underlying(IOPriority::kHigh)].empty()) {
+            YB_PROFILE(queue_[std::to_underlying(IOPriority::kHigh)].front()->cv.Signal());
+          } else if (!queue_[std::to_underlying(IOPriority::kLow)].empty()) {
+            YB_PROFILE(queue_[std::to_underlying(IOPriority::kLow)].front()->cv.Signal());
           }
           // Done
           break;
@@ -256,19 +256,19 @@ void GenericRateLimiter::RequestInternal(int64_t bytes, const yb::IOPriority pri
 int64_t GenericRateLimiter::GetTotalBytesThrough(const IOPriority pri) const {
   MutexLock g(&request_mutex_);
   if (pri == IOPriority::kTotal) {
-    return total_bytes_through_[yb::to_underlying(IOPriority::kLow)] +
-           total_bytes_through_[yb::to_underlying(IOPriority::kHigh)];
+    return total_bytes_through_[std::to_underlying(IOPriority::kLow)] +
+           total_bytes_through_[std::to_underlying(IOPriority::kHigh)];
   }
-  return total_bytes_through_[yb::to_underlying(pri)];
+  return total_bytes_through_[std::to_underlying(pri)];
 }
 
 int64_t GenericRateLimiter::GetTotalRequests(const IOPriority pri) const {
   MutexLock g(&request_mutex_);
   if (pri == IOPriority::kTotal) {
-    return total_requests_[yb::to_underlying(IOPriority::kLow)] +
-        total_requests_[yb::to_underlying(IOPriority::kHigh)];
+    return total_requests_[std::to_underlying(IOPriority::kLow)] +
+        total_requests_[std::to_underlying(IOPriority::kHigh)];
   }
-  return total_requests_[yb::to_underlying(pri)];
+  return total_requests_[std::to_underlying(pri)];
 }
 
 void GenericRateLimiter::Refill() {
@@ -282,7 +282,7 @@ void GenericRateLimiter::Refill() {
 
   int use_low_pri_first = rnd_.OneIn(fairness_) ? 0 : 1;
   for (int q = 0; q < 2; ++q) {
-    const auto priority_index = yb::to_underlying(
+    const auto priority_index = std::to_underlying(
         (use_low_pri_first == q) ? IOPriority::kLow : IOPriority::kHigh);
     auto* queue = &queue_[priority_index];
     while (!queue->empty()) {

@@ -2003,61 +2003,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         // the table, this time checking for name matches rather than id matches.
 
         if (meta.colocated() && IsColocatedDbParentTableId(table_data->old_table_id)) {
-          // For the parent colocated table we need to generate the new_table_id ourselves
-          // since the names will not match.
-          // For normal colocated tables, we are still able to follow the normal table flow, so no
-          // need to generate the new_table_id ourselves.
-          // Case 1: Legacy colocated database
-          // parent table id = <namespace_id>.colocated.parent.uuid
-          // Case 2: Migration to colocation database
-          // parent table id = <tablegroup_id>.colocation.parent.uuid
-          SharedLock lock(mutex_);
-          bool legacy_colocated_database =
-              colocated_db_tablets_map_.find(new_namespace_id) != colocated_db_tablets_map_.end();
-          if (legacy_colocated_database) {
-            table_data->new_table_id = GetColocatedDbParentTableId(new_namespace_id);
-          } else {
-            PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
-            PgOid default_tablegroup_oid =
-                VERIFY_RESULT(sys_catalog_->ReadPgYbTablegroupOid(database_oid,
-                                                                  kDefaultTablegroupName));
-            if (default_tablegroup_oid == kPgInvalidOid) {
-              // The default tablegroup doesn't exist in the restoring colocated database.
-              // This is a special case of colocation migration where only non-colocated tables
-              // exist in the database.
-              // We should already handle this case in ImportSnapshotPreprocess, such that we don't
-              // need to deal with it during the whole import snapshot process.
-              // If we get here, there must be something wrong and we should throw an error status.
-              // See ImportSnapshotPreprocess for more details.
-              const string msg = Format("Unexpected legacy colocated parent table during colocation"
-                                        " migration. We should skip processing it.");
-              LOG_WITH_FUNC(WARNING) << msg;
-              return STATUS(InternalError, msg, MasterError(MasterErrorPB::INTERNAL_ERROR));
-            } else {
-              table_data->new_table_id =
-                  GetColocationParentTableId(GetPgsqlTablegroupId(database_oid,
-                                                                  default_tablegroup_oid));
-            }
-          }
+          table_data->new_table_id =
+              VERIFY_RESULT(GetRestoreTargetParentTableForLegacyColocatedDb(new_namespace_id));
           is_parent_colocated_table = true;
         } else if (meta.colocated() && IsTablegroupParentTableId(table_data->old_table_id)) {
-          // Since we preserve tablegroup oid in ysql_dump, for the parent tablegroup table, if we
-          // didn't find a match by id in the previous step, then we need to generate the
-          // new_table_id ourselves because the namespace id of the namespace where this tablegroup
-          // was created changes.
-          PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
-          PgOid tablegroup_oid =
-              VERIFY_RESULT(GetPgsqlTablegroupOid(
-                  GetTablegroupIdFromParentTableId(table_data->old_table_id)));
-          if (IsColocatedDbTablegroupParentTableId(table_data->old_table_id)) {
-            // This tablegroup parent table is in a colocated database, and has string 'colocation'
-            // in its id.
-            table_data->new_table_id =
-                GetColocationParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
-          } else {
-            table_data->new_table_id =
-                GetTablegroupParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
-          }
+          table_data->new_table_id = VERIFY_RESULT(
+              GetRestoreTargetTablegroupId(new_namespace_id, table_data->old_table_id));
           is_parent_colocated_table = true;
         } else {
           if (!table_data->new_table_id.empty()) {
@@ -2430,6 +2381,62 @@ Status CatalogManager::UpdateColocatedUserTableInfoForClone(
   new_tablet_lock.Commit();
   old_colocated_tablet_lock.Commit();
   return Status::OK();
+}
+
+Result<TableId> CatalogManager::GetRestoreTargetParentTableForLegacyColocatedDb(
+    const NamespaceId& restore_target_namespace_id) {
+  // Since parent table name at backup and restore side will not be the same, we have to generate
+  // the parent table name ourselves. Since the backup source database is a legacy 'colocated'
+  // database, we have two cases of what the parent table id should be, depending on the version of
+  // the database at the restore target side:
+  // Case 1: Restored DB uses the legacy colocated database format:
+  // <namespace_id>.colocated.parent.uuid
+  // Case 2: Restored DB uses the new colocation database format:
+  // <tablegroup_id>.colocation.parent.uuid
+  SharedLock lock(mutex_);
+  bool legacy_colocated_database = colocated_db_tablets_map_.find(restore_target_namespace_id) !=
+                                   colocated_db_tablets_map_.end();
+  if (legacy_colocated_database) {
+    return GetColocatedDbParentTableId(restore_target_namespace_id);
+  } else {
+    PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(restore_target_namespace_id));
+    PgOid default_tablegroup_oid =
+        VERIFY_RESULT(sys_catalog_->ReadPgYbTablegroupOid(database_oid, kDefaultTablegroupName));
+    if (default_tablegroup_oid == kPgInvalidOid) {
+      // The default tablegroup doesn't exist in the restoring colocated database.
+      // This is a special case of colocation migration where only non-colocated tables
+      // exist in the database.
+      // We should already handle this case in ImportSnapshotPreprocess, such that we
+      // don't need to deal with it during the whole import snapshot process. If we get
+      // here, there must be something wrong and we should throw an error status. See
+      // ImportSnapshotPreprocess for more details.
+      const string msg = Format(
+          "Unexpected legacy colocated parent table during colocation"
+          " migration. We should skip processing it.");
+      LOG_WITH_FUNC(WARNING) << msg;
+      return STATUS(InternalError, msg, MasterError(MasterErrorPB::INTERNAL_ERROR));
+    } else {
+      return GetColocationParentTableId(GetPgsqlTablegroupId(database_oid, default_tablegroup_oid));
+    }
+  }
+}
+
+Result<TableId> CatalogManager::GetRestoreTargetTablegroupId(
+    const NamespaceId& restore_target_namespace_id, const TableId& backup_source_tablegroup_id) {
+  // Since we preserve tablegroup oid in ysql_dump, then generate the target_tablegroup_id using
+  // restore_target_namespace_id and backup_source_tablegroup_id.
+  PgOid target_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(restore_target_namespace_id));
+  PgOid tablegroup_oid = VERIFY_RESULT(
+      GetPgsqlTablegroupOid(GetTablegroupIdFromParentTableId(backup_source_tablegroup_id)));
+  auto target_tablegroup_id = GetPgsqlTablegroupId(target_database_oid, tablegroup_oid);
+  if (IsColocatedDbTablegroupParentTableId(backup_source_tablegroup_id)) {
+    // This tablegroup parent table is in a colocated database, and has string
+    // 'colocation' in its id.
+    return GetColocationParentTableId(target_tablegroup_id);
+  } else {
+    return GetTablegroupParentTableId(target_tablegroup_id);
+  }
+  return target_tablegroup_id;
 }
 
 Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,

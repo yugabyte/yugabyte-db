@@ -132,6 +132,8 @@ class PgClient {
 
   void SetTimeout(MonoDelta timeout);
 
+  void SetLockTimeout(MonoDelta lock_timeout);
+
   uint64_t SessionID() const;
 
   Result<PgTableDescPtr> OpenTable(

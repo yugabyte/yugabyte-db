@@ -453,6 +453,9 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
     settableRuntimeConfigFactory
         .globalRuntimeConf()
+        .setValue("yb.checks.verify_cluster_uuid.enabled", "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
         .setValue("yb.universe.consistency_check.enabled", "true");
     Pair<Integer, Integer> ipRange = getIpRange();
     localNodeManager.setIpRangeStart(ipRange.getFirst());
@@ -683,6 +686,10 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
     TaskInfo taskInfo =
         waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));
+    System.out.println("AAAAA");
+    System.out.println(taskInfo.getTaskState());
+    System.out.println(taskInfo.getErrorMessage());
+    System.out.println("BBBBB");
     verifyUniverseTaskSuccess(taskInfo);
     Universe result = Universe.getOrBadRequest(universeResp.universeUUID);
     assertEquals(

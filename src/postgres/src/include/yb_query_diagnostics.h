@@ -59,6 +59,7 @@
 extern bool yb_enable_query_diagnostics;
 extern int	yb_query_diagnostics_bg_worker_interval_ms;
 extern int	yb_query_diagnostics_circular_buffer_size;
+extern bool	yb_query_diagnostics_disable_database_connection_bgworker;
 
 /*
  * Enum to distinguish between planning and execution statistics for pg_stat_statements.

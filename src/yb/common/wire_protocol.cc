@@ -89,8 +89,8 @@ std::vector<AppStatusPB::ErrorCode> CreateStatusToErrorCode() {
   #define YB_STATUS_CODE(name, pb_name, value, message) \
     SetAt(Status::BOOST_PP_CAT(k, name), AppStatusPB::pb_name, default_value, &result); \
     static_assert( \
-        static_cast<int32_t>(to_underlying(AppStatusPB::pb_name)) == \
-            to_underlying(Status::BOOST_PP_CAT(k, name)), \
+        static_cast<int32_t>(std::to_underlying(AppStatusPB::pb_name)) == \
+            std::to_underlying(Status::BOOST_PP_CAT(k, name)), \
         "The numeric value of AppStatusPB::" BOOST_PP_STRINGIZE(pb_name) " defined in" \
             " wire_protocol.proto does not match the value of Status::k" BOOST_PP_STRINGIZE(name) \
             " defined in status.h.");

@@ -102,7 +102,9 @@ extern List *YBCPrepareAlterTable(List **subcmds,
 
 extern void YBCExecAlterTable(YbcPgStatement handle, Oid relationId);
 
-extern void YBCRename(RenameStmt *stmt, Oid relationId);
+extern void YBCRename(Oid relationId, ObjectType renameType,
+					  const char *relname,
+					  const char *colname);
 
 extern void YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId);
 

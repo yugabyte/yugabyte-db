@@ -22,6 +22,7 @@ const (
 	// Node agent common constants.
 	DefaultConfig           = "config"
 	preflightCheckScript    = "/pkg/scripts/preflight_check.sh"
+	earlyoomInstallScript   = "/pkg/scripts/earlyoom-installer.sh"
 	nodeAgentDir            = "/node-agent"
 	configDir               = "/config"
 	certsDir                = "/cert"
@@ -256,6 +257,12 @@ func InstallDir() string {
 // which should be present in  ~/scripts folder.
 func PreflightCheckPath() string {
 	return MustGetHomeDirectory() + preflightCheckScript
+}
+
+// Returns the Path to Install Earlyoom script
+// which should be present in  ~/scripts folder.
+func EarlyoomScriptPath() string {
+	return MustGetHomeDirectory() + earlyoomInstallScript
 }
 
 // Returns the config directory path.

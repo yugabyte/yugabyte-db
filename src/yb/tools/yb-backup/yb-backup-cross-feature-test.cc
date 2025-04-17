@@ -3407,6 +3407,29 @@ TEST_F(
       )#"));
 }
 
+TEST_F(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRenamedUniqueConstraint)) {
+    // Create a table with a unique constraint and rename the constraint.
+    ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_1 (a INT, b INT)"));
+    ASSERT_NO_FATALS(CreateIndex("CREATE UNIQUE INDEX index_1 ON table_1 (a)"));
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "ALTER TABLE table_1 ADD CONSTRAINT unique_1 UNIQUE USING INDEX index_1", "ALTER TABLE"));
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "ALTER TABLE table_1 RENAME CONSTRAINT unique_1 TO unique_2", "ALTER TABLE"));
+    ASSERT_NO_FATALS(RunPsqlCommand("INSERT INTO table_1 (a, b) VALUES (1, 1)", "INSERT 0 1"));
+    // Verify that backup/restore works.
+    const string backup_dir = GetTempDir("backup");
+    ASSERT_OK(RunBackupCommand(
+        {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+    ASSERT_OK(RunBackupCommand(
+        {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+    // Verify that the unique constraint works.
+    SetDbName("yugabyte_new");
+    ASSERT_NO_FATALS(RunPsqlCommand("INSERT INTO table_1 (a, b) VALUES (1, 2)",
+        "duplicate key value violates unique constraint", TuplesOnly::kFalse,
+        CheckErrorString::kTrue));
+}
+
 class YBBackupTestAutoAnalyze : public YBBackupTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {

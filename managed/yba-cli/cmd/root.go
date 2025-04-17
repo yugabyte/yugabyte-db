@@ -16,6 +16,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/customer"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/group"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
@@ -97,6 +98,12 @@ func init() {
 		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
 		"Wait command timeout, example: 5m, 1h.")
+	rootCmd.PersistentFlags().Bool("insecure", false,
+		"Allow insecure connections to YugabyteDB Anywhere."+
+			" Value ignored for http endpoints. Defaults to false for https.")
+	rootCmd.PersistentFlags().String("ca-cert", "",
+		"CA certificate file path for secure connection to YugabyteDB Anywhere. "+
+			"Required when the endpoint is https and --insecure is not set.")
 
 	//Bind peristents flags to viper
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
@@ -107,6 +114,8 @@ func init() {
 	viper.BindPFlag("disable-color", rootCmd.PersistentFlags().Lookup("disable-color"))
 	viper.BindPFlag("wait", rootCmd.PersistentFlags().Lookup("wait"))
 	viper.BindPFlag("timeout", rootCmd.PersistentFlags().Lookup("timeout"))
+	viper.BindPFlag("insecure", rootCmd.PersistentFlags().Lookup("insecure"))
+	viper.BindPFlag("ca-cert", rootCmd.PersistentFlags().Lookup("ca-cert"))
 
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
@@ -129,8 +138,8 @@ func init() {
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 	addGroupsCmd(rootCmd)
-
-	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd})
+	// Add commands to be marked as preview in the list below
+	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd, group.GroupsCmd})
 
 }
 
@@ -155,6 +164,8 @@ func setDefaults() {
 	viper.SetDefault("timeout", time.Duration(7*24*time.Hour))
 	viper.SetDefault("lastVersionAvailable", "0.0.0")
 	viper.SetDefault("lastCheckedTime", 0)
+	viper.SetDefault("insecure", false)
+	viper.SetDefault("ca-cert", "")
 }
 
 // initConfig reads in config file and ENV variables if set.

@@ -4233,107 +4233,6 @@ create_samplescan_plan(PlannerInfo *root, Path *best_path,
 	return scan_plan;
 }
 
-static inline bool
-YbIsHashCodeFunc(FuncExpr *func)
-{
-	return func->funcid == F_YB_HASH_CODE;
-}
-
-/*
- * This function changes attribute numbers for each yb_hash_code function
- * argument. Initially arguments use attribute numbers from relation.
- * After the change attribute numbers will be taken from index which is used
- * for the yb_hash_code pushdown.
- */
-static void
-YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
-{
-	Assert(YbIsHashCodeFunc(hash_code_func));
-	ListCell   *l;
-	int			indexcol = 0;
-
-	foreach(l, hash_code_func->args)
-	{
-		Var		   *arg_var = (Var *) lfirst(l);
-
-		/*
-		 * Sanity check. Planner should have already verified that function
-		 * arguments match the index.
-		 * Should it rather be an assertion?
-		 */
-		if (!IsA(arg_var, Var) ||
-			indexcol >= index->nkeycolumns ||
-			index->rel->relid != arg_var->varno ||
-			index->indexkeys[indexcol] != arg_var->varattno ||
-			index->opcintype[indexcol] != arg_var->vartype)
-			ereport(ERROR,
-					(errmsg("bad call of yb_hash_code"),
-					 errdetail("Function yb_hash_code is chosen as an index condition, "
-							   "but its arguments do not match hash keys of the index"),
-					 errcode(ERRCODE_INTERNAL_ERROR),
-					 hash_code_func->location != -1 ?
-					 errposition(hash_code_func->location) : 0));
-		/*
-		 * Note: In spite of the fact that YSQL will use secodary index for handling
-		 * the yb_hash_code pushdown the arg_var->varno field should not be changed
-		 * to INDEX_VAR as postgres does for its native functional indexes.
-		 * Because from the postgres's point of view neither the yb_hash_code
-		 * function itself not its arguments will not be converted into index
-		 * columns.
-		 */
-		arg_var->varattno = ++indexcol;
-	}
-}
-
-static bool
-YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo *indexinfo)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, FuncExpr))
-	{
-		FuncExpr   *func = (FuncExpr *) node;
-
-		if (YbIsHashCodeFunc(func))
-		{
-			YbFixHashCodeFuncArgs(func, indexinfo);
-			return false;
-		}
-	}
-	return expression_tree_walker(node, &YbFixHashCodeFuncArgsWalker,
-								  (void *) indexinfo);
-}
-
-static bool
-YbHasHashCodeFuncWalker(Node *node, void *context)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, FuncExpr) && YbIsHashCodeFunc((FuncExpr *) node))
-		return true;
-	return expression_tree_walker(node, YbHasHashCodeFuncWalker, context);
-}
-
-/*
- * In case indexquals has at least one yb_hash_code qual function makes
- * a copy of indexquals and alters yb_hash_code function args attrributes.
- * In other cases functions returns NIL.
- */
-static List *
-YbBuildIndexqualForRecheck(List *indexquals, IndexOptInfo *indexinfo)
-{
-	if (expression_tree_walker((Node *) indexquals, YbHasHashCodeFuncWalker,
-							   NULL))
-	{
-		List	   *result = copyObject(indexquals);
-
-		expression_tree_walker((Node *) result, YbFixHashCodeFuncArgsWalker,
-							   indexinfo);
-		return result;
-	}
-	return NIL;
-}
-
 /*
  * create_indexscan_plan
  *	  Returns an indexscan plan for the base relation scanned by 'best_path'
@@ -4583,8 +4482,6 @@ create_indexscan_plan(PlannerInfo *root,
 																 best_path->indexscandir,
 																 best_path->yb_plan_info);
 
-		index_only_scan_plan->yb_indexqual_for_recheck =
-			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
 

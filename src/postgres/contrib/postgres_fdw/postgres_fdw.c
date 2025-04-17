@@ -62,6 +62,15 @@ PG_MODULE_MAGIC;
 /* If no remote estimates, assume a sort costs 20% extra */
 #define DEFAULT_FDW_SORT_MULTIPLIER 1.2
 
+/* YB: If no server_type is provided, assume that the underlying server is Postgres */
+#define YB_DEFAULT_FDW_SERVER_TYPE	PG_FDW_SERVER_POSTGRES
+
+const char *yb_server_types[] = {
+	[PG_FDW_SERVER_UNKNOWN] = "unknown",
+	[PG_FDW_SERVER_POSTGRES] = "postgreSQL",
+	[PG_FDW_SERVER_YUGABYTEDB] = "yugabyteDB"
+};
+
 /*
  * Indexes of FDW-private information stored in fdw_private lists.
  *
@@ -542,6 +551,9 @@ static void merge_fdw_options(PgFdwRelationInfo *fpinfo,
 							  const PgFdwRelationInfo *fpinfo_o,
 							  const PgFdwRelationInfo *fpinfo_i);
 static int	get_batch_size_option(Relation rel);
+
+static const char *yb_server_type_to_string(YbPgFdwServerType server_type);
+static YbPgFdwServerType yb_get_server_type(const char *server_type);
 
 
 /*
@@ -5935,6 +5947,12 @@ apply_server_options(PgFdwRelationInfo *fpinfo)
 			(void) parse_int(defGetString(def), &fpinfo->fetch_size, 0, NULL);
 		else if (strcmp(def->defname, "async_capable") == 0)
 			fpinfo->async_capable = defGetBoolean(def);
+		/* YB-specific server options */
+		else if (strcmp(def->defname, "server_type") == 0)
+		{
+			fpinfo->yb_server_type = yb_get_server_type(defGetString(def));
+			Assert(fpinfo->yb_server_type != PG_FDW_SERVER_UNKNOWN);
+		}
 	}
 }
 
@@ -5993,6 +6011,7 @@ merge_fdw_options(PgFdwRelationInfo *fpinfo,
 	fpinfo->use_remote_estimate = fpinfo_o->use_remote_estimate;
 	fpinfo->fetch_size = fpinfo_o->fetch_size;
 	fpinfo->async_capable = fpinfo_o->async_capable;
+	fpinfo->yb_server_type = fpinfo_o->yb_server_type;
 
 	/* Merge the table level options from either side of the join. */
 	if (fpinfo_i)
@@ -6024,6 +6043,13 @@ merge_fdw_options(PgFdwRelationInfo *fpinfo,
 		 */
 		fpinfo->async_capable = fpinfo_o->async_capable ||
 			fpinfo_i->async_capable;
+
+		if (fpinfo_i->yb_server_type != fpinfo_o->yb_server_type)
+			elog(ERROR, "Mismatched server_type of relations: %s(%s), %s(%s)",
+				 fpinfo_o->relation_name,
+				 yb_server_type_to_string(fpinfo_o->yb_server_type),
+				 fpinfo_i->relation_name,
+				 yb_server_type_to_string(fpinfo_i->yb_server_type));
 	}
 }
 
@@ -7628,4 +7654,41 @@ get_batch_size_option(Relation rel)
 	}
 
 	return batch_size;
+}
+
+static const char *
+yb_server_type_to_string(YbPgFdwServerType server_type)
+{
+	switch (server_type)
+	{
+		case PG_FDW_SERVER_POSTGRES:
+			return yb_server_types[PG_FDW_SERVER_POSTGRES];
+		case PG_FDW_SERVER_YUGABYTEDB:
+			return yb_server_types[PG_FDW_SERVER_POSTGRES];
+		default:
+			elog(ERROR, "Unsupported server type: %d", server_type);
+	}
+
+	return NULL;	/* keep compiler happy */
+}
+
+static YbPgFdwServerType
+yb_get_server_type(const char *server_type)
+{
+	if (pg_strncasecmp(server_type,
+					   yb_server_types[PG_FDW_SERVER_POSTGRES],
+					   strlen(yb_server_types[PG_FDW_SERVER_POSTGRES])) == 0)
+		return PG_FDW_SERVER_POSTGRES;
+	else if (pg_strncasecmp(server_type,
+							yb_server_types[PG_FDW_SERVER_YUGABYTEDB],
+							strlen(yb_server_types[PG_FDW_SERVER_YUGABYTEDB])) == 0)
+		return PG_FDW_SERVER_YUGABYTEDB;
+
+	return PG_FDW_SERVER_UNKNOWN;
+}
+
+bool
+yb_is_valid_server_type(const char *server_type)
+{
+	return yb_get_server_type(server_type) != PG_FDW_SERVER_UNKNOWN;
 }

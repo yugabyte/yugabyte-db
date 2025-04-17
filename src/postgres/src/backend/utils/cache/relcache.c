@@ -1545,6 +1545,8 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		state->has_partitioned_tables |= (relation->rd_rel->relkind ==
 										  RELKIND_PARTITIONED_TABLE);
 	}
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Inserted %d entries into relcache", num_tuples);
 
 	systable_endscan(scandesc);
 	table_close(pg_class_desc, AccessShareLock);
@@ -2693,6 +2695,9 @@ static YbcStatus
 YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 						  YbRunWithPrefetcherContext *ctx)
 {
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Updating relcache");
+
 	YBLoadRelations(state);
 
 	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
@@ -3068,6 +3073,10 @@ YbPrefetchRequiredData(bool preload_rel_cache)
 static Relation
 RelationBuildDesc(Oid targetRelId, bool insertIt)
 {
+	instr_time	start;
+
+	if (yb_debug_log_catcache_events)
+		INSTR_TIME_SET_CURRENT(start);
 	int			in_progress_offset;
 	Relation	relation;
 	Oid			relid;
@@ -3327,6 +3336,17 @@ retry:
 		MemoryContextDelete(tmpcxt);
 	}
 #endif
+
+	if (yb_debug_log_catcache_events && insertIt)
+	{
+		instr_time	duration;
+
+		INSTR_TIME_SET_CURRENT(duration);
+		INSTR_TIME_SUBTRACT(duration, start);
+		elog(LOG, "Rebuilding relcache entry for %s (oid %d) took %ld us",
+			 RelationGetRelationName(relation), RelationGetRelid(relation),
+			 INSTR_TIME_GET_MICROSEC(duration));
+	}
 
 	return relation;
 }
@@ -5862,26 +5882,11 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 	TransactionId freezeXid = InvalidTransactionId;
 	RelFileNode newrnode;
 
-	/*
-	 * YB Note: this code that opens pg_class table was moved here from below.
-	 * Get a writable copy of the pg_class tuple for the given relation.
-	 */
-	pg_class = table_open(RelationRelationId, RowExclusiveLock);
-
 	if (!IsBinaryUpgrade || yb_binary_restore)
 	{
-		if (IsYugaByteEnabled())
-			/*
-			 * In YB, always use pg_class to check for OID collision. During
-			 * table rewrite a relfilenode is used by DocDB to construct a
-			 * table id in the same way as a regular table OID.
-			 */
-			newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
-											   pg_class, persistence);
-		else
-			/* Allocate a new relfilenode */
-			newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
-											   NULL, persistence);
+		/* Allocate a new relfilenode */
+		newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
+										   NULL, persistence);
 	}
 	else if (relation->rd_rel->relkind == RELKIND_INDEX)
 	{
@@ -5909,8 +5914,9 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 				 errmsg("unexpected request for new relfilenode in binary upgrade mode")));
 
 	/*
-	 * YB Note: native PG code setup pg_class here, YB has moved that code up above.
+	 * Get a writable copy of the pg_class tuple for the given relation.
 	 */
+	pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheLockedCopy1(RELOID,
 									  ObjectIdGetDatum(RelationGetRelid(relation)));
@@ -8893,6 +8899,9 @@ load_relcache_init_file(bool shared)
 		else
 			RelationCacheInsert(rels[relno], false);
 	}
+
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Loaded %d entries from relcache init file", num_rels);
 
 	pfree(rels);
 	FreeFile(fp);

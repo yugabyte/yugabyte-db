@@ -248,6 +248,10 @@ bool MasterTabletServer::SkipCatalogVersionChecks() {
   return master_->catalog_manager()->SkipCatalogVersionChecks();
 }
 
+Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServer::GetYSQLLeaseInfo() const {
+  return STATUS(InternalError, "Unexpected call of GetYSQLLeaseInfo");
+}
+
 const std::string& MasterTabletServer::permanent_uuid() const {
   return master_->permanent_uuid();
 }

@@ -461,7 +461,10 @@ yb_pushdown_walker(Node *node, List **colrefs)
 
 				/* ScalarArrayOpExprs changed serialization in PG15. */
 				if (yb_major_version_upgrade_compatibility == 11)
-					return true;
+				{
+					if (!yb_mixed_mode_saop_pushdown)
+						return true;
+				}
 				else if (yb_major_version_upgrade_compatibility > 0)
 					/* YB_UPGRADE: Handle this case for each new PG version. */
 					Assert(false);
@@ -716,7 +719,7 @@ YBCNewEvalExprCall(YbcPgStatement ybc_stmt, Expr *pg_expr)
 									collation_info.collate_is_valid_non_c,
 									&ybc_expr));
 
-	Datum		expr_datum = CStringGetDatum(nodeToString(pg_expr));
+	Datum		expr_datum = CStringGetDatum(ybSerializeNode(pg_expr));
 	YbcPgExpr	expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,
 									  expr_datum, /* IsNull */ false);
 

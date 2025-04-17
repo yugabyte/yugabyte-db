@@ -557,9 +557,9 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 			}
 
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
 			{
 				bool		needs_invalidation = false;
@@ -597,9 +597,9 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 			/* Nothing to handle for these types. */
 		case YB_PG_ROW_MESSAGE_ACTION_UNKNOWN:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			return;
 	}

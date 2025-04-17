@@ -115,6 +115,12 @@ class TserverXClusterContextIf;
     (GetTableKeyRanges) \
     /**/
 
+
+struct YSQLLeaseInfo {
+  bool is_live;
+  uint64_t lease_epoch;
+};
+
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
@@ -138,6 +144,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
   void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
+  YSQLLeaseInfo GetYSQLLeaseInfo() const;
 
   size_t TEST_SessionsCount();
 

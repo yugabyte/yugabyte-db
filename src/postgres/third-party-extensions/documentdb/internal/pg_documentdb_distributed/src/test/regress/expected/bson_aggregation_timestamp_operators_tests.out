@@ -1,0 +1,128 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 8800000;
+SET documentdb.next_collection_id TO 8800;
+SET documentdb.next_collection_index_id TO 8800;
+-- $tsSecond operator
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": null }}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": {"$undefined":true} }}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": { "$timestamp": { "t": 1234567890, "i": 1 }} }}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1234567890" } }
+(1 row)
+
+-- $tsSecond operator , input document tests
+SELECT * FROM bson_dollar_project('{"a": { "$timestamp": { "t": 1234567890, "i": 1 }} }', '{"result": { "$tsSecond": "$a" }}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1234567890" } }
+(1 row)
+
+-- $tsSecond operator negative tests
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": "" }}');
+ERROR:  $tsSecond requires a timestamp argument, found: string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": [1,2] }}');
+ERROR:  Expression $tsSecond takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": [1] }}');
+ERROR:  $tsSecond requires a timestamp argument, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": 11 }}');
+ERROR:  $tsSecond requires a timestamp argument, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": true }}');
+ERROR:  $tsSecond requires a timestamp argument, found: bool
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$tsSecond": "$a" }}');
+ERROR:  $tsSecond requires a timestamp argument, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsSecond": {"$regex": "a*b", "$options":""} }}');
+ERROR:  $tsSecond requires a timestamp argument, found: regex
+-- $tsIncrement operator
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": null }}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": {"$undefined":true} }}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": { "$timestamp": { "t": 1234567890, "i": 1 }} }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1" } }
+(1 row)
+
+-- Create Collection
+SELECT documentdb_api.create_collection('db', 'timestampTest');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- $tsIncrement/$tsSecond operator , input document tests
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 1 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "a", "saleTimestamp": { "$timestamp": { "t": 1622731060, "i": 2 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124193, "i": 1 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 1 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','timestampTest','{ "symbol": "b", "saleTimestamp": { "$timestamp": { "t": 1714124192, "i": 2 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{"aggregate": "timestampTest", "pipeline": [{ "$project": {"_id": 0, "saleTimestamp": 1, "saleIncrement": {"$tsIncrement": "$saleTimestamp"}, "saleSecond": {"$tsSecond": "$saleTimestamp"}}}  ]}');
+                                                                              document                                                                              
+---------------------------------------------------------------------
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1622731060, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1" }, "saleSecond" : { "$numberLong" : "1622731060" } }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1622731060, "i" : 2 } }, "saleIncrement" : { "$numberLong" : "2" }, "saleSecond" : { "$numberLong" : "1622731060" } }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1714124193, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1" }, "saleSecond" : { "$numberLong" : "1714124193" } }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1714124192, "i" : 1 } }, "saleIncrement" : { "$numberLong" : "1" }, "saleSecond" : { "$numberLong" : "1714124192" } }
+ { "saleTimestamp" : { "$timestamp" : { "t" : 1714124192, "i" : 2 } }, "saleIncrement" : { "$numberLong" : "2" }, "saleSecond" : { "$numberLong" : "1714124192" } }
+(5 rows)
+
+-- $tsIncrement operator negative tests
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": "" }}');
+ERROR:  Argument to $tsIncrement must be a timestamp, but is string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": [1,2] }}');
+ERROR:  Expression $tsIncrement takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": [1] }}');
+ERROR:  Argument to $tsIncrement must be a timestamp, but is int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": 11 }}');
+ERROR:  Argument to $tsIncrement must be a timestamp, but is int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": true }}');
+ERROR:  Argument to $tsIncrement must be a timestamp, but is bool
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$tsIncrement": "$a" }}');
+ERROR:  Argument to $tsIncrement must be a timestamp, but is int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$tsIncrement": {"$regex": "a*b", "$options":""} }}');
+ERROR:  Argument to $tsIncrement must be a timestamp, but is regex

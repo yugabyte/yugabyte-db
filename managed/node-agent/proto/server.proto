@@ -44,12 +44,56 @@ message CommandInput {
     repeated string command = 1;
 }
 
+enum Service {
+    EARLYOOM = 0;
+}
+
+message GetServiceStateRequest {
+    Service service = 1;
+}
+
+message EarlyoomState {
+    int32 kills_last_hour = 1;
+    int32 total_kills = 2;
+}
+
+message GetServiceStateResponse {
+    bool enabled = 1;
+    oneof state {
+        EarlyoomState earlyoomState = 2;
+    }
+}
+
+message EarlyoomConfig {
+    optional string startArgs = 1;
+}
+
+message ServiceConfig {
+    optional string ybHomeDir = 1;
+    oneof data {
+        EarlyoomConfig earlyoomConfig = 2;
+    }
+}
+
+message ConfigureServiceInput {
+    Service service = 1;
+    bool enabled = 2;
+    optional ServiceConfig config = 3;
+}
+
+message ConfigureServiceOutput {
+    Service service = 1;
+    bool success = 2;
+    optional Error error = 3;
+}
+
 message SubmitTaskRequest {
     string user = 1;
     string taskId = 2;
     oneof data {
         CommandInput commandInput = 3;
         PreflightCheckInput preflightCheckInput = 4;
+        ConfigureServiceInput configureServiceInput = 5;
     }
 }
 
@@ -67,6 +111,7 @@ message DescribeTaskResponse {
         string output = 2;
         Error error = 3;
         PreflightCheckOutput preflightCheckOutput = 4;
+        ConfigureServiceOutput configureServiceOutput = 5;
     }
 }
 

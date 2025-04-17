@@ -120,8 +120,15 @@ public class DeleteReplication extends XClusterConfigTaskBase {
                 xClusterConfig.getTableIdsWithReplicationSetup(
                     xClusterConfig.getTableIds(), true /* done */))
             .forEach(XClusterTableConfig::reset);
-        xClusterConfig.update();
+      } else {
+        xClusterConfig
+            .getNamespaces()
+            .forEach(
+                ns -> {
+                  ns.setReplicationSetupTime(null);
+                });
       }
+      xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {
         getUniverse().incrementVersion();

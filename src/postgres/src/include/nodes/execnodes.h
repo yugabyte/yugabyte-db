@@ -1771,12 +1771,6 @@ typedef struct IndexOnlyScanState
 	/* YB specific attributes. */
 	bool		yb_ioss_might_recheck;
 	List	   *yb_ioss_aggrefs;
-	/*
-	 * yb_indexqual_for_recheck is the modified version of indexqual.
-	 * It is used in tuple recheck step only.
-	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
-	 */
-	ExprState  *yb_indexqual_for_recheck;
 } IndexOnlyScanState;
 
 /* ----------------

@@ -16,6 +16,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/doc_bson.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
@@ -67,6 +68,20 @@ class DecimalDecoder {
     size_t num_decoded_bytes = 0;
     RETURN_NOT_OK(decimal.DecodeFromComparable(Slice(input, end), &num_decoded_bytes));
     return input + num_decoded_bytes;
+  }
+};
+
+template <SortOrder kSortOrder>
+class BsonDecoder {
+ public:
+  Result<const char*> Decode(
+      const char* input, const char* end, PgTableRow* row, size_t index) const {
+    return row->DecodeComparableBson(index, input, end, kSortOrder);
+  }
+
+  Result<const char*> Skip(const char* input, const char* end) const {
+    return kSortOrder == SortOrder::kAscending ? SkipComparableBson(input, end)
+                                               : SkipComparableBsonDescending(input, end);
   }
 };
 
@@ -267,6 +282,22 @@ UnsafeStatus DecodeStringColumn(
 }
 
 template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kSortOrder>
+UnsafeStatus DecodeBsonColumn(
+    const char* input, const char* end, PgTableRow* row, size_t index, void* const* chain) {
+  CONSUME_GROUP_END();
+  auto entry_type = static_cast<KeyEntryType>(*input++);
+  constexpr auto kRegularBson =
+      kSortOrder == SortOrder::kAscending ? KeyEntryType::kBson : KeyEntryType::kBsonDescending;
+  if (PREDICT_FALSE(entry_type != kRegularBson)) {
+    return HandleDifferentEntryType<kMatchedId, kLastColumn, kRegularBson>(
+        input, end, row, index, chain, entry_type);
+  }
+  BsonDecoder<kSortOrder> decoder;
+  PERFORM_DECODE();
+  return CallNextDecoder<kMatchedId, kLastColumn>(input, end, row, index, chain);
+}
+
+template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kSortOrder>
 struct DecodeColumnFactory {
   template <KeyEntryType kAscEntryType, KeyEntryType kDescEntryType, class Decoder>
   static PgKeyColumnDecoder Apply() {
@@ -282,6 +313,10 @@ struct DecodeColumnFactory {
   template <bool kAppendZero>
   static PgKeyColumnDecoder ApplyStringColumn() {
     return DecodeStringColumn<kConsumeGroupEnd, kMatchedId, kLastColumn, kSortOrder, kAppendZero>;
+  }
+
+  static PgKeyColumnDecoder ApplyBsonColumn() {
+    return DecodeBsonColumn<kConsumeGroupEnd, kMatchedId, kLastColumn, kSortOrder>;
   }
 };
 
@@ -326,6 +361,8 @@ PgKeyColumnDecoder GetDecoder5(const ColumnSchema& column) {
       return Factory::template Apply<
           KeyEntryType::kDouble, KeyEntryType::kDoubleDescending,
           PrimitiveDecoder<double, kSortOrder>>();
+    case DataType::BSON:
+      return Factory::ApplyBsonColumn();
     default:
       break;
   }

@@ -96,9 +96,9 @@ static CatCInProgress *catcache_in_progress_stack = NULL;
 
 /* Cache management header --- pointer is NULL until created */
 static CatCacheHeader *CacheHdr = NULL;
-static long YbNumCatalogCacheMisses;
-static long YbNumCatalogCacheIdMisses[SysCacheSize] = {0};
-static long YbNumCatalogCacheTableMisses[YbNumCatalogCacheTables] = {0};
+long		YbNumCatalogCacheMisses;
+long		YbNumCatalogCacheIdMisses[SysCacheSize] = {0};
+long		YbNumCatalogCacheTableMisses[YbNumCatalogCacheTables] = {0};
 
 static inline HeapTuple SearchCatCacheInternal(CatCache *cache,
 											   int nkeys,
@@ -149,6 +149,37 @@ static void CatCacheCopyKeys(TupleDesc tupdesc, int nkeys, int *attnos,
  * Avoiding the overhead of DirectFunctionCallN(...) is a substantial win, and
  * in certain cases (like int4) we can adopt a faster hash algorithm as well.
  */
+
+static void
+YbCacheKeysToString(const CatCache *cache, const Datum *arguments, int nkeys, StringInfoData *buf)
+{
+	/*
+	 * For safety, disable catcache logging within the scope of this
+	 * function as YBDatumToString below may trigger additional cache
+	 * lookups (to get the attribute type info).
+	 * Also only call YBDatumToString when MyDatabaseId is valid to
+	 * avoid PG FATAL.
+	 */
+	yb_debug_log_catcache_events = false;
+	for (int i = 0; i < nkeys; i++)
+	{
+		if (i > 0)
+			appendStringInfoString(buf, ", ");
+
+		int			attnum = cache->cc_keyno[i];
+		Oid			typid = OIDOID;
+
+		/* default. */
+		if (attnum > 0)
+			typid = TupleDescAttr(cache->cc_tupdesc, attnum - 1)->atttypid;
+		if (OidIsValid(MyDatabaseId))
+			appendStringInfoString(buf, YBDatumToString(arguments[i], typid));
+		else
+			appendStringInfo(buf, "typid=%u value=<not logged>", typid);
+	}
+	/* Done, reset catcache logging. */
+	yb_debug_log_catcache_events = true;
+}
 
 static bool
 chareqfast(Datum a, Datum b)
@@ -319,15 +350,15 @@ CatalogCacheComputeHashValue(CatCache *cache, int nkeys,
 		case 4:
 			oneHash = (cc_hashfunc[3]) (v4);
 			hashValue ^= pg_rotate_left32(oneHash, 24);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 3:
 			oneHash = (cc_hashfunc[2]) (v3);
 			hashValue ^= pg_rotate_left32(oneHash, 16);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 2:
 			oneHash = (cc_hashfunc[1]) (v2);
 			hashValue ^= pg_rotate_left32(oneHash, 8);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 1:
 			oneHash = (cc_hashfunc[0]) (v1);
 			hashValue ^= oneHash;
@@ -378,21 +409,21 @@ CatalogCacheComputeTupleHashValue(CatCache *cache, int nkeys, HeapTuple tuple)
 							 cc_tupdesc,
 							 &isNull);
 			Assert(!isNull);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 3:
 			v3 = fastgetattr(tuple,
 							 cc_keyno[2],
 							 cc_tupdesc,
 							 &isNull);
 			Assert(!isNull);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 2:
 			v2 = fastgetattr(tuple,
 							 cc_keyno[1],
 							 cc_tupdesc,
 							 &isNull);
 			Assert(!isNull);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case 1:
 			v1 = fastgetattr(tuple,
 							 cc_keyno[0],
@@ -450,7 +481,8 @@ CatCachePrintStats(int code, Datum arg)
 	 * YB change: If the user has requested a dump of the catcache stats,
 	 * set the log level to LOG so that the stats are always logged.
 	 */
-	int yb_log_level = DEBUG2;
+	int			yb_log_level = DEBUG2;
+
 	if (arg == 1)
 		yb_log_level = LOG;
 
@@ -1783,6 +1815,40 @@ SearchCatCacheInternal(CatCache *cache,
 	return SearchCatCacheMiss(cache, nkeys, hashValue, hashIndex, v1, v2, v3, v4);
 }
 
+typedef struct YbAdditionalNegCacheIds
+{
+	uint32_t   *ids_array;
+	size_t		size;
+} YbAdditionalNegCacheIds;
+
+static YbAdditionalNegCacheIds yb_addnl_neg_cache_ids = {0};
+
+void
+YbSetAdditionalNegCacheIds(List *neg_cache_ids)
+{
+	if (yb_addnl_neg_cache_ids.ids_array != NULL)
+		pfree(yb_addnl_neg_cache_ids.ids_array);
+
+	yb_addnl_neg_cache_ids.size = list_length(neg_cache_ids);
+	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
+	yb_addnl_neg_cache_ids.ids_array = (uint32_t *) palloc(sizeof(uint32_t) * yb_addnl_neg_cache_ids.size);
+	MemoryContextSwitchTo(oldcxt);
+	if (yb_addnl_neg_cache_ids.ids_array == NULL)
+		elog(ERROR, "Failed to alloc neg cache ids array");
+
+	ListCell   *lc = NULL;
+	size_t		pos = 0;
+
+	foreach(lc, neg_cache_ids)
+	{
+		int			neg_cache_id = lfirst_int(lc);
+
+		elog(DEBUG1, "Setting %d into neg cache ids", neg_cache_id);
+		yb_addnl_neg_cache_ids.ids_array[pos++] = neg_cache_id;
+	}
+}
+
 /*
 * Function returns true in some special cases where we allow negative caches:
 * 1. pg_cast (CASTSOURCETARGET) to avoid master lookups during parsing.
@@ -1814,26 +1880,26 @@ YbAllowNegativeCacheEntries(int cache_id,
 	switch (cache_id)
 	{
 		case CASTSOURCETARGET:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case STATRELATTINH:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case STATEXTDATASTXOID:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case STATEXTNAMENSP:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case STATEXTOID:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AMPROCNUM:
 			return true;
 
 		case ATTNUM:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case TYPEOID:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case TYPENAMENSP:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case NAMESPACEOID:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case NAMESPACENAME:
 			return !implicit_prefetch_entries;
 
@@ -1841,6 +1907,16 @@ YbAllowNegativeCacheEntries(int cache_id,
 			return (IsCatalogNamespace(namespace_id) &&
 					!YBCIsInitDbModeEnvVarSet());
 	}
+
+	if (yb_addnl_neg_cache_ids.size > 0)
+	{
+		for (size_t pos = 0; pos < yb_addnl_neg_cache_ids.size; pos++)
+		{
+			if (yb_addnl_neg_cache_ids.ids_array[pos] == cache_id)
+				return true;
+		}
+	}
+
 	return isTempOrTempToastNamespace(namespace_id);
 }
 
@@ -1924,62 +2000,16 @@ SearchCatCacheMiss(CatCache *cache,
 
 			initStringInfo(&buf);
 
-			/*
-			 * For safety, disable catcache logging within the scope of this
-			 * function as YBDatumToString below may trigger additional cache
-			 * lookups (to get the attribute type info).
-			 * Also only call YBDatumToString when MyDatabaseId is valid to
-			 * avoid PG FATAL.
-			 */
-			yb_debug_log_catcache_events = false;
-			for (int i = 0; i < nkeys; i++)
-			{
-				if (i > 0)
-					appendStringInfoString(&buf, ", ");
-
-				int			attnum = cache->cc_keyno[i];
-				Oid			typid = OIDOID;
-
-				/* default. */
-				if (attnum > 0)
-					typid = TupleDescAttr(cache->cc_tupdesc, attnum - 1)->atttypid;
-				if (OidIsValid(MyDatabaseId))
-				{
-					Datum v;
-					switch (i)
-					{
-						case 0:
-							v = v1;
-							break;
-						case 1:
-							v = v2;
-							break;
-						case 2:
-							v = v3;
-							break;
-						case 3:
-							v = v4;
-							break;
-						default:
-							elog(FATAL, "wrong number of hash keys: %d", nkeys);
-							break;
-					}
-					appendStringInfoString(&buf, YBDatumToString(v, typid));
-				}
-				else
-					appendStringInfo(&buf, "typid=%u value=<not logged>", typid);
-			}
+			YbCacheKeysToString(cache, arguments, nkeys, &buf);
 			ereport(LOG,
 					(errmsg("catalog cache miss on cache with id %d:\n"
-							"target rel: %s (oid : %d), index oid %d\n"
-							"search keys: %s",
+							"Target rel: %s (oid : %d), index oid %d\n"
+							"Search keys: %s",
 							cache->id,
 							cache->cc_relname,
 							cache->cc_reloid,
 							cache->cc_indexoid,
 							buf.data)));
-			/* Done, reset catcache logging. */
-			yb_debug_log_catcache_events = true;
 		}
 
 		do
@@ -2066,7 +2096,18 @@ SearchCatCacheMiss(CatCache *cache,
 				   cache->cc_relname, cache->cc_ntup, CacheHdr->ch_ntup);
 		CACHE_elog(DEBUG2, "SearchCatCache(%s): put neg entry in bucket %d",
 				   cache->cc_relname, hashIndex);
+		if (yb_debug_log_catcache_events)
+		{
+			StringInfoData buf;
 
+			initStringInfo(&buf);
+			YbCacheKeysToString(cache, arguments, nkeys, &buf);
+			elog(LOG,
+				 "SearchCatCache(%s): added neg entry in cache id %d bucket %d\n"
+				 "Search keys: %s",
+				 cache->cc_relname, cache->id, hashIndex, buf.data
+				);
+		}
 		/*
 		 * We are not returning the negative entry to the caller, so leave its
 		 * refcount zero.
@@ -2298,7 +2339,30 @@ SearchCatCacheList(CatCache *cache,
 		Relation	relation;
 		SysScanDesc scandesc;
 
+		if (yb_debug_log_catcache_events)
+		{
+			StringInfoData buf;
+
+			initStringInfo(&buf);
+			YbCacheKeysToString(cache, arguments, nkeys, &buf);
+			elog(LOG, "Catalog cache list miss on cache with id: %d:\n"
+				 "Target rel: %s (oid: %d), index oid: %d\n"
+				 "Search keys: %s",
+				 cache->id,
+				 cache->cc_relname,
+				 cache->cc_reloid,
+				 cache->cc_indexoid,
+				 buf.data);
+		}
+
 		relation = table_open(cache->cc_reloid, AccessShareLock);
+
+		if (IsYugaByteEnabled())
+		{
+			YbNumCatalogCacheMisses++;
+			YbNumCatalogCacheIdMisses[cache->id]++;
+			YbNumCatalogCacheTableMisses[YbGetCatalogCacheTableIdFromCacheId(cache->id)]++;
+		}
 
 		/*
 		 * Scan the table for matching entries.  If an invalidation arrives

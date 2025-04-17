@@ -3243,7 +3243,7 @@ exec_stmt_return(PLpgSQL_execstate *estate, PLpgSQL_stmt_return *stmt)
 				/* fulfill promise if needed, then handle like regular var */
 				plpgsql_fulfill_promise(estate, (PLpgSQL_var *) retvar);
 
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			case PLPGSQL_DTYPE_VAR:
 				{
@@ -3389,7 +3389,7 @@ exec_stmt_return_next(PLpgSQL_execstate *estate,
 				/* fulfill promise if needed, then handle like regular var */
 				plpgsql_fulfill_promise(estate, (PLpgSQL_var *) retvar);
 
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			case PLPGSQL_DTYPE_VAR:
 				{
@@ -5358,7 +5358,7 @@ exec_eval_datum(PLpgSQL_execstate *estate,
 			/* fulfill promise if needed, then handle like regular var */
 			plpgsql_fulfill_promise(estate, (PLpgSQL_var *) datum);
 
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case PLPGSQL_DTYPE_VAR:
 			{

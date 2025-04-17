@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
 

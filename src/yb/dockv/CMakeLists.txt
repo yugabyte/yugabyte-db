@@ -26,6 +26,7 @@ ADD_YB_LIBRARY(dockv_proto
         NONLINK_DEPS ${DOCKV_PROTO_TGTS})
 
 set(DOCKV_SRCS
+    doc_bson.cc
     doc_key.cc
     doc_kv_util.cc
     doc_path.cc

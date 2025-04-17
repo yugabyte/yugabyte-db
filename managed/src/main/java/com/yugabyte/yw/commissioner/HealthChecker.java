@@ -912,6 +912,8 @@ public class HealthChecker {
 
   private void addUnexpectedServersChecks(
       List<NodeData> nodeReports, List<NodeInfo> nodeMetadata, CheckSingleUniverseParams params) {
+    Set<String> checkedNodeIps =
+        nodeMetadata.stream().map(n -> n.nodeHost).collect(Collectors.toSet());
     CheckClusterConsistency.CheckResult checkResult =
         clusterConsistencyChecker.getUniverseCheckResult(params.universe.getUniverseUUID());
     log.debug("Found check result: {}", checkResult);
@@ -926,6 +928,9 @@ public class HealthChecker {
       for (String ip :
           Sets.union(checkResult.getUnknownMasterIps(), checkResult.getUnknownTserverIps())) {
         NodeDetails nodeDetails = params.universe.getNodeByAnyIP(ip);
+        if (nodeDetails != null && checkedNodeIps.contains(nodeDetails.cloudInfo.private_ip)) {
+          continue;
+        }
         log.debug("Found ip with master/tserver running: {} node {}", ip, nodeDetails);
         NodeData nodeData =
             new NodeData()

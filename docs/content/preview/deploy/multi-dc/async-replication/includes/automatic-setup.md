@@ -43,7 +43,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
     ```sh
     ./bin/yugabyted xcluster create_checkpoint \
         --replication_id <replication_id> \
-        --databases <comma_separated_database_names>
+        --databases <comma_separated_database_names> \
         --automatic_mode
     ```
 

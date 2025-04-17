@@ -70,11 +70,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
           TaskType.WaitForServer,
-          TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
+          TaskType.WaitForServer, // wait for postgres
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
@@ -93,11 +93,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
           TaskType.WaitForServer,
-          TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
+          TaskType.WaitForServer, // wait for postgres
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,

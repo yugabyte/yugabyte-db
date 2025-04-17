@@ -676,7 +676,7 @@ void ObjectLockInfoManager::Impl::LockObject(
 
 void ObjectLockInfoManager::Impl::LockObject(
     const AcquireObjectLockRequestPB& req, rpc::RpcContext context, StdStatusCallback callback) {
-  VLOG(3) << __PRETTY_FUNCTION__;
+  VLOG(1) << __PRETTY_FUNCTION__ << req.ShortDebugString();
   auto lock_objects = std::make_shared<
       UpdateAllTServers<AcquireObjectLockRequestPB, AcquireObjectLocksGlobalResponsePB>>(
       master_, catalog_manager_, this, req, std::move(callback), std::move(context), std::nullopt,
@@ -723,7 +723,8 @@ void ObjectLockInfoManager::Impl::UnlockObject(
     const ReleaseObjectLockRequestPB& req, std::optional<rpc::RpcContext> context,
     std::optional<LeaderEpoch> leader_epoch, StdStatusCallback callback,
     std::optional<CoarseTimePoint> deadline) {
-  VLOG(3) << __PRETTY_FUNCTION__;
+  VLOG(1) << __PRETTY_FUNCTION__ << req.ShortDebugString()
+          << " leader epoch: " << (leader_epoch ? leader_epoch->ToString() : "none");
   auto unlock_objects = std::make_shared<
       UpdateAllTServers<ReleaseObjectLockRequestPB, ReleaseObjectLocksGlobalResponsePB>>(
       master_, catalog_manager_, this, req, std::move(callback), std::move(context), leader_epoch,
@@ -1043,10 +1044,10 @@ template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::LaunchFrom(size_t start_idx) {
   TRACE("Launching for $0 TServers from $1", ts_descriptors_.size(), start_idx);
   ts_pending_ = ts_descriptors_.size() - start_idx;
-  LOG(INFO) << __func__ << " launching for " << ts_pending_ << " tservers.";
+  VLOG(1) << __func__ << " launching for " << ts_pending_ << " tservers.";
   for (size_t i = start_idx; i < ts_descriptors_.size(); ++i) {
     auto ts_uuid = ts_descriptors_[i]->permanent_uuid();
-    LOG(INFO) << "Launching for " << ts_uuid;
+    VLOG(1) << "Launching for " << ts_uuid;
     auto callback = std::bind(
         &UpdateAllTServers<Req, Resp>::Done, this->shared_from_this(), i, std::placeholders::_1);
     auto task = TServerTaskFor(ts_uuid, callback);
@@ -1072,7 +1073,7 @@ template <class Req, class Resp>
 void UpdateAllTServers<Req, Resp>::CheckForDone() {
   for (const auto& status : statuses_) {
     if (!status.ok()) {
-      LOG(INFO) << "Error in acquiring object lock: " << status;
+      LOG(WARNING) << "Error in acquiring object lock: " << status;
       DoCallbackAndRespond(status);
       return;
     }
@@ -1190,7 +1191,7 @@ bool UpdateAllTServers<
     return false;
   }
 
-  LOG(INFO) << "New TServers were added. Relaunching.";
+  VLOG(1) << "New TServers were added. Relaunching.";
   LaunchFrom(old_size);
   return true;
 }

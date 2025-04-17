@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -97,6 +98,11 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         if (Objects.nonNull(existingReplicationGroup)) {
           syncXClusterConfigWithReplicationGroup(
               clusterConfig, xClusterConfig, taskParams().tableIds);
+          if (xClusterConfig.getTables().stream()
+              .map(XClusterTableConfig::getReplicationSetupTime)
+              .allMatch(Objects::isNull)) {
+            xClusterConfig.updateReplicationSetupTimeForTables(taskParams().tableIds, new Date());
+          }
           // We do not need to set the role because in the versions of YBDB that we are going to
           // support retry-ability, the role is set automatically.
           log.info("Skipping {}: replication group already exists", getName());
@@ -224,6 +230,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
       }
       syncXClusterConfigWithReplicationGroup(
           clusterConfigResp.getConfig(), xClusterConfig, taskParams().tableIds);
+      xClusterConfig.updateReplicationSetupTimeForTables(taskParams().tableIds, new Date());
 
       // For txn xCluster set the target universe role to standby.
       // But from "2024.1.0.0-b71/2.23.0.0-b157" onwards, we support multiple txn replication

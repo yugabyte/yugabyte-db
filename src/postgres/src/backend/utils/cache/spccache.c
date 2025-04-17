@@ -363,7 +363,7 @@ get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
 	switch (distance)
 	{
 		case UNKNOWN_DISTANCE:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case INTER_CLOUD:
 			cost = yb_intercloud_cost;
 			break;

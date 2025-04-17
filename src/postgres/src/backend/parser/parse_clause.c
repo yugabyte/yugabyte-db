@@ -3251,10 +3251,11 @@ transformOnConflictArbiter(ParseState *pstate,
 		 */
 		if (infer->conname)
 		{
+			Oid			relid = RelationGetRelid(pstate->p_target_relation);
 			RangeTblEntry *rte = pstate->p_target_nsitem->p_rte;
 			Bitmapset  *conattnos;
 
-			conattnos = get_relation_constraint_attnos(pstate->p_target_relation, infer->conname,
+			conattnos = get_relation_constraint_attnos(relid, infer->conname,
 													   false, constraint);
 
 			/* Make sure the rel as a whole is marked for SELECT access */

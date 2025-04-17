@@ -348,7 +348,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(120, 150);
+    return new Pair<>(120, 180);
   }
 
   public NodeDetails getLiveNode(Universe universe) {

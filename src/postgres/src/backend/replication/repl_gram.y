@@ -79,10 +79,10 @@ Node *replication_parse_result;
 %token K_NOEXPORT_SNAPSHOT
 %token K_USE_SNAPSHOT
 
-%token K_YB_SEQUENCE
+/* YB tokens */
 %token K_YB_HYBRID_TIME
-
 %token K_YB_ROW
+%token K_YB_SEQUENCE
 %token K_YB_TRANSACTION
 
 %type <node>	command

@@ -55,7 +55,7 @@ const size_t kMinBlockSize = 2 * sizeof(uint32_t);
 
 inline uint32_t GetMiddleIndex(
     const uint32_t total_number, const MiddlePointPolicy middle_point_policy) {
-  return total_number ? (total_number - yb::to_underlying(middle_point_policy)) / 2 : 0;
+  return total_number ? (total_number - std::to_underlying(middle_point_policy)) / 2 : 0;
 }
 
 // Helper routine: decode the next block entry starting at "p",

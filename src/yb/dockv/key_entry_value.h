@@ -155,6 +155,7 @@ class KeyEntryValue {
       const InetAddress& value, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue MakeUuid(const Uuid& value, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue GinNull(uint8_t v);
+  static KeyEntryValue MakeBson(const Slice& str, SortOrder sort_order = SortOrder::kAscending);
 
   static KeyEntryValue Create(int64_t value) {
     return KeyEntryValue::Int64(value);

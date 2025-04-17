@@ -223,7 +223,7 @@ Status PgCreateTableBase::AddColumnImpl(
   column.set_attr_ybtype(attr_ybtype);
   column.set_is_hash(is_hash);
   column.set_is_range(is_range);
-  column.set_sorting_type(to_underlying(sorting_type));
+  column.set_sorting_type(std::to_underlying(sorting_type));
   column.set_attr_pgoid(pg_type_oid);
   return Status::OK();
 }
@@ -352,12 +352,14 @@ PgCreateIndex::PgCreateIndex(
 //--------------------------------------------------------------------------------------------------
 
 PgDropTable::PgDropTable(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist)
-    : BaseType(pg_session), table_id_(table_id), if_exist_(if_exist) {
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist,
+    bool use_regular_transaction_block)
+    : BaseType(pg_session), table_id_(table_id), if_exist_(if_exist),
+      use_regular_transaction_block_(use_regular_transaction_block) {
 }
 
 Status PgDropTable::Exec() {
-  Status s = pg_session_->DropTable(table_id_);
+  Status s = pg_session_->DropTable(table_id_, use_regular_transaction_block_);
   pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
@@ -385,14 +387,15 @@ Status PgTruncateTable::Exec() {
 
 PgDropIndex::PgDropIndex(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool if_exist,
-    bool ddl_rollback_enabled)
+    bool ddl_rollback_enabled, bool use_regular_transaction_block)
     : BaseType(pg_session),
-      index_id_(index_id), if_exist_(if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
+      index_id_(index_id), if_exist_(if_exist), ddl_rollback_enabled_(ddl_rollback_enabled),
+      use_regular_transaction_block_(use_regular_transaction_block) {
 }
 
 Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
-  auto s = pg_session_->DropIndex(index_id_, &indexed_table_name);
+  auto s = pg_session_->DropIndex(index_id_, use_regular_transaction_block_, &indexed_table_name);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
     PgObjectId indexed_table_id(indexed_table_name.table_id());

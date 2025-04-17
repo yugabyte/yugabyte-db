@@ -1577,7 +1577,7 @@ RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid)
 				break;
 			case YbTablegroupRelationId:
 				istmt.objtype = OBJECT_YBTABLEGROUP;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case TableSpaceRelationId:
 				istmt.objtype = OBJECT_TABLESPACE;
 				break;

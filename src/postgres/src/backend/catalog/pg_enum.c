@@ -35,9 +35,13 @@
 /* YB includes */
 #include "catalog/yb_oid_assignment.h"
 #include "pg_yb_utils.h"
+#include <math.h>
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_pg_enum_oid = InvalidOid;
+
+/* YB: NAN is not a valid sortorder. */
+float4		yb_binary_upgrade_next_pg_enum_sortorder = NAN;
 
 /*
  * Hash table of enum value OIDs created during the current transaction by
@@ -394,6 +398,11 @@ restart:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("pg_enum OID value not set when in binary upgrade mode")));
+		if (isnan(yb_binary_upgrade_next_pg_enum_sortorder))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("pg_enum sortorder value not set when in binary upgrade mode")));
+
 
 		/*
 		 * Use binary-upgrade override for pg_enum.oid, if supplied. During
@@ -407,6 +416,10 @@ restart:
 
 		newOid = binary_upgrade_next_pg_enum_oid;
 		binary_upgrade_next_pg_enum_oid = InvalidOid;
+
+		/* Override the previously computed newelemorder above. */
+		newelemorder = yb_binary_upgrade_next_pg_enum_sortorder;
+		yb_binary_upgrade_next_pg_enum_sortorder = NAN;
 	}
 	else if (YbUsingEnumLabelOidAssignment())
 		newOid = YbLookupOidAssignmentForEnumLabel(enumTypeOid, newVal);

@@ -4198,11 +4198,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createPreflightValidateBackupTask(
       BackupTableParams backupParams, boolean ybcBackup) {
-    return createPreflightValidateBackupTask(
-        backupParams.storageConfigUUID,
-        backupParams.customerUuid,
-        backupParams.getUniverseUUID(),
-        ybcBackup);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("BackupPreflightValidate");
+    BackupPreflightValidate task = createTask(BackupPreflightValidate.class);
+    BackupPreflightValidate.Params params =
+        new BackupPreflightValidate.Params(backupParams, ybcBackup);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   public SubTaskGroup createPreflightValidateBackupTask(
@@ -4512,7 +4516,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       boolean isK8s = cluster.userIntent.providerType == CloudType.kubernetes;
       universe.getTserversInCluster(cluster.uuid).stream()
-          .filter(NodeDetails::isConsideredRunning)
+          .filter(NodeDetails::isQueryable)
           .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, cert, ybcPort))
           .forEach(
               node -> {

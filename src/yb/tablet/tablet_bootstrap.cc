@@ -92,6 +92,7 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/backup.pb.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
@@ -528,9 +529,14 @@ class TabletBootstrap {
     const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
 
     if (data_.retryable_requests) {
+      const auto table_type_for_retryable_request_timeout =
+          tablet_->table_type() == PGSQL_TABLE_TYPE ||
+          meta_->table_name() == std::string(tserver::kPgAdvisoryLocksTableName)
+              ? PGSQL_TABLE_TYPE
+              : tablet_->table_type();
       const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
           ? client::SysCatalogRetryableRequestTimeoutSecs()
-          : client::RetryableRequestTimeoutSecs(tablet_->table_type());
+          : client::RetryableRequestTimeoutSecs(table_type_for_retryable_request_timeout);
       data_.retryable_requests->SetRequestTimeout(retryable_request_timeout_secs);
       data_.retryable_requests->SetMetricEntity(tablet_->GetTabletMetricsEntity());
     }

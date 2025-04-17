@@ -179,8 +179,8 @@ GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -272,8 +272,8 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -363,8 +363,8 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -397,7 +397,7 @@ SET row_security = off;
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
 \if :use_roles
@@ -473,8 +473,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -507,7 +507,7 @@ SET row_security = off;
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
 \if :use_roles

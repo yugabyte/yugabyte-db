@@ -85,6 +85,11 @@ void MasterTabletServiceImpl::ReleaseObjectLocks(
       STATUS(NotSupported, "ReleaseObjectLocks is not implemented at masters"));
 }
 
+Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServiceImpl::GetYSQLLeaseInfo(
+    const tserver::GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) {
+  return STATUS(NotSupported, "GetYSQLLeaseInfo is not implemented at masters");
+}
+
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
                                     tserver::WriteResponsePB* resp,
                                     rpc::RpcContext context) {

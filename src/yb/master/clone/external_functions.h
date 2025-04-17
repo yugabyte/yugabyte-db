@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,6 @@
 #include <memory>
 #include <unordered_map>
 
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_if.h"
@@ -84,7 +83,7 @@ class CloneStateManagerExternalFunctionsBase {
     UDTypeMap* type_map, ExternalTableSnapshotDataMap* tables_data,
     CoarseTimePoint deadline) = 0;
 
-  virtual Result<TSDescriptorPtr> PickTserver() = 0;
+  virtual Result<TSDescriptorPtr> GetClosestLiveTserver() = 0;
 
   virtual TSDescriptorVector GetTservers() = 0;
 

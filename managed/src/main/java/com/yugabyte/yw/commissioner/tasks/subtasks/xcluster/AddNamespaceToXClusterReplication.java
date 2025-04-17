@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.time.Duration;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -107,6 +108,7 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
           xClusterConfig.getReplicationGroupName(),
           targetMasterAddresses,
           xClusterWaitTimeout.toMillis());
+      xClusterConfig.updateReplicationSetupTimeForNamespace(dbId, new Date() /* moment */);
 
       log.debug(
           "Alter replication for xClusterConfig {} completed for source db id: {}",

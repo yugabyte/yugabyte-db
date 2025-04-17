@@ -960,17 +960,7 @@ Specifies which RPC compression algorithm to use. Requires `enable_stream_compre
 
 3: LZ4
 
-In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead.
-
-To upgrade from an older version that doesn't support RPC compression (such as 2.4), to a newer version that does (such as 2.6), you need to do the following:
-
-- Rolling restart to upgrade YugabyteDB to a version that supports compression.
-
-- Rolling restart to enable compression, on both YB-Master and YB-TServer, by setting `enable_stream_compression=true`.
-
-  Note that you can omit this step if the YugabyteDB version you are upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and later (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
-
-- Rolling restart to set the compression algorithm to use, on both YB-Master and YB-TServer, such as by setting `stream_compression_algo=3`.
+In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead. However, the default is set to 0, to avoid latency penalty on workloads.
 
 ## Security flags
 

@@ -1116,6 +1116,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public void createConfigureUniverseTasks(
       Cluster primaryCluster,
       @Nullable Collection<NodeDetails> masterNodes,
+      @Nullable Collection<NodeDetails> tserverNodes,
       @Nullable Runnable gflagsUpgradeSubtasks) {
     // Wait for a Master Leader to be elected.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -1131,6 +1132,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Persist the placement info into the YB master leader.
     createPlacementInfoTask(null /* blacklistNodes */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    if (CollectionUtils.isNotEmpty(tserverNodes) && primaryCluster.userIntent.enableYSQL) {
+      createWaitForServersTasks(tserverNodes, ServerType.YSQLSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
 
     // Manage encryption at rest
     SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
@@ -2721,6 +2727,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void createStartTserverProcessTasks(
       Collection<NodeDetails> nodesToBeStarted, boolean isYSQLEnabled) {
+    createStartTserverProcessTasks(
+        nodesToBeStarted, isYSQLEnabled, false /* skipYSQLServerCheck */);
+  }
+
+  public void createStartTserverProcessTasks(
+      Collection<NodeDetails> nodesToBeStarted,
+      boolean isYSQLEnabled,
+      boolean skipYSQLServerCheck) {
     // No check done for state as the operations are idempotent.
     // Creates the YB cluster by starting the masters in the create mode.
     createStartTServersTasks(nodesToBeStarted)
@@ -2739,7 +2753,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
     // [PLAT-5637] Wait for postgres server to be healthy if YSQL is enabled.
-    if (isYSQLEnabled) {
+    if (isYSQLEnabled && !skipYSQLServerCheck) {
       createWaitForServersTasks(nodesToBeStarted, ServerType.YSQLSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
     }

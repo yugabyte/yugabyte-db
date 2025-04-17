@@ -37,11 +37,11 @@ NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collectio
 -- (With modification to make them all nonconcurrent for performance.)
 --
 CREATE INDEX NONCONCURRENTLY onek_unique1 ON onek USING btree(unique1 int4_ops ASC);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 --
 CREATE INDEX NONCONCURRENTLY onek_unique2 ON onek USING btree(unique2 int4_ops ASC);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 CREATE INDEX NONCONCURRENTLY onek_hundred ON onek USING btree(hundred int4_ops ASC);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 CREATE INDEX NONCONCURRENTLY onek_stringu1 ON onek USING btree(stringu1 name_ops ASC);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB

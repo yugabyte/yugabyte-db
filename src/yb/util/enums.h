@@ -16,6 +16,7 @@
 #include <bitset>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/core/demangle.hpp>
@@ -34,13 +35,6 @@
 #include "yb/util/string_util.h"
 
 namespace yb {
-
-// Convert a strongly typed enum to its underlying type.
-// Based on an answer to this StackOverflow question: https://goo.gl/zv2Wg3
-template <typename E>
-constexpr typename std::underlying_type<E>::type to_underlying(E e) {
-  return static_cast<typename std::underlying_type<E>::type>(e);
-}
 
 template <typename E>
 class EnumIterator {
@@ -136,7 +130,7 @@ class AllEnumItemsIterable {
     if (c_str != nullptr) \
       return c_str; \
     return "<unknown " BOOST_PP_STRINGIZE(enum_name) " : " + \
-           std::to_string(::yb::to_underlying(value)) + ">"; \
+           std::to_string(std::to_underlying(value)) + ">"; \
   } \
   inline __attribute__((unused)) std::ostream& operator<<(std::ostream& out, enum_name value) { \
     return out << ToString(value); \
@@ -213,7 +207,7 @@ class AllEnumItemsIterable {
           BOOST_PP_STRINGIZE(enum_type)); \
       ::yb::FatalInvalidEnumValueInternal( \
           BOOST_PP_STRINGIZE(enum_type), ::yb::GetTypeName<enum_type>(), std::string(), \
-          ::yb::to_underlying(_value_copy), BOOST_PP_STRINGIZE(value_macro_arg), \
+          std::to_underlying(_value_copy), BOOST_PP_STRINGIZE(value_macro_arg), \
           __FILE__, __LINE__); \
     } while (0)
 
@@ -226,7 +220,7 @@ class AllEnumItemsIterable {
           BOOST_PP_STRINGIZE(enum_type)); \
       ::yb::FatalInvalidEnumValueInternal( \
           BOOST_PP_STRINGIZE(enum_type), ::yb::GetTypeName<enum_type>(), \
-          BOOST_PP_CAT(enum_type, _Name)(_value_copy), ::yb::to_underlying(_value_copy), \
+          BOOST_PP_CAT(enum_type, _Name)(_value_copy), std::to_underlying(_value_copy), \
           BOOST_PP_STRINGIZE(value_macro_arg), __FILE__, __LINE__); \
     } while (0)
 
@@ -251,7 +245,7 @@ std::string GetTypeName() {
 struct EnumHash {
   template <class T>
   size_t operator()(T t) const {
-    return to_underlying(t);
+    return std::to_underlying(t);
   }
 };
 
@@ -287,7 +281,8 @@ class EnumBitSetIterator {
 
  private:
   void FindSetBit() {
-    while (iter_ != List(static_cast<Enum*>(nullptr)).end() && !set_->test(to_underlying(*iter_))) {
+    while (iter_ != List(static_cast<Enum*>(nullptr)).end() &&
+           !set_->test(std::to_underlying(*iter_))) {
       ++iter_;
     }
   }
@@ -312,12 +307,12 @@ class EnumBitSet {
 
   explicit EnumBitSet(const std::initializer_list<Enum>& inp) {
     for (auto i : inp) {
-      impl_.set(to_underlying(i));
+      impl_.set(std::to_underlying(i));
     }
   }
 
   bool Test(Enum value) const {
-    return impl_.test(to_underlying(value));
+    return impl_.test(std::to_underlying(value));
   }
 
   uintptr_t ToUIntPtr() const {
@@ -337,18 +332,18 @@ class EnumBitSet {
   }
 
   EnumBitSet& Set(Enum value, bool val = true) {
-    impl_.set(to_underlying(value), val);
+    impl_.set(std::to_underlying(value), val);
     return *this;
   }
 
   EnumBitSet& Reset(Enum value) {
-    impl_.reset(to_underlying(value));
+    impl_.reset(std::to_underlying(value));
     return *this;
   }
 
   EnumBitSet& SetIf(Enum value, bool do_it) {
     if (do_it) {
-      impl_.set(to_underlying(value));
+      impl_.set(std::to_underlying(value));
     }
     return *this;
   }

@@ -2119,7 +2119,7 @@ ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 			if (stmt->concurrent)
 				PreventInTransactionBlock(isTopLevel,
 										  "DROP INDEX CONCURRENTLY");
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case OBJECT_TABLE:
 		case OBJECT_SEQUENCE:

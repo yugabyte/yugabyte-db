@@ -1,0 +1,72 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 1014000;
+SET documentdb.next_collection_id TO 10140;
+SET documentdb.next_collection_index_id TO 10140;
+-- Test Scenarios that cover the Bitmap Or selectivity - more selecitivity tests will be added here
+with r1 AS (SELECT FORMAT('{ "a": 1, "b": 2, "c": %s, "d": %s }', ((s % 2) + 1), s)::json as textVal from generate_series(1, 25000) s),
+r2 AS (SELECT json_build_object('insert', 'selectivity_index_tests', 'documents', json_agg(r1.textVal)) AS jsonObj FROM r1)
+SELECT documentdb_api.insert('db', (r2.jsonObj)::text::bson) FROM r2;
+NOTICE:  creating collection
+                                           insert                                           
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""25000"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+with r1 AS (SELECT FORMAT('{ "a": 1, "b": 3, "c": %s, "d": %s }', ((s % 2) + 1), s)::json as textVal from generate_series(25001, 50000) s),
+r2 AS (SELECT json_build_object('insert', 'selectivity_index_tests', 'documents', json_agg(r1.textVal)) AS jsonObj FROM r1)
+SELECT documentdb_api.insert('db', (r2.jsonObj)::text::bson) FROM r2;
+                                           insert                                           
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""25000"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+with r1 AS (SELECT FORMAT('{ "a": 1, "b": 3, "c": %s, "d": %s }', ((s % 2) + 1), s)::json as textVal from generate_series(50001, 75000) s),
+r2 AS (SELECT json_build_object('insert', 'selectivity_index_tests', 'documents', json_agg(r1.textVal)) AS jsonObj FROM r1)
+SELECT documentdb_api.insert('db', (r2.jsonObj)::text::bson) FROM r2;
+                                           insert                                           
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""25000"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "selectivity_index_tests", "indexes": [ { "key": { "a": 1, "b": 1, "c": 1, "d": 1 }, "name": "idx_1" } ]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+ANALYZE documentdb_data.documents_10140;
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'selectivity_index_tests') WHERE document @@ '{ "a": 1, "b": { "$in": [ 2, 3, 4, 5 ] }, "a": { "$in": [ 1, 5, 6, 7 ] }, "$or": [ { "c": 3, "d": { "$gt": 500 } }, { "c": { "$gt": 4 } }] }';
+                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10140_1014007 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson))
+               Filter: (((document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "d" : { "$numberInt" : "500" } }'::documentdb_core.bson)) OR (document OPERATOR(documentdb_api_catalog.@>) '{ "c" : { "$numberInt" : "4" } }'::documentdb_core.bson))
+               ->  Bitmap Index Scan on idx_1
+                     Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson))
+(10 rows)
+
+BEGIN;
+set local documentdb.enableNewSelectivityMode to on;
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'selectivity_index_tests') WHERE document @@ '{ "a": 1, "b": { "$in": [ 2, 3, 4, 5 ] }, "a": { "$in": [ 1, 5, 6, 7 ] }, "$or": [ { "c": 3, "d": { "$gt": 500 } }, { "c": { "$gt": 4 } }] }';
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_10140_1014007 collection
+               Recheck Cond: (((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "d" : { "$numberInt" : "500" } }'::documentdb_core.bson)) OR ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "c" : { "$numberInt" : "4" } }'::documentdb_core.bson)))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on idx_1
+                           Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "d" : { "$numberInt" : "500" } }'::documentdb_core.bson))
+                     ->  Bitmap Index Scan on idx_1
+                           Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "c" : { "$numberInt" : "4" } }'::documentdb_core.bson))
+(12 rows)
+
+ROLLBACK;

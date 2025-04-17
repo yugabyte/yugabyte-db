@@ -33,6 +33,7 @@ DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 using namespace std::literals;
 
@@ -77,6 +78,14 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
   }
 
   tserver::TSLocalLockManagerPtr lock_manager_;
+};
+
+class TestWithTransactionalDDL: public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgObjectLocksTestRF1::SetUp();
+  }
 };
 
 TEST_F(PgObjectLocksTestRF1, TestSanity) {
@@ -151,7 +160,7 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
   ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
 
   auto status_future = std::async(std::launch::async, [&conn]() -> Status {
-    RETURN_NOT_OK(conn.Fetch("SELECT * FROM TEST WHERE k=1"));
+    RETURN_NOT_OK(conn.Fetch("SELECT * FROM test WHERE k=1"));
     return Status::OK();
   });
 
@@ -159,6 +168,35 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
     return NumWaitingLocks() >= 1;
   }, 5s * kTimeMultiplier, "Timed out waiting for num waiting locks == 1"));
   DEBUG_ONLY_TEST_SYNC_POINT("ExclusiveLocksRemovedAfterDocDBSchemaChange");
+  ASSERT_OK(status_future.get());
+}
+
+// TODO(bkolagani): Once https://github.com/yugabyte/yugabyte-db/issues/26815 is addressed, add a
+// similar test asserting that a kPlain txn with explicit exclusive locks acquired using `LOCK ...`
+// releases them post commit & resets state in PgClientSession::Impl::ReleaseObjectLocksIfNecessary.
+TEST_F_EX(PgObjectLocksTestRF1, LocksNotRealesedLocallyOnCommit, TestWithTransactionalDDL) {
+  CreateTestTable();
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto status_future = std::async(std::launch::async, [&conn2]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("SELECT * FROM test WHERE k=1"));
+    return Status::OK();
+  });
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"PlainTxnStateReset", "LocksNotRealesedLocallyOnCommitWithTransactionalDDL:1"},
+    {"LocksNotRealesedLocallyOnCommitWithTransactionalDDL:2", "DoReleaseObjectLocksIfNecessary"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn1.CommitTransaction());
+  DEBUG_ONLY_TEST_SYNC_POINT("LocksNotRealesedLocallyOnCommitWithTransactionalDDL:1");
+  ASSERT_NE(status_future.wait_for(2s * kTimeMultiplier), std::future_status::ready);
+  DEBUG_ONLY_TEST_SYNC_POINT("LocksNotRealesedLocallyOnCommitWithTransactionalDDL:2");
   ASSERT_OK(status_future.get());
 }
 #endif

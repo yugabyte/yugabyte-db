@@ -172,6 +172,8 @@ class PgLibPqTest : public LibPqTestBase {
 
   Result<string> GetSchemaName(const string& relname, PGConn* conn);
 
+  Result<YsqlMetric> GetCatCacheTableMissMetric(const std::string& table_name);
+
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
@@ -1780,6 +1782,27 @@ Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
       "SELECT nspname FROM pg_class JOIN pg_namespace "
       "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
       relname));
+}
+
+Result<YsqlMetric> PgLibPqTest::GetCatCacheTableMissMetric(const std::string& table_name) {
+  auto hostport = Format("$0:$1", pg_ts->bind_host(), pg_ts->pgsql_http_port());
+  EasyCurl c;
+  faststring buf;
+
+  auto json_metrics_url =
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+  RETURN_NOT_OK(c.FetchURL(json_metrics_url, &buf));
+  auto json_metrics = ParseJsonMetrics(buf.ToString());
+  auto found_it =
+      std::find_if(json_metrics.begin(), json_metrics.end(), [table_name](YsqlMetric& metric) {
+        return (
+            metric.name.find("CatalogCacheTableMisses") != std::string::npos &&
+            metric.labels["table_name"] == table_name);
+      });
+  if (found_it == json_metrics.end()) {
+    return STATUS(NotFound, "metric for " + table_name + " not found");
+  }
+  return *found_it;
 }
 
 // Ensure if client sends out duplicate create table requests, one create table request can
@@ -4135,6 +4158,113 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   }
 }
 
+class PgLibPqAmopNegCacheTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+
+  void TestAmopNegCacheMiss(bool preloaded) {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
+
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto runQueryAndGetMetricLambda = [&]() -> Result<int64_t> {
+      // This query currently causes a cache lookup on pg_amop for a row that doesn't exist
+      auto str = VERIFY_RESULT(
+          conn2.FetchAllAsString("EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'"));
+      LOG(INFO) << "output " << str;
+
+      auto value = VERIFY_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_amop"));
+      LOG(INFO) << "metric value for pg_amop misses " << value.value;
+      return value.value;
+    };
+
+    int64_t value1 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+    int64_t value2 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+
+    ASSERT_GT(value2, value1);
+
+    LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='3.14'"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids=3.14"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    LOG(INFO) << "Completed invalid tests";
+
+    ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
+    int64_t value3 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+
+    if (preloaded) {
+      // When preloaded, allowing neg caching already returns a neg cache hit
+      // so we should see no further misses on pg_amop at this point.
+      ASSERT_EQ(value3, value2);
+    } else {
+      // When not preloaded, we need one additional query to create the neg
+      // cache entry, after which we should see no further misses.
+      ASSERT_GT(value3, value2);
+
+      int64_t value4 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+      ASSERT_EQ(value4, value3);
+    }
+  }
+};
+
+class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_catalog_preload_additional_table_list=pg_amop");
+    PgLibPqAmopNegCacheTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNegCacheTest) {
+  TestAmopNegCacheMiss(false);
+}
+
+TEST_F_EX(PgLibPqTest, PgAmopPreloadNegCacheTest, PgLibPqAmopPreloadNegCacheTest) {
+  TestAmopNegCacheMiss(true);
+}
+
+class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_catalog_preload_additional_table_list=pg_inherits");
+    options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, PgInheritsNegCacheTest, PgLibPqPgInheritsNegCacheTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Prepare schema
+  ASSERT_OK(conn.Execute(
+    "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
+    "PARTITION BY RANGE(r);"
+    "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
+    "CREATE UNIQUE INDEX ON foo (v1, r);"
+    "INSERT INTO FOO VALUES (1,1,1,1);"));
+
+  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+  // Run the query on a fresh conn
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto str = conn2.FetchAllAsString(
+      "EXPLAIN (ANALYZE, DIST) INSERT INTO FOO VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
+      "v2=foo.v2+1");
+
+  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+  // Given we are preloaded, we should not have any cache misses (incl neg misses)
+  // for the query above which should cause lookups for ancestors of a table in pg_inherits
+  ASSERT_EQ(end_value.value, start_value.value);
+}
+
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
@@ -4509,12 +4639,51 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   // Turn off restore simulation and run regular "ALTER TABLE" operation.
   ASSERT_OK(conn.ExecuteFormat("SET yb_binary_restore = false"));
   ASSERT_OK(conn.ExecuteFormat("SET yb_ignore_pg_class_oids = true"));
-  ASSERT_OK(conn.Execute("SET yb_ignore_relfilenode_ids = true"));
 
   // This DDL used to show "Duplicate table" error due to OID collision because the OID
   // 16393 was already used by yugabyte.t2_idx2 and is reused as relfilenode for t3_idx1
   // during table rewrite.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t3 ALTER COLUMN id TYPE TEXT"));
+}
+
+TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+  conn = ASSERT_RESULT(ConnectToDB("db1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t(k int, c1 INT, c2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_c1_idx ON base_t(c1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_c2_idx ON base_t(c2)"));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+    "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
+  LOG(INFO) << "result: " << result;
+  ASSERT_OK(conn.Execute("ALTER TABLE base_t ADD PRIMARY KEY (k)"));
+  result = ASSERT_RESULT(conn.FetchAllAsString(
+    "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
+  LOG(INFO) << "result: " << result;
+  std::string tmpname = std::tmpnam(nullptr);
+  auto hostport = cluster_->ysql_hostport(0);
+  std::string ysql_dump_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump"));
+  std::string ysql_dump_cmd = Format(
+    "$0 --include-yb-metadata --serializable-deferrable --create --schema-only "
+    "--dbname db1 --file $1 -h $2 -p $3",
+    ysql_dump_path, tmpname, hostport.host(), hostport.port());
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("DROP DATABASE db1"));
+  std::string ysqlsh_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysqlsh"));
+  std::string ysqlsh_cmd = Format(
+    "$0 -f $1 -h $2 -p $3", ysqlsh_path, tmpname, hostport.host(), hostport.port());
+  LOG(INFO) << "Executing " << ysqlsh_cmd;
+  ASSERT_EQ(system(ysqlsh_cmd.c_str()), 0);
+  conn = ASSERT_RESULT(ConnectToDB("db1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t_dummy1(k INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t_faulty(k INT, c1 INT, c2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_faulty_c1_idx ON base_t_faulty(c1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_faulty_c2_idx ON base_t_faulty(c2)"));
+  std::string rm_cmd = Format("rm -f $0", tmpname);
+  LOG(INFO) << "Executing " << rm_cmd;
+  ASSERT_EQ(system(rm_cmd.c_str()), 0);
 }
 
 TEST_F(PgLibPqTest, TablePartitionByCollationTextColumn) {

@@ -104,6 +104,7 @@ typedef enum {
   YB_YQL_DATA_TYPE_UINT64 = 103,
   YB_YQL_DATA_TYPE_GIN_NULL = 104,
   YB_YQL_DATA_TYPE_VECTOR = 105,
+  YB_YQL_DATA_TYPE_BSON = 106,
 } YbcPgDataType;
 
 // Datatypes that are internally designated to be unsupported.

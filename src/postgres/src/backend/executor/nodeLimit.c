@@ -88,7 +88,7 @@ ExecLimit(PlanState *pstate)
 				pstate->state->yb_exec_params.limit_count = node->count;
 				pstate->state->yb_exec_params.limit_offset = node->offset;
 			}
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case LIMIT_RESCAN:
 			/*
@@ -241,7 +241,7 @@ ExecLimit(PlanState *pstate)
 			}
 
 			Assert(node->lstate == LIMIT_WINDOWEND_TIES);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case LIMIT_WINDOWEND_TIES:
 			if (ScanDirectionIsForward(direction))

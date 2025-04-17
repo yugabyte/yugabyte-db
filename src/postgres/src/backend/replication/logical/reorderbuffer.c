@@ -2200,7 +2200,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					change->action = REORDER_BUFFER_CHANGE_INSERT;
 
 					/* intentionally fall through */
-					switch_fallthrough();
+					yb_switch_fallthrough();
 				case REORDER_BUFFER_CHANGE_INSERT:
 				case REORDER_BUFFER_CHANGE_UPDATE:
 				case REORDER_BUFFER_CHANGE_DELETE:

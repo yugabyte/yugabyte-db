@@ -20,10 +20,10 @@ NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collectio
 --
 CREATE INDEX NONCONCURRENTLY onek2_u1_prtl ON onek2 USING btree(unique1 int4_ops ASC)
 	where unique1 < 20 or unique1 > 980;
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 CREATE INDEX NONCONCURRENTLY onek2_u2_prtl ON onek2 USING btree(unique2 int4_ops ASC)
 	where stringu1 < 'B';
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 CREATE INDEX NONCONCURRENTLY onek2_stu1_prtl ON onek2 USING btree(stringu1 name_ops ASC)
 	where onek2.stringu1 >= 'J' and onek2.stringu1 < 'K';
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB

@@ -1,0 +1,190 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 8400000;
+SET documentdb.next_collection_id TO 8400;
+SET documentdb.next_collection_index_id TO 8400;
+CREATE OR REPLACE FUNCTION batch_insert_testing_vector_documents_hnsw_planner(collectionName text, beginId integer, numDocuments integer, docPerBatch integer)
+  RETURNS void
+  LANGUAGE plpgsql
+AS $fn$
+DECLARE
+    endId integer := beginId + numDocuments - 1;
+    batchCnt integer := 0;
+    batchIdx integer := 0;
+    batchBeginId integer := 0;
+    batchEndId integer := 0;
+    v_insertSpec bson;
+    v_resultDocs bson;
+BEGIN
+    RAISE NOTICE 'Inserting % documents into %', numDocuments, collectionName;
+    if numDocuments%docPerBatch = 0 then
+        batchCnt := numDocuments/docPerBatch;
+    else
+        batchCnt := numDocuments/docPerBatch + 1;
+    end if;
+    RAISE NOTICE 'Begin id: %, Batch size: %, batch count: %', beginId, docPerBatch, batchCnt;
+
+    WHILE batchIdx < batchCnt LOOP
+        batchBeginId := beginId + batchIdx * docPerBatch;
+        batchEndId := beginId + (batchIdx + 1) * docPerBatch - 1;
+        if endId < batchEndId then
+            batchEndId := endId;
+        end if;
+        WITH r1 AS (SELECT counter from generate_series(batchBeginId, batchEndId) AS counter),
+             r2 AS ( SELECT ('{ "_id": ' || counter || ', "a": "some sentence", "v": [ ' || 10+counter || ', ' || 15+counter || ', ' || 1.1+counter || ' ] }') AS documentValue FROM r1),
+             r3 AS ( SELECT collectionName as insert, array_agg(r2.documentValue::bson) AS documents FROM r2)
+
+        SELECT row_get_bson(r3) INTO v_insertSpec FROM r3;
+        SELECT p_result INTO v_resultDocs FROM documentdb_api.insert('vector_db', v_insertSpec);
+        batchIdx := batchIdx + 1;
+    END LOOP;
+END;
+$fn$;
+---------------------------------------------------------------------
+-- HNSW
+-- HNSW create index, error cases
+SELECT documentdb_api.insert_one('vector_db', 'agg_vector_hnsw_planner', '{ "_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('vector_db', 'agg_vector_hnsw_planner', '{ "_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('vector_db', 'agg_vector_hnsw_planner', '{ "_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('vector_db', 'agg_vector_hnsw_planner', '{ "_id": 6,  "a": "some sentence", "v": [3.0, 5.0, 1.1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('vector_db', 'agg_vector_hnsw_planner', '{ "_id": 7,  "a": "some other sentence", "v": [8.0, 5.0, 0.1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+ANALYZE;
+-- HNSW search, success cases
+SELECT documentdb_api_internal.create_indexes_non_concurrently('vector_db', '{ "createIndexes": "agg_vector_hnsw_planner", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+ANALYZE;
+-- should not go via Citus planner (with pushdown to index)
+set documentdb.enable_force_push_vector_index to on;
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1 }  } } ], "cursor": {} }');
+                                                                    QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Subquery Scan on agg_stage_0 (actual rows=1 loops=1)
+   ->  Limit (actual rows=1 loops=1)
+         ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=1 loops=1)
+               CosmosSearch Custom Params: { "efSearch" : 1 }
+               ->  Index Scan using foo_1 on documents_8401_8400002 collection (actual rows=1 loops=1)
+                     Order By: (public.vector(bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+                     Filter: bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson)
+(7 rows)
+
+SELECT batch_insert_testing_vector_documents_hnsw_planner('agg_vector_hnsw_planner', 1, 100, 10);
+NOTICE:  Inserting 100 documents into agg_vector_hnsw_planner
+NOTICE:  Begin id: 1, Batch size: 10, batch count: 10
+ batch_insert_testing_vector_documents_hnsw_planner 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1 }  } } ], "cursor": {} }');
+                                                                    QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Subquery Scan on agg_stage_0 (actual rows=1 loops=1)
+   ->  Limit (actual rows=1 loops=1)
+         ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=1 loops=1)
+               CosmosSearch Custom Params: { "efSearch" : 1 }
+               ->  Index Scan using foo_1 on documents_8401_8400002 collection (actual rows=1 loops=1)
+                     Order By: (public.vector(bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+                     Filter: bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson)
+(7 rows)
+
+-- create indexes for vector filter
+SELECT documentdb_api_internal.create_indexes_non_concurrently('vector_db', '{ "createIndexes": "agg_vector_hnsw_planner", "indexes": [ { "key": { "a": 1 }, "name": "a_1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('vector_db', '{ "createIndexes": "agg_vector_hnsw_planner", "indexes": [ { "key": { "b": 1 }, "name": "b_1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('vector_db', '{ "createIndexes": "agg_vector_hnsw_planner", "indexes": [ { "key": { "c": 1 }, "name": "c_1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+set documentdb.enableVectorPreFilter to on;
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "a": { "$lt": "s" }} }  } } ], "cursor": {} }');
+                                                                    QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   ->  Nested Loop (actual rows=0 loops=1)
+         Join Filter: (collection_1.ctid = collection.ctid)
+         Rows Removed by Join Filter: 1
+         ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=1 loops=1)
+               CosmosSearch Custom Params: { "efSearch" : 1 }
+               ->  Index Scan using foo_1 on documents_8401_8400002 collection_1 (actual rows=1 loops=1)
+                     Order By: (public.vector(bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+                     Filter: bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson)
+         ->  Materialize (actual rows=1 loops=1)
+               ->  Seq Scan on documents_8401_8400002 collection (actual rows=1 loops=1)
+                     Filter: (document @< '{ "a" : "s" }'::bson)
+                     Rows Removed by Filter: 99
+(13 rows)
+
+set documentdb.enableVectorPreFilterV2 to on;
+-- This is currently a post-filter and will not use the filter index.
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "a": { "$lt": "s" }} }  } } ], "cursor": {} }');
+                                                                               QUERY PLAN                                                                               
+---------------------------------------------------------------------
+ Sort (actual rows=0 loops=1)
+   Sort Key: (((public.vector(bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector) + '0'::double precision))
+   Sort Method: quicksort  Memory: 25kB
+   ->  Subquery Scan on agg_stage_0 (actual rows=0 loops=1)
+         ->  Limit (actual rows=0 loops=1)
+               ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=0 loops=1)
+                     CosmosSearch Custom Params: { "efSearch" : 1 }
+                     ->  Index Scan using foo_1 on documents_8401_8400002 collection (actual rows=0 loops=1)
+                           Order By: (public.vector(bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+                           Filter: ((document @< '{ "a" : "s" }'::bson) AND bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson))
+                           Rows Removed by Filter: 1
+(11 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_pipeline('vector_db', '{ "aggregate": "agg_vector_hnsw_planner", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 2, "path": "v", "efSearch": 1, "filter": { "_id": { "$lt": 5 }} }  } } ], "cursor": {} }');
+                                                                                                               QUERY PLAN                                                                                                                
+---------------------------------------------------------------------
+ Sort (actual rows=0 loops=1)
+   Sort Key: (((public.vector(bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector) + '0'::double precision))
+   Sort Method: quicksort  Memory: 25kB
+   ->  Subquery Scan on agg_stage_0 (actual rows=0 loops=1)
+         ->  Limit (actual rows=0 loops=1)
+               ->  Custom Scan (DocumentDBApiQueryScan) (actual rows=0 loops=1)
+                     CosmosSearch Custom Params: { "efSearch" : 1 }
+                     ->  Index Scan using foo_1 on documents_8401_8400002 collection (actual rows=0 loops=1)
+                           Order By: (public.vector(bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) '[3,4.9,1]'::public.vector)
+                           Filter: ((document @< '{ "_id" : { "$numberInt" : "5" } }'::bson) AND (object_id < '{ "" : { "$numberInt" : "5" } }'::bson) AND bson_search_param(document, '{ "efSearch" : { "$numberInt" : "1" } }'::bson))
+                           Rows Removed by Filter: 1
+(11 rows)
+

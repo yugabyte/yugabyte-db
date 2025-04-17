@@ -21,6 +21,8 @@ def get_absolute_path(relative_path):
 def parse_arguments():
     parser = argparse.ArgumentParser(description="YNP: Yugabyte Node Provisioning Tool")
     parser.add_argument('--command', default="provision", required=False, help='Command to execute')
+    parser.add_argument('--specific_module', default=None, required=False,
+                        help='Specific module to execute')
     parser.add_argument('--config_file',
                         default="./node-agent-provision.yaml",
                         help='Path to the ynp configuration file')

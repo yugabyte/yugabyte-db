@@ -12,7 +12,7 @@ block_indexing = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB JDBC Smart Driver<br/>[Recommended] | [42.7.3-yb-1](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.7.3-yb-1) | Full | [CRUD](/v2024.1/drivers-orms/java/yugabyte-jdbc/) |
+| YugabyteDB JDBC Smart Driver<br/>[Recommended] | [{{< version-driver-java >}}](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/{{< version-driver-java >}}) | Full | [CRUD](/v2024.1/drivers-orms/java/yugabyte-jdbc/) |
 | YugabyteDB R2DBC Smart Driver | [1.1.0-yb-1-ea](https://mvnrepository.com/artifact/com.yugabyte/r2dbc-postgresql) | Full | [CRUD](/v2024.1/drivers-orms/java/yb-r2dbc/) |
 | PostgreSQL JDBC Driver  | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | Full | [CRUD](/v2024.1/drivers-orms/java/postgres-jdbc/) |
 | Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/v2024.1/drivers-orms/java/ysql-vertx-pg-client/) |
@@ -68,8 +68,9 @@ block_indexing = true
 | PostgreSQL node-postgres Driver | [8.7.3](https://www.npmjs.com/package/pg) | Full | [CRUD](/v2024.1/drivers-orms/nodejs/postgres-node-driver/) |
 | YugabyteDB Node.js Driver for YCQL | [4.0.0](https://github.com/yugabyte/cassandra-nodejs-driver) | Full | [CRUD](/v2024.1/drivers-orms/nodejs/ycql/) |
 | **ORMs** | | | |
-| Sequelize | 6.6.5 | Full | [CRUD](/v2024.1/drivers-orms/nodejs/sequelize/) |
-| Prisma    | 3.14  | Full | [CRUD](/v2024.1/drivers-orms/nodejs/prisma/) |
+| Sequelize | 6.6.5  | Full | [CRUD](/v2024.1/drivers-orms/nodejs/sequelize/) |
+| Prisma    | 3.14   | Full | [CRUD](/v2024.1/drivers-orms/nodejs/prisma/) |
+| TypeORM   | 0.3.21 | Full | [CRUD](/v2024.1/drivers-orms/nodejs/typeorm/) |
 
   {{% /tab %}}
 

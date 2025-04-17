@@ -44,7 +44,7 @@ To use Flyway with YugabyteDB, you need the following:
   <dependency>
     <groupId>com.yugabyte</groupId>
     <artifactId>jdbc-yugabytedb</artifactId>
-    <version>42.7.3-yb-1</version>
+    <version>{{< version-driver-java >}}</version>
   </dependency>
   ```
 
