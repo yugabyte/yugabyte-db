@@ -11,13 +11,13 @@ menu:
 type: docs
 ---
 
-A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/yb-tserver/) service and the [YB-Master](../../architecture/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
+A YugabyteDB cluster (also referred to as a [universe](../../architecture/key-concepts/#universe)) consists of two distributed services - the [YB-TServer](../../architecture/yb-tserver/) service and the [YB-Master](../../architecture/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
 
 ## Basics
 
 - YugabyteDB supports both x86 and ARM (aarch64) CPU architectures.
 - YugabyteDB is supported on a variety of [operating systems](../../reference/configuration/operating-systems/). For production workloads, the recommended operating systems are AlmaLinux 8 and RHEL 8.
-- The appropriate system limits should be set using [`ulimit`](../manual-deployment/system-config/#set-ulimits) on each node running a YugabyteDB server.
+- The appropriate system limits should be set using [ulimit](../manual-deployment/system-config/#set-ulimits) on each node running a YugabyteDB server.
 - [chrony](../manual-deployment/system-config#set-up-time-synchronization) should be used to synchronize time among the machines.
 
 ## Replication
@@ -69,7 +69,7 @@ YugabyteDB explicitly manages a block cache, and does not need the entire data s
 
 ### Memory and tablet limits
 
-For a universe with [RF3](../../architecture/key-concepts/#replication-factor-rf), 1000 tablets imply 3000 tablet replicas. If the universe has three nodes, then each node has on average 1000 tablet replicas. A six node universe would have on average 500 tablet replicas per-node, and so on.
+For a cluster with [RF3](../../architecture/key-concepts/#replication-factor-rf), 1000 tablets imply 3000 tablet replicas. If the cluster has three nodes, then each node has on average 1000 tablet replicas. A six node cluster would have on average 500 tablet replicas per-node, and so on.
 
 Each 1000 tablet replicas on a node impose an overhead of 0.4 vCPUs for Raft heartbeats (assuming a 0.5 second heartbeat interval), and 800 MiB of memory.
 
@@ -81,7 +81,7 @@ You can manually provision the amount of memory each TServer uses by setting the
 
 #### YSQL
 
-Manually provisioning is a bit tricky as you need to take into account how much memory the kernel needs as well as the postgres and any master process that is going to be colocated with the TServer.
+Manually provisioning is a bit tricky as you need to take into account how much memory the kernel needs as well as the PostgreSQL processes and any Master process that is going to be colocated with the TServer.
 
 Accordingly, it is recommended that you instead use the [--use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives good memory division settings for using YSQL optimized for your node's size.
 
@@ -98,7 +98,7 @@ To view the number of live tablets and the limits, open the **YB-Master UI** (`<
 
 {{< /tip >}}
 
-(Note that although the default setting is false, when creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false. For more information on the defaults for memory flags, refer to [Memory division flags](../../reference/configuration/yb-tserver/#memory-division-flags).)
+(Note that although the default setting is false, when creating a new cluster using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false. For more information on the defaults for memory flags, refer to [Memory division flags](../../reference/configuration/yb-tserver/#memory-division-flags).)
 
 Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas. The following table shows sample values of node RAM versus maximum tablet replicas. You can use these values to estimate how big of a node you will need based on how many tablet replicas per server you want supported.
 
@@ -116,13 +116,13 @@ These values are approximate because different kernels use different amounts of 
 
 Also shown is an estimate of how many PostgreSQL connections that node can handle assuming default PostgreSQL flags and usage.  Unusually memory expensive queries or preloading PostgreSQL catalog information will reduce the number of connections that can be supported.
 
-Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical PostgreSQL connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical PostgreSQL connections assuming the connections are evenly distributed among the nodes.
+Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical PostgreSQL connections.  A cluster of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical PostgreSQL connections assuming the connections are evenly distributed among the nodes.
 
 #### YCQL
 
 If you are not using YSQL, ensure the [use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-master/#use-memory-defaults-optimized-for-ysql) flag is set to false. This flag optimizes YugabyteDB's memory setup for YSQL, reserving a considerable amount of memory for PostgreSQL; if you are not using YSQL then that memory is wasted when it could be helping improve performance by allowing more data to be cached.
 
-Note that although the default setting is false, when creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false.
+Note that although the default setting is false, when creating a new cluster using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false.
 
 ### Verify support for SSE2 and SSE4.2
 
