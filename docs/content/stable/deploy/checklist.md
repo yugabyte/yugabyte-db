@@ -87,8 +87,8 @@ Accordingly, it is recommended that you instead use the [--use_memory_defaults_o
 
 The flag does the following:
 
-- Automatically sets memory division flag defaults to provide much more memory for PostgreSQL, and optimized for the node size. For more information, refer to [Memory division flags](../../reference/configuration/yb-tserver/#memory-division-flags).
-- Enforces tablet limits, based on available memory. This limits the total number of tablet replicas that a cluster can support. If you try to create a table whose additional tablet replicas would bring the total number of tablet replicas in the cluster over this limit, the create table request is rejected. For more information, refer to [Tablet limits](../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
+- Automatically sets memory division flag defaults to provide much more memory for PostgreSQL, and optimized for the node size. For details on memory flag defaults, refer to [Memory division flags](../../reference/configuration/yb-tserver/#memory-division-flags).
+- Enforces tablet limits based on available memory. This limits the total number of tablet replicas that a cluster can support. If you try to create a table whose additional tablet replicas would bring the total number of tablet replicas in the cluster over this limit, the create table request is rejected. For more information, refer to [Tablet limits](../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
 
 {{< tip title="Tip" >}}
 
@@ -98,7 +98,7 @@ To view the number of live tablets and the limits, open the **YB-Master UI** (`<
 
 {{< /tip >}}
 
-(Note that although the default setting is false, when creating a new cluster using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false. For more information on the defaults for memory flags, refer to [Memory division flags](../../reference/configuration/yb-tserver/#memory-division-flags).)
+(Note that although the default setting is false, when creating a new cluster using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false.)
 
 Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas. The following table shows sample values of node RAM versus maximum tablet replicas. You can use these values to estimate how big of a node you will need based on how many tablet replicas per server you want supported.
 
