@@ -10549,7 +10549,7 @@ dumpEnumType(Archive *fout, TypeInfo *tyinfo)
 						  "ORDER BY enumsortorder",
 						  tyinfo->dobj.catId.oid);
 	else
-		appendPQExpBuffer(query, "SELECT oid, enumlabel, enumsortorder "
+		appendPQExpBuffer(query, "SELECT oid, enumlabel "
 						  "FROM pg_catalog.pg_enum "
 						  "WHERE enumtypid = '%u'"
 						  "ORDER BY oid",
