@@ -444,6 +444,68 @@ class PgCatalogVersionTest : public LibPqTestBase {
       ASSERT_STR_CONTAINS(status.ToString(), "permission denied for table t5");
     }
   }
+  void InvalMessageLocalCatalogVersionHelper() {
+    // Create a number of databases.
+    auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+    const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
+    const int num_databases = 10;
+    for (int i = 0; i < num_databases; ++i) {
+      ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE test_db$0", i));
+    }
+    // Create a number of connections.
+    const int num_connections = num_databases * (num_databases + 1) / 2;
+    std::vector<int> indexes;
+    for (int i = 1; i <= num_databases; ++i) {
+      for (int j = 0; j < i; ++j) {
+        indexes.push_back(i - 1);
+      }
+    }
+    LOG(INFO) << "indexes: " << yb::ToString(indexes);
+    CHECK_EQ(num_connections, static_cast<int>(indexes.size()));
+    std::vector<PGConn> conns;
+    // indexes:
+    // 0,              connect to test_db0
+    // 1, 1,           connect to test_db1
+    // 2, 2, 2,        connect to test_db2
+    // 3, 3, 3, 3,     connect to test_db3
+    // 4, 4, 4, 4, 4   connect to test_db4
+    for (size_t i = 0; i < indexes.size(); ++i) {
+      std::string dbname = Format("test_db$0", indexes[i]);
+      PGConn conn = ASSERT_RESULT(ConnectToDB(dbname));
+      conns.emplace_back(std::move(conn));
+    }
+    // Use the standalone connection conn_yugabyte to cause global impact catalog version bump,
+    // so that in the end each connection will have a different local catalog version.
+    for (size_t i = 0; i < indexes.size(); ++i) {
+      auto result = ASSERT_RESULT(conns[i].FetchAllAsString("SELECT 1"));
+      ASSERT_EQ(result, "1");
+      // i == 0 needs to be NOSUPERUSER or else it is a noop that does not increment
+      // the catalog version.
+      ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, i % 2 == 0 ? "NOSUPERUSER" : "SUPERUSER"));
+      WaitForCatalogVersionToPropagate();
+    }
+    // Use datid != 1 to exclude template1, which is the database that the tserver
+    // background task periodically run a query to find out local catalog versions
+    // of all PG backends. Otherwise, it there is a coincident that the background
+    // task happens to be running and we will see an extra result of (1, 56).
+    const std::string query = "SELECT datid, local_catalog_version FROM "
+                              "yb_pg_stat_get_backend_local_catalog_version(NULL) "
+                              "WHERE datid != 1 ORDER BY datid ASC, local_catalog_version ASC";
+    auto result = ASSERT_RESULT((conn_yugabyte.FetchAllAsString(query)));
+    const string expected =
+        Format("$0, 56; "
+               "16384, 1; 16385, 2; 16385, 3; 16386, 4; 16386, 5; 16386, 6; "
+               "16387, 7; 16387, 8; 16387, 9; 16387, 10; "
+               "16388, 11; 16388, 12; 16388, 13; 16388, 14; 16388, 15; "
+               "16389, 16; 16389, 17; 16389, 18; 16389, 19; 16389, 20; 16389, 21; "
+               "16390, 22; 16390, 23; 16390, 24; 16390, 25; 16390, 26; 16390, 27; 16390, 28; "
+               "16391, 29; 16391, 30; 16391, 31; 16391, 32; 16391, 33; 16391, 34; 16391, 35; "
+               "16391, 36; 16392, 37; 16392, 38; 16392, 39; 16392, 40; 16392, 41; 16392, 42; "
+               "16392, 43; 16392, 44; 16392, 45; 16393, 46; 16393, 47; 16393, 48; 16393, 49; "
+               "16393, 50; 16393, 51; 16393, 52; 16393, 53; 16393, 54; 16393, 55", yugabyte_db_oid);
+    ASSERT_EQ(result, expected);
+  }
+
   static size_t CountRelCacheInitFiles(const string& dirpath) {
     auto CloseDir = [](DIR* d) { closedir(d); };
     std::unique_ptr<DIR, decltype(CloseDir)> d(opendir(dirpath.c_str()),
@@ -2449,62 +2511,13 @@ TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
 
 TEST_F(PgCatalogVersionTest, InvalMessageLocalCatalogVersion) {
   RestartClusterWithInvalMessageEnabled();
+  InvalMessageLocalCatalogVersionHelper();
+}
 
-  // Create a number of databases.
-  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
-  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
-  const int num_databases = 10;
-  for (int i = 0; i < num_databases; ++i) {
-    ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE test_db$0", i));
-  }
-  // Create a number of connections.
-  const int num_connections = num_databases * (num_databases + 1) / 2;
-  std::vector<int> indexes;
-  for (int i = 1; i <= num_databases; ++i) {
-    for (int j = 0; j < i; ++j) {
-      indexes.push_back(i - 1);
-    }
-  }
-  LOG(INFO) << "indexes: " << yb::ToString(indexes);
-  CHECK_EQ(num_connections, static_cast<int>(indexes.size()));
-  std::vector<PGConn> conns;
-  // indexes:
-  // 0,              connect to test_db0
-  // 1, 1,           connect to test_db1
-  // 2, 2, 2,        connect to test_db2
-  // 3, 3, 3, 3,     connect to test_db3
-  // 4, 4, 4, 4, 4   connect to test_db4
-  for (size_t i = 0; i < indexes.size(); ++i) {
-    std::string dbname = Format("test_db$0", indexes[i]);
-    PGConn conn = ASSERT_RESULT(ConnectToDB(dbname));
-    conns.emplace_back(std::move(conn));
-  }
-  // Use the standalone connection conn_yugabyte to cause global impact catalog version bump,
-  // so that in the end each connection will have a different local catalog version.
-  for (size_t i = 0; i < indexes.size(); ++i) {
-    auto result = ASSERT_RESULT(conns[i].FetchAllAsString("SELECT 1"));
-    ASSERT_EQ(result, "1");
-    // i == 0 needs to be NOSUPERUSER or else it is a noop that does not increment
-    // the catalog version.
-    ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, i % 2 == 0 ? "NOSUPERUSER" : "SUPERUSER"));
-    WaitForCatalogVersionToPropagate();
-  }
-  const std::string query = "SELECT datid, local_catalog_version FROM "
-                            "yb_pg_stat_get_backend_local_catalog_version(NULL) "
-                            "ORDER BY datid ASC, local_catalog_version ASC";
-  auto result = ASSERT_RESULT((conn_yugabyte.FetchAllAsString(query)));
-  const string expected =
-      Format("$0, 56; "
-             "16384, 1; 16385, 2; 16385, 3; 16386, 4; 16386, 5; 16386, 6; "
-             "16387, 7; 16387, 8; 16387, 9; 16387, 10; "
-             "16388, 11; 16388, 12; 16388, 13; 16388, 14; 16388, 15; "
-             "16389, 16; 16389, 17; 16389, 18; 16389, 19; 16389, 20; 16389, 21; "
-             "16390, 22; 16390, 23; 16390, 24; 16390, 25; 16390, 26; 16390, 27; 16390, 28; "
-             "16391, 29; 16391, 30; 16391, 31; 16391, 32; 16391, 33; 16391, 34; 16391, 35; "
-             "16391, 36; 16392, 37; 16392, 38; 16392, 39; 16392, 40; 16392, 41; 16392, 42; "
-             "16392, 43; 16392, 44; 16392, 45; 16393, 46; 16393, 47; 16393, 48; 16393, 49; "
-             "16393, 50; 16393, 51; 16393, 52; 16393, 53; 16393, 54; 16393, 55", yugabyte_db_oid);
-  ASSERT_EQ(result, expected);
+TEST_F(PgCatalogVersionTest, InvalMessageGarbageCollection) {
+  RestartClusterWithInvalMessageEnabled(
+      { "--check_lagging_catalog_versions_interval_secs=5" });
+  InvalMessageLocalCatalogVersionHelper();
 }
 
 } // namespace pgwrapper

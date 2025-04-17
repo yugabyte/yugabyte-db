@@ -586,7 +586,21 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void DoGarbageCollectionOfInvalidationMessages(
       const std::map<uint32_t, std::vector<uint64_t>>& db_local_catalog_versions_map,
-      std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions);
+      std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions,
+      std::map<uint32_t, uint64_t> *db_cutoff_catalog_versions);
+  void ClearInvalidationMessageQueueUnlocked(
+      const std::vector<uint64_t>& local_catalog_versions,
+      InvalidationMessagesInfo *info) REQUIRES(lock_);
+  void MergeInvalMessagesIntoQueueUnlocked(
+      uint32_t db_oid,
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      int start_index,
+      int end_index) REQUIRES(lock_);
+  void DoMergeInvalMessagesIntoQueueUnlocked(
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      int start_index,
+      int end_index,
+      InvalidationMessagesQueue *db_message_lists) REQUIRES(lock_);
 
   std::string log_prefix_;
 
