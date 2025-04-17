@@ -2207,7 +2207,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		 * We can pushdown recheck conditions, so the only time we can't
 		 * pushdown the aggregate is if we have local recheck conditions
 		 */
-		if (btss->recheck_required && btss->recheck_local_quals)
+		if (btss->btss_might_recheck && btss->recheck_local_quals)
 			return;
 
 		/*

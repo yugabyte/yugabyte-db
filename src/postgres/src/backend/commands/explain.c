@@ -2824,14 +2824,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				 * Storage filters are applied first, so they are output
 				 * first.
 				 */
-				if (bitmapscanstate->recheck_required)
+				if (bitmapscanstate->btss_might_recheck)
 					show_scan_qual(bitmapplan->recheck_pushdown.quals,
 								   "Storage Recheck Cond", planstate, ancestors,
 								   es);
 				show_scan_qual(storage_filter, "Storage Filter", planstate,
 							   ancestors, es);
 
-				if (bitmapscanstate->recheck_required)
+				if (bitmapscanstate->btss_might_recheck)
 				{
 					show_scan_qual(bitmapplan->recheck_local_quals, "Recheck Cond",
 								   planstate, ancestors, es);

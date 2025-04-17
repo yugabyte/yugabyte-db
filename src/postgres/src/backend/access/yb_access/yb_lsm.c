@@ -449,11 +449,17 @@ ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
 	if (ybscan->quit_scan || ybtbm->work_mem_exceeded)
 		return 0;
 
+	scan->xs_recheck = YbNeedsPgRecheck(ybscan);
 	HandleYBStatus(YBCPgRetrieveYbctids(ybscan->handle, ybscan->exec_params,
 										ybscan->target_desc->natts, &ybctids, &new_tuples,
 										&exceeded_work_mem));
 	if (!exceeded_work_mem)
+	{
 		yb_tbm_add_tuples(ybtbm, ybctids);
+		/* Got some row that may be actually not matching */
+		if (scan->xs_recheck && new_tuples > 0)
+			ybtbm->recheck_required = true;
+	}
 	else
 		yb_tbm_set_work_mem_exceeded(ybtbm);
 

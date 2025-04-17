@@ -1835,7 +1835,7 @@ typedef struct YbBitmapIndexScanState
 	ExprContext *biss_RuntimeContext;
 	Relation	biss_RelationDesc;
 	struct IndexScanDescData *biss_ScanDesc;
-	bool		biss_requires_recheck;
+	bool		biss_might_recheck;
 } YbBitmapIndexScanState;
 
 /* ----------------
@@ -1955,6 +1955,7 @@ typedef struct YbBitmapTableScanState
 	YbTIDBitmap *ybtbm;
 	YbTBMIterator *ybtbmiterator;
 	YbTBMIterateResult *ybtbmres;
+	bool		btss_might_recheck;
 	bool		initialized;
 	bool		recheck_required;
 	bool		work_mem_exceeded;

@@ -146,8 +146,6 @@ int YBCAshRemoveComponentFromWaitStateCode(uint32_t code);
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
-bool YBCIsNonembeddedYbctidsOnlyFetch(const YbcPgPrepareParameters *params);
-
 bool YBIsMajorUpgradeInitDb();
 
 const char *YBCGetOutFuncName(YbcPgOid typid);
