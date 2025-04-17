@@ -493,6 +493,33 @@ To match the name of a table, Debezium applies the regular expression that you s
 
 Default: All tables included in `table.include.list`
 
+##### snapshot.select.statement.overrides
+
+Specifies the table rows to include in a snapshot. Use the property if you want a snapshot to include only a subset of the rows in a table. This property affects snapshots only. It does not apply to events that the connector reads from the log.
+
+The property contains a comma-separated list of fully-qualified table names in the form *<schemaName>.<tableName>*. For example,
+
+```
+"snapshot.select.statement.overrides": "inventory.products,customers.orders"
+```
+
+For each table in the list, add a further configuration property that specifies the `SELECT` statement for the connector to run on the table when it takes a snapshot. The specified `SELECT` statement determines the subset of table rows to include in the snapshot. Use the following format to specify the name of this `SELECT` statement property:
+
+`snapshot.select.statement.overrides.<schemaName>.<tableName>`. For example, `snapshot.select.statement.overrides.customers.orders`.
+
+Example:
+
+From a `customers.orders` table that includes the soft-delete column, `delete_flag`, add the following properties if you want a snapshot to include only those records that are not soft-deleted:
+
+```
+"snapshot.select.statement.overrides": "customer.orders",
+"snapshot.select.statement.overrides.customer.orders": "SELECT * FROM [customers].[orders] WHERE delete_flag = 0 ORDER BY id DESC"
+```
+
+In the resulting snapshot, the connector includes only the records for which `delete_flag = 0`.
+
+No default.
+
 ##### event.processing.failure.handling.mode
 
 Specifies how the connector should react to exceptions during processing of events:
