@@ -61,8 +61,11 @@ pub(crate) fn is_generated_attribute(attribute: &FormData_pg_attribute) -> bool 
 }
 
 pub(crate) fn tuple_desc(typoid: Oid, typmod: i32) -> PgTupleDesc<'static> {
-    let tupledesc = unsafe { lookup_rowtype_tupdesc(typoid, typmod) };
-    unsafe { PgTupleDesc::from_pg(tupledesc) }
+    let tupledesc = unsafe { PgTupleDesc::from_pg(lookup_rowtype_tupdesc(typoid, typmod)) };
+
+    // return an owned copy of the tupledesc (needs pfree but not release) That prevents a bunch of
+    // errors during cleanup.
+    tupledesc.clone()
 }
 
 pub(crate) fn is_composite_type(typoid: Oid) -> bool {

@@ -23,7 +23,7 @@ use super::{
 static mut OBJECT_STORE_CACHE: Lazy<ObjectStoreCache> = Lazy::new(ObjectStoreCache::new);
 
 pub(crate) fn get_or_create_object_store(
-    uri_info: ParsedUriInfo,
+    uri_info: &ParsedUriInfo,
     copy_from: bool,
 ) -> (Arc<dyn ObjectStore>, Path) {
     #[allow(static_mut_refs)]
@@ -45,15 +45,13 @@ impl ObjectStoreCache {
 
     fn get_or_create(
         &mut self,
-        uri_info: ParsedUriInfo,
+        uri_info: &ParsedUriInfo,
         copy_from: bool,
     ) -> (Arc<dyn ObjectStore>, Path) {
-        let ParsedUriInfo {
-            uri,
-            path,
-            scheme,
-            bucket,
-        } = uri_info;
+        let uri = uri_info.uri.clone();
+        let scheme = uri_info.scheme.clone();
+        let bucket = uri_info.bucket.clone();
+        let path = uri_info.path.clone();
 
         // no need to cache local files
         if scheme == ObjectStoreScheme::Local {

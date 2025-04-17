@@ -36,10 +36,8 @@ mod parquet {
             panic!("{}", e.to_string());
         });
 
-        let uri = uri_info.uri.clone();
-
-        ensure_access_privilege_to_uri(&uri, true);
-        let parquet_schema = parquet_schema_from_uri(uri_info);
+        ensure_access_privilege_to_uri(&uri_info.uri, true);
+        let parquet_schema = parquet_schema_from_uri(&uri_info);
 
         let root_type = parquet_schema.root_schema();
         let thrift_schema_elements = to_thrift(root_type).unwrap_or_else(|e| {
@@ -72,7 +70,7 @@ mod parquet {
             let logical_type = schema_elem.logical_type.map(thrift_logical_type_to_str);
 
             let row = (
-                uri_as_string(&uri),
+                uri_as_string(&uri_info.uri),
                 name,
                 type_name,
                 type_length,

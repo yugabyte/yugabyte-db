@@ -18,9 +18,12 @@ use crate::{
     },
 };
 
-use super::copy_utils::{
-    copy_from_stmt_match_by, copy_stmt_attribute_list, copy_stmt_create_namespace_item,
-    copy_stmt_create_parse_state, create_filtered_tupledesc_for_relation,
+use super::{
+    copy_from_stdin::copy_stdin_to_file,
+    copy_utils::{
+        copy_from_stmt_match_by, copy_stmt_attribute_list, copy_stmt_create_namespace_item,
+        copy_stmt_create_parse_state, create_filtered_tupledesc_for_relation,
+    },
 };
 
 // stack to store parquet reader contexts for COPY FROM.
@@ -113,7 +116,7 @@ pub(crate) fn execute_copy_from(
     p_stmt: &PgBox<PlannedStmt>,
     query_string: &CStr,
     query_env: &PgBox<QueryEnvironment>,
-    uri_info: ParsedUriInfo,
+    uri_info: &ParsedUriInfo,
 ) -> u64 {
     let rel_oid = copy_stmt_relation_oid(p_stmt);
 
@@ -140,6 +143,11 @@ pub(crate) fn execute_copy_from(
     let match_by = copy_from_stmt_match_by(p_stmt);
 
     unsafe {
+        if uri_info.stdio_tmp_fd.is_some() {
+            let is_binary = true;
+            copy_stdin_to_file(uri_info, tupledesc.natts as _, is_binary);
+        }
+
         // parquet reader context is used throughout the COPY FROM operation.
         let parquet_reader_context = ParquetReaderContext::new(uri_info, match_by, &tupledesc);
         push_parquet_reader_context(parquet_reader_context);

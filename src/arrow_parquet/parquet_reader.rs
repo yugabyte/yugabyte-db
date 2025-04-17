@@ -50,7 +50,11 @@ pub(crate) struct ParquetReaderContext {
 }
 
 impl ParquetReaderContext {
-    pub(crate) fn new(uri_info: ParsedUriInfo, match_by: MatchBy, tupledesc: &PgTupleDesc) -> Self {
+    pub(crate) fn new(
+        uri_info: &ParsedUriInfo,
+        match_by: MatchBy,
+        tupledesc: &PgTupleDesc,
+    ) -> Self {
         // Postgis and Map contexts are used throughout reading the parquet file.
         // We need to reset them to avoid reading the stale data. (e.g. extension could be dropped)
         reset_postgis_context();

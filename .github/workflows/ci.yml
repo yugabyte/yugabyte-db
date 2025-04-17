@@ -84,6 +84,7 @@ jobs:
                                   postgresql-server-dev-${{ env.PG_MAJOR }} \
                                   postgresql-client-${{ env.PG_MAJOR }} \
                                   libpq-dev
+          echo "export PG_MAJOR=${{ env.PG_MAJOR }}" >> $GITHUB_ENV
 
       - name: Install azure-cli
         run: |
@@ -94,7 +95,8 @@ jobs:
       - name: Install and configure pgrx
         run: |
           cargo install --locked cargo-pgrx@0.13.1
-          cargo pgrx init --pg${{ env.PG_MAJOR }} /usr/lib/postgresql/${{ env.PG_MAJOR }}/bin/pg_config
+          cargo pgrx init --pg${{ env.PG_MAJOR }} /usr/lib/postgresql/${{ env.PG_MAJOR }}/bin/pg_config \
+                          --base-testing-port $PGRX_TEST_PG_BASE_PORT
 
       - name: Install cargo-llvm-cov for coverage report
         run: cargo install --locked cargo-llvm-cov@0.6.12

@@ -11,6 +11,7 @@ use crate::{
         compression::INVALID_COMPRESSION_LEVEL,
         uri_utils::{ensure_access_privilege_to_uri, uri_as_string},
     },
+    create_copy_to_parquet_split_dest_receiver,
     parquet_copy_hook::copy_utils::{
         copy_stmt_uri, copy_to_stmt_compression_level, copy_to_stmt_row_group_size,
         copy_to_stmt_row_group_size_bytes, is_copy_from_parquet_stmt, is_copy_to_parquet_stmt,
@@ -20,7 +21,7 @@ use crate::{
 use super::{
     copy_from::{execute_copy_from, pop_parquet_reader_context},
     copy_to::execute_copy_to_with_dest_receiver,
-    copy_to_split_dest_receiver::create_copy_to_parquet_split_dest_receiver,
+    copy_to_split_dest_receiver::free_copy_to_parquet_split_dest_receiver,
     copy_utils::{
         copy_to_stmt_compression, copy_to_stmt_field_ids, copy_to_stmt_file_size_bytes,
         validate_copy_from_options, validate_copy_to_options,
@@ -57,17 +58,18 @@ fn process_copy_to_parquet(
     let copy_from = false;
     ensure_access_privilege_to_uri(&uri, copy_from);
 
-    validate_copy_to_options(p_stmt, uri_info.clone());
+    validate_copy_to_options(p_stmt, &uri_info);
 
     let file_size_bytes = copy_to_stmt_file_size_bytes(p_stmt);
     let field_ids = copy_to_stmt_field_ids(p_stmt);
     let row_group_size = copy_to_stmt_row_group_size(p_stmt);
     let row_group_size_bytes = copy_to_stmt_row_group_size_bytes(p_stmt);
-    let compression = copy_to_stmt_compression(p_stmt, uri_info.clone());
-    let compression_level = copy_to_stmt_compression_level(p_stmt, uri_info.clone());
+    let compression = copy_to_stmt_compression(p_stmt, &uri_info);
+    let compression_level = copy_to_stmt_compression_level(p_stmt, &uri_info);
 
     let parquet_split_dest = create_copy_to_parquet_split_dest_receiver(
         uri_as_string(&uri).as_pg_cstr(),
+        uri_info.stdio_tmp_fd.is_some(),
         &file_size_bytes,
         field_ids,
         &row_group_size,
@@ -87,15 +89,9 @@ fn process_copy_to_parquet(
             &parquet_split_dest,
         )
     })
-    .catch_others(|cause| {
-        // make sure to cleanup parquet split dest receiver
-        if let Some(shutdown_callback) = parquet_split_dest.rShutdown {
-            unsafe {
-                shutdown_callback(parquet_split_dest.as_ptr());
-            }
-        }
-
-        cause.rethrow()
+    .catch_others(|cause| cause.rethrow())
+    .finally(|| {
+        free_copy_to_parquet_split_dest_receiver(parquet_split_dest.as_ptr());
     })
     .execute()
 }
@@ -114,7 +110,7 @@ fn process_copy_from_parquet(
 
     validate_copy_from_options(p_stmt);
 
-    PgTryBuilder::new(|| execute_copy_from(p_stmt, query_string, query_env, uri_info))
+    PgTryBuilder::new(|| execute_copy_from(p_stmt, query_string, query_env, &uri_info))
         .catch_others(|cause| {
             // make sure to pop the parquet reader context
             // In case we did not push the context, we should not throw an error while popping

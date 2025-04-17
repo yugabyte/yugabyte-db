@@ -1,4 +1,4 @@
-use std::{panic, sync::Arc};
+use std::{ffi::CStr, panic, sync::Arc};
 
 use arrow::datatypes::SchemaRef;
 use object_store::{path::Path, ObjectStoreScheme};
@@ -13,7 +13,11 @@ use parquet::{
 };
 use pgrx::{
     ereport,
-    pg_sys::{get_role_oid, has_privs_of_role, superuser, AsPgCStr, GetUserId},
+    ffi::c_char,
+    pg_sys::{
+        get_role_oid, has_privs_of_role, palloc0, superuser, AsPgCStr, DataDir, FileClose,
+        FilePathName, GetUserId, InvalidOid, OpenTemporaryFile, TempTablespacePath, MAXPGPATH,
+    },
 };
 use url::Url;
 
@@ -29,15 +33,48 @@ const PARQUET_OBJECT_STORE_READ_ROLE: &str = "parquet_object_store_read";
 const PARQUET_OBJECT_STORE_WRITE_ROLE: &str = "parquet_object_store_write";
 
 // ParsedUriInfo is a struct that holds the parsed uri information.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct ParsedUriInfo {
     pub(crate) uri: Url,
     pub(crate) bucket: Option<String>,
     pub(crate) path: Path,
     pub(crate) scheme: ObjectStoreScheme,
+    pub(crate) stdio_tmp_fd: Option<i32>,
 }
 
 impl ParsedUriInfo {
+    pub(crate) fn for_std_inout() -> Self {
+        // open temp postgres file, which is removed after transaction ends
+        let tmp_path_fd = unsafe { OpenTemporaryFile(false) };
+
+        let tmp_path = unsafe {
+            let data_dir = CStr::from_ptr(DataDir).to_str().expect("invalid base dir");
+
+            let tmp_tblspace_path: *const c_char = palloc0(MAXPGPATH as _) as _;
+            TempTablespacePath(tmp_tblspace_path as _, InvalidOid);
+            let tmp_tblspace_path = CStr::from_ptr(tmp_tblspace_path)
+                .to_str()
+                .expect("invalid temp tablespace path");
+
+            let tmp_file_path = FilePathName(tmp_path_fd);
+            let tmp_file_path = CStr::from_ptr(tmp_file_path)
+                .to_str()
+                .expect("invalid temp path");
+
+            let tmp_path = std::path::Path::new(data_dir)
+                .join(tmp_tblspace_path)
+                .join(tmp_file_path);
+
+            tmp_path.to_str().expect("invalid tmp path").to_string()
+        };
+
+        let mut parsed_uri = Self::try_from(tmp_path.as_str()).unwrap_or_else(|e| panic!("{}", e));
+
+        parsed_uri.stdio_tmp_fd = Some(tmp_path_fd);
+
+        parsed_uri
+    }
+
     fn try_parse_uri(uri: &str) -> Result<Url, String> {
         if !uri.contains("://") {
             // local file
@@ -92,7 +129,17 @@ impl TryFrom<&str> for ParsedUriInfo {
             bucket,
             path,
             scheme,
+            stdio_tmp_fd: None,
         })
+    }
+}
+
+impl Drop for ParsedUriInfo {
+    fn drop(&mut self) {
+        if let Some(stdio_tmp_fd) = self.stdio_tmp_fd {
+            // close temp file, postgres api will remove it on close
+            unsafe { FileClose(stdio_tmp_fd) };
+        }
     }
 }
 
@@ -109,7 +156,7 @@ pub(crate) fn uri_as_string(uri: &Url) -> String {
     uri.to_string()
 }
 
-pub(crate) fn parquet_schema_from_uri(uri_info: ParsedUriInfo) -> SchemaDescriptor {
+pub(crate) fn parquet_schema_from_uri(uri_info: &ParsedUriInfo) -> SchemaDescriptor {
     let parquet_reader = parquet_reader_from_uri(uri_info);
 
     let arrow_schema = parquet_reader.schema();
@@ -119,19 +166,18 @@ pub(crate) fn parquet_schema_from_uri(uri_info: ParsedUriInfo) -> SchemaDescript
         .unwrap_or_else(|e| panic!("{}", e))
 }
 
-pub(crate) fn parquet_metadata_from_uri(uri_info: ParsedUriInfo) -> Arc<ParquetMetaData> {
+pub(crate) fn parquet_metadata_from_uri(uri_info: &ParsedUriInfo) -> Arc<ParquetMetaData> {
+    let uri = uri_info.uri.clone();
+
     let copy_from = true;
-    let (parquet_object_store, location) = get_or_create_object_store(uri_info.clone(), copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri_info, copy_from);
 
     PG_BACKEND_TOKIO_RUNTIME.block_on(async {
         let object_store_meta = parquet_object_store
             .head(&location)
             .await
             .unwrap_or_else(|e| {
-                panic!(
-                    "failed to get object store metadata for uri {}: {}",
-                    uri_info.uri, e
-                )
+                panic!("failed to get object store metadata for uri {}: {}", uri, e)
             });
 
         let parquet_object_reader =
@@ -149,20 +195,19 @@ pub(crate) fn parquet_metadata_from_uri(uri_info: ParsedUriInfo) -> Arc<ParquetM
 pub(crate) const RECORD_BATCH_SIZE: i64 = 1024;
 
 pub(crate) fn parquet_reader_from_uri(
-    uri_info: ParsedUriInfo,
+    uri_info: &ParsedUriInfo,
 ) -> ParquetRecordBatchStream<ParquetObjectReader> {
+    let uri = uri_info.uri.clone();
+
     let copy_from = true;
-    let (parquet_object_store, location) = get_or_create_object_store(uri_info.clone(), copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri_info, copy_from);
 
     PG_BACKEND_TOKIO_RUNTIME.block_on(async {
         let object_store_meta = parquet_object_store
             .head(&location)
             .await
             .unwrap_or_else(|e| {
-                panic!(
-                    "failed to get object store metadata for uri {}: {}",
-                    uri_info.uri, e
-                )
+                panic!("failed to get object store metadata for uri {}: {}", uri, e)
             });
 
         let parquet_object_reader =
@@ -205,12 +250,12 @@ fn calculate_reader_batch_size(metadata: &Arc<ParquetMetaData>) -> usize {
 }
 
 pub(crate) fn parquet_writer_from_uri(
-    uri_info: ParsedUriInfo,
+    uri_info: &ParsedUriInfo,
     arrow_schema: SchemaRef,
     writer_props: WriterProperties,
 ) -> AsyncArrowWriter<ParquetObjectWriter> {
     let copy_from = false;
-    let (parquet_object_store, location) = get_or_create_object_store(uri_info.clone(), copy_from);
+    let (parquet_object_store, location) = get_or_create_object_store(uri_info, copy_from);
 
     let parquet_object_writer = ParquetObjectWriter::new(parquet_object_store, location);
 

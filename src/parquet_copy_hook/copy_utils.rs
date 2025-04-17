@@ -33,7 +33,7 @@ use super::{
     pg_compat::strVal,
 };
 
-pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri_info: ParsedUriInfo) {
+pub(crate) fn validate_copy_to_options(p_stmt: &PgBox<PlannedStmt>, uri_info: &ParsedUriInfo) {
     validate_copy_option_names(
         p_stmt,
         &[
@@ -216,7 +216,7 @@ pub(crate) fn copy_stmt_uri(p_stmt: &PgBox<PlannedStmt>) -> Result<ParsedUriInfo
     }
 
     if copy_stmt.filename.is_null() {
-        return Err("filename is not specified".to_string());
+        return Ok(ParsedUriInfo::for_std_inout());
     }
 
     let uri = unsafe {
@@ -279,12 +279,12 @@ pub(crate) fn copy_to_stmt_row_group_size_bytes(p_stmt: &PgBox<PlannedStmt>) -> 
 
 pub(crate) fn copy_to_stmt_compression(
     p_stmt: &PgBox<PlannedStmt>,
-    uri_info: ParsedUriInfo,
+    uri_info: &ParsedUriInfo,
 ) -> PgParquetCompression {
     let compression_option = copy_stmt_get_option(p_stmt, "compression");
 
     if compression_option.is_null() {
-        PgParquetCompression::try_from(uri_info.uri).unwrap_or_default()
+        PgParquetCompression::try_from(uri_info.uri.clone()).unwrap_or_default()
     } else {
         let compression = unsafe { defGetString(compression_option.as_ptr()) };
 
@@ -300,7 +300,7 @@ pub(crate) fn copy_to_stmt_compression(
 
 pub(crate) fn copy_to_stmt_compression_level(
     p_stmt: &PgBox<PlannedStmt>,
-    uri_info: ParsedUriInfo,
+    uri_info: &ParsedUriInfo,
 ) -> Option<i32> {
     let compression_level_option = copy_stmt_get_option(p_stmt, "compression_level");
 
@@ -397,10 +397,6 @@ fn is_copy_parquet_stmt(p_stmt: &PgBox<PlannedStmt>, copy_from: bool) -> bool {
     }
 
     if copy_stmt.is_program {
-        return false;
-    }
-
-    if copy_stmt.filename.is_null() {
         return false;
     }
 

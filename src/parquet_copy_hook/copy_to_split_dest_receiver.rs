@@ -22,6 +22,7 @@ pub(crate) const INVALID_FILE_SIZE_BYTES: i64 = 0;
 struct CopyToParquetSplitDestReceiver {
     dest: DestReceiver,
     uri: *const c_char,
+    is_to_stdout: bool,
     tupledesc: TupleDesc,
     operation: i32,
     options: CopyToParquetOptions,
@@ -44,7 +45,8 @@ impl CopyToParquetSplitDestReceiver {
     fn create_new_child(&mut self) {
         // create a new child receiver
         let child_uri = self.create_uri_for_child();
-        self.current_child_receiver = create_copy_to_parquet_dest_receiver(child_uri, self.options);
+        self.current_child_receiver =
+            create_copy_to_parquet_dest_receiver(child_uri, self.is_to_stdout, self.options);
         self.current_child_id += 1;
 
         // start the child receiver
@@ -125,6 +127,18 @@ impl CopyToParquetSplitDestReceiver {
 
         child_uri.to_str().expect("invalid uri").as_pg_cstr()
     }
+
+    fn cleanup(&mut self) {
+        if self.current_child_receiver.is_null() {
+            return;
+        }
+
+        let mut child_parquet_dest = unsafe {
+            PgBox::<CopyToParquetDestReceiver>::from_pg(self.current_child_receiver as _)
+        };
+
+        child_parquet_dest.cleanup();
+    }
 }
 
 #[pg_guard]
@@ -181,8 +195,10 @@ extern "C" fn copy_split_destroy(_dest: *mut DestReceiver) {}
 // and have default values if not provided.
 #[pg_guard]
 #[no_mangle]
+#[allow(clippy::too_many_arguments)]
 pub extern "C" fn create_copy_to_parquet_split_dest_receiver(
     uri: *const c_char,
+    is_to_stdout: bool,
     file_size_bytes: *const i64,
     field_ids: *const c_char,
     row_group_size: *const i64,
@@ -246,10 +262,25 @@ pub extern "C" fn create_copy_to_parquet_split_dest_receiver(
     split_dest.dest.rDestroy = Some(copy_split_destroy);
     split_dest.dest.mydest = CommandDest::DestCopyOut;
     split_dest.uri = uri;
+    split_dest.is_to_stdout = is_to_stdout;
     split_dest.tupledesc = std::ptr::null_mut();
     split_dest.operation = -1;
     split_dest.options = options;
     split_dest.current_child_id = 0;
 
     unsafe { std::mem::transmute(split_dest) }
+}
+
+pub(crate) fn free_copy_to_parquet_split_dest_receiver(dest: *mut DestReceiver) {
+    if dest.is_null() {
+        return;
+    }
+
+    let split_dest = unsafe {
+        (dest as *mut CopyToParquetSplitDestReceiver)
+            .as_mut()
+            .expect("invalid parquet dest receiver ptr")
+    };
+
+    split_dest.cleanup();
 }

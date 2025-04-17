@@ -71,7 +71,7 @@ impl ParquetWriterContext {
 
         let writer_props = Self::writer_props(tupledesc, options);
 
-        let parquet_writer = parquet_writer_from_uri(uri_info, schema.clone(), writer_props);
+        let parquet_writer = parquet_writer_from_uri(&uri_info, schema.clone(), writer_props);
 
         let attribute_contexts =
             collect_pg_to_arrow_attribute_contexts(&attributes, &schema.fields);
@@ -130,7 +130,7 @@ impl ParquetWriterContext {
     }
 
     // finalize flushes the in progress rows to a new row group and finally writes metadata to the file.
-    fn finalize(&mut self) {
+    pub(crate) fn finalize(&mut self) {
         PG_BACKEND_TOKIO_RUNTIME
             .block_on(self.parquet_writer.finish())
             .unwrap_or_else(|e| panic!("failed to finish parquet writer: {}", e));
@@ -154,11 +154,5 @@ impl ParquetWriterContext {
         }
 
         RecordBatch::try_new(schema, attribute_arrays).expect("Expected record batch")
-    }
-}
-
-impl Drop for ParquetWriterContext {
-    fn drop(&mut self) {
-        self.finalize();
     }
 }

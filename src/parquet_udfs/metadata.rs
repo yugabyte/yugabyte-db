@@ -45,10 +45,8 @@ mod parquet {
             panic!("{}", e.to_string());
         });
 
-        let uri = uri_info.uri.clone();
-
-        ensure_access_privilege_to_uri(&uri, true);
-        let parquet_metadata = parquet_metadata_from_uri(uri_info);
+        ensure_access_privilege_to_uri(&uri_info.uri, true);
+        let parquet_metadata = parquet_metadata_from_uri(&uri_info);
 
         let mut rows = vec![];
 
@@ -103,7 +101,7 @@ mod parquet {
                 let total_uncompressed_size = column.uncompressed_size();
 
                 let row = (
-                    uri_as_string(&uri),
+                    uri_as_string(&uri_info.uri),
                     row_group_id as i64,
                     row_group_num_rows,
                     row_group_num_columns,
@@ -150,10 +148,8 @@ mod parquet {
             panic!("{}", e.to_string());
         });
 
-        let uri = uri_info.uri.clone();
-
-        ensure_access_privilege_to_uri(&uri, true);
-        let parquet_metadata = parquet_metadata_from_uri(uri_info);
+        ensure_access_privilege_to_uri(&uri_info.uri, true);
+        let parquet_metadata = parquet_metadata_from_uri(&uri_info);
 
         let created_by = parquet_metadata
             .file_metadata()
@@ -167,7 +163,7 @@ mod parquet {
         let format_version = parquet_metadata.file_metadata().version().to_string();
 
         let row = (
-            uri_as_string(&uri),
+            uri_as_string(&uri_info.uri),
             created_by,
             num_rows,
             num_row_groups,
@@ -192,10 +188,8 @@ mod parquet {
             panic!("{}", e.to_string());
         });
 
-        let uri = uri_info.uri.clone();
-
-        ensure_access_privilege_to_uri(&uri, true);
-        let parquet_metadata = parquet_metadata_from_uri(uri_info);
+        ensure_access_privilege_to_uri(&uri_info.uri, true);
+        let parquet_metadata = parquet_metadata_from_uri(&uri_info);
 
         let kv_metadata = parquet_metadata.file_metadata().key_value_metadata();
 
@@ -211,7 +205,7 @@ mod parquet {
             let key = kv.key.as_bytes().to_owned();
             let value = kv.value.as_ref().map(|v| v.as_bytes().to_owned());
 
-            let row = (uri_as_string(&uri), key, value);
+            let row = (uri_as_string(&uri_info.uri), key, value);
 
             rows.push(row);
         }
