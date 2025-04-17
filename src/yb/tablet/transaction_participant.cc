@@ -125,6 +125,8 @@ DECLARE_int64(transaction_abort_check_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(clear_deadlocked_txns_info_older_than_heartbeats);
 
+DECLARE_bool(use_bootstrap_intent_ht_filter);
+
 METRIC_DEFINE_simple_counter(
     tablet, transaction_not_found, "Total number of missing transactions during load",
     yb::MetricUnit::kTransactions);
@@ -199,6 +201,13 @@ class TransactionParticipant::Impl
        const std::shared_ptr<MemTracker>& tablets_mem_tracker)
       : RunningTransactionContext(context, applier),
         log_prefix_(context->LogPrefix()),
+        mem_tracker_(MemTracker::CreateTracker(
+            Format("$0-$1", kParentMemTrackerId, participant_context_.tablet_id()),
+            /* metric_name */ "PerTransaction",
+            MemTracker::FindOrCreateTracker(kParentMemTrackerId, tablets_mem_tracker),
+            AddToParent::kTrue,
+            CreateMetrics::kFalse)),
+        recently_applied_(typename RecentlyAppliedTransactions::allocator_type(mem_tracker_)),
         loader_(this, entity),
         poller_(log_prefix_, std::bind(&Impl::Poll, this)),
         wait_queue_poller_(log_prefix_, std::bind(&Impl::PollWaitQueue, this)) {
@@ -213,11 +222,6 @@ class TransactionParticipant::Impl
         METRIC_conflict_resolution_latency.Instantiate(entity);
     metric_conflict_resolution_num_keys_scanned_ =
         METRIC_conflict_resolution_num_keys_scanned.Instantiate(entity);
-    auto parent_mem_tracker = MemTracker::FindOrCreateTracker(
-        kParentMemTrackerId, tablets_mem_tracker);
-    mem_tracker_ = MemTracker::CreateTracker(Format("$0-$1", kParentMemTrackerId,
-        participant_context_.tablet_id()), /* metric_name */ "PerTransaction",
-            parent_mem_tracker, AddToParent::kTrue, CreateMetrics::kFalse);
   }
 
   ~Impl() {
@@ -285,7 +289,9 @@ class TransactionParticipant::Impl
       DumpClear(RemoveReason::kShutdown);
       transactions_.clear();
       TransactionsModifiedUnlocked(&min_running_notifier);
-
+      // Recreate since the original recently_applied_ uses allocator with mem tracker, but we are
+      // about to detroy the tracker.
+      recently_applied_ = RecentlyAppliedTransactions();
       mem_tracker_->UnregisterFromParent();
     }
 
@@ -1077,8 +1083,11 @@ class TransactionParticipant::Impl
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard lock(mutex_);
     DumpClear(RemoveReason::kSetDB);
+    size_t num_transactions = transactions_.size();
     transactions_.clear();
-    mem_tracker_->Release(mem_tracker_->consumption());
+    // TODO(#26796): this matches the Consume(), but both are inaccurate, since RunningTransaction
+    // has dynamically allocated fields.
+    mem_tracker_->Release(num_transactions * kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
     return Status::OK();
   }
@@ -1109,7 +1118,8 @@ class TransactionParticipant::Impl
   }
 
   void SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht) {
-    if (start_ht == HybridTime::kMax || start_ht == HybridTime::kInvalid) {
+    if (start_ht == HybridTime::kMax || start_ht == HybridTime::kInvalid ||
+        !FLAGS_use_bootstrap_intent_ht_filter) {
       return;
     }
     HybridTime current_ht = min_replay_txn_start_ht_.load(std::memory_order_acquire);
@@ -1541,7 +1551,8 @@ class TransactionParticipant::Impl
               boost::multi_index::member <
                   AppliedTransactionState, HybridTime, &AppliedTransactionState::start_ht>
           >
-      >
+      >,
+      MemTrackerAllocator<AppliedTransactionState>
   >;
 
   void LoadFinished(Status load_status) EXCLUDES(status_resolvers_mutex_) override {
@@ -2279,6 +2290,10 @@ class TransactionParticipant::Impl
 
   void AddRecentlyAppliedTransaction(HybridTime start_ht, const OpId& apply_op_id)
       REQUIRES(mutex_) {
+    if (!FLAGS_use_bootstrap_intent_ht_filter) {
+      return;
+    }
+
     // We only care about the min start_ht, while cleaning out all entries with apply_op_id less
     // than progressively higher boundaries, so entries with apply_op_id lower and higher start_ht
     // than the entry with the lowest start_ht are irrelevant. Likewise, if apply_op_id is higher
@@ -2353,6 +2368,10 @@ class TransactionParticipant::Impl
   }
 
   HybridTime GetMinReplayTxnStartTime(RecentlyAppliedTransactions& recently_applied) {
+    if (!FLAGS_use_bootstrap_intent_ht_filter) {
+      return HybridTime::kInvalid;
+    }
+
     auto min_running_ht = min_running_ht_.load(std::memory_order_acquire);
     auto applied_min_ht = recently_applied.empty()
         ? HybridTime::kMax
@@ -2404,6 +2423,8 @@ class TransactionParticipant::Impl
   };
 
   std::string log_prefix_;
+
+  MemTrackerPtr mem_tracker_ GUARDED_BY(mutex_);
 
   docdb::DocDB db_;
   // Owned externally, should be guaranteed that would not be destroyed before this.
@@ -2507,8 +2528,6 @@ class TransactionParticipant::Impl
   std::condition_variable requests_completed_cond_;
 
   std::unique_ptr<docdb::WaitQueue> wait_queue_;
-
-  std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
 
   std::atomic<bool> transactions_loaded_{false};
 

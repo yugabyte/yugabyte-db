@@ -528,7 +528,7 @@ class MemTrackerAllocator : public Alloc {
  public:
   using size_type = typename Alloc::size_type;
 
-  explicit MemTrackerAllocator(std::shared_ptr<MemTracker> mem_tracker)
+  explicit MemTrackerAllocator(std::shared_ptr<MemTracker> mem_tracker = nullptr)
       : mem_tracker_(std::move(mem_tracker)) {}
 
   // This constructor is used for rebinding.
@@ -545,13 +545,17 @@ class MemTrackerAllocator : public Alloc {
     // Ideally we'd use TryConsume() here to enforce the tracker's limit.
     // However, that means throwing bad_alloc if the limit is exceeded, and
     // it's not clear that the rest of YB can handle that.
-    mem_tracker_->Consume(n * sizeof(T));
+    if (mem_tracker_) {
+      mem_tracker_->Consume(n * sizeof(T));
+    }
     return Alloc::allocate(n);
   }
 
   void deallocate(T* p, size_type n) {
     Alloc::deallocate(p, n);
-    mem_tracker_->Release(n * sizeof(T));
+    if (mem_tracker_) {
+      mem_tracker_->Release(n * sizeof(T));
+    }
   }
 
   // This allows an allocator<T> to be used for a different type.
