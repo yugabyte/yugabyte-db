@@ -295,20 +295,33 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
   writer.StartArray();
 
   for (const auto *entry = ybpgm_table, *end = entry + ybpgm_num_entries; entry != end; ++entry) {
-    writer.StartObject();
-    writer.String("name");
-    writer.String(entry->name);
-    writer.String("count");
-    writer.Int64(entry->calls);
-    writer.String("sum");
-    writer.Int64(entry->total_time);
-    writer.String("rows");
-    writer.Int64(entry->rows);
-    if (strlen(entry->table_name) > 0) {
-      writer.String("table_name");
-      writer.String(entry->table_name);
-    }
-    writer.EndObject();
+
+    const auto singleEntryWriter = [&writer, &entry] (const std::string& metric_name) {
+        writer.StartObject();
+        writer.String("name");
+        writer.String(metric_name);
+        writer.String("count");
+        writer.Int64(entry->calls);
+        writer.String("sum");
+        writer.Int64(entry->total_time);
+        writer.String("rows");
+        writer.Int64(entry->rows);
+        if (strlen(entry->table_name) > 0) {
+          writer.String("table_name");
+          writer.String(entry->table_name);
+        }
+        writer.EndObject();
+      };
+
+    singleEntryWriter(entry->name);
+
+    // minor hack to emit old and new names for certain count metrics
+    const std::string duplicate_name = std::regex_replace(
+      entry->name, rename_from, rename_to);
+
+    if (duplicate_name != entry->name)
+      singleEntryWriter(duplicate_name);
+
   }
 
   writer.EndArray();
