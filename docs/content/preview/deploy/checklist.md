@@ -71,7 +71,7 @@ YugabyteDB explicitly manages a block cache, and does not need the entire data s
 
 For a universe with [RF3](../../architecture/key-concepts/#replication-factor-rf), 1000 tablets imply 3000 tablet replicas. If the universe has three nodes, then each node has on average 1000 tablet replicas. A six node universe would have on average 500 tablet replicas per-node, and so on.
 
-Each 1000 tablet replicas on a node impose an overhead of 0.4 vCPUs for Raft heartbeats (assuming a 0.5 second heartbeat interval), 800 MiB of memory, and 128 GB of storage space for write-ahead logs (WALs).
+Each 1000 tablet replicas on a node impose an overhead of 0.4 vCPUs for Raft heartbeats (assuming a 0.5 second heartbeat interval), and 800 MiB of memory.
 
 The overhead is proportional to the number of tablet replicas, so 500 tablet replicas would need half as much.
 
