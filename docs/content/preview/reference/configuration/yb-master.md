@@ -339,7 +339,7 @@ Default: `0.10` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-de
 
 ##### --db_block_cache_size_bytes
 
-Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [`--db_block_cache_size_percentage`](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
 
 Default: `-1`
 

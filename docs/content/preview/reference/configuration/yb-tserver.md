@@ -292,15 +292,15 @@ Default: `0.85` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-de
 
 ##### --db_block_cache_size_bytes
 
-Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [`--db_block_cache_size_percentage`](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
 
 Default: `-1`
 
 ##### --db_block_cache_size_percentage
 
-Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
+Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [--db_block_cache_size_bytes](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
 
-Default: `50` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `50` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 ##### --tablet_overhead_size_percentage
 
