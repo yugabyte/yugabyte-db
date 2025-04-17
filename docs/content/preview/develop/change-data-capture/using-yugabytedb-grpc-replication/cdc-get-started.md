@@ -592,6 +592,6 @@ This expression checks if the value of the row after the operation has the count
 
 For more advanced routing configuration, refer to the [Debezium documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.
 
-## CDC with point in time restore (PITR)
+## CDC with point-in-time recovery
 
-[PITR]() gives the user the ability to restore the data to a previous point in time, thus reflecting the state of the database to an earlier configured point. For databases and tables where CDC is configured, the users will need to create new streams once the restore is complete and start streaming from that point. The creation of new streams will ensure that we start streaming from correct checkpoints.
+[Point-in-time recovery](../../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with CDC configured, you need to create new streams after the restore is complete, and start streaming from that point. Creating new streams ensures that you start streaming from the correct checkpoints.
