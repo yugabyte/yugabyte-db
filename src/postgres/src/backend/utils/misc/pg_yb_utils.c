@@ -6325,6 +6325,8 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 			agg->count += val->count;
 		}
 	}
+
+	instr->rows_removed_by_recheck += exec_stats->rows_removed_by_recheck;
 }
 
 static YbcPgExecReadWriteStats
@@ -6376,6 +6378,8 @@ calculateExecStatsDiff(const YbSessionStats *stats, YbcPgExecStats *result)
 			result_metric->count = current_metric->count - old_metric->count;
 		}
 	}
+
+	result->rows_removed_by_recheck = current->rows_removed_by_recheck - old->rows_removed_by_recheck;
 }
 
 static void
@@ -6413,6 +6417,8 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 			old_metric->count = current_metric->count;
 		}
 	}
+
+	old->rows_removed_by_recheck = current->rows_removed_by_recheck;
 }
 
 void

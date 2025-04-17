@@ -629,6 +629,10 @@ YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_up
   return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
 }
 
+void YBCPgIncrementIndexRecheckCount() {
+  pgapi->IncrementIndexRecheckCount();
+}
+
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
 
 YbcPgMemctx YBCPgCreateMemctx() {
