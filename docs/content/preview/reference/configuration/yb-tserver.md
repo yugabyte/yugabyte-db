@@ -258,7 +258,7 @@ If these defaults are used for both TServer and Master, then a node's available 
 | PostgreSQL % | 25% | 27% | 28% | 27% |
 | other %    | 10% | 10% |  5% |  3% |
 
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
 
@@ -269,7 +269,7 @@ The defaults for [flags controlling memory division in a TServer](#flags-control
 | --db_block_cache_size_percentage | 32 |
 | --tablet_overhead_size_percentage | 10 |
 
-The default value of [`--db_block_cache_size_percentage`](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
+The default value of [--db_block_cache_size_percentage](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
 
 ### Flags controlling the split of memory among processes
 
@@ -277,15 +277,15 @@ Note that in general these flags will have different values for TServer and Mast
 
 ##### --memory_limit_hard_bytes
 
-Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
+Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
 Default: `0`
 
 ##### --default_memory_limit_to_ram_ratio
 
-The percentage of available RAM to use for this process if [`--memory_limit_hard_bytes`](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
-Default: `0.85` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `0.85` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 
 ### Flags controlling the split of memory within a TServer
