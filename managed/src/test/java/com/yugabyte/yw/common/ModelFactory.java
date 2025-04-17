@@ -79,7 +79,6 @@ import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
-import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
@@ -101,10 +100,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
+@Slf4j
 public class ModelFactory {
 
   /*
@@ -131,7 +132,7 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email) {
-    return testUser(customer, email, Users.Role.Admin);
+    return testUser(customer, email, Users.Role.SuperAdmin);
   }
 
   public static Users testUser(Customer customer, Users.Role role) {
@@ -139,23 +140,30 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email, Users.Role role) {
-    return Users.create(email, "password", role, customer.getUuid(), false);
+    Users user = Users.create(email, "password", role, customer.getUuid(), false);
+    Role newRbacRole = Role.get(customer.getUuid(), role.name());
+
+    // Now add the role binding for the above user.
+    ResourceGroup resourceGroup =
+        ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), user);
+    // Create a single role binding for the user.
+    RoleBinding createdRoleBinding =
+        RoleBinding.create(user, RoleBindingType.System, newRbacRole, resourceGroup);
+
+    log.info(
+        "Created new system role binding for user '{}' (email '{}') of new customer '{}', "
+            + "with role '{}' (name '{}'), and default role binding '{}'.",
+        user.getUuid(),
+        user.getEmail(),
+        customer.getUuid(),
+        newRbacRole.getRoleUUID(),
+        newRbacRole.getName(),
+        createdRoleBinding.toString());
+    return user;
   }
 
   public static Users testSuperAdminUserNewRbac(Customer customer) {
-    // Create test user.
-    Users testUser =
-        Users.create(
-            "test@customer.com", "password", Users.Role.SuperAdmin, customer.getUuid(), false);
-    // Create all built in roles.
-    R__Sync_System_Roles.syncSystemRoles();
-    Role testSuperAdminRole = Role.getOrBadRequest(customer.getUuid(), "SuperAdmin");
-    // Need to define all available resources in resource group as default.
-    ResourceGroup resourceGroup =
-        ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), testUser);
-    // Create a single role binding for the user with super admin role.
-    RoleBinding.create(testUser, RoleBindingType.System, testSuperAdminRole, resourceGroup);
-    return testUser;
+    return testUser(customer, "test@customer.com", Users.Role.SuperAdmin);
   }
 
   /*

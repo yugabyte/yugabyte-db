@@ -484,6 +484,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateUsingNewRbacAuthzWithNoPermissions() {
+    user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     initClientGetTablesList();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     Result result =
@@ -493,6 +495,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnTargetUniverse() {
+    user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     initClientGetTablesList();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceDefinition rd3 =
@@ -509,6 +513,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnSourceUniverse() {
+    user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
     initClientGetTablesList();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceDefinition rd3 =
@@ -525,6 +530,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateUsingNewRbacAuthzWithIncompletePermission() {
+    user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
     initClientGetTablesList();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     Role role1 =
@@ -789,6 +795,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetDoesntExist() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     String nonexistentUUID = UUID.randomUUID().toString();
     String getAPIEndpoint = apiEndpoint + "/" + nonexistentUUID;
 
@@ -1090,6 +1097,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testEditDoesntExist() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     String nonexistentUUID = UUID.randomUUID().toString();
     String editAPIEndpoint = apiEndpoint + "/" + nonexistentUUID;
 
@@ -1199,6 +1207,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteDoesntExist() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     String nonexistentUUID = UUID.randomUUID().toString();
     String deleteAPIEndpoint = apiEndpoint + "/" + nonexistentUUID;
 
@@ -1214,6 +1223,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testSync() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     String syncAPIEndpoint = apiEndpoint + "/sync?targetUniverseUUID=" + targetUniverseUUID;
 
     Result result = doRequestWithAuthToken("POST", syncAPIEndpoint, user.createAuthToken());
@@ -1255,6 +1265,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testSyncInvalidTargetUniverse() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     String invalidUUID = UUID.randomUUID().toString();
     String syncAPIEndpoint = apiEndpoint + "/sync?targetUniverseUUID=" + invalidUUID;
 
