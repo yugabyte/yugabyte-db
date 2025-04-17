@@ -641,5 +641,24 @@ void TestKeyBytes(const char* title, std::vector<std::string>* out = nullptr) {
   LOG(INFO) << title << ": " << time;
 }
 
+Result<bool> DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(
+    const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& lhs,
+    const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& rhs) {
+  for (const auto& [lhs_type, lhs_intents] : lhs) {
+    bool found_entry_with_type = false;
+    for (const auto& [rhs_type, rhs_intents] : rhs) {
+      if (lhs_type != rhs_type) {
+        continue;
+      }
+      SCHECK(!found_entry_with_type, IllegalState, "Found $0 more than once in $1", rhs_type, rhs);
+      found_entry_with_type = true;
+      if (IntentTypeSetsConflict(lhs_intents, rhs_intents)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace docdb
 }  // namespace yb

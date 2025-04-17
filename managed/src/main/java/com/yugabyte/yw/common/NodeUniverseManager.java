@@ -575,7 +575,7 @@ public class NodeUniverseManager extends DevopsBase {
     return "/tmp";
   }
 
-  private Optional<NodeAgent> maybeGetNodeAgent(
+  public Optional<NodeAgent> maybeGetNodeAgent(
       Universe universe, NodeDetails node, boolean checkJavaClient) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);

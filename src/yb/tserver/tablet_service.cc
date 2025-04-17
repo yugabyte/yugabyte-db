@@ -1873,7 +1873,7 @@ class TabletsFlusher final : public TabletsFlusherBase {
       FlushTabletsResponsePB& resp)
       : TabletsFlusherBase(service, tablets, resp),
         flush_flags_(CreateFlushFlags(req)) {
-    VLOG_WITH_PREFIX(1) << "TabletsFlusher: flush_flags: " << to_underlying(flush_flags_);
+    VLOG_WITH_PREFIX(1) << "TabletsFlusher: flush_flags: " << std::to_underlying(flush_flags_);
   }
 
  private:

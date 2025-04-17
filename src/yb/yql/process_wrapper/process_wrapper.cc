@@ -71,25 +71,27 @@ void ProcessSupervisor::RunThread() {
   });
   std::string process_name = GetProcessName();
   while (true) {
-    Result<int> wait_result = process_wrapper_->Wait();
-    if (wait_result.ok()) {
-      int ret_code = *wait_result;
-      if (ret_code == 0) {
-        LOG(INFO) << process_name << " exited normally";
+    if (process_wrapper_) {
+      Result<int> wait_result = process_wrapper_->Wait();
+      if (wait_result.ok()) {
+        int ret_code = *wait_result;
+        if (ret_code == 0) {
+          LOG(INFO) << process_name << " exited normally";
+        } else {
+          util::LogWaitCode(ret_code, process_name);
+        }
+        process_wrapper_.reset();
       } else {
-        util::LogWaitCode(ret_code, process_name);
-      }
-      process_wrapper_.reset();
-    } else {
-      LOG(WARNING) << "Failed when waiting for process to exit: " << wait_result.status();
+        LOG(WARNING) << "Failed when waiting for process to exit: " << wait_result.status();
 
-      // Don't continue waiting in the loop if it is IllegalState as this means the process is not
-      // currently running at all, perhaps due to failure to start. In this case, the
-      // process_wrapper is not initilized. So there isn't a process to wait.
-      if (!wait_result.status().IsIllegalState()) {
-        LOG(INFO) << "Wait a bit next process_wrapper wait-check for " << process_name;
-        SleepFor(std::chrono::seconds(1));
-        continue;
+        // Don't continue waiting in the loop if it is IllegalState as this means the process is not
+        // currently running at all, perhaps due to failure to start. In this case, the
+        // process_wrapper is not initilized. So there isn't a process to wait.
+        if (!wait_result.status().IsIllegalState()) {
+          LOG(INFO) << "Wait a bit next process_wrapper wait-check for " << process_name;
+          SleepFor(std::chrono::seconds(1));
+          continue;
+        }
       }
     }
 
@@ -98,7 +100,7 @@ void ProcessSupervisor::RunThread() {
       if (state_ == YbSubProcessState::kStopping) {
         break;
       }
-      LOG(INFO) << "Restarting " << process_name << "process";
+      LOG(INFO) << "Restarting " << process_name << " process";
       Status start_status = StartProcessUnlocked();
       if (!start_status.ok()) {
         LOG(WARNING) << "Failed trying to start " << process_name

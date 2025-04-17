@@ -277,7 +277,7 @@ bool YBCStatusIsFatalError(YbcStatus s) {
 }
 
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
-  return to_underlying(FetchErrorCode(s));
+  return std::to_underlying(FetchErrorCode(s));
 }
 
 void YBCFreeStatus(YbcStatus s) {
@@ -495,7 +495,7 @@ uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type) {
 }
 
 uint32_t YBCWaitEventForWaitingOnTServer() {
-  return to_underlying(ash::WaitStateCode::kWaitingOnTServer);
+  return std::to_underlying(ash::WaitStateCode::kWaitingOnTServer);
 }
 
 // Get a random integer between a and b

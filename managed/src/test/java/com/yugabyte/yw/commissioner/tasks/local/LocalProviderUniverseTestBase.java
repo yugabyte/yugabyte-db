@@ -686,6 +686,10 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
     TaskInfo taskInfo =
         waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));
+    System.out.println("AAAAA");
+    System.out.println(taskInfo.getTaskState());
+    System.out.println(taskInfo.getErrorMessage());
+    System.out.println("BBBBB");
     verifyUniverseTaskSuccess(taskInfo);
     Universe result = Universe.getOrBadRequest(universeResp.universeUUID);
     assertEquals(

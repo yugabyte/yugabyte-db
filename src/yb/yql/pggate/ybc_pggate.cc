@@ -412,7 +412,7 @@ void AshCopyAuxInfo(
   snprintf(
       cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
       FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
-                               : (component == to_underlying(ash::Component::kYCQL)
+                               : (component == std::to_underlying(ash::Component::kYCQL)
                                       ? tserver_aux_info.table_id().c_str()
                                       : tserver_aux_info.tablet_id().c_str()));
 }
@@ -627,6 +627,10 @@ void YBCRestorePgSessionState(const YbcPgSessionState* session_data) {
 
 YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade) {
   return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
+}
+
+void YBCPgIncrementIndexRecheckCount() {
+  pgapi->IncrementIndexRecheckCount();
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
@@ -2272,26 +2276,29 @@ bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
 
-void YBCSetTimeout(int timeout_ms, void* extra) {
-  if (!pgapi) {
-    return;
-  }
+static int GetTimeoutValue(int timeout_ms) {
+  DCHECK_GE(timeout_ms, 0) << "Timeout value should be non-negative";
   const auto default_client_timeout_ms = client::YsqlClientReadWriteTimeoutMs();
-  // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
-  // FLAGS(_ysql)?_client_read_write_timeout_ms}.
-  // Note that 0 is a valid value of timeout_ms, meaning no timeout in Postgres.
-  if (timeout_ms < 0) {
-    // The timeout is not valid. Use the default GFLAG value.
-    return;
-  } else if (timeout_ms == 0) {
-    timeout_ms = default_client_timeout_ms;
-  } else {
-    timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
+  // If the timeout is 0, it means no timeout in Postgres, so we use the default value.
+  if (timeout_ms == 0) {
+    return default_client_timeout_ms;
   }
+  // Otherwise, return the minimum of the provided timeout and the default timeout.
+  return std::min(timeout_ms, default_client_timeout_ms);
+}
 
-  // The statement timeout is lesser than default_client_timeout, hence the rpcs would
-  // need to use a shorter timeout.
-  pgapi->SetTimeout(timeout_ms);
+void YBCSetLockTimeout(int lock_timeout_ms, void* extra) {
+  if (!pgapi || lock_timeout_ms < 0) {
+    return;
+  }
+  pgapi->SetLockTimeout(GetTimeoutValue(lock_timeout_ms));
+}
+
+void YBCSetTimeout(int timeout_ms, void* extra) {
+  if (!pgapi || timeout_ms < 0) {
+    return;
+  }
+  pgapi->SetTimeout(GetTimeoutValue(timeout_ms));
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {
@@ -2360,6 +2367,14 @@ void* YBCPgGetThreadLocalStrTokPtr() {
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   PgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
+}
+
+int YBCPgGetThreadLocalYbExpressionVersion() {
+  return PgGetThreadLocalYbExpressionVersion();
+}
+
+void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
+  PgSetThreadLocalYbExpressionVersion(yb_expr_version);
 }
 
 YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {

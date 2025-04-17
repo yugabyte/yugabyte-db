@@ -361,6 +361,25 @@ client::VersionedTablePartitionList BuildTablePartitionList(
 
 } // namespace
 
+// List of additional RPCs that are logged by
+// yb_debug_log_docdb_requests
+static ash::PggateRPC kDebugLogRPCs[] = {
+  ash::PggateRPC::kOpenTable,
+  ash::PggateRPC::kAlterTable,
+  ash::PggateRPC::kCreateDatabase,
+  ash::PggateRPC::kBackfillIndex,
+  ash::PggateRPC::kAlterDatabase,
+  ash::PggateRPC::kCreateTable,
+  ash::PggateRPC::kCreateTablegroup,
+  ash::PggateRPC::kDropDatabase,
+  ash::PggateRPC::kDropTable,
+  ash::PggateRPC::kDropTablegroup,
+  ash::PggateRPC::kAcquireAdvisoryLock,
+  ash::PggateRPC::kReleaseAdvisoryLock,
+  ash::PggateRPC::kAcquireObjectLock,
+  ash::PggateRPC::kTruncateTable
+};
+
 class PgClient::Impl : public BigDataFetcher {
  public:
   Impl(const YbcPgAshConfig& ash_config,
@@ -473,6 +492,10 @@ class PgClient::Impl : public BigDataFetcher {
 
   void SetTimeout(MonoDelta timeout) {
     timeout_ = timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  }
+
+  void SetLockTimeout(MonoDelta lock_timeout) {
+    lock_timeout_ = lock_timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
   }
 
   Result<PgTableDescPtr> OpenTable(
@@ -1405,19 +1428,25 @@ class PgClient::Impl : public BigDataFetcher {
     return Format("Session id $0: ", session_id_);
   }
 
+  template <typename T = void>
   rpc::RpcController* SetupController(
-      rpc::RpcController* controller, CoarseTimePoint deadline = CoarseTimePoint()) {
+      rpc::RpcController* controller,
+      CoarseTimePoint deadline = CoarseTimePoint()) {
     if (deadline != CoarseTimePoint()) {
       controller->set_deadline(deadline);
+    } else if constexpr (std::is_same_v<T, tserver::PgAcquireAdvisoryLockRequestPB>) {
+      controller->set_timeout(std::min(timeout_, lock_timeout_));
     } else {
       controller->set_timeout(timeout_);
     }
     return controller;
   }
 
-  rpc::RpcController* PrepareController(CoarseTimePoint deadline = CoarseTimePoint()) {
+  template <typename T = void>
+  rpc::RpcController* PrepareController(
+      CoarseTimePoint deadline = CoarseTimePoint()) {
     controller_.Reset();
-    return SetupController(&controller_, deadline);
+    return SetupController<T>(&controller_, deadline);
   }
 
   rpc::RpcController* PrepareHeartbeatController() {
@@ -1457,7 +1486,7 @@ class PgClient::Impl : public BigDataFetcher {
   Status DoSyncRPC(
       SyncRPCFunc<Req, Resp> func, Req& req, Resp& resp,
       ash::PggateRPC rpc_enum, CoarseTimePoint deadline = CoarseTimePoint()) {
-    return DoSyncRPC(func, req, resp, rpc_enum, PrepareController(deadline));
+    return DoSyncRPC(func, req, resp, rpc_enum, PrepareController<Req>(deadline));
   }
 
   template <class Req, class Resp>
@@ -1465,8 +1494,29 @@ class PgClient::Impl : public BigDataFetcher {
       SyncRPCFunc<Req, Resp> func, Req& req, Resp& resp,
       ash::PggateRPC rpc_enum, rpc::RpcController* controller) {
     AshMetadataToPB(req);
+
+    bool log_detail = false;
+    if (yb_debug_log_docdb_requests) {
+      for (const auto kLogEnum : kDebugLogRPCs) {
+        if (kLogEnum == rpc_enum) {
+          log_detail = true;
+          break;
+        }
+      }
+    }
+
+    if (log_detail)
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.DebugString();
+
     auto watcher = wait_event_watcher_(ash::WaitStateCode::kWaitingOnTServer, rpc_enum);
-    return (proxy_.get()->*func)(req, &resp, controller);
+    Status s = (proxy_.get()->*func)(req, &resp, controller);
+
+    if (log_detail)
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Resp>() << " response:\n "
+    << "status " << s.ToString()
+    << resp.DebugString();
+
+    return s;
   }
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
@@ -1483,6 +1533,9 @@ class PgClient::Impl : public BigDataFetcher {
   std::promise<Result<uint64_t>> create_session_promise_;
   std::array<int, 2> tablet_server_count_cache_;
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
+  // When making a request to acquire an advisory lock or object lock, the RPC timeout
+  // should be the minimum of timeout_ and lock_timeout_.
+  MonoDelta lock_timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 
   YbcPgAshConfig ash_config_;
   const WaitEventWatcher& wait_event_watcher_;
@@ -1524,6 +1577,10 @@ void PgClient::Shutdown() {
 
 void PgClient::SetTimeout(MonoDelta timeout) {
   impl_->SetTimeout(timeout);
+}
+
+void PgClient::SetLockTimeout(MonoDelta lock_timeout) {
+  impl_->SetLockTimeout(lock_timeout);
 }
 
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }

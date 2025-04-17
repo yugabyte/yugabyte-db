@@ -8681,7 +8681,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				}
 				/* else do the same stuff as for T_SubLink et al. */
 			}
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case T_SubLink:
 		case T_NullTest:

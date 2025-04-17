@@ -262,6 +262,7 @@ constexpr Oid CSTRINGOID = 2275;
 constexpr Oid UUIDOID = 2950;
 constexpr Oid JSONBOID = 3802;
 constexpr Oid VECTOROID = 8078;
+constexpr Oid BSONOID = 8095;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {
@@ -272,6 +273,7 @@ bool IsValidType(Oid pg_type) {
       case BPCHAROID: [[fallthrough]];
       case VARCHAROID: [[fallthrough]];
       case JSONBOID: [[fallthrough]];
+      case BSONOID: [[fallthrough]];
       case CSTRINGOID: return true;
     }
     return false;

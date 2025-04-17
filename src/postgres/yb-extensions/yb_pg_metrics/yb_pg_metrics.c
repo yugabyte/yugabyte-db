@@ -209,7 +209,8 @@ typedef enum YbStatementType
 	CatCacheTableMisses_47,
 	CatCacheTableMisses_48,
 	CatCacheTableMisses_49,
-	CatCacheTableMisses_End = CatCacheTableMisses_49,
+	CatCacheTableMisses_50,
+	CatCacheTableMisses_End = CatCacheTableMisses_50,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -1014,7 +1015,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 			break;
 	}
 
-	if (!yb_is_calling_internal_function_for_ddl)
+	if (!yb_is_calling_internal_sql_for_ddl)
 		is_statement_executed = true;
 
 	/*

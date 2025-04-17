@@ -211,6 +211,7 @@ kwlist_line: while (<$kwlist>)
 
 		# Check that the keyword string matches keyword name
 		$bare_kwname = $kwname;
+		$bare_kwname =~ s/^_YB_(.+)_P$/$1/;
 		$bare_kwname =~ s/_P$//;
 		if ($bare_kwname ne uc($kwstring))
 		{

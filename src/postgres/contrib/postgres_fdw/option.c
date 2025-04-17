@@ -207,6 +207,22 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("sslcert and sslkey are superuser-only"),
 						 errhint("User mappings with the sslcert or sslkey options set may only be created or modified by the superuser.")));
 		}
+		/* YB specific options */
+		else if (strcmp(def->defname, "server_type") == 0)
+		{
+			/*
+			 * This functions is invoked for both CREATE and ALTER SERVER. In
+			 * case of the latter, no context is available to check if the user
+			 * is changing or dropping the server_type.
+			 */
+			if (!yb_is_valid_server_type(defGetString(def)))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid server_type '%s'", defGetString(def)),
+						 errhint("Supported server types: [postgreSQL, yugabyteDB]")));
+			}
+		}
 	}
 
 	PG_RETURN_VOID();
@@ -261,6 +277,9 @@ InitPgFdwOptions(void)
 		 */
 		{"sslcert", UserMappingRelationId, true},
 		{"sslkey", UserMappingRelationId, true},
+
+		/* YB specific options */
+		{"server_type", ForeignServerRelationId, false /* is_libpq_opt */ },
 
 		{NULL, InvalidOid, false}
 	};

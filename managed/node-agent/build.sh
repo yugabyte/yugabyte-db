@@ -216,6 +216,9 @@ package_for_platform() {
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh
     cp -rf ynp "${script_dir}"/ynp
     cp -rf node-agent-provision.sh "${script_dir}"/node-agent-provision.sh
+    cp -rf earlyoom-installer.sh "${script_dir}"/earlyoom-installer.sh
+    cp -rf configure_earlyoom_service.sh "${script_dir}"/configure_earlyoom_service.sh
+    cp -rf earlyoom "${script_dir}"/earlyoom #TODO: build
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
     pushd "$project_dir"
     cp -rf ../devops/roles/configure-cluster-server/templates/* "${script_dir}"/ynp/modules/provision/systemd/templates/

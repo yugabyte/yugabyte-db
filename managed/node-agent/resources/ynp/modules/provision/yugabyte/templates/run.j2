@@ -98,6 +98,9 @@ installer_dir="{{ ynp_dir }}/../../bin"
 # can read the binary in restricted environment.
 mkdir -p {{ yb_home_dir }}/.install
 cp "$installer_dir/node-agent-installer.sh" {{ yb_home_dir }}/.install
+cp "$installer_dir/configure_earlyoom_service.sh" {{ yb_home_dir }}/.install
+cp "$installer_dir/earlyoom-installer.sh" {{ yb_home_dir }}/.install
+cp "$installer_dir/earlyoom" {{ yb_home_dir }}/.install
 chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.install
 {% endif %}
 

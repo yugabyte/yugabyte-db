@@ -675,7 +675,7 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms) = 100;
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_ash_wait_code_to_sleep_at) =
-        yb::to_underlying(code_to_look_for_);
+        std::to_underlying(code_to_look_for_);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_compactions) =
         UsePriorityQueueForCompaction();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) =
@@ -697,7 +697,8 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     }
 
-    const auto code_class = ash::Class(to_underlying(code_to_look_for_) >> YB_ASH_CLASS_POSITION);
+    const auto code_class =
+        ash::Class(std::to_underlying(code_to_look_for_) >> YB_ASH_CLASS_POSITION);
     do_compactions_ = (code_class == ash::Class::kRocksDB);
 
     WaitStateTestCheckMethodCounts::SetUp();
@@ -904,7 +905,7 @@ class AshTestWithPriorityQueue
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms) = 100;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_ash_wait_code_to_sleep_at) =
-        yb::to_underlying(code_to_look_for_);
+        std::to_underlying(code_to_look_for_);
 
     auto use_priority_queue = std::get<1>(GetParam());
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) = use_priority_queue;
@@ -963,7 +964,7 @@ class AshTestVerifyPgOccurrenceBase : public WaitStateTestCheckMethodCounts {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms) =
         4 * kTimeMultiplier * kSamplingIntervalMs;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_ash_wait_code_to_sleep_at) =
-        yb::to_underlying(code_to_look_for_);
+        std::to_underlying(code_to_look_for_);
 
     WaitStateTestCheckMethodCounts::SetUp();
   }

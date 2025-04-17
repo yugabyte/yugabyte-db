@@ -10,6 +10,7 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -208,6 +209,8 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
 
           syncXClusterConfigWithReplicationGroup(
               clusterConfig, xClusterConfig, tableIdsToAddBootstrapIdsMap.keySet());
+          xClusterConfig.updateReplicationSetupTimeForTables(
+              tableIdsToAddBootstrapIdsMap.keySet(), new Date());
 
           if (HighAvailabilityConfig.get().isPresent()) {
             // Note: We increment version twice for adding tables: once for setting up the .ALTER
@@ -287,6 +290,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
                   tableConfig -> {
                     tableConfig.setStatus(XClusterTableConfig.Status.Validated);
                     tableConfig.setReplicationSetupDone(false);
+                    tableConfig.setReplicationSetupTime(null);
                     tableConfig.setRestoreTime(null);
                     // We intentionally do not reset backup and restore objects in the xCluster
                     // config because modify table parent task sets these attributes and

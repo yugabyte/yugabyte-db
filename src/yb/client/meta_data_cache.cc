@@ -69,7 +69,7 @@ Status GenerateUnauthorizedError(const std::string& canonical_resource,
           role_name);
     default:
       return STATUS_SUBSTITUTE(IllegalState, "Unable to find permissions for object $0",
-                               to_underlying(object_type));
+                               std::to_underlying(object_type));
   }
 }
 
@@ -323,7 +323,7 @@ Status YBMetaDataCache::HasResourcePermission(const std::string& canonical_resou
       object_type != ql::ObjectType::TABLE &&
       object_type != ql::ObjectType::ROLE) {
     DFATAL_OR_RETURN_NOT_OK(STATUS_SUBSTITUTE(InvalidArgument, "Invalid ObjectType $0",
-                                              to_underlying(object_type)));
+                                              std::to_underlying(object_type)));
   }
 
   if (!permissions_cache_->ready()) {

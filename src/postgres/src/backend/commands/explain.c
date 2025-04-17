@@ -2856,7 +2856,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			show_tablesample(((SampleScan *) plan)->tablesample,
 							 planstate, ancestors, es);
 			/* fall through to print additional fields the same as SeqScan */
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case T_SeqScan:
 		case T_ValuesScan:
 		case T_CteScan:
@@ -4587,6 +4587,13 @@ show_instrumentation_count(const char *qlabel, int which,
 	else
 		nfiltered = planstate->instrument->nfiltered1;
 	nloops = planstate->instrument->nloops;
+
+
+	if (IsYugaByteEnabled() && which == 2)
+	{
+		YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
+		nfiltered += yb_instr->rows_removed_by_recheck;
+	}
 
 	/* In text mode, suppress zero counts; they're not interesting enough */
 	if (nfiltered > 0 || es->format != EXPLAIN_FORMAT_TEXT)

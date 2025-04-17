@@ -3,19 +3,25 @@
 -- ===================================================================
 CREATE EXTENSION postgres_fdw;
 CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 DO $d$
     BEGIN
         EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
             OPTIONS (dbname '$$||current_database()||$$',
                      -- YB note: In YugabyteDB regress tests, the host and port vary on a run-to-run basis.
                      host '$$||current_setting('listen_addresses')||$$',
-                     port '$$||current_setting('port')||$$'
+                     port '$$||current_setting('port')||$$',
+                     -- YB note: 'server_type' is a YB-specific option which defaults to 'postgresql'.
+                     server_type 'yugabytedb'
             )$$;
         EXECUTE $$CREATE SERVER loopback2 FOREIGN DATA WRAPPER postgres_fdw
             OPTIONS (dbname '$$||current_database()||$$',
                      -- YB note: In YugabyteDB regress tests, the host and port vary on a run-to-run basis.
                      host '$$||current_setting('listen_addresses')||$$',
-                     port '$$||current_setting('port')||$$'
+                     port '$$||current_setting('port')||$$',
+                     -- YB note: 'server_type' is a YB-specific option which defaults to 'postgresql'.
+                     server_type 'yugabytedb'
             )$$;
     END;
 $d$;
@@ -172,6 +178,8 @@ ALTER SERVER testserver1 OPTIONS (
 	-- gsslib 'value', -- YB note: see above
 	--replication 'value' -- YB note: see above
 );
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 -- Error, invalid list syntax
 ALTER SERVER testserver1 OPTIONS (ADD extensions 'foo; bar');
 ERROR:  parameter "extensions" must be a list of extension names
@@ -179,7 +187,11 @@ ERROR:  parameter "extensions" must be a list of extension names
 ALTER SERVER testserver1 OPTIONS (ADD extensions 'foo, bar');
 WARNING:  extension "foo" is not installed
 WARNING:  extension "bar" is not installed
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 ALTER SERVER testserver1 OPTIONS (DROP extensions);
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 ALTER USER MAPPING FOR public SERVER testserver1
 	OPTIONS (DROP user, DROP password);
 -- YB note: ALTER TABLE not supported yet, see #1124
@@ -8809,6 +8821,8 @@ IMPORT FOREIGN SCHEMA import_source LIMIT TO (t5)
 ROLLBACK;
 BEGIN;
 CREATE SERVER fetch101 FOREIGN DATA WRAPPER postgres_fdw OPTIONS( fetch_size '101' );
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 SELECT count(*)
 FROM pg_foreign_server
 WHERE srvname = 'fetch101'
@@ -8819,6 +8833,8 @@ AND srvoptions @> array['fetch_size=101'];
 (1 row)
 
 ALTER SERVER fetch101 OPTIONS( SET fetch_size '202' );
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 SELECT count(*)
 FROM pg_foreign_server
 WHERE srvname = 'fetch101'

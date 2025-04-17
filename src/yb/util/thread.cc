@@ -537,7 +537,7 @@ void ThreadMgr::RenderThreadCategoryRows(const ThreadCategory& category, std::st
       } else {
         symbolized = thread.stack_trace.status().message().ToBuffer();
       }
-      active_out = output + to_underlying(group);
+      active_out = output + std::to_underlying(group);
     }
 
     *active_out += Format(
@@ -593,7 +593,7 @@ void ThreadMgr::RenderThreadGroupUnlocked(const std::string& group, std::ostream
   }
 
   for (auto g : StackTraceGroupList()) {
-    output << groups[to_underlying(g)];
+    output << groups[std::to_underlying(g)];
   }
   output << "</table>";
 }

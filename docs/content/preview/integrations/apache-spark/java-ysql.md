@@ -101,7 +101,7 @@ Create the database and table you will read and write to as follows:
     <dependency>
         <groupId> com.yugabyte</groupId>
         <artifactId>jdbc-yugabytedb</artifactId>
-        <version>42.7.3-yb-1</version>
+        <version>{{< version-driver-java >}}</version>
     </dependency>
     <dependency>
         <groupId>com.yugabyte</groupId>

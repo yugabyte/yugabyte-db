@@ -563,14 +563,14 @@ int GetL0ThresholdSpeedupCompaction(int level0_file_num_compaction_trigger,
 }  // namespace
 
 void ColumnFamilyData::PendingCompactionAdded(CompactionSizeKind compaction_size_kind) {
-  num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_add(1);
+  num_pending_compactions_[std::to_underlying(compaction_size_kind)].fetch_add(1);
 }
 
 void ColumnFamilyData::PendingCompactionRemoved(CompactionSizeKind compaction_size_kind) {
-  if (num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_sub(1) == 0) {
+  if (num_pending_compactions_[std::to_underlying(compaction_size_kind)].fetch_sub(1) == 0) {
     LOG_WITH_FUNC(DFATAL) << ioptions_.info_log->Prefix() << "No pending "
                           << yb::AsString(compaction_size_kind) << " compactions";
-    num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_add(1);
+    num_pending_compactions_[std::to_underlying(compaction_size_kind)].fetch_add(1);
   }
 }
 

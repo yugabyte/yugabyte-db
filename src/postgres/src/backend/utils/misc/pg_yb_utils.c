@@ -988,11 +988,11 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 	switch (addr_family)
 	{
 		case AF_UNIX:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AF_UNSPEC:
 			break;
 		case AF_INET:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AF_INET6:
 			if (inet_ntop(addr_family, ash_config->metadata->client_addr,
 						  ash_config->host, INET6_ADDRSTRLEN) == NULL)
@@ -1751,6 +1751,8 @@ YBPgTypeOidToStr(Oid type_id)
 			return "INT8MULTIRANGEARRAY";
 		case CSTRINGARRAYOID:
 			return "CSTRINGARRAY";
+		case BSONOID:
+			return "BSON";
 		default:
 			return "user_defined_type";
 	}
@@ -1825,6 +1827,8 @@ YBCPgDataTypeToStr(YbcPgDataType yb_type)
 			return "UINT32";
 		case YB_YQL_DATA_TYPE_UINT64:
 			return "UINT64";
+		case YB_YQL_DATA_TYPE_BSON:
+			return "BSON";
 		default:
 			return "unknown";
 	}
@@ -2089,8 +2093,6 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 
 bool		yb_debug_report_error_stacktrace = false;
 
-bool		yb_debug_log_catcache_events = false;
-
 bool		yb_debug_log_internal_restarts = false;
 
 bool		yb_test_system_catalogs_creation = false;
@@ -2132,7 +2134,7 @@ bool		yb_silence_advisory_locks_not_supported_error = false;
 
 bool		yb_use_hash_splitting_by_default = true;
 
-bool		yb_skip_data_insert_for_table_rewrite = false;
+bool		yb_skip_data_insert_for_xcluster_target = false;
 
 bool		yb_enable_extended_sql_codes = false;
 
@@ -2489,14 +2491,14 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 	switch (mode)
 	{
 		case YB_DDL_MODE_NO_ALTERING:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_DDL_MODE_SILENT_ALTERING:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_DDL_MODE_VERSION_INCREMENT:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YB_DDL_MODE_BREAKING_CHANGE:
-			switch_fallthrough();
-		case YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT:
+			yb_switch_fallthrough();
+		case YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT:
 			return mode;
 	}
 	Assert(false);
@@ -3047,7 +3049,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	bool		is_version_increment = true;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
-	bool		is_online_schema_change = false;
+	bool		should_run_in_autonomous_transaction = false;
+	bool		is_top_level = (context == PROCESS_UTILITY_TOPLEVEL);
 
 	Node	   *parsetree = GetActualStmtNode(pstmt);
 	NodeTag		node_tag = nodeTag(parsetree);
@@ -3526,7 +3529,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 					is_altering_existing_data = true;
 				}
 				is_breaking_change = false;
-				is_online_schema_change = stmt->concurrent != YB_CONCURRENCY_DISABLED;
+				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level);
 				break;
 			}
 
@@ -3625,9 +3628,12 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 
 	if (!is_ddl)
 	{
-		/* Only clear up the DDL state if DDL, DML unification is disabled. */
+		/*
+		 * Only clear up the DDL state if the previous statement used a separate
+		 * DDL transaction.
+		 */
 		if (ddl_transaction_state.nesting_level == 0 &&
-			!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+			!ddl_transaction_state.use_regular_txn_block)
 		{
 			/*
 			 * Free up the altered_table_ids list separately which is allocated
@@ -3680,9 +3686,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	if (is_breaking_change)
 		aspects |= YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 
+	/*
+	 * TODO(#3109): SysCatalogModificationAspect doesn't seem to be the
+	 * appropriate place to return whether a statement should run as autonomous
+	 * transaction.
+	 * Find a better place to return this.
+	 */
 	if (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
-		is_online_schema_change)
-		aspects |= YB_SYS_CAT_MOD_ASPECT_ONLINE_SCHEMA_CHANGE;
+		should_run_in_autonomous_transaction)
+		aspects |= YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE;
 
 	return (YbDdlModeOptional)
 	{
@@ -3771,12 +3783,13 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	const bool	is_ddl = ddl_mode.has_value;
 	/*
 	 * Start a separate DDL transaction if
-	 * FLAGS_TEST_yb_ddl_transaction_block_enabled is false or if this
-	 * is an online schema change operation.
+	 * - FLAGS_TEST_yb_ddl_transaction_block_enabled is false or
+	 * - If we were asked to by YbGetDdlMode. Currently, only done for
+	 * CREATE INDEX outside of explicit transaction block.
 	 */
 	const bool use_separate_ddl_transaction =
 		is_ddl &&
-		(ddl_mode.value == YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT ||
+		(ddl_mode.value == YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT ||
 		 !*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
 
 	PG_TRY();
@@ -5945,14 +5958,14 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 
 		case YBCatalogVersionRelationId:	/* pg_yb_catalog_version */
 			fetch_ybctid = false;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case DbRoleSettingRelationId:	/* pg_db_role_setting */
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case TableSpaceRelationId:	/* pg_tablespace */
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YbProfileRelationId:	/* pg_yb_profile */
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case YbRoleProfileRelationId:	/* pg_yb_role_profile */
 			db_id = Template1DbOid;
 			sys_only_filter_attr = InvalidAttrNumber;
@@ -6312,6 +6325,8 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 			agg->count += val->count;
 		}
 	}
+
+	instr->rows_removed_by_recheck += exec_stats->rows_removed_by_recheck;
 }
 
 static YbcPgExecReadWriteStats
@@ -6363,6 +6378,8 @@ calculateExecStatsDiff(const YbSessionStats *stats, YbcPgExecStats *result)
 			result_metric->count = current_metric->count - old_metric->count;
 		}
 	}
+
+	result->rows_removed_by_recheck = current->rows_removed_by_recheck - old->rows_removed_by_recheck;
 }
 
 static void
@@ -6400,6 +6417,8 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 			old_metric->count = current_metric->count;
 		}
 	}
+
+	old->rows_removed_by_recheck = current->rows_removed_by_recheck;
 }
 
 void
@@ -6474,7 +6493,7 @@ YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 	 * tserver. Used in time-traveling queries as they might read old data
 	 * with old catalog version.
 	 */
-	if (yb_disable_catalog_version_check || yb_is_calling_internal_function_for_ddl)
+	if (yb_disable_catalog_version_check || yb_is_calling_internal_sql_for_ddl)
 		return;
 	HandleYBStatus(YBIsDBCatalogVersionMode()
 				   ? YBCPgSetDBCatalogCacheVersion(handle, MyDatabaseId, version)
@@ -7376,7 +7395,7 @@ YbInvalidationMessagesTableExists()
 	return cached_invalidation_messages_table_exists;
 }
 
-bool yb_is_calling_internal_function_for_ddl = false;
+bool yb_is_calling_internal_sql_for_ddl = false;
 
 char *
 YbGetPotentiallyHiddenOidText(Oid oid)

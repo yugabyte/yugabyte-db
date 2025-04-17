@@ -147,7 +147,7 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
   VLOG(1) << Format(
       "Check for tablet $0 peer $1. Peer role is $2. Leader status is $3.",
       tablet_peer.tablet_id(), tablet_peer.permanent_uuid(),
-      consensus->role(), to_underlying(leader_state.status));
+      consensus->role(), std::to_underlying(leader_state.status));
 
   if (!leader_state.ok()) {
     typedef consensus::LeaderStatus LeaderStatus;
@@ -163,7 +163,7 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer) {
         return status.CloneAndAddErrorCode(TabletServerError(
             TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE));
       case LeaderStatus::LEADER_AND_READY:
-        LOG(FATAL) << "Unexpected status: " << to_underlying(leader_state.status);
+        LOG(FATAL) << "Unexpected status: " << std::to_underlying(leader_state.status);
     }
     FATAL_INVALID_ENUM_VALUE(LeaderStatus, leader_state.status);
   }

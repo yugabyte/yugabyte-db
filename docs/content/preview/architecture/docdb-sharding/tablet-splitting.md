@@ -325,16 +325,19 @@ You can enable tablet limits using the following steps:
 
 1. Enable the flag [enforce_tablet_replica_limits](../../../reference/configuration/yb-master/#enforce-tablet-replica-limits) on all YB-Masters.
 1. Choose a resource to limit the total number of tablet replicas. Limits are supported by available CPU cores, GiB of RAM, or both.
-   * To limit by memory, if you're using YSQL, it is simplest to set the flag [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) to true.
-   * To limit by CPU cores and GiB, or both, set the flags [tablet_replicas_per_core_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-core-limit) and [tablet_replicas_per_gib_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-gib-limit) to the desired positive value on all YB-Masters and YB-TServers.
+    * To limit by memory, if you're using YSQL, it is simplest to set the flag [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) to true.
+    * To limit by CPU cores and GiB, or both, set the flags [tablet_replicas_per_core_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-core-limit) and [tablet_replicas_per_gib_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-gib-limit) to the desired positive value on all YB-Masters and YB-TServers.
 
-     These flags limit the number of tablets that can be created in the live placement group in terms of resources available to YB-TServers in the cluster. For example, if [tablet_overhead_size_percentage](../../../reference/configuration/yb-tserver/#tablet-overhead-size-percentage) is 10, each YB-TServer has 10 GiB available, `tablet_replicas_per_gib_limit` is 1000, and there are 3 YB-TServers in the cluster, this feature will prevent you from creating more than 3000 tablet replicas. Assuming a replication factor of 3, this is the same as 1000 tablets. Note that YugabyteDB creates a certain number of system tablets itself, so in this case you are not free to create 1000 tablets.
+        These flags limit the number of tablets that can be created in the live placement group in terms of resources available to YB-TServers in the cluster. For example, if [tablet_overhead_size_percentage](../../../reference/configuration/yb-tserver/#tablet-overhead-size-percentage) is 10, each YB-TServer has 10 GiB available, `tablet_replicas_per_gib_limit` is 1000, and there are 3 YB-TServers in the cluster, this feature will prevent you from creating more than 3000 tablet replicas. Assuming a replication factor of 3, this is the same as 1000 tablets. Note that YugabyteDB creates a certain number of system tablets itself, so in this case you are not free to create 1000 tablets.
 
 1. Optionally, set the flag [split_respects_tablet_replica_limits](../../../reference/configuration/yb-master/#split-respects-tablet-replica-limits) to true on all YB-Masters to block tablet splits when the configured limits are reached.
 
 {{< tip title="Tip" >}}
 
-To view the number of live tablets and the limits, open the **YB-Master UI** (`<master_host>:7000/`) and click the **Universe Summary** section. The total number of live tablet replicas is listed under "Active Tablet-Peers", and the limit is listed under "Tablet Peer Limit".
+To view the number of live tablets and the limits, open the **YB-Master UI** (`<master_host>:7000/`) and click the **Tablet Servers** tab. Under **Universe Summary**, the total number of live tablet replicas is listed as **Active Tablet-Peers**, and the limit as **Tablet Peer Limit**.
+
+![Tablet limits](/images/admin/master-tablet-limits.png)
+
 {{< /tip >}}
 
 To disable the feature, set the flag `enforce_tablet_replica_limits` to false on all YB-Masters.

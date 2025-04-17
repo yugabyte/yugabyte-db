@@ -1644,9 +1644,9 @@ CREATE TABLE ischk (a text, b tsvector) PARTITION BY LIST(a);
 CREATE TABLE ischk_d1 PARTITION OF ischk FOR VALUES IN (0);
 CREATE TABLE ischk_d2 PARTITION OF ischk FOR VALUES IN (1);
 CREATE INDEX ischk_idx ON ischk USING gin (b);
-LOG:  substituting access method "gin" for "ybgin"
-LOG:  substituting access method "gin" for "ybgin"
-LOG:  substituting access method "gin" for "ybgin"
+LOG:  substituting access method "ybgin" for "gin" in YugabyteDB
+LOG:  substituting access method "ybgin" for "gin" in YugabyteDB
+LOG:  substituting access method "ybgin" for "gin" in YugabyteDB
 /*+ IndexScan(ischk ischk_idx) */
 EXPLAIN (COSTS false) SELECT * FROM ischk WHERE b = 'x';
 LOG:  available indexes for IndexScan(ischk_d1): ischk_d1_b_idx

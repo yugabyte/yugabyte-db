@@ -409,9 +409,9 @@ DROP TABLE test_dupe_idx;
 CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 text DEFAULT 'hello world', v2 int CHECK (v2 > 0), v3 float UNIQUE);
 CREATE INDEX ON temptest(v1);
 CREATE TABLE liketemptest (LIKE temptest INCLUDING ALL);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 \d liketemptest
                       Table "public.liketemptest"
  Column |       Type       | Collation | Nullable |       Default       
@@ -472,7 +472,7 @@ Indexes:
 
 CREATE INDEX ON gin_test (a);
 CREATE TABLE gin_like_test_idx (LIKE gin_test INCLUDING ALL);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 ERROR:  INDEX on column of type 'INT4ARRAY' not yet supported
 DROP TABLE liketemptest, temptest, gin_test, gin_like_test;
 -- Source is a VIEW.

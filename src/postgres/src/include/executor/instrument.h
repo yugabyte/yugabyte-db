@@ -96,6 +96,8 @@ typedef struct YbInstrumentation
 	double		storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
 	double		storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
 	YbPgEventMetric storage_event_metrics[YB_STORAGE_EVENT_COUNT];
+
+	uint64_t	rows_removed_by_recheck;
 } YbInstrumentation;
 
 typedef struct Instrumentation

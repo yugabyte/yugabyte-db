@@ -84,6 +84,7 @@ set(MASTER_SRCS
   catalog_manager_util.cc
   clone/clone_state_entity.cc
   clone/clone_state_manager.cc
+  clone/clone_tasks.cc
   cluster_balance.cc
   cluster_balance_activity_info.cc
   cluster_balance_util.cc

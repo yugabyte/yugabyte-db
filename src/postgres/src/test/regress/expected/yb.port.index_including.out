@@ -34,7 +34,7 @@ lsm, for table "public.tbl_include_reg"
 CREATE TABLE tbl_include_unique1 (c1 int, c2 int, c3 int, c4 box);
 INSERT INTO tbl_include_unique1 SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON tbl_include_unique1 using btree (c1, c2) INCLUDE (c3, c4);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 ALTER TABLE tbl_include_unique1 add UNIQUE USING INDEX tbl_include_unique1_idx_unique;
 ALTER TABLE tbl_include_unique1 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 SELECT pg_get_indexdef(i.indexrelid)
@@ -50,7 +50,7 @@ WHERE i.indrelid = 'tbl_include_unique1'::regclass ORDER BY c.relname;
 CREATE TABLE tbl_include_unique2 (c1 int, c2 int, c3 int, c4 box);
 INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using btree (c1, c2) INCLUDE (c3, c4);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 ERROR:  ERROR:  duplicate key value violates unique constraint "tbl_include_unique2_idx_unique"
 ALTER TABLE tbl_include_unique2 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 ERROR:  duplicate key value violates unique constraint "tbl_include_unique2_c1_c2_c3_c4_key"
@@ -72,7 +72,7 @@ WHERE i.indrelid = 'tbl_include_pk'::regclass ORDER BY c.relname;
 CREATE TABLE tbl_include_box (c1 int, c2 int, c3 int, c4 box);
 INSERT INTO tbl_include_box SELECT 1, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 CREATE UNIQUE INDEX tbl_include_box_idx_unique ON tbl_include_box using btree (c1, c2) INCLUDE (c3, c4);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 ALTER TABLE tbl_include_box add PRIMARY KEY USING INDEX tbl_include_box_idx_unique;
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
@@ -231,7 +231,7 @@ DROP TABLE tbl;
  */
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int);
 CREATE UNIQUE INDEX tbl_idx ON tbl using btree(c1, c2, c3, c4);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
                                        indexdef                                       
 --------------------------------------------------------------------------------------
@@ -252,7 +252,7 @@ DROP TABLE tbl;
  */
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box);
 CREATE UNIQUE INDEX tbl_idx ON tbl using btree(c1, c2) INCLUDE(c3,c4);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
                                        indexdef                                        
 ---------------------------------------------------------------------------------------
@@ -365,13 +365,13 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumb
 CREATE INDEX on tbl USING gin(c1, c2) INCLUDE (c3, c4);
 ERROR:  access method "ybgin" does not support included columns
 CREATE INDEX on tbl USING hash(c1, c2) INCLUDE (c3, c4);
-NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "hash" in YugabyteDB
 CREATE INDEX on tbl USING rtree(c3) INCLUDE (c1, c4);
 NOTICE:  substituting access method "gist" for obsolete method "rtree"
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 CREATE INDEX on tbl USING btree(c1, c2) INCLUDE (c3, c4);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 DROP TABLE tbl;
 /*
  * 8. Update, delete values in indexed table.
@@ -379,7 +379,7 @@ DROP TABLE tbl;
 CREATE TABLE tbl (c1 int, c2 int, c3 int, c4 box);
 INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 CREATE UNIQUE INDEX tbl_idx_unique ON tbl using btree(c1, c2) INCLUDE (c3,c4);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 UPDATE tbl SET c1 = 100 WHERE c1 = 2;
 UPDATE tbl SET c1 = 1 WHERE c1 = 3;
 -- should fail

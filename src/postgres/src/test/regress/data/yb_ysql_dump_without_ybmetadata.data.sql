@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.1.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.1.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -15,6 +15,76 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: overflow; Type: TYPE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TYPE public.overflow AS ENUM (
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Z'
+);
+
+
+ALTER TYPE public.overflow OWNER TO yugabyte_test;
+
+--
+-- Name: underflow; Type: TYPE; Schema: public; Owner: yugabyte_test
+--
+
+CREATE TYPE public.underflow AS ENUM (
+    'A',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z'
+);
+
+
+ALTER TYPE public.underflow OWNER TO yugabyte_test;
 
 SET default_tablespace = '';
 

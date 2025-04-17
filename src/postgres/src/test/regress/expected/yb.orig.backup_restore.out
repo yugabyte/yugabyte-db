@@ -40,6 +40,250 @@ EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_da
 END IF;
 END $$;
 
+--
+-- Name: overflow; Type: TYPE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16608'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16607'::pg_catalog.oid);
+
+CREATE TYPE public.overflow AS ENUM (
+);
+
+-- For binary upgrade, must preserve pg_enum oids and sortorders
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16610'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1'::real);
+ALTER TYPE public.overflow ADD VALUE 'A';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16613'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.5'::real);
+ALTER TYPE public.overflow ADD VALUE 'B';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16615'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.75'::real);
+ALTER TYPE public.overflow ADD VALUE 'C';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16617'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.875'::real);
+ALTER TYPE public.overflow ADD VALUE 'D';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16619'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.9375'::real);
+ALTER TYPE public.overflow ADD VALUE 'E';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16621'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.96875'::real);
+ALTER TYPE public.overflow ADD VALUE 'F';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16623'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.984375'::real);
+ALTER TYPE public.overflow ADD VALUE 'G';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16625'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.9921875'::real);
+ALTER TYPE public.overflow ADD VALUE 'H';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16627'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99609375'::real);
+ALTER TYPE public.overflow ADD VALUE 'I';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16629'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.998046875'::real);
+ALTER TYPE public.overflow ADD VALUE 'J';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16631'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.9990234375'::real);
+ALTER TYPE public.overflow ADD VALUE 'K';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16633'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99951171875'::real);
+ALTER TYPE public.overflow ADD VALUE 'L';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16635'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.999755859375'::real);
+ALTER TYPE public.overflow ADD VALUE 'M';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16637'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.9998779296875'::real);
+ALTER TYPE public.overflow ADD VALUE 'N';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16639'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99993896484375'::real);
+ALTER TYPE public.overflow ADD VALUE 'O';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16641'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99996948242188'::real);
+ALTER TYPE public.overflow ADD VALUE 'P';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16643'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99998474121094'::real);
+ALTER TYPE public.overflow ADD VALUE 'Q';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16645'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999237060547'::real);
+ALTER TYPE public.overflow ADD VALUE 'R';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16647'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999618530273'::real);
+ALTER TYPE public.overflow ADD VALUE 'S';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16649'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999809265137'::real);
+ALTER TYPE public.overflow ADD VALUE 'T';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16651'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999904632568'::real);
+ALTER TYPE public.overflow ADD VALUE 'U';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16653'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999952316284'::real);
+ALTER TYPE public.overflow ADD VALUE 'V';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16655'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999976158142'::real);
+ALTER TYPE public.overflow ADD VALUE 'W';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16657'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.99999988079071'::real);
+ALTER TYPE public.overflow ADD VALUE 'X';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16612'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('2'::real);
+ALTER TYPE public.overflow ADD VALUE 'Z';
+
+
+
+\if :use_roles
+    ALTER TYPE public.overflow OWNER TO regress_rls_alice;
+\endif
+
+--
+-- Name: underflow; Type: TYPE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16659'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16658'::pg_catalog.oid);
+
+CREATE TYPE public.underflow AS ENUM (
+);
+
+-- For binary upgrade, must preserve pg_enum oids and sortorders
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16660'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1'::real);
+ALTER TYPE public.underflow ADD VALUE 'A';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16707'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000011920929'::real);
+ALTER TYPE public.underflow ADD VALUE 'C';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16705'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000023841858'::real);
+ALTER TYPE public.underflow ADD VALUE 'D';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16703'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000047683716'::real);
+ALTER TYPE public.underflow ADD VALUE 'E';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16701'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000095367432'::real);
+ALTER TYPE public.underflow ADD VALUE 'F';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16699'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000190734863'::real);
+ALTER TYPE public.underflow ADD VALUE 'G';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16697'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000381469727'::real);
+ALTER TYPE public.underflow ADD VALUE 'H';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16695'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00000762939453'::real);
+ALTER TYPE public.underflow ADD VALUE 'I';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16693'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00001525878906'::real);
+ALTER TYPE public.underflow ADD VALUE 'J';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16691'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00003051757812'::real);
+ALTER TYPE public.underflow ADD VALUE 'K';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16689'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00006103515625'::real);
+ALTER TYPE public.underflow ADD VALUE 'L';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16687'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.0001220703125'::real);
+ALTER TYPE public.underflow ADD VALUE 'M';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16685'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.000244140625'::real);
+ALTER TYPE public.underflow ADD VALUE 'N';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16683'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00048828125'::real);
+ALTER TYPE public.underflow ADD VALUE 'O';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16681'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.0009765625'::real);
+ALTER TYPE public.underflow ADD VALUE 'P';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16679'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.001953125'::real);
+ALTER TYPE public.underflow ADD VALUE 'Q';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16677'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.00390625'::real);
+ALTER TYPE public.underflow ADD VALUE 'R';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16675'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.0078125'::real);
+ALTER TYPE public.underflow ADD VALUE 'S';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16673'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.015625'::real);
+ALTER TYPE public.underflow ADD VALUE 'T';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16671'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.03125'::real);
+ALTER TYPE public.underflow ADD VALUE 'U';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16669'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.0625'::real);
+ALTER TYPE public.underflow ADD VALUE 'V';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16667'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.125'::real);
+ALTER TYPE public.underflow ADD VALUE 'W';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16665'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.25'::real);
+ALTER TYPE public.underflow ADD VALUE 'X';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16663'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1.5'::real);
+ALTER TYPE public.underflow ADD VALUE 'Y';
+
+SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('16662'::pg_catalog.oid);
+SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('2'::real);
+ALTER TYPE public.underflow ADD VALUE 'Z';
+
+
+
+\if :use_roles
+    ALTER TYPE public.underflow OWNER TO regress_rls_alice;
+\endif
+
 SET default_table_access_method = heap;
 
 --

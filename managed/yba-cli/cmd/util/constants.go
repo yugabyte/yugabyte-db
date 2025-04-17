@@ -569,6 +569,14 @@ const (
 	AscSortDirection = "ASC"
 )
 
+// Group MappingTypes
+const (
+	// OIDCGroupMappingType type
+	OIDCGroupMappingType = "OIDC"
+	// LDAPGroupMappingType type
+	LDAPGroupMappingType = "LDAP"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}

@@ -82,7 +82,7 @@ using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
 // Lock state stores the number of locks acquired for each intent type.
 // The count for each intent type resides in sequential bits (block) in lock state.
 // For example the count of locks on a particular intent type could be received as:
-// (lock_state >> (to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
+// (lock_state >> (std::to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
 // Refer shared_lock_manager.cc for further details.
 using LockState = uint64_t;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;

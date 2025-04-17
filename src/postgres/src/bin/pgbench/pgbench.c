@@ -7015,7 +7015,7 @@ postprocess_sql_command(Command *my_command)
 		case QUERY_PREPARED:
 			my_command->prepname = psprintf("P_%d", prepnum++);
 			/* fall through */
-			switch_fallthrough();	/* YB added */
+			yb_switch_fallthrough();
 		case QUERY_EXTENDED:
 			if (!parseQuery(my_command))
 				exit(1);

@@ -652,7 +652,7 @@ findDependentObjects(const ObjectAddress *object,
 					break;
 
 				/* Otherwise, treat this like an internal dependency */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			case DEPENDENCY_INTERNAL:
 				/*

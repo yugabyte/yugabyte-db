@@ -23,6 +23,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/dockv/doc_bson.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/value_type.h"
 
@@ -88,6 +89,14 @@ void KeyBytes::AppendString(const std::string& raw_string) {
 
 void KeyBytes::AppendDescendingString(const std::string &raw_string) {
   ComplementZeroEncodeAndAppendStrToKey(raw_string, &data_);
+}
+
+void KeyBytes::AppendBson(const std::string& raw_string) {
+  BsonKeyToComparableBinary(raw_string, &data_);
+}
+
+void KeyBytes::AppendDescendingBson(const std::string& raw_string) {
+  BsonKeyToComparableBinaryDescending(raw_string, &data_);
 }
 
 void KeyBytes::AppendUInt64(uint64_t x) {

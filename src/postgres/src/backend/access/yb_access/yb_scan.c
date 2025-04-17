@@ -1402,10 +1402,10 @@ YbShouldRecheckEquality(Oid column_typid, Oid value_typid)
 	switch (column_typid)
 	{
 		case INT8OID:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case INT4OID:
 			is_compatible_int_type |= (value_typid == INT4OID);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case INT2OID:
 			is_compatible_int_type |= (value_typid == INT2OID);
 			break;
@@ -2080,7 +2080,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				/* Should be ensured during planning. */
 				Assert(YbIsSearchNull(key));
 				/* fallthrough  -- treating IS NULL as (DocDB) = (null) */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTEqualStrategyNumber:
 				if (YbIsBasicOpSearch(key) || YbIsSearchNull(key))
 				{
@@ -2103,7 +2103,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 			case BTLessStrategyNumber:
 			case BTLessEqualStrategyNumber:
 				offsets[noffsets++] = i;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			default:
 				break;			/* unreachable */
@@ -2156,7 +2156,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				 * Otherwise this is an IS NULL search. c IS NULL -> c = NULL
 				 * (checked above)
 				 */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTEqualStrategyNumber:
 				/* Bind the scan keys */
 				if (YbIsBasicOpSearch(key) || YbIsSearchNull(key))
@@ -2189,7 +2189,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 
 			case BTGreaterEqualStrategyNumber:
 				bound_inclusive = true;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTGreaterStrategyNumber:
 				/*
 				 * For prechecks, we skip computation of the range bounds as we
@@ -2246,7 +2246,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 
 			case BTLessEqualStrategyNumber:
 				bound_inclusive = true;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTLessStrategyNumber:
 				/*
 				 * For prechecks, we skip computation of the range bounds as we
@@ -2537,7 +2537,7 @@ YbBindHashKeys(YbScanDesc ybScan)
 
 			case BTGreaterEqualStrategyNumber:
 				bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTGreaterStrategyNumber:
 				if (!YbApplyStartBound(&range, &bound))
 					return false;
@@ -2545,7 +2545,7 @@ YbBindHashKeys(YbScanDesc ybScan)
 
 			case BTLessEqualStrategyNumber:
 				bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTLessStrategyNumber:
 				if (!YbApplyEndBound(&range, &bound))
 					return false;
@@ -2715,14 +2715,18 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 		ybcPullVarattnosIntoAttnumBms(pg_scan_plan->plan.qual, target_relid,
 									  &result);
 
+		if (yb_scan->hash_code_keys != NIL)
+			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
+									   &result);
+
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbAddBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
 										  target_relid,
 										  &result);
-
-		if (yb_scan->hash_code_keys != NIL)
-			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
-									   &result);
+		else if (IsA(pg_scan_plan, IndexOnlyScan))
+			ybcPullVarattnosIntoAttnumBms(((IndexOnlyScan *) pg_scan_plan)->recheckqual,
+										  target_relid,
+										  &result);
 
 		YbAddOrdinaryColumnsNeedingPgRecheck(yb_scan, &result);
 
@@ -3257,6 +3261,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 		/* Do a preliminary check to skip rows we can guarantee don't match. */
 		if (ybIsTupMismatch(tup, ybScan))
 		{
+			YBCPgIncrementIndexRecheckCount();
 			heap_freetuple(tup);
 			continue;
 		}
@@ -3627,13 +3632,13 @@ ybcEvalHashSelectivity(List *hashed_rinfos)
 		switch (strategy)
 		{
 			case BTLessStrategyNumber:
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTLessEqualStrategyNumber:
 				greatest_set = true;
 				greatest = val > greatest ? val : greatest;
 				break;
 			case BTGreaterEqualStrategyNumber:
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTGreaterStrategyNumber:
 				lowest_set = true;
 				lowest = val < lowest ? val : lowest;

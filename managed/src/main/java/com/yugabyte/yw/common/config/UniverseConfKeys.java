@@ -1589,4 +1589,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Check if process has correct gflag on start",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableNfsBackupPrecheck =
+      new ConfKeyInfo<>(
+          "yb.backup.enable_nfs_precheck",
+          ScopeType.UNIVERSE,
+          "Enable NFS Backup precheck",
+          "Enable/disable check which verifies free space on NFS mount before backup.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> nfsPrecheckBufferSpace =
+      new ConfKeyInfo<>(
+          "yb.backup.nfs_precheck_buffer_kb",
+          ScopeType.UNIVERSE,
+          "NFS precheck buffer space",
+          "Amount of space (in KB) we want as buffer for NFS precheck",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -6781,7 +6781,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Write the tuple out to the new relation */
-			if (newrel && !yb_skip_data_insert_for_table_rewrite)
+			if (newrel && !yb_skip_data_insert_for_xcluster_target)
 			{
 				if (IsYBRelation(newrel))
 					YBCExecuteInsert(newrel,
@@ -15193,7 +15193,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 		case RELKIND_TOASTVALUE:
 			if (recursing)
 				break;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),

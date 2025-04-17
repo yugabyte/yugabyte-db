@@ -606,11 +606,11 @@ yb_fetch_effective_transaction_isolation_level(void)
 	switch (XactIsoLevel)
 	{
 		case XACT_READ_UNCOMMITTED:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case XACT_READ_COMMITTED:
 			if (IsYBReadCommitted())
 				return "read committed";
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case XACT_REPEATABLE_READ:
 			return "repeatable read";
 		case XACT_SERIALIZABLE:

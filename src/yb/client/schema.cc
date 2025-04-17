@@ -375,6 +375,8 @@ InternalType YBColumnSchema::ToInternalDataType(DataType type) {
     case DataType::VECTOR: FALLTHROUGH_INTENDED;
     case DataType::BINARY:
       return InternalType::kBinaryValue;
+    case DataType::BSON:
+      return InternalType::kBsonValue;
     case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
     case DataType::MAP:
       return InternalType::kMapValue;

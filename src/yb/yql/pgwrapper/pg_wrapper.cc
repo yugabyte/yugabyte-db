@@ -350,7 +350,22 @@ DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_expression_pushdown, true,
     "Enables expression pushdown for queries in mixed mode of a YSQL Major version upgrade.");
 
+DEFINE_NON_RUNTIME_bool(enable_pg_anonymizer, false,
+    "Enables creation of the the PostgreSQL Anonymizer extension.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
+    "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
+    "upgrade. For example, IN, ANY, ALL.");
+
 DECLARE_bool(enable_pg_cron);
+
+DEFINE_RUNTIME_PG_FLAG(
+    bool, yb_query_diagnostics_disable_database_connection_bgworker, false,
+    "Disables the background worker that establishes a database connection for query diagnostics. "
+    "If set to true, any diagnostics data requiring SPI or query execution will not be available.");
+
+TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, advanced);
+TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, hidden);
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -559,6 +574,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 
   if (FLAGS_enable_pg_cron) {
     metricsLibs.push_back("pg_cron");
+  }
+
+  if (FLAGS_enable_pg_anonymizer) {
+    metricsLibs.push_back("anon");
   }
 
   vector<string> lines;

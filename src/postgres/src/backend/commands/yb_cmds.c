@@ -1748,7 +1748,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			}
 
 		case AT_SetLogged:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AT_SetUnLogged:
 			*needsYBAlter = false;
 			break;
@@ -1761,13 +1761,13 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			break;
 
 		case AT_AddOf:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AT_DropOf:
 			*needsYBAlter = false;
 			break;
 
 		case AT_DropInherit:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AT_AddInherit:
 			/*
 			 * Altering the inheritance should keep the docdb column list the same and not

@@ -178,7 +178,7 @@ bool IsSleepRequired(ash::PggateRPC rpc) {
 
 inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
   return FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0 && (
-      FLAGS_TEST_yb_ash_wait_code_to_sleep_at == to_underlying(wait_event) ||
+      FLAGS_TEST_yb_ash_wait_code_to_sleep_at == std::to_underlying(wait_event) ||
       IsSleepRequired(pggate_rpc));
 }
 
@@ -193,7 +193,7 @@ RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params) {
 PgWaitEventWatcher::PgWaitEventWatcher(
     Starter starter, ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc)
     : starter_(starter),
-      prev_wait_event_(starter_({yb::to_underlying(wait_event), yb::to_underlying(pggate_rpc)})) {
+      prev_wait_event_(starter_({std::to_underlying(wait_event), std::to_underlying(pggate_rpc)})) {
   if (PREDICT_FALSE(MaybeSleepForTests(wait_event, pggate_rpc))) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms));
   }
@@ -258,7 +258,7 @@ Result<std::span<TableYbctid>> YbctidReaderProvider::Reader::DoRead(
         arena.get(), desc, is_region_local, metrics_capture);
 
     auto* expr_pb = read_op->read_request().add_targets();
-    expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
+    expr_pb->set_column_id(std::to_underlying(PgSystemAttrNum::kYBTupleId));
     doc_ops.push_back(std::make_unique<PgDocReadOp>(
         session_, &read_op->table(), std::move(read_op), request_sender));
     auto& doc_op = *doc_ops.back();

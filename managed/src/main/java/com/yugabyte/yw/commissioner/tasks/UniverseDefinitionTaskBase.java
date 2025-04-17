@@ -1133,7 +1133,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createPlacementInfoTask(null /* blacklistNodes */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-    if (CollectionUtils.isNotEmpty(tserverNodes)) {
+    if (CollectionUtils.isNotEmpty(tserverNodes) && primaryCluster.userIntent.enableYSQL) {
       createWaitForServersTasks(tserverNodes, ServerType.YSQLSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }

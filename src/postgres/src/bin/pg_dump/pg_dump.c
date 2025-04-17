@@ -69,6 +69,7 @@
 /* YB includes */
 #include "catalog/pg_index.h"	/* TODO: is needed? */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include <float.h>          /* for DBL_DIG */
 #include <inttypes.h>
 
 typedef struct
@@ -3216,6 +3217,10 @@ dumpDatabase(Archive *fout)
 	if (is_colocated_database)
 	{
 		appendPQExpBufferStr(creaQry, " colocation = true");
+	}
+	else if (dopt->include_yb_metadata)
+	{
+		appendPQExpBufferStr(creaQry, " colocation = false");
 	}
 
 	/*
@@ -10759,12 +10764,16 @@ dumpEnumType(Archive *fout, const TypeInfo *tyinfo)
 	int			i_enumlabel;
 	int			i_oid;
 
+	/* These two are added for YB */
+	float4		enum_sortorder;
+	int			i_enumsortorder;
+
 	if (!fout->is_prepared[PREPQUERY_DUMPENUMTYPE])
 	{
 		/* Set up query for enum-specific details */
 		appendPQExpBufferStr(query,
 							 "PREPARE dumpEnumType(pg_catalog.oid) AS\n"
-							 "SELECT oid, enumlabel "
+							 "SELECT oid, enumlabel, enumsortorder "
 							 "FROM pg_catalog.pg_enum "
 							 "WHERE enumtypid = $1 "
 							 "ORDER BY enumsortorder");
@@ -10820,18 +10829,23 @@ dumpEnumType(Archive *fout, const TypeInfo *tyinfo)
 	{
 		i_oid = PQfnumber(res, "oid");
 		i_enumlabel = PQfnumber(res, "enumlabel");
+		i_enumsortorder = PQfnumber(res, "enumsortorder");
 
 		/* Labels with dump-assigned (preserved) oids */
 		for (i = 0; i < num; i++)
 		{
 			enum_oid = atooid(PQgetvalue(res, i, i_oid));
 			label = PQgetvalue(res, i, i_enumlabel);
+			enum_sortorder = atof(PQgetvalue(res, i, i_enumsortorder));
 
 			if (i == 0)
-				appendPQExpBufferStr(q, "\n-- For binary upgrade, must preserve pg_enum oids\n");
+				appendPQExpBufferStr(q, "\n-- For binary upgrade, must preserve pg_enum oids and sortorders\n");
 			appendPQExpBuffer(q,
 							  "SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('%u'::pg_catalog.oid);\n",
 							  enum_oid);
+			appendPQExpBuffer(q,
+							  "SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('%.*g'::real);\n",
+							  DBL_DIG, enum_sortorder);
 			appendPQExpBuffer(q, "ALTER TYPE %s ADD VALUE ", qualtypname);
 			appendStringLiteralAH(q, label, fout);
 			appendPQExpBufferStr(q, ";\n\n");

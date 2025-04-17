@@ -43,8 +43,6 @@
 
 #include <boost/asio/strand.hpp>
 #include <boost/optional/optional.hpp>
-#include <cds/container/basket_queue.h>
-#include <cds/gc/dhp.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
@@ -159,6 +157,8 @@ class ServicePoolImpl final : public InboundCallHandler {
     while (scheduled_tasks_.load(std::memory_order_acquire) != 0) {
       std::this_thread::sleep_for(10ms);
     }
+    LOG_IF(DFATAL, !pre_check_timeout_queue_.Empty())
+        << "Entries pushed to pre_check_timeout_queue_ after shutdown";
   }
 
   void StartShutdown() {
@@ -172,14 +172,15 @@ class ServicePoolImpl final : public InboundCallHandler {
       }
 
       check_timeout_strand_.dispatch([this] {
-        std::weak_ptr<InboundCall> inbound_call_wrapper;
-        while (pre_check_timeout_queue_.pop(inbound_call_wrapper)) {}
+        pre_check_timeout_queue_.Drain();
         shutdown_complete_latch_.CountDown();
       });
     }
   }
 
   void Process(InboundCallPtr call, Queue queue) {
+    LOG_IF(DFATAL, closing_.load(std::memory_order_relaxed))
+        << "Calling Process on closed service pool";
     if (!queue && thread_pool_.OwnsThisThread()) {
       Handle(std::move(call));
       return;
@@ -196,7 +197,7 @@ class ServicePoolImpl final : public InboundCallHandler {
 
     auto call_deadline = call->GetClientDeadline();
     if (call_deadline != CoarseTimePoint::max()) {
-      pre_check_timeout_queue_.push(std::move(call));
+      pre_check_timeout_queue_.Push(new WeakInboundCall(std::move(call)));
       ScheduleCheckTimeout(call_deadline);
     }
 
@@ -331,9 +332,9 @@ class ServicePoolImpl final : public InboundCallHandler {
 
     auto now = CoarseMonoClock::now();
     {
-      std::weak_ptr<InboundCall> weak_inbound_call;
-      while (pre_check_timeout_queue_.pop(weak_inbound_call)) {
-        auto inbound_call = weak_inbound_call.lock();
+      while (auto raw_call = pre_check_timeout_queue_.Pop()) {
+        std::unique_ptr<WeakInboundCall> call(raw_call);
+        auto inbound_call = call->call.lock();
         if (!inbound_call) {
           continue;
         }
@@ -429,9 +430,13 @@ class ServicePoolImpl final : public InboundCallHandler {
   // So we are doing the following trick.
   // All calls are added to pre_check_timeout_queue_, w/o priority.
   // Then before timeout check we move calls from this queue to priority queue.
-  typedef cds::container::BasketQueue<cds::gc::DHP, std::weak_ptr<InboundCall>>
-      PreCheckTimeoutQueue;
-  PreCheckTimeoutQueue pre_check_timeout_queue_;
+  struct WeakInboundCall : public MPSCQueueEntry<WeakInboundCall> {
+    explicit WeakInboundCall(std::weak_ptr<InboundCall>&& call_) : call(std::move(call_)) {
+    }
+
+    std::weak_ptr<InboundCall> call;
+  };
+  MPSCQueue<WeakInboundCall> pre_check_timeout_queue_;
 
   // Used to track scheduled time, to avoid unnecessary rescheduling.
   std::atomic<CoarseDuration> next_check_timeout_{CoarseTimePoint::max().time_since_epoch()};

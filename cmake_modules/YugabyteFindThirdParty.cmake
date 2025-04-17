@@ -324,6 +324,12 @@ macro(yb_find_third_party_dependencies)
             "older RedHat/CentOS versions, where N is the toolset version number.")
   endif()
 
+  # This is needed for CMake 3.30+ which removes the FindBoost module:
+  # https://cmake.org/cmake/help/latest/policy/CMP0167.html.
+  if(POLICY CMP0167)
+      cmake_policy(SET CMP0167 OLD)
+  endif()
+
   # Find Boost static libraries.
   set(Boost_USE_STATIC_LIBS ON)
   find_package(Boost COMPONENTS system thread atomic REQUIRED)

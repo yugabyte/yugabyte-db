@@ -42,6 +42,11 @@ std::pair<dockv::PartitionSchema, dockv::Partition> CreateDefaultPartition(const
   return std::make_pair(partition_schema, partitions[0]);
 }
 
+TabletHarness::TabletHarness(const Schema& schema, Options options)
+    : options_(std::move(options)), schema_(schema) {}
+
+TabletHarness::~TabletHarness() = default;
+
 Status TabletHarness::Create(bool first_time) {
   std::pair<dockv::PartitionSchema, dockv::Partition> partition(CreateDefaultPartition(schema_));
 

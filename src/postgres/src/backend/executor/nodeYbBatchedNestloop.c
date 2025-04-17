@@ -206,7 +206,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 				elog(DEBUG2, "rescanning inner plan");
 				ExecReScan(innerPlan);
 
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BNL_NEWINNER:
 				/*
 				 * we have an outerTuple batch, try to get the next inner tuple.
@@ -227,7 +227,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 
 				bnlstate->bnl_currentstatus = BNL_MATCHING;
 
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BNL_MATCHING:
 				Assert(!TupIsNull(econtext->ecxt_innertuple));
 

@@ -508,12 +508,12 @@ class PgCatalogVersionTest : public LibPqTestBase {
     int count = 0;
     for (const auto& metric : json_metrics) {
       // Should see one full refresh.
-      if (metric.name.find("CatalogCacheRefreshes") != std::string::npos) {
+      if (metric.name.find("CatCacheRefresh") != std::string::npos) {
         ++count;
         ASSERT_EQ(metric.value, num_full_refreshes);
       }
       // Should not see any incremental refresh.
-      if (metric.name.find("CatalogCacheDeltaRefreshes") != std::string::npos) {
+      if (metric.name.find("CatCacheDeltaRefresh") != std::string::npos) {
         ++count;
         ASSERT_EQ(metric.value, num_delta_refreshes);
       }
@@ -521,6 +521,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
         break;
       }
     }
+    ASSERT_EQ(count, 2);
   }
 
 };
@@ -2432,6 +2433,26 @@ DROP TABLE tempTable2;
   LOG(INFO) << "fingerprint: " << fingerprint;
   ASSERT_EQ(result.size(), 54564U);
   ASSERT_EQ(fingerprint, 11398401310271930677UL);
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
+  RestartClusterWithInvalMessageEnabled();
+  auto conn1 = ASSERT_RESULT(EnableCacheEventLog(Connect()));
+  auto conn2 = ASSERT_RESULT(EnableCacheEventLog(Connect(true /* simple_query_protocol */)));
+  ASSERT_OK(conn1.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn2.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(id INT PRIMARY KEY)"));
+  auto query = "SELECT id FROM foo"s;
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  for (int i = 0; i < 10; i++) {
+    ASSERT_OK(conn1.ExecuteFormat("ALTER TABLE foo ADD COLUMN val$0 TEXT", i));
+    // Immediately execute the query on conn2 so that we can have
+    // "schema version mismatch". Verify that we still do incremental catalog
+    // cache refresh in error handling code path.
+    result = ASSERT_RESULT(conn2.FetchAllAsString(query));
+  }
+  // Verify that the incremental catalog cache refresh happened on conn2.
+  VerifyCatCacheRefreshMetricsHelper(0 /* num_full_refreshes */, 10 /* num_delta_refreshes */);
 }
 
 } // namespace pgwrapper

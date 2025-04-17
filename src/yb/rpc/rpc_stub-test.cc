@@ -757,14 +757,14 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
   auto reply_average = MonoDelta::FromNanoseconds(reply_sum.ToNanoseconds() / measured_calls);
   auto handle_average = MonoDelta::FromNanoseconds(handle_sum.ToNanoseconds() / measured_calls);
   auto passed_us = finish.GetDeltaSince(start).ToMicroseconds();
-  auto us_per_call = passed_us * 1.0 / measured_calls;
-  LOG(INFO) << "Min: " << min_processing.ToMicroseconds() << "us, "
-            << "max: " << max_processing.ToMicroseconds() << "us, "
-            << "reply avg: " << reply_average.ToMicroseconds() << "us, "
-            << "handle avg: " << handle_average.ToMicroseconds() << "us";
-  LOG(INFO) << "Total: " << passed_us << "us, "
+  auto time_per_call = MonoDelta::FromMicroseconds(passed_us * 1.0 / measured_calls);
+  LOG(INFO) << "Min: " << min_processing.ToPrettyString() << ", "
+            << "max: " << max_processing.ToPrettyString() << ", "
+            << "reply avg: " << reply_average.ToPrettyString() << ", "
+            << "handle avg: " << handle_average.ToPrettyString() << "";
+  LOG(INFO) << "Total: " << MonoDelta::FromMicroseconds(passed_us).ToPrettyString() << ", "
             << "calls per second: " << measured_calls * 1000000 / passed_us
-            << " (" << us_per_call << "us per call, NOT latency), "
+            << " (" << time_per_call.ToPrettyString() << " per call, NOT latency), "
             << " slow calls: " << slow_calls * 100.0 / measured_calls << "%";
   // There are lot of tests running in Jenkins on a single Mac in parallel.
   // Quite hard to use for performance measurements.

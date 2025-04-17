@@ -316,3 +316,5 @@
 | "Timeout for create tablespaces task retries" | "yb.task.create_tablespaces.retry_timeout" | "UNIVERSE" | "Timeout for create tablespaces task retries" | "Duration" |
 | "Minimal number of retries for create tablespaces task" | "yb.task.create_tablespaces.min_retries" | "UNIVERSE" | "Minimal number of retries for create tablespaces task" | "Integer" |
 | "Whether to alert for unexpected masters/tservers in universe" | "yb.health_checks.unexpected_servers_check_enabled" | "UNIVERSE" | "Whether to alert for unexpected masters/tservers in universe" | "Boolean" |
+| "Enable NFS Backup precheck" | "yb.backup.enable_nfs_precheck" | "UNIVERSE" | "Enable/disable check which verifies free space on NFS mount before backup." | "Boolean" |
+| "NFS precheck buffer space" | "yb.backup.nfs_precheck_buffer_kb" | "UNIVERSE" | "Amount of space (in KB) we want as buffer for NFS precheck" | "Long" |

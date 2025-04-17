@@ -273,7 +273,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   if (req_.is_unique_index()) {
     auto name = "ybuniqueidxkeysuffix";
     client::YBColumnSpec* col = schema_builder_.AddColumn(name)->Type(yb_type);
-    col->Order(to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix));
+    col->Order(std::to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix));
     col->PrimaryKey();
     range_columns_.emplace_back(name);
   }
@@ -283,7 +283,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   // column if any or before exec() below.
   auto name = "ybidxbasectid";
   client::YBColumnSpec* col = schema_builder_.AddColumn(name)->Type(yb_type);
-  col->Order(to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId));
+  col->Order(std::to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId));
   if (!req_.is_unique_index()) {
     col->PrimaryKey();
     range_columns_.emplace_back(name);

@@ -2623,6 +2623,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       bool is_clone,
       ExternalTableSnapshotData* table_data);
 
+  // Construct the colocation parent table id at restore side in case of the legacy 'colocated'
+  // database at backup side. This code can be deprecated once restoring old backups of legacy
+  // 'colocated' DBs is not supported.
+  Result<TableId> GetRestoreTargetParentTableForLegacyColocatedDb(
+      const NamespaceId& restore_target_namespace_id);
+  // Construct the tablegroup id at restore side (in case of colocation or tablegroups)
+  Result<TableId> GetRestoreTargetTablegroupId(
+      const NamespaceId& restore_target_namespace_id, const TableId& backup_source_tablegroup_id);
+
   // Update the colocated user table info to point to the new parent tablet. Add the colocated table
   // to the in-memory vector of table_ids_ of the parent tablet as the tablet is recreated in clone
   // and doesn't have table ids.
