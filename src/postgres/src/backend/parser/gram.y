@@ -8856,7 +8856,7 @@ YbBackfillIndexStmt:
 						char *nptr = $7;
 						char *end;
 						errno = 0;
-						n->bfinfo->read_time = pg_strtouint64(nptr, &end, 10);
+						n->bfinfo->read_time = strtou64(nptr, &end, 10);
 						if (!(*nptr != '\0' && *end == '\0')
 								|| errno == ERANGE)
 							ereport(ERROR,

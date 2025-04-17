@@ -1095,7 +1095,7 @@ CheckYbTserverKeyAuth(Port *port, const char **logdetail)
 		char	   *end;
 
 		errno = 0;
-		client_key = pg_strtouint64(passwd, &end, 10);
+		client_key = strtou64(passwd, &end, 10);
 		if (!(*passwd != '\0' && *end == '\0') || errno == ERANGE)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
