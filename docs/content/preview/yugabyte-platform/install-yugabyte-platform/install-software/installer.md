@@ -282,15 +282,15 @@ To use the data disk with a new installation, do the following:
 
 ### Reconfigure
 
-YBA Installer can be used to reconfigure an installed YBA instance.
+You can use YBA Installer to reconfigure an installed YBA instance.
 
-To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuration file with your changes, and then run the command as follows:
+To reconfigure an installation, edit the configuration file with your changes, and then run the command as follows:
 
 ```sh
 sudo yba-ctl reconfigure
 ```
 
-For a list of options, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
+For more information, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
 
 ### Service management
 
@@ -428,9 +428,9 @@ To perform a non-sudo installation, run any of the preceding commands without su
 
 ## Configuration options
 
-To customize your installation, you can edit the settings in the `yba-ctl.yml` configuration file.
+To customize your installation, edit the settings in the `yba-ctl.yml` configuration file.
 
-YBA Installer [automatically generates](#configure-yba-installer) the configuration file when you run some commands. Alternatively, you can edit the `yba-ctl.yml.reference` file included in the installer bundle, and copy it to the appropriate location.
+YBA Installer [automatically generates](#configure-yba-installer) the file when you run some commands. Alternatively, you can edit the `yba-ctl.yml.reference` file included in the installer bundle, and copy it to the appropriate location.
 
 | Installation type | Location for configuration file |
 | :--- | :--- |
@@ -439,9 +439,9 @@ YBA Installer [automatically generates](#configure-yba-installer) the configurat
 
 Note that the file must include all fields. Optional fields may be left blank.
 
-### YBA Installer configuration options
+### Configure YBA Installer
 
-You can configure YBA Installer by setting the following configuration options.
+You can configure YBA Installer by setting the following options.
 
 | Option | Description |      |
 | :----- | :---------- | :--- |
@@ -454,7 +454,7 @@ You can configure YBA Installer by setting the following configuration options.
 
 {{<icon/partial>}} You can't change these settings after installation.
 
-### YBA configuration options
+### Configure YBA
 
 You can configure YugabyteDB Anywhere using the following options.
 
@@ -490,7 +490,7 @@ Http and Https proxy settings are described in the following table.
 | `no_proxy` |              Specify the setting for NO_PROXY |
 | `java_non_proxy` |        Specify -Dhttps.nonProxyHosts |
 
-### Prometheus configuration options
+### Configure Prometheus
 
 | Option | Description |
 | :--- | :--- |
