@@ -73,7 +73,21 @@ The following S3 IAM permissions are required:
 
 ## Google Cloud Storage
 
-You can configure Google Cloud Storage (GCS) as your backup target, as follows:
+You can configure Google Cloud Storage (GCS) as your backup target.
+
+### Required GCP service account permissions
+
+To grant access to your bucket, create a GCP service account with [IAM roles for cloud storage](https://cloud.google.com/storage/docs/access-control/iam-roles) with the following permissions:
+
+```sh
+roles/storage.admin
+```
+
+The credentials for this account (in JSON format) are used when creating the backup storage configuration. For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
+
+### Create a GCS backup configuration
+
+To create a GCP backup configuration, do the following:
 
 1. Navigate to **Integrations > Backup > Google Cloud Storage**.
 
@@ -87,9 +101,7 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
 
-1. Complete the **GCS Bucket** and **GCS Credentials** fields.
-
-    For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
+1. Enter the credentials for your account in JSON format in the **GCS Credentials** field.
 
 1. Click **Save**.
 
