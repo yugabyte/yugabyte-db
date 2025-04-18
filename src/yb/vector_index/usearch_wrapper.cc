@@ -31,7 +31,7 @@
 
 namespace unum::usearch {
 
-// Expcilit specialization for the operator== is required for usearch need, as a compiler is not
+// Explicit specialization for the operator== is required for usearch need, as a compiler is not
 // smart enough to resolve StronglyTypedUuid's comparison operator, where one argument is different
 // from StronglyTypedUuid but can be implicitly casted the corresponding StronglyTypedUuid.
 bool operator==(const yb::vector_index::VectorId& lhs,

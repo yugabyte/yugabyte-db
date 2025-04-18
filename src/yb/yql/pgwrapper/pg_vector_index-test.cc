@@ -633,6 +633,7 @@ void PgVectorIndexTest::TestRandom() {
   }
 
   auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+
   size_t sum_missing = 0;
   std::vector<size_t> counts;
 

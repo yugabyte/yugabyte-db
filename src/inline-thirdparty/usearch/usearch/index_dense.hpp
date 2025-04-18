@@ -413,6 +413,10 @@ class index_dense_gt {
     using member_iterator_t = typename index_t::member_iterator_t;
     using member_citerator_t = typename index_t::member_citerator_t;
 
+    auto& impl() const {
+        return *typed_;
+    }
+
   private:
     using index_allocator_t = aligned_allocator_gt<index_t, 64>;
 
