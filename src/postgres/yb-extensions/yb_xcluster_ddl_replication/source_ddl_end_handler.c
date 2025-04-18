@@ -134,6 +134,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_DROP_OPERATOR) \
 	X(CMDTAG_DROP_OPERATOR_CLASS) \
 	X(CMDTAG_DROP_OPERATOR_FAMILY) \
+	X(CMDTAG_DROP_OWNED) \
 	X(CMDTAG_DROP_POLICY) \
 	X(CMDTAG_DROP_PROCEDURE) \
 	X(CMDTAG_DROP_ROUTINE) \
@@ -524,9 +525,15 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 	{
 		HeapTuple   spi_tuple = SPI_tuptable->vals[row];
 		YbCommandInfo *info = &info_array[row];
-		info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
 		info->command_tag_name =
 			SPI_GetText(spi_tuple, DDL_END_COMMAND_TAG_COLUMN_ID);
+		CommandTag command_tag = GetCommandTagEnum(info->command_tag_name);
+
+		/* Only commands that don't have an oid are GRANT, REVOKE */
+		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE)
+		{
+			info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
+		}
 		info->schema = SPI_GetText(spi_tuple, DDL_END_SCHEMA_NAME_COLUMN_ID);
 		info->command = GetCollectedCommand(spi_tuple, DDL_END_COMMAND_COLUMN_ID);
 	}
