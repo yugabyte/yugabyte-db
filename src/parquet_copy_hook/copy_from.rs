@@ -24,6 +24,7 @@ use super::{
         copy_from_stmt_match_by, copy_stmt_attribute_list, copy_stmt_create_namespace_item,
         copy_stmt_create_parse_state, create_filtered_tupledesc_for_relation,
     },
+    pg_compat::check_copy_table_permission,
 };
 
 // stack to store parquet reader contexts for COPY FROM.
@@ -135,6 +136,8 @@ pub(crate) fn execute_copy_from(
     if !where_clause.is_null() {
         where_clause = copy_from_stmt_transform_where_clause(&p_state, &ns_item, where_clause);
     }
+
+    check_copy_table_permission(p_stmt, &p_state, &ns_item, &relation);
 
     let attribute_list = copy_stmt_attribute_list(p_stmt);
 

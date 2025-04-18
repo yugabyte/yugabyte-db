@@ -483,7 +483,7 @@ mod tests {
 
     #[pg_test]
     #[should_panic(expected = "permission denied for table test_table")]
-    fn test_with_no_table_privilege() {
+    fn test_copy_to_with_no_table_privilege() {
         let create_table = "create table test_table(id int);";
         Spi::run(create_table).unwrap();
 
@@ -496,7 +496,29 @@ mod tests {
         let set_role = "set role test_role;";
         Spi::run(set_role).unwrap();
 
-        let copy_from_parquet = format!("copy test_table to '{}';", LOCAL_TEST_FILE_PATH);
+        let copy_to_parquet = format!("copy test_table to '{}';", LOCAL_TEST_FILE_PATH);
+        Spi::run(&copy_to_parquet).unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "permission denied for table test_table")]
+    fn test_copy_from_with_no_table_privilege() {
+        let copy_to_parquet = format!("copy (select 1) to '{LOCAL_TEST_FILE_PATH}';");
+        Spi::run(&copy_to_parquet).unwrap();
+
+        let create_table = "create table test_table(id int);";
+        Spi::run(create_table).unwrap();
+
+        let create_role = "create role test_role;";
+        Spi::run(create_role).unwrap();
+
+        let grant_role = "grant pg_read_server_files TO test_role;";
+        Spi::run(grant_role).unwrap();
+
+        let set_role = "set role test_role;";
+        Spi::run(set_role).unwrap();
+
+        let copy_from_parquet = format!("copy test_table from '{}';", LOCAL_TEST_FILE_PATH);
         Spi::run(&copy_from_parquet).unwrap();
     }
 }
