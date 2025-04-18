@@ -1745,18 +1745,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createPGUpgradeTServerCheckTask(String ybSoftwareVersion) {
-    return createPGUpgradeTServerCheckTask(ybSoftwareVersion, true /* downloadPackage */);
-  }
-
-  public SubTaskGroup createPGUpgradeTServerCheckTask(
-      String ybSoftwareVersion, boolean downloadPackage) {
     return doInPrecheckSubTaskGroup(
         "PGUpgradeTServerCheck",
         subTaskGroup -> {
           PGUpgradeTServerCheck task = createTask(PGUpgradeTServerCheck.class);
           PGUpgradeTServerCheck.Params params = new PGUpgradeTServerCheck.Params();
           params.setUniverseUUID(taskParams().getUniverseUUID());
-          params.downloadPackage = downloadPackage;
           params.ybSoftwareVersion = ybSoftwareVersion;
           task.initialize(params);
           subTaskGroup.addSubTask(task);

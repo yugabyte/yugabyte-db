@@ -110,7 +110,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           }
 
           JsonNode additionalDetails = gFlagsAuditHandler.constructGFlagAuditPayload(taskParams());
-          auditService.updateAdditionalDetils(getTaskUUID(), additionalDetails);
+          auditService.updateAdditionalDetails(getTaskUUID(), additionalDetails);
 
           // Always update both master and tserver,
           // Helm update will finish without any restarts if there are no updates
