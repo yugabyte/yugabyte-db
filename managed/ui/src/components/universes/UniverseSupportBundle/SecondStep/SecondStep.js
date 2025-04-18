@@ -2,11 +2,15 @@ import { useRef, useState } from 'react';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { useEffectOnce } from 'react-use';
-import { Box, Collapse } from '@material-ui/core';
+import { Box, Collapse, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
+import moment from 'moment';
+import momentLocalizer from 'react-widgets-moment';
+
 import { YBLoading } from '../../../common/indicators';
 import { YBButton, YBCheckBox } from '../../../common/forms/fields';
-import { YBInput, YBLabel } from '../../../../redesign/components';
+import { YBButton as YBRedesignedButton } from '../../../../redesign/components';
+import { YBInput, YBLabel, YBTooltip } from '../../../../redesign/components';
 import { DateTimePicker } from 'react-widgets';
 import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
 import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
@@ -14,9 +18,25 @@ import { fetchGlobalRunTimeConfigs } from '../../../../api/admin';
 import { UniverseState } from '../../helpers/universeHelpers';
 import { DATE_FORMAT } from '../../../backupv2/common/BackupUtils';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
-import moment from 'moment';
-import momentLocalizer from 'react-widgets-moment';
+import { ReactComponent as AddIcon } from '../../../../redesign/assets/add2.svg';
+import { ReactComponent as EditIcon } from '../../../../redesign/assets/edit2.svg';
+import { EditCustomPrometheusQueriesModal } from '../../../../redesign/features/universe/universe-actions/support-bundle/EditCustomPrometheusQueriesModal';
+
 momentLocalizer(moment);
+
+const useStyles = makeStyles((theme) => ({
+  editIcon: {
+    color: theme.palette.primary[600]
+  },
+  openCustomPrometheusQueriesButton: {
+    color: theme.palette.primary[600]
+  },
+  customPrometheusQueriesSection: {
+    display: 'flex',
+
+    marginTop: theme.spacing(2)
+  }
+}));
 
 const CUSTOM = 'custom';
 const CUSTOM_WITH_VALUE = 'customWithValue';
@@ -40,6 +60,7 @@ const filterTypePromDump = [
 export const selectionOptions = [
   { label: 'All', value: 'All' },
   { label: 'Application logs', value: 'ApplicationLogs' },
+  { label: 'System Logs', value: 'SystemLogs' },
   { label: 'YBA Metadata', value: 'YbaMetadata' },
   { label: 'Universe logs', value: 'UniverseLogs' },
   { label: 'Output files', value: 'OutputFiles' },
@@ -48,6 +69,7 @@ export const selectionOptions = [
   { label: 'Instance files', value: 'Instance' },
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
   { label: 'Tablet meta files', value: 'TabletMeta' },
+  { label: 'Tablet Report', value: 'TabletReport' },
   { label: 'Node agent logs', value: 'NodeAgent' },
   { label: 'Core Files', value: 'CoreFiles' },
   { label: 'YB-Controller logs', value: 'YbcLogs' },
@@ -80,12 +102,13 @@ const getBackDateBeforeDate = (amount, type, date) => {
   return moment(date).subtract(amount, type).toDate();
 };
 
-const PrometheusMetricsProps = {
+export const DEFAULT_PROMETHEUS_METRICS_PARAMS = {
   promDumpStartDate: getBackDate(15, 'minutes'),
   promDumpEndDate: new Date(),
   prometheusMetricsOptionsValue: prometheusMetricsOptions.map(() => true),
   isPromDumpDateTypeCustom: false,
-  promDumpDateType: filterTypePromDump[0]
+  promDumpDateType: filterTypePromDump[0],
+  prometheusQueries: []
 };
 
 export const updateOptions = (
@@ -158,7 +181,19 @@ export const updateOptions = (
           prometheusMetricsTypes.push(prometheusMetricsOptions[index].value);
         }
       });
-      payloadObj = { ...payloadObj, prometheusMetricsTypes: prometheusMetricsTypes };
+      const promQueries = {};
+      prometheusMetricsParams.prometheusQueries.forEach((prometheusQuery) => {
+        const folderName = prometheusQuery.folderName;
+        const query = prometheusQuery.query;
+        if (folderName && query) {
+          promQueries[folderName] = query;
+        }
+      });
+      payloadObj = {
+        ...payloadObj,
+        prometheusMetricsTypes: prometheusMetricsTypes,
+        promQueries: promQueries
+      };
     }
   });
   return payloadObj;
@@ -177,7 +212,9 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
     prometheusMetricsOptions.map(() => true)
   );
   const [coreFileParams, setCoreFileParams] = useState(CoreFilesProps);
-  const [prometheusMetricsParams, setPrometheusMetricsParams] = useState(PrometheusMetricsProps);
+  const [prometheusMetricsParams, setPrometheusMetricsParams] = useState(
+    DEFAULT_PROMETHEUS_METRICS_PARAMS
+  );
   const [isDateTypeCustom, setIsDateTypeCustom] = useState(false);
   const [isPromDumpDateTypeCustom, setIsPromDumpDateTypeCustom] = useState(false);
   const [startDate, setStartDate] = useState(getBackDate(1, 'days'));
@@ -194,6 +231,12 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
   );
   const [isExpandedCoreFiles, setIsExpandedCoreFiles] = useState(false);
   const [isExpandedPromMetrics, setIsExpandedPromMetrics] = useState(false);
+  const [
+    isEditCustomPrometheusQueriesModalOpen,
+    setIsEditCustomPrometheusQueriesModalOpen
+  ] = useState(false);
+  const theme = useTheme();
+  const classes = useStyles();
 
   const getIndex = (key) => selectionOptions.findIndex((e) => e.value === key);
   const isSelected = (key) => selectionOptionsValue[getIndex(key)];
@@ -282,6 +325,29 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
       onClick={onClick}
     />
   );
+
+  const openEditCustomPrometheusQueriesModal = () => {
+    setIsEditCustomPrometheusQueriesModalOpen(true);
+  };
+  const closeEditCustomPrometheusQueriesModal = () => {
+    setIsEditCustomPrometheusQueriesModalOpen(false);
+  };
+  const updatePrometheusQueries = (updatedPrometheusQueries) => {
+    const updatedPrometheusMetricsParams = {
+      ...prometheusMetricsParams,
+      prometheusQueries: updatedPrometheusQueries
+    };
+    setPrometheusMetricsParams(updatedPrometheusMetricsParams);
+
+    const changedOptions = updateOptions(
+      selectedFilterType,
+      selectionOptionsValue,
+      setIsDateTypeCustom,
+      coreFileParams,
+      updatedPrometheusMetricsParams
+    );
+    onOptionsChange(changedOptions);
+  };
 
   return (
     <div className="universe-support-bundle-step-two">
@@ -676,6 +742,32 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
                       />
                     </div>
                   ))}
+                  <div className={classes.customPrometheusQueriesSection}>
+                    <YBRedesignedButton
+                      variant="ghost"
+                      startIcon={
+                        prometheusMetricsParams?.prometheusQueries?.length > 0 ? (
+                          <EditIcon className={classes.editIcon} />
+                        ) : (
+                          <AddIcon />
+                        )
+                      }
+                      className={classes.openCustomPrometheusQueriesButton}
+                      onClick={openEditCustomPrometheusQueriesModal}
+                    >
+                      Custom Queries
+                    </YBRedesignedButton>
+                    {isEditCustomPrometheusQueriesModalOpen && (
+                      <EditCustomPrometheusQueriesModal
+                        customPrometheusQueries={prometheusMetricsParams?.prometheusQueries ?? []}
+                        updateCustomPrometheusQueries={updatePrometheusQueries}
+                        modalProps={{
+                          open: isEditCustomPrometheusQueriesModalOpen,
+                          onClose: closeEditCustomPrometheusQueriesModal
+                        }}
+                      />
+                    )}
+                  </div>
                 </Box>
               </Collapse>
             )}
