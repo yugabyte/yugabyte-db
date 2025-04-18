@@ -147,7 +147,6 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   return (
     <div className={classes.root}>
       {failedTask && getFailedTaskData()}
-      {currentTask.status !== TaskStates.RUNNING && (
         <div
           className={classes.showLog}
           onClick={() => {
@@ -160,7 +159,6 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
           {t('showLog')}
           <img src={LinkIcon} alt="link" />
         </div>
-      )}
 
       {isSubTaskLoading ? (
         <YBLoadingCircleIcon />
