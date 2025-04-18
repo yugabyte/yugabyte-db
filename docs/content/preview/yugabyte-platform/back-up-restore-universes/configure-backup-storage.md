@@ -180,6 +180,7 @@ You can configure Azure as your backup target.
 
     - Navigate to **Storage account > Shared access signature**, as shown in the following illustration. (Note that you must generate the SAS Token on the Storage Account, not the Container. Generating the SAS Token on the container will prevent the configuration from being applied.)
     - Under **Allowed resource types**, select **Container** and **Object**.
+    - Under **Allowed permissions**, select all options as shown.
     - Click **Generate SAS and connection string** and copy the SAS token.
 
         ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
