@@ -392,10 +392,13 @@ restart:
 		 * that.
 		 */
 		if (isnan(yb_binary_upgrade_next_pg_enum_sortorder))
+		{
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("pg_enum sortorder value not set when in binary upgrade mode")));
-
+					 errmsg("pg_enum sortorder value not set when in binary upgrade mode for %s oid %u",
+							binary_upgrade_next_pg_enum_oid % 2 ? "odd" : "even",
+							binary_upgrade_next_pg_enum_oid)));
+		}
 
 		/*
 		 * Use binary-upgrade override for pg_enum.oid, if supplied. During
