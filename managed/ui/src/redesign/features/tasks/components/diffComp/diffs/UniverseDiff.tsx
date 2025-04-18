@@ -9,7 +9,7 @@
 
 import { MutableRefObject } from 'react';
 import clsx from 'clsx';
-import { differenceWith, intersectionWith, isEqual, keys } from 'lodash';
+import { differenceWith, intersectionWith, isEqual, keys, size } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 
@@ -665,7 +665,13 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           title: '',
           element: <>{beforeComp}</>
         }}
-        operation={DiffOperation.CHANGED}
+        operation={
+          size(afterInstanceTags) === 0
+            ? DiffOperation.REMOVED
+            : size(beforeInstanceTags) === 0
+            ? DiffOperation.ADDED
+            : DiffOperation.CHANGED
+        }
       />
     );
   }
