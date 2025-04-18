@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import kamon.Kamon;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import play.inject.ApplicationLifecycle;
@@ -162,6 +163,7 @@ public class ShutdownHookHandler {
                 }
               });
     }
+    Kamon.stop();
     shutdownExecutor.shutdownNow();
   }
 }
