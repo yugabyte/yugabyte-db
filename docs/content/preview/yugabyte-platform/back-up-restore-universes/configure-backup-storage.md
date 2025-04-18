@@ -85,6 +85,11 @@ roles/storage.admin
 
 The credentials for this account (in JSON format) are used when creating the backup storage configuration. For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
 
+You can configure access control for the GCS bucket as follows:
+
+- Provide the required access control list (ACL) and set it as either uniform or fine-grained (for object-level access).
+- Add permissions, such as roles and members.
+
 ### Create a GCS backup configuration
 
 To create a GCP backup configuration, do the following:
@@ -105,11 +110,6 @@ To create a GCP backup configuration, do the following:
 
 1. Click **Save**.
 
-You can configure access control for the GCS bucket as follows:
-
-- Provide the required access control list (ACL) and set it as either uniform or fine-grained (for object-level access).
-- Add permissions, such as roles and members.
-
 ### GKE service account-based IAM (GCP IAM)
 
 Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account (KSA) in your GKE cluster to act as an IAM service account so that your Kubernetes universes can access GCS for backups.
@@ -120,7 +120,13 @@ Workload Identity links a KSA to an IAM account using annotations in the KSA. Po
 
 By using Workload Identity, you avoid the need for manually managing service account keys or tokens in your applications running on GKE. This approach enhances security and simplifies the management of credentials.
 
-#### Prerequisites
+- To enable GCP IAM when installing YugabyteDB Anywhere, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
+
+- To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
+
+- To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
+
+**Prerequisites**
 
 - The GKE cluster hosting the pods should have Workload Identity enabled. The worker nodes of this GKE cluster should have the GKE metadata server enabled.
 
@@ -129,12 +135,6 @@ By using Workload Identity, you avoid the need for manually managing service acc
 - The KSA, which is annotated with the IAM service account, should be present in the same namespace where the pod resources for YugabyteDB Anywhere and YugabyteDB universes are expected. If you have multiple namespaces, each namespace should include the annotated KSA.
 
 For instructions on setting up Workload Identity, see [Use Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the GKE documentation.
-
-To enable GCP IAM when installing YugabyteDB Anywhere, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
-
-To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
-
-To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
 
 ## Network File System
 
