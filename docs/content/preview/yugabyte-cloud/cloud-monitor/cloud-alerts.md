@@ -245,6 +245,22 @@ High CPU use could also indicate a problem and may require debugging by {{% supp
 
 If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
+### Disaster recovery alerts
+
+If disaster recovery is configured, YugabyteDB Aeon can alert you when the safe time or replication lag to the replica cluster exceeds a threshold.
+
+| Alert | Metric |
+| :--- | :--- |
+| Safe time lag | Time |
+| Replication lag | Time |
+
+YugabyteDB Aeon sends a notification when lag exceeds the threshold, as follows:
+
+- Safe time lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+- Replication lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+
+For more information, refer to [Monitor replication](../../cloud-clusters/disaster-recovery/disaster-recovery-setup/#monitor-replication).
+
 ### Billing alerts
 
 Billing alerts trigger for the following events:
