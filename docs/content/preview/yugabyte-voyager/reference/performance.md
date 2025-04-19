@@ -39,11 +39,13 @@ yb-voyager only disables the constraint checks and triggers in the internal sess
 
 Use one or more of the following techniques to improve import data performance:
 
-- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to half of the total number of cores in the YugabyteDB cluster. Normally this is a good default value and should consume around 50-60% of CPU usage. However, if the target cluster shows high CPU utilisation, then you should lower the number of parallel jobs. Similarly, if the target cluster seems to be under-utilised, then it is recommended to stop the import, and restart it with a higher number of parallel jobs.
+- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time. On YugabyteDB v2.20 and above, yb-voyager adapts the value of N depending on the resource usage (CPU/memory) of the cluster, with the goal of maintaining an optimal CPU usage (<70%). By default, the upper bound of N is set to half the total number of cores in the YugabyteDB cluster. Use the --adaptive-parallelism-max flag to override this default value.
 
-  Use the [--parallel-jobs](../../reference/data-migration/import-data/#arguments) argument with the import data command to override the default setting. Set `--parallel-jobs` to an appropriate value to override the default based on your cluster configuration and observation.
+  Against older YugabyteDB versions, N is equal to one-fourth of the total number of cores in the YugabyteDB cluster. Normally this is a good default value and should consume around 50-60% of CPU usage.
 
   If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
+
+  Use the [--parallel-jobs](../../reference/data-migration/import-data/#arguments) argument with the import data command to override the default setting based on your cluster configuration and observation.
 
    {{< note title="Note" >}}
 
@@ -55,49 +57,9 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Add disks** to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
-- **Enable packed rows** to increase the throughput by more than two times. Enable packed rows on the YugabyteDB cluster by setting the YB-TServer flag [ysql_enable_packed_row](../../../reference/configuration/yb-tserver/#ysql-enable-packed-row) to true.
+- **Enable packed rows** to increase the throughput by more than two times. Enable packed rows on the YugabyteDB cluster by setting the YB-TServer flag [ysql_enable_packed_row](../../../reference/configuration/yb-tserver/#ysql-enable-packed-row) to true. In v2.20.0 and later, packed rows for YSQL is enabled by default for new clusters.
 
 - **Configure the host machine's disk** with higher IOPS and better throughput to improve the performance of the splitter, which splits the large data file into smaller splits of 20000 rows. Splitter performance depends on the host machine's disk.
-
-#### Performance test results
-
-The following performance test results demonstrate the preceding techniques.
-
-[Import data](../../migrate/migrate-steps/#import-data) was tested using varying configurations, including more parallel jobs, multiple disks, and a larger cluster. The tests were run using a 28GB CSV file with 350 million rows on YugabyteDB version 2.16.0.0-b90.
-
-The table schema for the test was as follows:
-
-```sql
-CREATE TABLE public.accounts (
-    block bigint NOT NULL,
-    address text NOT NULL,
-    dc_balance bigint DEFAULT 0 NOT NULL,
-    dc_nonce bigint DEFAULT 0 NOT NULL,
-    security_balance bigint DEFAULT 0 NOT NULL,
-    security_nonce bigint DEFAULT 0 NOT NULL,
-    balance bigint DEFAULT 0 NOT NULL,
-    nonce bigint DEFAULT 0 NOT NULL,
-    staked_balance bigint,
-    PRIMARY KEY (block, address)
-);
-```
-
-As more optimizations are introduced, average throughput increases. The following table shows the results.
-
-| Run | Cluster configuration | yb-voyager flags | CPU usage | Average throughput |
-| :-- | :-------------------- | :--------------- | :-------- | :----------------- |
-| 24 parallel jobs (default) | 3 node [RF](../../../architecture/docdb-replication/replication/#replication-factor) 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=24 | ~80% | 44014 rows/sec |
-| Increase jobs<br>(1 per core) | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% | 47696 rows/sec |
-| Add nodes | 6 Node RF 3 cluster,<br> c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~80% | 86547 rows/sec |
-| Enabling packed rows | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48<br>YB-TServer GFlag: `ysql_enable_packed_row` = `true` | ~95% | 134048 rows/sec |
-
-{{< note title="Note" >}}
-
-- The more optimizations you use, the more CPU you will require. Allowing CPU use greater than 60% may not be advisable as the database requires some cycles for internal operations.
-
-- These performance optimizations apply whether you are importing data using the yb-voyager [import data command](../../migrate/migrate-steps/#import-data) or the [import data file command](../../migrate/bulk-data-load/#import-data-files-from-the-local-disk).
-
-{{< /note >}}
 
 ## Improve export performance
 
