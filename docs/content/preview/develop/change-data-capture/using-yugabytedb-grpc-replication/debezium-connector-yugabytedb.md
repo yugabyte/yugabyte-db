@@ -948,7 +948,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 {
   "name": "ybconnector", --> 1
   "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector", --> 2
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector", --> 2
     "database.hostname": "127.0.0.1", --> 3
     "database.port": "5433", --> 4
     "database.master.addresses": "127.0.0.1:7100", --> 5
@@ -1017,7 +1017,7 @@ The following properties are _required_ unless a default value is available:
 
 | Property | Default value | Description |
 | :------- | :------------ | :---------- |
-| connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBConnector`. |
+| connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`. |
 | database.hostname | N/A | The IP address of the database host machine. For a distributed cluster, use the leader node's IP address. Alternatively, you can specify a comma-separated list of multiple host addresses and corresponding ports (for example,`ip1:port1,ip2:port2,ip3:port3`). This is useful for connection fail-over. |
 | database.port | N/A | The port at which the YSQL process is running. |
 | database.master.addresses | N/A | Comma-separated list of `host:port` values. |

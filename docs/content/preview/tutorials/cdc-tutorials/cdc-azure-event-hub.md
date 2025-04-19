@@ -88,7 +88,7 @@ Now that you have created Event Hubs in Azure, you need to create a YugabyteDB C
     -d '{
     "name": "ybconnector",
     "config": {
-        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
         "database.hostname":"'$IP'",
         "database.port":"5433",
         "database.master.addresses": "'$IP':7100",

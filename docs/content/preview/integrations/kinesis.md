@@ -66,7 +66,7 @@ The following code snippet shows an example implementation:
     props.setProperty("offset.storage", "org.apache.kafka.connect.storage.FileOffsetBackingStore");
     props.setProperty("offset.storage.file.filename", "/tmp/offsets.dat");
     props.setProperty("offset.flush.interval.ms", "60000");
-    props.setProperty("connector.class", "io.debezium.connector.yugabytedb.YugabyteDBConnector
+    props.setProperty("connector.class", "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector
     ");
 
     props.setProperty("database.streamid", <stream_id>); // provide stream id generated above

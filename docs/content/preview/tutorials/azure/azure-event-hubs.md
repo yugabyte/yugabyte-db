@@ -205,7 +205,7 @@ A Kafka Connect configuration file is required to provide information about the 
     -d '{
     "name": "ybconnector",
     "config": {
-        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
         "database.hostname":"127.0.0.1",
         "database.port":"5433",
         "database.master.addresses": "127.0.0.1:7100",
