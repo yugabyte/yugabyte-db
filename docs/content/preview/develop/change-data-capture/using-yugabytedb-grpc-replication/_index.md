@@ -63,6 +63,10 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 * [Composite types](../../../explore/ysql-language-features/data-types#composite-types) are currently not supported. Issue [25221](https://github.com/yugabyte/yugabyte-db/issues/25221).
 
+* If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
+
+    To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
+
 In addition, CDC support for the following features will be added in upcoming releases:
 
 * Support for point-in-time recovery (PITR) is tracked in issue [10938](https://github.com/yugabyte/yugabyte-db/issues/10938).
