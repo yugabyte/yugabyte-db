@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -21,8 +22,10 @@ import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -32,9 +35,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -114,8 +118,6 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
         .thenCallRealMethod();
     when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(
@@ -123,10 +125,12 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
 
     // Generate a fake shell response containing the entire list of file paths
     // Mocks the server response
-    List<Path> fakeLogFilePathList =
-        fakeLogsList.stream().map(Paths::get).collect(Collectors.toList());
-    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), any(), eq(1), eq("f")))
-        .thenReturn(fakeLogFilePathList);
+    Map<String, Long> fakeLogPathSizeMap = new HashMap<>();
+    for (String path : fakeLogsList) {
+      fakeLogPathSizeMap.put(path, 10L);
+    }
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(fakeLogPathSizeMap);
     // Generate a fake shell response containing the output of the "check file exists" script
     // Mocks the server response as "file existing"
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
@@ -153,6 +157,10 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     Date startDate = new Date(Long.MIN_VALUE);
     Date endDate = new Date(Long.MAX_VALUE);
 
+    SupportBundleTaskParams params =
+        new SupportBundleTaskParams(
+            new SupportBundle(), new SupportBundleFormData(), customer, universe);
+
     // Calling the download function
     UniverseLogsComponent universeLogsComponent =
         new UniverseLogsComponent(
@@ -162,7 +170,7 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
             mockSupportBundleUtil,
             MockConfGetter);
     universeLogsComponent.downloadComponentBetweenDates(
-        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+        params, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 
     // Check that the download function is called
     verify(mockUniverseInfoHandler, times(1))

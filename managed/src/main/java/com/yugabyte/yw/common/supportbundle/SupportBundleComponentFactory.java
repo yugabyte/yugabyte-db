@@ -21,6 +21,7 @@ public class SupportBundleComponentFactory {
   private final NodeAgentComponent nodeAgentComponent;
   private final YbaMetadataComponent ybaMetadataComponent;
   private final PrometheusMetricsComponent prometheusMetricsComponent;
+  private final SystemLogsComponent systemLogsComponent;
 
   @Inject
   public SupportBundleComponentFactory(
@@ -37,7 +38,8 @@ public class SupportBundleComponentFactory {
       K8sInfoComponent k8sInfoComponent,
       NodeAgentComponent nodeAgentComponent,
       YbaMetadataComponent ybaMetadataComponent,
-      PrometheusMetricsComponent prometheusMetricsComponent) {
+      PrometheusMetricsComponent prometheusMetricsComponent,
+      SystemLogsComponent systemLogsComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
     this.universeLogsComponent = universeLogsComponent;
     this.outputFilesComponent = outputFilesComponent;
@@ -52,6 +54,7 @@ public class SupportBundleComponentFactory {
     this.nodeAgentComponent = nodeAgentComponent;
     this.ybaMetadataComponent = ybaMetadataComponent;
     this.prometheusMetricsComponent = prometheusMetricsComponent;
+    this.systemLogsComponent = systemLogsComponent;
   }
 
   // Maps the support bundle component type to its respective implementation
@@ -100,6 +103,9 @@ public class SupportBundleComponentFactory {
         break;
       case PrometheusMetrics:
         supportBundleComponent = this.prometheusMetricsComponent;
+        break;
+      case SystemLogs:
+        supportBundleComponent = this.systemLogsComponent;
         break;
       default:
         break;

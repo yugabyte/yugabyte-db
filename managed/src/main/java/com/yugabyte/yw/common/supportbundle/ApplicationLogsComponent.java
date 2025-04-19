@@ -8,6 +8,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -17,12 +18,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
@@ -69,8 +72,38 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
       Date startDate,
       Date endDate,
       NodeDetails node)
-      throws IOException, ParseException {
+      throws Exception {
 
+    // Create "application_logs" folder inside the support bundle folder
+    String destDir = bundlePath.toString() + "/application_logs";
+    Files.createDirectories(Paths.get(destDir));
+    File dest = new File(destDir);
+
+    // Set of absolute paths to be copied to the support bundle directory
+    Set<String> filteredLogFiles =
+        getFilesListWithSizes(customer, null, universe, startDate, endDate, node).keySet();
+
+    // Copy individual files from source directory to the support bundle folder
+    for (String filteredLogFile : filteredLogFiles) {
+      Path sourceFilePath = Paths.get(filteredLogFile);
+      Path destFilePath =
+          Paths.get(dest.toString(), Paths.get(filteredLogFile).getFileName().toString());
+      Files.copy(sourceFilePath, destFilePath, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    log.debug("Downloaded application logs to {}, between {} and {}", destDir, startDate, endDate);
+  }
+
+  public Map<String, Long> getFilesListWithSizes(
+      Customer customer,
+      SupportBundleFormData bundleData,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+
+    Map<String, Long> res = new HashMap<>();
     // Get application configured locations
     String appHomeDir = config.getString("application.home");
     log.info("[ApplicationLogsComponent] appHomeDir = '{}'", appHomeDir);
@@ -80,11 +113,7 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     log.info("[ApplicationLogsComponent] logDir = '{}'", logDir);
     log.info("[ApplicationLogsComponent] logDirAbsolute = '{}'", logDirAbsolute);
 
-    // Create "application_logs" folder inside the support bundle folder
-    String destDir = bundlePath.toString() + "/application_logs";
-    Files.createDirectories(Paths.get(destDir));
     File source = new File(logDirAbsolute);
-    File dest = new File(destDir);
 
     // Get all the log file names present in source directory
     List<String> logFiles = new ArrayList<>();
@@ -116,12 +145,7 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     String applicationLogsRegexPattern =
         config.getString("yb.support_bundle.application_logs_regex_pattern");
     logFiles =
-        supportBundleUtil
-            .filterList(
-                logFiles.stream().map(Paths::get).collect(Collectors.toList()),
-                Arrays.asList(applicationLogsRegexPattern))
-            .stream()
-            .map(Path::toString)
+        supportBundleUtil.filterList(logFiles, Arrays.asList(applicationLogsRegexPattern)).stream()
             .collect(Collectors.toList());
 
     String applicationLogsSdfPattern =
@@ -138,14 +162,10 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
       }
     }
 
-    // Copy individual files from source directory to the support bundle folder
-    for (String filteredLogFile : filteredLogFiles) {
-      Path sourceFilePath = Paths.get(source.toString(), filteredLogFile);
-      Path destFilePath = Paths.get(dest.toString(), filteredLogFile);
-      Files.copy(sourceFilePath, destFilePath, StandardCopyOption.REPLACE_EXISTING);
+    for (String logFile : filteredLogFiles) {
+      Path absolutePath = Paths.get(source.toString(), logFile);
+      res.put(absolutePath.toString(), absolutePath.toFile().length());
     }
-
-    log.debug("Downloaded application logs to {}, between {} and {}", destDir, startDate, endDate);
+    return res;
   }
-  ;
 }

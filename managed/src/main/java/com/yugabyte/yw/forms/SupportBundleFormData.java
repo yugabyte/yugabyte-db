@@ -9,6 +9,8 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
 
 @ApiModel(description = "Support bundle form metadata")
 public class SupportBundleFormData {
@@ -60,5 +62,15 @@ public class SupportBundleFormData {
       value = "List of exports to be included in the prometheus dump",
       required = false)
   public EnumSet<PrometheusMetricsType> prometheusMetricsTypes =
-      EnumSet.allOf(PrometheusMetricsType.class);
+      EnumSet.noneOf(PrometheusMetricsType.class);
+
+  @ApiModelProperty(
+      value = "Map of query names to custom PromQL queries to collect in promdump",
+      required = false)
+  public Map<String, String> promQueries = new HashMap<>();
+
+  @ApiModelProperty(
+      value =
+          "Specifies if Postgres audit logs should be filtered out when collecting universe logs.")
+  public boolean filterPgAuditLogs = false;
 }

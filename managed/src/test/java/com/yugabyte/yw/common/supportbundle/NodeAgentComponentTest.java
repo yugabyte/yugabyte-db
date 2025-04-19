@@ -36,8 +36,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -103,26 +105,32 @@ public class NodeAgentComponentTest extends FakeDBApplication {
         Paths.get(createTempFile(nodeAgentLogDir, "node-agent.log", "test-logs-content"));
 
     // List of fake logs, simulates the absolute paths of files on the node server
-    List<Path> fakeLogFilePathList =
+    List<String> fakeLogFilePathList =
         Arrays.asList(
-            Paths.get(nodeAgentLogDir, "/node-agent.log"),
-            Paths.get(nodeAgentLogDir, "/node_agent-2023-08-07T22-50-15.473.log.gz"));
-
-    List<Path> fakeConfigFilePathList = Arrays.asList(Paths.get(nodeAgentConfigDir, "/config.yml"));
-
+            nodeAgentLogDir + "/node-agent.log",
+            nodeAgentLogDir + "/node_agent-2023-08-07T22-50-15.473.log.gz");
+    List<String> fakeConfigFilePathList = Arrays.asList(nodeAgentConfigDir + "/config.yml");
     // Mock all the invocations with fake data
-    when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(
             any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
 
-    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), endsWith("/logs"), eq(1), eq("f")))
-        .thenReturn(fakeLogFilePathList);
-    when(mockNodeUniverseManager.getNodeFilePaths(
+    Map<String, Long> fakeLogPathSizeMap = new HashMap<>();
+    Map<String, Long> fakeConfigPathSizeMap = new HashMap<>();
+    for (String path : fakeLogFilePathList) {
+      fakeLogPathSizeMap.put(path, 10L);
+    }
+    for (String path : fakeConfigFilePathList) {
+      fakeConfigPathSizeMap.put(path, 10L);
+    }
+
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(
+            any(), any(), endsWith("/logs"), eq(1), eq("f")))
+        .thenReturn(fakeLogPathSizeMap);
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(
             any(), any(), endsWith("/config"), eq(1), eq("f")))
-        .thenReturn(fakeConfigFilePathList);
+        .thenReturn(fakeConfigPathSizeMap);
     // Generate a fake shell response containing the output of the "check file exists" script
     // Mocks the server response as "file existing"
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);

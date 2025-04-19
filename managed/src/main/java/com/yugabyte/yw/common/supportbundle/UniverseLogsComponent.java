@@ -11,19 +11,20 @@ import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -36,6 +37,10 @@ class UniverseLogsComponent implements SupportBundleComponent {
   private final SupportBundleUtil supportBundleUtil;
   private final RuntimeConfGetter confGetter;
   private final String LOG_DIR_GFLAG = "log_dir";
+  private final String YNP_LOG_DIR = "%s/node-agent/logs";
+  private final String YNP_LOG_FILE = "app.log";
+  private final String PG_LOG_FILE_PREFIX = "postgresql-";
+  private final String ZIPPED_LOG_FILE_SUFFIX = ".log.gz";
 
   @Inject
   UniverseLogsComponent(
@@ -98,55 +103,13 @@ class UniverseLogsComponent implements SupportBundleComponent {
         startDate,
         endDate);
 
-    // Get the regex patterns used to filter file names
-    String universeLogsRegexPattern =
-        confGetter.getConfForScope(universe, UniverseConfKeys.universeLogsRegexPattern);
-    String postgresLogsRegexPattern =
-        confGetter.getConfForScope(universe, UniverseConfKeys.postgresLogsRegexPattern);
-    String connectionPoolingLogsRegexPattern =
-        confGetter.getConfForScope(universe, UniverseConfKeys.connectionPoolingLogsRegexPattern);
-    List<String> fileRegexList =
-        Arrays.asList(
-            universeLogsRegexPattern, postgresLogsRegexPattern, connectionPoolingLogsRegexPattern);
-
-    // Get and filter master log files that fall within given dates
-    String masterLogsPath = nodeHomeDir + "/master/logs";
-    // Update logs path if overriden via Gflag.
-    String master_log_dir = getOverridenGflagValue(universe, ServerType.MASTER, LOG_DIR_GFLAG);
-    if (master_log_dir != null) {
-      masterLogsPath = master_log_dir;
-    }
-    List<Path> masterLogFilePaths = new ArrayList<>();
-    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, masterLogsPath)) {
-      masterLogFilePaths =
-          nodeUniverseManager.getNodeFilePaths(
-              node, universe, masterLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
-      masterLogFilePaths =
-          supportBundleUtil.filterFilePathsBetweenDates(
-              masterLogFilePaths, fileRegexList, startDate, endDate);
-    }
-
-    // Get and filter tserver log files that fall within given dates
-    String tserverLogsPath = nodeHomeDir + "/tserver/logs";
-    // Update logs path if overriden via Gflag.
-    String ts_log_dir = getOverridenGflagValue(universe, ServerType.TSERVER, LOG_DIR_GFLAG);
-    if (ts_log_dir != null) {
-      tserverLogsPath = ts_log_dir;
-    }
-    List<Path> tserverLogFilePaths = new ArrayList<>();
-    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, tserverLogsPath)) {
-      tserverLogFilePaths =
-          nodeUniverseManager.getNodeFilePaths(
-              node, universe, tserverLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
-      tserverLogFilePaths =
-          supportBundleUtil.filterFilePathsBetweenDates(
-              tserverLogFilePaths, fileRegexList, startDate, endDate);
-    }
-
     // Combine both master and tserver files to download all the files together
     List<String> allLogFilePaths =
-        Stream.concat(masterLogFilePaths.stream(), tserverLogFilePaths.stream())
-            .map(filePath -> Paths.get(nodeHomeDir).relativize(filePath))
+        getFilesListWithSizes(
+                customer, supportBundleTaskParams.bundleData, universe, startDate, endDate, node)
+            .keySet()
+            .stream()
+            .map(filePath -> Paths.get(nodeHomeDir).relativize(Paths.get(filePath)))
             .map(Path::toString)
             .collect(Collectors.toList());
 
@@ -163,6 +126,27 @@ class UniverseLogsComponent implements SupportBundleComponent {
           allLogFilePaths,
           this.getClass().getSimpleName(),
           false);
+
+      if (supportBundleTaskParams.bundleData.filterPgAuditLogs) {
+        var tserverLogDir = Paths.get(bundlePath.toString(), "tserver/logs").toFile();
+        if (tserverLogDir.exists()) {
+          for (var file : tserverLogDir.listFiles()) {
+            String fileName = file.toPath().getFileName().toString();
+            if (file.isFile() && fileName.startsWith(PG_LOG_FILE_PREFIX)) {
+              var unzippedFile = file;
+              if (fileName.endsWith(ZIPPED_LOG_FILE_SUFFIX)) {
+                unzippedFile = com.yugabyte.yw.common.utils.FileUtils.unGzip(file, tserverLogDir);
+              }
+              filterPgAuditLog(unzippedFile);
+              // Delete unfiltered zipped and unzipped file.
+              file.delete();
+              if (!unzippedFile.equals(file)) {
+                unzippedFile.delete();
+              }
+            }
+          }
+        }
+      }
     } else {
       log.debug(
           "Found no matching universe logs for node: {}, source path: {}, target path: {}, "
@@ -172,6 +156,20 @@ class UniverseLogsComponent implements SupportBundleComponent {
           nodeTargetFile.toString(),
           startDate,
           endDate);
+    }
+  }
+
+  // Creates a new log file called filtered_<logFile> which doesn't have PgAudit logs.
+  private void filterPgAuditLog(File logFile) {
+    String baseFileName = logFile.toPath().getFileName().toString();
+    try {
+      String outputFileName = "filtered_" + baseFileName;
+      ProcessBuilder grepProcess =
+          new ProcessBuilder("grep", "-v", "AUDIT:", logFile.getAbsolutePath());
+      grepProcess.redirectOutput(new File(logFile.getParent(), outputFileName)).start().waitFor();
+    } catch (Exception e) {
+      log.error("Error while filtering pg log: {}", baseFileName);
+      e.printStackTrace();
     }
   }
 
@@ -193,5 +191,79 @@ class UniverseLogsComponent implements SupportBundleComponent {
       }
     }
     return ret;
+  }
+
+  public Map<String, Long> getFilesListWithSizes(
+      Customer customer,
+      SupportBundleFormData bundleData,
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+    // Get source file path prefix
+    String mountPath =
+        supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+    String nodeHomeDir = mountPath + "/yb-data";
+
+    // Get the regex patterns used to filter file names
+    String universeLogsRegexPattern =
+        confGetter.getConfForScope(universe, UniverseConfKeys.universeLogsRegexPattern);
+    String postgresLogsRegexPattern =
+        confGetter.getConfForScope(universe, UniverseConfKeys.postgresLogsRegexPattern);
+    String connectionPoolingLogsRegexPattern =
+        confGetter.getConfForScope(universe, UniverseConfKeys.connectionPoolingLogsRegexPattern);
+    List<String> fileRegexList =
+        Arrays.asList(
+            universeLogsRegexPattern, postgresLogsRegexPattern, connectionPoolingLogsRegexPattern);
+
+    // Get and filter master log files that fall within given dates
+    String masterLogsPath = nodeHomeDir + "/master/logs";
+    // Update logs path if overriden via Gflag.
+    String master_log_dir = getOverridenGflagValue(universe, ServerType.MASTER, LOG_DIR_GFLAG);
+    if (master_log_dir != null) {
+      masterLogsPath = master_log_dir;
+    }
+    Map<String, Long> finalMap = new HashMap<>();
+    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, masterLogsPath)) {
+      Map<String, Long> masterLogsPathSizeMap =
+          nodeUniverseManager.getNodeFilePathAndSizes(
+              node, universe, masterLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
+      List<String> filteredMasterLogs =
+          supportBundleUtil.filterFilePathsBetweenDates(
+              masterLogsPathSizeMap.keySet().stream().collect(Collectors.toList()),
+              fileRegexList,
+              startDate,
+              endDate);
+      // Add filtered paths to the final map.
+      for (String path : filteredMasterLogs) {
+        finalMap.put(path, masterLogsPathSizeMap.get(path));
+      }
+    }
+
+    // Get and filter tserver log files that fall within given dates
+    String tserverLogsPath = nodeHomeDir + "/tserver/logs";
+    // Update logs path if overriden via Gflag.
+    String ts_log_dir = getOverridenGflagValue(universe, ServerType.TSERVER, LOG_DIR_GFLAG);
+    if (ts_log_dir != null) {
+      tserverLogsPath = ts_log_dir;
+    }
+
+    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, tserverLogsPath)) {
+      Map<String, Long> tserverLogsPathSizeMap =
+          nodeUniverseManager.getNodeFilePathAndSizes(
+              node, universe, tserverLogsPath, /* maxDepth */ 1, /* fileType */ "f");
+      List<String> filteredTserverLogs =
+          supportBundleUtil.filterFilePathsBetweenDates(
+              tserverLogsPathSizeMap.keySet().stream().collect(Collectors.toList()),
+              fileRegexList,
+              startDate,
+              endDate);
+      // Add filtered paths to the final map.
+      for (String path : filteredTserverLogs) {
+        finalMap.put(path, tserverLogsPathSizeMap.get(path));
+      }
+    }
+    return finalMap;
   }
 }

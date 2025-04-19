@@ -278,7 +278,10 @@ public class UserTaskDetails {
     OSPatching,
 
     // Update Proxy Config
-    UpdateProxyConfig
+    UpdateProxyConfig,
+
+    // Support bundle component download
+    SupportBundleComponentDownload
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -649,6 +652,10 @@ public class UserTaskDetails {
       case UpdateProxyConfig:
         title = "Updating Proxy config";
         description = "Updating Proxy Config for Universe nodes";
+        break;
+      case SupportBundleComponentDownload:
+        title = "Downloading support bundle content";
+        description = "Downloading support bundle content from DB nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
