@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-master
     parent: configuration
-    weight: 2450
+    weight: 2000
 type: docs
 ---
 

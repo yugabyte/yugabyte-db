@@ -14,24 +14,7 @@ menu:
 type: indexpage
 ---
 
-## Server management
-
-YugabyteDB uses a two-server architecture, with YB-TServers managing the data and YB-Masters managing the metadata. You can use the yb-tserver and yb-master binaries to start and configure the servers.
-
-For simplified deployment, use the yugabyted utility. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers.
-
 {{<index/block>}}
-  {{<index/item
-      title="yb-tserver reference"
-      body="Configure YB-TServer servers to store and manage data for client applications."
-      href="yb-tserver/"
-      icon="/images/section_icons/reference/configuration/yb-tserver.png">}}
-
-  {{<index/item
-      title="yb-master reference"
-      body="Configure YB-Master servers to manage cluster metadata, tablets, and coordination of cluster-wide operations."
-      href="yb-master/"
-      icon="/images/section_icons/reference/configuration/yb-master.png">}}
 
   {{<index/item
       title="yugabyted reference"
@@ -41,7 +24,26 @@ For simplified deployment, use the yugabyted utility. yugabyted acts as a parent
 
 {{</index/block>}}
 
-## Operating system, ports, and databases
+### Manual server management
+
+You can use the yb-tserver and yb-master binaries to manually start and configure the servers. For simplified deployment, use [yugabyted](./yugabyted/).
+
+{{<index/block>}}
+  {{<index/item
+      title="yb-master reference"
+      body="Configure YB-Master servers to manage cluster metadata, tablets, and coordination of cluster-wide operations."
+      href="yb-master/"
+      icon="/images/section_icons/reference/configuration/yb-master.png">}}
+
+  {{<index/item
+      title="yb-tserver reference"
+      body="Configure YB-TServer servers to store and manage data for client applications."
+      href="yb-tserver/"
+      icon="/images/section_icons/reference/configuration/yb-tserver.png">}}
+
+{{</index/block>}}
+
+### Operating system and ports
 
 {{<index/block>}}
   {{<index/item
