@@ -80,6 +80,7 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "pg_yb_utils.h"
 
+
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 Oid			binary_upgrade_next_heap_pg_class_relfilenode = InvalidOid;
@@ -934,7 +935,7 @@ AddNewAttributeTuples(Oid new_rel_oid,
 		tupdesc->attrs[i].attstattarget = -1;
 	InsertPgAttributeTuples(rel, tupdesc, new_rel_oid, NULL, indstate, yb_relisshared);
 
-	/* Skip adding dependencies for shared relation attrs */
+	/* YB: Skip adding dependencies for shared relation attrs */
 	if (!IsYsqlUpgrade || !yb_relisshared || IsBootstrapProcessingMode())
 	{
 		/* add dependencies on their datatypes and collations */
@@ -1268,9 +1269,9 @@ YbSetInitdbPermissions(Oid relid, char relkind, bool relisshared)
  *	mapped_relation: true if the relation will use the relfilenode map
  *	oncommit: ON COMMIT marking (only relevant if it's a temp table)
  *	reloptions: reloptions in Datum form, or (Datum) 0 if none
- *		Not used for system relations in YSQL upgrade mode.
+ *		YB nota: Not used for system relations in YSQL upgrade mode.
  *	use_user_acl: true if should look for user-defined default permissions;
- *		if false, relacl is always set NULL.
+ *		if false, relacl is always set NULL
  *	allow_system_table_mods: true to allow creation in system namespaces
  *	is_internal: is this a system-generated catalog?
  *	yb_use_initdb_acl: if true, permissions will be set as if the relation
@@ -1340,9 +1341,6 @@ heap_create_with_catalog(const char *relname,
 	CheckAttributeNamesTypes(tupdesc, relkind,
 							 allow_system_table_mods ? CHKATYPE_ANYARRAY : 0);
 
-	existing_relid = InvalidOid;
-	old_type_oid = InvalidOid;
-
 	/*
 	 * In YB mode, during bootstrap, a relation lookup by name will be a full-table scan
 	 * and slow because secondary indexes are not available yet. So we will skip this
@@ -1369,6 +1367,11 @@ heap_create_with_catalog(const char *relname,
 		old_type_oid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
 									   CStringGetDatum(relname),
 									   ObjectIdGetDatum(relnamespace));
+	}
+	else	/* YB */
+	{
+		existing_relid = InvalidOid;
+		old_type_oid = InvalidOid;
 	}
 
 	if (OidIsValid(old_type_oid))
@@ -1988,9 +1991,8 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 		attStruct->attgenerated = '\0';
 
 		/*
-		* Change the column name to something that isn't likely to conflict
-		*/
-
+		 * Change the column name to something that isn't likely to conflict
+		 */
 		if (IsYugaByteEnabled())
 		{
 			/*
@@ -2014,6 +2016,7 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 
 			CatalogTupleUpdate(attr_rel, &tuple->t_self, tuple);
 		}
+
 		/* clear the missing value if any */
 		if (attStruct->atthasmissing)
 		{
@@ -2506,7 +2509,7 @@ StoreConstraints(Relation rel, List *cooked_constraints, bool is_internal)
 		CookedConstraint *con = (CookedConstraint *) lfirst(lc);
 
 		/*
-		 * System relations can't have defaults or CHECK constraints,
+		 * YB: System relations can't have defaults or CHECK constraints,
 		 * BKI syntax doesn't support it.
 		 */
 		switch (con->contype)
@@ -2644,6 +2647,7 @@ AddRelationNewConstraints(Relation rel,
 			 castNode(Const, expr)->constisnull))
 			continue;
 
+		/* YB added */
 		if (rel->rd_rel->relisshared && !IsBootstrapProcessingMode())
 			elog(ERROR, "shared relations can not have DEFAULT constraints");
 
@@ -2682,6 +2686,7 @@ AddRelationNewConstraints(Relation rel,
 		if (cdef->contype != CONSTR_CHECK)
 			continue;
 
+		/* YB added */
 		if (rel->rd_rel->relisshared && !IsBootstrapProcessingMode())
 			elog(ERROR, "shared relations can not have CHECK constraints");
 

@@ -492,8 +492,6 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		cmdtype = PROGRESS_COMMAND_BASEBACKUP;
 	else if (pg_strcasecmp(cmd, "COPY") == 0)
 		cmdtype = PROGRESS_COMMAND_COPY;
-	else if (pg_strcasecmp(cmd, "CREATE INDEX") == 0)
-		cmdtype = PROGRESS_COMMAND_CREATE_INDEX;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -502,7 +500,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	InitMaterializedSRF(fcinfo, 0);
 
 	/*
-	 * Fetch stats for in-progress concurrent create indexes that aren't
+	 * YB: Fetch stats for in-progress concurrent create indexes that aren't
 	 * captured in the local backend entry from master. We avoid reading these
 	 * stats while constructing the local backend entry in
 	 * pg_read_current_stats() in order to avoid extraneous RPCs to master
@@ -544,6 +542,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		/*
 		 * Report values for only those backends which are running the given
 		 * command.
+		 *
+		 * YB: for COPY, report even if the command finished.
 		 */
 		if (!beentry || (beentry->st_progress_command != cmdtype &&
 						 beentry->st_progress_command != PROGRESS_COMMAND_COPY))
@@ -592,7 +592,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		}
 
 		/*
-		 * Set the columns of pg_stat_progress_create_index that are unused
+		 * YB: Set the columns of pg_stat_progress_create_index that are unused
 		 * in YB to null.
 		 */
 		if (IsYugaByteEnabled() && cmdtype == PROGRESS_COMMAND_CREATE_INDEX)
@@ -624,6 +624,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 	}
 
+	/* YB */
 	if (index_progress)
 		pfree(index_progress);
 
@@ -1039,7 +1040,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		nulls[YB_BACKEND_XID_COL] = true;
 
 		/*
-		 * The activity_start_timestamp is updated at the start of every
+		 * YB: The activity_start_timestamp is updated at the start of every
 		 * query. When the query start timestamp is later (greater) than the
 		 * timestamp of the RPC above, this indicates that the data in the RPC
 		 * is out-of-date. In such cases, we skip printing the transaction ID.

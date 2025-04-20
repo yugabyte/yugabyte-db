@@ -2306,6 +2306,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("name list length must be exactly %d", 1)));
 			/* fall through to check args length */
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case OBJECT_DOMCONSTRAINT:
 		case OBJECT_CAST:
@@ -2331,6 +2332,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("name list length must be at least %d", 3)));
 			/* fall through to check args length */
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case OBJECT_OPERATOR:
 			if (list_length(args) != 2)

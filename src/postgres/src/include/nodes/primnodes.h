@@ -1130,6 +1130,7 @@ typedef struct RowCompareExpr
 	List	   *opfamilies;		/* OID list of containing operator families */
 	List	   *inputcollids;	/* OID list of collations for comparisons */
 	List	   *largs;			/* the left-hand input arguments */
+	/* YB note: change rargs type from List to Node */
 	Node	   *rargs;			/* the right-hand input arguments */
 } RowCompareExpr;
 

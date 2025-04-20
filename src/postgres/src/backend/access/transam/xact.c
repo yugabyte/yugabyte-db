@@ -3990,6 +3990,11 @@ IsInTransactionBlock(bool isTopLevel)
 	if (!isTopLevel)
 		return true;
 
+	if (!IsYugaByteEnabled() &&
+		CurrentTransactionState->blockState != TBLOCK_DEFAULT &&
+		CurrentTransactionState->blockState != TBLOCK_STARTED)
+		return true;
+
 	return false;
 }
 
@@ -4597,7 +4602,7 @@ DefineSavepoint(const char *name)
 			/* Normal subtransaction start */
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
-			elog(DEBUG2, "new sub txn created by savepoint, subtxn_id: %d",
+			elog(DEBUG2, "YB: new sub txn created by savepoint, subtxn_id: %d",
 				 s->subTransactionId);
 
 			/*
@@ -4936,7 +4941,7 @@ BeginInternalSubTransaction(const char *name)
 			/* Normal subtransaction start */
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
-			elog(DEBUG2, "new sub txn created internally, subtxn_id: %d",
+			elog(DEBUG2, "YB: new sub txn created internally, subtxn_id: %d",
 				 s->subTransactionId);
 
 			/*
@@ -4968,7 +4973,6 @@ BeginInternalSubTransaction(const char *name)
 	}
 
 	CommitTransactionCommand();
-
 	YBStartTransactionCommandInternal(true /* yb_skip_read_committed_internal_savepoint */ );
 }
 
@@ -5127,7 +5131,7 @@ RollbackAndReleaseCurrentSubTransaction(void)
 void
 AbortOutOfAnyTransaction(void)
 {
-	elog(DEBUG2, "AbortOutOfAnyTransaction");
+	elog(DEBUG2, "YB: AbortOutOfAnyTransaction");
 	TransactionState s = CurrentTransactionState;
 
 	/* Ensure we're not running in a doomed memory context */
@@ -5358,7 +5362,7 @@ StartSubTransaction(void)
 	ShowTransactionState("StartSubTransaction");
 
 	/*
-	 * Update the value of the sticky objects from parent transaction
+	 * YB: Update the value of the sticky objects from parent transaction
 	 */
 	if (CurrentTransactionState->parent)
 		CurrentTransactionState->ybUncommittedStickyObjectCount =
@@ -5474,7 +5478,7 @@ CommitSubTransaction(void)
 
 	s->state = TRANS_DEFAULT;
 
-	/* Conserve sticky object count before popping transaction state. */
+	/* YB: Conserve sticky object count before popping transaction state. */
 	s->parent->ybUncommittedStickyObjectCount = s->ybUncommittedStickyObjectCount;
 
 	PopTransaction();
@@ -5680,7 +5684,7 @@ CleanupSubTransaction(void)
 static void
 PushTransaction(void)
 {
-	elog(DEBUG2, "PushTransaction increment sub-txn id from %d -> %d",
+	elog(DEBUG2, "YB: PushTransaction increment sub-txn id from %d -> %d",
 		 currentSubTransactionId, currentSubTransactionId + 1);
 	TransactionState p = CurrentTransactionState;
 	TransactionState s;
@@ -5748,7 +5752,7 @@ PushTransaction(void)
 static void
 PopTransaction(void)
 {
-	elog(DEBUG2, "PopTransaction sub-txn id %d", currentSubTransactionId);
+	elog(DEBUG2, "YB: PopTransaction sub-txn id %d", currentSubTransactionId);
 	TransactionState s = CurrentTransactionState;
 
 	if (s->state != TRANS_DEFAULT)

@@ -153,10 +153,10 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * This checks for global state information initialized during initdb and is
-	 * not relevant for YB. The storage doesn't change between versions, and YB
-	 * controls the creation of the new cluster, so we don't need to be as
-	 * meticulous about checking the state.
+	 * YB: This checks for global state information initialized during initdb
+	 * and is not relevant for YB. The storage doesn't change between versions,
+	 * and YB controls the creation of the new cluster, so we don't need to be
+	 * as meticulous about checking the state.
 	 */
 	if (!is_yugabyte_enabled())
 		check_cluster_compatibility(live_check);
@@ -270,6 +270,7 @@ main(int argc, char **argv)
 	}
 
 	cleanup_output_dirs();
+
 	return 0;
 }
 

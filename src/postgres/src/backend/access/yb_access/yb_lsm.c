@@ -477,14 +477,26 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 	 * Information is lacking for hypothetical index in order for estimation
 	 * in YB to work.
 	 * So we skip hypothetical index.
+	 * TODO(jason): this should be shared with ybgin, ybvector, etc when they
+	 * are also supported for hypopg.
 	 */
 	if (path->indexinfo->hypothetical)
+	{
+		*indexStartupCost = 0.0;
+		*indexTotalCost = 0.0;
+		*indexSelectivity = 0.0;
+		*indexCorrelation = 0.0;
+		*indexPages = 0.0;
 		return;
+	}
+
 	ybcIndexCostEstimate(root,
 						 path,
 						 indexSelectivity,
 						 indexStartupCost,
 						 indexTotalCost);
+	*indexCorrelation = 0.0;
+	*indexPages = 0.0;
 }
 
 static bytea *

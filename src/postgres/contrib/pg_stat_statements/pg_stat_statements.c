@@ -150,16 +150,6 @@ typedef enum pgssVersion
  * only gets added to pg_stat_statements if api_version >= YB_PGSS_V1_4.
  */
 
-/*
- * Hashtable key that defines the identity of a hashtable entry.  We separate
- * queries by user and by database even if they are otherwise identical.
- *
- * If you add a new key to this struct, make sure to teach pgss_store() to
- * zero the padding bytes.  Otherwise, things will break, because pgss_hash is
- * created using HASH_BLOBS, and thus tag_hash is used to hash this.
-
- */
-
 typedef enum pgssStoreKind
 {
 	PGSS_INVALID = -1,
@@ -175,6 +165,15 @@ typedef enum pgssStoreKind
 	PGSS_NUMKIND				/* Must be last value of this enum */
 } pgssStoreKind;
 
+/*
+ * Hashtable key that defines the identity of a hashtable entry.  We separate
+ * queries by user and by database even if they are otherwise identical.
+ *
+ * If you add a new key to this struct, make sure to teach pgss_store() to
+ * zero the padding bytes.  Otherwise, things will break, because pgss_hash is
+ * created using HASH_BLOBS, and thus tag_hash is used to hash this.
+
+ */
 typedef struct pgssHashKey
 {
 	Oid			userid;			/* user OID */
@@ -538,7 +537,7 @@ _PG_init(void)
 							 "Selects whether planning duration is tracked by pg_stat_statements.",
 							 NULL,
 							 &pgss_track_planning,
-							 true,
+							 true,	/* YB: change default */
 							 PGC_SUSET,
 							 0,
 							 NULL,

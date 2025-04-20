@@ -420,7 +420,7 @@ transformStmt(ParseState *pstate, Node *parseTree)
 		case T_ExplainStmt:
 
 			/*
-			 * Preemptively enable timing of storage-layer RPC requests in
+			 * YB: Preemptively enable timing of storage-layer RPC requests in
 			 * case of Explain stmts. Enabling the timer here allows us to
 			 * capture system catalog requests that happen between the parse
 			 * phase and initialization of Explain context. If we discover in

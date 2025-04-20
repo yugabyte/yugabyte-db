@@ -34,6 +34,7 @@
 
 #define CATCACHE_MAXKEYS		4
 
+
 /* function computing a datum's hash */
 typedef uint32 (*CCHashFN) (Datum datum);
 
@@ -185,6 +186,7 @@ typedef struct
 	CatCList   *list;
 	int			index;
 } YbCatCListIterator;
+
 
 typedef struct catcacheheader
 {

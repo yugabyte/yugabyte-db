@@ -2473,7 +2473,7 @@ psql_completion(const char *text, int start, int end)
 	else if (Matches("ALTER", "TABLE", MatchAny, "DETACH", "PARTITION", MatchAny))
 		COMPLETE_WITH("CONCURRENTLY", "FINALIZE");
 
-	/* ALTER TABLEGROUP <foo> with RENAME TO, OWNER TO */
+	/* YB: ALTER TABLEGROUP <foo> with RENAME TO, OWNER TO */
 	else if (Matches("ALTER", "TABLEGROUP", MatchAny))
 		COMPLETE_WITH("RENAME TO", "OWNER TO");
 
@@ -2637,7 +2637,8 @@ psql_completion(const char *text, int start, int end)
 					  "PROCEDURE", "PROCEDURAL LANGUAGE", "PUBLICATION", "ROLE",
 					  "ROUTINE", "RULE", "SCHEMA", "SEQUENCE", "SERVER",
 					  "STATISTICS", "SUBSCRIPTION", "TABLE",
-					  "TABLEGROUP", "TABLESPACE", "TEXT SEARCH", "TRANSFORM FOR",
+					  "TABLEGROUP",	/* YB */
+					  "TABLESPACE", "TEXT SEARCH", "TRANSFORM FOR",
 					  "TRIGGER", "TYPE", "VIEW");
 	else if (Matches("COMMENT", "ON", "ACCESS", "METHOD"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_access_methods);
@@ -3117,7 +3118,7 @@ psql_completion(const char *text, int start, int end)
 	else if (TailMatches("CREATE", "TEMP|TEMPORARY", "TABLE", MatchAny, "(*)", "ON", "COMMIT"))
 		COMPLETE_WITH("DELETE ROWS", "DROP", "PRESERVE ROWS");
 
-/* CREATE TABLEGROUP */
+/* YB: CREATE TABLEGROUP */
 	else if (Matches("CREATE", "TABLEGROUP", MatchAny))
 		COMPLETE_WITH("OWNER", "TABLESPACE");
 	/* Complete CREATE TABLEGROUP name OWNER name with "TABLESPACE" */
@@ -3125,6 +3126,7 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH("TABLESPACE");
 
 /* CREATE TABLESPACE */
+	/* YB note: replace "LOCATION" with "WITH" */
 	else if (Matches("CREATE", "TABLESPACE", MatchAny))
 		COMPLETE_WITH("OWNER", "WITH");
 	/* Complete CREATE TABLESPACE name OWNER name with "WITH" */
@@ -3515,7 +3517,8 @@ psql_completion(const char *text, int start, int end)
 /* DROP */
 	/* Complete DROP object with CASCADE / RESTRICT */
 	else if (Matches("DROP",
-					 "COLLATION|CONVERSION|DOMAIN|EXTENSION|LANGUAGE|PUBLICATION|SCHEMA|SEQUENCE|SERVER|SUBSCRIPTION|STATISTICS|TABLE|TABLEGROUP|TYPE|VIEW",
+					 "TABLEGROUP|"	/* YB */
+					 "COLLATION|CONVERSION|DOMAIN|EXTENSION|LANGUAGE|PUBLICATION|SCHEMA|SEQUENCE|SERVER|SUBSCRIPTION|STATISTICS|TABLE|TYPE|VIEW",
 					 MatchAny) ||
 			 Matches("DROP", "ACCESS", "METHOD", MatchAny) ||
 			 (Matches("DROP", "AGGREGATE|FUNCTION|PROCEDURE|ROUTINE", MatchAny, MatchAny) &&
@@ -3893,7 +3896,7 @@ psql_completion(const char *text, int start, int end)
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_sequences);
 		else if (TailMatches("TABLE"))
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_grantables);
-		else if (TailMatches("TABLEGROUP"))
+		else if (TailMatches("TABLEGROUP"))	/* YB */
 			COMPLETE_WITH_QUERY(Query_for_list_of_tablegroups);
 		else if (TailMatches("TABLESPACE"))
 			COMPLETE_WITH_QUERY(Query_for_list_of_tablespaces);
@@ -4604,7 +4607,8 @@ psql_completion(const char *text, int start, int end)
 	/* must be at end of \dF alternatives: */
 	else if (TailMatchesCS("\\dF*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_ts_configurations);
-	else if (TailMatchesCS("\\dgr*"))
+
+	else if (TailMatchesCS("\\dgr*"))	/* YB */
 		COMPLETE_WITH_QUERY(Query_for_list_of_tablegroups);
 	else if (TailMatchesCS("\\di*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_indexes);

@@ -12169,7 +12169,6 @@
   proname => 'yb_index_check', provolatile => 's',
   prorettype => 'void', proargtypes => 'oid',
   prosrc => 'yb_index_check' },
-]
 
 # Statistics Import
 { oid => '8091',
@@ -12204,3 +12203,5 @@
   proargtypes => 'regclass name bool',
   proargnames => '{relation,attname,inherited}',
   prosrc => 'pg_clear_attribute_stats' },
+
+]

@@ -204,8 +204,8 @@ static volatile sig_atomic_t replication_active = false;
 static LogicalDecodingContext *logical_decoding_ctx = NULL;
 
 /*
- * Total time spent in the yb_decode steps in a batch of changes. This includes
- * the time spent in:
+ * YB: Total time spent in the yb_decode steps in a batch of changes. This
+ * includes the time spent in:
  * 1. Creating heap tuples
  * 2. Storing heap tuples in the reorder buffer
  * 3. Processing time of the reorder buffer
@@ -215,7 +215,7 @@ static LogicalDecodingContext *logical_decoding_ctx = NULL;
 uint64_t	YbWalSndTotalTimeInYBDecodeMicros = 0;
 
 /*
- * Total time spent in the reorderbuffer steps in a batch of changes. This
+ * YB: Total time spent in the reorderbuffer steps in a batch of changes. This
  * includes the time spent in:
  * 1. Storing heap tuples in the reorder buffer
  * 2. Processing time of the reorder buffer
@@ -226,7 +226,9 @@ uint64_t	YbWalSndTotalTimeInYBDecodeMicros = 0;
  */
 uint64_t	YbWalSndTotalTimeInReorderBufferMicros = 0;
 
-/* Total time spent in the WalSndWriteData function in a batch of changes. */
+/*
+ * YB: Total time spent in the WalSndWriteData function in a batch of changes.
+ */
 uint64_t	YbWalSndTotalTimeInSendingMicros = 0;
 
 /* A sample associating a WAL location with the time it was written. */
@@ -1007,7 +1009,7 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 }
 
 /*
- * Throw an error if replication slot doesn't allow LSN types.
+ * YB: Throw an error if replication slot doesn't allow LSN types.
  */
 static void
 reportErrorIfLsnTypeNotEnabled()
@@ -1020,7 +1022,7 @@ reportErrorIfLsnTypeNotEnabled()
 }
 
 /*
- * Throw an error if replication slot doesn't allow ordering modes.
+ * YB: Throw an error if replication slot doesn't allow ordering modes.
  */
  static void
  reportErrorIfOrderingModeNotEnabled()
@@ -1098,6 +1100,7 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 			two_phase_given = true;
 			*two_phase = defGetBoolean(defel);
 		}
+		/* YB */
 		else if (strcmp(defel->defname, "lsn_type") == 0)
 		{
 			char	   *action;
@@ -1123,6 +1126,7 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 								"option \"%s\": \"%s\"",
 								defel->defname, action)));
 		}
+		/* YB */
 		else if (strcmp(defel->defname, "ordering_mode") == 0)
 		{
 			char	   *action;
@@ -1182,10 +1186,10 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	Assert(!MyReplicationSlot);
 
 	/*
-	 * Exporting a snapshot is not supported yet. So we change the default for
-	 * YSQL. A valid default is needed because drivers such as the Java JDBC
-	 * driver do not allow chosing the snapshot action during creation of a
-	 * replication slot. The only action available to the user is the default
+	 * YB: Exporting a snapshot is not supported yet. So we change the default
+	 * for YSQL. A valid default is needed because drivers such as the Java
+	 * JDBC driver do not allow chosing the snapshot action during creation of
+	 * a replication slot. The only action available to the user is the default
 	 * action, so it must work.
 	 */
 	if (IsYugaByteEnabled())
@@ -1220,9 +1224,9 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			/*
 			 * Initially create persistent slot as ephemeral - that allows us to
 			 * nicely handle errors during initialization because it'll get
-			 * dropped if this transaction fails. We'll make it persistent at
-			 * the end. Temporary slots can be created as temporary from
-			 * beginning as they get dropped on error as well.
+			 * dropped if this transaction fails. We'll make it persistent at the
+			 * end. Temporary slots can be created as temporary from beginning as
+			 * they get dropped on error as well.
 			 */
 			ReplicationSlotCreate(cmd->slotname, true,
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
@@ -1413,9 +1417,9 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	}
 
 	/*
-	 * Send "0/2" as the consistent wal location. The LSN "0/1" is reserved for
-	 * the records to be streamed as part of the snapshot consumption. The first
-	 * change record is always streamed with LSN "0/2".
+	 * YB: Send "0/2" as the consistent wal location. The LSN "0/1" is reserved
+	 * for the records to be streamed as part of the snapshot consumption. The
+	 * first change record is always streamed with LSN "0/2".
 	 *
 	 * This value should be kept in sync with the confirmed_flush_lsn value
 	 * being set during the creation of the CDC stream in the
@@ -1514,7 +1518,7 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 	StringInfoData buf;
 	QueryCompletion qc;
 
-	elog(DEBUG1, "StartLogicalReplication");
+	elog(DEBUG1, "YB: StartLogicalReplication");
 
 	if (IsYugaByteEnabled() && (!yb_enable_replication_slot_consumption ||
 								!yb_enable_replica_identity))

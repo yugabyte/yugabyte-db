@@ -199,6 +199,7 @@ extern void RestoreReindexState(void *reindexstate);
 
 extern void IndexSetParentIndex(Relation idx, Oid parentOid);
 
+
 /*
  * itemptr_encode - Encode ItemPointer as int64/int8
  *
@@ -240,7 +241,7 @@ itemptr_decode(ItemPointer itemptr, int64 encoded)
 }
 
 /*
- * This should exactly match the IndexPermissions enum in
+ * YB: This should exactly match the IndexPermissions enum in
  * src/yb/common/common.proto.  See the definition there for details.
  */
 typedef enum

@@ -3773,7 +3773,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				Size		oldlen = 0;
 				Size		newlen = 0;
 
-				/* is_omitted is only applicable to UPDATE. */
+				/* YB: is_omitted is only applicable to UPDATE. */
 				bool		yb_handle_is_omitted = (change->action ==
 													REORDER_BUFFER_CHANGE_UPDATE);
 
@@ -3786,7 +3786,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					oldlen = oldtup->tuple.t_len;
 					sz += oldlen;
 
-					/* account for the size of the is_omitted array. */
+					/* YB: account for the size of the is_omitted array. */
 					if (IsYugaByteEnabled() && yb_handle_is_omitted)
 						sz += (sizeof(int) +
 							   oldtup->yb_is_omitted_size * sizeof(bool));
@@ -3798,7 +3798,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					newlen = newtup->tuple.t_len;
 					sz += newlen;
 
-					/* account for the size of the is_omitted array. */
+					/* YB: account for the size of the is_omitted array. */
 					if (IsYugaByteEnabled() && yb_handle_is_omitted)
 						sz += (sizeof(int) +
 							   newtup->yb_is_omitted_size * sizeof(bool));

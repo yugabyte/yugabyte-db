@@ -76,7 +76,7 @@ index_form_tuple_context(TupleDesc tupleDescriptor,
 				data_size,
 				hoff;
 	int			i;
-	uint32		infomask = 0;
+	uint32		infomask = 0;	/* YB: changed type from unsigned short */
 	bool		hasnull = false;
 	uint16		tupmask = 0;
 	int			numberOfAttributes = tupleDescriptor->natts;
@@ -226,7 +226,7 @@ index_form_tuple_context(TupleDesc tupleDescriptor,
 #endif
 
 	/*
-	 * NOTE (#2003): use the same limit for temp table after adding support
+	 * YB NOTE (#2003): use the same limit for temp table after adding support
 	 * for wide column in temp table.
 	 */
 	uint32		index_size_mask = (is_yb_relation ?

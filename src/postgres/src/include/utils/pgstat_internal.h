@@ -403,6 +403,7 @@ typedef struct PgStatShared_ReplSlot
 	PgStat_StatReplSlotEntry stats;
 } PgStatShared_ReplSlot;
 
+
 /*
  * Central shared memory entry for the cumulative stats system.
  *
@@ -652,6 +653,7 @@ extern void pgstat_subscription_reset_timestamp_cb(PgStatShared_Common *header, 
 extern PgStat_SubXactStatus *pgstat_get_xact_stack_level(int nest_level);
 extern void pgstat_drop_transactional(PgStat_Kind kind, Oid dboid, Oid objoid);
 extern void pgstat_create_transactional(PgStat_Kind kind, Oid dboid, Oid objoid);
+
 
 /*
  * Variables in pgstat.c

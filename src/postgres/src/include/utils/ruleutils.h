@@ -49,6 +49,7 @@ extern char *get_range_partbound_string(List *bound_datums);
 
 extern char *pg_get_statisticsobjdef_string(Oid statextid);
 
+/* YB */
 extern char *yb_deparse_expression(Node *expr, List *dpcontext,
 								   bool forceprefix, bool showimplicit,
 								   bool verbose);

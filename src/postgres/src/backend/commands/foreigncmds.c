@@ -840,7 +840,7 @@ AlterForeignDataWrapper(ParseState *pstate, AlterFdwStmt *stmt)
 	return myself;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Drop foreign-data wrapper by OID
  */
@@ -1085,7 +1085,7 @@ AlterForeignServer(AlterForeignServerStmt *stmt)
 	return address;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Drop foreign server by OID
  */
@@ -1420,7 +1420,7 @@ RemoveUserMapping(DropUserMappingStmt *stmt)
 	return umId;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Drop user mapping by OID.  This is called to clean up dependencies.
  */

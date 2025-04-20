@@ -1220,16 +1220,17 @@ fmgr_sql(PG_FUNCTION_ARGS)
 			}
 
 			/*
-			 * Flush buffered operations before executing a new statement since it
-			 * might have non-transactional side-effects that won't be reverted in
-			 * case the buffered operations (i.e., from previous statements) lead to
-			 * an exception.
+			 * YB: Flush buffered operations before executing a new statement
+			 * since it might have non-transactional side-effects that won't be
+			 * reverted in case the buffered operations (i.e., from previous
+			 * statements) lead to an exception.
 			 *
-			 * If we know that the new statement is an INSERT, UPDATE or DELETE, we
-			 * can skip flushing since these statements have only transactional
-			 * effects. And an exception that occurs later due to previously buffered
-			 * operations (i.e., from previous statements) will lead to reverting
-			 * of the transactional effects of the new statement too.
+			 * If we know that the new statement is an INSERT, UPDATE or
+			 * DELETE, we can skip flushing since these statements have only
+			 * transactional effects. And an exception that occurs later due to
+			 * previously buffered operations (i.e., from previous statements)
+			 * will lead to reverting of the transactional effects of the new
+			 * statement too.
 			 */
 			switch (es->stmt->commandType)
 			{

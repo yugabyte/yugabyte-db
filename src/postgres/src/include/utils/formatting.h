@@ -19,6 +19,7 @@
 
 #include "postgres.h"	/* YB include */
 
+
 extern char *str_tolower(const char *buff, size_t nbytes, Oid collid);
 extern char *str_toupper(const char *buff, size_t nbytes, Oid collid);
 extern char *str_initcap(const char *buff, size_t nbytes, Oid collid);

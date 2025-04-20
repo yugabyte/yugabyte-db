@@ -97,6 +97,7 @@ int2recv(PG_FUNCTION_ARGS)
 Datum
 int2send(PG_FUNCTION_ARGS)
 {
+	/* YB: rewrite entire function */
 	uint16		arg1 = pg_hton16(PG_GETARG_INT16(0));
 
 	bytea	   *data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
@@ -322,6 +323,7 @@ int4recv(PG_FUNCTION_ARGS)
 Datum
 int4send(PG_FUNCTION_ARGS)
 {
+	/* YB: rewrite entire function */
 	uint32		arg1 = pg_hton32(PG_GETARG_INT32(0));
 
 	bytea	   *data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
@@ -332,7 +334,7 @@ int4send(PG_FUNCTION_ARGS)
 	PG_RETURN_BYTEA_P(data);
 }
 
-#ifdef WORDS_BIGENDIAN
+#ifdef WORDS_BIGENDIAN	/* YB */
 
 #error Not implemented!!!
 

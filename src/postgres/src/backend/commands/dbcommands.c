@@ -146,7 +146,6 @@ static bool have_createdb_privilege(void);
 static void remove_dbtablespaces(Oid db_id);
 static bool check_db_file_conflict(Oid db_id);
 static int	errdetail_busy_db(int notherbackends, int npreparedxacts);
-
 static void CreateDatabaseUsingWalLog(Oid src_dboid, Oid dboid, Oid src_tsid,
 									  Oid dst_tsid);
 static List *ScanSourceDatabasePgClass(Oid srctbid, Oid srcdbid, char *srcpath);
@@ -753,7 +752,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int64		dbclonetime = 0;
 
 	/*
-	 * We do insert into pg_database without explicit OID, which conflicts
+	 * YB: We do insert into pg_database without explicit OID, which conflicts
 	 * with OID generation logic for YSQL upgrade.
 	 * This is mostly relevant as a sanity check for tests.
 	 */
@@ -851,6 +850,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errhint("Consider using tablespaces instead."),
 					 parser_errposition(pstate, defel->location)));
 		}
+		/* YB */
 		else if (strcmp(defel->defname, "colocated") == 0
 				 || strcmp(defel->defname, "colocation") == 0)
 		{
@@ -892,6 +892,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 				errorConflictingDefElem(defel, pstate);
 			dstrategy = defel;
 		}
+		/* YB */
 		else if (strcmp(defel->defname, "clone_time") == 0)
 		{
 			if (dclonetime)
@@ -1374,14 +1375,14 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	if (!IsYugaByteEnabled())
 		/*
-		* The source DB can't have any active backends, except this one
-		* (exception is to allow CREATE DB while connected to template1).
-		* Otherwise we might copy inconsistent data.
-		*
-		* This should be last among the basic error checks, because it involves
-		* potential waiting; we may as well throw an error first if we're gonna
-		* throw one.
-		*/
+		 * The source DB can't have any active backends, except this one
+		 * (exception is to allow CREATE DB while connected to template1).
+		 * Otherwise we might copy inconsistent data.
+		 *
+		 * This should be last among the basic error checks, because it involves
+		 * potential waiting; we may as well throw an error first if we're gonna
+		 * throw one.
+		 */
 		if (CountOtherDBBackends(src_dboid, &notherbackends, &npreparedxacts))
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
@@ -1397,8 +1398,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	pg_database_rel = table_open(DatabaseRelationId, RowExclusiveLock);
 
 	/*
-	 * CREATE DATABASE using templates other than template0 and template1 will
-	 * always go through the DB clone workflow.
+	 * YB: CREATE DATABASE using templates other than template0 and template1
+	 * will always go through the DB clone workflow.
 	 */
 	bool		is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
 	YbcCloneInfo yb_clone_info = {
@@ -1474,7 +1475,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	else
 	{
 		/*
-		 * In vanilla PG, OIDs are assigned by a cluster-wide counter.
+		 * YB: In vanilla PG, OIDs are assigned by a cluster-wide counter.
 		 * For YSQL, we allocate OIDs on a per-database level and share the
 		 * per-database OID range on tserver for all databases. OID collision
 		 * happens due to the same range of OIDs allocated to different tservers.
@@ -1487,7 +1488,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		do
 		{
 			/*
-			 * Select an OID for the new database if is not explicitly
+			 * YB: Select an OID for the new database if is not explicitly
 			 * configured.
 			 */
 			do
@@ -1508,7 +1509,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	}
 
 	/*
-	 * A database created using the clone workflow already has an entry in
+	 * YB: A database created using the clone workflow already has an entry in
 	 * pg_database as it is created by executing ysql_dump script.
 	 * Thus, close pg_database relation and return the dboid in case of clone.
 	 */
@@ -1549,7 +1550,6 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	new_record[Anum_pg_database_datfrozenxid - 1] = TransactionIdGetDatum(src_frozenxid);
 	new_record[Anum_pg_database_datminmxid - 1] = TransactionIdGetDatum(src_minmxid);
 	new_record[Anum_pg_database_dattablespace - 1] = ObjectIdGetDatum(dst_deftablespace);
-
 	new_record[Anum_pg_database_datcollate - 1] = CStringGetTextDatum(dbcollate);
 	new_record[Anum_pg_database_datctype - 1] = CStringGetTextDatum(dbctype);
 	if (dbiculocale)
@@ -1581,7 +1581,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	recordDependencyOnOwner(DatabaseRelationId, dboid, datdba);
 
 	/*
-	 * Register tablespace dependency to prevent dropping database default
+	 * YB: Register tablespace dependency to prevent dropping database default
 	 * tablespace.
 	 */
 	recordDependencyOnTablespace(DatabaseRelationId, dboid, dst_deftablespace);
@@ -1652,6 +1652,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	}
 	PG_END_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
 								PointerGetDatum(&fparms));
+
 	return dboid;
 }
 
@@ -1834,7 +1835,7 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 	 * Skip the following checks.
 	 */
 	if (IsYugaByteEnabled())
-		goto removing_database_from_system;
+		goto yb_removing_database_from_system;
 
 	/*
 	 * Check whether there are active logical slots that refer to the
@@ -1869,7 +1870,8 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 								  "There are %d subscriptions.",
 								  nsubscriptions, nsubscriptions)));
 
-removing_database_from_system:
+
+yb_removing_database_from_system:
 	/*
 	 * Attempt to terminate all existing connections to the target database if
 	 * the user has requested to do so.

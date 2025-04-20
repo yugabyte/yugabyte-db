@@ -242,7 +242,7 @@ typedef struct TransInvalidationInfo
 	bool		RelcacheInitFileInval;
 
 	/*
-	 * Number of invalidation messages accumulated so far in the current PG
+	 * YB: Number of invalidation messages accumulated so far in the current PG
 	 * BEGIN block transaction. If there are multiple DDL statements in
 	 * the PG transaction, each time we fetch the invalidation messages we
 	 * will get the invalidation messages of all the previous DDL statements.
@@ -309,7 +309,7 @@ AddInvalidationMessage(InvalidationMsgsGroup *group, int subgroup,
 					   const SharedInvalidationMessage *msg)
 {
 	/*
-	 * T_Invalid represents single shard DML statement, or any non-DDL
+	 * YB: T_Invalid represents single shard DML statement, or any non-DDL
 	 * statement (e.g., SET SESSION AUTHORIZATION pgcron_cront)
 	 */
 	Assert(YBGetDdlOriginalNodeTag() == T_YbBackfillIndexStmt ||

@@ -131,18 +131,20 @@ typedef struct PlannerGlobal
 
 	PartitionDirectory partition_directory; /* partition descriptors */
 
-	/* count of base rels across all blocks */
+	/* YB: count of base rels across all blocks */
 	int			ybBaseRelCnt;
 
-	/* hint aliases - alias can be found using rel->ybUniqueBaseId as index */
+	/*
+	 * YB: hint aliases - alias can be found using rel->ybUniqueBaseId as index
+	 */
 	List	   *ybPlanHintsAliasMapping;
 
-	/* count of number of blocks */
+	/* YB: count of number of blocks */
 	int			ybBlockCnt;
 
 	/*
-	 * list of unique ids, e.g. used to uniquely indentify Path/Plan nodes, or
-	 * messages written when yb_enable_planner_trace is enabled
+	 * YB: list of unique ids, e.g. used to uniquely indentify Path/Plan nodes,
+	 * or messages written when yb_enable_planner_trace is enabled
 	 */
 	uint32		ybNextUid;
 
@@ -399,17 +401,17 @@ struct PlannerInfo
 	bool		partColsUpdated;
 
 	/*
-	 * These are used to transfer information about batching in createplan.c
-	 * and indxpath.c
+	 * YB: These are used to transfer information about batching in
+	 * createplan.c and indxpath.c
 	 */
 	Relids		yb_cur_batched_relids;	/* valid if we are processing a
 										 * batched NL join */
 	Relids		yb_cur_unbatched_relids;
 
 	/*
-	 * List of Relids. Each element is a Bitmapset that encodes the batched rels
-	 * available from the outer path of a particular Batched Nested Loop join
-	 * node.
+	 * YB: List of Relids. Each element is a Bitmapset that encodes the batched
+	 * rels available from the outer path of a particular Batched Nested Loop
+	 * join node.
 	 */
 	List	   *yb_availBatchedRelids;
 
@@ -417,27 +419,27 @@ struct PlannerInfo
 									 * track of current batch */
 
 	/*
-	 * Number of relations that are still referenced by the plan after
+	 * YB: Number of relations that are still referenced by the plan after
 	 * constraint exclusion and partition pruning.
 	 */
 	int			yb_num_referenced_relations;
 
-	/* id of block this instance represents */
+	/* YB: id of block this instance represents */
 	int			ybBlockId;
 
-	/* outer relids for each hinted join. i.e. joins in Leading hint */
+	/* YB: outer relids for each hinted join. i.e. joins in Leading hint */
 	List	   *ybHintedJoinsOuter;
 
-	/* parallel relid list of inner relids for each hinted join */
+	/* YB: parallel relid list of inner relids for each hinted join */
 	List	   *ybHintedJoinsInner;
 
 	/*
-	 * If a join appears in a leading hint but has a 'negated' join method
+	 * YB: If a join appears in a leading hint but has a 'negated' join method
 	 * hint then the type of the join is stored in this list.
 	 */
 	List	   *ybProhibitedJoinTypes;
 
-	/* parallel list of relids of 'prohibited joins */
+	/* YB: parallel list of relids of 'prohibited joins */
 	List	   *ybProhibitedJoins;
 };
 
@@ -839,23 +841,26 @@ typedef struct RelOptInfo
 	/* used for YB relations */
 	bool		is_yb_relation;	/* Is a YbRelation */
 
-	/* unique identifer (across all blocks) for a base rel - starting at '1' */
+	/*
+	 * YB: unique identifer (across all blocks) for a base rel - starting at
+	 * '1'
+	 */
 	uint32		ybUniqueBaseId;
 
-	/* alias to use for hinting - unique across all blocks/entire query */
+	/* YB: alias to use for hinting - unique across all blocks/entire query */
 	char	   *ybHintAlias;
 
-	/* id of the block this rel is in */
+	/* YB: id of the block this rel is in */
 	uint32		ybBlockId;
 
-	/* list to store initially populated 'indexlist' member above.
+	/*
+	 * YB: list to store initially populated 'indexlist' member above.
 	 * The hint code can prune 'indexlist' but the optimizer uses
 	 * indexes to prove uniqueness.
 	 */
 	List	   *ybHintsOrigIndexlist;
 
-	PlannerInfo
-			   *ybRoot;
+	PlannerInfo *ybRoot;
 } RelOptInfo;
 
 /*
@@ -930,7 +935,6 @@ struct IndexOptInfo
 	/* index descriptor information */
 	int			ncolumns;		/* number of columns in index */
 	int			nkeycolumns;	/* number of key columns in index */
-	int			nhashcolumns;	/* number of hash key columns in index */
 	int		   *indexkeys;		/* column numbers of index's attributes both
 								 * key and included columns, or 0 */
 	Oid		   *indexcollations;	/* OIDs of collations of index columns */
@@ -972,10 +976,10 @@ struct IndexOptInfo
 	/* Rather than include amapi.h here, we declare amcostestimate like this */
 	void		(*amcostestimate) ();	/* AM's cost estimator */
 
+	/* YB */
+	int			nhashcolumns;	/* number of hash key columns in index */
 	bool		yb_amhasgetbitmap;	/* does AM have yb_amgetbitmap interface? */
-
 	bool		yb_amiscopartitioned; /* is AM for YB a copartitioned index? */
-
 	/* Used for YB base scans cost model */
 	int32_t		yb_cached_ybctid_size;
 };
@@ -1240,10 +1244,10 @@ typedef struct ParamPathInfo
 
 
 /*
- * Indicates whether locking can happen during an index scan in all isolation
- * levels, avoiding two RPCs to lock (read, then lock). This is set in all
- * isolation levels because plans can be executed at a different isolation level
- * from that of planning.
+ * YB: Indicates whether locking can happen during an index scan in all
+ * isolation levels, avoiding two RPCs to lock (read, then lock). This is set
+ * in all isolation levels because plans can be executed at a different
+ * isolation level from that of planning.
  */
 typedef enum YbLockMechanism
 {
@@ -1336,6 +1340,7 @@ typedef struct Path
 	List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of PathKey nodes; see above */
 
+	/* YB */
 	YbPlanInfo	yb_plan_info;
 	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
 	uint32		ybUniqueId;		/* unique id of Path */
@@ -1369,10 +1374,6 @@ typedef struct Path
  * index-checkable restriction, with implicit AND semantics across the list.
  * An empty list implies a full index scan.
  *
- * 'yb_bitmap_idx_pushdowns' is a set of pushable clauses for a bitmap index scan.
- * These are extracted during bitmap planning and allow pushdowns that are not
- * possible to determine at a later stage.
- *
  * 'indexorderbys', if not NIL, is a list of ORDER BY expressions that have
  * been found to be usable as ordering operators for an amcanorderbyop index.
  * The list must match the path's pathkeys, ie, one expression per pathkey
@@ -1399,6 +1400,10 @@ typedef struct Path
  * of the IndexPath itself represent the costs of an IndexScan or IndexOnlyScan
  * plan type.
  *
+ * 'yb_bitmap_idx_pushdowns' is a set of pushable clauses for a bitmap index scan.
+ * These are extracted during bitmap planning and allow pushdowns that are not
+ * possible to determine at a later stage.
+ *
  * 'yb_index_path_info' contains info propagated for YugabyteDB.
  *----------
  */
@@ -1407,12 +1412,14 @@ typedef struct IndexPath
 	Path		path;
 	IndexOptInfo *indexinfo;
 	List	   *indexclauses;
-	List	   *yb_bitmap_idx_pushdowns;
 	List	   *indexorderbys;
 	List	   *indexorderbycols;
 	ScanDirection indexscandir;
 	Cost		indextotalcost;
 	Selectivity indexselectivity;
+
+	/* YB */
+	List	   *yb_bitmap_idx_pushdowns;
 	int			ybctid_width;
 	YbPlanInfo	yb_plan_info;
 	YbIndexPathInfo yb_index_path_info; /* fields used for YugabyteDB */
@@ -1520,6 +1527,8 @@ typedef struct BitmapAndPath
 	Path		path;
 	List	   *bitmapquals;	/* IndexPaths and BitmapOrPaths */
 	Selectivity bitmapselectivity;
+
+	/* YB */
 	int			ybctid_width;
 } BitmapAndPath;
 
@@ -1534,6 +1543,8 @@ typedef struct BitmapOrPath
 	Path		path;
 	List	   *bitmapquals;	/* IndexPaths and BitmapAndPaths */
 	Selectivity bitmapselectivity;
+
+	/* YB */
 	int			ybctid_width;
 } BitmapOrPath;
 
@@ -2396,7 +2407,7 @@ typedef struct PlaceHolderVar
 } PlaceHolderVar;
 
 /*
- * Used to represent a batched version of a Var. Currently used for
+ * YB: Used to represent a batched version of a Var. Currently used for
  * batched NL joins. These are replaced by exec params during plan creation.
  * For example, a join clause of the form (Var_o = Var_i) where Var_o is an
  * outer relation Var and Var_i is an inner relation Var, might be turned into

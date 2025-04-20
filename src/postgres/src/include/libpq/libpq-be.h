@@ -166,13 +166,13 @@ typedef struct Port
 	bool		yb_is_tserver_auth_method;
 
 	/*
-	 * To be used during Authentication, identifies whether authentication is
-	 * invoked due to Auth Passthrough Request packet.
+	 * YB: To be used during Authentication, identifies whether authentication
+	 * is invoked due to Auth Passthrough Request packet.
 	 */
 	bool		yb_is_auth_passthrough_req;
 
 	/*
-	 * To be used for the authentication of logical connections from the
+	 * YB: To be used for the authentication of logical connections from the
 	 * connection manager either via auth passthrough or the special
 	 * authentication backend.
 	 * It identifies whether the logical connection is encrypted.

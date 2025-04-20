@@ -646,7 +646,7 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 		return;
 
 	/*
-	 * In per-database catalog version mode at the end of a global-impact
+	 * YB: In per-database catalog version mode at the end of a global-impact
 	 * DDL statement, we internally call yb_increment_all_db_catalog_versions
 	 * which sets yb_non_ddl_txn_for_sys_tables_allowed to true in order to
 	 * update pg_yb_catalog_version table. More generally, a user may want

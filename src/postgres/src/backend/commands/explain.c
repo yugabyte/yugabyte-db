@@ -129,9 +129,7 @@ static void show_eval_params(Bitmapset *bms_params, ExplainState *es);
 static const char *explain_get_index_name(Oid indexId);
 static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 							  bool planning);
-static void show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
-static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 									YbPlanInfo *yb_plan_info, ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
@@ -163,6 +161,10 @@ static void ExplainIndentText(ExplainState *es);
 static void ExplainJSONLineEnding(ExplainState *es);
 static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
+
+/* YB declarations */
+static void show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es);
+static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void YbAggregateExplainableRPCRequestStat(ExplainState *es,
 												 const YbInstrumentation *instr);
@@ -912,8 +914,10 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 			es->wal = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "settings") == 0)
 			es->settings = defGetBoolean(opt);
+		/* YB */
 		else if (strcmp(opt->defname, "dist") == 0)
 			es->rpc = defGetBoolean(opt);
+		/* YB */
 		else if (strcmp(opt->defname, "debug") == 0)
 			es->yb_debug = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "timing") == 0)
@@ -945,8 +949,10 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 								opt->defname, p),
 						 parser_errposition(pstate, opt->location)));
 		}
+		/* YB */
 		else if (strcmp(opt->defname, "hints") == 0)
 			es->ybShowHints = defGetBoolean(opt);
+		/* YB */
 		else if (strcmp(opt->defname, "uids") == 0)
 			es->ybShowUniqueIds = defGetBoolean(opt);
 		else
@@ -966,8 +972,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
 	/*
-	 * if hiding of non-deterministic fields is requested, turn off debug and
-	 * verbose modes
+	 * YB: if hiding of non-deterministic fields is requested, turn off debug
+	 * and verbose modes
 	 */
 	if (yb_explain_hide_non_deterministic_fields)
 	{
@@ -990,7 +996,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		}
 	}
 
-	/* check if timing is required */
+	/* YB: check if timing is required */
 	es->timing = YbIsTimingNeeded(es, timing_set);
 
 	/* check that timing is used with EXPLAIN ANALYZE */
@@ -1072,8 +1078,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 	end_tup_output(tstate);
 
 	/*
-	 * Turn off timing RPC requests and metrics capture so that future queries
-	 * are not timed and metrics are not sent by default
+	 * YB: Turn off timing RPC requests and metrics capture so that future
+	 * queries are not timed and metrics are not sent by default
 	 */
 	YbToggleSessionStatsTimer(false);
 	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
@@ -1368,11 +1374,11 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		else
 			dir = ForwardScanDirection;
 
-		/* Figure out if the query can be run as a single row txn */
+		/* YB: Figure out if the query can be run as a single row txn */
 		queryDesc->estate->yb_es_is_single_row_modify_txn =
 			YbIsSingleRowModifyTxnPlanned(plannedstmt, queryDesc->estate);
 
-		/* Refresh the session stats before the start of the query */
+		/* YB: Refresh the session stats before the start of the query */
 		if (es->rpc)
 		{
 			YbRefreshSessionStatsBeforeExecution();
@@ -1381,15 +1387,15 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		/* run the plan */
 		ExecutorRun(queryDesc, dir, 0L, true);
 
-		/* take a snapshot on the max PG memory consumption */
+		/* YB: take a snapshot on the max PG memory consumption */
 		peakMem = PgMemTracker.stmt_max_mem_bytes;
 
 		/* run cleanup too */
 		ExecutorFinish(queryDesc);
 
 		/*
-		 * Fetch stats collected at the query level (ie. not corresponding to
-		 * any execution node)
+		 * YB: Fetch stats collected at the query level (ie. not corresponding
+		 * to any execution node)
 		 */
 		if (es->rpc)
 		{
@@ -2038,6 +2044,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	int			save_indent = es->indent;
 	bool		haschildren;
 
+	/* YB */
 	if (planstate->instrument)
 	{
 		YbAggregateExplainableRPCRequestStat(es,
@@ -2190,7 +2197,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			switch (((ForeignScan *) plan)->operation)
 			{
 				case CMD_SELECT:
-					/* Don't need to expose implementation details */
 					if (IsYBRelation(((ScanState *) planstate)->ss_currentRelation))
 						sname = pname = "YB Foreign Scan";
 					else
@@ -2538,8 +2544,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	}
 
 	/*
-	 * If this node was an input to a trivial subquery scan that was removed then show the
-	 * hint alias that was 'inherited' from the subquery scan.
+	 * YB: If this node was an input to a trivial subquery scan that was
+	 * removed then show the hint alias that was 'inherited' from the subquery
+	 * scan.
 	 */
 	if (plan->ybInheritedHintAlias != NULL && es->ybShowHints)
 	{
@@ -2554,7 +2561,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	}
 
 	/*
-	 * Display unique ids for Plan nodes (passed from corresponding Path nodes).
+	 * YB: Display unique ids for Plan nodes (passed from corresponding Path
+	 * nodes).
 	 */
 	if (es->ybShowUniqueIds)
 	{
@@ -2720,8 +2728,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
 			/*
-			 * Quals are shown in the order they are applied: index pushdown,
-			 * relation pushdown, local clauses.
+			 * YB note: Quals are shown in the order they are applied: index
+			 * pushdown, relation pushdown, local clauses.
 			 */
 			show_scan_qual(((IndexScan *) plan)->indexorderbyorig,
 						   "Order By", planstate, ancestors, es);
@@ -2765,7 +2773,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 									   ((IndexOnlyScan *) plan)->yb_distinct_prefixlen,
 									   es, ancestors);
 			/*
-			 * Storage filter is applied first, so it is output first.
+			 * YB: Storage filter is applied first, so it is output first.
 			 */
 			show_scan_qual(((IndexOnlyScan *) plan)->yb_pushdown.quals,
 						   "Storage Filter", planstate, ancestors, es);
@@ -2856,6 +2864,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			show_tablesample(((SampleScan *) plan)->tablesample,
 							 planstate, ancestors, es);
 			/* fall through to print additional fields the same as SeqScan */
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case T_SeqScan:
 		case T_ValuesScan:
@@ -4199,8 +4208,8 @@ show_hash_info(HashState *hashstate, ExplainState *es)
 		long		spacePeakKb = (hinstrument.space_peak + 1023) / 1024;
 
 		/*
-		 * Hash joins have some non-deterministic fields and some deterministic
-		 * fields.
+		 * YB: Hash joins have some non-deterministic fields and some
+		 * deterministic fields.
 		 * - Original Hash Buckets and Original Hash Batches are computed at the
 		 *   beginning by ExecChooseHashTableSize.
 		 * - Hash Buckets may be updated based on the number of tuples. This

@@ -1768,6 +1768,7 @@ InitCatalogCachePhase2(void)
 		InitCatCachePhase2(SysCache[cacheId], true);
 }
 
+
 /*
  * SearchSysCache
  *

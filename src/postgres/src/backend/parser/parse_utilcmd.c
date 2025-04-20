@@ -99,8 +99,8 @@ typedef struct
 	bool		ofType;			/* true if statement contains OF typename */
 
 	/*
-	 * TODO(neil) For completeness, we should process "split_options" here to
-	 * cache partitioning information in Postgres relation objects. This is
+	 * YB: TODO(neil) For completeness, we should process "split_options" here
+	 * to cache partitioning information in Postgres relation objects. This is
 	 * important for choosing query plan.
 	 *
 	 * YbOptSplit   *split_options;
@@ -161,6 +161,7 @@ static void validateInfiniteBounds(ParseState *pstate, List *blist);
 static Const *transformPartitionBoundValue(ParseState *pstate, Node *con,
 										   const char *colName, Oid colType, int32 colTypmod,
 										   Oid partCollation);
+
 
 /*
  * transformCreateStmt -
@@ -272,8 +273,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	cxt.ofType = (stmt->ofTypename != NULL);
 
 	/*
-	 * TODO(neil) For completeness, we should process "split_options" here to
-	 * cache partitioning information in Postgres relation objects. This is
+	 * YB: TODO(neil) For completeness, we should process "split_options" here
+	 * to cache partitioning information in Postgres relation objects. This is
 	 * important for choosing query plan.
 	 *
 	 * cxt.split_options = stmt->split_options;
@@ -295,7 +296,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 
 	cxt.relOid = InvalidOid;
 	/*
-	 * Select tablespace to use.  If not specified, use default tablespace
+	 * YB: Select tablespace to use.  If not specified, use default tablespace
 	 * (which may in turn default to database's default).
 	 */
 	if (stmt->tablespacename)
@@ -357,7 +358,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 		}
 	}
 
-	/* Validate the storage options from the WITH clause */
+	/* YB: Validate the storage options from the WITH clause */
 	ListCell   *cell;
 	bool		colocation_option_specified = false;
 	bool		colocated_option_specified = false;
@@ -990,6 +991,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 							 errmsg("primary key constraints are not supported on foreign tables"),
 							 parser_errposition(cxt->pstate,
 												constraint->location)));
+				/* FALL THRU */
 				yb_switch_fallthrough();
 
 			case CONSTR_UNIQUE:
@@ -1478,7 +1480,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	}
 
 	/*
-	 * The first half of this code is largely copied from the section
+	 * YB: The first half of this code is largely copied from the section
 	 * "Likewise, copy indexes if requested" which was moved to
 	 * expandTableLikeClause by commit
 	 * 50289819230d8ddad510879ee4793b04a05cf13b.  The second half resembles
@@ -2217,7 +2219,7 @@ generateClonedIndexStmt(RangeVar *heapRel, Relation source_idx,
 					iparam->nulls_ordering = SORTBY_NULLS_FIRST;
 
 				/*
-				 * If the index supports ordering and it is neither
+				 * YB: If the index supports ordering and it is neither
 				 * SORTBY_HASH nor SORTBY_DESC, then the source index must have
 				 * been SORTBY_ASC. If we do not set it here, during index
 				 * creation, the ordering for the first attribute will wrongly
@@ -2882,12 +2884,12 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 				defopclass = GetDefaultOpClass(attform->atttypid,
 											   index_rel->rd_rel->relam);
-				int16		opt = index_rel->rd_indoption[i];
-
 				if (indclass->values[i] != defopclass ||
 					attform->attcollation != index_rel->rd_indcollation[i] ||
 					attoptions != (Datum) 0 ||
-					(opt != 0 && (!(INDOPTION_HASH & opt) || !IsYBRelation(heap_rel))))
+					(index_rel->rd_indoption[i] != 0 &&
+					 (!(INDOPTION_HASH & index_rel->rd_indoption[i]) ||
+					  !IsYBRelation(heap_rel))))
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("index \"%s\" column number %d does not have default sorting behavior", index_name, i + 1),
@@ -2951,16 +2953,14 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 	{
 		foreach(lc, constraint->yb_index_params)
 		{
-			IndexElem  *index_elem = (IndexElem *) lfirst(lc);
-			char	   *key;
-
-			if (!IsYugaByteEnabled())
-				key = strVal(lfirst(lc));
+			char	   *key = (IsYugaByteEnabled() ? NULL : strVal(lfirst(lc)));
 			bool		found = false;
 			bool		forced_not_null = false;
 			ColumnDef  *column = NULL;
 			ListCell   *columns;
 			IndexElem  *iparam;
+
+			IndexElem  *index_elem = (IndexElem *) lfirst(lc);
 
 			if (IsYugaByteEnabled())
 			{
@@ -3366,7 +3366,6 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 	 * relation, but we still need to open it.
 	 */
 	rel = relation_open(relid, NoLock);
-
 	nsitem = addRangeTableEntryForRelation(pstate, rel,
 										   AccessShareLock,
 										   NULL, false, true);
@@ -3375,6 +3374,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 
 	ListCell   *cell;
 
+	/* YB */
 	foreach(cell, stmt->options)
 	{
 		DefElem    *def = (DefElem *) lfirst(cell);
@@ -3927,8 +3927,8 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	cxt.ofType = false;
 
 	/*
-	 * TODO(neil) For completeness, we should process "split_options" here to
-	 * cache partitioning information in Postgres relation objects. This is
+	 * YB: TODO(neil) For completeness, we should process "split_options" here
+	 * to cache partitioning information in Postgres relation objects. This is
 	 * important for choosing query plan.
 	 *
 	 * cxt.split_options = NULL;

@@ -110,6 +110,7 @@
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 
+
 #define LOG2(x)  (log(x) / 0.693147180559945)
 
 /*
@@ -611,8 +612,8 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cost		indexStartupCost;
 	Cost		indexTotalCost;
 	Selectivity indexSelectivity;
-	double		indexCorrelation = 0;
-	double		csquared;
+	double		indexCorrelation,
+				csquared;
 	double		spc_seq_page_cost,
 				spc_random_page_cost;
 	Cost		min_IO_cost,
@@ -3483,8 +3484,7 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 				run_cost += inner_run_cost * inner_scan_frac;
 
 			if (outer_matched_rows > 1)
-				run_cost += (outer_matched_rows - 1) *
-					inner_rescan_run_cost * inner_scan_frac;
+				run_cost += (outer_matched_rows - 1) * inner_rescan_run_cost * inner_scan_frac;
 
 			/*
 			 * Add the cost of inner-scan executions for unmatched outer rows.

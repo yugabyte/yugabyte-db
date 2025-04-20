@@ -42,8 +42,8 @@ typedef struct
 	Index		varno;
 
 	/*
-	 * Because of special hidden columns, the actual column attribute number
-	 * has some offset from the logical number. Column "1" would have
+	 * YB: Because of special hidden columns, the actual column attribute
+	 * number has some offset from the logical number. Column "1" would have
 	 * attribute number as "1 - offset". In postgres original code, this
 	 * offset is always FirstLowInvalidHeapAttributeNumber. For Yugabyte, this
 	 * offset can be flexible.
@@ -81,7 +81,6 @@ static bool pull_varnos_walker(Node *node,
 							   pull_varnos_context *context);
 static bool pull_varattnos_walker(Node *node, pull_varattnos_context *context);
 static bool pull_vars_walker(Node *node, pull_vars_context *context);
-
 static bool contain_var_clause_walker(Node *node, void *context);
 static bool contain_vars_of_level_walker(Node *node, int *sublevels_up);
 static bool locate_var_of_level_walker(Node *node,
@@ -303,7 +302,7 @@ pull_varattnos(Node *node, Index varno, Bitmapset **varattnos)
 	context.varno = varno;
 
 	/*
-	 * For Postgres processing, min attribute is always
+	 * YB: For Postgres processing, min attribute is always
 	 * FirstLowInvalidHeapAttributeNumber.
 	 */
 	context.yb_attr_offset = FirstLowInvalidHeapAttributeNumber;
@@ -324,7 +323,8 @@ pull_varattnos_walker(Node *node, pull_varattnos_context *context)
 
 		if (var->varno == context->varno && var->varlevelsup == 0)
 			context->varattnos =
-				bms_add_member(context->varattnos, var->varattno - context->yb_attr_offset);
+				bms_add_member(context->varattnos,
+							   var->varattno - context->yb_attr_offset);
 		return false;
 	}
 

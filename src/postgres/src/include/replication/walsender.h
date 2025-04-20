@@ -25,7 +25,7 @@ typedef enum
 } CRSSnapshotAction;
 
 /*
- * The type of LSN type to use in create replication slot command.
+ * YB: The type of LSN type to use in create replication slot command.
  */
 typedef enum
 {
@@ -34,7 +34,7 @@ typedef enum
 } YbCRSLsnType;
 
 /*
- * The type of ordering mode to use in create replication slot command.
+ * YB: The type of ordering mode to use in create replication slot command.
  */
  typedef enum
  {

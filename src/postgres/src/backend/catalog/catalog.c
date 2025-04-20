@@ -1067,7 +1067,7 @@ GetTableOidFromRelOptions(List *relOptions,
 }
 
 /*
- * GetColocationIdFromRelOptions
+ * YbGetColocationIdFromRelOptions
  *		Scans through relOptions for any 'colocation_id' options.
  *		Returns that ID, or InvalidOid if unspecified.
  *

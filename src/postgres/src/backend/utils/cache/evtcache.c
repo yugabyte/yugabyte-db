@@ -130,6 +130,10 @@ BuildEventTriggerCache(void)
 	 * Prepare to scan pg_event_trigger in name order.
 	 */
 	rel = relation_open(EventTriggerRelationId, AccessShareLock);
+	/*
+	 * YB: use systable_beginscan instead of systable_beginscan_ordered because
+	 * systable_beginscan_ordered is (supposedly) not yet supported for YB.
+	 */
 	scan = systable_beginscan(rel, EventTriggerNameIndexId, true /* indexOK */ ,
 							  NULL, 0, NULL);
 
@@ -150,6 +154,7 @@ BuildEventTriggerCache(void)
 		bool		found;
 
 		/* Get next tuple. */
+		/* YB: see above explanation for why not systable_getnext_ordered */
 		tup = systable_getnext(scan);
 		if (!HeapTupleIsValid(tup))
 			break;
@@ -192,6 +197,7 @@ BuildEventTriggerCache(void)
 	}
 
 	/* Done with pg_event_trigger scan. */
+	/* YB: see above explanation for why not systable_endscan_ordered */
 	systable_endscan(scan);
 
 	/*

@@ -55,7 +55,7 @@ typedef struct QueryDesc
 	struct Instrumentation *totaltime;	/* total time spent in ExecutorRun */
 
 	/*
-	 * An additional instrumentation field to collect async RPC stats. This
+	 * YB: An additional instrumentation field to collect async RPC stats. This
 	 * needs to be a separate field because its life cycle is distinct from
 	 * that of 'totaltime'.
 	 */

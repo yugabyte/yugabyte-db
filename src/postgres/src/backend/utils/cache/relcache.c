@@ -573,7 +573,6 @@ AllocateRelationDesc(Form_pg_class relp)
 
 	/* YB properties will be loaded lazily */
 	relation->yb_table_properties = NULL;
-
 	relation->primary_key_bms = NULL;
 	relation->full_primary_key_bms = NULL;
 
@@ -736,7 +735,7 @@ RelationBuildTupleDesc(Relation relation)
 			elog(ERROR, "invalid attribute number %d for relation \"%s\"",
 				 attp->attnum, RelationGetRelationName(relation));
 
-		memcpy(TupleDescAttr(RelationGetDescr(relation), attp->attnum - 1),
+		memcpy(TupleDescAttr(relation->rd_att, attp->attnum - 1),
 			   attp,
 			   ATTRIBUTE_FIXED_PART_SIZE);
 
@@ -3765,8 +3764,8 @@ LookupOpclassInfo(Oid operatorClassOid,
 	 */
 	indexOK = criticalRelcachesBuilt ||
 		(operatorClassOid != OID_BTREE_OPS_OID &&
-		 operatorClassOid != OID_LSM_OPS_OID &&
 		 operatorClassOid != INT2_BTREE_OPS_OID &&
+		 operatorClassOid != OID_LSM_OPS_OID &&
 		 operatorClassOid != INT2_LSM_OPS_OID);
 
 	/*
@@ -6597,7 +6596,6 @@ load_critical_index(Oid indexoid, Oid heapoid)
 	 * and if anyone else is exclusive-locking this catalog and index they'll
 	 * be doing it in that order.
 	 */
-
 	LockRelationOid(heapoid, AccessShareLock);
 	LockRelationOid(indexoid, AccessShareLock);
 	if (IsYugaByteEnabled())
@@ -6610,7 +6608,6 @@ load_critical_index(Oid indexoid, Oid heapoid)
 		elog(PANIC, "could not open critical system index %u", indexoid);
 	ird->rd_isnailed = true;
 	ird->rd_refcnt = 1;
-
 	UnlockRelationOid(indexoid, AccessShareLock);
 	UnlockRelationOid(heapoid, AccessShareLock);
 
@@ -7752,16 +7749,20 @@ restart:
 			 */
 			if (attrnum != 0)
 			{
-				indexattrs = bms_add_member(indexattrs, attrnum - attr_offset);
+				indexattrs = bms_add_member(indexattrs,
+											attrnum - attr_offset);
 
 				if (isKey && i < indexDesc->rd_index->indnkeyatts)
-					uindexattrs = bms_add_member(uindexattrs, attrnum - attr_offset);
+					uindexattrs = bms_add_member(uindexattrs,
+												 attrnum - attr_offset);
 
 				if (isPK && i < indexDesc->rd_index->indnkeyatts)
-					pkindexattrs = bms_add_member(pkindexattrs, attrnum - attr_offset);
+					pkindexattrs = bms_add_member(pkindexattrs,
+												  attrnum - attr_offset);
 
 				if (isIDKey && i < indexDesc->rd_index->indnkeyatts)
-					idindexattrs = bms_add_member(idindexattrs, attrnum - attr_offset);
+					idindexattrs = bms_add_member(idindexattrs,
+												  attrnum - attr_offset);
 			}
 		}
 
@@ -8466,7 +8467,7 @@ load_relcache_init_file(bool shared)
 	uint64		ybc_stored_cache_version = 0;
 
 	/*
-	 * Disable shared init file in per database catalog version mode when
+	 * YB: Disable shared init file in per database catalog version mode when
 	 * MyDatabaseId isn't known yet. Different databases have different
 	 * catalog versions of their own. At this point we cannot compose the
 	 * correct init file name for the to-be-resolved MyDatabaseId.
@@ -8857,17 +8858,14 @@ load_relcache_init_file(bool shared)
 	 * values of NUM_CRITICAL_SHARED_RELS/NUM_CRITICAL_SHARED_INDEXES, we put
 	 * an Assert(false) there.
 	 */
-	int			num_critical_shared_indexes = NUM_CRITICAL_SHARED_INDEXES;
-	int			num_critical_local_indexes = NUM_CRITICAL_LOCAL_INDEXES;
-
 	if (shared)
 	{
 		if (nailed_rels != NUM_CRITICAL_SHARED_RELS ||
-			nailed_indexes != num_critical_shared_indexes)
+			nailed_indexes != NUM_CRITICAL_SHARED_INDEXES)
 		{
 			elog(WARNING, "found %d nailed shared rels and %d nailed shared indexes in init file, but expected %d and %d respectively",
 				 nailed_rels, nailed_indexes,
-				 NUM_CRITICAL_SHARED_RELS, num_critical_shared_indexes);
+				 NUM_CRITICAL_SHARED_RELS, NUM_CRITICAL_SHARED_INDEXES);
 			/* Make sure we get developers' attention about this */
 			Assert(false);
 			/* In production builds, recover by bootstrapping the relcache */
@@ -8877,11 +8875,11 @@ load_relcache_init_file(bool shared)
 	else
 	{
 		if (nailed_rels != NUM_CRITICAL_LOCAL_RELS ||
-			nailed_indexes != num_critical_local_indexes)
+			nailed_indexes != NUM_CRITICAL_LOCAL_INDEXES)
 		{
 			elog(WARNING, "found %d nailed rels and %d nailed indexes in init file, but expected %d and %d respectively",
 				 nailed_rels, nailed_indexes,
-				 NUM_CRITICAL_LOCAL_RELS, num_critical_local_indexes);
+				 NUM_CRITICAL_LOCAL_RELS, NUM_CRITICAL_LOCAL_INDEXES);
 			/* We don't need an Assert() in this case */
 			goto read_failed;
 		}

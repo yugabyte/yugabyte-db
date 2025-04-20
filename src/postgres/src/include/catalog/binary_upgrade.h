@@ -34,6 +34,8 @@ extern PGDLLIMPORT Oid binary_upgrade_next_pg_authid_oid;
 
 extern PGDLLIMPORT bool binary_upgrade_record_init_privs;
 
+/* YB */
 extern PGDLLIMPORT Oid binary_upgrade_next_tablegroup_oid;
 extern PGDLLIMPORT bool binary_upgrade_next_tablegroup_default;
+
 #endif							/* BINARY_UPGRADE_H */

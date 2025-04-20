@@ -609,7 +609,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 
 		/*
 		 * Emit the completed stats rows into pg_statistic, replacing any
-		 * previous statistics for the target columns. (If there are stats in
+		 * previous statistics for the target columns.  (If there are stats in
 		 * pg_statistic for columns we didn't process, we leave them alone.)
 		 */
 		update_attstats(RelationGetRelid(onerel), inh,

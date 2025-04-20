@@ -66,10 +66,9 @@ extern void InvalidateSystemCachesExtended(bool debug_discard, bool yb_callback)
 
 extern void LogLogicalInvalidations(void);
 
+/* YB */
 extern void CallSystemCacheCallbacks(void);
-
 extern int YbGetNumInvalMessagesInTxn(int subgroup);
-
 extern void YbAddNumInvalMessagesInTxn(int subgroup, int nmsgs);
 
 #endif							/* INVAL_H */

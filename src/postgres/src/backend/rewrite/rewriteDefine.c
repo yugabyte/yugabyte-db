@@ -500,6 +500,7 @@ DefineQueryRewrite(const char *rulename,
 						 errmsg("could not convert table \"%s\" to a view because it has row security policies",
 								RelationGetRelationName(event_relation))));
 
+			/* YB */
 			if (IsCatalogNamespace(event_relation->rd_rel->relnamespace))
 				ereport(ERROR,
 						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),

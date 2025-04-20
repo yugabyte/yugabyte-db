@@ -1113,9 +1113,9 @@ ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 		}
 
 		/*
-			* FormIndexDatum fills in its values and isnull parameters with the
-			* appropriate values for the column(s) of the index.
-			*/
+		 * FormIndexDatum fills in its values and isnull parameters with the
+		 * appropriate values for the column(s) of the index.
+		 */
 		FormIndexDatum(indexInfo,
 					   slot,
 					   estate,

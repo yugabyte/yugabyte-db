@@ -101,9 +101,11 @@ static void generate_mergejoin_paths(PlannerInfo *root,
 									 List *merge_pathkeys,
 									 bool is_partial);
 
+/* YB declarations */
 static bool yb_has_non_evaluable_bnl_clauses(Path *outer_path,
 											 Path *inner_path,
 											 List *rinfos);
+
 
 /*
  * add_paths_to_joinrel

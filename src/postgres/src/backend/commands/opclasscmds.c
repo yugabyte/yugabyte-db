@@ -1827,7 +1827,7 @@ dropProcedures(List *opfamilyname, Oid amoid, Oid opfamilyoid,
 	}
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /* Pg11 OID interface */
 void		RemoveOpFamilyById(Oid opfamilyOid);
 void		RemoveOpClassById(Oid opclassOid);

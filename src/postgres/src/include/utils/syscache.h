@@ -190,21 +190,8 @@ typedef enum YbCatalogCacheTable
 #define YbNumCatalogCacheTables (YbAdhocCacheTable_pg_inherits + 1)
 } YbCatalogCacheTable;
 
-
 extern long YbNumCatalogCacheMisses;
 extern long YbNumCatalogCacheTableMisses[];
-
-/* Used in IsYugaByteEnabled() mode only */
-extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
-extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
-#ifndef NDEBUG
-extern bool YbCheckCatalogCacheIndexNameTable();
-extern bool YbCheckSysCacheNames();
-#endif
-extern const char *YbGetCatalogCacheIndexName(int cache_id);
-extern const char *YbGetCatalogCacheTableNameFromTableId(int table_id);
-extern const char *YbGetCatalogCacheTableNameFromCacheId(int cache_id);
-extern int	YbGetCatalogCacheTableIdFromCacheId(int cache_id);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);
@@ -264,6 +251,17 @@ extern bool RelationInvalidatesSnapshotsOnly(Oid relid);
 extern bool RelationHasSysCache(Oid relid);
 extern bool RelationSupportsSysCache(Oid relid);
 
+/* YB */
+extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
+extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
+#ifndef NDEBUG
+extern bool YbCheckCatalogCacheIndexNameTable();
+extern bool YbCheckSysCacheNames();
+#endif
+extern const char *YbGetCatalogCacheIndexName(int cache_id);
+extern const char *YbGetCatalogCacheTableNameFromTableId(int table_id);
+extern const char *YbGetCatalogCacheTableNameFromCacheId(int cache_id);
+extern int	YbGetCatalogCacheTableIdFromCacheId(int cache_id);
 extern uint32 YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4);
 extern void YbCopyCacheInfoToValues(int cache_id, Datum *values);
 extern void YbSetAdditionalNegCacheIds(List *neg_cache_ids);

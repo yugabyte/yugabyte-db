@@ -736,17 +736,20 @@ CopyFrom(CopyFromState cstate)
 		cstate->qualexpr = ExecInitQual(castNode(List, cstate->whereClause),
 										&mtstate->ps);
 	/*
-	 * For colocated table, default to non-txn for better performance. But for consistency,
-	 * we need to ensure the index and the row are written in same batch.
-	 * If ROWS_PER_TRANSACTION is not explicitly set for a colocated table, non-txn will be
-	 * enabled automatically. In this case, the batch_size will be set to 0, ensuring that
-	 * data is sent continuously in a pipeline i.e., without an intervening commit which will
-	 * act as a flush barrier.
+	 * YB: For colocated table, default to non-txn for better performance. But
+	 * for consistency, we need to ensure the index and the row are written in
+	 * same batch. If ROWS_PER_TRANSACTION is not explicitly set for a
+	 * colocated table, non-txn will be enabled automatically. In this case,
+	 * the batch_size will be set to 0, ensuring that data is sent continuously
+	 * in a pipeline i.e., without an intervening commit which will act as a
+	 * flush barrier.
+	 *
 	 * Always use distributed transaction in following cases for consistency:
-	 * 1. When foreign key constrain is defined. If a foreign key constraint is violated,
-	 *    the data will still be loaded into the table, leading to inconsistencies.
-	 * 2. When rules or trigger are defined. Both rules and trigger may write data in separate
-	 *    buffer, leading to inconsistencies.
+	 * 1. When foreign key constrain is defined. If a foreign key constraint is
+	 *    violated, the data will still be loaded into the table, leading to
+	 *    inconsistencies.
+	 * 2. When rules or trigger are defined. Both rules and trigger may write
+	 *    data in separate buffer, leading to inconsistencies.
 	 */
 	bool has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
 		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
@@ -765,6 +768,7 @@ CopyFrom(CopyFromState cstate)
 		YBAdjustOperationsBuffering(YBCRelInfoGetSecondaryIndicesCount(resultRelInfo) + 1);
 	}
 
+	/* YB */
 	if (cstate->opts.batch_size > 0)
 	{
 		/*

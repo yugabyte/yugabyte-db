@@ -913,7 +913,7 @@ static int
 restore(char *result, float val, int n)
 {
 	/*
-	 * To avoid the following error when building with GCC 12:
+	 * YB: To avoid the following error when building with GCC 12:
 	 * bit.ly/seg_cc_gcc12_format_overflow
 	 *
 	 * The fix increased the array size from 25 to 32 and added 7 bytes,

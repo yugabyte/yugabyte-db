@@ -1254,7 +1254,7 @@ gen_partprune_steps_internal(GeneratePruningStepsContext *context,
 		}
 
 		/*
-		 * Check if this clause involves a function expression that can be
+		 * YB: Check if this clause involves a function expression that can be
 		 * used for partition pruning.
 		 */
 		if (IsA(clause, FuncExpr))
@@ -1270,7 +1270,7 @@ gen_partprune_steps_internal(GeneratePruningStepsContext *context,
 	}
 
 	/*
-	 * If function-based pruning can be done, generate steps for it.
+	 * YB: If function-based pruning can be done, generate steps for it.
 	 */
 	if (generate_func_steps)
 	{
@@ -2918,6 +2918,7 @@ get_matching_list_bounds(PartitionPruneContext *context,
 
 		case BTGreaterEqualStrategyNumber:
 			inclusive = true;
+			/* fall through */
 			yb_switch_fallthrough();
 		case BTGreaterStrategyNumber:
 			off = partition_list_bsearch(partsupfunc,
@@ -2953,6 +2954,7 @@ get_matching_list_bounds(PartitionPruneContext *context,
 
 		case BTLessEqualStrategyNumber:
 			inclusive = true;
+			/* fall through */
 			yb_switch_fallthrough();
 		case BTLessStrategyNumber:
 			off = partition_list_bsearch(partsupfunc,
@@ -3200,6 +3202,7 @@ get_matching_range_bounds(PartitionPruneContext *context,
 
 		case BTGreaterEqualStrategyNumber:
 			inclusive = true;
+			/* fall through */
 			yb_switch_fallthrough();
 		case BTGreaterStrategyNumber:
 
@@ -3281,6 +3284,7 @@ get_matching_range_bounds(PartitionPruneContext *context,
 
 		case BTLessEqualStrategyNumber:
 			inclusive = true;
+			/* fall through */
 			yb_switch_fallthrough();
 		case BTLessStrategyNumber:
 
