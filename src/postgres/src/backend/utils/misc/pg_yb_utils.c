@@ -2827,7 +2827,7 @@ YBCommitTransactionContainingDDL()
 				else
 				{
 					currentInvalMessages = (SharedInvalidationMessage *)
-						MemoryContextAlloc(ddl_transaction_state.mem_context,
+						MemoryContextAlloc(CurTransactionContext,
 										   nmsgs * sizeof(SharedInvalidationMessage));
 					if (total > 0)
 						YbCopyCommittedPgTxnMessages(currentInvalMessages);
