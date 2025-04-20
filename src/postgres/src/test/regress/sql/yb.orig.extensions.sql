@@ -1,3 +1,8 @@
+SET client_min_messages = warning;
+DROP DATABASE if exists test_yb_extensions;
+CREATE DATABASE test_yb_extensions;
+\c test_yb_extensions
+
 -- Testing pgcrypto.
 create extension pgcrypto;
 
@@ -60,3 +65,7 @@ CREATE SCHEMA has$dollar;
 
 CREATE EXTENSION yb_test_extension SCHEMA has$dollar;
 CREATE EXTENSION yb_test_extension SCHEMA "has space";
+
+\c yugabyte
+
+DROP DATABASE test_yb_extensions WITH (FORCE);

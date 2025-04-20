@@ -245,6 +245,9 @@ explain (hints on, costs off) select f2 from t1, t2, t3, func2(1, 2) funky where
 -- Make sure uniqueness can be proved using indices for hinted query generated for internal hint test.
 explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and unn1=1;
 
+-- Check hint generation for partitioned tables.
+explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
+
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
 SET enable_partitionwise_join to true;
 /*+ Mergejoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
@@ -256,6 +259,9 @@ SET enable_partitionwise_join to true;
 -- Turn off join partitioning and try hinting. Should work fine.
 SET enable_partitionwise_join to false;
 /*+ Leading((t2 t1)) HashJoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+
+-- Make sure the internal hint test passes.
+explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
 
 -- Test hint table using query id instead of query text.
 create extension if not exists pg_hint_plan;
@@ -413,4 +419,23 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 /*+ noNestLoop(t1 t2) noNestLoop(t1 t3) */ explain (costs off, uids on) select max(a1) from t1 join t2 on a1<a2 join t3 on a1>a3;
 
 drop schema yb_hints cascade;
+
+-- Test fix for incorrect pruning of joins.
+drop schema if exists yb26670 cascade;
+create schema yb26670;
+set search_path to yb26670;
+
+create table t0(c0 int4range , c1 BIT VARYING(40) );
+create table t1(c0 DECIMAL );
+create table t2(c0 bytea , c1 REAL );
+create table t3(c0 inet , c1 int4range ) WITHOUT OIDS ;
+create table t4(c0 TEXT );
+create temporary view v6(c0) AS (SELECT '132.63.53.50' FROM t2*, t1*, t3, t4*, t0* WHERE lower_inf(((((t0.c0)*(t3.c1)))+(((t3.c1)+(t3.c1))))) LIMIT 2444285747789238479);
+
+-- Can't generate hints here because the final plan has a join replaced by a RESULT node.
+explain (hints on) SELECT MAX((0.6002056)::MONEY) FROM t1*, ONLY t0, ONLY v6 LEFT OUTER JOIN t4* ON TRUE RIGHT OUTER JOIN t2* ON FALSE GROUP BY - (+ (strpos(t4.c0, v6.c0)));
+SELECT MAX((0.6002056)::MONEY) FROM t1*, ONLY t0, ONLY v6 LEFT OUTER JOIN t4* ON TRUE RIGHT OUTER JOIN t2* ON FALSE GROUP BY - (+ (strpos(t4.c0, v6.c0)));
+
+drop schema yb26670 cascade;
+
 \set ECHO none

@@ -193,42 +193,89 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 #endif
 		}
 
-		if (IsYugaByteEnabled())
+		if (IsYugaByteEnabled() && root->ybHintedJoinsOuter != NULL)
 		{
 			/*
-			 * Sweep all joins at this level and look for disabled join
-			 * and non-disabled joins.
+			 * There is a Leading hint so sweep all joins at this level
+			 * and look for disabled and non-disabled joins. Also determine
+			 * if some join at this level has been hinted. If so, it is safe to
+			 * prune non-hinted joins.
 			 */
-			List *levelJoinRels = NIL;
-			bool foundDisabledRel = false;
+			List *ybLevelJoinRels = NIL;
+			bool ybFoundDisabledRel = false;
+			bool ybFoundHintedJoin = false;
+
 			ListCell *lc2;
 			foreach(lc2, root->join_rel_level[lev])
 			{
-				RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
-				if (rel->cheapest_total_path->total_cost < disable_cost ||
-					rel->cheapest_total_path->ybIsHinted ||
-					rel->cheapest_total_path->ybHasHintedUid)
+				RelOptInfo *ybRel = (RelOptInfo *) lfirst(lc2);
+				Assert(IS_JOIN_REL(ybRel));
+
+				bool ybIsJoinPath;
+				/*
+				 * Could have a non-join path type here (e.g., an Append)
+				 * so need to check that we have a join path.
+				 */
+				switch (ybRel->cheapest_total_path->type)
+				{
+					case T_NestPath:
+						ybIsJoinPath = true;
+						break;
+					case T_MergePath:
+						ybIsJoinPath = true;
+						break;
+					case T_HashPath:
+						ybIsJoinPath = true;
+						break;
+					default:
+						ybIsJoinPath = false;
+						break;
+				}
+
+				/*
+				 * Assuming that only join paths exist in the space
+				 * of enumerated joins. If this is found to not be the case,
+				 * the next 2 IFs need to check for a join path, and a non-join
+				 * path, respectively.
+				 */
+				Assert(ybIsJoinPath);
+
+				if (ybRel->cheapest_total_path->ybIsHinted ||
+					ybRel->cheapest_total_path->ybHasHintedUid)
+				{
+					ybFoundHintedJoin = true;
+				}
+
+				if (ybRel->cheapest_total_path->total_cost < disable_cost ||
+					ybRel->cheapest_total_path->ybIsHinted ||
+					ybRel->cheapest_total_path->ybHasHintedUid)
 				{
 					/*
-					 * Found a join with cost < disable cost. Or cost could be
-					 * >= disable cost (because the join is really expensive)
-					 * but it is in a Leading hint.
+					 * Found a join with cost < disable cost,
+					 * or whose cost could be >= disable cost because the join is
+					 * really expensive. But it is in a Leading hint, or
+					 * has been hinted using its UID so add it to the list
+					 * of joins we want to keep at this level.
 					 */
-					levelJoinRels = lappend(levelJoinRels, rel);
+					ybLevelJoinRels = lappend(ybLevelJoinRels, ybRel);
 				}
 				else
 				{
 					/*
-					 * Found a path that has been disabled via hints.
+					 * Found a join that has been disabled,
+					 * or that perhaps has a "true" cost > disable cost.
+					 * It is a join and is not hinted so set a flag so we can
+					 * try pruning below.
 					 */
-					foundDisabledRel = true;
+					ybFoundDisabledRel = true;
 				}
 			}
 
 			/*
-			 * Now look for a mix of enabled and disabled join paths at this level.
+			 * Now look for a mix of enabled and disabled join paths at this level,
+			 * but only do this if some join at this level has been hinted.
 			 */
-			if (levelJoinRels != NIL && foundDisabledRel)
+			if (ybLevelJoinRels != NIL && ybFoundDisabledRel && ybFoundHintedJoin)
 			{
 				if (yb_enable_planner_trace)
 				{
@@ -243,13 +290,13 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 					foreach(lc2, root->join_rel_level[lev])
 					{
 						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
-						if (!list_member_ptr(levelJoinRels, rel))
+						if (!list_member_ptr(ybLevelJoinRels, rel))
 						{
 							ybTraceRelOptInfo(root, rel, dropMsg.data);
 						}
 					}
 
-					foreach(lc2, levelJoinRels)
+					foreach(lc2, ybLevelJoinRels)
 					{
 						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
 						ybTraceRelOptInfo(root, rel, keepMsg.data);
@@ -260,9 +307,10 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 				}
 
 				/*
-				 * Keep only the non-disabled joins since the disabled ones cannot be part of the best plan.
+				 * Keep only the non-disabled joins since the disabled ones
+				 * cannot be part of the best plan.
 				 */
-				root->join_rel_level[lev] = levelJoinRels;
+				root->join_rel_level[lev] = ybLevelJoinRels;
 			}
 		}
 	}
