@@ -518,6 +518,10 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
+  {{< warning >}}
+This script will transfer ownership of all tables in the specified schemas to the specified “replication group”. The migration user and the original owner of the tables will be added to the replication group.
+  {{< /warning >}}
+
    ```sql
    psql -h <host> \
         -d <database> \
@@ -553,6 +557,10 @@ You can use only one of the following arguments to connect to your Oracle instan
     ```
 
 1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+
+  {{< warning >}}
+This script will transfer ownership of all tables in the specified schemas to the specified “replication group”. The migration user and the original owner of the tables will be added to the replication group.
+  {{< /warning >}}
 
    ```sql
    psql -h <host> \
