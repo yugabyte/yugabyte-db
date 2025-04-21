@@ -16,7 +16,7 @@ type: indexpage
 
   {{<index/item
       title="yugabyted reference"
-      body="Use the yugabyted utility to launch and manage universes."
+      body="Use the yugabyted utility to launch and manage YugabyteDB."
       href="yugabyted/"
       icon="fa-thin fa-rocket">}}
 
