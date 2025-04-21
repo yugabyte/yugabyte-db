@@ -38,7 +38,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
     title="Explore"
-    description="Explore key features for cloud-native applications."
+    description="Explore YugabyteDB's support for cloud-native applications."
     linkText1="PostgreSQL compatibility"
     linkUrl1="/preview/preview/explore/ysql-language-features/"
     linkText2="Resilience"
@@ -49,10 +49,10 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
   {{< sections/3-box-card
     title="Develop"
     description="Build global applications using familiar APIs and drivers."
-    linkText1="Hello world"
-    linkUrl1="/preview/tutorials/build-apps/"
-    linkText2="Build global applications"
-    linkUrl2="/preview/develop/build-global-apps/"
+    linkText1="Global applications"
+    linkUrl1="/preview/develop/build-global-apps/"
+    linkText2="Hybrid and multi-cloud"
+    linkUrl2="/preview/develop/multi-cloud/"
     linkText3="Drivers and ORMs"
     linkUrl3="/preview/drivers-orms/"
   >}}
