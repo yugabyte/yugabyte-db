@@ -18,7 +18,7 @@ type: indexpage
       title="yugabyted reference"
       body="Use the yugabyted utility to launch and manage universes."
       href="yugabyted/"
-      icon="/images/section_icons/deploy/manual-deployment.png">}}
+      icon="fa-thin fa-rocket">}}
 
 {{</index/block>}}
 
@@ -31,13 +31,13 @@ You can use the yb-tserver and yb-master binaries to manually start and configur
       title="yb-master reference"
       body="Configure YB-Master servers to manage cluster metadata, tablets, and coordination of cluster-wide operations."
       href="yb-master/"
-      icon="/images/section_icons/reference/configuration/yb-master.png">}}
+      icon="fa-thin fa-sliders">}}
 
   {{<index/item
       title="yb-tserver reference"
       body="Configure YB-TServer servers to store and manage data for client applications."
       href="yb-tserver/"
-      icon="/images/section_icons/reference/configuration/yb-tserver.png">}}
+      icon="fa-thin fa-sliders">}}
 
 {{</index/block>}}
 
@@ -48,12 +48,12 @@ You can use the yb-tserver and yb-master binaries to manually start and configur
       title="Supported operating systems"
       body="Operating systems for deploying YugabyteDB and YugabyteDB Anywhere."
       href="operating-systems/"
-      icon="/images/section_icons/deploy/enterprise/administer.png">}}
+      icon="fa-thin fa-window">}}
 
   {{<index/item
       title="Default ports"
       body="Default ports for APIs, RPCs, and admin web servers."
       href="default-ports/"
-      icon="/images/section_icons/deploy/enterprise/administer.png">}}
+      icon="fa-thin fa-network-wired">}}
 
 {{</index/block>}}
