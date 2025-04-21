@@ -12,14 +12,9 @@ type: indexpage
 showRightNav: true
 ---
 
-Welcome to the Explore section of the YugabyteDB documentation, your gateway to mastering distributed SQL and building resilient, scalable applications! Whether you're setting up your first YugabyteDB cluster, diving into powerful APIs like YSQL and YCQL, or optimizing performance for global deployments, this section offers hands-on guidance and deep insights. From core database operations to advanced features like distributed transactions, real-time data streaming, and robust security, Explore equips you with the tools and knowledge to harness YugabyteDB's cloud-native architecture and unlock its full potential for your mission-critical workloads.
+Whether you're setting up your first YugabyteDB cluster, diving into powerful APIs like YSQL and YCQL, or optimizing performance for global deployments, Explore offers hands-on guidance and deep insights. From core database operations to advanced features like distributed transactions, real-time data streaming, and robust security, Explore equips you with the tools and knowledge to harness YugabyteDB's cloud-native architecture and unlock its full potential for your mission-critical workloads.
 
-## API
-
-YugabyteDB offers two APIs designed for building scalable, distributed applications:
-
-- YSQL is fully compatible with PostgreSQL, supporting all standard PostgreSQL features including data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and more.
-- YCQL supports most Cassandra features, such as data types, queries, expressions, operators, and more.
+## API compatibility and data models
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
@@ -45,35 +40,7 @@ YugabyteDB offers two APIs designed for building scalable, distributed applicati
 
 {{< /sections/3-boxes >}}
 
-## Database
-
-{{< sections/3-boxes>}}
-  {{< sections/3-box-card
-    title="Transactions"
-    description="Distributed transactions and isolation levels in YugabyteDB."
-    buttonText="YSQL"
-    buttonUrl="transactions/"
-  >}}
-
-  {{< sections/3-box-card
-    title="Colocation"
-    description="Keep closely related data together via colocation."
-    buttonText="Connect"
-    buttonUrl="colocation/"
-  >}}
-
-  {{< sections/3-box-card
-    title="Query tuning"
-    description="Identify and optimize queries in YSQL."
-    buttonText="YCQL"
-    buttonUrl="query-1-performance/"
-  >}}
-
-{{< /sections/3-boxes >}}
-
-## Deploy and manage
-
-YugabyteDB features built-in resiliency and seamless scalability.
+## Core capabilities
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
@@ -89,138 +56,71 @@ YugabyteDB features built-in resiliency and seamless scalability.
     buttonText="Connect"
     buttonUrl="linear-scalability/"
   >}}
+  {{< sections/3-box-card
+    title="Transactions"
+    description="Distributed transactions and isolation levels."
+    buttonText="YSQL"
+    buttonUrl="transactions/"
+  >}}
+
+{{< /sections/3-boxes >}}
+
+## Deployment and operations
+
+{{< sections/3-boxes>}}
 
   {{< sections/3-box-card
     title="Multi-region deployments"
-    description="Multi-region topologies."
-    buttonText="YCQL"
+    description="Flexible deployment options to achieve the right mix of latency, resilience, and consistency."
+    buttonText="Deploy"
     buttonUrl="multi-region-deployments/"
-  >}}
-
-  {{< sections/3-box-card
-    title="Change data capture"
-    description="Support for streaming data to Kafka."
-    buttonText="YCQL"
-    buttonUrl="change-data-capture/"
-  >}}
-
-  {{< sections/3-box-card
-    title="Cluster management"
-    description="Using point-in-time recovery."
-    buttonText="YCQL"
-    buttonUrl="cluster-management/"
   >}}
 
   {{< sections/3-box-card
     title="Observability"
     description="Monitoring, alerting, and analyzing metrics."
-    buttonText="YCQL"
+    buttonText="Observability"
     buttonUrl="observability/"
   >}}
 
   {{< sections/3-box-card
     title="Security"
     description="Authentication, authorization (RBAC), encryption, and more."
-    buttonText="YCQL"
+    buttonText="Security"
     buttonUrl="security/security/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Colocation"
+    description="Keep closely related data together via colocation."
+    buttonText="Colocation"
+    buttonUrl="colocation/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Query tuning"
+    description="Identify and optimize queries in YSQL."
+    buttonText="Query tuning"
+    buttonUrl="query-1-performance/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Change data capture"
+    description="Support for streaming data to Kafka."
+    buttonText="Change data capture"
+    buttonUrl="change-data-capture/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Cluster management"
+    description="Using point-in-time recovery."
+    buttonText="Cluster management"
+    buttonUrl="cluster-management/"
   >}}
 
 {{< /sections/3-boxes >}}
 
 
-## API
-
-<ul class="nav yb-pills">
-
-  <li>
-    <a href="ysql-language-features/" class="orange">
-      SQL features
-    </a>
-  </li>
-
-  <li>
-    <a href="going-beyond-sql/" class="orange">
-      Going beyond SQL
-    </a>
-  </li>
-
-  <li>
-    <a href="query-1-performance/" class="orange">
-      Query tuning
-    </a>
-  </li>
-
-  <li>
-    <a href="ycql-language/" class="orange">
-      YCQL features
-    </a>
-  </li>
-</ul>
-
-## Database features
-
-<ul class="nav yb-pills">
-
-  <li>
-    <a href="transactions/" class="orange">
-      Transactions
-    </a>
-  </li>
-
-  <li>
-    <a href="colocation/" class="orange">
-      Colocation
-    </a>
-  </li>
-
-  <li>
-    <a href="change-data-capture/" class="orange">
-      Change data capture
-    </a>
-  </li>
-</ul>
-
-## Deploy and manage
-
-<ul class="nav yb-pills">
-
-  <li>
-    <a href="fault-tolerance/" class="orange">
-      Resiliency
-    </a>
-  </li>
-
-  <li>
-    <a href="linear-scalability/" class="orange">
-      Horizontal scalability
-    </a>
-  </li>
-
-  <li>
-    <a href="multi-region-deployments/" class="orange">
-      Multi-region deployments
-    </a>
-  </li>
-
-  <li>
-    <a href="cluster-management/point-in-time-recovery-ysql/" class="orange">
-      Point-in-time recovery
-    </a>
-  </li>
-
-  <li>
-    <a href="observability/" class="orange">
-      Observability
-    </a>
-  </li>
-
-  <li>
-    <a href="security/security/" class="orange">
-      Security
-    </a>
-  </li>
-
-</ul>
 
 
 <!--
