@@ -313,8 +313,7 @@ Status XClusterTestBase::SetupCertificates(
     const auto universe_sub_dir =
         JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id.ToString());
     RETURN_NOT_OK(CopyDirectory(
-        env, FLAGS_certs_dir, universe_sub_dir, UseHardLinks::kFalse, CreateIfMissing::kTrue,
-        RecursiveCopy::kFalse));
+        env, FLAGS_certs_dir, universe_sub_dir, CopyOption::kCreateIfMissing));
     LOG(INFO) << "Copied certs from " << FLAGS_certs_dir << " to " << universe_sub_dir;
   }
 

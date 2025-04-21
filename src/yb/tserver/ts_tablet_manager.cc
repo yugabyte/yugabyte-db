@@ -1436,8 +1436,8 @@ Status TSTabletManager::DoApplyCloneTablet(
         source_tablet->metadata()->TopSnapshotsDir()), source_snapshot_id.ToString());
     LOG(INFO) << Format("Hard-linking from $0 to $1", source_snapshot_dir, target_snapshot_dir);
     RETURN_NOT_OK(CopyDirectory(
-        fs_manager_->env(), source_snapshot_dir, target_snapshot_dir, UseHardLinks::kTrue,
-        CreateIfMissing::kTrue));
+        fs_manager_->env(), source_snapshot_dir, target_snapshot_dir,
+        CopyOption::kUseHardLinks, CopyOption::kCreateIfMissing, CopyOption::kRecursive));
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_clone_target_marked_ready)) {

@@ -200,8 +200,9 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = JoinPathSegments(GetTestDataDirectory(), "certs");
 
     const auto src_certs_dir = GetCertsDir();
-    ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
-                            UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
+    ASSERT_OK(CopyDirectory(
+        Env::Default(), src_certs_dir, FLAGS_certs_dir,
+        CopyOption::kCreateIfMissing, CopyOption::kKeepPermissions));
 
     LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
   }
@@ -229,8 +230,9 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
 
   void ReplaceYBCertificates() {
     const auto src_certs_dir = JoinPathSegments(GetCertsDir(), "CA2");
-    ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
-                            UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
+    ASSERT_OK(CopyDirectory(
+        Env::Default(), src_certs_dir, FLAGS_certs_dir,
+        CopyOption::kCreateIfMissing, CopyOption::kKeepPermissions));
     LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
 
     const auto combined_cert_file = JoinPathSegments(src_certs_dir, "combinedCA.crt");
