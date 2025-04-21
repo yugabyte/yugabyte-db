@@ -205,8 +205,9 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = JoinPathSegments(GetTestDataDirectory(), "certs");
 
     const auto src_certs_dir = GetCertsDir();
-    ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
-                            UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
+    ASSERT_OK(CopyDirectory(
+        Env::Default(), src_certs_dir, FLAGS_certs_dir,
+        CopyOption::kCreateIfMissing, CopyOption::kKeepPermissions));
 
     LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
   }
@@ -234,8 +235,9 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
 
   void ReplaceYBCertificates() {
     const auto src_certs_dir = JoinPathSegments(GetCertsDir(), "CA2");
-    ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
-                            UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
+    ASSERT_OK(CopyDirectory(
+        Env::Default(), src_certs_dir, FLAGS_certs_dir,
+        CopyOption::kCreateIfMissing, CopyOption::kKeepPermissions));
     LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
 
     const auto combined_cert_file = JoinPathSegments(src_certs_dir, "combinedCA.crt");
@@ -275,8 +277,7 @@ TEST_F_EX(ExternalMiniClusterSecureTest, ReloadCertificates, ExternalMiniCluster
 }
 
 class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecureTest {
-
-  public:
+ public:
   void SetUpFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =
       JoinPathSegments(env_util::GetRootDir("test_certs"), "test_certs/intermediate1");
@@ -304,15 +305,14 @@ class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecur
     proc.SetEnv("PGPASSWORD", "yugabyte");
     ASSERT_OK(proc.Start());
     int status = ASSERT_RESULT(proc.Wait());
-    ASSERT_TRUE(status == 0);
+    ASSERT_EQ(status, 0);
   }
 };
 
 
 class ExternalMiniClusterSecureWithInterCAServerCertTest :
-  public ExternalMiniClusterSecureWithInterCATest {
-
-  public:
+    public ExternalMiniClusterSecureWithInterCATest {
+ public:
   void SetUpFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =  JoinPathSegments(
         env_util::GetRootDir("test_certs"), "test_certs/intermediate2");
