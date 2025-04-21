@@ -2728,6 +2728,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
       vector_slice,
       vector_index::SearchOptions {
         .max_num_results = max_results,
+        .ef = options.hnsw_options().ef_search(),
         .filter = std::ref(filter),
       }
   ));
