@@ -56,7 +56,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Events Listen / Notify](#events-listen-notify)
 - [Two-Phase Commit](#two-phase-commit)
 - [DDL operations within the Transaction](#ddl-operations-within-the-transaction)
-- [Hotspots with range-sharded timestamp/date indexes](#hotspots-with-range-sharded-timestampdate-indexes)
+- [Hotspots with range-sharded timestamp/date indexes](#hotspots-with-range-sharded-timestamp-date-indexes)
 
 ### Adding primary key to a partitioned table results in an error
 
