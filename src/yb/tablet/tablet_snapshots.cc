@@ -516,7 +516,8 @@ Status TabletSnapshots::RestoreCheckpoint(
     RETURN_NOT_OK(DeleteStorages(CompleteShutdownStorages(op_pauses)));
 
     auto s = CopyDirectory(
-        &rocksdb_env(), snapshot_dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
+        &rocksdb_env(), snapshot_dir, db_dir,
+        CopyOption::kUseHardLinks, CopyOption::kCreateIfMissing, CopyOption::kRecursive);
     if (PREDICT_FALSE(!s.ok())) {
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
@@ -619,7 +620,8 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
   auto dest_dir = source_dir + kTempSnapshotDirSuffix;
   RETURN_NOT_OK(CleanupSnapshotDir(dest_dir));
   RETURN_NOT_OK(CopyDirectory(
-      &rocksdb_env(), source_dir, dest_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue));
+      &rocksdb_env(), source_dir, dest_dir,
+      CopyOption::kUseHardLinks, CopyOption::kCreateIfMissing, CopyOption::kRecursive));
 
   {
     rocksdb::Options rocksdb_options;
