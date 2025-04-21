@@ -40,7 +40,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
     title="Explore"
     description="Explore YugabyteDB's support for cloud-native applications."
     linkText1="PostgreSQL compatibility"
-    linkUrl1="/preview/preview/explore/ysql-language-features/"
+    linkUrl1="/preview/explore/ysql-language-features/"
     linkText2="Resilience"
     linkUrl2="/preview/explore/fault-tolerance/"
     linkText3="Scalability"
