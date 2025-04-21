@@ -300,6 +300,7 @@ void VectorLSMTest::CheckQueryVector(
 
     SearchOptions options = {
       .max_num_results = max_num_results,
+      .ef = 0,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));
     LOG(INFO) << "Search result: " << AsString(search_result);
