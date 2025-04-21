@@ -7,7 +7,7 @@ menu:
   v2024.1:
     identifier: yb-tserver
     parent: configuration
-    weight: 2440
+    weight: 2100
 type: docs
 ---
 
