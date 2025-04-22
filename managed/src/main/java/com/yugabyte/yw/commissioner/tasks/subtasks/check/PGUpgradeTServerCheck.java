@@ -94,9 +94,9 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
 
     try {
       // Clean up the downloaded package from the node.
-      // cleanUpDownloadedPackage(universe, node, isK8sUniverse);
+      cleanUpDownloadedPackage(universe, node, isK8sUniverse);
       // Download the package to the node.
-      // downloadPackage(universe, node, isK8sUniverse);
+      downloadPackage(universe, node, isK8sUniverse);
       // Run check on the node
       if (isK8sUniverse) {
         runCheckOnPod(universe, node);
@@ -105,7 +105,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       }
     } finally {
       // Clean up the downloaded package from the node.
-      // cleanUpDownloadedPackage(universe, node, isK8sUniverse);
+      cleanUpDownloadedPackage(universe, node, isK8sUniverse);
     }
   }
 
