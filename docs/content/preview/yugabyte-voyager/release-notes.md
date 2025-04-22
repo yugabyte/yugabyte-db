@@ -19,7 +19,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 - Regularly monitor the YugabyteDB cluster during data import to ensure good health and prevent suboptimal configurations.
   - If a YugabyteDB node goes down, the terminal UI notifies the user, and Voyager automatically shifts the load to the remaining nodes.
-  - If it is detected that there is replication (CDC/xcluster) set up on the cluster, voyager aborts the import process. This is because during a bulk load of data, it is not recommended to have replication set up on the database, as it could lead to a large increase in the WAL file sizes. This check can be bypassed by using the `--skip-replication-checks` flag.
+  - Voyager aborts the import process if replication (CDC/xCluster) is detected. Bulk data loads with replication enabled are not recommended, as they can significantly increase WAL file sizes. To bypass this check, use the `--skip-replication-checks` flag.
 - Enhanced assessment and schema analysis reports now include schema change recommendations to optimize performance. Specifically, range-sharded indexes on timestamp columns that can cause hotspots are detected and reported with recommended workarounds.
 
 ### Enhancements
