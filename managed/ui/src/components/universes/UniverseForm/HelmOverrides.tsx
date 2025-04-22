@@ -22,8 +22,6 @@ import { YBButton as YBRedesignedButton } from '../../../redesign/components';
 import { YBButton, YBCheckBox, YBModal } from '../../common/forms/fields';
 import { YBCheckbox, YBInput, YBLabel } from '../../../redesign/components';
 import { validateHelmYAML, fetchNodeDetails } from '../../../actions/universe';
-import { showTaskInDrawer } from '../../../actions/tasks';
-import { transitToUniverse } from '../../../redesign/features/universe/universe-form/utils/helpers';
 import {
   createErrorMessage,
   isEmptyObject,
@@ -89,7 +87,7 @@ export const HelmOverridesUniversePage: FC<HelmOverridesUniversePage> = ({
         visible={showOverrideModal}
         onHide={() => setShowOverrideModal(false)}
         getConfiguretaskParams={getConfiguretaskParams}
-        setHelmOverridesData={setHelmOverridesData}
+        submitForm={setHelmOverridesData}
         editValues={editValues}
         editMode={false}
         forceUpdate={true}
@@ -103,7 +101,7 @@ interface HelmOverridesModalProps {
   submitLabel?: string;
   onHide: () => void;
   getConfiguretaskParams: () => Record<string, any>;
-  setHelmOverridesData: (helmYAML: any) => void;
+  submitForm: (helmYAML: any) => void;
   editValues?: Record<string, any>;
   editMode?: boolean;
   forceUpdate?: boolean;
@@ -144,9 +142,8 @@ const AZ_OVERRIDE_SAMPLE = `us-west-1a:
 
 export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
   visible,
-  submitLabel = 'Validate & Save',
   onHide,
-  setHelmOverridesData,
+  submitForm,
   getConfiguretaskParams,
   editValues,
   editMode,
@@ -156,10 +153,6 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
   const [forceConfirm, setForceConfirm] = useState<boolean>(false);
   const [rollingUpgrade, setRollingUpgrade] = useState<boolean>(true);
   const [timeDelay, setTimeDelay] = useState<number>(180);
-
-  const dispatch = useDispatch();
-
-  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
 
   const formik = useRef({} as FormikProps<HelmOverridesType>);
 
@@ -191,48 +184,37 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
     },
     {
       onSuccess: (resp, reqValues) => {
-        const runOnlyPrechecks = reqValues.values.runOnlyPrechecks;
-        const universeUUID = reqValues.values.universeUUID;
-        if (!runOnlyPrechecks) {
-          const setOverides = () => {
-            setHelmOverridesData({
-              universeOverrides: reqValues.values.universeOverrides,
-              azOverrides: reqValues.values.azOverrides,
-              rollingUpgrade: rollingUpgrade,
-              timeDelay: timeDelay
-            });
-            setValidationError(validation_errors_initial_state);
-            onHide();
-          };
+        const applyHelmOverrides = () => {
+          submitForm({
+            universeOverrides: reqValues.values.universeOverrides,
+            azOverrides: reqValues.values.azOverrides,
+            rollingUpgrade: rollingUpgrade,
+            timeDelay: timeDelay,
+            runOnlyPrechecks: reqValues.values.runOnlyPrechecks
+          });
+          setValidationError(validation_errors_initial_state);
+        };
 
-          if (resp.data.overridesErrors.length > 0) {
-            // has validation errors
-            if (forceConfirm) {
-              //apply overrides, close modal and clear error
-              setOverides();
-            } else {
-              setValidationError(resp.data);
-            }
+        if (resp.data.overridesErrors.length > 0) {
+          if (forceConfirm) {
+            applyHelmOverrides();
           } else {
-            //apply overrides, close modal and clear error
-            setOverides();
+            setValidationError(resp.data);
           }
         } else {
-          if (isNewTaskUIEnabled) {
-            dispatch(showTaskInDrawer(resp.data.taskUUID));
-          } else {
-            transitToUniverse(universeUUID);
-          }
-          onHide();
+          applyHelmOverrides();
         }
       },
       onError: (err: any, reqValues) => {
         // sometimes, the backend throws 500 error, if the validation is failed. we don't want to block the user if that happens
         if (err.response.status === 500) {
           onHide();
-          setHelmOverridesData({
+          submitForm({
             universeOverrides: reqValues.values.universeOverrides,
-            azOverrides: reqValues.values.azOverrides
+            azOverrides: reqValues.values.azOverrides,
+            rollingUpgrade: rollingUpgrade,
+            timeDelay: timeDelay,
+            runOnlyPrechecks: reqValues.values.runOnlyPrechecks
           });
         } else {
           toast.error(createErrorMessage(err));

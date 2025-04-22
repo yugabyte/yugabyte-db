@@ -120,7 +120,6 @@ extern void PushActiveSnapshotWithLevel(Snapshot snapshot, int snap_level);
 extern void PushCopiedSnapshot(Snapshot snapshot);
 extern void UpdateActiveSnapshotCommandId(void);
 extern void PopActiveSnapshot(void);
-extern void PopAllActiveSnapshots(void);
 extern Snapshot GetActiveSnapshot(void);
 extern bool ActiveSnapshotSet(void);
 
@@ -179,6 +178,8 @@ extern void SerializeSnapshot(Snapshot snapshot, char *start_address);
 extern Snapshot RestoreSnapshot(char *start_address);
 extern void RestoreTransactionSnapshot(Snapshot snapshot, void *source_pgproc);
 
+/* YB */
+extern void PopAllActiveSnapshots(void);
 extern void YBCheckSnapshotsAllowed(bool check_isolation_level);
 extern void YbInitSnapshot(Snapshot snap);
 

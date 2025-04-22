@@ -1173,7 +1173,7 @@ static const char *yb_cache_index_name_table[] = {
 static_assert(SysCacheSize == sizeof(yb_cache_index_name_table) /
 			  sizeof(const char *), "Wrong catalog cache number");
 
-char *SysCacheName[] = {
+char	   *SysCacheName[] = {
 	"AGGFNOID",
 	"AMNAME",
 	"AMOID",
@@ -1317,6 +1317,7 @@ static const char *yb_cache_table_name_table[] = {
 	"pg_type",
 	"pg_user_mapping",
 	"pg_yb_tablegroup",
+	"pg_inherits"
 };
 
 static_assert(YbNumCatalogCacheTables ==
@@ -1491,9 +1492,17 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 											  0 /* nkeys */ ,
 											  NULL /* key */ );
 
+	size_t		scanned = 0;
+	instr_time	start;
+
+	if (yb_debug_log_catcache_events)
+		INSTR_TIME_SET_CURRENT(start);
+
 	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
 	{
+		scanned++;
 		SetCatCacheTuple(cache, ntp, RelationGetDescr(relation));
+
 		if (idx_cache)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
@@ -1652,6 +1661,18 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		list_free_deep(list_of_lists);
 	}
 
+	if (yb_debug_log_catcache_events)
+	{
+		instr_time	duration;
+
+		INSTR_TIME_SET_CURRENT(duration);
+		INSTR_TIME_SUBTRACT(duration, start);
+		elog(LOG, "YbPreloadCatalogCache: %ld entries added for "
+			 "cache id %d, index oid %d (relation %s), took %ld us",
+			 scanned, cache->id, cache->cc_indexoid, cache->cc_relname,
+			 INSTR_TIME_GET_MICROSEC(duration));
+	}
+
 	/* Done: mark cache(s) as loaded. */
 	if (!YBCIsInitDbModeEnvVarSet() &&
 		(IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
@@ -1746,6 +1767,7 @@ InitCatalogCachePhase2(void)
 	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
 		InitCatCachePhase2(SysCache[cacheId], true);
 }
+
 
 /*
  * SearchSysCache
@@ -2517,7 +2539,7 @@ YbCheckSysCacheNames()
 #undef CHECK_SYSCACHE_NAME
 	return true;
 }
-#endif /* NDEBUG */
+#endif							/* NDEBUG */
 
 const char *
 YbGetCatalogCacheIndexName(int cache_id)
@@ -2552,7 +2574,8 @@ YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4)
 {
 	elog(LOG, "Computing hash for cache_id: %d, v1: %ld, v2: %ld, v3: %ld, v4: %ld",
 		 cache_id, v1, v2, v3, v4);
-	CatCache *cache = SysCache[cache_id];
+	CatCache   *cache = SysCache[cache_id];
+
 	return YbCatalogCacheComputeHashValue(cache, v1, v2, v3, v4);
 }
 

@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
@@ -67,6 +68,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -111,6 +113,7 @@ public class LocalNodeManager {
   private Map<String, Map<String, String>> provisionArgs = new ConcurrentHashMap<>();
 
   private SpecificGFlags additionalGFlags;
+  private Pair<Set<String>, Set<String>> gFlagsToRemove;
 
   @Setter private int ipRangeStart = 2;
   @Setter private int ipRangeEnd = 100;
@@ -145,6 +148,10 @@ public class LocalNodeManager {
 
   public void addVersionBinPath(String version, String binPath) {
     versionBinPathMap.put(version, binPath);
+  }
+
+  public void setGFlagsToRemove(Pair<Set<String>, Set<String>> gFlagsToRemove) {
+    this.gFlagsToRemove = gFlagsToRemove;
   }
 
   public String getVersionBinPath(String version) {
@@ -529,7 +536,10 @@ public class LocalNodeManager {
     UniverseDefinitionTaskParams.UserIntent intent =
         universe.getCluster(nodeDetails.placementUuid).userIntent;
     NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
-    Process process = nodeInfo.processMap.get(serverType);
+    if (Objects.isNull(nodeInfo)) {
+      log.warn("Node {} not found in nodesByNameMap", nodeName);
+      return;
+    }
     String logsDirPath = getLogsDir(intent, serverType, nodeInfo);
     File logsDir = new File(logsDirPath);
     try {
@@ -850,6 +860,14 @@ public class LocalNodeManager {
     if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
     }
+    if (gFlagsToRemove != null) {
+      gflagsToWrite
+          .keySet()
+          .removeAll(
+              serverType == UniverseTaskBase.ServerType.MASTER
+                  ? gFlagsToRemove.getFirst()
+                  : gFlagsToRemove.getSecond());
+    }
     String fileName = getNodeGFlagsFile(userIntent, serverType, nodeInfo);
     log.debug("Write gflags {} for {} to file {}", gflagsToWrite, serverType, fileName);
     File flagFileTmpPath = new File(fileName);
@@ -918,6 +936,7 @@ public class LocalNodeManager {
     for (Integer lastTwoBytes : ips) {
       String ip = LOOPBACK_PREFIX + ((lastTwoBytes >> 8) & 0xFF) + "." + (lastTwoBytes & 0xFF);
       if (usedIPs.contains(ip)) {
+        log.debug("Will not use ip {} because it is in use", ip);
         continue;
       }
       try {
@@ -925,6 +944,7 @@ public class LocalNodeManager {
         boolean success = true;
         for (Integer port : ports) {
           if (!isPortFree(bindIp, port)) {
+            log.debug("Will not use ip {} because port {} on this ip is in use", ip, port);
             success = false;
             break;
           }
@@ -933,9 +953,11 @@ public class LocalNodeManager {
           continue;
         }
       } catch (IOException e) {
+        log.debug("Will not use ip {} because of exception {}", ip, e.getMessage());
         continue;
       }
       if (usedIPs.add(ip)) {
+        log.debug("Using ip {}", ip);
         return ip;
       }
     }

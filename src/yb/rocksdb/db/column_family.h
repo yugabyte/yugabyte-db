@@ -338,11 +338,11 @@ class ColumnFamilyData {
   bool pending_compaction() const;
 
   bool pending_compaction(CompactionSizeKind compaction_size_kind) const {
-    return num_pending_compactions_[yb::to_underlying(compaction_size_kind)] > 0;
+    return num_pending_compactions_[std::to_underlying(compaction_size_kind)] > 0;
   }
 
   size_t num_pending_compactions(CompactionSizeKind compaction_size_kind) const {
-    return num_pending_compactions_[yb::to_underlying(compaction_size_kind)];
+    return num_pending_compactions_[std::to_underlying(compaction_size_kind)];
   }
 
   // Recalculate some small conditions, which are changed only during

@@ -1254,7 +1254,7 @@ gen_partprune_steps_internal(GeneratePruningStepsContext *context,
 		}
 
 		/*
-		 * Check if this clause involves a function expression that can be
+		 * YB: Check if this clause involves a function expression that can be
 		 * used for partition pruning.
 		 */
 		if (IsA(clause, FuncExpr))
@@ -1270,7 +1270,7 @@ gen_partprune_steps_internal(GeneratePruningStepsContext *context,
 	}
 
 	/*
-	 * If function-based pruning can be done, generate steps for it.
+	 * YB: If function-based pruning can be done, generate steps for it.
 	 */
 	if (generate_func_steps)
 	{
@@ -2918,7 +2918,8 @@ get_matching_list_bounds(PartitionPruneContext *context,
 
 		case BTGreaterEqualStrategyNumber:
 			inclusive = true;
-			switch_fallthrough();
+			/* fall through */
+			yb_switch_fallthrough();
 		case BTGreaterStrategyNumber:
 			off = partition_list_bsearch(partsupfunc,
 										 partcollation,
@@ -2953,7 +2954,8 @@ get_matching_list_bounds(PartitionPruneContext *context,
 
 		case BTLessEqualStrategyNumber:
 			inclusive = true;
-			switch_fallthrough();
+			/* fall through */
+			yb_switch_fallthrough();
 		case BTLessStrategyNumber:
 			off = partition_list_bsearch(partsupfunc,
 										 partcollation,
@@ -3200,7 +3202,8 @@ get_matching_range_bounds(PartitionPruneContext *context,
 
 		case BTGreaterEqualStrategyNumber:
 			inclusive = true;
-			switch_fallthrough();
+			/* fall through */
+			yb_switch_fallthrough();
 		case BTGreaterStrategyNumber:
 
 			/*
@@ -3281,7 +3284,8 @@ get_matching_range_bounds(PartitionPruneContext *context,
 
 		case BTLessEqualStrategyNumber:
 			inclusive = true;
-			switch_fallthrough();
+			/* fall through */
+			yb_switch_fallthrough();
 		case BTLessStrategyNumber:
 
 			/*
@@ -3873,14 +3877,14 @@ match_boolean_partition_clause(Oid partopfamily, Expr *clause, Expr *partkey,
 				case IS_NOT_TRUE:
 					*noteq = true;
 					/* fall through */
-					switch_fallthrough();	/* YB added */
+					yb_switch_fallthrough();
 				case IS_TRUE:
 					*outconst = (Expr *) makeBoolConst(true, false);
 					break;
 				case IS_NOT_FALSE:
 					*noteq = true;
 					/* fall through */
-					switch_fallthrough();	/* YB added */
+					yb_switch_fallthrough();
 				case IS_FALSE:
 					*outconst = (Expr *) makeBoolConst(false, false);
 					break;

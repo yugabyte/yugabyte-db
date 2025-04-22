@@ -556,6 +556,7 @@ message_level_is_interesting(int elevel)
 	return false;
 }
 
+
 /*
  * in_error_recursion_trouble --- are we at risk of infinite error recursion?
  *
@@ -1583,6 +1584,7 @@ errhint(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
+
 /*
  * errhint_plural --- add a hint error message text to the current error,
  * with support for pluralization of the message text
@@ -1604,6 +1606,7 @@ errhint_plural(const char *fmt_singular, const char *fmt_plural,
 	recursion_depth--;
 	return 0;					/* return value does not matter */
 }
+
 
 /*
  * errcontext_msg --- add a context error message text to the current error
@@ -1659,6 +1662,7 @@ set_errcontext_domain(const char *domain)
 
 	return 0;					/* return value does not matter */
 }
+
 
 /*
  * errhidestmt --- optionally suppress STATEMENT: field of log entry
@@ -1883,6 +1887,7 @@ getinternalerrposition(void)
 
 	return edata->internalpos;
 }
+
 
 /* YB_TODO(neil)
  *  - Check if the following assert needs to be called in Pg15 elog functions.
@@ -2280,7 +2285,7 @@ void
 FlushErrorState(void)
 {
 	/*
-	 * Teoretically if error is raised and caught during construction of
+	 * YB: Theoretically if error is raised and caught during construction of
 	 * another message should leave something in the stack to continue the
 	 * construction. However, it seems like expectation is that FlushErrorState
 	 * should empty out everything, so in multi-thread mode too, remove and
@@ -3461,7 +3466,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				else
 					appendStringInfoString(buf, unpack_sql_state(edata->sqlerrcode));
 				break;
-			case 'C':
+			case 'C':	/* YB */
 				{
 					const char *cloud = YBGetCurrentCloud();
 
@@ -3474,7 +3479,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'R':
+			case 'R':	/* YB */
 				{
 					const char *region = YBGetCurrentRegion();
 
@@ -3487,7 +3492,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'Z':
+			case 'Z':	/* YB */
 				{
 					const char *zone = YBGetCurrentZone();
 
@@ -3500,7 +3505,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'U':
+			case 'U':	/* YB */
 				{
 					const char *uuid = YBGetCurrentUUID();
 
@@ -3513,7 +3518,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'N':
+			case 'N':	/* YB */
 				{
 					const char *node = YBGetCurrentMetricNodeName();
 
@@ -3526,7 +3531,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'H':
+			case 'H':	/* YB */
 				{
 					char		name[MAX_HOSTNAME_LENGTH];
 					const int	ret = gethostname(name, sizeof(name));
@@ -4236,7 +4241,7 @@ trace_recovery(int trace_level)
 }
 
 /*
- * Custom format string handling
+ * YB: Custom format string handling
  *
  * The main problem we are trying to solve here is the national laguage support.
  * First of all, we do not want to format message in the YbGate environment.

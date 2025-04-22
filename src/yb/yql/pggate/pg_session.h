@@ -129,18 +129,16 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   // Operations on Tablegroup.
   //------------------------------------------------------------------------------------------------
 
-  Status DropTablegroup(const PgOid database_oid,
-                        PgOid tablegroup_oid);
-
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
   Status CreateSchema(const std::string& schema_name, bool if_not_exist);
   Status DropSchema(const std::string& schema_name, bool if_exist);
 
   // API for table operations.
-  Status DropTable(const PgObjectId& table_id);
+  Status DropTable(const PgObjectId& table_id, bool use_regular_transaction_block);
   Status DropIndex(
       const PgObjectId& index_id,
+      bool use_regular_transaction_block,
       client::YBTableName* indexed_table_name = nullptr);
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(
@@ -236,6 +234,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
+
+  void SetLockTimeout(int lock_timeout_ms);
 
   Status ValidatePlacement(const std::string& placement_info, bool check_satisfiable);
 

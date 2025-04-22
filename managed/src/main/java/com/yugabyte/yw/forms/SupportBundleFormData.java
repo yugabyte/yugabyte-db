@@ -68,4 +68,9 @@ public class SupportBundleFormData {
       value = "Map of query names to custom PromQL queries to collect in promdump",
       required = false)
   public Map<String, String> promQueries = new HashMap<>();
+
+  @ApiModelProperty(
+      value =
+          "Specifies if Postgres audit logs should be filtered out when collecting universe logs.")
+  public boolean filterPgAuditLogs = false;
 }

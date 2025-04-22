@@ -101,6 +101,14 @@ const (
 	HashicorpVaultAuthNamespaceField = "HC_VAULT_AUTH_NAMESPACE"
 )
 
+// URL scheme
+const (
+	// HTTPURLScheme http scheme
+	HTTPURLScheme = "http"
+	// HTTPSURLScheme https scheme
+	HTTPSURLScheme = "https"
+)
+
 // Minimum YugabyteDB Anywhere versions to support operation
 const (
 
@@ -261,6 +269,18 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Allowed states for support bundle
+const (
+	// RunningSupportBundleState state
+	RunningSupportBundleState = "Running"
+	// AbortedSupportBundleState state
+	AbortedSupportBundleState = "Aborted"
+	// SuccessSupportBundleState state
+	SuccessSupportBundleState = "Success"
+	// FailedSupportBundleState state
+	FailedSupportBundleState = "Failed"
+)
+
 // Allowed states for XCluster Universe Lifecycle
 const (
 	// InitializedXClusterState indicates the XCluster universe is initialized
@@ -338,6 +358,8 @@ const (
 	SecurityOperation = "Security"
 	// PITROperation type
 	PITROperation = "PITR"
+	// SupportBundleOperation type
+	SupportBundleOperation = "SupportBundle"
 )
 
 // Different resource types that are supported in CLI
@@ -559,6 +581,14 @@ const (
 	DescSortDirection = "DESC"
 	// AscSortDirection
 	AscSortDirection = "ASC"
+)
+
+// Group MappingTypes
+const (
+	// OIDCGroupMappingType type
+	OIDCGroupMappingType = "OIDC"
+	// LDAPGroupMappingType type
+	LDAPGroupMappingType = "LDAP"
 )
 
 // CompletedTaskStates returns set of states that mark the task as completed

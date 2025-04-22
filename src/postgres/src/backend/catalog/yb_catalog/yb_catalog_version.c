@@ -68,7 +68,7 @@ YbGetMasterCatalogVersion()
 			 * fallback to an old protobuf mechanism until the next cache refresh.
 			 */
 			yb_catalog_version_type = CATALOG_VERSION_PROTOBUF_ENTRY;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case CATALOG_VERSION_PROTOBUF_ENTRY:
 			/* deprecated (kept for compatibility with old clusters). */
 			HandleYBStatus(YBCPgGetCatalogMasterVersion(&version));
@@ -148,11 +148,11 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 
 	PG_TRY();
 	{
-		yb_is_calling_internal_function_for_ddl = true;
+		yb_is_calling_internal_sql_for_ddl = true;
 		FunctionCallInvoke(fcinfo);
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
-		yb_is_calling_internal_function_for_ddl = false;
+		yb_is_calling_internal_sql_for_ddl = false;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
 			PopActiveSnapshot();
@@ -161,7 +161,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	{
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
-		yb_is_calling_internal_function_for_ddl = false;
+		yb_is_calling_internal_sql_for_ddl = false;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
 			PopActiveSnapshot();
@@ -245,12 +245,12 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 	volatile uint64_t new_version;
 	PG_TRY();
 	{
-		yb_is_calling_internal_function_for_ddl = true;
+		yb_is_calling_internal_sql_for_ddl = true;
 		Datum retval = FunctionCallInvoke(fcinfo);
 
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
-		yb_is_calling_internal_function_for_ddl = false;
+		yb_is_calling_internal_sql_for_ddl = false;
 		enable_seqscan = saved_enable_seqscan;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
@@ -276,7 +276,7 @@ YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
 	{
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
-		yb_is_calling_internal_function_for_ddl = false;
+		yb_is_calling_internal_sql_for_ddl = false;
 		enable_seqscan = saved_enable_seqscan;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)

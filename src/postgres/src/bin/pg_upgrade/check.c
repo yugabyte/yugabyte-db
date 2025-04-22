@@ -40,20 +40,14 @@ static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
 static char *get_canonical_locale_name(int category, const char *locale);
 
-/* Yugabyte-specific checks */
-
+/* YB functions */
 static void yb_check_upgrade_compatibility_guc(PGconn *old_cluster_conn);
-
 static void yb_check_system_databases_exist(PGconn *old_cluster_conn);
-
 static void yb_check_user_attributes(PGconn *old_cluster_conn,
 									 const char *user_name,
 									 const char **role_attrs);
-
 static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
-
 static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
-
 static void yb_check_installed_extensions();
 
 /*
@@ -131,7 +125,7 @@ check_and_dump_old_cluster(bool live_check)
 	/* Extract a list of databases and tables from the old cluster */
 	get_db_and_rel_infos(&old_cluster);
 
-	/* Enable these checks and other functions to initialize new node */
+	/* YB: Enable these checks and other functions to initialize new node */
 	if (!is_yugabyte_enabled())
 		/* Yugabyte does not support tablespace directories */
 		init_tablespaces();

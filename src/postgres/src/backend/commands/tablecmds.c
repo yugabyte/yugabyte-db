@@ -234,8 +234,9 @@ typedef struct AlteredTableInfo
 	char	   *clusterOnIndex; /* index to use for CLUSTER */
 	List	   *changedStatisticsOids;	/* OIDs of statistics to rebuild */
 	List	   *changedStatisticsDefs;	/* string definitions of same */
-	bool		yb_skip_copy_split_options;
-	/* true if we need to skip copying split options during table rewrite */
+	bool		yb_skip_copy_split_options;	/* true if we need to skip copying
+											   split options during table
+											   rewrite */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
@@ -609,10 +610,8 @@ static void ATPrepAlterColumnType(List **wqueue,
 								  AlterTableCmd *cmd, LOCKMODE lockmode,
 								  AlterTableUtilityContext *context);
 static bool ATColumnChangeRequiresRewrite(Node *expr, AttrNumber varattno);
-static ObjectAddress ATExecAlterColumnType(AlteredTableInfo *tab,
-										   Relation *yb_mutable_rel,
-										   AlterTableCmd *cmd,
-										   LOCKMODE lockmode);
+static ObjectAddress ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
+										   AlterTableCmd *cmd, LOCKMODE lockmode);
 static void RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab);
 static void RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab);
 static void RememberStatisticsForRebuilding(Oid indoid, AlteredTableInfo *tab);
@@ -974,7 +973,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	}
 
 	/*
-	 * In a colocated database, tablegroups are created under the hood.
+	 * YB: In a colocated database, tablegroups are created under the hood.
 	 * Disallow users from using the underlying tablegroups.
 	 */
 	if (MyDatabaseColocated && stmt->tablegroupname)
@@ -1009,8 +1008,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	}
 
 	/*
-	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
-	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
+	 * YB: Check permissions for tablegroup. To create a table within a
+	 * tablegroup, a user must either be a superuser, the owner of the
+	 * tablegroup, or have create perms on it.
 	 */
 	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
 	{
@@ -1171,9 +1171,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	if (accessMethod != NULL)
 		accessMethodId = get_table_am_oid(accessMethod, false);
 
-	/* Handles WITH (table_oid = x). */
 	if (IsYugaByteEnabled())
 	{
+		/* Handles WITH (table_oid = x). */
 		relationId = GetTableOidFromRelOptions(stmt->options, tablespaceId,
 											   stmt->relation->relpersistence);
 
@@ -2146,8 +2146,8 @@ ExecuteTruncateGuts(List *explicit_rels,
 #endif
 
 	/*
-	 * Unsafe truncate cannot be used inside a transaction block. Hence, check
-	 * early and report error if necessary.
+	 * YB: Unsafe truncate cannot be used inside a transaction block. Hence,
+	 * check early and report error if necessary.
 	 */
 	if (IsYugaByteEnabled() &&
 		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
@@ -3977,7 +3977,7 @@ renameatt(RenameStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCRename(stmt, relid);
+		YBCRename(relid, stmt->renameType, stmt->newname, stmt->subname);
 		if (stmt->renameType == OBJECT_COLUMN)
 		{
 			ListCell   *child;
@@ -3988,7 +3988,8 @@ renameatt(RenameStmt *stmt)
 				Oid			childrelid = lfirst_oid(child);
 
 				if (childrelid != relid)
-					YBCRename(stmt, childrelid);
+					YBCRename(childrelid, stmt->renameType, stmt->newname,
+							  stmt->subname);
 			}
 		}
 	}
@@ -4085,8 +4086,13 @@ rename_constraint_internal(Oid myrelid,
 		&& (con->contype == CONSTRAINT_PRIMARY
 			|| con->contype == CONSTRAINT_UNIQUE
 			|| con->contype == CONSTRAINT_EXCLUSION))
+	{
 		/* rename the index; this renames the constraint as well */
 		RenameRelationInternal(con->conindid, newconname, false, true);
+		/* in YB, rename the DocDB table for the index */
+		if (IsYBRelationById(con->conindid) && con->contype != CONSTRAINT_PRIMARY)
+			YBCRename(con->conindid, OBJECT_INDEX, newconname, NULL /* colname */ );
+	}
 	else
 		RenameConstraintById(constraintOid, newconname);
 
@@ -4221,16 +4227,16 @@ RenameRelation(RenameStmt *stmt, bool yb_is_internal_clone_rename)
 	/* YB rename is not needed for a primary key dummy index. */
 	rel = RelationIdGetRelation(relid);
 	needs_yb_rename = (IsYBRelation(rel) &&
-					   !(rel->rd_rel->relkind == RELKIND_INDEX &&
+					   !((rel->rd_rel->relkind == RELKIND_INDEX ||
+						  rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX) &&
 						 rel->rd_index->indisprimary) &&
-					   rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX &&
 					   !yb_is_internal_clone_rename);
 	RelationClose(rel);
 
 	/* Do the work */
 	if (needs_yb_rename)
 	{
-		YBCRename(stmt, relid);
+		YBCRename(relid, stmt->renameType, stmt->newname, stmt->subname);
 	}
 
 	ObjectAddressSet(address, RelationRelationId, relid);
@@ -4863,6 +4869,8 @@ ATController(AlterTableStmt *parsetree,
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
 
+	List	   *rollbackHandles = NIL;
+
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
 	{
@@ -4875,8 +4883,7 @@ ATController(AlterTableStmt *parsetree,
 	relation_close(rel, NoLock);
 
 	/* Phase 2: update system catalogs */
-	List	   *rollbackHandles = NIL;
-
+	/* YB: wrap in try-catch for cache invalidation */
 	PG_TRY();
 	{
 		/*
@@ -4900,6 +4907,7 @@ ATController(AlterTableStmt *parsetree,
 	PG_END_TRY();
 
 	/* Phase 3: scan/rewrite tables as needed, and run afterStmts */
+	/* YB: wrap in try-catch for DDL rollback and cache invalidation */
 	PG_TRY();
 	{
 		ATRewriteTables(parsetree, &wqueue, lockmode, context);
@@ -4957,7 +4965,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	tab = ATGetQueueEntry(wqueue, rel);
 
 	/*
-	 * Setting the flag for ADD PRIMARY KEY use case
+	 * YB: Setting the flag for ADD PRIMARY KEY use case
 	 * at the index adding phase prior to copying the command.
 	 */
 	if (cmd->subtype == AT_AddIndex && IsA(cmd->def, IndexStmt))
@@ -5458,12 +5466,9 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 
 			foreach(lcmd, subcmds)
 			{
-				/* Do not clang-format because this is PG code */
-				/* clang-format off */
 				ATExecCmd(wqueue, tab,
 						  lfirst_node(AlterTableCmd, lcmd),
 						  lockmode, pass, context);
-				/* clang-format on */
 
 				/*
 				 * YB Note: The following only applies to the old ADD/DROP PK
@@ -5504,8 +5509,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 
 
 		/*
-		 * If we have an entirely new relation, the table id for all remaining
-		 * commands needs to be updated
+		 * YB: If we have an entirely new relation, the table id for all
+		 * remaining commands needs to be updated
 		 */
 		if (yb_table_cloned)
 		{
@@ -5544,7 +5549,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 }
 
 /*
- * ATExecCmd: dispatch a subcommand to appropriate execution routine.
+ * ATExecCmd: dispatch a subcommand to appropriate execution routine
  *
  * YB NOTE: Will replace passed relation with another one in case it was re-created.
  */
@@ -6058,11 +6063,12 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 
 		/*
 		 * Relations without storage may be ignored here.
-		 * Foreign tables have no storage, nor do partitioned tables and indexes.
-		 * YB: We do not need to rewrite tables during upgrade because we
-		 * link the DocDB table with the data on master.
-		 * We also want to allow rewrites on partitioned tables to avoid
-		 * schema inconsistencies during backup/restore (see GH#24458).
+		 *
+		 * YB: Foreign tables have no storage, nor do partitioned tables and
+		 * indexes. We do not need to rewrite tables during upgrade because we
+		 * link the DocDB table with the data on master. We also want to allow
+		 * rewrites on partitioned tables to avoid schema inconsistencies
+		 * during backup/restore (see GH#24458).
 		 */
 		if ((!RELKIND_HAS_STORAGE(tab->relkind) &&
 			 (!IsYBRelationById(tab->relid) || tab->relkind != RELKIND_PARTITIONED_TABLE)) ||
@@ -6089,7 +6095,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		}
 
 		/*
-		 * When rewriting a temp relation, we need to execute the PG
+		 * YB: When rewriting a temp relation, we need to execute the PG
 		 * transaction handling code-paths, as PG uses the transaction ID to
 		 * determine what rows are visible to a specific transaction.
 		 */
@@ -6362,7 +6368,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		ListCell   *lcon;
 
 		/*
-		 * Relations without storage may be ignored here too.
+		 * Relations without storage may be ignored here too
+		 *
 		 * YB: We can also ignore YB relations during upgrade because their
 		 * constraints are already validated by the previous version.
 		 */
@@ -6740,14 +6747,12 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 				{
 					case CONSTR_CHECK:
 						if (!ExecCheck(con->qualstate, econtext))
-						{
 							ereport(ERROR,
 									(errcode(ERRCODE_CHECK_VIOLATION),
 									 errmsg("check constraint \"%s\" of relation \"%s\" is violated by some row",
 											con->name,
 											RelationGetRelationName(oldrel)),
 									 errtableconstraint(oldrel, con->name)));
-						}
 						break;
 					case CONSTR_FOREIGN:
 						/* Nothing to do here */
@@ -6775,7 +6780,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Write the tuple out to the new relation */
-			if (newrel && !yb_skip_data_insert_for_table_rewrite)
+			if (newrel && !yb_skip_data_insert_for_xcluster_target)
 			{
 				if (IsYBRelation(newrel))
 					YBCExecuteInsert(newrel,
@@ -8835,7 +8840,6 @@ ATExecDropExpression(Relation rel, const char *colName, bool missing_ok, LOCKMOD
 
 	ObjectAddressSubSet(address, RelationRelationId,
 						RelationGetRelid(rel), attnum);
-
 	return address;
 }
 
@@ -9288,7 +9292,7 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 		yb_tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
 	}
 
-	/* Can't drop a system attribute, except OID */
+	/* Can't drop a system attribute */
 	if (attnum <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -9674,6 +9678,10 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 				(errmsg("ALTER TABLE / ADD CONSTRAINT USING INDEX will rename index \"%s\" to \"%s\"",
 						indexName, constraintName)));
 		RenameRelationInternal(index_oid, constraintName, false, true);
+		/* in YB, rename the DocDB table for the index */
+		if (IsYBRelationById(index_oid) && !stmt->primary)
+			YBCRename(index_oid, OBJECT_INDEX, constraintName,
+					  NULL /* colname */ );
 	}
 
 	/* Extra checks needed if making primary key */
@@ -15183,7 +15191,8 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 		case RELKIND_TOASTVALUE:
 			if (recursing)
 				break;
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -15528,8 +15537,7 @@ ATPrepSetAccessMethod(AlteredTableInfo *tab, Relation rel, const char *amname)
  * ALTER TABLE SET TABLESPACE
  */
 static void
-ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
-					const char *tablespacename, LOCKMODE lockmode,
+ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacename, LOCKMODE lockmode,
 					bool yb_cascade)
 {
 	Oid			tablespaceId;
@@ -15903,8 +15911,10 @@ static void
 ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 {
 	/*
-	 * Shouldn't be called on relations having storage; these are processed
-	 * in phase 3.  Yugabyte tables do not use the Postgres store so it appears to
+	 * Shouldn't be called on relations having storage; these are processed in
+	 * phase 3.
+	 *
+	 * Yugabyte tables do not use the Postgres store so it appears to
 	 * Postgres as if there is no associated storage.
 	 */
 	Assert(IsYBRelation(rel) || !RELKIND_HAS_STORAGE(rel->rd_rel->relkind));
@@ -15957,7 +15967,7 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 	/* Make sure the reltablespace change is visible */
 	CommandCounterIncrement();
 
-	/* Notify the user that this command is async */
+	/* YB: Notify the user that this command is async */
 	ereport(NOTICE,
 			(errmsg("data movement for table %s is successfully initiated",
 					RelationGetRelationName(rel)),
@@ -16017,9 +16027,9 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	yb_orig_tablegroup_oid = get_tablegroup_oid(yb_orig_tablegroup_name, true);
 	yb_new_tablegroup_oid = get_tablegroup_oid(yb_new_tablegroup_name, true);
 	/*
-	 * If a relation name is passed with the ALTER TABLE ALL ... COLOCATED WITH
-	 * ... SET TABLESPACE ... CASCADE command then we get the relation being
-	 * passed.
+	 * YB: If a relation name is passed with the ALTER TABLE ALL ... COLOCATED
+	 * WITH ... SET TABLESPACE ... CASCADE command then we get the relation
+	 * being passed.
 	 */
 	if (stmt->yb_relation != NULL)
 	{
@@ -16033,7 +16043,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	}
 
 	/*
-	 * The new tablespace must not have any colocated relations present in
+	 * YB: The new tablespace must not have any colocated relations present in
 	 * it. As we don't support decolocation of colocated tablets.
 	 */
 	if (MyDatabaseColocated && OidIsValid(yb_new_tablegroup_oid) &&
@@ -16045,7 +16055,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 						stmt->new_tablespacename)));
 
 	/*
-	 * If CASCADE is not specified and the original tablespace contains
+	 * YB: If CASCADE is not specified and the original tablespace contains
 	 * colocated tables then we don't support moving it unless cascade is
 	 * specified.
 	 */
@@ -16186,7 +16196,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 
 					table_close(yb_pg_class, RowExclusiveLock);
 
-					/* Update the pg_shdepend entries. */
+					/* YB: Update the pg_shdepend entries. */
 					changeDependencyOnTablespace(RelationRelationId, relOid,
 												 new_tablespaceoid);
 				}
@@ -16251,6 +16261,8 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 				 errmsg("no matching relations in tablespace \"%s\" found",
 						orig_tablespaceoid == InvalidOid ? "(database default)" :
 						get_tablespace_name(orig_tablespaceoid))));
+
+		/* YB */
 		return new_tablespaceoid;
 	}
 
@@ -16273,7 +16285,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	}
 
 	/*
-	 * Update the dependencies present in pg_shdepend for tablegroup to
+	 * YB: Update the dependencies present in pg_shdepend for tablegroup to
 	 * tablespace dependencies if CASCADE command is used in a colocated
 	 * database.
 	 */
@@ -18164,7 +18176,7 @@ AlterRelationNamespaceInternal(Relation classRel, Oid relOid,
 
 
 		/*
-		 * Call SetSchema handler for the related internal YB DocDB table.
+		 * YB: Call SetSchema handler for the related internal YB DocDB table.
 		 * No YB DocDB table for a primary key dummy index.
 		 */
 		const Relation rel = RelationIdGetRelation(relOid);
@@ -20162,7 +20174,7 @@ DetachPartitionFinalize(Relation rel, Relation partRel, bool concurrent,
 		RemoveInheritance(partRel, rel, true);
 	}
 
-	/* Drop any triggers that were cloned on creation/attach. */
+	/* YB: Drop any triggers that were cloned on creation/attach. */
 	DropClonedTriggersFromPartition(RelationGetRelid(partRel));
 
 	/*

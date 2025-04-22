@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 
+#include "yb/dockv/doc_bson.h"
 #include "yb/util/logging.h"
 
 #include "yb/common/ql_type.h"
@@ -539,6 +540,13 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
     }
 
+    case KeyEntryType::kBson:
+      key_bytes->AppendBson(str_val_);
+      return;
+    case KeyEntryType::kBsonDescending:
+      key_bytes->AppendDescendingBson(str_val_);
+      return;
+
     case KeyEntryType::kTransactionApplyState: FALLTHROUGH_INTENDED;
     case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
@@ -626,6 +634,7 @@ size_t KeyEntryValue::GetEncodedKeyEntryValueSize(DataType data_type) {
     case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
     case DataType::STRING: FALLTHROUGH_INTENDED;
     case DataType::VECTOR: FALLTHROUGH_INTENDED;
+    case DataType::BSON: FALLTHROUGH_INTENDED;
     case DataType::BINARY: FALLTHROUGH_INTENDED;
     case DataType::DECIMAL: FALLTHROUGH_INTENDED;
     case DataType::VARINT: FALLTHROUGH_INTENDED;
@@ -813,6 +822,11 @@ void DoAppendEncodedValue(const Value& value, Buffer* out) {
     case QLValuePB::kGinNullValue:
       out->push_back(ValueEntryTypeAsChar::kGinNull);
       out->push_back(static_cast<char>(value.gin_null_value()));
+      return;
+    case QLValuePB::kBsonValue:
+      // Store bson value as a string.
+      out->push_back(ValueEntryTypeAsChar::kString);
+      out->append(value.bson_value());
       return;
     // default: fall through
   }
@@ -1233,6 +1247,30 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       return Status::OK();
     }
 
+    case KeyEntryType::kBson: {
+      if (out) {
+        string result;
+        RETURN_NOT_OK(BsonKeyFromComparableBinary(slice, &result));
+        new (&out->str_val_) string(std::move(result));
+      } else {
+        RETURN_NOT_OK(BsonKeyFromComparableBinary(slice, nullptr));
+      }
+      type_ref = type;
+      return Status::OK();
+    }
+
+    case KeyEntryType::kBsonDescending: {
+      if (out) {
+        string result;
+        RETURN_NOT_OK(BsonKeyFromComparableBinaryDescending(slice, &result));
+        new (&out->str_val_) string(std::move(result));
+      } else {
+        RETURN_NOT_OK(BsonKeyFromComparableBinaryDescending(slice, nullptr));
+      }
+      type_ref = type;
+      return Status::OK();
+    }
+
     IGNORE_SPECIAL_KEY_ENTRY_TYPES;
   }
   return STATUS_FORMAT(
@@ -1585,6 +1623,8 @@ Status PrimitiveValue::DecodeToQLValuePB(
         ql_value->set_string_value(slice.cdata(), slice.size());
       } else if (data_type == DataType::BINARY || data_type == DataType::VECTOR) {
         ql_value->set_binary_value(slice.cdata(), slice.size());
+      } else if (data_type == DataType::BSON) {
+        ql_value->set_bson_value(slice.cdata(), slice.size());
       } else {
         break;
       }
@@ -2217,6 +2257,8 @@ PrimitiveValue PrimitiveValue::DoFromQLValuePB(const PB& value) {
       return PrimitiveValue(VirtualValueToValueEntryType(value.virtual_value()));
     case QLValuePB::kGinNullValue:
       return PrimitiveValue::GinNull(value.gin_null_value());
+    case QLValuePB::kBsonValue:
+      return PrimitiveValue(value.bson_value());
 
     // default: fall through
   }
@@ -2313,6 +2355,9 @@ bool SharedToQLValuePB(
     case DataType::VECTOR: FALLTHROUGH_INTENDED;
     case DataType::BINARY:
       ql_value->set_binary_value(value.GetString());
+      return true;
+    case DataType::BSON:
+      ql_value->set_bson_value(value.GetString());
       return true;
     case DataType::FROZEN: {
       const auto& type = ql_type->param_type(0);
@@ -2563,6 +2608,13 @@ KeyEntryValue KeyEntryValue::GinNull(uint8_t v) {
   return result;
 }
 
+KeyEntryValue KeyEntryValue::MakeBson(const Slice& str, SortOrder sort_order) {
+  KeyEntryValue result;
+  result.type_ = SELECT_VALUE_TYPE(Bson, sort_order);
+  new (&result.str_val_) std::string(str.cdata(), str.size());
+  return result;
+}
+
 KeyEntryValue::~KeyEntryValue() {
   Destroy();
 }
@@ -2583,7 +2635,8 @@ void KeyEntryValue::Destroy() {
 bool KeyEntryValue::IsStoredAsString() const {
   return IsString()
          || type_ == KeyEntryType::kDecimal || type_ == KeyEntryType::kDecimalDescending
-         || type_ == KeyEntryType::kVarInt || type_ == KeyEntryType::kVarIntDescending;
+         || type_ == KeyEntryType::kVarInt || type_ == KeyEntryType::kVarIntDescending
+         || type_ == KeyEntryType::kBson || type_ == KeyEntryType::kBsonDescending;
 }
 
 bool KeyEntryValue::IsUuid() const {
@@ -2692,6 +2745,8 @@ KeyEntryValue KeyEntryValue::DoFromQLValuePB(const PB& value, SortingType sortin
       return FromQLVirtualValue(value.virtual_value());
     case QLValuePB::kGinNullValue:
       return KeyEntryValue::GinNull(value.gin_null_value());
+    case QLValuePB::kBsonValue:
+      return KeyEntryValue::MakeBson(value.bson_value(), sort_order);
 
     case QLValuePB::kJsonbValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
@@ -2769,6 +2824,8 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kStringDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kBson: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kBsonDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString:
       if (auto_decode_keys) {
         // This is useful when logging write batches for secondary indexes.
@@ -2883,11 +2940,13 @@ int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
     case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kStringDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kBsonDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarIntDescending:
       return other.str_val_.compare(str_val_);
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kDecimal: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kBson: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarInt:
       return str_val_.compare(other.str_val_);
     case KeyEntryType::kInt64Descending:
@@ -3107,6 +3166,8 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
     case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kDecimal: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarIntDescending: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kBson: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kBsonDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarInt:
         return lhs.str_val_ == rhs.str_val_;
 

@@ -1390,14 +1390,14 @@
     showSection = true
     hideChildren = true
 
-[["v2.20"]]
-  name = "Key benefits"
-  weight = 4
-  identifier = "features"
-  url = "/v2.20/features/"
-  ["v2.20".params]
-    showSection = true
-    hideChildren = true
+#[["v2.20"]]
+#  name = "Key benefits"
+#  weight = 4
+#  identifier = "features"
+#  url = "/v2.20/features/"
+#  ["v2.20".params]
+#    showSection = true
+#    hideChildren = true
 
 [["v2.20"]]
   name = "Explore"

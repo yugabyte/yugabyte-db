@@ -135,6 +135,9 @@ service TabletServerService {
       returns (AcquireObjectLockResponsePB);
   rpc ReleaseObjectLocks(ReleaseObjectLockRequestPB)
       returns (ReleaseObjectLockResponsePB);
+  rpc GetYSQLLeaseInfo(GetYSQLLeaseInfoRequestPB) returns (GetYSQLLeaseInfoResponsePB) {
+    option (yb.rpc.trivial) = true;
+  };
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 
@@ -194,6 +197,16 @@ message GetLockStatusResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 
   repeated TabletLockInfoPB tablet_lock_infos = 4;
+}
+
+message GetYSQLLeaseInfoRequestPB {
+}
+
+message GetYSQLLeaseInfoResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional bool is_live = 2;
+  optional uint64 lease_epoch = 3;
 }
 
 message GetMetricsRequestPB {

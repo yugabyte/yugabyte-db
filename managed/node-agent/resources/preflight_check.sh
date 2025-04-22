@@ -243,6 +243,8 @@ check_binary_installed() {
 
 preflight_configure_check() {
 
+  check_yugabyte_user
+
   check_packages_installed
 
   check_binaries_installed
@@ -339,8 +341,6 @@ preflight_all_checks() {
   done
 
   check_ntp_synchronization
-
-  check_yugabyte_user
 
   check_free_space "home_dir_space" "$yb_home_dir"
 

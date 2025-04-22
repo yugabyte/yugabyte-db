@@ -69,6 +69,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
+  async_rpc_tasks_base.cc
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
   backfill_index.cc
@@ -83,6 +84,7 @@ set(MASTER_SRCS
   catalog_manager_util.cc
   clone/clone_state_entity.cc
   clone/clone_state_manager.cc
+  clone/clone_tasks.cc
   cluster_balance.cc
   cluster_balance_activity_info.cc
   cluster_balance_util.cc

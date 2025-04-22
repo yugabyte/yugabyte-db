@@ -787,7 +787,7 @@ extern Datum Float8GetDatum(float8 X);
 #endif
 
 /*
- * Redact the password if it appears in the query.
+ * YB: Redact the password if it appears in the query.
  * If the query is a CREATE USER / CREATE ROLE / ALTER USER / ALTER ROLE, and
  * the the keyword "PASSWORD" exists in the text, redact the portion following it.
  * The logic is refactored from the LOGSTMT_DDL statement case of pgaudit extension.

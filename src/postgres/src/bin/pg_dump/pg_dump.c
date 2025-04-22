@@ -69,6 +69,7 @@
 /* YB includes */
 #include "catalog/pg_index.h"	/* TODO: is needed? */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include <float.h>          /* for DBL_DIG */
 #include <inttypes.h>
 
 typedef struct
@@ -102,27 +103,7 @@ typedef enum OidOptions
 } OidOptions;
 
 /* global decls */
-bool		g_verbose;			/* User wants verbose narration of our
-								 * activities. */
 static bool dosync = true;		/* Issue fsync() to make dump durable on disk. */
-
-/* Cache whether the dumped database is a colocated database. */
-static bool is_colocated_database = false;
-
-/* Cache whether the dumped database is a legacy colocated database. */
-static bool is_legacy_colocated_database = false;
-
-/* Support for YB-only table pg_yb_tablegroup. */
-static bool pg_yb_tablegroup_exists = false;
-
-/*
- * Array of pointers to extensions having configuration tables.
- * Used to update pg_extension catalog tables.
- */
-static ExtensionInfo **yb_dumpable_extensions_with_config_relations = NULL;
-
-/* Number of extensions in array: yb_dumpable_extensions_with_config_relations. */
-static int	yb_num_dumpable_extensions_with_config_relations = 0;
 
 static Oid	g_last_builtin_oid; /* value of the last builtin oid */
 
@@ -146,7 +127,6 @@ static SimpleStringList table_exclude_patterns = {NULL, NULL};
 static SimpleOidList table_exclude_oids = {NULL, NULL};
 static SimpleStringList tabledata_exclude_patterns = {NULL, NULL};
 static SimpleOidList tabledata_exclude_oids = {NULL, NULL};
-
 static SimpleStringList foreign_servers_include_patterns = {NULL, NULL};
 static SimpleOidList foreign_servers_include_oids = {NULL, NULL};
 
@@ -171,7 +151,26 @@ static int	ncomments = 0;
 static SecLabelItem *seclabels = NULL;
 static int	nseclabels = 0;
 
+/* YB variables */
 static bool IsYugabyteEnabled = true;
+bool		g_verbose;			/* User wants verbose narration of our
+								 * activities. */
+/* YB: Cache whether the dumped database is a colocated database. */
+static bool is_colocated_database = false;
+/* YB: Cache whether the dumped database is a legacy colocated database. */
+static bool is_legacy_colocated_database = false;
+/* Support for YB-only table pg_yb_tablegroup. */
+static bool pg_yb_tablegroup_exists = false;
+/*
+ * YB: Array of pointers to extensions having configuration tables.
+ * Used to update pg_extension catalog tables.
+ */
+static ExtensionInfo **yb_dumpable_extensions_with_config_relations = NULL;
+/*
+ * YB: Number of extensions in array:
+ * yb_dumpable_extensions_with_config_relations.
+ */
+static int	yb_num_dumpable_extensions_with_config_relations = 0;
 
 /*
  * The default number of rows per INSERT when
@@ -260,7 +259,6 @@ static void dumpTrigger(Archive *fout, const TriggerInfo *tginfo);
 static void dumpEventTrigger(Archive *fout, const EventTriggerInfo *evtinfo);
 static void dumpTable(Archive *fout, const TableInfo *tbinfo);
 static void dumpTableSchema(Archive *fout, const TableInfo *tbinfo);
-static void dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo);
 static void dumpTableAttach(Archive *fout, const TableAttachInfo *tbinfo);
 static void dumpAttrDef(Archive *fout, const AttrDefInfo *adinfo);
 static void dumpSequence(Archive *fout, const TableInfo *tbinfo);
@@ -341,6 +339,16 @@ static void binary_upgrade_extension_member(PQExpBuffer upgrade_buffer,
 static const char *getAttrName(int attrnum, const TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti, PQExpBuffer buffer);
 static bool nonemptyReloptions(const char *reloptions);
+static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
+									const char *prefix, Archive *fout);
+static char *get_synchronized_snapshot(Archive *fout);
+static void setupDumpWorker(Archive *AHX);
+static void set_restrict_relation_kind(Archive *AH, const char *value);
+static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
+static bool forcePartitionRootLoad(const TableInfo *tbinfo);
+
+/* YB functions */
+static void dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo);
 static void YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
 								const char *reloptions1, const char *reloptions1_prefix,
 								const char *reloptions2, const char *reloptions2_prefix,
@@ -350,14 +358,6 @@ static void YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 								const char *reloptions2, const char *reloptions2_prefix,
 								const char *reloptions3, const char *reloptions3_prefix,
 								Archive *fout);
-static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
-									const char *prefix, Archive *fout);
-static char *get_synchronized_snapshot(Archive *fout);
-static void setupDumpWorker(Archive *AHX);
-static void set_restrict_relation_kind(Archive *AH, const char *value);
-static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
-static bool forcePartitionRootLoad(const TableInfo *tbinfo);
-
 static bool catalogTableExists(Archive *fout, char *tablename);
 static Oid	getDatabaseOid(Archive *fout);
 static PGresult *ybQueryDatabaseData(Archive *fout, PQExpBuffer dbQry);
@@ -431,7 +431,6 @@ main(int argc, char **argv)
 		{"encoding", required_argument, NULL, 'E'},
 		{"help", no_argument, NULL, '?'},
 		{"version", no_argument, NULL, 'V'},
-		{"masters", required_argument, NULL, 'm'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
@@ -454,7 +453,6 @@ main(int argc, char **argv)
 		{"role", required_argument, NULL, 3},
 		{"section", required_argument, NULL, 5},
 		{"serializable-deferrable", no_argument, &dopt.serializable_deferrable, 1},
-		{"no-serializable-deferrable", no_argument, &no_serializable_deferrable, 1},
 		{"snapshot", required_argument, NULL, 6},
 		{"strict-names", no_argument, &strict_names, 1},
 		{"use-set-session-authorization", no_argument, &dopt.use_setsessauth, 1},
@@ -468,11 +466,17 @@ main(int argc, char **argv)
 		{"on-conflict-do-nothing", no_argument, &dopt.do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 10},
 		{"include-foreign-data", required_argument, NULL, 11},
+
+		/* YB: has short option letter */
+		{"masters", required_argument, NULL, 'm'},
+		/* YB: does not have short option letter */
+		{"no-serializable-deferrable", no_argument, &no_serializable_deferrable, 1},
 		{"no-tablegroups", no_argument, &dopt.no_tablegroups, 1},
 		{"no-tablegroup-creations", no_argument, &dopt.no_tablegroup_creations, 1},
 		{"include-yb-metadata", no_argument, &dopt.include_yb_metadata, 1},
 		{"dump-role-checks", no_argument, &dopt.yb_dump_role_checks, 1},
 		{"read-time", required_argument, NULL, 12},
+
 		{NULL, 0, NULL, 0}
 	};
 
@@ -686,7 +690,7 @@ main(int argc, char **argv)
 										  optarg);
 				break;
 
-			case 12:			/* read-time */
+			case 12:			/* YB: read-time */
 				dopt.yb_read_time = pg_strdup(optarg);
 				/* Read time should be convertable to unsigned long long */
 				unsigned long long read_time_ull = strtoull(optarg, NULL, 0);
@@ -708,7 +712,7 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * Enable by default serializable-deferrable mode if it's not explicitly
+	 * YB: Enable by default serializable-deferrable mode if it's not explicitly
 	 * disabled.
 	 */
 	dopt.serializable_deferrable = no_serializable_deferrable ? 0 : 1;
@@ -837,6 +841,7 @@ main(int argc, char **argv)
 
 	fout->numWorkers = numWorkers;
 
+	/* YB */
 	if (dopt.cparams.pghost == NULL || dopt.cparams.pghost[0] == '\0')
 		dopt.cparams.pghost = DefaultHost;
 
@@ -931,7 +936,7 @@ main(int argc, char **argv)
 	pg_yb_tablegroup_exists = catalogTableExists(fout, "pg_yb_tablegroup");
 
 	/*
-	 * Cache (1) whether the dumped database is a colocated database and
+	 * YB: Cache (1) whether the dumped database is a colocated database and
 	 * (2) whether the dumped database is a legacy colocated database
 	 * in global variables.
 	 */
@@ -1030,7 +1035,7 @@ main(int argc, char **argv)
 	for (i = 0; i < numObjs; i++)
 		dumpDumpableObject(fout, dobjs[i]);
 
-	/* Add UPDATE Statement to update pg_extension catalog. */
+	/* YB: Add UPDATE Statement to update pg_extension catalog. */
 	if (dopt.include_yb_metadata &&
 		yb_num_dumpable_extensions_with_config_relations > 0)
 		ybDumpUpdatePgExtensionCatalog(fout);
@@ -1328,9 +1333,9 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	}
 
 	/*
-	 * Hack to avoid issue #12251 which fails if we perform "BEGIN" followed by
-	 * "SET TRANSACTION ISOLATION LEVEL" when yb_enable_read_committed_isolation
-	 * is true.
+	 * YB: Hack to avoid issue #12251 which fails if we perform "BEGIN"
+	 * followed by "SET TRANSACTION ISOLATION LEVEL" when
+	 * yb_enable_read_committed_isolation is true.
 	 *
 	 * TODO(Piyush): Remove this hack once the issue is fixed properly
 	 */
@@ -3210,12 +3215,16 @@ dumpDatabase(Archive *fout)
 	}
 
 	/*
-	 * While dumping create database statements, need to know whether the
+	 * YB: While dumping create database statements, need to know whether the
 	 * database is colocated or not.
 	 */
 	if (is_colocated_database)
 	{
 		appendPQExpBufferStr(creaQry, " colocation = true");
+	}
+	else if (dopt->include_yb_metadata)
+	{
+		appendPQExpBufferStr(creaQry, " colocation = false");
 	}
 
 	/*
@@ -5467,7 +5476,7 @@ getExtensions(Archive *fout, int *numExtensions)
 		selectDumpableExtension(&(extinfo[i]), dopt);
 
 		/*
-		 * Record dumpable extensions having configuration relations.
+		 * YB: Record dumpable extensions having configuration relations.
 		 * (1) Check if we are in the YB mode.
 		 * (2) Check if we need to dump the definition of an extension.
 		 *	   That is, check if there is a corresponding row in pg_extension
@@ -7237,7 +7246,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 
 	if (fout->remoteVersion >= 110000)
 		appendPQExpBuffer(query,
-						  "i.indoption, "
+						  "i.indoption, "	/* YB */
 						  "inh.inhparent AS parentidx, "
 						  "i.indnkeyatts AS indnkeyatts, "
 						  "i.indnatts AS indnatts, "
@@ -7251,7 +7260,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 						  "    attstattarget >= 0) AS indstatvals, ");
 	else
 		appendPQExpBuffer(query,
-						  "i.indoption, "
+						  "i.indoption, "	/* YB */
 						  "0 AS parentidx, "
 						  "i.indnatts AS indnkeyatts, "
 						  "i.indnatts AS indnatts, "
@@ -7447,6 +7456,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 
 				indxinfo[j].indexconstraint = constrinfo->dobj.dumpId;
 
+				/* YB */
 				if (contype == 'p')
 				{
 					tbinfo->primaryKeyIndex = &(indxinfo[j]);
@@ -10759,12 +10769,16 @@ dumpEnumType(Archive *fout, const TypeInfo *tyinfo)
 	int			i_enumlabel;
 	int			i_oid;
 
+	/* These two are added for YB */
+	float4		enum_sortorder;
+	int			i_enumsortorder;
+
 	if (!fout->is_prepared[PREPQUERY_DUMPENUMTYPE])
 	{
 		/* Set up query for enum-specific details */
 		appendPQExpBufferStr(query,
 							 "PREPARE dumpEnumType(pg_catalog.oid) AS\n"
-							 "SELECT oid, enumlabel "
+							 "SELECT oid, enumlabel, enumsortorder "
 							 "FROM pg_catalog.pg_enum "
 							 "WHERE enumtypid = $1 "
 							 "ORDER BY enumsortorder");
@@ -10820,18 +10834,23 @@ dumpEnumType(Archive *fout, const TypeInfo *tyinfo)
 	{
 		i_oid = PQfnumber(res, "oid");
 		i_enumlabel = PQfnumber(res, "enumlabel");
+		i_enumsortorder = PQfnumber(res, "enumsortorder");
 
 		/* Labels with dump-assigned (preserved) oids */
 		for (i = 0; i < num; i++)
 		{
 			enum_oid = atooid(PQgetvalue(res, i, i_oid));
 			label = PQgetvalue(res, i, i_enumlabel);
+			enum_sortorder = atof(PQgetvalue(res, i, i_enumsortorder));
 
 			if (i == 0)
-				appendPQExpBufferStr(q, "\n-- For binary upgrade, must preserve pg_enum oids\n");
+				appendPQExpBufferStr(q, "\n-- For binary upgrade, must preserve pg_enum oids and sortorders\n");
 			appendPQExpBuffer(q,
 							  "SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('%u'::pg_catalog.oid);\n",
 							  enum_oid);
+			appendPQExpBuffer(q,
+							  "SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('%.*g'::real);\n",
+							  DBL_DIG, enum_sortorder);
 			appendPQExpBuffer(q, "ALTER TYPE %s ADD VALUE ", qualtypname);
 			appendStringLiteralAH(q, label, fout);
 			appendPQExpBufferStr(q, ";\n\n");
@@ -15936,7 +15955,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 										  tbinfo->dobj.name, tbinfo->relkind);
 
 		/*
-		 * Colocation backup: preserve implicit tablegroup oid.
+		 * YB: Colocation backup: preserve implicit tablegroup oid.
 		 * Legacy colocated databases skip this step.
 		 */
 		if (is_colocated_database && !is_legacy_colocated_database
@@ -16110,8 +16129,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				actual_atts++;
 			}
 
-			/* Add a PRIMARY KEY constraint if it exists. */
-
+			/* YB: Add a PRIMARY KEY constraint if it exists. */
 			if (tbinfo->primaryKeyIndex)
 			{
 				IndxInfo   *index = tbinfo->primaryKeyIndex;
@@ -16952,8 +16970,7 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 			destroyPQExpBuffer(yb_reloptions);
 		}
 		/* Plain secondary index */
-		appendPQExpBuffer(q, "%s", indxinfo->indexdef);
-		appendPQExpBuffer(q, ";\n");
+		appendPQExpBuffer(q, "%s;\n", indxinfo->indexdef);
 
 		/*
 		 * Append ALTER TABLE commands as needed to set properties that we
@@ -17191,6 +17208,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 	foreign = tbinfo &&
 		tbinfo->relkind == RELKIND_FOREIGN_TABLE ? "FOREIGN " : "";
 
+	/* YB: remove 'p' condition */
 	if (coninfo->contype == 'u' ||
 		coninfo->contype == 'x')
 	{
@@ -17209,9 +17227,9 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 											 indxinfo->dobj.catId.oid, true);
 
 		/*
-		 * #13603 #24260 Postgres does not dump the CREATE INDEX separately for
-		 * constraints, losing information present in CREATE INDEX like index
-		 * type (ASC/HASH). This is acceptable for PG since it only
+		 * YB: #13603 #24260 Postgres does not dump the CREATE INDEX separately
+		 * for constraints, losing information present in CREATE INDEX like
+		 * index type (ASC/HASH). This is acceptable for PG since it only
 		 * supports a specific INDEX type for constraints. However, YB supports
 		 * such index types for constraints.
 		 * To preserve this in a dump, YB emits the CREATE INDEX separately.
@@ -17266,7 +17284,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			appendPQExpBuffer(q, "%s ",
 							  coninfo->contype == 'p' ? "PRIMARY KEY" : "UNIQUE");
 			/*
-			 * See note on #13603 #24260 above.
+			 * YB: See note on #13603 #24260 above.
 			 */
 			if (dump_index_for_constraint)
 			{
@@ -17274,7 +17292,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 								  indxinfo->dobj.name);
 			}
 			/*
-			 * If a table has a non-unique constraint or does not have an
+			 * YB: If a table has a non-unique constraint or does not have an
 			 * index definition, the original ALTER TABLE ADD CONSTRAINT
 			 * command is used and the rest of the query is constructed.
 			 */

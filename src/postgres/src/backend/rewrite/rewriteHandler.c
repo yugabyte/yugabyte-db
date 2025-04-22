@@ -102,11 +102,9 @@ static List *matchLocks(CmdType event, RuleLock *rulelocks,
 						int varno, Query *parsetree, bool *hasUpdate);
 static Query *fireRIRrules(Query *parsetree, List *activeRIRs);
 static bool view_has_instead_trigger(Relation view, CmdType event);
+static Bitmapset *adjust_view_column_set(Bitmapset *cols, List *targetlist,
+										 Relation view_rel, Oid base_relid);
 
-static Bitmapset *adjust_view_column_set(Bitmapset *cols,
-										 List *targetlist,
-										 Relation view_rel,
-										 Oid base_relid);
 
 /*
  * AcquireRewriteLocks -
@@ -1634,6 +1632,7 @@ rewriteValuesRTEToNulls(Query *parsetree, RangeTblEntry *rte)
 	rte->values_lists = newValues;
 }
 
+
 /*
  * matchLocks -
  *	  match the list of locks and returns the matching rules
@@ -3006,6 +3005,7 @@ relation_is_updatable(Oid reloid,
 			rtr = (RangeTblRef *) linitial(viewquery->jointree->fromlist);
 			base_rte = rt_fetch(rtr->rtindex, viewquery->rtable);
 			Assert(base_rte->rtekind == RTE_RELATION);
+
 			if (base_rte->relkind != RELKIND_RELATION &&
 				base_rte->relkind != RELKIND_PARTITIONED_TABLE)
 			{
@@ -3041,10 +3041,8 @@ relation_is_updatable(Oid reloid,
  * relation (as per the checks above in view_query_is_auto_updatable).
  */
 static Bitmapset *
-adjust_view_column_set(Bitmapset *cols,
-					   List *targetlist,
-					   Relation view_rel,
-					   Oid base_relid)
+adjust_view_column_set(Bitmapset *cols, List *targetlist,
+					   Relation view_rel, Oid base_relid)
 {
 	Bitmapset  *result = NULL;
 	int			col;

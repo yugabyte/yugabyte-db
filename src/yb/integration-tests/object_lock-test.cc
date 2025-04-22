@@ -547,14 +547,8 @@ TEST_F(ObjectLockTest, DDLLockWaitsAtMaster) {
       kTimeout, "Wait for blocking on the master"));
 
   DumpMasterAndTServerLocks(cluster_.get(), "After requesting lock from session-2 ");
-  // Locks for weak intents are granted at the Master. But locks for strong intents are not granted.
-  // Neither of the locks are granted by the TServer, as the request is still waiting at the Master.
-  auto old_expected_locks = expected_locks;
-  expected_locks = master_local_lock_manager->TEST_GrantedLocksSize();
-  ASSERT_GE(expected_locks, 1);
-  ASSERT_GT(expected_locks, old_expected_locks);
   for (auto ts : cluster_->mini_tablet_servers()) {
-    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), old_expected_locks);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), expected_locks);
     ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
   }
 
@@ -566,12 +560,10 @@ TEST_F(ObjectLockTest, DDLLockWaitsAtMaster) {
 
   DumpMasterAndTServerLocks(
       cluster_.get(), "After releasing lock from session-1 : session-2 should acquire the lock");
-  expected_locks = master_local_lock_manager->TEST_GrantedLocksSize();
-  ASSERT_GE(expected_locks, 1);
-  ASSERT_EQ(expected_locks, old_expected_locks);
+  ASSERT_EQ(expected_locks, master_local_lock_manager->TEST_GrantedLocksSize());
   ASSERT_EQ(master_local_lock_manager->TEST_WaitingLocksSize(), 0);
   for (auto ts : cluster_->mini_tablet_servers()) {
-    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), old_expected_locks);
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), expected_locks);
     ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_WaitingLocksSize(), 0);
   }
 

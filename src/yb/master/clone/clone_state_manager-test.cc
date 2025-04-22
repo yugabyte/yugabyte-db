@@ -150,7 +150,7 @@ class CloneStateManagerTest : public YBTest {
          UDTypeMap* type_map, ExternalTableSnapshotDataMap* tables_data,
          CoarseTimePoint deadline), (override));
 
-    MOCK_METHOD(Result<TSDescriptorPtr>, PickTserver, (), (override));
+    MOCK_METHOD(Result<TSDescriptorPtr>, GetClosestLiveTserver, (), (override));
     MOCK_METHOD(TSDescriptorVector, GetTservers, (), (override));
   };
 
@@ -567,10 +567,12 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
       .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
   TSDescriptorPtr dummy_ts_desc = std::make_shared<TSDescriptor>(
       "ts0" /* perm_id*/, RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
-  EXPECT_CALL(MockFuncs(), PickTserver).WillOnce(Return(dummy_ts_desc));
+  EXPECT_CALL(MockFuncs(), GetClosestLiveTserver).WillOnce(Return(dummy_ts_desc));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
-  EXPECT_CALL(MockFuncs(), ScheduleClonePgSchemaTask).WillOnce(Return(
-      STATUS_FORMAT(IllegalState, "Fail ScheduleClonePgSchemaTask for test")));
+  EXPECT_CALL(MockFuncs(),
+      ScheduleClonePgSchemaTask(
+        dummy_ts_desc->permanent_uuid(), source_ns_->name(), target_ns_->name(), _, _, _, _, _))
+      .WillOnce(Return(STATUS_FORMAT(IllegalState, "Fail ScheduleClonePgSchemaTask for test")));
 
   auto [source_namespace_id, seq_no] = ASSERT_RESULT(CloneNamespace(
       source_ns_identifier_, kRestoreTime, kTargetNamespaceName,

@@ -204,13 +204,16 @@ class PgCreateIndex final : public PgStatementLeafBase<PgCreateTableBase, StmtOp
 
 class PgDropTable final : public PgStatementLeafBase<PgDdl, StmtOp::kDropTable> {
  public:
-  PgDropTable(const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist);
+  PgDropTable(
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist,
+      bool use_regular_transaction_block);
 
   Status Exec();
 
  protected:
   const PgObjectId table_id_;
   const bool if_exist_;
+  const bool use_regular_transaction_block_;
 };
 
 class PgTruncateTable final : public PgStatementLeafBase<PgDdl, StmtOp::kTruncateTable> {
@@ -227,7 +230,7 @@ class PgDropIndex final : public PgStatementLeafBase<PgDdl, StmtOp::kDropIndex> 
  public:
   PgDropIndex(
       const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool if_exist,
-      bool ddl_rollback_enabled);
+      bool ddl_rollback_enabled, bool use_regular_transaction_block);
 
   Status Exec();
 
@@ -235,6 +238,7 @@ class PgDropIndex final : public PgStatementLeafBase<PgDdl, StmtOp::kDropIndex> 
   const PgObjectId index_id_;
   const bool if_exist_;
   const bool ddl_rollback_enabled_;
+  const bool use_regular_transaction_block_;
 };
 
 class PgAlterTable final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterTable> {

@@ -510,7 +510,7 @@ log_audit_event(AuditEventStackItem *stackItem)
     if (creating_extension)
         return;
 
-    if (yb_is_calling_internal_function_for_ddl)
+    if (yb_is_calling_internal_sql_for_ddl)
         return;
 
     /* If this event has already been logged don't log it again */
@@ -559,7 +559,7 @@ log_audit_event(AuditEventStackItem *stackItem)
                         stackItem->auditEvent.commandText = YbRedactPasswordIfExists(stackItem->auditEvent.commandText,
                             command_tag);
                     }
-                    switch_fallthrough();
+                    yb_switch_fallthrough();
 
                 /* Fall through */
 

@@ -240,6 +240,7 @@ static const char *const subdirs[] = {
 	"pg_logical/mappings"
 };
 
+
 /* path to 'initdb' binary directory */
 static char bin_path[MAXPGPATH];
 static char backend_exec[MAXPGPATH];
@@ -1437,6 +1438,7 @@ setup_config(void)
 	check_ok();
 }
 
+
 /*
  * run the BKI script in bootstrap mode to create template1
  */
@@ -1470,7 +1472,7 @@ bootstrap_template1(void)
 	}
 
 	/*
-	 * Lines from BKI file are not actually used in initdb on local node.
+	 * YB: Lines from BKI file are not actually used in initdb on local node.
 	 * No need to substitute anything
 	 */
 	if (!IsYugaByteLocalNodeInitdb())
@@ -1876,7 +1878,6 @@ setup_privileges(FILE *cmdfd)
 
 	priv_lines = replace_token(privileges_setup, "$POSTGRES_SUPERUSERNAME",
 							   escape_quotes(username));
-
 	for (line = priv_lines; *line != NULL; line++)
 		PG_CMD_PUTS(*line);
 }
@@ -3137,7 +3138,6 @@ initialize_data_directory(void)
 
 	load_plpgsql(cmdfd);
 
-	/* Enable pg_stat_statements */
 	enable_pg_stat_statements(cmdfd);
 
 	/*

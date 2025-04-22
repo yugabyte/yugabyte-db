@@ -165,7 +165,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 	MemoryContext oldcontext;
 
 	/*
-	 * To handle dead tuple for temp table, we shouldn't store its index
+	 * YB: To handle dead tuple for temp table, we shouldn't store its index
 	 * in per-tuple memory context.
 	 */
 	if (IsYBRelation(node->ss.ss_currentRelation))
@@ -283,15 +283,12 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
-			ExprState  *recheckqual = (node->yb_indexqual_for_recheck ?
-									   node->yb_indexqual_for_recheck :
-									   node->recheckqual);
 
 			/*
 			 * Don't reset per-tuple memory context in YB, as the scanned tuple
 			 * resides there.
 			 */
-			if (!ExecQual(recheckqual, econtext))
+			if (!ExecQual(node->recheckqual, econtext))
 			{
 				/* Fails recheck, so drop it and loop back for another */
 				ResetExprContext(econtext);
@@ -394,7 +391,6 @@ StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
 
 	TABLETUPLE_YBCTID(slot) = INDEXTUPLE_YBCTID(itup); /* ybidxbasectid */
 	slot->ts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix; /* ybuniqueidxkeysuffix */
-
 }
 
 /*
@@ -676,9 +672,6 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 		ExecInitQual(node->scan.plan.qual, (PlanState *) indexstate);
 	indexstate->recheckqual =
 		ExecInitQual(node->recheckqual, (PlanState *) indexstate);
-	indexstate->yb_indexqual_for_recheck = node->yb_indexqual_for_recheck
-		? ExecInitQual(node->yb_indexqual_for_recheck, (PlanState *) indexstate)
-		: NULL;
 
 	/*
 	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop
@@ -723,10 +716,10 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 						   NULL);
 
 	/*
-	 * For aggregate pushdown purposes, using the scan keys, determine ahead of
-	 * beginning the scan whether indexqual recheck might happen, and pass that
-	 * information up to the aggregate node.  Only attempt this for YB
-	 * relations since pushdown is not supported otherwise.
+	 * YB: For aggregate pushdown purposes, using the scan keys, determine
+	 * ahead of beginning the scan whether indexqual recheck might happen, and
+	 * pass that information up to the aggregate node.  Only attempt this for
+	 * YB relations since pushdown is not supported otherwise.
 	 */
 	if (IsYBRelation(indexstate->ioss_RelationDesc) &&
 		(eflags & EXEC_FLAG_YB_AGG_PARENT))

@@ -113,6 +113,7 @@ extern void ResourceOwnerRememberHMAC(ResourceOwner owner,
 extern void ResourceOwnerForgetHMAC(ResourceOwner owner,
 									Datum handle);
 
+/* YB */
 extern void ResourceOwnerEnlargeYbPgInheritsRefs(ResourceOwner owner);
 extern void ResourceOwnerRememberYbPgInheritsRef(ResourceOwner owner,
 												 YbPgInheritsCacheEntry entry);

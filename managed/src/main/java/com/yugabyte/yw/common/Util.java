@@ -156,8 +156,8 @@ public class Util {
 
   public static final String GFLAG_GROUPS_PREVIEW_VERSION = "2.23.0.0-b416";
 
-  public static final String CONNECTION_POOLING_PREVIEW_VERSION = "2.23.0.0";
-  public static final String CONNECTION_POOLING_STABLE_VERSION = "2024.1.0.0";
+  public static final String CONNECTION_POOLING_PREVIEW_VERSION = "2.25.0.0";
+  public static final String CONNECTION_POOLING_STABLE_VERSION = "2024.2.0.0";
 
   // This is when the DB side removed the need for "enable_ysql_conn_mgr" flag in
   // "allowed_preview_flags_csv".
@@ -934,7 +934,11 @@ public class Util {
   }
 
   public static boolean isOnPremManualProvisioning(Universe universe) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return isOnPremManualProvisioning(universe.getUniverseDetails());
+  }
+
+  public static boolean isOnPremManualProvisioning(UniverseDefinitionTaskParams params) {
+    UserIntent userIntent = params.getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       return provider.getDetails().skipProvisioning;

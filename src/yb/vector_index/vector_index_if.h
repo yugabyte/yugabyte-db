@@ -26,6 +26,7 @@ namespace yb::vector_index {
 
 struct SearchOptions {
   size_t max_num_results;
+  size_t ef;
   VectorFilter filter = [](const auto&) { return true; };
 };
 

@@ -557,7 +557,6 @@ check_XactIsoLevel(int *newval, void **extra, GucSource source)
 			GUC_check_errmsg("SET TRANSACTION ISOLATION LEVEL must be called before any query");
 			return false;
 		}
-
 		/* We ignore a subtransaction setting it to the existing value. */
 		if (IsSubTransaction())
 		{
@@ -606,11 +605,11 @@ yb_fetch_effective_transaction_isolation_level(void)
 	switch (XactIsoLevel)
 	{
 		case XACT_READ_UNCOMMITTED:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case XACT_READ_COMMITTED:
 			if (IsYBReadCommitted())
 				return "read committed";
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case XACT_REPEATABLE_READ:
 			return "repeatable read";
 		case XACT_SERIALIZABLE:

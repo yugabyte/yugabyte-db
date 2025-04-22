@@ -41,6 +41,7 @@ extern IndexStmt *generateClonedIndexStmt(RangeVar *heapRel,
 										  const struct AttrMap *attmap,
 										  Oid *constraintOid);
 
+/* YB */
 extern CreateStatsStmt *YbGenerateClonedExtStatsStmt(RangeVar *heapRel,
 													 Oid heapRelid,
 													 Oid source_statsid,

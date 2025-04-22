@@ -604,13 +604,14 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->scan.plan.targetlist,
 								  rtoffset, NUM_EXEC_TLIST(plan));
 				splan->scan.plan.qual =
-					fix_scan_list(root, splan->scan.plan.qual, rtoffset, NUM_EXEC_QUAL(plan));
+					fix_scan_list(root, splan->scan.plan.qual,
+								  rtoffset, NUM_EXEC_QUAL(plan));
 				splan->yb_rel_pushdown.quals =
-					fix_scan_list(root, splan->yb_rel_pushdown.quals, rtoffset,
-								  NUM_EXEC_QUAL(plan));
+					fix_scan_list(root, splan->yb_rel_pushdown.quals,
+								  rtoffset, NUM_EXEC_QUAL(plan));
 				/*
-				 * Index quals has to be fixed to refer to index columns, not
-				 * main table columns, so we need to index the indextlist.
+				 * YB: Index quals has to be fixed to refer to index columns,
+				 * not main table columns, so we need to index the indextlist.
 				 * Also, indextlist has to be converted, as ANALYZE may use it.
 				 * Skip that if we don't have index pushdown quals.
 				 */
@@ -1426,13 +1427,6 @@ set_indexonlyscan_references(PlannerInfo *root,
 	/* indextlist must NOT be transformed to reference index columns */
 	plan->indextlist = fix_scan_list(root, plan->indextlist,
 									 rtoffset, NUM_EXEC_TLIST((Plan *) plan));
-
-	/*
-	 * YB note: yb_indexqual_for_recheck is already transformed to reference
-	 * index columns (see YbBuildIndexqualForRecheck). Just set any missing
-	 * opcodes.
-	 */
-	fix_opfuncids((Node *) plan->yb_indexqual_for_recheck);
 
 	pfree(index_itlist);
 

@@ -3014,7 +3014,7 @@ Result<std::optional<std::pair<bool, uint32>>> YBClient::ValidateAutoFlagsConfig
   master::ValidateAutoFlagsConfigResponsePB resp;
   req.mutable_config()->CopyFrom(config);
   if (min_flag_class) {
-    req.set_min_flag_class(to_underlying(*min_flag_class));
+    req.set_min_flag_class(std::to_underlying(*min_flag_class));
   }
 
   // CALL_SYNC_LEADER_MASTER_RPC_EX will return on failure. Capture the Status so that we can handle

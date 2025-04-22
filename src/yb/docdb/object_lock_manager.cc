@@ -443,7 +443,7 @@ void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
         <th>Lock Owner</th>
         <th>Object Id</th>
         <th>Num Holders</th>
-      </tr>\n)";
+      </tr>)";
   for (const auto& [txn, txn_entry] : txn_locks_) {
     std::lock_guard txn_lock(txn_entry.mutex);
     const auto& locks =

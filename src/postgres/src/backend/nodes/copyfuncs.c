@@ -569,7 +569,6 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_SCALAR_FIELD(indexorderdir);
 	COPY_NODE_FIELD(yb_pushdown.quals);
 	COPY_NODE_FIELD(yb_pushdown.colrefs);
-	COPY_NODE_FIELD(yb_indexqual_for_recheck);
 	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
 
 	return newnode;

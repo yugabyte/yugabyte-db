@@ -195,7 +195,8 @@ buildACLCommands(PGconn *yb_conn,
 			if (grantee->len == 0)
 				appendPQExpBufferStr(yb_sql, "PUBLIC;\n");
 			else
-				appendPQExpBuffer(yb_sql, "%s;\n", fmtId(grantee->data));
+				appendPQExpBuffer(yb_sql, "%s;\n",
+								  fmtId(grantee->data));
 
 			if (yb_dump_role_checks)
 			{
@@ -388,6 +389,7 @@ buildDefaultACLCommands(PGconn *yb_conn,
 	}
 
 	destroyPQExpBuffer(prefix);
+
 	return true;
 }
 

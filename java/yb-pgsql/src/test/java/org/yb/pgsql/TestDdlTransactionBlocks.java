@@ -32,9 +32,6 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
-    builder.addMasterFlag("vmodule", "pgsql_operation=5");
-    builder.addCommonTServerFlag(
-          "vmodule", "pg_client_session=5,pg_txn_manager=5,pg_client_service=5");
     builder.addCommonTServerFlag("ysql_log_statement", "all");
     builder.addCommonTServerFlag("TEST_ysql_yb_ddl_transaction_block_enabled", "true");
   }

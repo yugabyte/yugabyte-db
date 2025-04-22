@@ -76,7 +76,7 @@ static_assert(PeerRole_MAX < (1 << kBitsPerPackedRole),
 ConsensusMetadata::PackedRoleAndTerm PackRoleAndTerm(PeerRole role, int64_t term) {
   // Ensure we've had no more than 2305843009213693952 terms in this tablet.
   CHECK_LT(term, 1ull << (8 * sizeof(ConsensusMetadata::PackedRoleAndTerm) - kBitsPerPackedRole));
-  return to_underlying(role) | (term << kBitsPerPackedRole);
+  return std::to_underlying(role) | (term << kBitsPerPackedRole);
 }
 
 int64_t UnpackTerm(ConsensusMetadata::PackedRoleAndTerm role_and_term) {

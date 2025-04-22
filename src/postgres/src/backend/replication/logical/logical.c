@@ -99,9 +99,9 @@ static void stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *tx
 static void stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 									   int nrelations, Relation relations[], ReorderBufferChange *change);
 
-static void yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid);
-
 static void LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin);
+
+static void yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid);
 
 /*
  * Make sure the current settings & environment are capable of doing logical
@@ -309,7 +309,7 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->in_create = in_create;
 
 	/*
-	 * Mark that we need to invalidate the relcache as part of the startup.
+	 * YB: Mark that we need to invalidate the relcache as part of the startup.
 	 *
 	 * Also, initialize the hash table needed for tracking per table relcache
 	 * invalidations based on DDL events.

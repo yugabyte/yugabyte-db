@@ -60,6 +60,7 @@ TEST_F(SysCatalogITest, ReadHighestNormalPreservableOid) {
        SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid((@+1)::pg_catalog.oid);
        CREATE TYPE high_enum AS ENUM ();
        SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid((@+2)::pg_catalog.oid);
+       SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1'::real);
        ALTER TYPE high_enum ADD VALUE 'red';
        SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid((@+3)::pg_catalog.oid);
        SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode((@+4)::pg_catalog.oid);
@@ -82,8 +83,10 @@ TEST_F(SysCatalogITest, ReadHighestNormalPreservableOid) {
 
        CREATE TYPE new_enum AS ENUM ();
        SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('50000'::pg_catalog.oid);
+       SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('1'::real);
        ALTER TYPE new_enum ADD VALUE 'red';
        SELECT pg_catalog.binary_upgrade_set_next_pg_enum_oid('50001'::pg_catalog.oid);
+       SELECT pg_catalog.yb_binary_upgrade_set_next_pg_enum_sortorder('2'::real);
        ALTER TYPE new_enum ADD VALUE 'orange';
       )"));
     auto oid = ASSERT_RESULT(sys_catalog->ReadHighestNormalPreservableOid(database_oid));

@@ -1216,22 +1216,35 @@ DefineIndex(Oid relationId,
 		}
 		else if (IsYBRelation(rel))
 		{
-			if (strcmp(accessMethodName, "btree") == 0 || strcmp(accessMethodName, "hash") == 0)
+			char *new_name = NULL;
+			/* YB: Keeping the gin/hnsw index substitution message silent. */
+			if (strcmp(accessMethodName, "gin") == 0 ||
+				strcmp(accessMethodName, "hnsw") == 0)
 			{
-				ereport(NOTICE,
-						(errmsg("index method \"%s\" was replaced with \"%s\" in YugabyteDB",
-								accessMethodName, DEFAULT_YB_INDEX_TYPE)));
-				accessMethodName = DEFAULT_YB_INDEX_TYPE;
-			}
-			if (strcmp(accessMethodName, "gin") == 0)
-			{
-				char	   *new_name = "ybgin";
-
+				new_name = psprintf("yb%s", accessMethodName);
 				ereport(LOG,
-						(errmsg("substituting access method \"%s\" for \"%s\"",
-								accessMethodName, new_name)));
+						(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
+							new_name, accessMethodName)));
 				accessMethodName = new_name;
 			}
+			else
+			{
+				if (strcmp(accessMethodName, "btree") == 0 ||
+					strcmp(accessMethodName, "hash") == 0)
+					new_name = DEFAULT_YB_INDEX_TYPE;
+
+				else if (strcmp(accessMethodName, "hnsw") == 0)
+					new_name = "ybhnsw";
+
+				if (new_name != NULL)
+				{
+					ereport(NOTICE,
+							(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
+								new_name, accessMethodName)));
+					accessMethodName = new_name;
+				}
+			}
+
 		}
 	}
 
@@ -2183,7 +2196,7 @@ DefineIndex(Oid relationId,
 		StartTransactionCommand();
 
 		YbDdlMode ddl_mode = (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) ?
-							  YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT :
+							  YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
 							  YB_DDL_MODE_VERSION_INCREMENT;
 		YBIncrementDdlNestingLevel(ddl_mode);
 
@@ -2222,6 +2235,20 @@ DefineIndex(Oid relationId,
 
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 									 YB_PROGRESS_CREATEIDX_BACKFILLING);
+
+		/*
+		 * PG acquires ShareUpdateExclusiveLock on the main table for the
+		 * duration of the backfill so as to allow DMLs but prevent concurrent
+		 * schema changes, including parallel index creation requests. And it
+		 * acquires RowExclusiveLock on the index as backfill modifies data in
+		 * the index table.
+		 *
+		 * YB: Since backfill jobs run independently at each tablet, acquire
+		 * relevant locks here so as to hold them for the whole duration of the
+		 * backfill.
+		 */
+		LockRelationOid(relationId, ShareUpdateExclusiveLock);
+		LockRelationOid(indexRelationId, RowExclusiveLock);
 
 		/* TODO(jason): handle exclusion constraints, possibly not here. */
 

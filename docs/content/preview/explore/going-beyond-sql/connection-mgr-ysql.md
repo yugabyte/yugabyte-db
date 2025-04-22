@@ -70,7 +70,14 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 
 ### YugabyteDB Anywhere
 
-{{<tags/feature/ea idea="1368">}}To use built-in connection pooling with universes deployed using YugabyteDB Anywhere, turn on the **Connection pooling** option when [creating](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration) or [modifying](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling) a universe. When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
+{{<tags/feature/ea idea="1368">}}You can use built-in connection pooling with universes deployed using YugabyteDB Anywhere:
+
+- Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
+- Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
+
+When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
+
+While in Early Access, the feature is not available in YugabyteDB Anywhere by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key yb.universe.allow_connection_pooling) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 ## Configuration
 
@@ -89,9 +96,6 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_min_conns_per_db | Minimum number of physical connections that is present in the pool. This limit is not considered while closing a broken physical connection. | 1 |
 | ysql_conn_mgr_num_workers | Number of worker threads used by YSQL Connection Manager. If set to 0, the number of worker threads will be half of the number of CPU cores. | 0 |
 | ysql_conn_mgr_stats_interval | Interval (in seconds) for updating the YSQL Connection Manager statistics. | 1 |
-| ysql_conn_mgr_username | Username to be used by YSQL Connection Manager for creating database connections. | yugabyte |
-| ysql_conn_mgr_password | Password to be used by YSQL Connection Manager for creating database connections. | yugabyte |
-| ysql_conn_mgr_internal_conn_db | Database to which YSQL Connection Manager will make connections to execute internal queries. | yugabyte |
 | ysql_conn_mgr_superuser_sticky | Make superuser connections sticky. | true |
 | ysql_conn_mgr_port | YSQL Connection Manager port to which clients can connect. This must be different from the PostgreSQL port set via `pgsql_proxy_bind_address`. | 5433 |
 | ysql_conn_mgr_server_lifetime | The maximum duration (in seconds) that a backend PostgreSQL connection managed by YSQL Connection Manager can remain open after creation. | 3600 |

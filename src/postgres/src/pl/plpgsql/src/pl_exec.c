@@ -2007,10 +2007,10 @@ exec_stmts(PLpgSQL_execstate *estate, List *stmts)
 		int			rc;
 
 		/*
-		 * Flush buffered operations before executing a new statement since it might
-		 * have non-transactional side-effects that won't be reverted in case the
-		 * buffered operations (i.e., from previous statements) lead to an
-		 * exception.
+		 * YB: Flush buffered operations before executing a new statement since
+		 * it might have non-transactional side-effects that won't be reverted
+		 * in case the buffered operations (i.e., from previous statements)
+		 * lead to an exception.
 		 */
 		if (stmt->cmd_type != PLPGSQL_STMT_EXECSQL)
 		{
@@ -3243,7 +3243,8 @@ exec_stmt_return(PLpgSQL_execstate *estate, PLpgSQL_stmt_return *stmt)
 				/* fulfill promise if needed, then handle like regular var */
 				plpgsql_fulfill_promise(estate, (PLpgSQL_var *) retvar);
 
-				switch_fallthrough();
+				/* FALL THRU */
+				yb_switch_fallthrough();
 
 			case PLPGSQL_DTYPE_VAR:
 				{
@@ -3389,7 +3390,8 @@ exec_stmt_return_next(PLpgSQL_execstate *estate,
 				/* fulfill promise if needed, then handle like regular var */
 				plpgsql_fulfill_promise(estate, (PLpgSQL_var *) retvar);
 
-				switch_fallthrough();
+				/* FALL THRU */
+				yb_switch_fallthrough();
 
 			case PLPGSQL_DTYPE_VAR:
 				{
@@ -4287,9 +4289,10 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	}
 
 	/*
-	 * Flush buffered operations before executing a new statement since it might
-	 * have non-transactional side-effects that won't be reverted in case the
-	 * buffered operations (i.e., from previous statements) lead to an exception.
+	 * YB: Flush buffered operations before executing a new statement since it
+	 * might have non-transactional side-effects that won't be reverted in case
+	 * the buffered operations (i.e., from previous statements) lead to an
+	 * exception.
 	 *
 	 * If we know that the new statement is an INSERT, UPDATE or DELETE, we
 	 * can skip flushing since these statements have only transactional
@@ -5358,7 +5361,8 @@ exec_eval_datum(PLpgSQL_execstate *estate,
 			/* fulfill promise if needed, then handle like regular var */
 			plpgsql_fulfill_promise(estate, (PLpgSQL_var *) datum);
 
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 
 		case PLPGSQL_DTYPE_VAR:
 			{

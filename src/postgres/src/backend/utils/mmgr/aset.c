@@ -100,12 +100,12 @@
 #define ALLOC_BLOCKHDRSZ	MAXALIGN(sizeof(AllocBlockData))
 #define ALLOC_CHUNKHDRSZ	sizeof(struct AllocChunkData)
 
-/* Calculate the total allocated size for a block */
+/* YB: Calculate the total allocated size for a block */
 #define ASET_BLOCK_TOTAL_SIZE(BLK) (BLK->endptr - ((char *)BLK))
 /*
- * Calculate the total initial allocated size for a set. Note that the keeper
- * block is always allocated along with the set header at the same time. It
- * is never removed from the header or replaced.
+ * YB: Calculate the total initial allocated size for a set. Note that the
+ * keeper block is always allocated along with the set header at the same time.
+ * It is never removed from the header or replaced.
  */
 #define ASET_INITIAL_TOTAL_SIZE(SET) (((AllocSetContext *) SET)->keeper->endptr - ((char *) SET))
 
@@ -422,8 +422,8 @@ AllocSetContextCreateInternal(MemoryContext parent,
 	/*
 	 * Check whether the parameters match either available freelist.  We do
 	 * not need to demand a match of maxBlockSize.
-	 * Access to the freelist is not thread safe, so avoid it in multi-thread
-	 * mode.
+	 * YB: Access to the freelist is not thread safe, so avoid it in
+	 * multi-thread mode.
 	 */
 	if (IsMultiThreadedMode())
 		freeListIndex = -1;

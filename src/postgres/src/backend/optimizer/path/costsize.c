@@ -110,6 +110,7 @@
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 
+
 #define LOG2(x)  (log(x) / 0.693147180559945)
 
 /*
@@ -176,8 +177,13 @@ double		yb_backward_seek_cost_factor = YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR;
 double		yb_fast_backward_seek_cost_factor = YB_DEFAULT_FAST_BACKWARD_SEEK_COST_FACTOR;
 int			yb_docdb_merge_cpu_cycles = YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES;
 int			yb_docdb_remote_filter_overhead_cycles = YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES;
-double		yb_local_latency_cost = YB_DEFAULT_LOCAL_LATENCY_COST;
-double		yb_local_throughput_cost = YB_DEFAULT_LOCAL_THROUGHPUT_COST;
+
+double		yb_inter_region_roundtrip_cost = YB_DEFAULT_INTER_REGION_ROUNDTRIP_COST;
+double		yb_inter_region_transfer_cost = YB_DEFAULT_INTER_REGION_TRANSFER_COST;
+double		yb_inter_zone_roundtrip_cost = YB_DEFAULT_INTER_ZONE_ROUNDTRIP_COST;
+double		yb_inter_zone_transfer_cost = YB_DEFAULT_INTER_ZONE_TRANSFER_COST;
+double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
+double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -264,7 +270,9 @@ static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
 static double get_parallel_divisor(Path *path);
 static Cost yb_compute_result_transfer_cost(double result_tuples,
-											int result_width);
+											int result_width,
+											Cost roundtrip_cost,
+											Cost transfer_cost);
 
 
 /*
@@ -604,8 +612,8 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cost		indexStartupCost;
 	Cost		indexTotalCost;
 	Selectivity indexSelectivity;
-	double		indexCorrelation = 0;
-	double		csquared;
+	double		indexCorrelation,
+				csquared;
 	double		spc_seq_page_cost,
 				spc_random_page_cost;
 	Cost		min_IO_cost,
@@ -3476,8 +3484,7 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 				run_cost += inner_run_cost * inner_scan_frac;
 
 			if (outer_matched_rows > 1)
-				run_cost += (outer_matched_rows - 1) *
-					inner_rescan_run_cost * inner_scan_frac;
+				run_cost += (outer_matched_rows - 1) * inner_rescan_run_cost * inner_scan_frac;
 
 			/*
 			 * Add the cost of inner-scan executions for unmatched outer rows.
@@ -6669,14 +6676,17 @@ compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel, Path *bitmapqual,
 }
 
 static Cost
-yb_data_transfer_cost(int round_trips, double data_size)
+yb_data_transfer_cost(int round_trips,
+					  double data_size,
+					  Cost roundtrip_cost,
+					  Cost transfer_cost)
 {
 	/*
-	 * yb_local_latency_cost: DocDB - PG one way communication cost
-	 * yb_local_throughput_cost: per MB data transfer cost
+	 * yb_local_roundtrip_cost: DocDB - PG one way communication cost
+	 * yb_local_transfer_cost: per MB data transfer cost
 	 */
-	return (yb_local_latency_cost * 2 * round_trips +
-			yb_local_throughput_cost * data_size / MEGA);
+	return (roundtrip_cost * round_trips +
+			transfer_cost * data_size / MEGA);
 }
 
 /*
@@ -6690,7 +6700,10 @@ yb_data_transfer_cost(int round_trips, double data_size)
  * bandwidth of the connection.
  */
 static Cost
-yb_compute_result_transfer_cost(double result_tuples, int result_width)
+yb_compute_result_transfer_cost(double result_tuples,
+								int result_width,
+								Cost roundtrip_cost,
+								Cost transfer_cost)
 {
 	int			num_result_pages;
 	double		result_page_size;
@@ -6720,17 +6733,19 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 	}
 
 	return yb_data_transfer_cost(num_result_pages,
-								 num_result_pages * result_page_size);
+								 num_result_pages * result_page_size,
+								 roundtrip_cost,
+								 transfer_cost);
 }
 
 /*
  * yb_get_num_result_pages
  *		Returns the number of result pages will be transferred over network.
  */
-static uint32_t
+static double
 yb_get_num_result_pages(double result_tuples, int result_width)
 {
-	uint32_t	num_result_pages = 0;
+	double		num_result_pages = 0;
 
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
@@ -7159,6 +7174,53 @@ yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 }
 
 /*
+ * yb_get_roundtrip_transfer_costs
+ *
+ * 	Returns the round trip and transfer costs for the given tablespace.
+ *  We get the "distance" of the tablespace from the local zone and use that
+ *  to determine the round trip and transfer costs.
+ */
+void
+yb_get_roundtrip_transfer_costs(Oid tablespace_id,
+								Cost *roundtrip_cost,
+								Cost *transfer_cost)
+{
+	Assert(IsYugaByteEnabled());
+
+	if (!yb_enable_geolocation_costing)
+	{
+		*roundtrip_cost = yb_local_roundtrip_cost;
+		*transfer_cost = yb_local_transfer_cost;
+	}
+	else
+	{
+		YbGeolocationDistance distance = get_tablespace_distance(tablespace_id);
+
+		switch (distance)
+		{
+			case UNKNOWN_DISTANCE:
+				yb_switch_fallthrough();
+			case ZONE_LOCAL:
+				*roundtrip_cost = yb_local_roundtrip_cost;
+				*transfer_cost = yb_local_transfer_cost;
+				break;
+			case REGION_LOCAL:
+				*roundtrip_cost = yb_inter_zone_roundtrip_cost;
+				*transfer_cost = yb_inter_zone_transfer_cost;
+				break;
+			case CLOUD_LOCAL:
+				yb_switch_fallthrough();
+			case INTER_CLOUD:
+				*roundtrip_cost = yb_inter_region_roundtrip_cost;
+				*transfer_cost = yb_inter_region_transfer_cost;
+				break;
+		}
+	}
+
+	return;
+}
+
+/*
  * yb_cost_seqscan
  *		Determines and returns the cost of scanning a relation sequentially.
  *		This is simlar to cost_seqscan function but tailored for YB.
@@ -7189,16 +7251,23 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		per_merge_cost = 0.0;
 	Cost		per_seek_cost = 0.0;
 	Cost		per_next_cost = 0.0;
-	Cost		transfer_cost = 0.0;
+	Cost		result_transfer_cost = 0.0;
 	List	   *pushed_down_clauses = NIL;
 	List	   *local_clauses = NIL;
 	ListCell   *lc;
 	double		remote_filtered_rows;
-	int			num_result_pages;
+	double		num_result_pages;
 	double		num_nexts;
 	double		num_seeks;
 	int			docdb_result_width;
 	double		adjusted_baserel_tuples = baserel->tuples;
+	Cost		roundtrip_cost;
+	Cost		transfer_cost;
+
+	/* Fetch required info about the relation */
+	Relation	relation = relation_open(reloid, NoLock);
+	Oid			tablespace_id = relation->rd_rel->reltablespace;
+	RelationClose(relation);
 
 	/* Mark the path with the correct row estimate */
 	if (param_info)
@@ -7262,6 +7331,9 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 												   baserel, reloid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 
+	yb_get_roundtrip_transfer_costs(tablespace_id,
+									&roundtrip_cost,
+									&transfer_cost);
 
 	/* Adjust costing for parallelism, if used. */
 	if (path->parallel_workers > 0)
@@ -7280,17 +7352,25 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 		path->rows = clamp_row_est(path->rows / parallel_divisor);
 
-		transfer_cost = yb_data_transfer_cost(num_result_pages,
-											  remote_filtered_rows *
-											  docdb_result_width);
+		result_transfer_cost = yb_data_transfer_cost(num_result_pages,
+													 remote_filtered_rows *
+													 docdb_result_width,
+													 roundtrip_cost,
+													 transfer_cost);
 	}
 	else
 	{
 		num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
 												   docdb_result_width);
-		transfer_cost = yb_compute_result_transfer_cost(remote_filtered_rows,
-														docdb_result_width);
+		result_transfer_cost = yb_compute_result_transfer_cost(remote_filtered_rows,
+															   docdb_result_width,
+															   roundtrip_cost,
+															   transfer_cost);
 	}
+
+	/* Network roundtrip cost is added to startup cost */
+	startup_cost += roundtrip_cost;
+	run_cost += result_transfer_cost;
 
 	cost_qual_eval(&qual_cost, pushed_down_clauses, root);
 	startup_cost += qual_cost.startup;
@@ -7311,10 +7391,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
 
 	run_cost += (num_seeks * per_seek_cost) + (num_nexts * per_next_cost);
-
-	/* Network latency cost is added to startup cost */
-	startup_cost += yb_local_latency_cost;
-	run_cost += transfer_cost;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -7356,31 +7432,6 @@ yb_get_index_tuple_width(IndexOptInfo *index, Oid baserel_oid,
 		index_tuple_width += HIDDEN_COLUMNS_SIZE;
 	}
 	return index_tuple_width;
-}
-
-/*
- * add_predicate_to_quals
- *	  Adds the partial index quals to index quals from the query
- */
-static List *
-add_predicate_to_quals(IndexOptInfo *index, List *indexQuals)
-{
-	List	   *predExtraQuals = NIL;
-	ListCell   *lc;
-
-	if (index->indpred == NIL)
-		return indexQuals;
-
-	foreach(lc, index->indpred)
-	{
-		Node	   *predQual = (Node *) lfirst(lc);
-		List	   *oneQual = list_make1(predQual);
-
-		if (!predicate_implied_by(oneQual, indexQuals, false))
-			predExtraQuals = list_concat(predExtraQuals, oneQual);
-	}
-	/* list_concat avoids modifying the passed-in indexQuals list */
-	return list_concat(predExtraQuals, indexQuals);
 }
 
 static bool
@@ -7453,10 +7504,6 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 				if (IsA(other_operand, YbBatchedExpr))
 				{
 					in_expr = true;
-					ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
-
-					clause_op = saop->opno;
-					other_operand = (Node *) lsecond(saop->args);
 
 					int			in_expr_array_length;
 					in_expr_array_length = yb_batch_expr_size(root,
@@ -7630,7 +7677,7 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 		selectivity_current_key_conds =
 			clauselist_selectivity(root,
 								   index_conditions_on_each_column[index_col],
-								   index->rel->relid, JOIN_INNER, NULL);
+								   baserel->relid, JOIN_INNER, NULL);
 
 		if (index_col == index->nkeycolumns - 1)
 		{
@@ -7871,9 +7918,9 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			  bool partial_path)
 {
 	IndexOptInfo *index = path->indexinfo;
-	Relation	index_rel = RelationIdGetRelation(path->indexinfo->indexoid);
+	Relation	index_rel = RelationIdGetRelation(index->indexoid);
 	bool		is_primary_index = index_rel->rd_index->indisprimary;
-
+	Oid			index_tablespace_id = index_rel->rd_rel->reltablespace;
 	RelationClose(index_rel);
 	RelOptInfo *baserel = index->rel;
 	bool		index_only = (path->path.pathtype == T_IndexOnlyScan);
@@ -7890,16 +7937,18 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	RangeTblEntry *rte;
 	Oid			baserel_oid;
 	int32		index_tuple_width;
-
 	/* TODO: Plug here the actual number of key-value pairs per tuple */
 	int			num_key_value_pairs_per_tuple = YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE;
-
 	/* TODO: Plug here the actual number of SST files for this index */
 	int			num_sst_files = YB_DEFAULT_NUM_SST_FILES_PER_TABLE;
 	Cost		per_merge_cost;
 	Cost		index_per_seek_cost;
+	Cost		baserel_per_seek_cost;
+	/* TODO: Plug here the actual number of key-value pairs per tuple */
+	int			num_key_value_pairs_per_tuple_baserel = YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE;
+	/* TODO: Plug here the actual number of SST files for this index */
+	int			num_sst_files_baserel = YB_DEFAULT_NUM_SST_FILES_PER_TABLE;
 	Cost		per_next_cost;
-	Cost		transfer_cost = 0.0;
 	double		num_seeks;
 	double		num_nexts;
 	QualCost	qual_cost;
@@ -7908,25 +7957,30 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	List	   *index_pushed_down_filters = NIL;
 	List	   *index_colrefs = NIL;
 	List	   *local_clauses = NIL;
-	int			index_total_pages;
-	int			index_pages_fetched;
-	int			index_random_pages_fetched;
-	int			index_sequential_pages_fetched;
+	double		index_total_pages;
+	double		index_pages_fetched;
+	double		index_random_pages_fetched;
+	double		index_sequential_pages_fetched;
 	List	  **index_conditions_on_each_column;
-	int			num_result_pages;
 	int			docdb_result_width;
 	int32		baserel_tuple_width = 0;
 	bool		baserel_is_colocated;
 	bool		need_remote_index_filters;
 	double		parallel_divisor = 1.0;
-	double		adjusted_baserel_tuples = baserel->tuples;
+	Cost		index_roundtrip_cost;
+	Cost		index_transfer_cost;
+	double		adjusted_index_tuples = index->tuples;
 
 	/* Should only be applied to base relations */
 	Assert(IsA(baserel, RelOptInfo) && IsA(index, IndexOptInfo));
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
 
-	rte = planner_rt_fetch(index->rel->relid, root);
+	yb_get_roundtrip_transfer_costs(index_tablespace_id,
+									&index_roundtrip_cost,
+									&index_transfer_cost);
+
+	rte = planner_rt_fetch(baserel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
 	baserel_oid = rte->relid;
 	baserel_is_colocated = YbGetTablePropertiesById(baserel_oid)->is_colocated;
@@ -8004,7 +8058,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 								&base_table_colrefs,
 								&index_pushed_down_filters,
 								&index_colrefs,
-								planner_rt_fetch(index->rel->relid, root)->relid);
+								baserel_oid);
 
 	/*
 	 * Sort the index conditions into `index_conditions_on_each_column`.
@@ -8073,7 +8127,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (list_length(index_conditions) > 0)
 		index_conditions_selectivity =
 			clauselist_selectivity(root, index_conditions,
-								   index->rel->relid, JOIN_INNER, NULL);
+								   baserel->relid, JOIN_INNER, NULL);
 	else
 		index_conditions_selectivity = 1.0;
 
@@ -8111,14 +8165,23 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	per_merge_cost = (num_key_value_pairs_per_tuple *
 					  yb_docdb_merge_cpu_cycles *
 					  cpu_operator_cost);
-	index_per_seek_cost = 0;
 
-	if (index->rel->tuples > 0)
+	index_per_seek_cost = 0;
+	if (index->tuples > 0)
 	{
-		index_per_seek_cost = (yb_get_lsm_seek_cost(index->rel->tuples,
+		index_per_seek_cost = (yb_get_lsm_seek_cost(index->tuples,
 													num_key_value_pairs_per_tuple,
 													num_sst_files) +
 							   per_merge_cost);
+	}
+	baserel_per_seek_cost = 0;
+	if (baserel->tuples > 0)
+	{
+		baserel_per_seek_cost =
+			yb_get_lsm_seek_cost(baserel->tuples,
+								 num_key_value_pairs_per_tuple_baserel,
+								 num_sst_files_baserel) +
+			per_merge_cost;
 	}
 	per_next_cost = ((yb_docdb_next_cpu_cycles * cpu_operator_cost) +
 					 per_merge_cost);
@@ -8134,8 +8197,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (path->path.parallel_workers > 0)
 	{
 		parallel_divisor = get_parallel_divisor(&path->path);
-		adjusted_baserel_tuples = clamp_row_est(baserel->tuples /
-												parallel_divisor);
+		adjusted_index_tuples = index->tuples / parallel_divisor;
 		num_seeks = ceil(num_seeks / parallel_divisor);
 		num_nexts = ceil(num_nexts / parallel_divisor);
 	}
@@ -8163,19 +8225,51 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * Estimate number of index tuples that match the index predicate,
 	 * conditions and remote index filters.
 	 */
-	List	   *index_predicates_conditions_and_filters = NIL;
-
-	index_predicates_conditions_and_filters =
-		add_predicate_to_quals(index, index_conditions_and_filters);
-
-	if (list_length(index_predicates_conditions_and_filters) > 0)
+	if (list_length(index_conditions_and_filters) > 0)
 		index_selectivity =
-			clauselist_selectivity(root, index_predicates_conditions_and_filters,
-								   index->rel->relid, JOIN_INNER, NULL);
+			clauselist_selectivity(root, index_conditions_and_filters,
+								   baserel->relid, JOIN_INNER, NULL);
 	else
 		index_selectivity = 1.0;
 	num_index_tuples_matched =
-		clamp_row_est(index_selectivity * adjusted_baserel_tuples);
+		clamp_row_est(index_selectivity * adjusted_index_tuples);
+
+	/*
+	 * Estimate the selectivity of the final result. We already computed
+	 * selectivity of index conditions and filters above. But some filters
+	 * may be pushed down to the base table.
+	 */
+	List	   *all_conditions_and_remote_filters = NIL;
+
+	all_conditions_and_remote_filters =
+		list_concat_unique(all_conditions_and_remote_filters,
+						list_copy(index_conditions_and_filters));
+	all_conditions_and_remote_filters =
+		list_concat_unique(all_conditions_and_remote_filters,
+						list_copy(base_table_pushed_down_filters));
+
+	if (list_length(all_conditions_and_remote_filters) > 0)
+		all_conditions_and_remote_filters_selectivity =
+			clauselist_selectivity(root, all_conditions_and_remote_filters,
+								baserel->relid, JOIN_INNER, NULL);
+	else
+		all_conditions_and_remote_filters_selectivity = 1.0;
+
+	/*
+	 * To compute the cardinality of the result here, we multiple the
+	 * selectivity with the number of tuples in the index, instead of the
+	 * number of tuples in the base table, because the index may be a
+	 * partial index. In this case, the predicate used for the partial index
+	 * is not included in the list of filters applied, but that filter is
+	 * implicitly applied through the partial index.
+	 *
+	 * If we multiply the selectivity with the number of tuples in base table,
+	 * we may not prefer the partial index anymore.
+	 */
+	double		num_baserel_result_rows;
+	num_baserel_result_rows =
+		clamp_row_est(adjusted_index_tuples *
+					  all_conditions_and_remote_filters_selectivity);
 
 	/*
 	 * Disk fetch cost.
@@ -8204,7 +8298,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	{
 		/* Compute the cost of fetching index from disk to memory */
 		index_total_pages =
-			ceil(index->rel->tuples * index_tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
+			ceil(adjusted_index_tuples * index_tuple_width /
+				 YB_DEFAULT_DOCDB_BLOCK_SIZE);
 		index_pages_fetched = clamp_row_est(index_selectivity * index_total_pages);
 		index_random_pages_fetched =
 			ceil(num_seeks / (num_seeks + num_nexts)) * index_pages_fetched;
@@ -8235,91 +8330,36 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			run_cost += num_docdb_blocks_fetched * yb_random_block_cost;
 	}
 
-	/*
-	 * In case of bitmap scan, ybctids from multiple indexes will be
-	 * fetched. The results will be combined and tuples in the result
-	 * set will be fetched from the base table. Here we have to estimate
-	 * the cost of fetching the ybctids for this index, and cache it in
-	 * path->indextotalcost for use in bitmap scan planning.
-	 */
-	int			index_ybctid_width = yb_get_ybctid_width(baserel_oid, baserel,
-														 index, false);
-	Cost		index_ybctid_transfer_cost = yb_compute_result_transfer_cost(num_index_tuples_matched,
-																			 index_ybctid_width);
-
-	int			index_ybctid_num_result_pages = yb_get_num_result_pages(num_index_tuples_matched,
-																		index_ybctid_width);
-
-	/* Add seeks and nexts for result pages */
-	double		index_ybctid_num_paging_seeks = index_ybctid_num_result_pages - 1;
-	Cost		index_ybctid_paging_seek_next_costs = (index_ybctid_num_paging_seeks *
-													   index_per_seek_cost);
-
-	path->indextotalcost =
-		yb_local_latency_cost + startup_cost + run_cost +
-		index_ybctid_transfer_cost + index_ybctid_paging_seek_next_costs;
-	path->indexselectivity = index_selectivity;
-	path->ybctid_width = index_ybctid_width;
-
-	/*
-	 * Estimate network cost for transferring the results
-	 *
-	 * The case for index scan of colocated tables is similar to index scan of
-	 * primary index and index only scan of a secondary index. In each of
-	 * these cases there is only one round trip for a batch of result tuples.
-	 *
-	 * In case of non-colocated secondary index scan, before the final result
-	 * can be fetched, we will have to do one round trip to the index to fetch
-	 * the ybctids to pggate.
-	 *
-	 * The cost of transferring the final result is the same in either case
-	 * and is added later. In the following block we add first the cost of the
-	 * extra round trip needed for non-colocated secondary index.
-	 */
-	if (!baserel_is_colocated && !index_only && !is_primary_index)
 	{
 		/*
-		 * Startup cost for index scan in non-colocated should include the
-		 * cost of bringing first batch YBCTIDs to pggate and a second RPC
-		 * latency to fetch the base table rows.
+		 * In case of bitmap scan, ybctids from multiple indexes will be
+		 * fetched. The results will be combined and tuples in the result
+		 * set will be fetched from the base table. Here we have to estimate
+		 * the cost of fetching the ybctids for this index, and cache it in
+		 * path->indextotalcost for use in bitmap scan planning.
 		 */
-		num_seeks += index_ybctid_num_paging_seeks;
+		int			index_ybctid_width = yb_get_ybctid_width(baserel_oid, baserel,
+															 index, false);
+		Cost		index_ybctid_transfer_cost = yb_compute_result_transfer_cost(num_index_tuples_matched,
+																				 index_ybctid_width,
+																				 index_roundtrip_cost,
+																				 index_transfer_cost);
 
-		startup_cost +=
-			yb_local_latency_cost +
-			(index_ybctid_transfer_cost / index_ybctid_num_result_pages);
-		run_cost += (index_ybctid_paging_seek_next_costs +
-					 (index_ybctid_transfer_cost *
-					  (1 - 1 / index_ybctid_num_result_pages)));
+		double		index_ybctid_num_result_pages = yb_get_num_result_pages(num_index_tuples_matched,
+																			index_ybctid_width);
+
+		/* Add seeks and nexts for result pages */
+		double		index_ybctid_num_paging_seeks = index_ybctid_num_result_pages - 1;
+		Cost		index_ybctid_paging_seek_next_costs = (index_ybctid_num_paging_seeks *
+														   index_per_seek_cost);
+
+		path->indextotalcost =
+			index_roundtrip_cost + startup_cost + run_cost +
+			index_ybctid_transfer_cost + index_ybctid_paging_seek_next_costs;
+		path->indexselectivity = index_selectivity;
+		path->ybctid_width = index_ybctid_width;
 	}
 
-	/*
-	 * Compute the cost of transferring the final result rows from docDB
-	 * to pggate.
-	 */
-	List	   *all_conditions_and_remote_filters = NIL;
-
-	all_conditions_and_remote_filters =
-		list_concat_unique(all_conditions_and_remote_filters,
-						   list_copy(index_predicates_conditions_and_filters));
-	all_conditions_and_remote_filters =
-		list_concat_unique(all_conditions_and_remote_filters,
-						   list_copy(base_table_pushed_down_filters));
-
-	if (list_length(all_conditions_and_remote_filters) > 0)
-		all_conditions_and_remote_filters_selectivity =
-			clauselist_selectivity(root, all_conditions_and_remote_filters,
-								   baserel->relid, JOIN_INNER, NULL);
-	else
-		all_conditions_and_remote_filters_selectivity = 1.0;
-
-	double		num_docdb_result_rows = clamp_row_est(index->rel->tuples *
-													  all_conditions_and_remote_filters_selectivity);
-
-	/*
-	 * Each result page causes one additional seek and next. Estimate the
-	 * cost of seeks and nexts due to result paging.
-	 */
 	docdb_result_width = yb_get_docdb_result_width(&path->path, root,
 												   true, /* is_index_path */
 												   is_primary_index,
@@ -8329,40 +8369,143 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 												   baserel, baserel_oid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 
-	/* Adjust costing for parallelism, if used. */
-	if (path->path.parallel_workers > 0)
+	/*
+	 * Compute the cost of transferring results over network from DocDB to
+	 * pggate.
+	 */
+	if (is_primary_index || (!is_primary_index && !baserel_is_colocated) || index_only)
 	{
-		num_result_pages = ceil(baserel->tuples * index_tuple_width /
-								(double)yb_parallel_range_size /
-								parallel_divisor);
+		/*
+		 * Cost of a round trip fetching results from the index.
+		 *
+		 * Primary index is same as the base table in YB. We only need a single
+		 * network round trip to fetch results from primary index, so we handle
+		 * that case here.
+		 *
+		 * In case of secondary index scan, we first need to lookup the
+		 * secondary index and fetch base table ybctids to pggate. In a second
+		 * network round trip, we fetch the results from the base table. We
+		 * estimate the cost of the first round trip here. The first round
+		 * trip is not needed if the basetable is colocated, in this case
+		 * we only have one network roundtrip, this case is handled later.
+		 *
+		 * In case of an index only scan of a secondary index, we only have one
+		 * round trip from the index. This case is handled here too.
+		 */
 
-		num_docdb_result_rows = clamp_row_est(num_docdb_result_rows /
-											  parallel_divisor);
+		int			index_result_width;
+		if (is_primary_index || index_only)
+		{
+			/*
+			 * In case of primary index scan or index only scan, we get the
+			 * result of the query from the index directly.
+			 */
+			index_result_width = docdb_result_width;
+		}
+		else
+		{
+			/*
+			 * In case of secondady index only, we get the ybctid of the base
+			 * table from the index.
+			 */
+			index_result_width = yb_get_ybctid_width(baserel_oid,
+													 baserel,
+													 index,
+													 false);
+		}
 
-		path->path.rows = clamp_row_est(path->path.rows / parallel_divisor);
+		Cost baserel_ybctid_transfer_cost;
+		double		index_result_num_pages;
 
-		transfer_cost = yb_data_transfer_cost(num_result_pages,
-											  num_docdb_result_rows *
-											  docdb_result_width);
+		if (path->path.parallel_workers > 0)
+		{
+			index_result_num_pages = ceil(num_index_tuples_matched *
+										  index_result_width /
+										  yb_parallel_range_size);
+			baserel_ybctid_transfer_cost =
+				yb_data_transfer_cost(index_result_num_pages,
+									  num_index_tuples_matched *
+									  index_result_width,
+									  index_roundtrip_cost,
+									  index_transfer_cost);
+		}
+		else
+		{
+			index_result_num_pages =
+				yb_get_num_result_pages(num_index_tuples_matched,
+										index_result_width);
+			baserel_ybctid_transfer_cost =
+				yb_compute_result_transfer_cost(num_index_tuples_matched,
+												index_result_width,
+												index_roundtrip_cost,
+												index_transfer_cost);
+		}
+
+		num_seeks += index_result_num_pages;
+		run_cost += index_result_num_pages * index_per_seek_cost;
+
+		/*
+		 * Cost of bringing first page of baserel ybctids from index to pggate
+		 * is added to startup_cost. Cost for remaining pages is added to
+		 * run_cost.
+		 */
+		startup_cost +=
+			(baserel_ybctid_transfer_cost / index_result_num_pages);
+		run_cost += ((baserel_ybctid_transfer_cost *
+					  (1 - 1 / index_result_num_pages)));
 	}
-	else
+
+	if (!is_primary_index && !index_only && !baserel_is_colocated)
 	{
-		num_result_pages = yb_get_num_result_pages(num_docdb_result_rows,
-												   docdb_result_width);
-		transfer_cost = yb_compute_result_transfer_cost(num_docdb_result_rows,
-														docdb_result_width);
+		/*
+		 * We need a second round trip to the base table only in case this is a
+		 * secondary index scan, not an index only scan and the table is not
+		 * correlated.
+		 */
+
+		Cost		baserel_roundtrip_cost;
+		Cost		baserel_transfer_cost;
+
+		Relation	base_rel = RelationIdGetRelation(baserel_oid);
+		Oid			baserel_tablespace_id = base_rel->rd_rel->reltablespace;
+		RelationClose(base_rel);
+
+		yb_get_roundtrip_transfer_costs(baserel_tablespace_id,
+										&baserel_roundtrip_cost,
+										&baserel_transfer_cost);
+
+		/* Add cost of fetching result from base table */
+		startup_cost += baserel_roundtrip_cost;
+		double		num_baserel_result_pages;
+		if (path->path.parallel_workers > 0)
+		{
+			num_baserel_result_pages = ceil(num_baserel_result_rows *
+											docdb_result_width /
+											yb_parallel_range_size);
+
+			run_cost +=
+				yb_data_transfer_cost(num_baserel_result_pages,
+									  num_baserel_result_rows *
+									  docdb_result_width,
+									  baserel_roundtrip_cost,
+									  baserel_transfer_cost);
+		}
+		else
+		{
+			num_baserel_result_pages =
+				yb_get_num_result_pages(num_baserel_result_rows,
+										docdb_result_width);
+			run_cost += yb_compute_result_transfer_cost(num_baserel_result_rows,
+														docdb_result_width,
+														baserel_roundtrip_cost,
+														baserel_transfer_cost);
+		}
+
+		num_seeks += num_baserel_result_pages;
+		run_cost += num_baserel_result_pages * baserel_per_seek_cost;
 	}
 
-	double		result_paging_num_seeks = num_result_pages - 1;
-	Cost		result_paging_seek_next_costs = (result_paging_num_seeks *
-												 index_per_seek_cost);
-	num_seeks += result_paging_num_seeks;
-
-	/* Network latency cost is added to startup cost */
-	startup_cost += yb_local_latency_cost;
-	run_cost += transfer_cost + result_paging_seek_next_costs;
-
-	rte = planner_rt_fetch(index->rel->relid, root);
+	rte = planner_rt_fetch(baserel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
 	baserel_oid = rte->relid;
 
@@ -8377,24 +8520,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 */
 	if (!is_primary_index && !index_only)
 	{
-		/* Baserel Lookup costs */
-		Cost		baserel_per_seek_cost = 0.0;
-
-		/* TODO: Plug here the actual number of key-value pairs per tuple */
-		int			num_key_value_pairs_per_tuple_baserel = YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE;
-
-		/* TODO: Plug here the actual number of SST files for this index */
-		int			num_sst_files_baserel = YB_DEFAULT_NUM_SST_FILES_PER_TABLE;
-
-		if (baserel->tuples > 1)
-		{
-			baserel_per_seek_cost =
-				yb_get_lsm_seek_cost(baserel->tuples,
-									 num_key_value_pairs_per_tuple_baserel,
-									 num_sst_files_baserel) +
-				per_merge_cost;
-		}
-
 		if (baserel_is_colocated)
 		{
 			/*
@@ -8406,26 +8531,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		}
 		else
 		{
-			/*
-			 * In case of non-colocated table, pggate collate a batch of ybctids
-			 * to be fetched from the base table. This should reduce the number
-			 * of seeks needed in the base table.
-			 */
-			int			secondary_index_ybctid_width = yb_get_ybctid_width(baserel_oid,
-																		   baserel,
-																		   index,
-																		   false);
-
-			if (path->path.parallel_workers > 0)
-				run_cost +=
-					yb_data_transfer_cost(num_index_tuples_matched,
-										  num_index_tuples_matched *
-										  secondary_index_ybctid_width);
-			else
-				run_cost +=
-					yb_compute_result_transfer_cost(num_index_tuples_matched,
-													secondary_index_ybctid_width);
-
 			/*
 			 * We do not have information to predict the number of seeks that
 			 * can be optimized with nexts, but we assume half lookups will be
@@ -8463,7 +8568,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
 	startup_cost += qual_cost.startup;
-	run_cost += qual_cost.per_tuple * num_docdb_result_rows;
+	run_cost += qual_cost.per_tuple * num_baserel_result_rows;
 
 	/* tlist eval costs are paid per output row, not per tuple scanned */
 	startup_cost += path->path.pathtarget->cost.startup;
@@ -8633,6 +8738,11 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	List	   *indexquals;
 	ListCell   *l;
 	double		adjusted_baserel_tuples = baserel->tuples;
+	Cost		baserel_roundtrip_cost;
+	Cost		baserel_transfer_cost;
+	Relation	base_rel = RelationIdGetRelation(reloid);
+	Oid			baserel_tablespace_id = base_rel->rd_rel->reltablespace;
+	RelationClose(base_rel);
 
 	/* Should only be applied to Yugabyte base relations */
 	Assert(IsA(baserel, RelOptInfo));
@@ -8782,15 +8892,23 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	run_cost += (num_seeks * per_seek_cost) + (num_nexts * per_next_cost);
 
-	/* Network latency cost is added to startup cost */
-	startup_cost += yb_local_latency_cost;
+	yb_get_roundtrip_transfer_costs(baserel_tablespace_id,
+									&baserel_roundtrip_cost,
+									&baserel_transfer_cost);
+
+	/* Network roundtrip cost is added to startup cost */
+	startup_cost += baserel_roundtrip_cost;
 
 	if (path->parallel_workers > 0)
 		run_cost += yb_data_transfer_cost(tuples_fetched,
-										  tuples_fetched * docdb_result_width);
+										  tuples_fetched * docdb_result_width,
+										  baserel_roundtrip_cost,
+										  baserel_transfer_cost);
 	else
 		run_cost += yb_compute_result_transfer_cost(tuples_fetched,
-													docdb_result_width);
+													docdb_result_width,
+													baserel_roundtrip_cost,
+													baserel_transfer_cost);
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);

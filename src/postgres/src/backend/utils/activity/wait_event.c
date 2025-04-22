@@ -37,11 +37,6 @@
 #define YB_WAIT_EVENT_DESC_COLS_V1 4
 #define YB_WAIT_EVENT_DESC_COLS_V2 5
 
-static const char *yb_not_applicable =
-"Inherited from PostgreSQL. Check "
-"https://www.postgresql.org/docs/current/monitoring-stats.html "
-"for description.";
-
 static const char *pgstat_get_wait_activity(WaitEventActivity w);
 static const char *pgstat_get_wait_client(WaitEventClient w);
 static const char *pgstat_get_wait_ipc(WaitEventIPC w);
@@ -65,6 +60,10 @@ YbcWaitEventInfoPtr yb_my_wait_event_info = {
 	&yb_local_my_wait_event_info.wait_event,
 	&yb_local_my_wait_event_info.rpc_code,
 };
+static const char *yb_not_applicable =
+"Inherited from PostgreSQL. Check "
+"https://www.postgresql.org/docs/current/monitoring-stats.html "
+"for description.";
 
 
 /*
@@ -849,6 +848,7 @@ pgstat_get_wait_io(WaitEventIO w)
 		case WAIT_EVENT_WAL_WRITE:
 			event_name = "WALWrite";
 			break;
+
 		case WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ:
 			event_name = "CopyCommandStreamRead";
 			break;

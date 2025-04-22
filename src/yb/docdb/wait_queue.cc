@@ -406,6 +406,9 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   }
 
   bool ShouldReRunConflictResolution() {
+    if (CoarseMonoClock::Now() > deadline_) {
+      return true;
+    }
     auto refresh_waiter_timeout = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms) * 1ms;
     if (IsSingleShard()) {
       if (refresh_waiter_timeout.count() > 0) {

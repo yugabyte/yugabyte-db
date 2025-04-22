@@ -83,6 +83,12 @@ YbHnswInit(void)
 							"Valid range is 1..1000.", &ybhnsw_ef_search,
 							YBHNSW_DEFAULT_EF_SEARCH, YBHNSW_MIN_EF_SEARCH, YBHNSW_MAX_EF_SEARCH, PGC_USERSET, 0, NULL, NULL, NULL);
 	MarkGUCPrefixReserved("ybhnsw");
+
+	/*
+	 * Reserving this prefix so that anybody setting PG-style "hnsw." GUC's get
+	 * a warning message.
+	 */
+	MarkGUCPrefixReserved("hnsw");
 }
 
 /*

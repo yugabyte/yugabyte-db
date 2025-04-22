@@ -117,6 +117,7 @@ class TserverXClusterContextIf;
 class PgClientServiceImpl;
 class XClusterConsumerIf;
 class YsqlLeaseClient;
+class GetYSQLLeaseInfoResponsePB;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -207,6 +208,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(
       const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
+  Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
+  bool YSQLLeaseEnabled() const;
   tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
   bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 

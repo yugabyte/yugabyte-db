@@ -420,7 +420,8 @@ retry_masked:
 				/* Set flag for EPIPE */
 				REMEMBER_EPIPE(spinfo, true);
 
-				switch_fallthrough();
+				/* FALL THRU */
+				yb_switch_fallthrough();
 
 			case ECONNRESET:
 				conn->write_failed = true;

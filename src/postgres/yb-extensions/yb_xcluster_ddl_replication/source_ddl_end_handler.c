@@ -134,6 +134,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_DROP_OPERATOR) \
 	X(CMDTAG_DROP_OPERATOR_CLASS) \
 	X(CMDTAG_DROP_OPERATOR_FAMILY) \
+	X(CMDTAG_DROP_OWNED) \
 	X(CMDTAG_DROP_POLICY) \
 	X(CMDTAG_DROP_PROCEDURE) \
 	X(CMDTAG_DROP_ROUTINE) \
@@ -176,26 +177,6 @@ typedef struct YbNameToOidMapEntry
 	char       *name;
 	Oid         oid;
 } YbNameToOidMapEntry;
-
-void
-CheckAlterColumnTypeDDL(CollectedCommand *cmd)
-{
-	if (cmd && cmd->type == SCT_AlterTable && cmd->d.alterTable.subcmds)
-	{
-		ListCell   *cell;
-
-		foreach(cell, cmd->d.alterTable.subcmds)
-		{
-			AlterTableCmd *subcmd = castNode(AlterTableCmd,
-											 ((CollectedATSubcmd *) lfirst(cell))->parsetree);
-
-			if (subcmd->subtype == AT_AlterColumnType)
-			{
-				elog(ERROR, "Table Rewrite ALTER COLUMN TYPE is not supported\n");
-			}
-		}
-	}
-}
 
 bool
 IsIndex(Relation rel)
@@ -286,6 +267,58 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 
   RelationClose(rel);
 	return true;
+}
+
+void
+CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
+						bool is_table_rewrite, bool is_temporary_object)
+{
+	/* Ignore temp objects. */
+	if (is_temporary_object)
+		return;
+
+	if (cmd && cmd->type == SCT_AlterTable && cmd->d.alterTable.subcmds)
+	{
+		ListCell   *cell;
+
+		foreach(cell, cmd->d.alterTable.subcmds)
+		{
+			AlterTableCmd *subcmd = castNode(AlterTableCmd,
+											 ((CollectedATSubcmd *) lfirst(cell))->parsetree);
+
+			switch (subcmd->subtype)
+			{
+				case AT_AlterColumnType:
+				{
+					if (is_table_rewrite)
+						elog(ERROR, "Table Rewrite ALTER COLUMN TYPE is not "
+									"supported\n");
+					break;
+				}
+				case AT_AddIndex:
+				case AT_ReAddIndex:
+				{
+					/* Need to fetch the index oid from the index name. */
+					IndexStmt *index = (IndexStmt *) subcmd->def;
+
+					/* Skip processing the index if null (eg adding primary key). */
+					if (index->indexOid == InvalidOid)
+						break;
+
+					Relation rel = RelationIdGetRelation(rel_oid);
+					Oid index_oid = get_relname_relid(index->idxname,
+																						RelationGetNamespace(rel));
+					RelationClose(rel);
+
+					/* Once we have the oid, we can capture its info. */
+					ShouldReplicateNewRelation(index_oid, new_rel_list);
+					break;
+				}
+				default:
+					break;
+			}
+		}
+	}
 }
 
 void
@@ -391,12 +424,6 @@ ShouldReplicateAlterReplication(Oid rel_oid)
 		RelationClose(rel);
 		return false;
 	}
-	/* Primary indexes are YB-backed, but don't have table properties. */
-	if (IsPrimaryIndex(rel))
-	{
-		RelationClose(rel);
-		return true;
-	}
 
 	RelationClose(rel);
 	return true;
@@ -498,9 +525,15 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 	{
 		HeapTuple   spi_tuple = SPI_tuptable->vals[row];
 		YbCommandInfo *info = &info_array[row];
-		info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
 		info->command_tag_name =
 			SPI_GetText(spi_tuple, DDL_END_COMMAND_TAG_COLUMN_ID);
+		CommandTag command_tag = GetCommandTagEnum(info->command_tag_name);
+
+		/* Only commands that don't have an oid are GRANT, REVOKE */
+		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE)
+		{
+			info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
+		}
 		info->schema = SPI_GetText(spi_tuple, DDL_END_SCHEMA_NAME_COLUMN_ID);
 		info->command = GetCollectedCommand(spi_tuple, DDL_END_COMMAND_COLUMN_ID);
 	}
@@ -662,7 +695,9 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			 * resolving issue #24007.
 			 */
 			CollectedCommand *cmd = info->command;
-			CheckAlterColumnTypeDDL(cmd);
+			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
+									/* is_table_rewrite */ true,
+									is_temporary_object);
 
 			rewritten_table_oid_list = list_delete_oid(rewritten_table_oid_list, obj_id);
 
@@ -685,10 +720,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		else if (command_tag == CMDTAG_ALTER_TABLE ||
 				 command_tag == CMDTAG_ALTER_INDEX)
 		{
-			/*
-			 * TODO(jhe): May need finer grained control over ALTER TABLE
-			 * commands.
-			 */
+			/* Perform additional checks on subcommands. */
+			CollectedCommand *cmd = info->command;
+			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
+									/* is_table_rewrite */ false,
+									is_temporary_object);
+
 			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
 		}
 		else if (IsPassThroughDdlSupported(command_tag_name))

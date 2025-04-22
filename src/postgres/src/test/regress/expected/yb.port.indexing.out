@@ -166,7 +166,7 @@ create index idxpart_a_b_idx on only idxpart (a, b);
 create index idxpart1_a_b_idx on idxpart1 (a, b);
 create index idxpart1_tst1 on idxpart1 (b, a);
 create index idxpart1_tst2 on idxpart1 using hash (a);
-NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "hash" in YugabyteDB
 create index idxpart1_tst3 on idxpart1 (a, b) where a > 10;
 alter index idxpart attach partition idxpart1;
 ERROR:  "idxpart" is not an index
@@ -207,7 +207,7 @@ create table idxpart (a int, b int) partition by range (a);
 create table idxpart1 (a int, b int);
 -- YB Note: "hash" index is automatically converted to "lsm".
 create index on idxpart1 using hash (a);
-NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "hash" in YugabyteDB
 \d idxpart1_a_idx
     Index "public.idxpart1_a_idx"
  Column |  Type   | Key? | Definition 

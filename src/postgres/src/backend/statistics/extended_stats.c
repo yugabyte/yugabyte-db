@@ -664,8 +664,8 @@ examine_expression(Node *expr, int stattarget)
 		elog(ERROR, "cache lookup failed for type %u", stats->attrtypid);
 
 	stats->attrtype = (Form_pg_type) GETSTRUCT(typtuple);
-	stats->anl_context = CurrentMemoryContext; /* XXX should be using
-													 * something else? */
+	stats->anl_context = CurrentMemoryContext;	/* XXX should be using
+												 * something else? */
 	stats->tupattnum = InvalidAttrNumber;
 
 	/*

@@ -20,12 +20,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -350,6 +352,14 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any(), anyBoolean()))
         .thenReturn(
             ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "Command output: CREATE TABLE"));
+    doAnswer(
+            inv -> {
+              ObjectNode res = Json.mapper().createObjectNode();
+              res.put("response", "success");
+              return res;
+            })
+        .when(mockYsqlQueryExecutor)
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
     // WaitForServer mock.
     mockWaits(mockClient);
   }
@@ -368,6 +378,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.WaitForDuration,
           TaskType.UpdatePlacementInfo,
+          TaskType.WaitForServer,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
@@ -396,6 +407,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("removeFile", false)),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
@@ -416,7 +428,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       taskPositionsToSkip.add(1);
     }
     if (skipPDBTask) {
-      taskPositionsToSkip.add(18);
+      taskPositionsToSkip.add(
+          KUBERNETES_CREATE_UNIVERSE_TASKS.indexOf(TaskType.PodDisruptionBudgetPolicy));
     }
     return taskPositionsToSkip;
   }
@@ -435,6 +448,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         parallelTasks,
         1,
         1,
+        3,
         1,
         1,
         1,
@@ -778,7 +792,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                 + "yb-master-0.%s.svc.cluster.local:7100,"
                 + "yb-master-0.%s.svc.cluster.local:7100",
             ns1, ns2, ns3);
-    verify(mockYBClient, times(8)).getClient(masters, null);
+    verify(mockYBClient, times(11)).getClient(masters, null);
 
     long timeout = 300000;
     verify(mockClient, times(1))

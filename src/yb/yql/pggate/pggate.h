@@ -609,6 +609,7 @@ class PgApiImpl {
 
   Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
 
+  void IncrementIndexRecheckCount();
 
   //------------------------------------------------------------------------------------------------
   // Functions.
@@ -741,6 +742,8 @@ class PgApiImpl {
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
+
+  void SetLockTimeout(int lock_timeout_ms);
 
   Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
       const std::string &table_id, const std::string &transaction_id);

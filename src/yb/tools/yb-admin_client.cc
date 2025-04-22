@@ -2975,10 +2975,6 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(
     ListSnapshotsRequestPB req;
     req.set_snapshot_id(StringToSnapshotId(snapshot_id));
 
-    // Format 0 - latest format (== Format 2 at the moment).
-    // Format -1 - old format (no 'namespace_name' in the Table entry).
-    // Format 1 - old format.
-    // Format 2 - new format.
     if (FLAGS_TEST_metadata_file_format_version == 0 ||
         FLAGS_TEST_metadata_file_format_version >= 2) {
       req.set_prepare_for_backup(true);

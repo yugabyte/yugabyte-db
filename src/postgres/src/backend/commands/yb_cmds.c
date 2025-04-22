@@ -1748,7 +1748,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			}
 
 		case AT_SetLogged:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AT_SetUnLogged:
 			*needsYBAlter = false;
 			break;
@@ -1761,13 +1761,13 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			break;
 
 		case AT_AddOf:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AT_DropOf:
 			*needsYBAlter = false;
 			break;
 
 		case AT_DropInherit:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AT_AddInherit:
 			/*
 			 * Altering the inheritance should keep the docdb column list the same and not
@@ -1847,27 +1847,28 @@ YBCExecAlterTable(YbcPgStatement handle, Oid relationId)
 }
 
 void
-YBCRename(RenameStmt *stmt, Oid relationId)
+YBCRename(Oid relationId, ObjectType renameType, const char *relname,
+		  const char *colname)
 {
 	YbcPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
 	char	   *db_name = get_database_name(databaseId);
 
-	switch (stmt->renameType)
+	switch (renameType)
 	{
 		case OBJECT_MATVIEW:
 		case OBJECT_TABLE:
 		case OBJECT_INDEX:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  YbGetRelfileNodeIdFromRelId(relationId), &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, relname));
 			break;
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  YbGetRelfileNodeIdFromRelId(relationId), &handle));
 
-			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, stmt->subname, stmt->newname));
+			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, colname, relname));
 			break;
 
 		default:
@@ -2025,8 +2026,16 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	}
 
 	heapId = IndexGetRelation(indexId, false);
-	/* TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock? */
-	heapRel = table_open(heapId, ShareLock);
+	/*
+	 * The backend that initiated index backfill holds the following locks:
+	 * 1. ShareUpdateExclusiveLock on the main table
+	 * 2. RowExclusiveLock on the index table
+	 *
+	 * Theoretically, the child backfill jobs need not acquire any locks on
+	 * either the main table or the index. Yet, we acquire relevant locks for
+	 * reading the main table and inserting rows into the index for safety.
+	 */
+	heapRel = table_open(heapId, AccessShareLock);
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are run
@@ -2038,7 +2047,7 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
-	indexRel = index_open(indexId, ShareLock);
+	indexRel = index_open(indexId, RowExclusiveLock);
 
 	indexInfo = BuildIndexInfo(indexRel);
 	/*
@@ -2057,8 +2066,8 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 				   stmt->bfinfo,
 				   out_param);
 
-	index_close(indexRel, ShareLock);
-	table_close(heapRel, ShareLock);
+	index_close(indexRel, RowExclusiveLock);
+	table_close(heapRel, AccessShareLock);
 
 	/* Roll back any GUC changes executed by index functions */
 	AtEOXact_GUC(false, save_nestlevel);

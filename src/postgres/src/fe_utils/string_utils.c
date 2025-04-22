@@ -1000,7 +1000,7 @@ appendReloptionsArray(PQExpBuffer buffer, const char *reloptions,
 			value = "";
 
 		/*
-		 * Update reloption 'colocated' to 'colocation' in case we fully
+		 * YB: Update reloption 'colocated' to 'colocation' in case we fully
 		 * deprecate 'colocated' syntax in the future.
 		 */
 		if (strcmp(name, "colocated") == 0)

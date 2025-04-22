@@ -42,16 +42,17 @@ from
 
 explain (costs off)
 /*+ Leading((s r)) NestLoop(s r) BitmapScan(r) */select * from r, s where (a = x or b <= 300) and a + b >= y;
-                  QUERY PLAN                  
-----------------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  Nested Loop
    ->  Seq Scan on s
    ->  YB Bitmap Table Scan on r
+         Storage Recheck Cond: ((a = s.x) OR (b <= 300))
          Storage Filter: ((a + b) >= s.y)
          ->  BitmapOr
                ->  Bitmap Index Scan on i_r_a
                      Index Cond: (a = s.x)
                ->  Bitmap Index Scan on i_r_b
                      Index Cond: (b <= 300)
-(9 rows)
+(10 rows)
 

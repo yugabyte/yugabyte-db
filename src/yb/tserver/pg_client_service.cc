@@ -1604,7 +1604,7 @@ class PgClientServiceImpl::Impl {
     return (
         !call.has_wait_state() ||
         // Ignore log-appenders which are just Idle
-        call.wait_state().wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
+        call.wait_state().wait_state_code() == std::to_underlying(ash::WaitStateCode::kIdle) ||
         // Ignore ActiveSessionHistory/Perform calls, if desired.
         (req.ignore_ash_and_perform_calls() && call.wait_state().has_aux_info() &&
          call.wait_state().aux_info().has_method() &&
@@ -1647,7 +1647,7 @@ class PgClientServiceImpl::Impl {
       return;
     }
 
-    resp->set_component(yb::to_underlying(component));
+    resp->set_component(std::to_underlying(component));
 
     rpc::DumpRunningRpcsRequestPB dump_req;
     rpc::DumpRunningRpcsResponsePB dump_resp;
@@ -1675,14 +1675,14 @@ class PgClientServiceImpl::Impl {
       tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     Result<Uuid> local_uuid = Uuid::FromHexStringBigEndian(instance_id_);
     DCHECK_OK(local_uuid);
-    resp->set_component(yb::to_underlying(ash::Component::kTServer));
+    resp->set_component(std::to_underlying(ash::Component::kTServer));
     for (auto& wait_state_ptr : tracker.GetWaitStates()) {
       if (!wait_state_ptr) {
         continue;
       }
       WaitStateInfoPB wait_state_pb;
       wait_state_ptr->ToPB(&wait_state_pb, export_wait_state_names);
-      if (wait_state_pb.wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle)) {
+      if (wait_state_pb.wait_state_code() == std::to_underlying(ash::WaitStateCode::kIdle)) {
         continue;
       }
       if (local_uuid) {
@@ -1819,6 +1819,17 @@ class PgClientServiceImpl::Impl {
       }
     }
     CleanupSessions(std::move(sessions), CoarseMonoClock::now());
+  }
+
+  YSQLLeaseInfo GetYSQLLeaseInfo() {
+    SharedLock lock(mutex_);
+    YSQLLeaseInfo lease_info;
+    // todo(zdrudi): For now just return is live if we've ever received a lease.
+    lease_info.is_live = last_lease_refresh_time_.Initialized();
+    if (lease_info.is_live) {
+      lease_info.lease_epoch = lease_epoch_;
+    }
+    return lease_info;
   }
 
   void CleanupSessions(
@@ -2406,6 +2417,10 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
 void PgClientServiceImpl::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB&
                                              lease_refresh_info, MonoTime time) {
   impl_->ProcessLeaseUpdate(lease_refresh_info, time);
+}
+
+YSQLLeaseInfo PgClientServiceImpl::GetYSQLLeaseInfo() const {
+  return impl_->GetYSQLLeaseInfo();
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }

@@ -2272,18 +2272,21 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 		hbaline->radiusidentifiers = parsed_identifiers;
 		hbaline->radiusidentifiers_s = pstrdup(val);
 	}
+	/* YB */
 	else if (strcmp(name, "jwt_jwks_path") == 0)
 	{
 		REQUIRE_AUTH_OPTION(uaYbJWT, "jwt_jwks_path", "jwt");
 
 		hbaline->yb_jwt_jwks_path = pstrdup(val);
 	}
+	/* YB */
 	else if (strcmp(name, "jwt_jwks_url") == 0)
 	{
 		REQUIRE_AUTH_OPTION(uaYbJWT, "jwt_jwks_url", "jwt");
 
 		hbaline->yb_jwt_jwks_url = pstrdup(val);
 	}
+	/* YB */
 	else if (strcmp(name, "jwt_audiences") == 0)
 	{
 		List	   *parsed_audiences;
@@ -2308,6 +2311,7 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 		hbaline->yb_jwt_audiences = parsed_audiences;
 		hbaline->yb_jwt_audiences_s = pstrdup(val);
 	}
+	/* YB */
 	else if (strcmp(name, "jwt_issuers") == 0)
 	{
 		List	   *parsed_issuers;
@@ -2332,6 +2336,7 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 		hbaline->yb_jwt_issuers = parsed_issuers;
 		hbaline->yb_jwt_issuers_s = pstrdup(val);
 	}
+	/* YB */
 	else if (strcmp(name, "jwt_matching_claim_key") == 0)
 	{
 		REQUIRE_AUTH_OPTION(uaYbJWT, "jwt_matching_claim_key", "jwt");
@@ -2455,8 +2460,9 @@ check_hba(hbaPort *port)
 		port->hba = hba;
 
 		/*
-		 * Also persist whether the auth method is yb-tserver-key because this
-		 * information gets lost upon deleting the memory context for auth.
+		 * YB: Also persist whether the auth method is yb-tserver-key because
+		 * this information gets lost upon deleting the memory context for
+		 * auth.
 		 */
 		if (hba->auth_method == uaYbTserverKey)
 			port->yb_is_tserver_auth_method = true;
@@ -2506,7 +2512,7 @@ load_hba(void)
 	linecxt = tokenize_auth_file(HbaFileName, file, &hba_lines, LOG);
 	FreeFile(file);
 
-	/* Add hardcoded hba config lines in front of user-defined ones. */
+	/* YB: Add hardcoded hba config lines in front of user-defined ones. */
 	List	   *hba_lines_hardcoded = NIL;
 
 	oldcxt = MemoryContextSwitchTo(linecxt);
@@ -2581,6 +2587,7 @@ load_hba(void)
 
 	return true;
 }
+
 
 /*
  * Parse one tokenised line from the ident config file and store the result in

@@ -742,11 +742,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universe.getUniverseUUID(),
         customer.getUuid());
     JsonNode additionalDetails = null;
-    if (GFlagsUpgradeParams.class.isAssignableFrom(type)) {
-      log.debug("setting up gflag audit logging");
-      additionalDetails =
-          gFlagsAuditHandler.constructGFlagAuditPayload((GFlagsUpgradeParams) requestParams);
-    } else if (auditActionType == Audit.ActionType.ResizeNode) {
+    if (auditActionType == Audit.ActionType.ResizeNode) {
       additionalDetails = Json.toJson(Universe.getOrBadRequest(universeUuid).getUniverseDetails());
     }
     UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);

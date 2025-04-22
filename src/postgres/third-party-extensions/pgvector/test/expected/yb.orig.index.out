@@ -389,3 +389,18 @@ SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LI
 
 DROP TABLE vec2;
 DROP TABLE vec1;
+CREATE TABLE vec1 (embedding vector(3));
+CREATE INDEX vec1_idx ON vec1 USING hnsw (embedding vector_l2_ops);
+SET ybhnsw.ef_search = 100;
+SET hnsw.ef_search = 100;
+ERROR:  invalid configuration parameter name "hnsw.ef_search"
+DETAIL:  "hnsw" is a reserved prefix.
+\d vec1
+                  Table "public.vec1"
+  Column   |   Type    | Collation | Nullable | Default 
+-----------+-----------+-----------+----------+---------
+ embedding | vector(3) |           |          | 
+Indexes:
+    "vec1_idx" ybhnsw (embedding)
+
+DROP TABLE vec1;

@@ -155,7 +155,7 @@ static Node *substitute_actual_srf_parameters_mutator(Node *node,
 static bool pull_paramids_walker(Node *node, Bitmapset **context);
 
 /*****************************************************************************
- *		ScalarArrayOperator clause functions
+ *		YB: ScalarArrayOperator clause functions
  *****************************************************************************/
 
 Node *
@@ -1505,7 +1505,8 @@ find_nonnullable_rels_walker(Node *node, bool top_level)
 				 * the intersection of the sets of nonnullable rels, just as
 				 * for OR.  Fall through to share code.
 				 */
-				switch_fallthrough();
+				/* FALL THRU */
+				yb_switch_fallthrough();
 			case OR_EXPR:
 
 				/*
@@ -1730,7 +1731,8 @@ find_nonnullable_vars_walker(Node *node, bool top_level)
 				 * the intersection of the sets of nonnullable vars, just as
 				 * for OR.  Fall through to share code.
 				 */
-				switch_fallthrough();
+				/* FALL THRU */
+				yb_switch_fallthrough();
 			case OR_EXPR:
 
 				/*

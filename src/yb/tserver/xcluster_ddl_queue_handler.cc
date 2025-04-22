@@ -169,6 +169,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "DROP OPERATOR",
     "DROP OPERATOR CLASS",
     "DROP OPERATOR FAMILY",
+    "DROP OWNED",
     "DROP POLICY",
     "DROP PROCEDURE",
     "DROP ROUTINE",
@@ -183,6 +184,8 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "DROP TRIGGER",
     "DROP USER MAPPING",
     "DROP VIEW",
+    "GRANT",
+    "REVOKE",
     "IMPORT FOREIGN SCHEMA",
     "SECURITY LABEL",
 };
@@ -381,6 +384,11 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
   std::stringstream setup_query;
   setup_query << "SET ROLE NONE;";
 
+  // Pass information needed to assign OIDs that need to be preserved across the universes.
+  setup_query << Format(
+      "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('$0');",
+      std::regex_replace(query_info.json_for_oid_assignment, std::regex("'"), "''"));
+
   // Set session variables in order to pass the key to the replicated_ddls table.
   setup_query << Format("SET $0 TO $1;", kLocalVariableDDLEndTime, query_info.ddl_end_time);
   setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
@@ -393,13 +401,6 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
     setup_query << Format("SET ROLE $0;", query_info.user);
   }
 
-  // Pass information needed to assign OIDs that need to be preserved across the universes.
-  setup_query << Format(
-      "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('$0');",
-      std::regex_replace(query_info.json_for_oid_assignment, std::regex("'"), "''"));
-
-  setup_query << "SET yb_skip_data_insert_for_table_rewrite=true;";
-
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
     setup_query << "SET yb_test_fail_next_ddl TO true;";
   }
@@ -408,8 +409,8 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
   RETURN_NOT_OK(ProcessFailedDDLQuery(RunAndLogQuery(query_info.query), query_info));
   RETURN_NOT_OK(
       // The SELECT here can't be last; otherwise, RunAndLogQuery complains that rows are returned.
-      RunAndLogQuery("SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');"
-                     "SET yb_skip_data_insert_for_table_rewrite=false;"));
+      RunAndLogQuery(
+          "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');SET ROLE NONE;"));
   return Status::OK();
 }
 
@@ -487,6 +488,9 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   query << "SET yb_xcluster_consistency_level = tablet;";
   // Allow writes on target (read-only) cluster.
   query << "SET yb_non_ddl_txn_for_sys_tables_allowed = 1;";
+  // Skip any data loads on the target since those records will be replicated (note that concurrent
+  // index backfill uses a different flow).
+  query << "SET yb_skip_data_insert_for_xcluster_target=true;";
   // Prepare replicated_ddls insert for manually replicated ddls.
   query << "PREPARE " << kDDLPrepStmtManualInsert << "(bigint, bigint, text) AS "
         << "INSERT INTO " << kReplicatedDDLsFullTableName << " VALUES ($1, $2, $3::jsonb);";

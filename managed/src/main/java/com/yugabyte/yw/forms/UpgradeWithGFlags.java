@@ -53,7 +53,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
    * @param universe The universe to verify the GFlags settings for.
    * @throws PlatformServiceException If the GFlags settings are invalid.
    */
-  protected void verifyPreviewGFlagsSettings(Universe universe) {
+  public void verifyPreviewGFlagsSettings(Universe universe) {
     gFlagsValidation = StaticInjectorHolder.injector().instanceOf(GFlagsValidation.class);
     if (isUsingSpecificGFlags(universe)) {
       checkPreviewGFlagsOnSpecificGFlags(universe, gFlagsValidation);

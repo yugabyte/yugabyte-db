@@ -39,6 +39,7 @@
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
+
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
  * so we can easily have it use palloc instead of malloc.  This prevents
@@ -111,10 +112,10 @@ static int num_columns_read = 0;
 %token NULLVAL
 /* All the rest are unreserved, and should be handled in boot_ident! */
 %token <kw> OPEN XCLOSE XCREATE INSERT_TUPLE
-%token <kw> XDECLARE YBDECLARE INDEX ON USING XBUILD INDICES PRIMARY UNIQUE XTOAST
+%token <kw> XDECLARE INDEX ON USING XBUILD INDICES UNIQUE XTOAST
 %token <kw> OBJ_ID XBOOTSTRAP XSHARED_RELATION XROWTYPE_OID
 %token <kw> XFORCE XNOT XNULL
-%token <kw> YBCHECKINITDBDONE
+%token <kw> PRIMARY YBCHECKINITDBDONE YBDECLARE
 
 %start TopLevel
 
@@ -297,7 +298,7 @@ Boot_CreateStmt:
 						YBCCreateSysCatalogTable($2, $3, tupdesc, shared_relation, $12);
 					}
 
-                    do_end();
+					do_end();
 				}
 		;
 

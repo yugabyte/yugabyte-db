@@ -633,6 +633,7 @@ void PgVectorIndexTest::TestRandom() {
   }
 
   auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+
   size_t sum_missing = 0;
   std::vector<size_t> counts;
 
@@ -733,6 +734,36 @@ TEST_P(PgVectorIndexTest, InnerProduct) {
 TEST_P(PgVectorIndexTest, Cosine) {
   distance_kind_ = vector_index::DistanceKind::kCosine;
   TestMetric("2; 3; 1");
+}
+
+TEST_P(PgVectorIndexTest, EfSearch) {
+  constexpr size_t kNumRows = 1000;
+  constexpr int kIterations = 10;
+  constexpr int kSmallEf = 1;
+  constexpr int kBigEf = 1000;
+
+  num_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_NO_FATALS(VerifyRead(conn, 1, false));
+
+  std::unordered_map<int, std::vector<MonoDelta>> times;
+  for (int i = 0; i != kIterations; ++i) {
+    for (int ef : {kSmallEf, kBigEf}) {
+      ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
+      auto start = MonoTime::Now();
+      ASSERT_NO_FATALS(VerifyRead(conn, 1, false));
+      auto passed = MonoTime::Now() - start;
+      times[ef].push_back(passed);
+    }
+  }
+  std::ranges::sort(times[kSmallEf]);
+  std::ranges::sort(times[kBigEf]);
+
+  auto small_median = times[kSmallEf][kIterations / 2];
+  auto big_median = times[kBigEf][kIterations / 2];
+  LOG(INFO) << "ef=" << kSmallEf << ": " << small_median.ToPrettyString()
+            << ", ef=" << kBigEf << ": " << big_median.ToPrettyString();
+  ASSERT_LT(small_median, big_median);
 }
 
 TEST_P(PgVectorIndexTest, Options) {

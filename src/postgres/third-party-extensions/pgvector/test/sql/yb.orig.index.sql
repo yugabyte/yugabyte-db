@@ -119,3 +119,10 @@ EXPLAIN (COSTS OFF) SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT em
 SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LIMIT 0) LIMIT 3;
 DROP TABLE vec2;
 DROP TABLE vec1;
+
+CREATE TABLE vec1 (embedding vector(3));
+CREATE INDEX vec1_idx ON vec1 USING hnsw (embedding vector_l2_ops);
+SET ybhnsw.ef_search = 100;
+SET hnsw.ef_search = 100;
+\d vec1
+DROP TABLE vec1;

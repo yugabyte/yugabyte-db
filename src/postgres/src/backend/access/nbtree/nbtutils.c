@@ -34,6 +34,7 @@
 #include "utils/builtins.h"
 #include "utils/typcache.h"
 
+
 typedef struct BTSortArrayContext
 {
 	FmgrInfo	flinfo;

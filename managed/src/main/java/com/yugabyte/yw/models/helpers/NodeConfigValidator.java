@@ -231,7 +231,7 @@ public class NodeConfigValidator {
         }
       case PAM_LIMITS_WRITABLE:
         {
-          return !Boolean.parseBoolean(nodeConfig.getValue());
+          return Boolean.parseBoolean(nodeConfig.getValue());
         }
       case PYTHON_VERSION:
         {

@@ -19,9 +19,6 @@ CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":"three", "placement
 -- Invalid value for min_num_replicas.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}');
 
--- Invalid keys in the placement policy.
-CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"invalid_key":"invalid_value"}]}');
-
 -- Sum of min_num_replicas greater than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
 
@@ -47,6 +44,9 @@ DROP TABLEGROUP grp;
 -- Should succeed, empty now
 DROP TABLESPACE x;
 DROP TABLESPACE y;
+
+-- Ensure that we ignore extra keys for potential downgrade scenarios.
+CREATE TABLESPACE extra_keys WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"extra_key":"extra_value"}]}');
 
 -- create a tablespace using WITH clause
 CREATE TABLESPACE regress_tblspacewith WITH (some_nonexistent_parameter = true); -- fail
@@ -313,7 +313,7 @@ Testing to make sure that an index on a "near" tablespace whose placements are
 all on the current cloud/region/zone is preferred over "far" indexes.
 */
 CREATE TABLESPACE near WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
-CREATE TABLESPACE far WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud2","region":"region2", "zone":"zone2", "min_num_replicas":1}]}');
+CREATE TABLESPACE far WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud2","region":"region1", "zone":"zone1", "min_num_replicas":1}]}');
 CREATE TABLESPACE regionlocal WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1}]}');
 CREATE TABLESPACE cloudlocal WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1}]}');
 CREATE TABLE foo(x int, y int);
@@ -395,7 +395,7 @@ CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_bloc
 -- Some zones with no leader_preference set
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1}]}');
 -- Valid case
-CREATE TABLESPACE valid_tablespace WITH (replica_placement='{"num_replicas":2,"placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":2}]}');
+CREATE TABLESPACE valid_tablespace WITH (replica_placement='{"num_replicas":2,"placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":2}]}');
 CREATE TABLE foo (i int) TABLESPACE valid_tablespace;
 CREATE TABLE bar(i int);
 ALTER TABLE bar SET TABLESPACE valid_tablespace;
@@ -407,7 +407,7 @@ DROP TABLESPACE LP;
 -- Test ALTER TABLE/INDEX/MATERILIZED VIEW ALL IN TABLESPACE ... SET TABLESPACE ...
 
 CREATE TABLESPACE tsp1 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1 }]}');
-CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud2", "region" : "region2", "zone" : "zone2", "min_num_replicas" : 1 }]}');
+CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud2", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1 }]}');
 CREATE TABLESPACE tsp3 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone2", "min_num_replicas" : 1 }]}');
 
 CREATE TABLE table_1(a int PRIMARY KEY, b int, c int) TABLESPACE tsp1;
@@ -449,21 +449,21 @@ CREATE TABLESPACE zone_pref
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE TABLESPACE region_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE TABLESPACE cloud_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE UNIQUE INDEX zone_pref_ind ON foo(x) INCLUDE (y) TABLESPACE zone_pref;
 CREATE UNIQUE INDEX region_pref_ind ON foo(x) INCLUDE (y) TABLESPACE region_pref;
@@ -497,21 +497,21 @@ CREATE TABLESPACE zone_pref
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":2},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":3},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":4}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":4}]}');
 
 CREATE TABLESPACE region_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":4},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":2},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":3}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":3}]}');
 
 CREATE TABLESPACE cloud_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":3},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":4},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":2}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":2}]}');
 
 CREATE UNIQUE INDEX zone_pref_ind ON foo(x) INCLUDE (y) TABLESPACE zone_pref;
 CREATE UNIQUE INDEX region_pref_ind ON foo(x) INCLUDE (y) TABLESPACE region_pref;
@@ -543,14 +543,14 @@ CREATE TABLESPACE no_pref
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE TABLESPACE has_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE UNIQUE INDEX no_pref_ind ON foo(x) INCLUDE (y) TABLESPACE no_pref;
 CREATE UNIQUE INDEX has_pref_ind ON foo(x) INCLUDE (y) TABLESPACE has_pref;
@@ -573,21 +573,21 @@ CREATE TABLESPACE most_pref
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE TABLESPACE some_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE TABLESPACE few_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE UNIQUE INDEX few_pref_ind ON foo(x) INCLUDE (y) TABLESPACE few_pref;
 CREATE UNIQUE INDEX some_pref_ind ON foo(x) INCLUDE (y) TABLESPACE some_pref;
@@ -621,14 +621,14 @@ CREATE TABLESPACE close_far_pref
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1,"leader_preference":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE TABLESPACE medium_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
-    {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
+    {"cloud":"cloud2","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 
 CREATE UNIQUE INDEX close_far_pref_ind ON foo(x) INCLUDE (y) TABLESPACE close_far_pref;
 CREATE UNIQUE INDEX medium_pref_ind ON foo(x) INCLUDE (y) TABLESPACE medium_pref;

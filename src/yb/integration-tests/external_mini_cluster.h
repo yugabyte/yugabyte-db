@@ -465,6 +465,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Waits until the tablet server with given uuid registers to the master leader.
   Status WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout);
 
+  Status WaitForTabletServersToAcquireYSQLLeases(MonoTime deadline);
+  Status WaitForTabletServersToAcquireYSQLLeases(
+      const std::vector<scoped_refptr<ExternalTabletServer>>& tablet_servers, MonoTime deadline);
+
   // Runs gtest assertions that no servers have crashed.
   void AssertNoCrashes();
 

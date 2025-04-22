@@ -177,7 +177,9 @@ public class HealthCheckMetrics {
                       .setCustomerUUID(customer.getUuid())
                       .setSourceUuid(universe.getUniverseUUID())
                       .setLabels(
-                          MetricLabelsBuilder.create().appendSource(universe).getMetricLabels())
+                          MetricLabelsBuilder.create()
+                              .fromUniverse(customer, universe)
+                              .getMetricLabels())
                       .setValue(value.getValue());
               if (!UNIVERSE_WIDE_CHECK_METRICS.contains(metric.getName())) {
                 result

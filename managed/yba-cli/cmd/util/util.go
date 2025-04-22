@@ -545,6 +545,69 @@ func MustGetFlagBool(cmd *cobra.Command, name string) bool {
 	return value
 }
 
+// MustGetFlagStringSlice returns the value of the string slice flag with the given name
+func MustGetFlagStringSlice(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringSlice(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	// Check if the slice is empty
+	if len(value) == 0 {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetStringArray returns the value of the string array flag with the given name
+// If the flag is set but empty, it returns an error
+func MustGetStringArray(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringArray(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	// Check if the array is empty
+	if len(value) == 0 {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagString returns the value of the string flag with the given name
+// If the flag is not set, it returns an empty string
+func MaybeGetFlagString(cmd *cobra.Command, name string) string {
+	value, err := cmd.Flags().GetString(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagStringSlice returns the value of the string slice flag with the given name
+// If the flag is not set, it returns an empty slice
+func MaybeGetFlagStringSlice(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringSlice(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagStringArray returns the value of the string array flag with the given name
+func MaybeGetFlagStringArray(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringArray(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
 // MissingKeyFromStringDeclaration for complex structures in flags
 func MissingKeyFromStringDeclaration(key, flag string) {
 	logrus.Fatalln(
@@ -557,12 +620,26 @@ func MissingKeyFromStringDeclaration(key, flag string) {
 func GetCLIConfigDirectoryPath() (string, fs.FileMode, error) {
 	configFileUsed := viper.GetViper().ConfigFileUsed()
 	directory := filepath.Dir(configFileUsed)
+	permissions := GetDirectoryPermissions(directory)
+	return directory, permissions, nil
+}
 
-	info, err := os.Stat(directory)
+// GetDirectoryPermissions returns the directory permissions
+func GetDirectoryPermissions(path string) fs.FileMode {
+	info, err := os.Stat(path)
 	if err != nil {
-		return "", 0644, err
+		logrus.Warn(
+			formatter.Colorize(
+				fmt.Sprintf(
+					"Error getting permissions for %s: %s, setting default permissions to 0644\n",
+					path,
+					err,
+				),
+				formatter.YellowColor,
+			))
+		return 0644
 	}
-	return directory, info.Mode(), nil
+	return info.Mode()
 }
 
 // GetCLIOutputFormat returns the output format for the CLI
@@ -575,4 +652,27 @@ func GetCLIOutputFormat(outputType string) string {
 		outputFormat = "yaml"
 	}
 	return outputFormat
+}
+
+const (
+	// KB is the number of bytes in a kilobyte
+	KB = 1024
+	// MB is the number of bytes in a megabyte
+	MB = KB * 1024
+	// GB is the number of bytes in a gigabyte
+	GB = MB * 1024
+)
+
+// HumanReadableSize converts bytes to a human-readable format
+func HumanReadableSize(bytes float64) (float64, string) {
+	switch {
+	case bytes >= GB:
+		return float64(bytes) / float64(GB), "GB"
+	case bytes >= MB:
+		return float64(bytes) / float64(MB), "MB"
+	case bytes >= KB:
+		return float64(bytes) / float64(KB), "KB"
+	default:
+		return float64(bytes), "bytes"
+	}
 }

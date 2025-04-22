@@ -172,7 +172,7 @@ class DocKeyColumnPathBuilder {
   }
 
   [[nodiscard]] Slice Build(dockv::SystemColumnIds column_id) {
-    return Build(dockv::KeyEntryType::kSystemColumnId, to_underlying(column_id));
+    return Build(dockv::KeyEntryType::kSystemColumnId, std::to_underlying(column_id));
   }
 
  private:
@@ -2728,6 +2728,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
       vector_slice,
       vector_index::SearchOptions {
         .max_num_results = max_results,
+        .ef = options.hnsw_options().ef_search(),
         .filter = std::ref(filter),
       }
   ));
@@ -3052,7 +3053,7 @@ dockv::PgWireEncoderEntry GetEncoder(
     YQLRowwiseIteratorIf::UniPtr* table_iter, const dockv::PgTableRow& table_row,
     const PgsqlExpressionPB& expr, bool last) {
   if (expr.expr_case() == PgsqlExpressionPB::kColumnId) {
-    if (expr.column_id() != to_underlying(PgSystemAttrNum::kYBTupleId)) {
+    if (expr.column_id() != std::to_underlying(PgSystemAttrNum::kYBTupleId)) {
       auto index = table_row.projection().ColumnIdxById(ColumnId(expr.column_id()));
       if (index != dockv::ReaderProjection::kNotFoundIndex) {
         return table_row.GetEncoder(index, last);

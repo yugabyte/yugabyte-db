@@ -99,6 +99,9 @@ Status DoWriteColumn(const QLValuePB& col_value, Buffer* buffer) {
       // Passing a serialized form of YB Decimal, decoding will be done in pg_expr.cc
       PgWriteBytes</* null_terminating= */ true>(col_value.decimal_value(), buffer);
       break;
+    case InternalType::kBsonValue:
+      PgWriteBytes</* null_terminating= */ false>(col_value.bson_value(), buffer);
+      break;
     case InternalType::kVirtualValue:
       // Expecting database to return an actual value and not a virtual one.
     case InternalType::kTimestampValue:

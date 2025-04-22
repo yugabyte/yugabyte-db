@@ -12,6 +12,12 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Encryption at rest" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/encryption-at-rest/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/managed-ear/" >}}
+{{< /page-finder/head >}}
+
 Data at rest in a YugabyteDB universe should be protected from unauthorized users by encrypting it. You do this by enabling encryption at rest. When enabled, the data in your universe is secured using envelope encryption, whereby multiple encryption keys are used to encrypt data, and those keys are in turn encrypted by other keys in a key hierarchy.
 
 YugabyteDB Anywhere uses the following types of keys for envelope encryption:

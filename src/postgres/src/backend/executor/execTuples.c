@@ -2004,7 +2004,6 @@ ExecTypeFromTLInternal(List *targetList, bool skipjunk)
 
 		if (skipjunk && tle->resjunk)
 			continue;
-
 		TupleDescInitEntry(typeInfo,
 						   cur_resno,
 						   tle->resname,

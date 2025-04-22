@@ -73,6 +73,7 @@ std::string Slice::ToDebugHexString() const {
 }
 
 std::string Slice::ToDebugString(size_t max_len) const {
+  constexpr auto kMaxAbbreviatedSuffixLength = 40;
   size_t bytes_to_print = size();
   bool abbreviated = false;
   if (max_len != 0 && bytes_to_print > max_len) {
@@ -87,30 +88,40 @@ std::string Slice::ToDebugString(size_t max_len) const {
     }
   }
 
-  if (num_not_graph * 100 >
-      bytes_to_print * FLAGS_non_graph_characters_percentage_to_use_hexadecimal_rendering) {
+  const auto print_as_hex =
+      num_not_graph * 100 >
+      bytes_to_print * FLAGS_non_graph_characters_percentage_to_use_hexadecimal_rendering;
+
+  if (print_as_hex && !abbreviated) {
     return ToDebugHexString();
   }
-  size_t size = bytes_to_print + 3 * num_not_graph + (abbreviated ? 20 : 0);
 
   std::string ret;
+  size_t size = (print_as_hex ? 2 * bytes_to_print : bytes_to_print + 3 * num_not_graph) +
+                (abbreviated ? kMaxAbbreviatedSuffixLength : 0);
   ret.reserve(size);
-  for (size_t i = 0; i < bytes_to_print; i++) {
-    auto ch = begin_[i];
-    if (!isgraph(ch)) {
-      if (ch == '\r') {
-        ret += "\\r";
-      } else if (ch == '\n') {
-        ret += "\\n";
-      } else if (ch == ' ') {
-        ret += ' ';
+
+  if (print_as_hex) {
+    ret.append(PrefixNoLongerThan(bytes_to_print).ToDebugHexString());
+  } else {
+    for (size_t i = 0; i < bytes_to_print; i++) {
+      auto ch = begin_[i];
+      if (!isgraph(ch)) {
+        if (ch == '\r') {
+          ret += "\\r";
+        } else if (ch == '\n') {
+          ret += "\\n";
+        } else if (ch == ' ') {
+          ret += ' ';
+        } else {
+          StringAppendF(&ret, "\\x%02x", ch & 0xff);
+        }
       } else {
-        StringAppendF(&ret, "\\x%02x", ch & 0xff);
+        ret.push_back(ch);
       }
-    } else {
-      ret.push_back(ch);
     }
   }
+
   if (abbreviated) {
     StringAppendF(&ret, "...<%zd bytes total>", this->size());
   }

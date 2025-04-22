@@ -570,7 +570,7 @@ export const getTableCountsOfConcern = (tableDetails: XClusterTableDetails[]) =>
           tableCountsOfConcern.uniqueTableCount += 1;
           return tableCountsOfConcern;
         case XClusterTableStatus.FAILED:
-          tableCountsOfConcern.unableToFetchStatus += 1;
+          tableCountsOfConcern.failedReplicationSetup += 1;
           tableCountsOfConcern.uniqueTableCount += 1;
           return tableCountsOfConcern;
         case XClusterTableStatus.ERROR: {

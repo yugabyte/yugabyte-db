@@ -712,13 +712,6 @@ json_lex_string(JsonLexContext *lex)
 			FAIL_AT_CHAR_START(JSON_INVALID_TOKEN);
 		else if (*s == '"')
 			break;
-		else if ((unsigned char) *s < 32)
-		{
-			/* Per RFC4627, these characters MUST be escaped. */
-			/* Since *s isn't printable, exclude it from the context string */
-			lex->token_terminator = s;
-			return JSON_ESCAPING_REQUIRED;
-		}
 		else if (*s == '\\')
 		{
 			/* OK, we have an escape character. */
@@ -869,12 +862,41 @@ json_lex_string(JsonLexContext *lex)
 				FAIL_AT_CHAR_END(JSON_ESCAPING_INVALID);
 			}
 		}
-		else if (lex->strval != NULL)
+		else
 		{
+			char	   *p;
+
 			if (hi_surrogate != -1)
 				FAIL_AT_CHAR_END(JSON_UNICODE_LOW_SURROGATE);
 
-			appendStringInfoChar(lex->strval, *s);
+			/*
+			 * Skip to the first byte that requires special handling, so we
+			 * can batch calls to appendBinaryStringInfo.
+			 */
+			for (p = s; p < end; p++)
+			{
+				if (*p == '\\' || *p == '"')
+					break;
+				else if ((unsigned char) *p < 32)
+				{
+					/* Per RFC4627, these characters MUST be escaped. */
+					/*
+					 * Since *p isn't printable, exclude it from the context
+					 * string
+					 */
+					lex->token_terminator = p;
+					return JSON_ESCAPING_REQUIRED;
+				}
+			}
+
+			if (lex->strval != NULL)
+				appendBinaryStringInfo(lex->strval, s, p - s);
+
+			/*
+			 * s will be incremented at the top of the loop, so set it to just
+			 * behind our lookahead position
+			 */
+			s = p - 1;
 		}
 	}
 

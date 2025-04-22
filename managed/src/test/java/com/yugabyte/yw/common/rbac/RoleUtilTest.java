@@ -80,7 +80,24 @@ public class RoleUtilTest extends FakeDBApplication {
     Role role =
         roleUtil.createRole(
             customer.getUuid(),
-            "FakeRole1",
+            "Fake-Role_1",
+            "FakeRoleDescription1",
+            RoleType.Custom,
+            new HashSet<>(
+                Arrays.asList(
+                    new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                    new Permission(ResourceType.OTHER, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.UPDATE),
+                    new Permission(ResourceType.UNIVERSE, Action.DELETE))));
+  }
+
+  @Test(expected = PlatformServiceException.class)
+  public void testCreateRoleWithInvalidName() {
+    // This is expected to fail because of invalid role name.
+    Role role =
+        roleUtil.createRole(
+            customer.getUuid(),
+            "Fake-Role@1",
             "FakeRoleDescription1",
             RoleType.Custom,
             new HashSet<>(

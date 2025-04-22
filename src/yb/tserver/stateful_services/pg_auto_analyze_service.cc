@@ -112,7 +112,7 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
     QLColumnValuePB *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
     QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
-    bfcall_expr_pb->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
+    bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
     QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
     QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);
@@ -310,7 +310,8 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
           std::make_pair(table_id, table_oid));
     }
   }
-  VLOG(1) << "namespace_id_to_tables_with_unknown_reltuples: " << ToString(namespace_id_to_tables_with_unknown_reltuples);
+  VLOG(1) << "namespace_id_to_tables_with_unknown_reltuples: "
+          << ToString(namespace_id_to_tables_with_unknown_reltuples);
   for (const auto& [namespace_id, tables] : namespace_id_to_tables_with_unknown_reltuples) {
     // If the database is deleted. We need to clean up table entries belonging to
     // this database from the YCQL service table.
@@ -516,7 +517,7 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     QLColumnValuePB *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
     QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
-    bfcall_expr_pb->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_SubI64I64_85));
+    bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_SubI64I64_85));
     QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
     QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);

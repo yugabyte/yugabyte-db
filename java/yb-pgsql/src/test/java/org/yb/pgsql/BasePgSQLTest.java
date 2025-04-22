@@ -120,22 +120,26 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String DEADLOCK_DETECTED_PSQL_STATE = "40P01";
 
   // Metric names.
-  protected static final String METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
-  protected static final String SELECT_STMT_METRIC = METRIC_PREFIX + "SelectStmt";
-  protected static final String INSERT_STMT_METRIC = METRIC_PREFIX + "InsertStmt";
-  protected static final String DELETE_STMT_METRIC = METRIC_PREFIX + "DeleteStmt";
-  protected static final String UPDATE_STMT_METRIC = METRIC_PREFIX + "UpdateStmt";
-  protected static final String BEGIN_STMT_METRIC = METRIC_PREFIX + "BeginStmt";
-  protected static final String COMMIT_STMT_METRIC = METRIC_PREFIX + "CommitStmt";
-  protected static final String ROLLBACK_STMT_METRIC = METRIC_PREFIX + "RollbackStmt";
-  protected static final String OTHER_STMT_METRIC = METRIC_PREFIX + "OtherStmts";
-  protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC_DEPRECATED = METRIC_PREFIX
+  protected static final String LAT_METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
+  protected static final String METRIC_PREFIX = "yb_ysqlserver_";
+  protected static final String SELECT_STMT_METRIC = LAT_METRIC_PREFIX + "SelectStmt";
+  protected static final String INSERT_STMT_METRIC = LAT_METRIC_PREFIX + "InsertStmt";
+  protected static final String DELETE_STMT_METRIC = LAT_METRIC_PREFIX + "DeleteStmt";
+  protected static final String UPDATE_STMT_METRIC = LAT_METRIC_PREFIX + "UpdateStmt";
+  protected static final String BEGIN_STMT_METRIC = LAT_METRIC_PREFIX + "BeginStmt";
+  protected static final String COMMIT_STMT_METRIC = LAT_METRIC_PREFIX + "CommitStmt";
+  protected static final String ROLLBACK_STMT_METRIC = LAT_METRIC_PREFIX + "RollbackStmt";
+  protected static final String OTHER_STMT_METRIC = LAT_METRIC_PREFIX + "OtherStmts";
+  protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC_DEPRECATED = LAT_METRIC_PREFIX
       + "Single_Shard_Transactions";
   protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC =
-      METRIC_PREFIX + "SingleShardTransactions";
-  protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
-  protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
-  protected static final String CATALOG_CACHE_MISSES_METRICS = METRIC_PREFIX + "CatalogCacheMisses";
+      LAT_METRIC_PREFIX + "SingleShardTransactions";
+  protected static final String TRANSACTIONS_METRIC = LAT_METRIC_PREFIX + "Transactions";
+  protected static final String AGGREGATE_PUSHDOWNS_METRIC =
+    LAT_METRIC_PREFIX + "AggregatePushdowns";
+  // The prefix of the below metrics is now METRIC_PREFIX instead
+  protected static final String CATALOG_CACHE_MISSES_METRICS_DEPRECATED =
+    LAT_METRIC_PREFIX + "CatalogCacheMisses";
 
   // Some reasons why the test should not be run with connection manager
   protected static final String UNIQUE_PHYSICAL_CONNS_NEEDED =
@@ -153,7 +157,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "the tests with connection manager";
 
   protected static final String DUMMY_LABEL_NOT_LOADED_ON_ALL_BACKENDS =
-      "Skipping this test with Ysql Connection Manager as security labels of \'dummy'\ provider " +
+      "Skipping this test with Ysql Connection Manager as security labels of \'dummy\' provider " +
       "are not loaded on all backends, except for where create extension has been executed. " +
       "Therefore in random mode of conn mgr, while loading security labels on different " +
       "backend it throws error. Skipping this test untill bug is fixed tracked by GH: #26650";
@@ -901,6 +905,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       assertEquals(obj.get("type").getAsString(), "server");
       assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
       Metrics.YSQLMetric metric = new Metrics(obj).getYSQLMetric(metricName);
+      if (metric == null)
+        throw new RuntimeException("Could not find metric for " + metricName);
       value.count += metric.count;
       value.value += metric.sum;
       value.rows += metric.rows;

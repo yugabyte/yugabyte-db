@@ -121,6 +121,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
   void SetYsqlDBCatalogVersions(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data) override {}
 
+  Result<tserver::GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
+
   const std::string& permanent_uuid() const override;
 
   Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(

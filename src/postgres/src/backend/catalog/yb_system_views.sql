@@ -21,6 +21,7 @@ CREATE VIEW yb_terminated_queries AS
 SELECT
     D.datname AS databasename,
     S.backend_pid AS backend_pid,
+    S.query_id AS query_id,
     S.query_text AS query_text,
     S.termination_reason AS termination_reason,
     S.query_start AS query_start_time,

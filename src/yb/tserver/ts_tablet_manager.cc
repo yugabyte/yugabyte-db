@@ -3522,7 +3522,7 @@ void TSTabletManager::UpdateCompactFlushRateLimitBytesPerSec() {
 }
 
 rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type) {
-  auto& thread_pool_ptr = vector_index_thread_pools_[to_underlying(type)];
+  auto& thread_pool_ptr = vector_index_thread_pools_[std::to_underlying(type)];
   auto result = thread_pool_ptr.get();
   if (result) {
     return result;

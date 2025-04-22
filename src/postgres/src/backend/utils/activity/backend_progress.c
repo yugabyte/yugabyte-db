@@ -106,6 +106,7 @@ pgstat_progress_end_command(void)
 		return;
 
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
+	/* YB: avoid clearing stats after COPY */
 	if (beentry->st_progress_command != PROGRESS_COMMAND_COPY)
 	{
 		beentry->st_progress_command = PROGRESS_COMMAND_INVALID;

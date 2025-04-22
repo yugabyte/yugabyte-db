@@ -104,6 +104,7 @@ typedef enum {
   YB_YQL_DATA_TYPE_UINT64 = 103,
   YB_YQL_DATA_TYPE_GIN_NULL = 104,
   YB_YQL_DATA_TYPE_VECTOR = 105,
+  YB_YQL_DATA_TYPE_BSON = 106,
 } YbcPgDataType;
 
 // Datatypes that are internally designated to be unsupported.
@@ -424,6 +425,7 @@ typedef struct {
   const bool*     ysql_enable_pg_export_snapshot;
   const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
   const bool*     ysql_enable_inheritance;
+  const bool*     TEST_enable_object_locking_for_table_locks;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -524,6 +526,8 @@ typedef struct {
   int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
   YbcPgExecEventMetric
       storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+
+  uint64_t rows_removed_by_recheck;
 } YbcPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.

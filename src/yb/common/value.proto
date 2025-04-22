@@ -88,6 +88,8 @@ message QLValuePB {
     // Null category for GIN indexes.
     uint32 gin_null_value = 26;
     QLSeqValuePB tuple_value = 27;
+    // raw bytes for bson value.
+    bytes bson_value = 28;
   }
 }
 
@@ -135,6 +137,7 @@ enum PersistentDataType {
 
   GIN_NULL = 104;
   VECTOR = 105;
+  BSON = 106;
 }
 
 // Expression operators.

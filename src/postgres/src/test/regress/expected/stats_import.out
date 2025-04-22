@@ -44,12 +44,12 @@ SELECT pg_restore_relation_stats(
         17, '17'::integer);
 ERROR:  name at variadic position 3 has type "integer", expected type "text"
 -- starting stats
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test_i'::regclass;
- relpages | reltuples | relallvisible | relallfrozen 
-----------+-----------+---------------+--------------
-        1 |         0 |             0 |            0
+ relpages | reltuples | relallvisible 
+----------+-----------+---------------
+        1 |         0 |             0
 (1 row)
 
 -- regular indexes have special case locking rules
@@ -141,19 +141,18 @@ SELECT pg_restore_relation_stats(
         'version', 150000::integer,
         'relpages', '-17'::integer,
         'reltuples', 400::real,
-        'relallvisible', 4::integer,
-        'relallfrozen', 2::integer);
+        'relallvisible', 4::integer);
  pg_restore_relation_stats 
 ---------------------------
  t
 (1 row)
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
- relpages | reltuples | relallvisible | relallfrozen 
-----------+-----------+---------------+--------------
-      -17 |       400 |             4 |            2
+ relpages | reltuples | relallvisible 
+----------+-----------+---------------
+      -17 |       400 |             4
 (1 row)
 
 -- ok: set just relpages, rest stay same
@@ -165,12 +164,12 @@ SELECT pg_restore_relation_stats(
  t
 (1 row)
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
- relpages | reltuples | relallvisible | relallfrozen 
-----------+-----------+---------------+--------------
-       16 |       400 |             4 |            2
+ relpages | reltuples | relallvisible 
+----------+-----------+---------------
+       16 |       400 |             4
 (1 row)
 
 -- ok: set just reltuples, rest stay same
@@ -182,12 +181,12 @@ SELECT pg_restore_relation_stats(
  t
 (1 row)
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
- relpages | reltuples | relallvisible | relallfrozen 
-----------+-----------+---------------+--------------
-       16 |       500 |             4 |            2
+ relpages | reltuples | relallvisible 
+----------+-----------+---------------
+       16 |       500 |             4
 (1 row)
 
 -- ok: set just relallvisible, rest stay same
@@ -199,30 +198,12 @@ SELECT pg_restore_relation_stats(
  t
 (1 row)
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
- relpages | reltuples | relallvisible | relallfrozen 
-----------+-----------+---------------+--------------
-       16 |       500 |             5 |            2
-(1 row)
-
--- ok: just relallfrozen
-SELECT pg_restore_relation_stats(
-        'relation', 'stats_import.test'::regclass,
-        'version', 150000::integer,
-        'relallfrozen', 3::integer);
- pg_restore_relation_stats 
----------------------------
- t
-(1 row)
-
-SELECT relpages, reltuples, relallvisible, relallfrozen
-FROM pg_class
-WHERE oid = 'stats_import.test'::regclass;
- relpages | reltuples | relallvisible | relallfrozen 
-----------+-----------+---------------+--------------
-       16 |       500 |             5 |            3
+ relpages | reltuples | relallvisible 
+----------+-----------+---------------
+       16 |       500 |             5
 (1 row)
 
 -- warn: bad relpages type, rest updated
@@ -230,20 +211,19 @@ SELECT pg_restore_relation_stats(
         'relation', 'stats_import.test'::regclass,
         'relpages', 'nope'::text,
         'reltuples', 400.0::real,
-        'relallvisible', 4::integer,
-        'relallfrozen', 3::integer);
+        'relallvisible', 4::integer);
 WARNING:  argument "relpages" has type "text", expected type "integer"
  pg_restore_relation_stats 
 ---------------------------
  f
 (1 row)
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
- relpages | reltuples | relallvisible | relallfrozen 
-----------+-----------+---------------+--------------
-       16 |       400 |             4 |            3
+ relpages | reltuples | relallvisible 
+----------+-----------+---------------
+       16 |       400 |             4
 (1 row)
 
 -- unrecognized argument name, rest ok
@@ -522,12 +502,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
     'most_common_vals', '{2,four,3}'::text,
     'most_common_freqs', '{0.3,0.25,0.05}'::real[]
     );
-WARNING:  invalid input syntax for type integer: "four"
- pg_restore_attribute_stats 
-----------------------------
- f
-(1 row)
-
+ERROR:  invalid input syntax for type integer: "four"
 SELECT *
 FROM pg_stats
 WHERE schemaname = 'stats_import'
@@ -536,7 +511,7 @@ AND inherited = false
 AND attname = 'id';
   schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac | range_bounds_histogram 
 --------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+------------------------
- stats_import | test      | id      | f         |      0.23 |         5 |        0.6 |                  |                   |                  |             |                   |                        |                      |                        |                  | 
+ stats_import | test      | id      | f         |      0.22 |         5 |        0.6 |                  |                   |                  |             |                   |                        |                      |                        |                  | 
 (1 row)
 
 -- ok: mcv+mcf
@@ -560,7 +535,7 @@ AND inherited = false
 AND attname = 'id';
   schemaname  | tablename | attname | inherited | null_frac | avg_width | n_distinct | most_common_vals | most_common_freqs | histogram_bounds | correlation | most_common_elems | most_common_elem_freqs | elem_count_histogram | range_length_histogram | range_empty_frac | range_bounds_histogram 
 --------------+-----------+---------+-----------+-----------+-----------+------------+------------------+-------------------+------------------+-------------+-------------------+------------------------+----------------------+------------------------+------------------+------------------------
- stats_import | test      | id      | f         |      0.23 |         5 |        0.6 | {2,1,3}          | {0.3,0.25,0.05}   |                  |             |                   |                        |                      |                        |                  | 
+ stats_import | test      | id      | f         |      0.22 |         5 |        0.6 | {2,1,3}          | {0.3,0.25,0.05}   |                  |             |                   |                        |                      |                        |                  | 
 (1 row)
 
 -- warn: NULL in histogram array, rest get set

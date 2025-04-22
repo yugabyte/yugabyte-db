@@ -55,7 +55,7 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
     } else {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) =
-          to_underlying(AutoFlagClass::kExternal);
+          std::to_underlying(AutoFlagClass::kExternal);
     }
     return Status::OK();
   }
@@ -65,7 +65,7 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
     } else {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) =
-          to_underlying(AutoFlagClass::kExternal);
+          std::to_underlying(AutoFlagClass::kExternal);
     }
     return Status::OK();
   }

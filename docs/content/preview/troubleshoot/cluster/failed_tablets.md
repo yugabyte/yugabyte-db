@@ -18,7 +18,7 @@ To do this, the administrator needs to find all the faulty tablets, look for the
 The following are the steps to address this scenario:
 
 1. Stop the YB-TServer process to prevent new restarts during operations. For YugabyteDB Anywhere, execute the `yb-server-ctl tserver stop` command.
-2. Find the tablets that are encountering these problems. You may [consult logs](../../nodes/check-logs) to get the UUID of tablets. In the described scenario, the UUID of the tablet is `FOO` and the `--fs_data_dirs` flag is `/mnt/disk1`.
+2. Find the tablets that are encountering these problems. You may [consult logs](../../../explore/observability/logging/) to get the UUID of tablets. In the described scenario, the UUID of the tablet is `FOO` and the `--fs_data_dirs` flag is `/mnt/disk1`.
 3. Find and remove all the tablet files, as follows:
 
    ```bash
