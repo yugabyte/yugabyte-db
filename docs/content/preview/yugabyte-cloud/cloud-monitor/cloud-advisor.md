@@ -16,7 +16,9 @@ Use Insights to scan your cluster for potential optimizations.
 
 {{< youtube id="8df1leHBLIQ" title="Optimize YugabyteDB Aeon clusters with Performance Monitor" >}}
 
-For meaningful results, run your workload for at least an hour before running the advisor.
+To gather insights, click the cluster **Perf Advisor** tab, choose **Insights**, and click **Scan**.
+
+For meaningful results, run your workload for at least an hour before running the scan.
 
 To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
 
