@@ -14,6 +14,7 @@
 //
 
 #include <atomic>
+#include <regex>
 #include <string>
 #include <thread>
 
@@ -27,6 +28,8 @@
 #include <cds/gc/dhp.h>
 #include <gtest/gtest.h>
 
+#include "yb/util/concurrent_queue.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -34,6 +37,9 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+
+DEFINE_test_flag(string, queue_name_regex, "",
+    "Regex to filter queue by name in LockfreeTest.QueuePerformance test");
 
 using namespace std::literals;
 
@@ -44,13 +50,14 @@ struct TestEntry : public MPSCQueueEntry<TestEntry> {
   size_t index;
 };
 
-TEST(LockfreeTest, MPSCQueueSimple) {
+template<class Queue, class NoneValue>
+void TestQueueSimple(const NoneValue& none_value) {
   const size_t kTotalEntries = 10;
   std::vector<TestEntry> entries(kTotalEntries);
   for (size_t i = 0; i != entries.size(); ++i) {
     entries[i].index = i;
   }
-  MPSCQueue<TestEntry> queue;
+  Queue queue;
 
   // Push pop 1 entry
   queue.Push(&entries[0]);
@@ -64,6 +71,13 @@ TEST(LockfreeTest, MPSCQueueSimple) {
   for (auto& entry : entries) {
     ASSERT_EQ(&entry, queue.Pop());
   }
+
+  for (auto& entry : entries) {
+    queue.Push(&entry);
+  }
+
+  queue.Clear();
+  ASSERT_EQ(none_value, queue.Pop());
 
   // Mixed push and pop
   queue.Push(&entries[0]);
@@ -82,12 +96,20 @@ TEST(LockfreeTest, MPSCQueueSimple) {
   ASSERT_EQ(&entries[5], queue.Pop());
   ASSERT_EQ(&entries[6], queue.Pop());
   ASSERT_EQ(&entries[7], queue.Pop());
-  ASSERT_EQ(nullptr, queue.Pop());
+  ASSERT_EQ(none_value, queue.Pop());
   queue.Push(&entries[8]);
   queue.Push(&entries[9]);
   ASSERT_EQ(&entries[8], queue.Pop());
   ASSERT_EQ(&entries[9], queue.Pop());
-  ASSERT_EQ(nullptr, queue.Pop());
+  ASSERT_EQ(none_value, queue.Pop());
+}
+
+TEST(LockfreeTest, MPSCQueueSimple) {
+  TestQueueSimple<MPSCQueue<TestEntry>>(nullptr);
+}
+
+TEST(LockfreeTest, RWQueueSimple) {
+  TestQueueSimple<RWQueue<TestEntry*>>(std::nullopt);
 }
 
 TEST(LockfreeTest, MPSCQueueConcurrent) {
@@ -281,6 +303,7 @@ class QueuePerformanceHelper {
         cds::container::optimistic_queue::make_traits<OptAllocator>::type>>(
             "OptimisticQueue/BlockAllocator/DHP");
     TestQueue<cds::container::RWQueue<ptrdiff_t>>("RWQueue");
+    TestQueue<RWQueue<ptrdiff_t>>("YBRWQueue");
     // On GCC11, segmented queue seems to call sized delete with a different size than it allocates
     // with, which causes a segfault in tcmalloc.
     // See issue https://github.com/khizmax/libcds/issues/181.
@@ -368,7 +391,7 @@ class QueuePerformanceHelper {
     start_latch.Wait();
     auto start = MonoTime::Now();
 
-    bool wait_result = finish_latch.WaitUntil(start + 10s);
+    bool wait_result = finish_latch.WaitUntil(start + 30s);
     auto stop = MonoTime::Now();
     auto passed = stop - start;
 
@@ -395,14 +418,14 @@ class QueuePerformanceHelper {
     }
   }
 
-  template <class T>
-  void TestQueue(const std::string& name) {
-    T queue;
-    DoTestQueue(name, &queue);
-  }
-
   template <class T, class... Args>
   void TestQueue(const std::string& name, Args&&... args) {
+    if (!name.empty() && !FLAGS_TEST_queue_name_regex.empty()) {
+      std::regex regex(FLAGS_TEST_queue_name_regex, std::regex::egrep);
+      if (!regex_match(name, regex)) {
+        return;
+      }
+    }
     T queue(std::forward<Args>(args)...);
     DoTestQueue(name, &queue);
   }

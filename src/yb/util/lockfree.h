@@ -21,6 +21,7 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
+
 #include "yb/util/atomic.h" // For IsAcceptableAtomicImpl
 
 namespace yb {
@@ -110,6 +111,11 @@ class MPSCQueue {
 
   bool Empty() const {
     return push_head_.load(std::memory_order_acquire) == nullptr;
+  }
+
+  void Clear() {
+    pop_head_ = nullptr;
+    push_head_.store(nullptr, std::memory_order_release);
   }
 
   void Drain() {
