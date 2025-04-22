@@ -816,6 +816,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestCreateReplicationSlotWithOrderingMode(const std::string ordering_mode);
 
+  void TestCreateReplicationSlotWithOrderingModeParam(
+      const ReplicationSlotOrderingMode ordering_mode);
+
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 
   void VerifyTableIdAndPkInCDCRecords(
