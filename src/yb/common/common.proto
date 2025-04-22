@@ -157,6 +157,7 @@ message PgHnswReadOptionsPB {
 message PgVectorReadOptionsPB {
   required QLValuePB vector = 1;
   required int32 prefetch_size = 2;
+  optional uint64 num_top_vectors_to_remove = 4;
   oneof index_params {
     PgHnswReadOptionsPB hnsw_options = 3;
   }
