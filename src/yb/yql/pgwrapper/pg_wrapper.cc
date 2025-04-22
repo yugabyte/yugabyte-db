@@ -927,8 +927,12 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
   bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
   SetCommonEnv(&initdb_subprocess, global_initdb);
 
-  const std::string initdb_log_path = Format("$0/$1", FLAGS_log_dir, "initdb.log");
-  initdb_subprocess.SetEnv("YB_INITDB_LOG_FILE_PATH", initdb_log_path);
+  std::string initdb_log_path;
+  const auto& log_dir = FLAGS_log_dir;
+  if (!log_dir.empty()) {
+    initdb_log_path = Format("$0/$1", log_dir, "initdb.log");
+    initdb_subprocess.SetEnv("YB_INITDB_LOG_FILE_PATH", initdb_log_path);
+  }
 
   if (global_initdb) {
     const auto& global_initdb_params = std::get<GlobalInitdbParams>(initdb_params);

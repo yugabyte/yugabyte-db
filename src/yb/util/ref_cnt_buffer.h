@@ -22,6 +22,7 @@
 #include <string>
 
 #include "yb/util/hash_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -284,6 +285,12 @@ class RefCntSlice {
 
   const RefCntBuffer& holder() const {
     return holder_;
+  }
+
+  RefCntSlice SubSlice(size_t begin, size_t end) {
+    DCHECK_LE(begin, end);
+    DCHECK_LE(end, slice_.size());
+    return RefCntSlice(holder_, Slice(slice_.mutable_data() + begin, slice_.mutable_data() + end));
   }
 
   size_t DynamicMemoryUsage() const { return holder_.DynamicMemoryUsage(); }
