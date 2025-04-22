@@ -81,6 +81,14 @@ Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id);
 
+// Construct the tablegroup id for the restore side corresponding to the backup tablegroup id.
+Result<TableId> GetRestoreTargetTablegroupId(
+    const NamespaceId& restore_target_namespace_id, const TableId& backup_source_tablegroup_id);
+// Construct the table id at the restore target side that corresponds to the old table
+// coming from backup side.
+Result<TableId> GetRestoreTargetTableIdUsingRelfilenode(
+    const NamespaceId& restore_target_namespace_id, const TableId& backup_source_table_id);
+
 // NOTE: Only catalog table oids are allowed.
 TableId GetPriorVersionYsqlCatalogTableId(uint32_t database_oid, uint32_t table_oid);
 

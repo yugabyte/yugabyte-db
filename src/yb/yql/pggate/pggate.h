@@ -609,6 +609,7 @@ class PgApiImpl {
 
   Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
 
+  void IncrementIndexRecheckCount();
 
   //------------------------------------------------------------------------------------------------
   // Functions.

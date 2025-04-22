@@ -11,13 +11,17 @@ DO $d$
             OPTIONS (dbname '$$||current_database()||$$',
                      -- YB note: In YugabyteDB regress tests, the host and port vary on a run-to-run basis.
                      host '$$||current_setting('listen_addresses')||$$',
-                     port '$$||current_setting('port')||$$'
+                     port '$$||current_setting('port')||$$',
+                     -- YB note: 'server_type' is a YB-specific option which defaults to 'postgresql'.
+                     server_type 'yugabytedb'
             )$$;
         EXECUTE $$CREATE SERVER loopback2 FOREIGN DATA WRAPPER postgres_fdw
             OPTIONS (dbname '$$||current_database()||$$',
                      -- YB note: In YugabyteDB regress tests, the host and port vary on a run-to-run basis.
                      host '$$||current_setting('listen_addresses')||$$',
-                     port '$$||current_setting('port')||$$'
+                     port '$$||current_setting('port')||$$',
+                     -- YB note: 'server_type' is a YB-specific option which defaults to 'postgresql'.
+                     server_type 'yugabytedb'
             )$$;
     END;
 $d$;

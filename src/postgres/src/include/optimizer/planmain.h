@@ -43,18 +43,11 @@ extern ForeignScan *make_foreignscan(List *qptlist, List *qpqual,
 									 Index scanrelid, List *fdw_exprs, List *fdw_private,
 									 List *fdw_scan_tlist, List *fdw_recheck_quals,
 									 Plan *outer_plan);
-extern Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
-								   List *tlist, List *scan_clauses,
-								   bool indexonly, bool bitmapindex);
-extern List *yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
-									   List *scan_clauses);
 extern Plan *change_plan_targetlist(Plan *subplan, List *tlist,
 									bool tlist_parallel_safe);
 extern Plan *materialize_finished_plan(Plan *subplan);
 extern bool is_projection_capable_path(Path *path);
 extern bool is_projection_capable_plan(Plan *plan);
-extern bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
-										 bool bitmapindex);
 
 /* External use of these functions is deprecated: */
 extern Sort *make_sort_from_sortclauses(List *sortcls, Plan *lefttree);
@@ -125,5 +118,14 @@ extern Param *find_minmax_agg_replacement_param(PlannerInfo *root,
 extern void record_plan_function_dependency(PlannerInfo *root, Oid funcid);
 extern void record_plan_type_dependency(PlannerInfo *root, Oid typid);
 extern bool extract_query_dependencies_walker(Node *node, PlannerInfo *root);
+
+/* YB */
+extern Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
+								   List *tlist, List *scan_clauses,
+								   bool indexonly, bool bitmapindex);
+extern List *yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
+									   List *scan_clauses);
+extern bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
+										 bool bitmapindex);
 
 #endif							/* PLANMAIN_H */

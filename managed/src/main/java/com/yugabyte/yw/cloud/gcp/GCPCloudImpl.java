@@ -22,6 +22,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -476,7 +478,12 @@ public class GCPCloudImpl implements CloudAPI {
       List<Backend> backends = backendService.getBackends();
       log.debug("Reconciling LB backends....");
       backends = ensureBackends(apiClient, nodeAzMap, backends);
-      backendService.setConnectionDraining((new ConnectionDraining()).setDrainingTimeoutSec(3600));
+      Duration connectionDrainingTimeout =
+          runtimeConfGetter.getConfForScope(
+              provider, ProviderConfKeys.gcpConnectionDrainingTimeout);
+      backendService.setConnectionDraining(
+          (new ConnectionDraining())
+              .setDrainingTimeoutSec((int) connectionDrainingTimeout.getSeconds()));
       backendService.setBackends(backends);
       backendService.setProtocol(lbProtocol);
       log.debug("Checking health checks....");

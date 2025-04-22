@@ -933,6 +933,7 @@ parseqatom(struct vars *v,
 			/* legal in EREs due to specification botch */
 			NOTE(REG_UPBOTCH);
 			/* fall through into case PLAIN */
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case PLAIN:
 			onechr(v, v->nextvalue, lp, rp);

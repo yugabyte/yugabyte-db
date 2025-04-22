@@ -336,7 +336,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         val = omit(val, 'parallel_threads');
       }
 
-      return editBackupSchedule(val);
+      return editBackupSchedule(val, currentUniverseUUID!);
     },
     {
       onSuccess: () => {
@@ -524,7 +524,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
             if (values.use_cron_expression) {
               editPayloadValues['cronExpression'] = values.cron_expression;
             } else {
-              editPayloadValues['frequency'] =
+              editPayloadValues['schedulingFrequency'] =
                 values['policy_interval'] *
                 MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()];
               editPayloadValues['frequencyTimeUnit'] = values[

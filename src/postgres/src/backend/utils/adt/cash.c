@@ -1055,7 +1055,7 @@ cash_numeric(PG_FUNCTION_ARGS)
 		fpoint = 2;
 
 	/* convert the integral money value to numeric */
-	result = DirectFunctionCall1(int8_numeric, Int64GetDatum(money));
+	result = NumericGetDatum(int64_to_numeric(money));
 
 	/* scale appropriately, if needed */
 	if (fpoint > 0)
@@ -1069,8 +1069,7 @@ cash_numeric(PG_FUNCTION_ARGS)
 		scale = 1;
 		for (i = 0; i < fpoint; i++)
 			scale *= 10;
-		numeric_scale = DirectFunctionCall1(int8_numeric,
-											Int64GetDatum(scale));
+		numeric_scale = NumericGetDatum(int64_to_numeric(scale));
 
 		/*
 		 * Given integral inputs approaching INT64_MAX, select_div_scale()

@@ -341,7 +341,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateDomainStmt CreateExtensionStmt CreateGroupStmt CreateOpClassStmt
 		CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
 		CreateSchemaStmt CreateSeqStmt CreateStmt CreateStatsStmt CreateTableSpaceStmt
-		CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt YbCreateTableGroupStmt
+		CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt
 		CreateAssertionStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
 		CreateUserStmt CreateUserMappingStmt CreateRoleStmt CreatePolicyStmt
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt DoStmt
@@ -365,15 +365,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateMatViewStmt RefreshMatViewStmt CreateAmStmt
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
-		YbBackfillIndexStmt YbCreateProfileStmt YbDropProfileStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
 				PLpgSQL_Expr PLAssignStmt
 
 %type <node>	alter_column_default opclass_item opclass_drop alter_using
-%type <ival>	add_drop opt_asc_desc yb_hash opt_yb_hash opt_yb_index_sort_order
-				opt_nulls_order
+%type <ival>	add_drop opt_asc_desc opt_nulls_order
 
 %type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
 	   replica_identity partition_cmd index_partition_cmd
@@ -391,7 +389,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				create_extension_opt_item alter_extension_opt_item
 
 %type <ival>	opt_lock lock_type cast_context
-%type <ival>	yb_opt_concurrently_index
 %type <str>		utility_option_name
 %type <defelt>	utility_option_elem
 %type <list>	utility_option_list
@@ -401,7 +398,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				opt_grant_grant_option opt_grant_admin_option
 				opt_nowait opt_if_exists opt_with_data
 				opt_transaction_chain
-				yb_opt_cascade
 %type <ival>	opt_nowait_or_skip
 
 %type <list>	OptRoleList AlterOptRoleList
@@ -474,8 +470,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
 				opt_column_list columnList opt_name_list
-				sort_clause opt_sort_clause sortby_list stats_params
-				yb_index_params yb_index_expr_list_hash_elems
+				sort_clause opt_sort_clause sortby_list yb_index_params stats_params
 				opt_include opt_c_include index_including_params
 				name_list role_list from_clause from_list opt_array_bounds
 				qualified_name_list any_name any_name_list type_name_list
@@ -497,7 +492,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				TriggerTransitions TriggerReferencing
 				vacuum_relation_list opt_vacuum_relation_list
 				drop_option_list pub_obj_list
-				yb_split_points yb_split_point
 
 %type <node>	opt_routine_body
 %type <groupclause> group_clause
@@ -536,7 +530,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <str>		unicode_normal_form
 
 %type <boolean> opt_instead
-%type <boolean> opt_unique opt_concurrently opt_concurrently_matview opt_verbose opt_full
+%type <boolean> opt_unique opt_concurrently opt_verbose opt_full
 %type <boolean> opt_freeze opt_analyze opt_default opt_recheck
 %type <defelt>	opt_binary copy_delimiter
 
@@ -620,8 +614,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> opt_varying opt_timezone opt_no_inherit
 
 %type <ival>	Iconst SignedIconst
-%type <ival>	Oid
-%type <list>	oid_list
 %type <str>		Sconst comment_text notify_payload
 %type <str>		RoleId opt_boolean_or_string
 %type <list>	var_list
@@ -652,13 +644,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace
 %type <rolespec> OptTableSpaceOwner
-%type <str>	OptTableSpaceLocation
 %type <ival>	opt_check_option
-
-%type <grpopt>	OptTableGroup
-%type <rolespec> OptTableGroupOwner
-
-%type <splitopt> YbOptSplit SplitClause
 
 %type <str>		opt_provider security_label
 
@@ -697,11 +683,21 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
-%type <rowbounds>	YbRowBounds
-%type <str>		opt_for_bfinstr
-%type <str>		partition_key
-%type <str>		row_key row_key_end row_key_start
-%type <str>		read_time
+/* YB types */
+%type <boolean> opt_concurrently_matview yb_opt_cascade
+%type <grpopt>	OptTableGroup
+%type <ival>	Oid opt_yb_hash opt_yb_index_sort_order yb_hash
+				yb_opt_concurrently_index
+%type <list>	oid_list yb_index_expr_list_hash_elems yb_split_point
+				yb_split_points
+%type <node>	YbBackfillIndexStmt YbCreateTableGroupStmt YbCreateProfileStmt
+				YbDropProfileStmt
+%type <rolespec> OptTableGroupOwner
+%type <rowbounds> YbRowBounds
+%type <splitopt> SplitClause YbOptSplit
+%type <str>		OptTableSpaceLocation opt_for_bfinstr partition_key row_key
+				read_time row_key_end row_key_start
+
 
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
@@ -728,16 +724,16 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 
 /* ordinary key words in alphabetical order */
-%token <keyword> ABORT_P ABSOLUTE_P ACCESS ACCOUNT ACTION ADD_P ADMIN AFTER
+%token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
 	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION
 
-	BACKFILL BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
+	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BREADTH BY
 
-	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHANGE CHAR_P
+	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
-	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLOCATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
+	CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED COMPRESSION CONCURRENTLY CONFIGURATION CONFLICT
 	CONNECTION CONSTRAINT CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY
 	COST CREATE CROSS CSV CUBE CURRENT_P
@@ -753,12 +749,12 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXPRESSION
 	EXTENSION EXTERNAL EXTRACT
 
-	FAILED_LOGIN_ATTEMPTS FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
+	FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
 	FORCE FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
 	GENERATED GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING GROUPS
 
-	HANDLER HASH HAVING HEADER_P HOLD HOUR_P
+	HANDLER HAVING HEADER_P HOLD HOUR_P
 
 	IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
 	INCLUDING INCREMENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
@@ -772,13 +768,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	LABEL LANGUAGE LARGE_P LAST_P LATERAL_P
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
+
 	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE METHOD
 	MINUTE_P MINVALUE MODE MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NONCONCURRENTLY NONE
-
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NONE
 	NORMALIZE NORMALIZED
-	NOPROFILE NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
+	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
@@ -788,7 +784,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD
 	PLACING PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
-	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROFILE PROGRAM PUBLICATION
+	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
 
 	QUOTE
 
@@ -799,19 +795,18 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	SAVEPOINT SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARE SHOW
-	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SPLIT SQL_P STABLE STANDALONE_P
+	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSID SYSTEM_P
 
-	TABLE TABLEGROUP TABLEGROUPS TABLES TABLESAMPLE TABLESPACE TABLETS TEMP TEMPLATE
-	TEMPORARY TEXT_P THEN
+	TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN
 	TIES TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM
 
 	TREAT TRIGGER TRIM TRUE_P
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
 	UESCAPE UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
-	UNLISTEN UNLOCK UNLOGGED UNTIL UPDATE USER USING
+	UNLISTEN UNLOGGED UNTIL UPDATE USER USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VOLATILE
@@ -824,6 +819,26 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	YEAR_P YES_P
 
 	ZONE
+
+	_YB_ACCOUNT_P
+
+	_YB_BACKFILL_P
+
+	_YB_CHANGE_P _YB_COLOCATED_P _YB_COLOCATION_P
+
+	_YB_FAILED_LOGIN_ATTEMPTS_P
+
+	_YB_HASH_P
+
+	_YB_NONCONCURRENTLY_P _YB_NOPROFILE_P
+
+	_YB_PROFILE_P
+
+	_YB_SPLIT_P
+
+	_YB_TABLEGROUP_P _YB_TABLEGROUPS_P _YB_TABLETS_P
+
+	_YB_UNLOCK_P
 
 /*
  * The grammar thinks these are keywords, but they are not in the kwlist.h
@@ -891,16 +906,17 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
 
  /*
-  * Break shift/reduce conflict in hash column declaration "col HASH" by
+  * YB: Break shift/reduce conflict in hash column declaration "col HASH" by
   * giving a higher precedence to HASH as a sort order over operator class.
   */
-%nonassoc   HASH
+%nonassoc   _YB_HASH_P
 %nonassoc   NO_OPCLASS
  /*
-  * Break shift/reduce conflict in hash column declaration "(col) HASH" by
+  * YB: Break shift/reduce conflict in hash column declaration "(col) HASH" by
   * giving a higher precedence to col as an expression list over a single expression.
   */
 %nonassoc   EXPR_LIST
+
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -1013,59 +1029,82 @@ toplevel_stmt:
 		;
 
 /*
- * The checks in the "stmt" rule are only for bug-prevention. If we miss an error check on an
- * unsupported feature, these checks will stop unsupported statements from being processed further.
+ * YB: The checks in the "stmt" rule are only for bug-prevention. If we miss an
+ * error check on an unsupported feature, these checks will stop unsupported
+ * statements from being processed further.
  */
 stmt:
-			/*EMPTY*/
-				{ $$ = NULL; }
+			AlterEventTrigStmt
 			| AlterCollationStmt
-			| AlterDatabaseSetStmt
 			| AlterDatabaseStmt
+			| AlterDatabaseSetStmt
 			| AlterDefaultPrivilegesStmt
 			| AlterDomainStmt
 			| AlterEnumStmt
-			| AlterEventTrigStmt
+			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
+			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
+			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| AlterFunctionStmt
 			| AlterGroupStmt
+			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterObjectSchemaStmt
-			| AlterOperatorStmt
-			| AlterOpFamilyStmt
 			| AlterOwnerStmt
+			| AlterOperatorStmt
+			| AlterTypeStmt
 			| AlterPolicyStmt
+			| AlterSeqStmt
+			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
+			| AlterTableStmt
+			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
+			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterPublicationStmt
 			| AlterRoleSetStmt
 			| AlterRoleStmt
-			| AlterSeqStmt
+			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterStatsStmt
-			| AlterTableStmt
-			| AlterTypeStmt
+			| AlterTSConfigurationStmt { parser_ybc_beta_feature(@1, "alter text search configuration", false); }
+			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
+			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| AnalyzeStmt
-			| YbBackfillIndexStmt
 			| CallStmt
+			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
 			| ClosePortalStmt
+			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
 			| CreateAmStmt
+			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
+			| CreateAssertionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateCastStmt
+			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateDomainStmt
-			| CreateEventTrigStmt
 			| CreateExtensionStmt
+			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateFunctionStmt
 			| CreateGroupStmt
 			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
-			| CreatePLangStmt
-			| CreatePolicyStmt
 			| CreatePublicationStmt
-			| CreateRoleStmt
+			| AlterOpFamilyStmt
+			| CreatePolicyStmt
+			| CreatePLangStmt
 			| CreateSchemaStmt
+			| CreateSeqStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
+			| CreateStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
+			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt
 			| CreateTableSpaceStmt
+			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTrigStmt
+			| CreateEventTrigStmt
+			| CreateRoleStmt
 			| CreateUserStmt
+			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreatedbStmt
 			| DeallocateStmt
 			| DeclareCursorStmt
@@ -1077,86 +1116,56 @@ stmt:
 			| DropOpClassStmt
 			| DropOpFamilyStmt
 			| DropOwnedStmt
-			| DropRoleStmt
 			| DropStmt
+			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTableSpaceStmt
+			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
+			| DropRoleStmt
+			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| DropdbStmt
 			| ExecuteStmt
 			| ExplainStmt
 			| FetchStmt
-			| GrantRoleStmt
 			| GrantStmt
+			| GrantRoleStmt
+			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| IndexStmt
 			| InsertStmt
+			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
+			| RefreshMatViewStmt
+			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LockStmt
+			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
+			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
 			| PrepareStmt
 			| ReassignOwnedStmt
-			| RefreshMatViewStmt
 			| ReindexStmt
 			| RemoveAggrStmt
 			| RemoveFuncStmt
 			| RemoveOperStmt
 			| RenameStmt
-			| RevokeRoleStmt
 			| RevokeStmt
+			| RevokeRoleStmt
 			| RuleStmt
 			| SecLabelStmt
 			| SelectStmt
 			| TransactionStmt
 			| TruncateStmt
+			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
 			| UpdateStmt
 			| VacuumStmt
 			| VariableResetStmt
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+			| /*EMPTY*/
+				{ $$ = NULL; }
+
+			/* YB stmts */
+			| YbBackfillIndexStmt
 			| YbCreateProfileStmt
 			| YbDropProfileStmt
-
-			/* BETA features */
-			/* TODO(#10263): Fix individual beta flag feature bools */
-			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
-			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
-			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AlterForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AlterTSConfigurationStmt {
-				parser_ybc_beta_feature(@1, "alter text search configuration", false);
-			  }
-			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
-			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-
-			/* Not supported in template0/template1 statements */
-			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
-			| CreateSeqStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
-			| CreateStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
-
-			/* Not supported statements */
-			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
-			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
-			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateAssertionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
-			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
-			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
-			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
-			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
-
-			/* Deprecated statements */
+			/* YB deprecated stmts */
 			| YbCreateTableGroupStmt
 		;
 
@@ -1205,10 +1214,7 @@ opt_with:	WITH
  * is "WITH ADMIN name".
  */
 OptRoleList:
-			OptRoleList CreateOptRoleElem
-				{
-					$$ = lappend($1, $2);
-				}
+			OptRoleList CreateOptRoleElem			{ $$ = lappend($1, $2); }
 			| /* EMPTY */							{ $$ = NIL; }
 		;
 
@@ -1262,25 +1268,25 @@ AlterOptRoleElem:
 				{
 					$$ = makeDefElem("rolemembers", (Node *) $2, @1);
 				}
-			| PROFILE name
+			| _YB_PROFILE_P name
 				{
 					if (!*YBCGetGFlags()->ysql_enable_profile)
 						parser_ybc_not_support(@1, "PROFILE");
 					$$ = makeDefElem("profile", (Node *)makeString($2), @1);
 				}
-			| NOPROFILE
+			| _YB_NOPROFILE_P
 				{
 					if (!*YBCGetGFlags()->ysql_enable_profile)
 						parser_ybc_not_support(@1, "PROFILE");
 					$$ = makeDefElem("noprofile", (Node *)makeInteger(false), @1);
 				}
-			| ACCOUNT LOCK_P
+			| _YB_ACCOUNT_P LOCK_P
 				{
 					if (!*YBCGetGFlags()->ysql_enable_profile)
 						parser_ybc_not_support(@1, "PROFILE");
 					$$ = makeDefElem("unlocked", (Node *)makeInteger(false), @1);
 				}
-			| ACCOUNT UNLOCK
+			| _YB_ACCOUNT_P _YB_UNLOCK_P
 				{
 					if (!*YBCGetGFlags()->ysql_enable_profile)
 						parser_ybc_not_support(@1, "PROFILE");
@@ -1862,9 +1868,9 @@ var_value:	opt_boolean_or_string
 		;
 
 iso_level:	READ UNCOMMITTED						{ $$ = "read uncommitted"; }
-			| READ COMMITTED					{ $$ = "read committed"; }
-			| REPEATABLE READ					{ $$ = "repeatable read"; }
-			| SERIALIZABLE						{ $$ = "serializable"; }
+			| READ COMMITTED						{ $$ = "read committed"; }
+			| REPEATABLE READ						{ $$ = "repeatable read"; }
+			| SERIALIZABLE							{ $$ = "serializable"; }
 		;
 
 opt_boolean_or_string:
@@ -2197,7 +2203,7 @@ AlterTableStmt:
 					n->yb_cascade = $14;
 					$$ = (Node *) n;
 				}
-		|	ALTER TABLE ALL IN_P TABLESPACE name COLOCATED WITH relation_expr SET TABLESPACE name opt_nowait yb_opt_cascade
+		|	ALTER TABLE ALL IN_P TABLESPACE name _YB_COLOCATED_P WITH relation_expr SET TABLESPACE name opt_nowait yb_opt_cascade
 				{
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
@@ -3111,7 +3117,7 @@ replica_identity:
 					n->name = NULL;
 					$$ = (Node *) n;
 				}
-			| CHANGE
+			| _YB_CHANGE_P
 				{
 					ReplicaIdentityStmt *n = makeNode(ReplicaIdentityStmt);
 					n->identity_type = YB_REPLICA_IDENTITY_CHANGE;
@@ -3137,17 +3143,11 @@ opt_reloptions:		WITH reloptions					{ $$ = $2; }
 			 |		/* EMPTY */						{ $$ = NIL; }
 		;
 
-/* TODO: add interleaved to reloption_list.
+/* YB: TODO: add interleaved to reloption_list.
    Eventually deprecate using colocated */
 reloption_list:
-			reloption_elem
-				{
-					$$ = list_make1($1);
-				}
-			| reloption_list ',' reloption_elem
-				{
-					$$ = lappend($1, $3);
-				}
+			reloption_elem							{ $$ = list_make1($1); }
+			| reloption_list ',' reloption_elem		{ $$ = lappend($1, $3); }
 		;
 
 /* This should match def_elem and also allow qualified names */
@@ -3983,11 +3983,7 @@ OptTemp:	TEMPORARY					{ $$ = RELPERSISTENCE_TEMP; }
 							 parser_errposition(@1)));
 					$$ = RELPERSISTENCE_TEMP;
 				}
-			/* CREATE UNLOGGED TABLE / SEQUENCE / VIEW */
-			| UNLOGGED
-				{
-					$$ = RELPERSISTENCE_UNLOGGED;
-				}
+			| UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
 			| /*EMPTY*/					{ $$ = RELPERSISTENCE_PERMANENT; }
 		;
 
@@ -4283,7 +4279,7 @@ ColConstraintElem:
 
 opt_unique_null_treatment:
 			NULLS_P DISTINCT		{ $$ = true; }
-			| NULLS_P NOT DISTINCT  { $$ = false;}
+			| NULLS_P NOT DISTINCT	{ $$ = false; }
 			| /*EMPTY*/				{ $$ = true; }
 		;
 
@@ -4356,27 +4352,28 @@ TableLikeClause:
 		;
 
 TableLikeOptionList:
-			TableLikeOptionList INCLUDING TableLikeOption	{ $$ = $1 | $3; }
-			| TableLikeOptionList EXCLUDING TableLikeOption	{ $$ = $1 & ~$3; }
-			| /* EMPTY */						{ $$ = 0; }
+				TableLikeOptionList INCLUDING TableLikeOption	{ $$ = $1 | $3; }
+				| TableLikeOptionList EXCLUDING TableLikeOption	{ $$ = $1 & ~$3; }
+				| /* EMPTY */						{ $$ = 0; }
 		;
 
 TableLikeOption:
-			COMMENTS			{ $$ = CREATE_TABLE_LIKE_COMMENTS; }
-			| COMPRESSION
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE COMPRESSION", 1129);
-					$$ = CREATE_TABLE_LIKE_COMPRESSION;
-				}
-			| CONSTRAINTS		{ $$ = CREATE_TABLE_LIKE_CONSTRAINTS; }
-			| DEFAULTS			{ $$ = CREATE_TABLE_LIKE_DEFAULTS; }
-			| GENERATED			{ $$ = CREATE_TABLE_LIKE_GENERATED; }
-			| IDENTITY_P		{ $$ = CREATE_TABLE_LIKE_IDENTITY; }
-			| INDEXES			{ $$ = CREATE_TABLE_LIKE_INDEXES; }
-			| STATISTICS		{ $$ = CREATE_TABLE_LIKE_STATISTICS; }
-			| STORAGE			{ $$ = CREATE_TABLE_LIKE_STORAGE; }
-			| ALL				{ $$ = CREATE_TABLE_LIKE_ALL; }
+				COMMENTS			{ $$ = CREATE_TABLE_LIKE_COMMENTS; }
+				| COMPRESSION
+					{
+						parser_ybc_signal_unsupported(@1, "LIKE COMPRESSION", 1129);
+						$$ = CREATE_TABLE_LIKE_COMPRESSION;
+					}
+				| CONSTRAINTS		{ $$ = CREATE_TABLE_LIKE_CONSTRAINTS; }
+				| DEFAULTS			{ $$ = CREATE_TABLE_LIKE_DEFAULTS; }
+				| IDENTITY_P		{ $$ = CREATE_TABLE_LIKE_IDENTITY; }
+				| GENERATED			{ $$ = CREATE_TABLE_LIKE_GENERATED; }
+				| INDEXES			{ $$ = CREATE_TABLE_LIKE_INDEXES; }
+				| STATISTICS		{ $$ = CREATE_TABLE_LIKE_STATISTICS; }
+				| STORAGE			{ $$ = CREATE_TABLE_LIKE_STORAGE; }
+				| ALL				{ $$ = CREATE_TABLE_LIKE_ALL; }
 		;
+
 
 /* ConstraintElem specifies constraint syntax which is not embedded into
  *	a column definition. ColConstraintElem specifies the embedded form.
@@ -4426,7 +4423,7 @@ ConstraintElem:
 								   &n->deferrable, &n->initdeferred, NULL,
 								   NULL, yyscanner);
 
-					/* Make column list available as index params also */
+					/* YB: Make column list available as index params also */
 					ListCell *lc;
 					foreach(lc, $4)
 					{
@@ -4466,7 +4463,10 @@ ConstraintElem:
 
 					n->contype = CONSTR_PRIMARY;
 					n->location = @1;
-					/* For Postgres' purpose, make index params available as a column list also */
+					/*
+					 * YB: For Postgres' purpose, make index params available
+					 * as a column list also
+					 */
 					ListCell *lc;
 					foreach(lc, $4)
 					{
@@ -4827,7 +4827,7 @@ OnCommitOption:  ON COMMIT DROP				{ $$ = ONCOMMIT_DROP; }
 		;
 
 OptTableGroup:
-			TABLEGROUP name
+			_YB_TABLEGROUP_P name
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					$$ = $2;
@@ -4838,16 +4838,11 @@ OptTableGroup:
 				}
 		;
 
-OptTableSpace:
-	     		TABLESPACE name { $$ = $2; }
+OptTableSpace:   TABLESPACE name					{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-OptConsTableSpace:
-			USING INDEX TABLESPACE name
-				{
-					$$ = $4;
-				}
+OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -4855,11 +4850,11 @@ ExistingIndex:   USING INDEX name					{ $$ = $3; }
 		;
 
 YbOptSplit:
-			SPLIT '(' SplitClause ')'
+			_YB_SPLIT_P '(' SplitClause ')'
 				{
 					$$ = $3;
 				}
-			| SPLIT SplitClause
+			| _YB_SPLIT_P SplitClause
         {
         	$$ = $2;
         }
@@ -4870,7 +4865,7 @@ YbOptSplit:
 		;
 
 SplitClause:
-      INTO Iconst TABLETS
+      INTO Iconst _YB_TABLETS_P
       	{
       		$$ = makeNode(YbOptSplit);
       		$$->split_type = NUM_TABLETS;
@@ -5115,7 +5110,6 @@ create_mv_target:
 				}
 		;
 
-			/* CREATE UNLOGGED MATERIALIZED VIEW */
 OptNoLog:	UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
 			| /*EMPTY*/					{ $$ = RELPERSISTENCE_PERMANENT; }
 		;
@@ -5145,7 +5139,7 @@ opt_concurrently_matview:
 				{
 					$$ = true;
 				}
-			| NONCONCURRENTLY
+			| _YB_NONCONCURRENTLY_P
 				{
 					$$ = false;
 				}
@@ -5320,7 +5314,7 @@ NumericOnly_list:	NumericOnly						{ $$ = list_make1($1); }
 CreatePLangStmt:
 			CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE name
 			{
-				/* Old code structure.
+				/* YB: Old code structure.
 				 *	n->replace = $2; (if_not_exists)
 				 *  n->plname = $6; (extname)
 				 */
@@ -5398,7 +5392,7 @@ opt_procedural:
  *****************************************************************************/
 
 YbCreateTableGroupStmt:
- 		CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions OptTableSpace
+ 		CREATE _YB_TABLEGROUP_P name OptTableGroupOwner opt_reloptions OptTableSpace
  				{
 					parser_ybc_not_support_in_templates(@1, "Tablegroup");
  					parser_ybc_beta_feature(@1, "tablegroup", true);
@@ -5420,7 +5414,7 @@ OptTableGroupOwner: OWNER RoleSpec		{ $$ = $2; }
 /*****************************************************************************
  *
  *		QUERY:
- *             CREATE TABLESPACE tablespace
+ *             CREATE TABLESPACE tablespace LOCATION '/path/to/tablespace/'
  *
  *****************************************************************************/
 
@@ -5483,7 +5477,7 @@ DropTableSpaceStmt: DROP TABLESPACE name
  *
  *****************************************************************************/
 
-YbCreateProfileStmt: CREATE PROFILE name LIMIT FAILED_LOGIN_ATTEMPTS Iconst
+YbCreateProfileStmt: CREATE _YB_PROFILE_P name LIMIT _YB_FAILED_LOGIN_ATTEMPTS_P Iconst
 				{
 					if (!*YBCGetGFlags()->ysql_enable_profile)
 						parser_ybc_not_support(@1, "PROFILE");
@@ -5509,7 +5503,7 @@ YbCreateProfileStmt: CREATE PROFILE name LIMIT FAILED_LOGIN_ATTEMPTS Iconst
  *
  *****************************************************************************/
 
-YbDropProfileStmt: DROP PROFILE name
+YbDropProfileStmt: DROP _YB_PROFILE_P name
 				{
 					if (!*YBCGetGFlags()->ysql_enable_profile)
 						parser_ybc_not_support(@1, "PROFILE");
@@ -5526,7 +5520,7 @@ YbDropProfileStmt: DROP PROFILE name
 					n->missing_ok = false;
 					$$ = (Node *) n;
 				}
-			|  DROP PROFILE IF_P EXISTS name
+			|  DROP _YB_PROFILE_P IF_P EXISTS name
 				{
 					if (!*YBCGetGFlags()->ysql_enable_profile)
 						parser_ybc_not_support(@1, "PROFILE");
@@ -5835,10 +5829,7 @@ AlterFdwStmt: ALTER FOREIGN DATA_P WRAPPER name opt_fdw_options alter_generic_op
 
 /* Options definition for CREATE FDW, SERVER and USER MAPPING */
 create_generic_options:
-			OPTIONS '(' generic_option_list ')'
-				{
-					$$ = $3;
-				}
+			OPTIONS '(' generic_option_list ')'			{ $$ = $3; }
 			| /*EMPTY*/									{ $$ = NIL; }
 		;
 
@@ -5855,10 +5846,7 @@ generic_option_list:
 
 /* Options definition for ALTER FDW, SERVER and USER MAPPING */
 alter_generic_options:
-			OPTIONS	'(' alter_generic_option_list ')'
-				{
-					$$ = $3;
-				}
+			OPTIONS	'(' alter_generic_option_list ')'		{ $$ = $3; }
 		;
 
 alter_generic_option_list:
@@ -6581,18 +6569,12 @@ ConstraintAttributeSpec:
 		;
 
 ConstraintAttributeElem:
-			NOT DEFERRABLE				{ $$ = CAS_NOT_DEFERRABLE; }
-			| DEFERRABLE				{
-				$$ = CAS_DEFERRABLE;
-			  }
-			| INITIALLY IMMEDIATE		{
-				$$ = CAS_INITIALLY_IMMEDIATE;
-			}
-			| INITIALLY DEFERRED		{
-				$$ = CAS_INITIALLY_DEFERRED;
-			}
-			| NOT VALID					{ $$ = CAS_NOT_VALID; }
-			| NO INHERIT				{ $$ = CAS_NO_INHERIT; }
+			NOT DEFERRABLE					{ $$ = CAS_NOT_DEFERRABLE; }
+			| DEFERRABLE					{ $$ = CAS_DEFERRABLE; }
+			| INITIALLY IMMEDIATE			{ $$ = CAS_INITIALLY_IMMEDIATE; }
+			| INITIALLY DEFERRED			{ $$ = CAS_INITIALLY_DEFERRED; }
+			| NOT VALID						{ $$ = CAS_NOT_VALID; }
+			| NO INHERIT					{ $$ = CAS_NO_INHERIT; }
 		;
 
 
@@ -6685,6 +6667,7 @@ CreateAssertionStmt:
 					$$ = NULL;
 				}
 		;
+
 
 /*****************************************************************************
  *
@@ -7404,38 +7387,21 @@ object_type_any_name:
 			TABLE									{ $$ = OBJECT_TABLE; }
 			| SEQUENCE								{ $$ = OBJECT_SEQUENCE; }
 			| VIEW									{ $$ = OBJECT_VIEW; }
-			| MATERIALIZED VIEW
+			| MATERIALIZED VIEW						{ $$ = OBJECT_MATVIEW; }
+			| INDEX									{ $$ = OBJECT_INDEX; }
+			| FOREIGN TABLE							{ $$ = OBJECT_FOREIGN_TABLE; }
+			| COLLATION
 				{
-					$$ = OBJECT_MATVIEW;
-				}
-			| INDEX { $$ = OBJECT_INDEX; }
-			| FOREIGN TABLE
-				{
-					$$ = OBJECT_FOREIGN_TABLE;
-				}
-			| COLLATION	{
 					if (!YBIsCollationEnabled())
 						parser_ybc_not_support(@1, "DROP COLLATION");
 					$$ = OBJECT_COLLATION;
 				}
-			| CONVERSION_P { parser_ybc_not_support(@1, "DROP CONVERSION"); $$ = OBJECT_CONVERSION; }
-			| STATISTICS { $$ = OBJECT_STATISTIC_EXT; }
-			| TEXT_P SEARCH PARSER
-				{
-					$$ = OBJECT_TSPARSER;
-				}
-			| TEXT_P SEARCH DICTIONARY
-				{
-					$$ = OBJECT_TSDICTIONARY;
-				}
-			| TEXT_P SEARCH TEMPLATE
-				{
-					$$ = OBJECT_TSTEMPLATE;
-				}
-			| TEXT_P SEARCH CONFIGURATION
-				{
-					$$ = OBJECT_TSCONFIGURATION;
-				}
+			| CONVERSION_P							{ parser_ybc_not_support(@1, "DROP CONVERSION"); $$ = OBJECT_CONVERSION; }
+			| STATISTICS							{ $$ = OBJECT_STATISTIC_EXT; }
+			| TEXT_P SEARCH PARSER					{ $$ = OBJECT_TSPARSER; }
+			| TEXT_P SEARCH DICTIONARY				{ $$ = OBJECT_TSDICTIONARY; }
+			| TEXT_P SEARCH TEMPLATE				{ $$ = OBJECT_TSTEMPLATE; }
+			| TEXT_P SEARCH CONFIGURATION			{ $$ = OBJECT_TSCONFIGURATION; }
 		;
 
 /*
@@ -7461,7 +7427,7 @@ drop_type_name:
 			| PUBLICATION							{ $$ = OBJECT_PUBLICATION; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
 			| SERVER								{ $$ = OBJECT_FOREIGN_SERVER; }
-			| TABLEGROUP
+			| _YB_TABLEGROUP_P
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					$$ = OBJECT_YBTABLEGROUP;
@@ -8314,7 +8280,7 @@ privilege_target:
 					n->objs = $2;
 					$$ = n;
 				}
-			| TABLEGROUP name_list
+			| _YB_TABLEGROUP_P name_list
 				{
 					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
 					n->targtype = ACL_TARGET_OBJECT;
@@ -8550,7 +8516,7 @@ defacl_privilege_target:
 			| FUNCTIONS		{ $$ = OBJECT_FUNCTION; }
 			| ROUTINES		{ $$ = OBJECT_FUNCTION; }
 			| SEQUENCES		{ $$ = OBJECT_SEQUENCE; }
-			| TABLEGROUPS	{ $$ = OBJECT_YBTABLEGROUP; }
+			| _YB_TABLEGROUPS_P	{ $$ = OBJECT_YBTABLEGROUP; }
 			| TYPES_P		{ $$ = OBJECT_TYPE; }
 			| SCHEMAS		{ $$ = OBJECT_SCHEMA; }
 		;
@@ -8648,7 +8614,7 @@ yb_opt_concurrently_index:
 					parser_ybc_not_support_in_templates(@1, "Concurrent index creation");
 					$$ = YB_CONCURRENCY_EXPLICIT_ENABLED;
 				}
-			| NONCONCURRENTLY
+			| _YB_NONCONCURRENTLY_P
 				{
 					$$ = YB_CONCURRENCY_DISABLED;
 				}
@@ -8706,6 +8672,7 @@ yb_index_params: index_elem
 								 parser_errposition(@3)));
 				}
 		;
+
 
 index_elem_options:
 	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
@@ -8821,7 +8788,7 @@ opt_asc_desc: ASC							{ $$ = SORTBY_ASC; }
 /*
  * For YugabyteDB, index column can be hash-distributed also.
  */
-yb_hash: HASH								{ $$ = SORTBY_HASH; }
+yb_hash: _YB_HASH_P							{ $$ = SORTBY_HASH; }
 		;
 
 opt_yb_index_sort_order: opt_asc_desc		{ $$ = $1; }
@@ -8834,7 +8801,7 @@ opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
 		;
 
 YbBackfillIndexStmt:
-			BACKFILL INDEX oid_list opt_for_bfinstr
+			_YB_BACKFILL_P INDEX oid_list opt_for_bfinstr
 				READ TIME read_time YbRowBounds
 				{
 					parser_ybc_not_support_in_templates(@1, "Index backfill");
@@ -8848,7 +8815,7 @@ YbBackfillIndexStmt:
 						char *nptr = $7;
 						char *end;
 						errno = 0;
-						n->bfinfo->read_time = pg_strtouint64(nptr, &end, 10);
+						n->bfinfo->read_time = strtou64(nptr, &end, 10);
 						if (!(*nptr != '\0' && *end == '\0')
 								|| errno == ERANGE)
 							ereport(ERROR,
@@ -9896,7 +9863,7 @@ ReindexStmt:
 						n->params = lappend(n->params,
 											makeDefElem("concurrently", NULL, @3));
 					}
-					/* Only support INDEX target. */
+					/* YB: Only support INDEX target. */
 					if (n->kind != REINDEX_OBJECT_INDEX)
 					{
 						Assert(n->kind == REINDEX_OBJECT_TABLE);
@@ -10519,7 +10486,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 					n->missing_ok = false;
 					$$ = (Node *) n;
 				}
-			| ALTER TABLEGROUP name RENAME TO name
+			| ALTER _YB_TABLEGROUP_P name RENAME TO name
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					RenameStmt *n = makeNode(RenameStmt);
@@ -11188,7 +11155,7 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 					n->newowner = $6;
 					$$ = (Node *) n;
 				}
-			| ALTER TABLEGROUP name OWNER TO RoleSpec
+			| ALTER _YB_TABLEGROUP_P name OWNER TO RoleSpec
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
@@ -11915,15 +11882,11 @@ transaction_mode_item:
 					{ $$ = makeDefElem("transaction_read_only",
 									   makeIntConst(false, @1), @1); }
 			| DEFERRABLE
-				{
-					$$ = makeDefElem("transaction_deferrable",
-									 makeIntConst(true, @1), @1);
-				}
+					{ $$ = makeDefElem("transaction_deferrable",
+									   makeIntConst(true, @1), @1); }
 			| NOT DEFERRABLE
-				{
-					$$ = makeDefElem("transaction_deferrable",
-									 makeIntConst(false, @1), @1);
-				}
+					{ $$ = makeDefElem("transaction_deferrable",
+									   makeIntConst(false, @1), @1); }
 		;
 
 /* Syntax with commas is SQL-spec, without commas is Postgres historical */
@@ -12123,7 +12086,7 @@ createdb_opt_name:
 			| OWNER							{ $$ = pstrdup($1); }
 			| TABLESPACE					{ $$ = pstrdup($1); }
 			| TEMPLATE						{ $$ = pstrdup($1); }
-			| COLOCATED
+			| _YB_COLOCATED_P
 				{
 					ereport(WARNING,
     						(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
@@ -12132,7 +12095,7 @@ createdb_opt_name:
 							 parser_errposition(@1)));
 					$$ = pstrdup($1);
 				}
-			| COLOCATION				    { $$ = pstrdup($1); }
+			| _YB_COLOCATION_P				{ $$ = pstrdup($1); }
 			| AS OF							{ $$ = pstrdup("clone_time"); }
 		;
 
@@ -13101,8 +13064,8 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 		;
 
 using_clause:
-			USING from_list				{ $$ = $2; }
-			| /* EMPTY */				{ $$ = NIL; }
+				USING from_list						{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 
@@ -13126,47 +13089,56 @@ LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
 
 opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 			| /*EMPTY*/
-			  {
-			    parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
-			    $$ = AccessExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
+			    	$$ = AccessExclusiveLock;
+				}
 		;
 
 lock_type:	ACCESS SHARE					{ $$ = AccessShareLock; }
 			| ROW SHARE
-			  { parser_ybc_not_support(@1, "ROW SHARE");
-			    $$ = RowShareLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ROW SHARE");
+			    	$$ = RowShareLock;
+				}
 			| ROW EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "ROW EXCLUSIVE");
-			    $$ = RowExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ROW EXCLUSIVE");
+			    	$$ = RowExclusiveLock;
+				}
 			| SHARE UPDATE EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
-			    $$ = ShareUpdateExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
+			    	$$ = ShareUpdateExclusiveLock;
+				}
 			| SHARE
-			  {
-			    parser_ybc_not_support(@1, "SHARE");
-			    $$ = ShareLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE");
+			    	$$ = ShareLock;
+				}
 			| SHARE ROW EXCLUSIVE
 				{
-				  parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
-				  $$ = ShareRowExclusiveLock;
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
+			    	$$ = ShareRowExclusiveLock;
 				}
 			| EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "EXCLUSIVE");
-			    $$ = ExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "EXCLUSIVE");
+			    	$$ = ExclusiveLock;
+				}
 			| ACCESS EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
-			    $$ = AccessExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
+			    	$$ = AccessExclusiveLock;
+				}
 		;
 
 opt_nowait:	NOWAIT							{ $$ = true; }
@@ -13853,7 +13825,6 @@ OptTempTableName:
 					$$ = $4;
 					$$->relpersistence = RELPERSISTENCE_TEMP;
 				}
-			/* SELECT ... INTO UNLOGGED <table-name> */
 			| UNLOGGED opt_table qualified_name
 				{
 					$$ = $3;
@@ -14181,10 +14152,7 @@ having_clause:
 		;
 
 for_locking_clause:
-			for_locking_items
-				{
-					$$ = $1;
-				}
+			for_locking_items						{ $$ = $1; }
 			| FOR READ ONLY							{ $$ = NIL; }
 		;
 
@@ -15036,11 +15004,11 @@ opt_array_bounds:
 		;
 
 SimpleTypename:
-			GenericType	{ $$ = $1; }
-			| Numeric	{ $$ = $1; }
-			| Bit	{ $$ = $1; }
-			| Character	{ $$ = $1; }
-			| ConstDatetime	{ $$ = $1; }
+			GenericType								{ $$ = $1; }
+			| Numeric								{ $$ = $1; }
+			| Bit									{ $$ = $1; }
+			| Character								{ $$ = $1; }
+			| ConstDatetime							{ $$ = $1; }
 			| ConstInterval opt_interval
 				{
 					$$ = $1;
@@ -15095,7 +15063,7 @@ GenericType:
 		;
 
 opt_type_modifiers: '(' expr_list ')'				{ $$ = $2; }
-				| /* EMPTY */					{ $$ = NIL; }
+					| /* EMPTY */					{ $$ = NIL; }
 		;
 
 /*
@@ -17511,8 +17479,9 @@ SignedIconst: Iconst								{ $$ = $1; }
 		;
 
 /*
- * Iconst does not accept large OID such as 2147500041, use SignedIconst to convert
- * it to -2147467255 instead. See process_integer_literal and strtoint for details.
+ * YB: Iconst does not accept large OID such as 2147500041, use SignedIconst to
+ * convert it to -2147467255 instead. See process_integer_literal and strtoint
+ * for details.
  */
 Oid:		SignedIconst							{ $$ = $1; };
 
@@ -17744,7 +17713,6 @@ unreserved_keyword:
 			  ABORT_P
 			| ABSOLUTE_P
 			| ACCESS
-			| ACCOUNT
 			| ACTION
 			| ADD_P
 			| ADMIN
@@ -17760,7 +17728,6 @@ unreserved_keyword:
 			| ATOMIC
 			| ATTACH
 			| ATTRIBUTE
-			| BACKFILL
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
@@ -17773,14 +17740,11 @@ unreserved_keyword:
 			| CASCADED
 			| CATALOG_P
 			| CHAIN
-			| CHANGE
 			| CHARACTERISTICS
 			| CHECKPOINT
 			| CLASS
 			| CLOSE
 			| CLUSTER
-			| COLOCATED
-			| COLOCATION
 			| COLUMNS
 			| COMMENT
 			| COMMENTS
@@ -17837,7 +17801,6 @@ unreserved_keyword:
 			| EXPRESSION
 			| EXTENSION
 			| EXTERNAL
-			| FAILED_LOGIN_ATTEMPTS
 			| FAMILY
 			| FILTER
 			| FINALIZE
@@ -17852,7 +17815,6 @@ unreserved_keyword:
 			| GRANTED
 			| GROUPS
 			| HANDLER
-			| HASH
 			| HEADER_P
 			| HOLD
 			| HOUR_P
@@ -17911,7 +17873,6 @@ unreserved_keyword:
 			| NFKC
 			| NFKD
 			| NO
-			| NOPROFILE
 			| NORMALIZED
 			| NOTHING
 			| NOTIFY
@@ -17949,7 +17910,6 @@ unreserved_keyword:
 			| PROCEDURAL
 			| PROCEDURE
 			| PROCEDURES
-			| PROFILE
 			| PROGRAM
 			| PUBLICATION
 			| QUOTE
@@ -18000,7 +17960,6 @@ unreserved_keyword:
 			| SIMPLE
 			| SKIP
 			| SNAPSHOT
-			| SPLIT
 			| SQL_P
 			| STABLE
 			| STANDALONE_P
@@ -18017,11 +17976,8 @@ unreserved_keyword:
 			| SUPPORT
 			| SYSID
 			| SYSTEM_P
-			| TABLEGROUP
-			| TABLEGROUPS
 			| TABLES
 			| TABLESPACE
-			| TABLETS
 			| TEMP
 			| TEMPLATE
 			| TEMPORARY
@@ -18040,7 +17996,6 @@ unreserved_keyword:
 			| UNENCRYPTED
 			| UNKNOWN
 			| UNLISTEN
-			| UNLOCK
 			| UNLOGGED
 			| UNTIL
 			| UPDATE
@@ -18064,6 +18019,20 @@ unreserved_keyword:
 			| YEAR_P
 			| YES_P
 			| ZONE
+			| _YB_ACCOUNT_P
+			| _YB_BACKFILL_P
+			| _YB_CHANGE_P
+			| _YB_COLOCATED_P
+			| _YB_COLOCATION_P
+			| _YB_FAILED_LOGIN_ATTEMPTS_P
+			| _YB_HASH_P
+			| _YB_NOPROFILE_P
+			| _YB_PROFILE_P
+			| _YB_SPLIT_P
+			| _YB_TABLEGROUP_P
+			| _YB_TABLEGROUPS_P
+			| _YB_TABLETS_P
+			| _YB_UNLOCK_P
 		;
 
 /* Column identifier --- keywords that can be column, table, etc names.
@@ -18157,7 +18126,6 @@ type_func_name_keyword:
 			| LEFT
 			| LIKE
 			| NATURAL
-			| NONCONCURRENTLY
 			| NOTNULL
 			| OUTER_P
 			| OVERLAPS
@@ -18165,6 +18133,7 @@ type_func_name_keyword:
 			| SIMILAR
 			| TABLESAMPLE
 			| VERBOSE
+			| _YB_NONCONCURRENTLY_P
 		;
 
 /* Reserved keyword --- these keywords are usable only as a ColLabel.
@@ -18266,7 +18235,6 @@ bare_label_keyword:
 			  ABORT_P
 			| ABSOLUTE_P
 			| ACCESS
-			| ACCOUNT
 			| ACTION
 			| ADD_P
 			| ADMIN
@@ -18290,7 +18258,6 @@ bare_label_keyword:
 			| ATTACH
 			| ATTRIBUTE
 			| AUTHORIZATION
-			| BACKFILL
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
@@ -18311,7 +18278,6 @@ bare_label_keyword:
 			| CAST
 			| CATALOG_P
 			| CHAIN
-			| CHANGE
 			| CHARACTERISTICS
 			| CHECK
 			| CHECKPOINT
@@ -18321,8 +18287,6 @@ bare_label_keyword:
 			| COALESCE
 			| COLLATE
 			| COLLATION
-			| COLOCATED
-			| COLOCATION
 			| COLUMN
 			| COLUMNS
 			| COMMENT
@@ -18400,7 +18364,6 @@ bare_label_keyword:
 			| EXTENSION
 			| EXTERNAL
 			| EXTRACT
-			| FAILED_LOGIN_ATTEMPTS
 			| FALSE_P
 			| FAMILY
 			| FINALIZE
@@ -18421,7 +18384,6 @@ bare_label_keyword:
 			| GROUPING
 			| GROUPS
 			| HANDLER
-			| HASH
 			| HEADER_P
 			| HOLD
 			| IDENTITY_P
@@ -18497,9 +18459,7 @@ bare_label_keyword:
 			| NFKC
 			| NFKD
 			| NO
-			| NONCONCURRENTLY
 			| NONE
-			| NOPROFILE
 			| NORMALIZE
 			| NORMALIZED
 			| NOT
@@ -18549,7 +18509,6 @@ bare_label_keyword:
 			| PROCEDURAL
 			| PROCEDURE
 			| PROCEDURES
-			| PROFILE
 			| PROGRAM
 			| PUBLICATION
 			| QUOTE
@@ -18609,7 +18568,6 @@ bare_label_keyword:
 			| SMALLINT
 			| SNAPSHOT
 			| SOME
-			| SPLIT
 			| SQL_P
 			| STABLE
 			| STANDALONE_P
@@ -18629,12 +18587,9 @@ bare_label_keyword:
 			| SYSID
 			| SYSTEM_P
 			| TABLE
-			| TABLEGROUP
-			| TABLEGROUPS
 			| TABLES
 			| TABLESAMPLE
 			| TABLESPACE
-			| TABLETS
 			| TEMP
 			| TEMPLATE
 			| TEMPORARY
@@ -18661,7 +18616,6 @@ bare_label_keyword:
 			| UNIQUE
 			| UNKNOWN
 			| UNLISTEN
-			| UNLOCK
 			| UNLOGGED
 			| UNTIL
 			| UPDATE
@@ -18699,6 +18653,21 @@ bare_label_keyword:
 			| XMLTABLE
 			| YES_P
 			| ZONE
+			| _YB_ACCOUNT_P
+			| _YB_BACKFILL_P
+			| _YB_CHANGE_P
+			| _YB_COLOCATED_P
+			| _YB_COLOCATION_P
+			| _YB_FAILED_LOGIN_ATTEMPTS_P
+			| _YB_HASH_P
+			| _YB_NONCONCURRENTLY_P
+			| _YB_NOPROFILE_P
+			| _YB_PROFILE_P
+			| _YB_SPLIT_P
+			| _YB_TABLEGROUP_P
+			| _YB_TABLEGROUPS_P
+			| _YB_TABLETS_P
+			| _YB_UNLOCK_P
 		;
 
 %%

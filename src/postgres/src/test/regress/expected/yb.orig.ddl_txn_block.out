@@ -224,3 +224,30 @@ SELECT * FROM test9;
  1 | 1
 (1 row)
 
+-- Rollback of CREATE INDEX should work.
+CREATE TABLE test10(id INT PRIMARY KEY, val TEXT);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE INDEX test10_idx ON test10(val);
+NOTICE:  making create index for table "test10" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+\d+ test10;
+                                   Table "public.test10"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ id     | integer |           | not null |         | plain    |              | 
+ val    | text    |           |          |         | extended |              | 
+Indexes:
+    "test10_pkey" PRIMARY KEY, lsm (id HASH)
+    "test10_idx" lsm (val HASH)
+
+ROLLBACK;
+\d+ test10;
+                                   Table "public.test10"
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+---------+-----------+----------+---------+----------+--------------+-------------
+ id     | integer |           | not null |         | plain    |              | 
+ val    | text    |           |          |         | extended |              | 
+Indexes:
+    "test10_pkey" PRIMARY KEY, lsm (id HASH)
+

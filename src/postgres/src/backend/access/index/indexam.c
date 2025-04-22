@@ -72,6 +72,7 @@
 #include "catalog/pg_opfamily.h"
 #include "pg_yb_utils.h"
 
+
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
  *
@@ -110,7 +111,7 @@ do { \
 			 CppAsString(pname), RelationGetRelationName(indexRelation)); \
 } while(0)
 
-#ifdef NEIL
+#ifdef YB_TODO
 #define CHECK_REL_PROCEDURE2(pname1, pname2) \
 do { \
 	if (indexRelation->rd_indam->pname1 == NULL && \
@@ -342,7 +343,7 @@ index_insert(Relation indexRelation,
 }
 
 /* ----------------
- *		index_delete - delete an index tuple from a relation.
+ *		yb_index_delete - delete an index tuple from a relation.
  *      This is used only for indexes backed by YugabyteDB. For Postgres, when a tuple is updated,
  *      the ctid of the original tuple will be invalid (except for heap-only tuple (HOT)). Because
  *      of this, index entries of the original tuple do not need to be deleted in UPDATE. For

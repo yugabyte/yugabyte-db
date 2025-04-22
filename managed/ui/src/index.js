@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-
+// import '@yugabyte-ui-library/core/dist/esm/YBClassnameSetup';
 import i18n from 'i18next';
 import ReactDOM from 'react-dom';
 import { CssBaseline, ThemeProvider } from '@material-ui/core';
@@ -15,6 +15,9 @@ import en from './translations/en.json';
 // import '@yugabytedb/ui-components';
 import 'intl';
 import 'intl/locale-data/jsonp/en.js';
+import { YBCssBaseline, YBThemeProvider, yba } from '@yugabyte-ui-library/core';
+
+const { ybaTheme } = yba;
 
 const store = configureStore();
 const queryClient = new QueryClient({
@@ -37,14 +40,17 @@ void i18n.use(initReactI18next).init({
 const AppWrapper = () => (
   <Provider store={store}>
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={mainTheme}>
-        <IntlProvider locale="en">
-          <Router history={browserHistory}>
-            <CssBaseline />
-            {fetchRoutes(store)}
-          </Router>
-        </IntlProvider>
-      </ThemeProvider>
+      <YBThemeProvider theme={ybaTheme}>
+        <ThemeProvider theme={mainTheme}>
+          <IntlProvider locale="en">
+            <Router history={browserHistory}>
+              <CssBaseline />
+              <YBCssBaseline />
+              {fetchRoutes(store)}
+            </Router>
+          </IntlProvider>
+        </ThemeProvider>
+      </YBThemeProvider>
     </QueryClientProvider>
   </Provider>
 );

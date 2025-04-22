@@ -533,10 +533,6 @@ int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }
 
-bool YBCIsNonembeddedYbctidsOnlyFetch(const YbcPgPrepareParameters *params) {
-  return params->fetch_ybctids_only && !params->embedded_idx;
-}
-
 bool YBIsMajorUpgradeInitDb() {
   static int cached_value = -1;
   if (cached_value == -1) {

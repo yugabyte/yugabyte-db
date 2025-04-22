@@ -98,7 +98,9 @@ public class CreateBackup extends UniverseTaskBase {
   public void run() {
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
-    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
+    Customer customer = Customer.get(universe.getCustomerId());
+    MetricLabelsBuilder metricLabelsBuilder =
+        MetricLabelsBuilder.create().fromUniverse(customer, universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
     boolean isAbort = false;
@@ -242,7 +244,8 @@ public class CreateBackup extends UniverseTaskBase {
       schedule.delete();
       return;
     }
-    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
+    MetricLabelsBuilder metricLabelsBuilder =
+        MetricLabelsBuilder.create().fromUniverse(customer, universe);
     SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     Map<String, String> config = universe.getConfig();
     boolean shouldTakeBackup =

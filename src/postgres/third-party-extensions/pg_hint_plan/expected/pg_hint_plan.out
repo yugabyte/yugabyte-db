@@ -453,14 +453,15 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN                
-------------------------------------------
+                 QUERY PLAN                 
+--------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
    ->  YB Bitmap Table Scan on t2
+         Storage Recheck Cond: (id = t1.id)
          ->  Bitmap Index Scan on t2_pkey
                Index Cond: (id = t1.id)
-(5 rows)
+(6 rows)
 
 /*+BitmapScan(t2)NoSeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -1180,6 +1181,7 @@ error hint:
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Bitmap Table Scan on t1
+   Storage Recheck Cond: (id = $3)
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
@@ -1194,7 +1196,7 @@ error hint:
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $3)
-(15 rows)
+(16 rows)
 
 /*+BitmapScan(v_1)BitmapScan(v_2)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -1237,6 +1239,7 @@ error hint:
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Bitmap Table Scan on t1
+   Storage Recheck Cond: (id = $3)
    InitPlan 1 (returns $1)
      ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_1
@@ -1251,7 +1254,7 @@ error hint:
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $3)
-(15 rows)
+(16 rows)
 
 /*+BitmapScan(v_2)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -1266,6 +1269,7 @@ error hint:
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  YB Bitmap Table Scan on t1
+   Storage Recheck Cond: (id = $3)
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
@@ -1280,7 +1284,7 @@ error hint:
                        Index Cond: (id < 10)
    ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $3)
-(15 rows)
+(16 rows)
 
 /*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -1296,6 +1300,7 @@ error hint:
                         QUERY PLAN                        
 ----------------------------------------------------------
  YB Bitmap Table Scan on t1
+   Storage Recheck Cond: (id = $3)
    InitPlan 1 (returns $1)
      ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_1
@@ -1310,7 +1315,7 @@ error hint:
                        Index Cond: (id < 10)
    ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $3)
-(15 rows)
+(16 rows)
 
 -- YB_COMMENT
 -- Drop the index created for the bitmap tests so that we don't introduce more

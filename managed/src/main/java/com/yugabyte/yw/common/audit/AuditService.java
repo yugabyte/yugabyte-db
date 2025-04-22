@@ -195,7 +195,7 @@ public class AuditService {
     MDC.remove("logType");
   }
 
-  public void updateAdditionalDetils(UUID taskUUID, JsonNode additionalDetails) {
+  public void updateAdditionalDetails(UUID taskUUID, JsonNode additionalDetails) {
     Audit audit = Audit.getFromTaskUUID(taskUUID);
     if (audit != null) {
       audit.setAdditionalDetails(additionalDetails);

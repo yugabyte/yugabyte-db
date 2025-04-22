@@ -158,8 +158,6 @@ DROP TABLE bttest_multi;
 DROP TABLE delete_test_table;
 DROP TABLE toast_bug;
 DROP FUNCTION ifun(int8);
-DROP OWNED BY bttest_role; -- permissions
-DROP ROLE bttest_role;
 DROP OWNED BY regress_bttest_role; -- permissions
 DROP ROLE regress_bttest_role;
 DROP TABLE varlena_bug;

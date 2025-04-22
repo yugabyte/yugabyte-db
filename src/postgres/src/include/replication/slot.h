@@ -101,24 +101,24 @@ typedef struct ReplicationSlotPersistentData
 	/* plugin name */
 	NameData	plugin;
 
-	/* The CDC stream_id (32 bytes + 1 for null terminator) */
+	/* YB: The CDC stream_id (32 bytes + 1 for null terminator) */
 	char		yb_stream_id[33];
 
 	/*
-	 * Stores the replica identity value of the tables as they existed during
-	 * the creation of the replication slot.
+	 * YB: Stores the replica identity value of the tables as they existed
+	 * during the creation of the replication slot.
 	 */
 	HTAB	   *yb_replica_identities;
 
 	/*
-	 * The record_commit_time of the replication slot as received at the time
-	 * this information was fetched from the CDC state table. This information
-	 * is not kept up to date, it should only be used at the start of streaming
-	 * right after fetching the replication slot information.
+	 * YB: The record_commit_time of the replication slot as received at the
+	 * time this information was fetched from the CDC state table. This
+	 * information is not kept up to date, it should only be used at the start
+	 * of streaming right after fetching the replication slot information.
 	 */
 	uint64_t	yb_initial_record_commit_time_ht;
 
-	/* The last time at which a publication's table list was refreshed */
+	/* YB: The last time at which a publication's table list was refreshed */
 	uint64_t	yb_last_pub_refresh_time;
 } ReplicationSlotPersistentData;
 
@@ -213,14 +213,11 @@ extern PGDLLIMPORT ReplicationSlot *MyReplicationSlot;
 /* GUCs */
 extern PGDLLIMPORT int max_replication_slots;
 
+/* YB */
 extern PGDLLIMPORT const char *YB_OUTPUT_PLUGIN;
 extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
-
-extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
-
 extern PGDLLIMPORT const char *LSN_TYPE_SEQUENCE;
 extern PGDLLIMPORT const char *LSN_TYPE_HYBRID_TIME;
-
 extern PGDLLIMPORT const char *ORDERING_MODE_ROW;
 extern PGDLLIMPORT const char *ORDERING_MODE_TRANSACTION;
 
@@ -242,7 +239,6 @@ extern void ReplicationSlotDrop(const char *name, bool nowait);
 extern void ReplicationSlotAcquire(const char *name, bool nowait);
 extern void ReplicationSlotRelease(void);
 extern void ReplicationSlotCleanup(void);
-extern void ReplicationSlotCleanupForProc(PGPROC *proc);
 extern void ReplicationSlotSave(void);
 extern void ReplicationSlotMarkDirty(void);
 
@@ -268,6 +264,8 @@ extern void CheckPointReplicationSlots(void);
 extern void CheckSlotRequirements(void);
 extern void CheckSlotPermissions(void);
 
+/* YB */
+extern void ReplicationSlotCleanupForProc(PGPROC *proc);
 extern char YBCGetReplicaIdentityForRelation(Oid relid);
 
 #endif							/* SLOT_H */

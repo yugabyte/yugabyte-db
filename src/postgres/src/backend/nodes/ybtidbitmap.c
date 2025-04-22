@@ -136,6 +136,8 @@ yb_tbm_union_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 		return;
 
 	size_t		added_size = YBCBitmapUnionSet(a->ybctid_set, b->ybctid_set);
+	if (b->recheck_required)
+		a->recheck_required = true;
 
 	pfree(b);
 
@@ -170,6 +172,8 @@ yb_tbm_intersect_and_free(YbTIDBitmap *a, YbTIDBitmap *b)
 
 	a->ybctid_set = YBCBitmapIntersectSet(a->ybctid_set, b->ybctid_set);
 	a->nentries = YBCBitmapGetSetSize(a->ybctid_set);
+	a->recheck_required = a->nentries > 0 &&
+						  (a->recheck_required || b->recheck_required);
 	pfree(b);
 
 	/*

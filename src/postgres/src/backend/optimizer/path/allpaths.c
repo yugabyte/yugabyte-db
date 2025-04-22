@@ -190,7 +190,10 @@ static void recurse_push_qual(Node *setOp, Query *topquery,
 							  RangeTblEntry *rte, Index rti, Node *qual);
 static void remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel,
 										   Bitmapset *extra_used_attrs);
+
+/* YB declarations */
 static int ybCmpRelOptInfo(const void *p1, const void *p2);
+
 
 /*
  * make_one_rel
@@ -4372,7 +4375,7 @@ void
 create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 							Path *bitmapqual)
 {
-	int			parallel_workers = 0;
+	int			parallel_workers;
 	double		pages_fetched;
 
 	/* Compute heap pages for bitmap heap scan */
@@ -4384,9 +4387,10 @@ create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * validated.
 	 */
 	if (!rel->is_yb_relation)
-		parallel_workers =
-			compute_parallel_worker(rel, pages_fetched, -1,
-									max_parallel_workers_per_gather);
+		parallel_workers = compute_parallel_worker(rel, pages_fetched, -1,
+												   max_parallel_workers_per_gather);
+	else
+		parallel_workers = 0;
 
 	if (parallel_workers <= 0)
 		return;
@@ -4396,9 +4400,7 @@ create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 		return;
 	else
 		add_partial_path(rel, (Path *) create_bitmap_heap_path(root, rel,
-															   bitmapqual,
-															   rel->lateral_relids,
-															   1.0, parallel_workers));
+															   bitmapqual, rel->lateral_relids, 1.0, parallel_workers));
 }
 
 /*

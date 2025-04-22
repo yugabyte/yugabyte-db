@@ -594,10 +594,10 @@ public class ModelFactory {
             .generateUUID();
     if (universe != null) {
       alertDefinition.setLabels(
-          MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels());
+          MetricLabelsBuilder.create().fromUniverse(customer, universe).getDefinitionLabels());
     } else {
       alertDefinition.setLabels(
-          MetricLabelsBuilder.create().appendSource(customer).getDefinitionLabels());
+          MetricLabelsBuilder.create().fromCustomer(customer).getDefinitionLabels());
     }
     alertDefinition.save();
     return alertDefinition;

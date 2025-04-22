@@ -557,7 +557,6 @@ check_XactIsoLevel(int *newval, void **extra, GucSource source)
 			GUC_check_errmsg("SET TRANSACTION ISOLATION LEVEL must be called before any query");
 			return false;
 		}
-
 		/* We ignore a subtransaction setting it to the existing value. */
 		if (IsSubTransaction())
 		{

@@ -188,7 +188,7 @@ recordDependencyOnOwner(Oid classId, Oid objectId, Oid owner)
 	recordSharedDependencyOn(&myself, &referenced, SHARED_DEPENDENCY_OWNER);
 }
 
-#ifdef YB_DEEPTHI
+#ifdef YB_TODO
 /* Postgres 13 has its own definition */
 /*
  * recordDependencyOnTablespace
@@ -434,7 +434,7 @@ changeDependencyOnOwner(Oid classId, Oid objectId, Oid newOwnerId)
  * recordDependencyOnTablespace
  *
  * A convenient wrapper of recordSharedDependencyOn -- register the specified
- * tablespace to the given object.
+ * tablespace as default for the given object.
  *
  * Note: it's the caller's responsibility to ensure that there isn't a
  * tablespace entry for the object already.
@@ -1414,6 +1414,7 @@ storeObjectDescription(StringInfo descs,
 
 	pfree(objdesc);
 }
+
 
 /*
  * shdepDropOwned

@@ -187,7 +187,7 @@ ExecuteQuery(ParseState *pstate,
 		elog(ERROR, "EXECUTE does not support variable-result cached plans");
 
 	/*
-	 * If the planner found a pg relation in this plan, set the appropriate
+	 * YB: If the planner found a pg relation in this plan, set the appropriate
 	 * flag for the execution txn.
 	 */
 	if (entry->plansource->usesPostgresRel)

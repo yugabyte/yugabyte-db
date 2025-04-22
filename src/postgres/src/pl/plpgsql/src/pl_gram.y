@@ -30,8 +30,6 @@
 #include "pg_yb_utils.h"
 
 
-static void ybc_not_support(int pos, const char *feature, int issue);
-
 /* Location tracking support --- simpler than bison's default */
 #define YYLLOC_DEFAULT(Current, Rhs, N) \
 	do { \
@@ -114,6 +112,9 @@ static	PLpgSQL_expr	*read_cursor_args(PLpgSQL_var *cursor,
 										  int until);
 static	List			*read_raise_options(void);
 static	void			check_raise_parameters(PLpgSQL_stmt_raise *stmt);
+
+/* YB */
+static void ybc_not_support(int pos, const char *feature, int issue);
 
 %}
 
@@ -538,9 +539,7 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 										   $4->itemno, $1.name);
 					}
 				| decl_varname opt_scrollable K_CURSOR
-					{
-						plpgsql_ns_push($1.name, PLPGSQL_LABEL_OTHER);
-					}
+					{ plpgsql_ns_push($1.name, PLPGSQL_LABEL_OTHER); }
 				  decl_cursor_args decl_is_for decl_cursor_query
 					{
 						PLpgSQL_var *new;

@@ -202,17 +202,20 @@ static ProcSignalReason RecoveryConflictReason;
 static MemoryContext row_description_context = NULL;
 static StringInfoData row_description_buf;
 
-/* Flag to mark cache as invalid if discovered within a txn block. */
+/* YB: Flag to mark cache as invalid if discovered within a txn block. */
 static bool yb_need_cache_refresh = false;
 
-/* whether or not we are executing a multi-statement query received via simple query protocol */
+/*
+ * YB: whether or not we are executing a multi-statement query received via
+ * simple query protocol
+ */
 static bool yb_is_multi_statement_query = false;
 
 static long YbNumCatalogCacheRefreshes = 0;
 static long YbNumCatalogCacheDeltaRefreshes = 0;
 
 /*
- * String constants used for redacting text after the password token in
+ * YB: String constants used for redacting text after the password token in
  * CREATE/ALTER ROLE commands.
  */
 #define TOKEN_PASSWORD "password"
@@ -242,6 +245,7 @@ static void drop_unnamed_stmt(void);
 static void log_disconnections(int code, Datum arg);
 static void enable_statement_timeout(void);
 static void disable_statement_timeout(void);
+
 static void yb_start_xact_command_internal(bool yb_skip_read_committed_internal_savepoint);
 
 
@@ -478,7 +482,7 @@ SocketBackend(StringInfo inBuf)
 			doing_extended_query_message = false;
 			break;
 
-		case 'A':				/* Auth Passthrough Request */
+		case 'A':				/* YB: Auth Passthrough Request */
 			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -486,7 +490,7 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
-		case 's':				/* SET SESSION PARAMETER */
+		case 's':				/* YB: SET SESSION PARAMETER */
 			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -561,9 +565,7 @@ ReadCommand(StringInfo inBuf)
 	if (whereToSendOutput == DestRemote)
 		result = SocketBackend(inBuf);
 	else
-	{
 		result = InteractiveBackend(inBuf);
-	}
 	return result;
 }
 
@@ -734,7 +736,7 @@ yb_skip_read_committed_internal_savepoint(CommandTag command_tag)
 						command_tag == CMDTAG_RELEASE ||
 						command_tag == CMDTAG_SAVEPOINT);
 
-	elog(DEBUG2, "Skip rc sub-txn: %d, command tag: %s", skip, GetCommandTagName(command_tag));
+	elog(DEBUG2, "YB: Skip rc sub-txn: %d, command tag: %s", skip, GetCommandTagName(command_tag));
 	return skip;
 }
 
@@ -1110,6 +1112,7 @@ exec_simple_query(const char *query_string)
 	bool		was_logged = false;
 	bool		use_implicit_block;
 	char		msec_str[32];
+
 	const char *redacted_query_string;
 	CommandTag	command_tag;
 
@@ -1160,7 +1163,7 @@ exec_simple_query(const char *query_string)
 	 */
 	parsetree_list = pg_parse_query(query_string);
 
-	/* Log the redacted query immediately if dictated by log_statement */
+	/* Log immediately if dictated by log_statement */
 	if (check_log_statement(parsetree_list))
 	{
 		ereport(LOG,
@@ -1497,6 +1500,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	bool		is_named;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
+
 	const char *redacted_query_string;
 	CommandTag	command_tag;
 
@@ -1740,7 +1744,6 @@ exec_bind_message(StringInfo input_message)
 	CachedPlan *cplan;
 	Portal		portal;
 	char	   *query_string;
-	const char *redacted_query_string;
 	char	   *saved_stmt_name;
 	ParamListInfo params;
 	MemoryContext oldContext;
@@ -1750,6 +1753,8 @@ exec_bind_message(StringInfo input_message)
 	ParamsErrorCbData params_data;
 	ErrorContextCallback params_errcxt;
 	ListCell   *lc;
+
+	const char *redacted_query_string;
 	CommandTag	command_tag;
 
 	/* Get the fixed part of the message */
@@ -3057,6 +3062,7 @@ quickdie(SIGNAL_ARGS)
 	switch (GetQuitSignalReason())
 	{
 		case PMQUIT_NOT_SENT:
+			/* YB handle SIGTERM for pg_cron */
 			if (postgres_signal_arg == SIGTERM)
 			{
 				/*
@@ -3216,6 +3222,7 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 					return;
 
 				/* Intentional fall through to check wait for pin */
+				/* FALLTHROUGH */
 				yb_switch_fallthrough();
 
 			case PROCSIG_RECOVERY_CONFLICT_BUFFERPIN:
@@ -3242,6 +3249,7 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 				MyProc->recoveryConflictPending = true;
 
 				/* Intentional fall through to error handling */
+				/* FALLTHROUGH */
 				yb_switch_fallthrough();
 
 			case PROCSIG_RECOVERY_CONFLICT_LOCK:
@@ -3287,6 +3295,7 @@ RecoveryConflictInterrupt(ProcSignalReason reason)
 				}
 
 				/* Intentional fall through to session cancel */
+				/* FALLTHROUGH */
 				yb_switch_fallthrough();
 
 			case PROCSIG_RECOVERY_CONFLICT_DATABASE:
@@ -3671,6 +3680,7 @@ set_stack_base(void)
 	stack_base_ptr = &stack_base;
 #endif
 
+/* YB */
 #if !defined(__clang__) && defined(__GNUC__) && __GNUC__ >= 12
 #pragma GCC diagnostic pop
 #endif
@@ -3730,10 +3740,10 @@ check_stack_depth(void)
 bool
 stack_is_too_deep(void)
 {
-#ifdef ADDRESS_SANITIZER
+#ifdef ADDRESS_SANITIZER	/* YB */
 	/*
-	 * Postgres analyzes/limits stack depth based on local variables address
-	 * offset.
+	 * YB: Postgres analyzes/limits stack depth based on local variables
+	 * address offset.
 	 * This method works well in case of regular call stack (i.e. when all
 	 * stack frames are allocated in stack).
 	 * But for the detect_stack_use_after_return ASAN uses fake stack. In case
@@ -3774,7 +3784,7 @@ stack_is_too_deep(void)
 		}
 	}
 	return false;
-#endif
+#endif	/* YB */
 	char		stack_top_loc;
 	long		stack_depth;
 
@@ -5749,8 +5759,8 @@ PostgresMain(const char *dbname, const char *username)
 	SetProcessingMode(InitProcessing);
 
 	/*
-	 * TODO(neil) Once we have our system DB, remove the following code. It is
-	 * a hack to help us getting by for now.
+	 * YB: TODO(neil) Once we have our system DB, remove the following code. It
+	 * is a hack to help us getting by for now.
 	 */
 	if (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0)
 		YbSetConnectedToTemplateDb();
@@ -5856,8 +5866,8 @@ PostgresMain(const char *dbname, const char *username)
 	BeginReportingGUCOptions();
 
 	/*
-	 * The authentication backend is only responsible for authentication and
-	 * sending initial GUC options.
+	 * YB: The authentication backend is only responsible for authentication
+	 * and sending initial GUC options.
 	 */
 	if (yb_is_auth_backend)
 	{
@@ -6348,7 +6358,12 @@ PostgresMain(const char *dbname, const char *username)
 
 					PG_TRY();
 					{
-						if (!am_walsender || !exec_replication_command(query_string))
+						if (am_walsender)
+						{
+							if (!exec_replication_command(query_string))
+								yb_exec_simple_query(query_string, oldcontext);
+						}
+						else
 							yb_exec_simple_query(query_string, oldcontext);
 					}
 					PG_CATCH();
@@ -6452,10 +6467,8 @@ PostgresMain(const char *dbname, const char *username)
 
 					PG_TRY();
 					{
-						exec_parse_message(query_string,
-										   stmt_name,
-										   paramTypes,
-										   numParams,
+						exec_parse_message(query_string, stmt_name,
+										   paramTypes, numParams,
 										   whereToSendOutput,
 										   (firstchar == 'p')); /* YB: from yb_switch_fallthrough() */
 					}
@@ -6501,13 +6514,16 @@ PostgresMain(const char *dbname, const char *username)
 
 			case 'E':			/* execute */
 				{
+					const char *portal_name;
+					int			max_rows;
+
 					forbidden_in_wal_sender(firstchar);
 
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
-					const char *portal_name = pq_getmsgstring(&input_message);
-					const int	max_rows = pq_getmsgint(&input_message, 4);
+					portal_name = pq_getmsgstring(&input_message);
+					max_rows = pq_getmsgint(&input_message, 4);
 
 					pq_getmsgend(&input_message);
 
@@ -6812,7 +6828,8 @@ PostgresMain(const char *dbname, const char *username)
 				/* for the cumulative statistics system */
 				pgStatSessionEndCause = DISCONNECT_CLIENT_EOF;
 
-				yb_switch_fallthrough();	/* FALLTHROUGH */
+				/* FALLTHROUGH */
+				yb_switch_fallthrough();
 
 			case 'X':
 
@@ -6843,7 +6860,7 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 				break;
 
-			case 'A':			/* Auth Passthrough Request */
+			case 'A':			/* YB: Auth Passthrough Request */
 				if (YbIsClientYsqlConnMgr())
 				{
 					/*
@@ -6914,7 +6931,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 's':			/* SET SESSION PARAMETER */
+			case 's':			/* YB: SET SESSION PARAMETER */
 				if (YbIsClientYsqlConnMgr())
 				{
 					start_xact_command();

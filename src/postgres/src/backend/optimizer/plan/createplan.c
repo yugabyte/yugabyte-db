@@ -86,6 +86,7 @@
 #define CP_LABEL_TLIST		0x0004	/* tlist must contain sortgrouprefs */
 #define CP_IGNORE_TLIST		0x0008	/* caller will replace tlist */
 
+
 static Plan *create_plan_recurse(PlannerInfo *root, Path *best_path,
 								 int flags);
 static Plan *create_scan_plan(PlannerInfo *root, Path *best_path,
@@ -214,8 +215,8 @@ static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 								 List *yb_rel_pushdown_colrefs, List *yb_rel_pushdown_quals,
 								 List *yb_idx_pushdown_colrefs, List *yb_idx_pushdown_quals,
-								 Index scanrelid, Oid indexid,
-								 List *indexqual, List *indexqualorig,
+								 Index scanrelid,
+								 Oid indexid, List *indexqual, List *indexqualorig,
 								 List *indexorderby, List *indexorderbyorig,
 								 List *indexorderbyops, List *indextlist,
 								 ScanDirection indexscandir, YbPlanInfo yb_plan_info,
@@ -373,10 +374,12 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 									 List *mergeActionList, int epqParam);
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
+
 static void yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan);
 
 extern int	yb_bnl_batch_size;
 bool		yb_bnl_optimize_first_batch;
+
 
 /*
  * create_plan
@@ -720,7 +723,9 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 	switch (best_path->pathtype)
 	{
 		case T_SeqScan:
-			plan = (Plan *) create_seqscan_plan(root, best_path, tlist,
+			plan = (Plan *) create_seqscan_plan(root,
+												best_path,
+												tlist,
 												scan_clauses);
 			break;
 
@@ -1212,7 +1217,7 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 				{
 					int			attno = ((Var *) expr)->varattno;
 
-					attno -= (rel->min_attr - 1);
+					attno -= (rel->min_attr - 1);	/* YB modified */
 					if (bms_is_member(attno, sortgroupatts))
 						return false;
 					sortgroupatts = bms_add_member(sortgroupatts, attno);
@@ -4003,7 +4008,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
 	/*
-	 * TODO(kramanathan): Evaluate whether the equivalent of "is single row
+	 * YB: TODO(kramanathan): Evaluate whether the equivalent of "is single row
 	 * update" is need for ON CONFLICT DO UPDATE.
 	 */
 	if (YbIsUpdateOptimizationEnabled() &&
@@ -4325,6 +4330,11 @@ create_indexscan_plan(PlannerInfo *root,
 
 		if (rinfo->pseudoconstant)
 			continue;			/* we may drop pseudoconstants here */
+		/*
+		 * YB: Ignore if this clause was already contained in indexqualorig. It
+		 * is possible for a clause to be in indexqualorig/stripped_indexquals
+		 * but only have its batched version be in indexclauses.
+		 */
 		if (list_member_ptr(stripped_indexquals, rinfo->clause))
 			continue;
 		if (is_redundant_with_indexclauses(rinfo, indexclauses))
@@ -6018,11 +6028,12 @@ create_nestloop_plan(PlannerInfo *root,
 			replace_nestloop_params(root, (Node *) otherclauses);
 	}
 
-	nestParams = identify_current_nestloop_params(root, outerrelids);
 	/*
 	 * Identify any nestloop parameters that should be supplied by this join
 	 * node, and remove them from root->curOuterParams.
 	 */
+	nestParams = identify_current_nestloop_params(root, outerrelids);
+
 	if (yb_is_batched)
 	{
 		YbBatchedNestLoop *bnl_plan = make_YbBatchedNestLoop(tlist,

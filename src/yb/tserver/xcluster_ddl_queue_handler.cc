@@ -169,6 +169,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "DROP OPERATOR",
     "DROP OPERATOR CLASS",
     "DROP OPERATOR FAMILY",
+    "DROP OWNED",
     "DROP POLICY",
     "DROP PROCEDURE",
     "DROP ROUTINE",
@@ -183,6 +184,8 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "DROP TRIGGER",
     "DROP USER MAPPING",
     "DROP VIEW",
+    "GRANT",
+    "REVOKE",
     "IMPORT FOREIGN SCHEMA",
     "SECURITY LABEL",
 };

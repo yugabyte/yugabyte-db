@@ -2505,8 +2505,8 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		ListCell   *lc2;
 
 		/*
-		 * If the planner found a pg relation in this plan, set the appropriate
-		 * flag for the execution txn.
+		 * YB: If the planner found a pg relation in this plan, set the
+		 * appropriate flag for the execution txn.
 		 */
 		if (plansource->usesPostgresRel)
 		{

@@ -34,7 +34,9 @@
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 
+
 static bool isObjectPinned(const ObjectAddress *object);
+
 
 /*
  * Record a dependency between 2 objects via their respective objectAddress.

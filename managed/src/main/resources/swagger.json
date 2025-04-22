@@ -214,6 +214,16 @@
       },
       "type" : "object"
     },
+    "AdditionalServicesStateData" : {
+      "description" : "Additional services state",
+      "properties" : {
+        "earlyoomConfig" : {
+          "$ref" : "#/definitions/EarlyoomConfig",
+          "description" : "Configuration for earlyoom service."
+        }
+      },
+      "type" : "object"
+    },
     "Admin notification" : {
       "properties" : {
         "code" : {
@@ -2033,7 +2043,8 @@
             "Unlock",
             "LdapUniverseSync",
             "UpdateProxyConfig",
-            "CloneNamespace"
+            "CloneNamespace",
+            "UpdateAdditionalServicesState"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2562,6 +2573,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2772,7 +2784,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -5196,6 +5209,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5406,7 +5420,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -7577,6 +7592,38 @@
       },
       "type" : "object"
     },
+    "EarlyoomConfig" : {
+      "description" : "State for earlyoom service",
+      "properties" : {
+        "availMemoryKillKb" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryKillPercent" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryTermKb" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryTermPercent" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "enabled" : {
+          "type" : "boolean"
+        },
+        "preferPattern" : {
+          "type" : "string"
+        },
+        "reportInterval" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "EditAccessKeyRotationScheduleParams" : {
       "properties" : {
         "schedulingFrequencyDays" : {
@@ -8145,6 +8192,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8355,7 +8403,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -8917,6 +8966,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9127,7 +9177,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -10307,6 +10358,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -10517,7 +10569,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -14455,6 +14508,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -14665,7 +14719,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -15443,6 +15498,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -15653,7 +15709,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -16242,6 +16299,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -16452,7 +16510,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -17730,6 +17789,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17940,7 +18000,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -18261,6 +18322,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18471,7 +18533,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -18634,6 +18697,7 @@
               "EnableNodeAgentInUniverse",
               "DecommissionNode",
               "CloneNamespace",
+              "UpdateOOMServiceState",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -18844,7 +18908,8 @@
               "RunNodeCommand",
               "MasterLeaderStepdown",
               "SetupYNP",
-              "YNPProvisioning"
+              "YNPProvisioning",
+              "ConfigureOOMServiceOnNode"
             ],
             "type" : "string"
           },
@@ -19428,6 +19493,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19638,7 +19704,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -20034,6 +20101,10 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "filterPgAuditLogs" : {
+          "description" : "Specifies if Postgres audit logs should be filtered out when collecting universe logs.",
+          "type" : "boolean"
         },
         "maxCoreFileSize" : {
           "description" : "Max size in bytes of the recent collected cores (if any)",
@@ -20488,6 +20559,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20698,7 +20770,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -21225,7 +21298,8 @@
               "RestoreContinuousBackup",
               "EnableNodeAgent",
               "Decommission",
-              "CloneNamespace"
+              "CloneNamespace",
+              "UpdateOOMServiceState"
             ],
             "type" : "string"
           },
@@ -21750,6 +21824,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21960,7 +22035,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -22392,6 +22468,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22602,7 +22679,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -23289,6 +23367,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23499,7 +23578,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -23895,6 +23975,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24105,7 +24186,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -24501,6 +24583,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24711,7 +24794,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -25509,6 +25593,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25719,7 +25804,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },
@@ -26670,6 +26756,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "UpdateOOMServiceState",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26880,7 +26967,8 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode"
           ],
           "type" : "string"
         },

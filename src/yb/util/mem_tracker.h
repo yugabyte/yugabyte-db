@@ -522,7 +522,7 @@ class MemTrackerAllocator : public Alloc {
  public:
   using size_type = typename Alloc::size_type;
 
-  explicit MemTrackerAllocator(std::shared_ptr<MemTracker> mem_tracker)
+  explicit MemTrackerAllocator(std::shared_ptr<MemTracker> mem_tracker = nullptr)
       : mem_tracker_(std::move(mem_tracker)) {}
 
   // This constructor is used for rebinding.
@@ -539,21 +539,27 @@ class MemTrackerAllocator : public Alloc {
     // Ideally we'd use TryConsume() here to enforce the tracker's limit.
     // However, that means throwing bad_alloc if the limit is exceeded, and
     // it's not clear that the rest of YB can handle that.
-    mem_tracker_->Consume(n * sizeof(T));
+    if (mem_tracker_) {
+      mem_tracker_->Consume(n * sizeof(T));
+    }
     return Alloc::allocate(n);
   }
 
 #ifdef __cpp_lib_allocate_at_least
   std::allocation_result<T*> allocate_at_least(size_type n) {
     auto result = Alloc::allocate_at_least(n);
-    mem_tracker_->Consume(result.count * sizeof(T));
+    if (mem_tracker_) {
+      mem_tracker_->Consume(result.count * sizeof(T));
+    }
     return result;
   }
 #endif
 
   void deallocate(T* p, size_type n) {
     Alloc::deallocate(p, n);
-    mem_tracker_->Release(n * sizeof(T));
+    if (mem_tracker_) {
+      mem_tracker_->Release(n * sizeof(T));
+    }
   }
 
   // This allows an allocator<T> to be used for a different type.
@@ -635,7 +641,7 @@ class ScopedTrackedConsumption {
 
   int64_t consumption() const { return consumption_; }
 
-  const MemTrackerPtr& mem_tracker() { return tracker_; }
+  const MemTrackerPtr& mem_tracker() const { return tracker_; }
 
  private:
   MemTrackerPtr tracker_;

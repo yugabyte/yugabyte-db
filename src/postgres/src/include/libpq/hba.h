@@ -83,7 +83,6 @@ typedef struct HbaLine
 {
 	int			linenumber;
 	char	   *rawline;
-	char	   *maskedline;
 	ConnType	conntype;
 	List	   *databases;
 	List	   *roles;
@@ -124,6 +123,8 @@ typedef struct HbaLine
 	List	   *radiusports;
 	char	   *radiusports_s;
 
+	/* YB */
+	char	   *maskedline;
 	char	   *yb_jwt_jwks_path;
 	char	   *yb_jwt_jwks_url;
 	List	   *yb_jwt_audiences;

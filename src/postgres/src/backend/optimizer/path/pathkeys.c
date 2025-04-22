@@ -236,8 +236,8 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 		return NULL;
 
 	/*
-	 * This "eclass" is either a "=" or "sort" operator, and for hash_columns,
-	 * we allow equality condition but not ASC or DESC sorting.
+	 * YB: This "eclass" is either a "=" or "sort" operator, and for
+	 * hash_columns, we allow equality condition but not ASC or DESC sorting.
 	 */
 	if (is_hash_index && eclass->ec_sortref != 0)
 	{

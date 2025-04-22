@@ -44,21 +44,18 @@ extern bool buildACLCommands(PGconn *yb_conn,
 extern bool buildDefaultACLCommands(PGconn *yb_conn,
 									const char *type, const char *nspname,
 									const char *acls, const char *acldefault,
-									const char *owner, int remoteVersion,
-									bool yb_dump_role_checks, PQExpBuffer sql);
-
-extern void YBWwrapInRoleChecks(PGconn *conn,
-								PQExpBuffer sql, const char *op_name,
-								const char *role_name1, const char *role_name2,
-								const char *role_name3, PQExpBuffer result);
+									const char *owner,
+									int remoteVersion,
+									bool yb_dump_role_checks,
+									PQExpBuffer sql);
 
 extern void quoteAclUserName(PQExpBuffer output, const char *input);
 
 extern void buildShSecLabelQuery(const char *catalog_name,
 								 Oid objectId, PQExpBuffer sql);
 extern void emitShSecLabels(PGconn *conn, PGresult *res,
-							PQExpBuffer buffer, const char *objtype,
-							const char *objname, const char *yb_indent);
+							PQExpBuffer buffer, const char *objtype, const char *objname,
+							const char *yb_indent);
 
 extern bool variable_is_guc_list_quote(const char *name);
 
@@ -69,5 +66,10 @@ extern void makeAlterConfigCommand(PGconn *conn, const char *configitem,
 								   const char *type, const char *name,
 								   const char *type2, const char *name2,
 								   PQExpBuffer buf);
+
+extern void YBWwrapInRoleChecks(PGconn *conn,
+								PQExpBuffer sql, const char *op_name,
+								const char *role_name1, const char *role_name2,
+								const char *role_name3, PQExpBuffer result);
 
 #endif							/* DUMPUTILS_H */

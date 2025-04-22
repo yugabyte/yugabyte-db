@@ -3183,9 +3183,9 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
 	int32		stawidth;
 
 	/*
-	 * This functionality was left disabled even after ANALYZE was implemented.
-	 * This oversight was detected during cost model project. We protect it
-	 * under this feature toggle to prevent regressions.
+	 * YB: This functionality was left disabled even after ANALYZE was
+	 * implemented. This oversight was detected during cost model project. We
+	 * protect it under this feature toggle to prevent regressions.
 	 */
 	if (!yb_enable_base_scans_cost_model)
 		return 0;

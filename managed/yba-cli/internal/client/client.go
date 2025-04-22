@@ -132,13 +132,15 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 	}
 	cfgV2.Host = url.Host
 	cfgV2.Scheme = url.Scheme
-	if url.Scheme == "https" {
-		cfgV2.Scheme = "https"
-		restAPIClient.Scheme = "https"
-		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	if url.Scheme == util.HTTPSURLScheme {
+		cfgV2.Scheme = util.HTTPSURLScheme
+		tr, err := getConnectionTransport()
+		if err != nil {
+			return nil, err
+		}
 		cfgV2.HTTPClient = &http.Client{Transport: tr}
 	} else {
-		cfgV2.Scheme = "http"
+		cfgV2.Scheme = util.HTTPURLScheme
 	}
 
 	cfg.DefaultHeader = map[string]string{

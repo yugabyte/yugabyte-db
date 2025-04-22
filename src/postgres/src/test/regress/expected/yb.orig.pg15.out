@@ -1041,6 +1041,8 @@ UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
 -- YB_TODO: begin: remove after tracking postgres_fdw
 CREATE EXTENSION postgres_fdw;
 CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 DO $d$
     BEGIN
         EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
@@ -1050,6 +1052,8 @@ DO $d$
             )$$;
     END;
 $d$;
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
 CREATE USER MAPPING FOR public SERVER testserver1
     OPTIONS (user 'value', password 'value');
 CREATE USER MAPPING FOR CURRENT_USER SERVER loopback;

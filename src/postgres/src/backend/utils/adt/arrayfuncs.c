@@ -1048,6 +1048,7 @@ array_out(PG_FUNCTION_ARGS)
 	array_iter	iter;
 	ArrayMetaState *my_extra;
 
+	/* YB */
 	if (PG_NARGS() == 2)
 	{
 		decode_options = (YbDatumDecodeOptions *) PG_GETARG_POINTER(1);
@@ -2382,7 +2383,6 @@ array_set_element(Datum arraydatum,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("array size exceeds the maximum allowed (%d)",
 								(int) MaxArraySize)));
-
 			lb[0] = indx[0];
 			if (addedbefore > 1)
 				newhasnulls = true; /* will insert nulls */
@@ -2398,7 +2398,6 @@ array_set_element(Datum arraydatum,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("array size exceeds the maximum allowed (%d)",
 								(int) MaxArraySize)));
-
 			if (addedafter > 1)
 				newhasnulls = true; /* will insert nulls */
 		}
@@ -2661,7 +2660,6 @@ array_set_element_expanded(Datum arraydatum,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("array size exceeds the maximum allowed (%d)",
 								(int) MaxArraySize)));
-
 			lb[0] = indx[0];
 			dimschanged = true;
 			if (addedbefore > 1)
@@ -2678,7 +2676,6 @@ array_set_element_expanded(Datum arraydatum,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("array size exceeds the maximum allowed (%d)",
 								(int) MaxArraySize)));
-
 			dimschanged = true;
 			if (addedafter > 1)
 				newhasnulls = true; /* will insert nulls */
@@ -2997,7 +2994,6 @@ array_set_slice(Datum arraydatum,
 			lb[0] = lowerIndx[0];
 			if (addedbefore > 1)
 				newhasnulls = true; /* will insert nulls */
-
 		}
 		if (upperIndx[0] >= (dim[0] + lb[0]))
 		{
@@ -3011,7 +3007,7 @@ array_set_slice(Datum arraydatum,
 						 errmsg("array size exceeds the maximum allowed (%d)",
 								(int) MaxArraySize)));
 			if (addedafter > 1)
-				newhasnulls = true;
+				newhasnulls = true; /* will insert nulls */
 		}
 	}
 	else

@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -96,6 +97,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final YsqlQueryExecutor ysqlQueryExecutor;
   protected final GFlagsValidation gFlagsValidation;
   protected final NodeUniverseManager nodeUniverseManager;
+  protected final NodeAgentClient nodeAgentClient;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -124,6 +126,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.ysqlQueryExecutor = baseTaskDependencies.getYsqlQueryExecutor();
     this.gFlagsValidation = baseTaskDependencies.getGFlagsValidation();
     this.nodeUniverseManager = baseTaskDependencies.getNodeUniverseManager();
+    this.nodeAgentClient = baseTaskDependencies.getNodeAgentClient();
   }
 
   protected ITaskParams taskParams() {

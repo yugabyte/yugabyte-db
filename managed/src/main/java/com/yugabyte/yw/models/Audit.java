@@ -612,7 +612,10 @@ public class Audit extends Model {
     UpdateProxyConfig,
 
     @EnumValue("Clone Namespace")
-    CloneNamespace
+    CloneNamespace,
+
+    @EnumValue("Update Additional Services State")
+    UpdateAdditionalServicesState
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

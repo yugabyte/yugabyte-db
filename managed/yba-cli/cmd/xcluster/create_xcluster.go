@@ -259,7 +259,7 @@ var createXClusterCmd = &cobra.Command{
 					StorageConfigUUID: storageUUID,
 					Parallelism:       util.GetInt32Pointer(int32(parallelism)),
 				},
-				Tables:         tableNeedBootstrapUUIDs,
+				Tables:         util.StringSliceFromString(tableNeedBootstrapUUIDs),
 				AllowBootstrap: util.GetBoolPointer(allowBootstrap),
 			},
 		}
@@ -381,7 +381,7 @@ func init() {
 		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 
 	createXClusterCmd.Flags().Bool("allow-bootstrap", false,
-		"Allow full copy on all the tables being added to the replication. "+
+		"[Optional] Allow full copy on all the tables being added to the replication. "+
 			"The same as passing the same set passed to table-uuids to "+
 			"tables-need-full-copy-uuids. (default false)")
 

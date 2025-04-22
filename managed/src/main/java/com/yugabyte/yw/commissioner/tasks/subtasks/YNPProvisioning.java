@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
@@ -92,6 +93,13 @@ public class YNPProvisioning extends AbstractTaskBase {
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+      AdditionalServicesStateData data = universe.getUniverseDetails().additionalServicesStateData;
+      if (data != null
+          && data.getEarlyoomConfig() != null
+          && data.getEarlyoomConfig().isEnabled()) {
+        ynpNode.put("earlyoom_enable", true);
+        ynpNode.put("earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+      }
       rootNode.set("ynp", ynpNode);
 
       // "extra" JSON Object

@@ -49,6 +49,9 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     google::SetVLOGLevel("add_table*", 0);
     google::SetVLOGLevel("xrepl*", 0);
     google::SetVLOGLevel("cdc*", 0);
+
+    // Some of the scripts do take a long time to run so setting this timeout high.
+    propagation_timeout_ = MonoDelta::FromMinutes(4 * kTimeMultiplier);
   }
 
   Result<std::string> RunYSQLDump(Cluster& cluster) { return RunYSQLDump(cluster, namespace_name); }
@@ -171,11 +174,20 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     ASSERT_OK(s);
   }
 
-  Status TestPgRegress(const std::string& create_file_name, const std::string& drop_file_name) {
+  Status TestPgRegress(const std::string& create_file_name, const std::string& drop_file_name,
+                       const std::string& pre_execution_sql_text = "") {
     const auto sub_dir = "test_xcluster_ddl_replication_sql";
     const auto test_sql_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
 
     RETURN_NOT_OK(SetUpClusters(is_colocated_));
+
+    if (!pre_execution_sql_text.empty()) {
+      RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+        auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+        RETURN_NOT_OK(conn.Execute(pre_execution_sql_text));
+        return Status::OK();
+      }));
+    }
 
     // Perturb OIDs on producer side to make sure we don't accidentally preserve OIDs.
     auto conn = VERIFY_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -190,9 +202,6 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     // Bootstrap here would have no effect because the database is empty so we skip it for the test.
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
 
-    // Some of the scripts do take a long time to run so setting this timeout high.
-    propagation_timeout_ = MonoDelta::FromMinutes(4 * kTimeMultiplier);
-
     // First run just the create part of the file, then run the drop parts.
     std::string initial_dump = "";
     for (const auto& file_name : {create_file_name, drop_file_name}) {
@@ -206,6 +215,7 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
       RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
       RETURN_NOT_OK(PrintDDLQueue(consumer_cluster_));
 
+      // Verify that the DDLs were replicated correctly.
       auto producer_dump = VERIFY_RESULT(RunYSQLDump(producer_cluster_));
       auto consumer_dump = VERIFY_RESULT(RunYSQLDump(consumer_cluster_));
 
@@ -304,6 +314,12 @@ TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressAlterTable) {
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropPgOnlyDdls) {
   // Tests create and drop of pass through ddls that dont require special handling.
   ASSERT_OK(TestPgRegress("pgonly_ddls_create.sql", "pgonly_ddls_drop.sql"));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressRolesOwnersPermissions) {
+  std::string pre_execute_sql_text = "CREATE ROLE sandeep WITH LOGIN PASSWORD 'password';";
+  ASSERT_OK(TestPgRegress("owners_and_permissions1.sql", "owners_and_permissions2.sql",
+    pre_execute_sql_text));
 }
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressAlterPgOnlyDdls) {

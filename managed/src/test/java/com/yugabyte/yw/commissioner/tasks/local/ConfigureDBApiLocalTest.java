@@ -9,8 +9,10 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
@@ -19,10 +21,14 @@ import com.yugabyte.yw.forms.ConfigureYCQLFormData;
 import com.yugabyte.yw.forms.ConfigureYSQLFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.YugawareProperty;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +44,9 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
 
   private final String YCQL_PASSWORD = "Pass@123";
   private final String NON_EXISTANT_GFLAG_VALUE = "?????";
+  private static final String CP_STABLE_VERSION = "2024.2.2.1-b6";
+  private static final String CP_STABLE_VERSION_URL =
+      "https://software.yugabyte.com/releases/2024.2.2.1/yugabyte-2024.2.2.1-b6-%s-%s.tar.gz";
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
@@ -172,6 +181,31 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     }
   }
 
+  private void addRelease(String dbVersion, String dbVersionUrl) {
+    String downloadURL = String.format(dbVersionUrl, os, arch);
+    downloadAndSetUpYBSoftware(os, arch, downloadURL, dbVersion);
+    ObjectNode releases =
+        (ObjectNode) YugawareProperty.get(ReleaseManager.CONFIG_TYPE.name()).getValue();
+    releases.set(dbVersion, getMetadataJson(dbVersion, false).get(dbVersion));
+    YugawareProperty.addConfigProperty(ReleaseManager.CONFIG_TYPE.name(), releases, "release");
+  }
+
+  private void updateProviderDetailsForCreateUniverse(String dbVersion) {
+    ybVersion = dbVersion;
+    ybBinPath = deriveYBBinPath(dbVersion);
+    LocalCloudInfo localCloudInfo = new LocalCloudInfo();
+    localCloudInfo.setDataHomeDir(
+        ((LocalCloudInfo) CloudInfoInterface.get(provider)).getDataHomeDir());
+    localCloudInfo.setYugabyteBinDir(ybBinPath);
+    localCloudInfo.setYbcBinDir(ybcBinPath);
+    ProviderDetails.CloudInfo cloudInfo = new ProviderDetails.CloudInfo();
+    cloudInfo.setLocal(localCloudInfo);
+    ProviderDetails providerDetails = new ProviderDetails();
+    providerDetails.setCloudInfo(cloudInfo);
+    provider.setDetails(providerDetails);
+    provider.update();
+  }
+
   @Test
   public void testEnableConnectionPooling() throws InterruptedException {
     // Set the connection pooling flag to true.
@@ -182,7 +216,9 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
         "true",
         true);
 
-    // Create universe with YSQL Auth enabled.
+    addRelease(CP_STABLE_VERSION, CP_STABLE_VERSION_URL);
+    updateProviderDetailsForCreateUniverse(CP_STABLE_VERSION);
+
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     userIntent.enableYSQLAuth = true;

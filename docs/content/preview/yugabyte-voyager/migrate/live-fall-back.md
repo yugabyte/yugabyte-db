@@ -46,7 +46,7 @@ The following illustration describes the workflow for live migration using YB Vo
 | | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ and WRITE (for fall-back) access to all the resources to be migrated. |
 | | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with necessary privileges. |
 | SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
-| | [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| | [Analyze](#analyze-schema) | Generate a _Schema&nbsp;Analysis&nbsp;Report_ using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
 | | [Import](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | LIVE MIGRATION | Start | Start the phases: export data first, followed by import data to target and archive changes simultaneously. |
@@ -518,17 +518,19 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-   ```sql
-   psql -h <host> \
-        -d <database> \
-        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
-        -v voyager_user='ybvoyager' \
-        -v schema_list='<comma_separated_schema_list>' \
-        -v is_live_migration=1 \
-        -v is_live_migration_fall_back=1 \
-        -v replication_group='<replication_group>' \
-        -f <path_to_the_script>
-   ```
+    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+
+    ```sql
+    psql -h <host> \
+          -d <database> \
+          -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
+          -v voyager_user='ybvoyager' \
+          -v schema_list='<comma_separated_schema_list>' \
+          -v is_live_migration=1 \
+          -v is_live_migration_fall_back=1 \
+          -v replication_group='<replication_group>' \
+          -f <path_to_the_script>
+    ```
 
     The `ybvoyager` user can now be used for migration.
 
@@ -554,19 +556,21 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-   ```sql
-   psql -h <host> \
-        -d <database> \
-        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
-        -v voyager_user='ybvoyager' \
-        -v schema_list='<comma_separated_schema_list>' \
-        -v is_live_migration=1 \
-        -v is_live_migration_fall_back=1 \
-        -v replication_group='<replication_group>' \
-        -f <path_to_the_script>
-   ```
+    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
 
-   The `ybvoyager` user can now be used for migration.
+    ```sql
+    psql -h <host> \
+          -d <database> \
+          -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
+          -v voyager_user='ybvoyager' \
+          -v schema_list='<comma_separated_schema_list>' \
+          -v is_live_migration=1 \
+          -v is_live_migration_fall_back=1 \
+          -v replication_group='<replication_group>' \
+          -f <path_to_the_script>
+    ```
+
+    The `ybvoyager` user can now be used for migration.
 
   {{% /tab %}}
 

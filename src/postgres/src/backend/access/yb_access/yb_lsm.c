@@ -449,11 +449,17 @@ ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
 	if (ybscan->quit_scan || ybtbm->work_mem_exceeded)
 		return 0;
 
+	scan->xs_recheck = YbNeedsPgRecheck(ybscan);
 	HandleYBStatus(YBCPgRetrieveYbctids(ybscan->handle, ybscan->exec_params,
 										ybscan->target_desc->natts, &ybctids, &new_tuples,
 										&exceeded_work_mem));
 	if (!exceeded_work_mem)
+	{
 		yb_tbm_add_tuples(ybtbm, ybctids);
+		/* Got some row that may be actually not matching */
+		if (scan->xs_recheck && new_tuples > 0)
+			ybtbm->recheck_required = true;
+	}
 	else
 		yb_tbm_set_work_mem_exceeded(ybtbm);
 
@@ -471,14 +477,26 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 	 * Information is lacking for hypothetical index in order for estimation
 	 * in YB to work.
 	 * So we skip hypothetical index.
+	 * TODO(jason): this should be shared with ybgin, ybvector, etc when they
+	 * are also supported for hypopg.
 	 */
 	if (path->indexinfo->hypothetical)
+	{
+		*indexStartupCost = 0.0;
+		*indexTotalCost = 0.0;
+		*indexSelectivity = 0.0;
+		*indexCorrelation = 0.0;
+		*indexPages = 0.0;
 		return;
+	}
+
 	ybcIndexCostEstimate(root,
 						 path,
 						 indexSelectivity,
 						 indexStartupCost,
 						 indexTotalCost);
+	*indexCorrelation = 0.0;
+	*indexPages = 0.0;
 }
 
 static bytea *

@@ -224,4 +224,22 @@ TEST(SliceTest, OrderConsistency) {
   LOG(INFO) << "made_checks: " << made_checks;
 }
 
+TEST(SliceTest, DebugStringLength) {
+  constexpr auto kNumIters = 1000;
+  constexpr auto kSize = 1024;
+  for (auto i = 0; i < kNumIters; ++i) {
+    const auto bytes = RandomBytes(kSize);
+    const auto slice = Slice(bytes.data(), bytes.size());
+    const auto max_len = yb::RandomUniformInt(1, kSize);
+    // Allow up to 2 hex chars per one byte plus 40 for "abbreviated ..." suffix.
+    const auto debug_str = slice.ToDebugString(max_len);
+    ASSERT_LE(debug_str.size(), max_len * 2 + 40)
+        << " max_len: " << max_len << " debug_str: " << debug_str;
+
+    if (max_len < 100) {
+      YB_LOG_EVERY_N(INFO, 10) << debug_str;
+    }
+  }
+}
+
 } // namespace yb

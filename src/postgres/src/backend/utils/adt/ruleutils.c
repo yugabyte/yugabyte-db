@@ -446,9 +446,6 @@ static void get_rule_windowspec(WindowClause *wc, List *targetList,
 								deparse_context *context);
 static char *get_variable(Var *var, int levelsup, bool istoplevel,
 						  deparse_context *context);
-static void get_batched_expr(YbBatchedExpr *var,
-							 deparse_context *context,
-							 bool showimplicit);
 static void get_special_variable(Node *node, deparse_context *context,
 								 void *callback_arg);
 static void resolve_special_varno(Node *node, deparse_context *context,
@@ -519,6 +516,11 @@ static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
 static void get_reloptions(StringInfo buf, Datum reloptions);
+
+/* YB functions */
+static void get_batched_expr(YbBatchedExpr *var,
+							 deparse_context *context,
+							 bool showimplicit);
 static int	yb_decompile_pk_column_index_array(Datum column_index_array,
 											   Oid relId, Oid indexId,
 											   StringInfo buf);
@@ -1233,7 +1235,8 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 /*
  * Internal version for use by ALTER TABLE.
  * Includes a tablespace clause in the result.
- * TODO - We also currently add NONCONCURRENTLY here, but this can be removed with #6703.
+ * YB: TODO: We also currently add NONCONCURRENTLY here, but this can be
+ * removed with #6703.
  *
  * Returns a palloc'd C string; no pretty-printing.
  */
@@ -1289,7 +1292,7 @@ pg_get_indexdef_columns_extended(Oid indexrelid, bits16 flags)
  * This is now used for exclusion constraints as well: if excludeOps is not
  * NULL then it points to an array of exclusion operator OIDs.
  *
- * TODO, can remove useNonconcurrently when we support #6703.
+ * YB: TODO: can remove useNonconcurrently when we support #6703.
  */
 static char *
 pg_get_indexdef_worker(Oid indexrelid, int colno,
@@ -1411,6 +1414,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 	if (!attrsOnly)
 	{
 		if (!isConstraint)
+			/* YB: pass NONCONCURRENTLY if needed */
 			appendStringInfo(&buf, "CREATE %sINDEX %s%s ON %s%s USING %s (",
 							 idxrec->indisunique ? "UNIQUE " : "",
 							 useNonconcurrently || includeYbMetadata ? "NONCONCURRENTLY " : "",
@@ -1426,7 +1430,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 							 quote_identifier(NameStr(amrec->amname)));
 	}
 
-	/* Count hash columns */
+	/* YB: Count hash columns */
 	int			hash_count = 0;
 
 	for (keyno = 0; keyno < idxrec->indnkeyatts; keyno++)
@@ -1443,7 +1447,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		Oid			keycoltype;
 		Oid			keycolcollation;
 
-		/* Put hash column group in a parenthesis */
+		/* YB: Put hash column group in a parenthesis */
 		if (!attrsOnly && keyno == 0 && !colno && hash_count > 1)
 			appendStringInfoString(&buf, "(");
 
@@ -1537,7 +1541,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					if (!(opt & INDOPTION_NULLS_FIRST))
 						appendStringInfoString(&buf, " NULLS LAST");
 				}
-				else if (!(opt & INDOPTION_HASH))	/* ASC */
+				else if (!(opt & INDOPTION_HASH))	/* YB: ASC */
 				{
 					appendStringInfoString(&buf, " ASC");
 					/* NULLS LAST is the default in this case */
@@ -1545,7 +1549,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 						appendStringInfoString(&buf, " NULLS FIRST");
 				}
 
-				/* Report hash column with optional closing parenthesis */
+				/* YB: Report hash column with optional closing parenthesis */
 				if (opt & INDOPTION_HASH)
 				{
 					if (colno == keyno + 1 || hash_count == 1)
@@ -1622,7 +1626,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		}
 
 		/*
-		 * Print SPLIT INTO/AT clause.
+		 * YB: Print SPLIT INTO/AT clause.
 		 */
 		if (includeYbMetadata && indexrel->yb_table_properties)
 		{
@@ -4114,7 +4118,7 @@ set_rtable_names(deparse_namespace *dpns, List *parent_namespaces,
 			refname = rte->eref->aliasname;
 		}
 
-		/* Check for a hint alias and that the RTE is not unreferenced. */
+		/* YB: Check for a hint alias and that the RTE is not unreferenced. */
 		if (IsYugaByteEnabled() && rte->ybHintAlias != NULL && (!rels_used || bms_is_member(rtindex, rels_used)))
 		{
 			/* Use the hint alias from the RTE. */
@@ -5246,9 +5250,9 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 	/* Set up referent for INDEX_VAR Vars, if needed */
 	if (IsA(plan, IndexOnlyScan))
 		dpns->index_tlist = ((IndexOnlyScan *) plan)->indextlist;
-	else if (IsA(plan, IndexScan))
+	else if (IsA(plan, IndexScan))	/* YB */
 		dpns->index_tlist = ((IndexScan *) plan)->indextlist;
-	else if (IsA(plan, YbBitmapIndexScan))
+	else if (IsA(plan, YbBitmapIndexScan))	/* YB */
 		dpns->index_tlist = ((YbBitmapIndexScan *) plan)->indextlist;
 	else if (IsA(plan, ForeignScan))
 		dpns->index_tlist = ((ForeignScan *) plan)->fdw_scan_tlist;
@@ -8681,6 +8685,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				}
 				/* else do the same stuff as for T_SubLink et al. */
 			}
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 
 		case T_SubLink:
@@ -12639,7 +12644,7 @@ get_reloptions(StringInfo buf, Datum reloptions)
 			value = "";
 
 		/*
-		 * We ignore the reloption for tablegroup.
+		 * YB: We ignore the reloption for tablegroup.
 		 * It is parsed seperately in describe.c.
 		 */
 		if (strcmp(name, "tablegroup") == 0)
@@ -12691,7 +12696,6 @@ flatten_reloptions(Oid relid)
 		StringInfoData buf;
 
 		initStringInfo(&buf);
-
 		get_reloptions(&buf, reloptions);
 
 		result = buf.data;

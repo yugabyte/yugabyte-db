@@ -64,9 +64,9 @@ typedef struct MemoryContextCallback
 extern PGDLLIMPORT MemoryContext YbCurrentMemoryContext;
 
 /*
- * This enables running query-layer code in a multi-threaded constext by using
- * thread-local variables instead of globals.
- * Currently only used for expression evaluation in DocDB (i.e. for pushdown).
+ * YB: This enables running query-layer code in a multi-threaded constext by
+ * using thread-local variables instead of globals. Currently only used for
+ * expression evaluation in DocDB (i.e. for pushdown).
  */
 static inline bool
 IsMultiThreadedMode()

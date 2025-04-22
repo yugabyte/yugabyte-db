@@ -61,7 +61,6 @@ typedef struct ExplainState
 	bool		wal;			/* print WAL usage */
 	bool		timing;			/* print detailed node timing */
 	bool		summary;		/* print total planning and execution timing */
-	bool		rpc;			/* print RPC stats */
 	bool		settings;		/* print modified settings */
 	ExplainFormat format;		/* output format */
 	/* state for output formatting --- not reset for each new plan tree */
@@ -77,6 +76,8 @@ typedef struct ExplainState
 	/* state related to the current plan node */
 	ExplainWorkersState *workers_state; /* needed if parallel plan */
 
+	/* YB */
+	bool		rpc;			/* print RPC stats */
 	YbExplainExecStats yb_stats;	/* hold YB-specific exec stats */
 	bool		yb_debug;		/* print debug information */
 	bool		ybShowHints;	/* generate and display hints that will

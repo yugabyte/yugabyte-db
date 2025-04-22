@@ -1334,6 +1334,8 @@ get_columns_length(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(column_offset);
 }
 
+/* YB */
+
 /*
  * Input and output functions for large, fixed-length name type.
  */

@@ -296,7 +296,7 @@ DefineTSParser(List *names, List *parameters)
 	return address;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Guts of TS parser deletion.
  */
@@ -511,7 +511,7 @@ DefineTSDictionary(List *names, List *parameters)
 	return address;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Guts of TS dictionary deletion.
  */
@@ -828,7 +828,7 @@ DefineTSTemplate(List *names, List *parameters)
 	return address;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Guts of TS template deletion.
  */

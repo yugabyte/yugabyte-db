@@ -99,6 +99,7 @@
 #include "pg_yb_utils.h"
 #include "utils/typcache.h"
 
+
 typedef struct MTTargetRelLookup
 {
 	Oid			relationOid;	/* hash key, must be first */
@@ -156,7 +157,7 @@ typedef struct UpdateContext
 } UpdateContext;
 
 /*
- * An enum to indicate the phase of the INSERT ... ON CONFLICT operation.
+ * YB: An enum to indicate the phase of the INSERT ... ON CONFLICT operation.
  * The DO UPDATE action has two phases: one corresponding to the the insertionn
  * of the row, and the other corresponding to the update of the row.
  * The DO NOTHING action does not make this distinction and is represented by a
@@ -279,8 +280,6 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 		Form_pg_attribute attr;
 
 		Assert(!tle->resjunk);	/* caller removed junk items already */
-		if (tle->resjunk)
-			continue;			/* ignore junk tlist items */
 
 		if (attno >= resultDesc->natts)
 			ereport(ERROR,
@@ -3139,7 +3138,7 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	Assert(!resultRelInfo->ri_needLockTagTuple);
 
 	/*
-	 * This routine selects data and check with indexes for conflicts.
+	 * YB: This routine selects data and check with indexes for conflicts.
 	 * - When selecting data from disk, Postgres prepares a heap buffer to hold the selected row
 	 *   and performs transaction-control locking operations on the selected row.
 	 * - YugaByte usually uses Postgres heap buffer after selecting data from storage (DocDB).
@@ -4272,10 +4271,10 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 	}
 
 	/*
-	 * For a partitioned relation, table constraints (such as FK) are visible on a
-	 * target partition rather than an original insert target.
-	 * As such, we should reevaluate single-row transaction constraints after
-	 * we determine the concrete partition.
+	 * YB: For a partitioned relation, table constraints (such as FK) are
+	 * visible on a target partition rather than an original insert target. As
+	 * such, we should reevaluate single-row transaction constraints after we
+	 * determine the concrete partition.
 	 */
 	if (estate->yb_es_is_single_row_modify_txn)
 	{
@@ -4572,8 +4571,10 @@ ExecModifyTable(PlanState *pstate)
 						ExecMerge(&context, node->resultRelInfo, NULL, node->canSetTag);
 						continue;	/* no RETURNING support yet */
 					}
+
 					elog(ERROR, "ctid is NULL");
 				}
+
 				tupleid = (ItemPointer) DatumGetPointer(datum);
 				tuple_ctid = *tupleid;	/* be sure we don't free ctid!! */
 				tupleid = &tuple_ctid;
@@ -4874,8 +4875,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	}
 
 	/*
-	 * Check if the planner has passed down any optimization info for UPDATEs.
-	 * There are two scenarios where this may be NULL:
+	 * YB: Check if the planner has passed down any optimization info for
+	 * UPDATEs. There are two scenarios where this may be NULL:
 	 * - There is nothing to optimize.
 	 * - Optimization(s) have been disabled.
 	 * Additionally, lookup the relevant GUCs. The GUCs may have been disabled
@@ -5361,7 +5362,7 @@ ExecEndModifyTable(ModifyTableState *node)
 	int			i;
 
 	/*
-	 * Free up the insert on conflict state which exists when INSERT ON
+	 * YB: Free up the insert on conflict state which exists when INSERT ON
 	 * CONFLICT batching happens.
 	 */
 	if (node->yb_ioc_state)

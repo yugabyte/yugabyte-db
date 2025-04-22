@@ -7,6 +7,7 @@ import pkgutil
 import sys
 import pwd
 import grp
+import shutil
 
 from enum import Enum
 import modules.base_module as mbm
@@ -266,7 +267,23 @@ class ProvisionCommand(Command):
             for package in cloud_only_packages:
                 self._check_package(package_manager, package)
 
+    def _copy_templates_files_for_ybm(self, context):
+        ynp_dir = context.get('ynp_dir')
+        modules_path = os.path.join(ynp_dir, 'modules/provision')
+        systemd_dir_path = os.path.join(modules_path, 'systemd/templates/')
+        ybm_dir_path = os.path.join(modules_path, 'ybm_ami/templates/')
+        files = ['clean_cores.sh.j2', 'zip_purge_yb_logs.sh.j2', 'collect_metrics_wrapper.sh.j2']
+        for f in files:
+            src = os.path.join(systemd_dir_path, f)
+            dest = os.path.join(ybm_dir_path, f)
+            shutil.copy(src, dest)
+
     def execute(self, specific_module=None):
+        key = next(iter(self.config), None)
+        if key is not None:
+            context = self.config[key]
+            if context.get('is_ybm'):
+                self._copy_templates_files_for_ybm(context)
         run_combined_script, precheck_combined_script = self._generate_template(specific_module)
         provision_result = self._run_script(run_combined_script)
         precheck_result = self._run_script(precheck_combined_script)

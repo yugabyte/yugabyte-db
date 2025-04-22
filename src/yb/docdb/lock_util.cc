@@ -133,13 +133,13 @@ std::string LockStateDebugString(LockState state) {
 // 1. 'ROW_SHARE' lock mode on object would lead to the following keys
 //    [<object/object hash/other prefix> kWeakObjectLock]   [kStrongRead]
 // 2. 'EXCLUSIVE' lock mode on the same object would lead to the following keys
-//    [<object/object hash/other prefix> kWeakObjectLock]   [kWeakWrite]
+//    [<object/object hash/other prefix> kWeakObjectLock]   [kStrongRead, kWeakWrite]
 //    [<object/object hash/other prefix> kStrongObjectLock] [kStrongRead, kStrongWrite]
 //
 // When checking conflicts for the same key, '[<object/object hash/other prefix> kWeakObjectLock]'
-// in this case, we see that the intents requested are [kStrongRead] and [kWeakWrite] for modes
-// 'ROW_SHARE' and 'EXCLUSIVE' respectively. And since the above intenttype sets conflict among
-// themselves, we successfully detect the conflict.
+// in this case, we see that the intents requested are [kStrongRead] and [kStrongRead, kWeakWrite]
+// for modes 'ROW_SHARE' and 'EXCLUSIVE' respectively. And since the above intenttype sets conflict
+// among themselves, we successfully detect the conflict.
 const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForLockType(
     TableLockType lock) {
   static const std::array<
@@ -157,10 +157,12 @@ const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForL
     }},
     // ROW_EXCLUSIVE
     {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakRead}}
     }},
     // SHARE_UPDATE_EXCLUSIVE
     {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}
@@ -168,18 +170,22 @@ const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForL
     }},
     // SHARE
     {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongWrite}}
     }},
     // SHARE_ROW_EXCLUSIVE
     {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {
         KeyEntryType::kStrongObjectLock,
-        dockv::IntentTypeSet {dockv::IntentType::kWeakRead, dockv::IntentType::kStrongWrite}
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
       }
     }},
     // EXCLUSIVE
     {{
-      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakWrite}},
+      {
+        KeyEntryType::kWeakObjectLock,
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
@@ -187,7 +193,9 @@ const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForL
     }},
     // ACCESS_EXCLUSIVE
     {{
-      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongWrite}},
+      {
+        KeyEntryType::kWeakObjectLock,
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}

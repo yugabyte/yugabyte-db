@@ -1777,7 +1777,7 @@ CreateCast(CreateCastStmt *stmt)
 	return myself;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 Oid
 get_cast_oid(Oid sourcetypeid, Oid targettypeid, bool missing_ok)
 {
@@ -2045,7 +2045,7 @@ get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok)
 }
 
 
-#ifdef NEIL
+#ifdef YB_TODO
 void
 DropTransformById(Oid transformOid)
 {

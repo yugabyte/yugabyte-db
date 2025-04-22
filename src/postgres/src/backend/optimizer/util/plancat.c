@@ -1021,7 +1021,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 	double		density;
 
 	/*
-	 * TODO We don't support forwarding size estimates to postgres yet.
+	 * YB: TODO We don't support forwarding size estimates to postgres yet.
 	 * Use whatever is in pg_class.
 	 */
 	if (IsYBRelation(rel))

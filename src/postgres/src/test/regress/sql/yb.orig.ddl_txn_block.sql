@@ -130,3 +130,11 @@ SELECT * FROM test9;
 DROP TABLE test9;
 ROLLBACK;
 SELECT * FROM test9;
+
+-- Rollback of CREATE INDEX should work.
+CREATE TABLE test10(id INT PRIMARY KEY, val TEXT);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE INDEX test10_idx ON test10(val);
+\d+ test10;
+ROLLBACK;
+\d+ test10;

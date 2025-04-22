@@ -413,6 +413,10 @@ class index_dense_gt {
     using member_iterator_t = typename index_t::member_iterator_t;
     using member_citerator_t = typename index_t::member_citerator_t;
 
+    auto& impl() const {
+        return *typed_;
+    }
+
   private:
     using index_allocator_t = aligned_allocator_gt<index_t, 64>;
 
@@ -774,6 +778,8 @@ class index_dense_gt {
     template <typename predicate_at> search_result_t filtered_search(f16_t const* vector, std::size_t wanted, predicate_at&& predicate, std::size_t thread = any_thread(), bool exact = false) const { return search_(vector, wanted, std::forward<predicate_at>(predicate), thread, exact, casts_.from.f16); }
     template <typename predicate_at> search_result_t filtered_search(f32_t const* vector, std::size_t wanted, predicate_at&& predicate, std::size_t thread = any_thread(), bool exact = false) const { return search_(vector, wanted, std::forward<predicate_at>(predicate), thread, exact, casts_.from.f32); }
     template <typename predicate_at> search_result_t filtered_search(f64_t const* vector, std::size_t wanted, predicate_at&& predicate, std::size_t thread = any_thread(), bool exact = false) const { return search_(vector, wanted, std::forward<predicate_at>(predicate), thread, exact, casts_.from.f64); }
+
+    template <typename predicate_at> search_result_t filtered_search_with_ef(f32_t const* vector, std::size_t wanted, predicate_at&& predicate, std::size_t ef, std::size_t thread = any_thread(), bool exact = false) const { return search_(vector, wanted, std::forward<predicate_at>(predicate), thread, exact, casts_.from.f32, ef); }
 
     std::size_t get(vector_key_t key, b1x8_t* vector, std::size_t vectors_count = 1) const { return get_(key, vector, vectors_count, casts_.to.b1x8); }
     std::size_t get(vector_key_t key, i8_t* vector, std::size_t vectors_count = 1) const { return get_(key, vector, vectors_count, casts_.to.i8); }
@@ -2034,7 +2040,7 @@ class index_dense_gt {
 
     template <typename scalar_at, typename predicate_at>
     search_result_t search_(scalar_at const* vector, std::size_t wanted, predicate_at&& predicate, std::size_t thread,
-                            bool exact, cast_punned_t const& cast) const {
+                            bool exact, cast_punned_t const& cast, std::size_t ef = 0) const {
 
         // Cast the vector, if needed for compatibility with `metric_`
         thread_lock_t lock = thread_lock_(thread);
@@ -2048,7 +2054,7 @@ class index_dense_gt {
 
         index_search_config_t search_config;
         search_config.thread = lock.thread_id;
-        search_config.expansion = config_.expansion_search;
+        search_config.expansion = ef ? ef : config_.expansion_search;
         search_config.exact = exact;
 
         vector_key_t free_key_copy = free_key_;
