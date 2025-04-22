@@ -490,6 +490,7 @@ class PgClientServiceImpl::Impl {
             }) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
+    ScheduleCheckObjectIdAllocators();
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
     }
