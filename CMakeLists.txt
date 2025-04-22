@@ -298,6 +298,11 @@ else()
   message("CMake will not export the compilation database")
 endif()
 
+if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+  set(YB_ENABLE_YSQL_DOCUMENTDB_EXT TRUE)
+  ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
+endif()
+
 # -------------------------------------------------------------------------------------------------
 # Build type (debug, release, fastdebug, etc.)
 # -------------------------------------------------------------------------------------------------
