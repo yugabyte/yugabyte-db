@@ -331,10 +331,16 @@ scoped_refptr<Trace> Trace::MaybeGetNewTrace() {
 }
 
 bool Trace::must_print() const {
-  std::lock_guard l(lock_);
-  return must_print_ || std::any_of(
-                            child_traces_.begin(), child_traces_.end(),
-                            [](const auto& child_trace) { return child_trace->must_print(); });
+  decltype(child_traces_) child_traces;
+  {
+    std::lock_guard l(lock_);
+    if (must_print_) {
+      return true;
+    }
+    child_traces = child_traces_;
+  }
+  return std::ranges::any_of(child_traces,
+                             [](const auto& child_trace) { return child_trace->must_print(); });
 }
 
 scoped_refptr<Trace>  Trace::MaybeGetNewTraceForParent(Trace* parent) {
