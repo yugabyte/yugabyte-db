@@ -160,7 +160,20 @@
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
-    when: ansible_os_family == 'RedHat' and "item not in ansible_facts.packages"
+    when: ansible_os_family == 'RedHat' and ansible_distribution != 'Amazon'
+    tags: yb-prebuilt-ami
+
+  - name: Install linux packages we need on our YugaByte clusters on amazonLinux
+    become: yes
+    become_method: sudo
+    raw: |
+      dnf install -y {{ item }}
+    with_items:
+      - "{{ linux_packages }}"
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: ansible_os_family == 'RedHat' and ansible_distribution == 'Amazon'
     tags: yb-prebuilt-ami
 
   - name: Install linux packages we need on our YugaByte clusters
