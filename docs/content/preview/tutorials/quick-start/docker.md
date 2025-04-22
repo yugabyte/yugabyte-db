@@ -151,6 +151,14 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
   If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
 
+{{< note title="Note" >}}
+
+When you start `yugabyted` with a non-default `--base_dir` value, you will have to set that on every command to `yugabyted`.
+For example: to get the status of the cluster created above, you'd use `bin/yugabyted status --base_dir=/home/yugabyte/yb_data`.
+
+{{< /note >}}
+
+
 ## Connect to the database
 
 The cluster you have created consists of two processes:
