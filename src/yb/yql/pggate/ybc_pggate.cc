@@ -2214,6 +2214,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_num_databases_reserved_in_db_catalog_version_mode =
           &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
       .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,
+      .ysql_output_flush_size                   = &FLAGS_ysql_output_flush_size,
       .ysql_sequence_cache_minval               = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
