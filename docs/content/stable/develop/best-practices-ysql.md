@@ -186,9 +186,9 @@ Set up different pools with different load balancing policies as needed for your
 For more information, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
 {{</lead>}}
 
-### DDLs and connection pools
+### Database migrations and connection pools
 
-Note that, in some special cases, connection pools may trigger unexpected errors while running a sequence of DDL operations. Due to the distributed nature of YugabyteDB, it may take a while for the result of a DDL to fully propagate to all caches on all nodes in the cluster. After a DDL statement completes, the next DDL statement that runs right afterwards on a different postgres connection may, in rare cases, see errors such as `duplicate key value violates unique constraint "pg_attribute_relid_attnum_index"`, as described [here](https://github.com/yugabyte/yugabyte-db/issues/12449). It is recommended to use a single connection while running a sequence of DDL operations as is common with application migration scripts with tools such as Flyway or Active Record Migrations.
+Note that, in some special cases, connection pools may trigger unexpected errors while running a sequence of database migrations or other DDL operations. Due to the distributed nature of YugabyteDB, it may take a while for the result of a DDL to fully propagate to all caches on all nodes in the cluster. After a DDL statement completes, the next DDL statement that runs right afterwards on a different postgres connection may, in rare cases, see errors such as `duplicate key value violates unique constraint "pg_attribute_relid_attnum_index"`, as described [here](https://github.com/yugabyte/yugabyte-db/issues/12449). It is recommended to use a single connection while running a sequence of DDL operations as is common with application migration scripts with tools such as Flyway or Active Record Migrations.
 
 ## Use YSQL Connection Manager
 
