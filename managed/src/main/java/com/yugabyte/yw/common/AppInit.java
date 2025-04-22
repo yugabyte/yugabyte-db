@@ -323,8 +323,11 @@ public class AppInit {
         nodeAgentPoller.init();
         pitrConfigPoller.start();
         autoMasterFailoverScheduler.init();
-        // Update the provider metadata in case YBA updates the managed AMIs.
-        updateProviderMetadata.start();
+        if (!HighAvailabilityConfig.isFollower()) {
+          updateProviderMetadata.resetUpdatingProviders();
+          // Update the provider metadata in case YBA updates the managed AMIs.
+          updateProviderMetadata.start();
+        }
         xClusterScheduler.start();
 
         ybcUpgrade.start();
