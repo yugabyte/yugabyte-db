@@ -411,7 +411,7 @@
   shell: |
     grep '\[always\]' /sys/kernel/mm/transparent_hugepage/enabled &&
     grep '\[defer+madvise\]' /sys/kernel/mm/transparent_hugepage/defrag &&
-    [[ "$(cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none)" == "0" ]]
+    test "$(cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none)" -eq 0
   register: thp_validate
   changed_when: false
   failed_when: thp_validate.rc != 0
