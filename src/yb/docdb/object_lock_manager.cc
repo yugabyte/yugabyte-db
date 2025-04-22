@@ -293,7 +293,7 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
     old_value = entry.num_holding.load(std::memory_order_acquire);
     if (((old_value ^ lock_entry.existing_state) & conflicting_lock_state) != 0) {
       DEBUG_ONLY_TEST_SYNC_POINT("ObjectLockedBatchEntry::Lock");
-      SCOPED_WAIT_STATUS(LockedBatchEntry_Lock);
+      SCOPED_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
       if (deadline != CoarseTimePoint::max()) {
         // Note -- even if we wait here, we don't need to be aware for the purposes of deadlock
         // detection since this eventually succeeds (in which case thread gets to queue) or times

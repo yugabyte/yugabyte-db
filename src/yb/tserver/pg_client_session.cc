@@ -1198,6 +1198,9 @@ Request AcquireRequestFor(
     ClockBase* clock, CoarseTimePoint deadline) {
   auto now = clock->Now();
   Request req;
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(req.mutable_ash_metadata());
+  }
   req.set_txn_id(txn_id.data(), txn_id.size());
   req.set_subtxn_id(subtxn_id);
   req.set_session_host_uuid(session_host_uuid);
@@ -1220,6 +1223,9 @@ Request ReleaseRequestFor(
     std::optional<SubTransactionId> subtxn_id, uint64_t lease_epoch = 0,
     ClockBase* clock = nullptr) {
   Request req;
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(req.mutable_ash_metadata());
+  }
   req.set_txn_id(txn_id.data(), txn_id.size());
   if (subtxn_id) {
     req.set_subtxn_id(*subtxn_id);

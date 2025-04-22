@@ -428,6 +428,7 @@ message AcquireObjectLockRequestPB {
   optional uint64 lease_epoch = 5;
   optional fixed64 ignore_after_hybrid_time = 6;
   optional fixed64 propagated_hybrid_time = 7;
+  optional AshMetadataPB ash_metadata = 8;
 }
 
 message AcquireObjectLockResponsePB {
@@ -465,6 +466,7 @@ message ReleaseObjectLockRequestPB {
   optional DBCatalogVersionDataPB db_catalog_version_data = 7;
   // Used for tracking in-progress DDL unlock requests at the master.
   optional uint64 request_id = 8;
+  optional AshMetadataPB ash_metadata = 9;
 }
 
 message ReleaseObjectLockResponsePB {

@@ -465,6 +465,14 @@ Status PrintYSQLWriteRequest(
   return Status::OK();
 }
 
+template <class Req>
+void UpdateAshMetadataFrom(const Req* req) {
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+  if (wait_state && req->has_ash_metadata()) {
+    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  }
+}
+
 } // namespace
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
@@ -2575,9 +2583,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
-  }
+  UpdateAshMetadataFrom(req);
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
@@ -2609,9 +2615,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
-  }
+  UpdateAshMetadataFrom(req);
   PerformRead(server_, this, req, resp, std::move(context));
 }
 
@@ -3620,6 +3624,7 @@ void TabletServiceImpl::AcquireObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
   TRACE("Start AcquireObjectLocks");
+  UpdateAshMetadataFrom(req);
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
@@ -3645,6 +3650,7 @@ void TabletServiceImpl::ReleaseObjectLocks(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
   TRACE("Start ReleaseObjectLocks");
+  UpdateAshMetadataFrom(req);
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();

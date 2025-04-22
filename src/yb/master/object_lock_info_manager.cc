@@ -382,6 +382,9 @@ AcquireObjectLockRequestPB TserverRequestFor(
   if (master_request.has_propagated_hybrid_time()) {
     req.set_propagated_hybrid_time(master_request.propagated_hybrid_time());
   }
+  if (master_request.has_ash_metadata()) {
+    req.mutable_ash_metadata()->CopyFrom(master_request.ash_metadata());
+  }
   return req;
 }
 
@@ -401,6 +404,9 @@ ReleaseObjectLockRequestPB TserverRequestFor(
     req.set_propagated_hybrid_time(master_request.propagated_hybrid_time());
   }
   req.set_request_id(request_id);
+  if (master_request.has_ash_metadata()) {
+    req.mutable_ash_metadata()->CopyFrom(master_request.ash_metadata());
+  }
   return req;
 }
 
