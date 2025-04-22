@@ -13,9 +13,9 @@ unversioned: true
 
 YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications.
 
-<!--Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
+Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
 
-YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency.-->
+<!--YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency.-->
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
