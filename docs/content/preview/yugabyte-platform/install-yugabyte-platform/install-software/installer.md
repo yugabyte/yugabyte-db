@@ -430,7 +430,7 @@ To perform a non-sudo installation, run any of the preceding commands without su
 
 To customize your installation, edit the settings in the `yba-ctl.yml` configuration file.
 
-YBA Installer [automatically generates](#configure-yba-installer) the file when you run some commands. Alternatively, you can edit the `yba-ctl.yml.reference` file included in the installer bundle, and copy it to the appropriate location.
+YBA Installer [automatically generates](#configure-yba-installer) the file when you run certain commands. Alternatively, you can edit the `yba-ctl.yml.reference` file included in the installer bundle, and copy it to the appropriate location.
 
 | Installation type | Location for configuration file |
 | :--- | :--- |
