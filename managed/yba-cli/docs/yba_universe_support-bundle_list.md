@@ -1,19 +1,25 @@
-## yba universe
+## yba universe support-bundle list
 
-Manage YugabyteDB Anywhere universes
+List support bundles for a YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere universes
+List support bundles for a YugabyteDB Anywhere universe
 
 ```
-yba universe [flags]
+yba universe support-bundle list [flags]
+```
+
+### Examples
+
+```
+yba universe support-bundle list --name <universe-name>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for universe
+  -h, --help   help for list
 ```
 
 ### Options inherited from parent commands
@@ -25,31 +31,18 @@ yba universe [flags]
       --debug              Use debug mode, same as --logLevel debug.
       --directory string   Directory containing YBA CLI configuration and generated files. If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. Defaults to '$HOME/.yba-cli/'.
       --disable-color      Disable colors in output. (default false)
+  -f, --force              [Optional] Bypass the prompt for non-interactive usage.
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
+  -n, --name string        [Optional] The name of the universe for support bundle operations. Required for create, delete, list, describe, download.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
+  -s, --skip-validations   [Optional] Skip validations before running the CLI command.
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)
 ```
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba universe create](yba_universe_create.md)	 - Create YugabyteDB Anywhere universe
-* [yba universe create-read-replica](yba_universe_create-read-replica.md)	 - Create a read replica for existing YugabyteDB universe
-* [yba universe delete](yba_universe_delete.md)	 - Delete a YugabyteDB Anywhere universe
-* [yba universe delete-read-replica](yba_universe_delete-read-replica.md)	 - Delete a YugabyteDB Anywhere universe Read Replica
-* [yba universe describe](yba_universe_describe.md)	 - Describe a YugabyteDB Anywhere universe
-* [yba universe edit](yba_universe_edit.md)	 - Edit a YugabyteDB Anywhere universe
-* [yba universe list](yba_universe_list.md)	 - List YugabyteDB Anywhere universes
-* [yba universe node](yba_universe_node.md)	 - Manage YugabyteDB Anywhere universe nodes
-* [yba universe pause](yba_universe_pause.md)	 - Pause a YugabyteDB Anywhere universe
-* [yba universe restart](yba_universe_restart.md)	 - Restart a YugabyteDB Anywhere Universe
-* [yba universe resume](yba_universe_resume.md)	 - Resume a YugabyteDB Anywhere universe
-* [yba universe run-sample-apps](yba_universe_run-sample-apps.md)	 - Get sample apps command for a YugabyteDB Anywhere universe
-* [yba universe security](yba_universe_security.md)	 - Manage security settings for a universe
 * [yba universe support-bundle](yba_universe_support-bundle.md)	 - Support bundle operations on a YugabyteDB Anywhere universe
-* [yba universe table](yba_universe_table.md)	 - Manage YugabyteDB Anywhere universe tables
-* [yba universe upgrade](yba_universe_upgrade.md)	 - Upgrade a YugabyteDB Anywhere universe
 

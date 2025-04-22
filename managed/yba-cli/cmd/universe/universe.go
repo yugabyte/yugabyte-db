@@ -10,6 +10,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/node"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/readreplica"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/security"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/supportbundle"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/table"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -42,6 +43,8 @@ func init() {
 	UniverseCmd.AddCommand(runSampleAppsUniverseCmd)
 	UniverseCmd.AddCommand(table.TableCmd)
 	UniverseCmd.AddCommand(edit.EditUniverseCmd)
+
+	util.PreviewCommand(UniverseCmd, []*cobra.Command{supportbundle.SupportBundleUniverseCmd})
 
 	UniverseCmd.AddGroup(&cobra.Group{
 		ID:    "action",

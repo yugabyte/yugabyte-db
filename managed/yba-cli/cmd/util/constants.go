@@ -269,6 +269,18 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Allowed states for support bundle
+const (
+	// RunningSupportBundleState state
+	RunningSupportBundleState = "Running"
+	// AbortedSupportBundleState state
+	AbortedSupportBundleState = "Aborted"
+	// SuccessSupportBundleState state
+	SuccessSupportBundleState = "Success"
+	// FailedSupportBundleState state
+	FailedSupportBundleState = "Failed"
+)
+
 // Allowed states for XCluster Universe Lifecycle
 const (
 	// InitializedXClusterState indicates the XCluster universe is initialized
@@ -346,6 +358,8 @@ const (
 	SecurityOperation = "Security"
 	// PITROperation type
 	PITROperation = "PITR"
+	// SupportBundleOperation type
+	SupportBundleOperation = "SupportBundle"
 )
 
 // Different resource types that are supported in CLI
