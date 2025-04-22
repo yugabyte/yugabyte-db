@@ -942,9 +942,9 @@ CREATE TABLE tbl_unlogged (
 **GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)  
 **Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, by default, indexes in YugabyteDB are hash-sharded, which is not optimal for range predicates and can impact query performance.
 
-Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](https://docs.yugabyte.com/preview/develop/postgresql-compatibility/) in YugabyteDB.
+Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../develop/postgresql-compatibility/) in YugabyteDB.
 
-**Workaround**: To address this, it is recommended that such indexes be explicitly configured to use range sharding, which will ensure efficient data access with range-based queries.
+**Workaround**: Explicitly configure the index to use range sharding. This ensures efficient data access with range-based queries.
 
 **Example**
 
@@ -1557,9 +1557,9 @@ yugabyte=# \d test
 
 ### Hotspots with range-sharded timestamp/date indexes
 
-**Description**: Range sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, primarily due to the increasing nature of these values. For example,  `created_at timestamp` – as new values are inserted in this column, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. However, even after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
+**Description**: Range-sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, due to the way these values increment. For example, take a column of values `created_at timestamp`. As new values are inserted, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. Then, after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
 
-Note: If the table is created as colocated, this hotspot concern can safely be ignored, as all the data resides on a single tablet, and the distribution is no longer relevant.
+Note that if the table is colocated, this hotspot concern can safely be ignored, as all the data resides on a single tablet, and the distribution is no longer relevant.
 
 **Workaround**: To address this issue and improve query performance, application-level sharding is recommended. This approach involves adding an additional column to the table and creating a multi-column index including both the new column and the timestamp/date column. The additional column distributes data using a hash-based strategy, effectively spreading the load across multiple nodes.
 
@@ -1585,9 +1585,9 @@ CREATE INDEX idx_orders_created ON orders(created_at DESC);
 SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
 ```
 
-Suggested change to the schema is to add the column `shard_id` with a default value as an integer between (0-15). This number is to be configured as per the number of shards required for the use case. In addition, you also need to add this column to the index columns with hash sharding on this column. So the data is distributed as per `shard_id` and ordered based on `created_at`.
+Suggested change to the schema is to add the column `shard_id` with a default value as an integer between 0 and the number of shards required for the use case. In addition, you add this column to the index columns with hash sharding. In this way the data is distributed by `shard_id` and ordered based on `created_at`.
 
-This also requires modifications to the range queries to include the `shard_id` in the filter to help the optimizer – specify the shard_ids in the IN clause.
+This also requires modifying the range queries to include the `shard_id` in the filter to help the optimizer. In this example, you specify the shard IDs in the IN clause.
 
 ```sql
 CREATE TABLE orders (
