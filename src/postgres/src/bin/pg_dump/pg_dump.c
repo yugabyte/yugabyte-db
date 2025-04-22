@@ -15772,6 +15772,17 @@ dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo)
 	free(namecopy);
 }
 
+static void
+freeYbcTablePropertiesIfRequired(YbcTableProperties yb_properties)
+{
+	if (!yb_properties)
+		return;
+
+	if (yb_properties->tablegroup_name)
+		free(yb_properties->tablegroup_name);
+	free(yb_properties);
+}
+
 /*
  * dumpTableSchema
  *	  write the declaration (not data) of one user-defined table or view
@@ -15946,7 +15957,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX
 			 || tbinfo->relkind == RELKIND_MATVIEW || tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
 		{
-			yb_properties = (YbcTableProperties) pg_malloc(sizeof(YbcTablePropertiesData));
+			yb_properties = (YbcTableProperties) pg_malloc0(sizeof(YbcTablePropertiesData));
 		}
 		PQExpBuffer yb_reloptions = createPQExpBuffer();
 
@@ -16628,6 +16639,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			free(ftoptions);
 		if (srvname)
 			free(srvname);
+
+		freeYbcTablePropertiesIfRequired(yb_properties);
 	}
 
 	/*
@@ -16943,7 +16956,7 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 		{
 			YbcTableProperties yb_properties;
 
-			yb_properties = (YbcTableProperties) pg_malloc(sizeof(YbcTablePropertiesData));
+			yb_properties = (YbcTableProperties) pg_malloc0(sizeof(YbcTablePropertiesData));
 			PQExpBuffer yb_reloptions = createPQExpBuffer();
 
 			getYbTablePropertiesAndReloptions(fout, yb_properties,
@@ -16968,6 +16981,8 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 				}
 			}
 			destroyPQExpBuffer(yb_reloptions);
+
+			freeYbcTablePropertiesIfRequired(yb_properties);
 		}
 		/* Plain secondary index */
 		appendPQExpBuffer(q, "%s;\n", indxinfo->indexdef);
@@ -19291,7 +19306,7 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 			int			i_grpname = PQfnumber(res, "grpname");
 
 			properties->tablegroup_name =
-				PQgetisnull(res, 0, i_grpname) ? "" : PQgetvalue(res, 0, i_grpname);
+				PQgetisnull(res, 0, i_grpname) ? pg_strdup("") : pg_strdup(PQgetvalue(res, 0, i_grpname));
 
 			PQclear(res);
 			destroyPQExpBuffer(query);
