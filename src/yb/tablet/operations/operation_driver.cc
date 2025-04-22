@@ -207,7 +207,7 @@ void OperationDriver::ExecuteAsync() {
 Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   ADOPT_TRACE(trace());
   ADOPT_WAIT_STATE(wait_state());
-  SET_WAIT_STATUS(OnCpu_Active);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
 

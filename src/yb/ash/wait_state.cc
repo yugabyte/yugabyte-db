@@ -193,7 +193,7 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kYBClient_LookingUpTablet:
       return "YB client is looking up tablet information from the master.";
     case WaitStateCode::kYBClient_WaitingOnMaster:
-      return "YB client is waiting on master.";
+      return "YB client is waiting on an RPC sent to the master.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
