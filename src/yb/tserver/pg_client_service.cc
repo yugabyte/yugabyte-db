@@ -470,6 +470,7 @@ class PgClientServiceImpl::Impl {
             }) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
+    ScheduleCheckObjectIdAllocators();
     cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
         "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
