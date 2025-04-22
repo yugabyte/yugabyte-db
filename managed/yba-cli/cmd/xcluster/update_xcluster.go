@@ -57,7 +57,14 @@ var updateXClusterCmd = &cobra.Command{
 				"Update - Get XCluster")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
-		xClusterTables := rXCluster.GetTables()
+		validStatesForConfig := util.TableStatesInXClusterConfig()
+		xClusterTables := make([]string, 0)
+		tableDetails := rXCluster.GetTableDetails()
+		for _, table := range tableDetails {
+			if slices.Contains(validStatesForConfig, table.GetStatus()) {
+				xClusterTables = append(xClusterTables, table.GetTableId())
+			}
+		}
 
 		name := rXCluster.GetName()
 
@@ -146,6 +153,7 @@ var updateXClusterCmd = &cobra.Command{
 			if len(tableNeedBootstrapUUIDsString) != 0 {
 				tableNeedBootstrapUUIDs = strings.Split(tableNeedBootstrapUUIDsString, ",")
 			} else {
+				tableNeedBootstrapUUIDs = addTableUUIDs
 				allowBoostrap = true
 			}
 
