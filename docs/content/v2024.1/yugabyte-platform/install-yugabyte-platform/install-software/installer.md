@@ -275,15 +275,15 @@ To use the data disk with a new installation, do the following:
 
 ### Reconfigure
 
-YBA Installer can be used to reconfigure an installed YBA instance.
+You can use YBA Installer to reconfigure an installed YBA instance.
 
-To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuration file with your changes, and then run the command as follows:
+To reconfigure an installation, edit the configuration file with your changes, and then run the command as follows:
 
 ```sh
 sudo yba-ctl reconfigure
 ```
 
-For a list of options, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
+For more information, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
 
 ### Service management
 
@@ -413,7 +413,9 @@ FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 
 ## Non-sudo installation
 
-YBA Installer also supports a non-sudo installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
+YBA Installer also supports a non-sudo installation, where sudo access is not required for any step of the installation.
+
+Note that this is not recommended for production use cases.
 
 To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
@@ -421,31 +423,43 @@ To perform a non-sudo installation, run any of the preceding commands without su
 
 ## Configuration options
 
-### YBA Installer configuration options
+To customize your installation, edit the settings in the `yba-ctl.yml` configuration file.
 
-You can set the following YBA Installer configuration options.
+YBA Installer [automatically generates](#configure-yba-installer) the file when you run certain commands. Alternatively, you can edit the `yba-ctl.yml.reference` file included in the installer bundle, and copy it to the appropriate location.
+
+| Installation type | Location for configuration file |
+| :--- | :--- |
+| sudo | opt/yba-ctl/ |
+| non-sudo | ~/opt/yba-ctl/ |
+
+Note that the file must include all fields. Optional fields may be left blank.
+
+### Configure YBA Installer
+
+You can configure YBA Installer by setting the following options.
 
 | Option | Description |      |
 | :----- | :---------- | :--- |
-| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. | {{<icon/partial>}} |
+| `installRoot` | Location where YBA is installed. Default for a sudo installation is `/opt/yugabyte`; for a non-sudo installation, it is the current user's home directory. | {{<icon/partial>}} |
 | `host` | Hostname or IP Address used for CORS and certificate creation. Optional. | |
 | `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
 | `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. | |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
+| `as_root` | If you are providing a custom configuration file, set to true to perform a [sudo installation](#non-sudo-installation), or false for non-sudo. If the configuration is [auto-generated](#configure-yba-installer), this is set automatically according to whether you used sudo to run the command that triggered the auto generation - true with sudo, or false for non-sudo. Note that you can't switch between running yba-ctl as sudo and non-sudo. | {{<icon/partial>}} |
 
 {{<icon/partial>}} You can't change these settings after installation.
 
-### YBA configuration options
+### Configure YBA
 
-You can configure the following YBA configuration options.
+You can configure YugabyteDB Anywhere using the following options.
 
 | Option | Description |
 | :--- | :--- |
-| `port` | Specify a custom port for the YBA UI to run on. |
+| `port` | Specify a custom port for the YBA UI to run on. Default: 443. |
 | `keyStorePassword` | Password for the Java keystore. Automatically generated if left empty. |
 | `appSecret` | Play framework crypto secret. Automatically generated if left empty. |
 
-OAuth related settings are described in the following table. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave it empty).
+OAuth related settings are described in the following table. With the exception of `useOauth`, they are all optional. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave them empty).
 
 | Option | Description |
 | :--- | :--- |
@@ -471,11 +485,11 @@ Http and Https proxy settings are described in the following table.
 | `no_proxy` |              Specify the setting for NO_PROXY |
 | `java_non_proxy` |        Specify -Dhttps.nonProxyHosts |
 
-### Prometheus configuration options
+### Configure Prometheus
 
 | Option | Description |
 | :--- | :--- |
-| `port` | External Prometheus port. |
+| `port` | External Prometheus port. Default: 9090. |
 | `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash. |
 | `scrapeInterval` | How often Prometheus scrapes for database metrics. |
 | `scrapeTimeout` | Timeout for inactivity during scraping. |
@@ -499,7 +513,7 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 | Option | Description |      |
 | :----- | :---------- | :--- |
-| `enabled` | Boolean indicating whether yba-ctl will install PostgreSQL. | {{<icon/partial>}} |
+| `enabled` | Boolean indicating whether yba-ctl will install PostgreSQL. Default: true | {{<icon/partial>}} |
 | `port` | Port PostgreSQL is listening to. | |
 | `restartSecond` | Wait time to restart PostgreSQL if the service crashes. | |
 | `locale` | locale is used during initialization of the database. | |
@@ -511,7 +525,7 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 | Option | Description |      |
 | :----- | :---------- | :--- |
-| `enabled` | Boolean indicating whether to use a PostgreSQL instance that you provision and manage separately. | {{<icon/partial>}} |
+| `enabled` | Boolean indicating whether to use a PostgreSQL instance that you provision and manage separately. Default: false | {{<icon/partial>}} |
 | `host` | IP address/domain name of the PostgreSQL server. | |
 | `port` | Port PostgreSQL is running on. | |
 | `username` and `password` | Used to authenticate with PostgreSQL. | |
