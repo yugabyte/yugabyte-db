@@ -24,8 +24,7 @@ DEPRECATE_FLAG(bool, ysql_yb_ash_enable_infra, "2024_12");
 
 DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_ash, true,
     "Enable Active Session History for sampling and instrumenting YSQL and YCQL queries, "
-    "and various background activities. This does nothing if "
-    "ysql_yb_enable_ash_infra is disabled.");
+    "and various background activities.");
 
 DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 0,
     "Size (in KiBs) of ASH circular buffer that stores the samples");

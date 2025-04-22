@@ -241,7 +241,7 @@ lnext:
 				 * Got the lock successfully, the locked tuple saved in
 				 * markSlot for, if needed, EvalPlanQual testing below.
 				 *
-				 * TODO(Piyush): If we use EvalPlanQual for READ
+				 * YB: TODO(Piyush): If we use EvalPlanQual for READ
 				 * COMMITTED in future:
 				 * - remove !IsYBBackedRelation(erm->relation)
 				 * - In YBCLockTuple():
@@ -255,7 +255,7 @@ lnext:
 
 			case TM_Updated:
 				/*
-				 * TODO(Piyush): If handling using EvalPlanQual for READ
+				 * YB: TODO(Piyush): If handling using EvalPlanQual for READ
 				 * COMMITTED in future, replace
 				 * IsYBBackedRelation(erm->relation) with
 				 * IsolationUsesXactSnapshot().

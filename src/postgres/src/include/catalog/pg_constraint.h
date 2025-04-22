@@ -256,7 +256,7 @@ extern void ConstraintSetParentConstraint(Oid childConstrId,
 										  Oid parentConstrId,
 										  Oid childTableId);
 extern Oid	get_relation_constraint_oid(Oid relid, const char *conname, bool missing_ok);
-extern Bitmapset *get_relation_constraint_attnos(Relation rel, const char *conname,
+extern Bitmapset *get_relation_constraint_attnos(Oid relid, const char *conname,
 												 bool missing_ok, Oid *constraintOid);
 extern Oid	get_domain_constraint_oid(Oid typid, const char *conname, bool missing_ok);
 extern Oid	get_relation_idx_constraint_oid(Oid relationId, Oid indexId);

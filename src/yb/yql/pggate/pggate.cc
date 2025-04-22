@@ -162,7 +162,7 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params, bool is_region_local) {
-  if (params && (params->index_only_scan || YBCIsNonembeddedYbctidsOnlyFetch(params))) {
+  if (params && params->index_only_scan) {
     return PgSelectIndex::Make(pg_session, index_id, is_region_local);
   }
   return PgSelect::Make(
@@ -1590,6 +1590,10 @@ Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exe
     }
   }
   return select.Exec(exec_params);
+}
+
+void PgApiImpl::IncrementIndexRecheckCount() {
+  pg_session_->metrics().RecordRowRemovedByIndexRecheck();
 }
 
 

@@ -125,6 +125,7 @@ typedef struct YbDatabaseConnectionWorkerInfo
 bool		yb_enable_query_diagnostics;
 int			yb_query_diagnostics_bg_worker_interval_ms;
 int			yb_query_diagnostics_circular_buffer_size;
+bool		yb_query_diagnostics_disable_database_connection_bgworker;
 
 /* Saved hook value in case of unload */
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
@@ -1442,6 +1443,9 @@ end_of_loop:
 			goto remove_entry;
 		}
 
+		if (yb_query_diagnostics_disable_database_connection_bgworker)
+			goto skip_schema_details;
+
 		/*
 		 * Wait for dumping schema details for the future iterations,
 		 * if the database connection bgworker is busy.
@@ -1559,7 +1563,8 @@ skip_schema_details:
 			goto remove_entry;
 
 		/* Keep bundle in hash table as dumping schema details is pending */
-		if (entry->metadata.flush_only_schema_details)
+		if (!yb_query_diagnostics_disable_database_connection_bgworker &&
+			entry->metadata.flush_only_schema_details)
 			continue;
 
 remove_entry:

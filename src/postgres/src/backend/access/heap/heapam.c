@@ -1290,14 +1290,14 @@ heap_rescan(TableScanDesc sscan, ScanKey key, bool set_params,
 void
 heap_endscan(TableScanDesc sscan)
 {
-	/* Note: no locking manipulations needed */
-
 	if (IsYBRelation(sscan->rs_rd))
 	{
 		return ybc_heap_endscan(sscan);
 	}
 
 	HeapScanDesc scan = (HeapScanDesc) sscan;
+
+	/* Note: no locking manipulations needed */
 
 	/*
 	 * unpin scan buffers
@@ -1328,7 +1328,6 @@ heap_endscan(TableScanDesc sscan)
 HeapTuple
 heap_getnext(TableScanDesc sscan, ScanDirection direction)
 {
-
 	if (IsYBRelation(sscan->rs_rd))
 	{
 		return ybc_heap_getnext(sscan);
@@ -1454,9 +1453,7 @@ heap_set_tidrange(TableScanDesc sscan, ItemPointer mintid,
 	 * of the relation.
 	 */
 	if (ItemPointerCompare(maxtid, &highestItem) < 0)
-	{
 		ItemPointerCopy(maxtid, &highestItem);
-	}
 
 	/*
 	 * If the given minimum TID is above the lowest possible TID in the
@@ -8358,7 +8355,7 @@ index_delete_sort(TM_IndexDeleteOp *delstate)
 	const int	gaps[9] = {1968, 861, 336, 112, 48, 21, 7, 3, 1};
 
 	/* Think carefully before changing anything here -- keep swaps cheap */
-#ifdef NEIL
+#ifdef YB_TODO
 	/*
 	 * NEIL: Revisit this to have a permanent fix.
 	 * - ItemPointer is part of TM_IndexDelete.

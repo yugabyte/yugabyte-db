@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -64,4 +65,5 @@ public class BaseTaskDependencies {
   private final YsqlQueryExecutor ysqlQueryExecutor;
   private final GFlagsValidation gFlagsValidation;
   private final NodeUniverseManager nodeUniverseManager;
+  private final NodeAgentClient nodeAgentClient;
 }

@@ -481,6 +481,7 @@ cluster_rel(Oid tableOid, Oid indexOid, ClusterParams *params)
 	rebuild_relation(OldHeap, indexOid, verbose);
 
 	/* NB: rebuild_relation does table_close() on OldHeap */
+
 out:
 	/* Roll back any GUC changes executed by index functions */
 	AtEOXact_GUC(false, save_nestlevel);

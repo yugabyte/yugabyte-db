@@ -93,18 +93,6 @@ XClusterExtensionOwner(void)
 }
 
 Oid
-SPI_GetOid(HeapTuple spi_tuple, int column_id)
-{
-	bool		is_null;
-	Oid			oid = DatumGetObjectId(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
-													 column_id, &is_null));
-
-	if (is_null)
-		elog(ERROR, "Found NULL value when parsing oid (column %d)", column_id);
-	return oid;
-}
-
-Oid
 SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id)
 {
 	bool		is_null;
@@ -112,6 +100,16 @@ SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id)
 													 column_id, &is_null));
 	if (is_null)
 		return InvalidOid;
+	return oid;
+}
+
+Oid
+SPI_GetOid(HeapTuple spi_tuple, int column_id)
+{
+	Oid			oid = SPI_GetOidIfExists(spi_tuple, column_id);
+
+	if (oid == InvalidOid)
+		elog(ERROR, "Found NULL value when parsing oid (column %d)", column_id);
 	return oid;
 }
 

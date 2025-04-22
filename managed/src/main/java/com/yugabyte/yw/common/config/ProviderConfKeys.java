@@ -488,4 +488,30 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Configure clockbound when creating cloud provider based Universes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> enableEarlyoomByDefaultForProvider =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_earlyoom_by_default",
+          ScopeType.PROVIDER,
+          "Enable earlyoom by default",
+          "Enable earlyoom during provisioning",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<String> earlyoomDefaultArgs =
+      new ConfKeyInfo<>(
+          "yb.node_agent.earlyoom_default_args",
+          ScopeType.PROVIDER,
+          "Default earlyoom arguments",
+          "Default earlyoom arguments",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpConnectionDrainingTimeout =
+      new ConfKeyInfo<>(
+          "yb.gcp.operations.connection_draining_timeout",
+          ScopeType.PROVIDER,
+          "GCP Connection Draining Timeout",
+          "Set the connection draining timeout for the GCP load balancer.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

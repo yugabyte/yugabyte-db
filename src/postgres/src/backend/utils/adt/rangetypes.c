@@ -135,6 +135,7 @@ range_out(PG_FUNCTION_ARGS)
 
 	check_stack_depth();		/* recurses when subtype is a range type */
 
+	/* YB */
 	if (PG_NARGS() == 2)
 	{
 		decode_options = (YbDatumDecodeOptions *) PG_GETARG_POINTER(1);

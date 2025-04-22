@@ -281,16 +281,51 @@ func (server *RPCServer) SubmitTask(
 		err := util.ConvertType(preflightCheckInput, &preflightCheckParam)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in preflight input conversion - %s", err.Error())
-			return res, status.Errorf(codes.InvalidArgument, err.Error())
+			return res, status.Error(codes.InvalidArgument, err.Error())
 		}
 		preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
 		err = task.GetTaskManager().
 			Submit(ctx, taskID, preflightCheckHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running preflight check - %s", err.Error())
-			return res, status.Errorf(codes.Internal, err.Error())
+			return res, status.Error(codes.Internal, err.Error())
 		}
 		return res, nil
+	}
+	serverControlInput := req.GetServerControlInput()
+	if serverControlInput != nil {
+		// Handle server control RPC.
+		serverControlHandler := task.NewServerControlHandler(serverControlInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, serverControlHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running server control - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	configureServiceInput := req.GetConfigureServiceInput()
+	if configureServiceInput != nil {
+		switch configureServiceInput.GetService() {
+		case pb.Service_EARLYOOM:
+			configureHandler := task.NewConfigureServiceHandler(
+				configureServiceInput.GetConfig(),
+				configureServiceInput.GetEnabled(),
+			)
+			err2 := task.GetTaskManager().Submit(ctx, taskID, configureHandler)
+			if err2 != nil {
+				util.FileLogger().
+					Errorf(ctx, "Error in running configure handler - %s", err2.Error())
+				return res, status.Errorf(codes.Internal, err2.Error())
+			}
+			res.TaskId = taskID
+			return res, nil
+		default:
+			return res, status.Errorf(
+				codes.Unimplemented,
+				fmt.Sprintf("Unsupported type: %s", configureServiceInput.GetService()),
+			)
+		}
 	}
 	return res, status.Error(codes.Unimplemented, "Unknown task")
 }

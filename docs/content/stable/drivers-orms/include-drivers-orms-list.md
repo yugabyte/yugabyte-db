@@ -12,7 +12,7 @@ block_indexing = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB JDBC Smart Driver<br/>[Recommended] | [42.7.3-yb-1](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.7.3-yb-1) | Full | [CRUD](/stable/drivers-orms/java/yugabyte-jdbc/) |
+| YugabyteDB JDBC Smart Driver<br/>[Recommended] | [{{< version-driver-java >}}](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/{{< version-driver-java >}}) | Full | [CRUD](/stable/drivers-orms/java/yugabyte-jdbc/) |
 | YugabyteDB R2DBC Smart Driver | [1.1.0-yb-1-ea](https://mvnrepository.com/artifact/com.yugabyte/r2dbc-postgresql) | Full | [CRUD](/stable/drivers-orms/java/yb-r2dbc/) |
 | PostgreSQL JDBC Driver  | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | Full | [CRUD](/stable/drivers-orms/java/postgres-jdbc/) |
 | Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/stable/drivers-orms/java/ysql-vertx-pg-client/) |

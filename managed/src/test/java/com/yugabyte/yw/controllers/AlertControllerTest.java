@@ -506,7 +506,10 @@ public class AlertControllerTest extends FakeDBApplication {
                 MetricService.DEFAULT_METRIC_EXPIRY_SEC)
             .setCustomerUUID(customer.getUuid())
             .setSourceUuid(createdChannel.getUuid())
-            .setLabels(MetricLabelsBuilder.create().appendSource(createdChannel).getMetricLabels())
+            .setLabels(
+                MetricLabelsBuilder.create()
+                    .fromChannel(customer, createdChannel)
+                    .getMetricLabels())
             .setValue(0.0);
     metricService.save(channelStatus);
 

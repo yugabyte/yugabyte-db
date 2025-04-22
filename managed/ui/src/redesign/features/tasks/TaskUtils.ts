@@ -119,3 +119,7 @@ export const isSoftwareUpgradeFailed = (task: Task, universe: IUniverse) => {
 export const getTaskTitle = (task: Task) => {
   return task.typeName.includes('Validation') ? `${task.typeName} : ${task.title.split(":")?.[1]}` : task.title;
 };
+
+export const getErrorTaskTitle = (task: Task) => {
+  return  `${task.typeName} ${task.target} failed: ${task.title.split(":")?.[1]}`;
+};

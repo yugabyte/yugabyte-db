@@ -4274,35 +4274,3 @@ YbPlanStateTryGetAggrefs(PlanState *ps)
 			return NULL;
 	}
 }
-
-bool
-YbGetBitmapScanRecheckRequired(PlanState *ps)
-{
-	switch (nodeTag(ps))
-	{
-		case T_BitmapOrState:
-			{
-				BitmapOrState *bos = castNode(BitmapOrState, ps);
-
-				for (int i = 0; i < bos->nplans; i++)
-					if (YbGetBitmapScanRecheckRequired(bos->bitmapplans[i]))
-						return true;
-				return false;
-			}
-		case T_BitmapAndState:
-			{
-				BitmapAndState *bas = castNode(BitmapAndState, ps);
-
-				for (int i = 0; i < bas->nplans; i++)
-					if (YbGetBitmapScanRecheckRequired(bas->bitmapplans[i]))
-						return true;
-				return false;
-			}
-		case T_YbBitmapIndexScanState:
-			return castNode(YbBitmapIndexScanState, ps)->biss_requires_recheck;
-		default:
-			elog(ERROR, "unrecognized node type: %d",
-				 (int) nodeTag(ps));
-			break;
-	}
-}

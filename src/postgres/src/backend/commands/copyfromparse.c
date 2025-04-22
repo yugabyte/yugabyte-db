@@ -896,7 +896,7 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 		if (!NextCopyFromRawFields(cstate, &field_strings, &fldct))
 			return false;
 
-		/* if the row is skipped, ignore all the format checking */
+		/* YB: if the row is skipped, ignore all the format checking */
 		if (skip_row)
 			return true;
 

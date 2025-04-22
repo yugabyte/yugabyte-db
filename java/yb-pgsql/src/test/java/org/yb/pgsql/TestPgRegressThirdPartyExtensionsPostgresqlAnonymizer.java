@@ -41,7 +41,7 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    appendToYsqlPgConf(flagMap, "shared_preload_libraries='anon'");
+    flagMap.put("enable_pg_anonymizer", "true");
     // to avoid batched copy warning when running anon.init() or
     // anon.start_dynamic_masking() inside a transaction
     appendToYsqlPgConf(flagMap, "yb_default_copy_from_rows_per_transaction=0");

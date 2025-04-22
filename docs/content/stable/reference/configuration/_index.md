@@ -12,46 +12,48 @@ menu:
 type: indexpage
 ---
 
-## Server management
+{{<index/block>}}
 
-YugabyteDB uses a two-server architecture, with YB-TServers managing the data and YB-Masters managing the metadata. You can use the yb-tserver and yb-master binaries to start and configure the servers.
+  {{<index/item
+      title="yugabyted reference"
+      body="Use the yugabyted utility to launch and manage YugabyteDB."
+      href="yugabyted/"
+      icon="fa-thin fa-rocket">}}
 
-For simplified deployment, use the yugabyted utility. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers.
+{{</index/block>}}
+
+### Manual server management
+
+You can use the yb-tserver and yb-master binaries to manually start and configure the servers. For simplified deployment, use [yugabyted](./yugabyted/).
 
 {{<index/block>}}
-  {{<index/item
-      title="yb-tserver reference"
-      body="Configure YB-TServer servers to store and manage data for client applications."
-      href="yb-tserver/"
-      icon="/images/section_icons/reference/configuration/yb-tserver.png">}}
-
   {{<index/item
       title="yb-master reference"
       body="Configure YB-Master servers to manage cluster metadata, tablets, and coordination of cluster-wide operations."
       href="yb-master/"
-      icon="/images/section_icons/reference/configuration/yb-master.png">}}
+      icon="fa-thin fa-sliders">}}
 
   {{<index/item
-      title="yugabyted reference"
-      body="Use the yugabyted utility to launch and manage universes."
-      href="yugabyted/"
-      icon="/images/section_icons/deploy/manual-deployment.png">}}
+      title="yb-tserver reference"
+      body="Configure YB-TServer servers to store and manage data for client applications."
+      href="yb-tserver/"
+      icon="fa-thin fa-sliders">}}
 
 {{</index/block>}}
 
-## Operating system, ports, and databases
+### Operating system and ports
 
 {{<index/block>}}
   {{<index/item
       title="Supported operating systems"
       body="Operating systems for deploying YugabyteDB and YugabyteDB Anywhere."
       href="operating-systems/"
-      icon="/images/section_icons/deploy/enterprise/administer.png">}}
+      icon="fa-thin fa-window">}}
 
   {{<index/item
       title="Default ports"
       body="Default ports for APIs, RPCs, and admin web servers."
       href="default-ports/"
-      icon="/images/section_icons/deploy/enterprise/administer.png">}}
+      icon="fa-thin fa-network-wired">}}
 
 {{</index/block>}}

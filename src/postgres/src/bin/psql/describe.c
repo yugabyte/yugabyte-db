@@ -36,10 +36,6 @@ static bool describeOneTableDetails(const char *schemaname,
 									bool verbose);
 static void add_tablespace_footer(printTableContent *const cont, char relkind,
 								  Oid tablespace, const bool newline);
-static void add_tablegroup_footer(printTableContent *const cont, char relkind,
-								  const char *grpname, const bool newline);
-static void add_colocation_footer(printTableContent *const cont, char relkind,
-								  bool colocation, const bool newline);
 static void add_role_attribute(PQExpBuffer buf, const char *const str);
 static bool listTSParsersVerbose(const char *pattern);
 static bool describeOneTSParser(const char *oid, const char *nspname,
@@ -56,6 +52,12 @@ static bool validateSQLNamePattern(PQExpBuffer buf, const char *pattern,
 								   const char *altnamevar,
 								   const char *visibilityrule,
 								   bool *added_clause, int maxparts);
+
+/* YB functions */
+static void add_tablegroup_footer(printTableContent *const cont, char relkind,
+								  const char *grpname, const bool newline);
+static void add_colocation_footer(printTableContent *const cont, char relkind,
+								  bool colocation, const bool newline);
 
 
 /*----------------
@@ -1533,7 +1535,6 @@ describeOneTableDetails(const char *schemaname,
 	bool		retval = false;
 	PQExpBufferData buf;
 	PGresult   *res = NULL;
-	PGresult   *tgres = NULL;
 	printTableOpt myopt = pset.popt.topt;
 	printTableContent cont;
 	bool		printTableInitialized = false;
@@ -1542,7 +1543,6 @@ describeOneTableDetails(const char *schemaname,
 	char	   *headers[12];
 	PQExpBufferData title;
 	PQExpBufferData tmpbuf;
-	PQExpBufferData tablegroupbuf;
 	int			cols;
 	int			attname_col = -1,	/* column indexes in "res" */
 				atttype_col = -1,
@@ -1581,6 +1581,9 @@ describeOneTableDetails(const char *schemaname,
 		bool		colocation;
 	}			tableinfo;
 	bool		show_column_details = false;
+
+	PGresult   *tgres = NULL;
+	PQExpBufferData tablegroupbuf;
 	bool		database_colocated = false;
 
 	myopt.default_footer = false;
@@ -1718,7 +1721,7 @@ describeOneTableDetails(const char *schemaname,
 
 
 	/*
-	 * Get information about tablegroup (if any)
+	 * YB: Get information about tablegroup (if any)
 	 * and whether a table/index is colocated or not.
 	 */
 	printfPQExpBuffer(&tablegroupbuf,
@@ -1748,7 +1751,7 @@ describeOneTableDetails(const char *schemaname,
 	PQclear(tgres);
 	tgres = NULL;
 
-	/* Current database is colocated or not. */
+	/* YB: Current database is colocated or not. */
 	printfPQExpBuffer(&buf, "SELECT yb_is_database_colocated();");
 	res = PSQLexec(buf.data);
 	if (res && PQntuples(res) > 0)
@@ -2396,6 +2399,7 @@ describeOneTableDetails(const char *schemaname,
 				appendPQExpBufferStr(&tmpbuf, _(", replica identity"));
 
 			printTableAddFooter(&cont, tmpbuf.data);
+
 			/*
 			 * If it's a partitioned index, we'll print the tablespace below
 			 */
@@ -2442,6 +2446,7 @@ describeOneTableDetails(const char *schemaname,
 				appendPQExpBufferStr(&buf, ", i.indisreplident");
 			else
 				appendPQExpBufferStr(&buf, ", false AS indisreplident");
+			/* YB: i.indexrelid for yb_table_properties below */
 			appendPQExpBufferStr(&buf, ", c2.reltablespace, i.indexrelid");
 			appendPQExpBuffer(&buf,
 							  "\nFROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i\n"
@@ -2517,7 +2522,7 @@ describeOneTableDetails(const char *schemaname,
 					add_tablespace_footer(&cont, RELKIND_INDEX,
 										  atooid(PQgetvalue(result, i, 11)),
 										  false);
-					/* Get information about tablegroup (if any) */
+					/* YB: Get information about tablegroup (if any) */
 					printfPQExpBuffer(&tablegroupbuf,
 									  "SELECT tg.grpname\n"
 									  "FROM yb_table_properties(%s) props,\n"
@@ -3594,6 +3599,10 @@ describeOneTableDetails(const char *schemaname,
 		if (verbose && tableinfo.relkind != RELKIND_MATVIEW && tableinfo.hasoids)
 			printTableAddFooter(&cont, _("Has OIDs: yes"));
 
+		/* Tablespace info */
+		add_tablespace_footer(&cont, tableinfo.relkind, tableinfo.tablespace,
+							  true);
+
 		/* Access method info */
 		if (verbose && tableinfo.relam != NULL && !pset.hide_tableam)
 		{
@@ -3601,9 +3610,6 @@ describeOneTableDetails(const char *schemaname,
 			printTableAddFooter(&cont, buf.data);
 		}
 
-		/* Tablespace info */
-		add_tablespace_footer(&cont, tableinfo.relkind, tableinfo.tablespace,
-							  true);
 		if (database_colocated)
 		{
 			/* Colocation info */

@@ -257,6 +257,22 @@ else
             prev_line=$line
           done < <(grep -n '' "$1" | sed -n "$line_ranges"p)
         done
+
+    # For kwlist.h, new keywords by YB should have "_YB_" prefix.
+    #
+    # TODO(jason): this does not belong in the "includes" section, but it is
+    # also wasteful to re-run diff_file_with_upstream.py a second time.  Should
+    # refactor this in the future.
+    if [[ "$1" == */kwlist.h ]]; then
+      grep -E '^< ' <<<"$diff_result" \
+        | grep -v ', _YB_' \
+        | sed 's/^< //' \
+        | while read -r line; do
+            grep -nF "$line" "$1" \
+              | sed 's/^/error:yb_keyword_missing_yb_prefix:'\
+'YB-added keywords should have "_YB_" prefix and "_P" suffix:/'
+          done
+    fi
   fi
 fi
 

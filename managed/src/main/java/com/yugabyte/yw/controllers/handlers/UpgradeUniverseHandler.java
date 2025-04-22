@@ -219,7 +219,8 @@ public class UpgradeUniverseHandler {
   public UUID upgradeDBVersion(
       SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
 
-    requestParams = setSoftwareUpgradeRequestParams(requestParams, universe, true);
+    requestParams =
+        setSoftwareUpgradeRequestParams(requestParams, universe, requestParams.rollbackSupport);
     TaskType taskType = getSoftwareUpgradeTaskType(universe, requestParams);
 
     return submitUpgradeTask(

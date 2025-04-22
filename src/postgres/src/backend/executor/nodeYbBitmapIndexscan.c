@@ -60,7 +60,6 @@ yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node)
 
 	scandesc->yb_exec_params = &estate->yb_exec_params;
 	scandesc->yb_scan_plan = (Scan *) plan;
-	scandesc->fetch_ybctids_only = true;
 	scandesc->heapRelation = node->ss.ss_currentRelation;
 
 	const bool	is_colocated = YbGetTableProperties(node->ss.ss_currentRelation)->is_colocated;
@@ -105,6 +104,8 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 								   estate->es_snapshot,
 								   node->biss_NumScanKeys);
 
+		node->biss_ScanDesc->xs_want_itup = true;
+		node->biss_ScanDesc->fetch_ybctids_only = true;
 		yb_init_bitmap_index_scandesc(node);
 	}
 
@@ -209,28 +210,8 @@ ExecReScanYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	else
 		node->biss_RuntimeKeysReady = true;
 
-	if (node->biss_ScanDesc == NULL)
-		return;
-
-	yb_init_bitmap_index_scandesc(node);
-
-	/*
-	 * Bitmap Index aggregate pushdown currently cannot support recheck,
-	 * and this should have been prevented by earlier logic.
-	 */
-	Assert(!node->biss_ScanDesc->yb_aggrefs);
-
-	/*
-	 * Rescans have different scan keys, so must check again if recheck is
-	 * required. For example, comparing an int4 and an int8 works if the int8
-	 * fits into an int4, but requires recheck if it doesn't.
-	 */
-	node->biss_requires_recheck |=
-		YbPredetermineNeedsRecheck(node->biss_ScanDesc->heapRelation,
-								   node->biss_RelationDesc,
-								   true /* xs_want_itup */ ,
-								   node->biss_ScanKeys,
-								   node->biss_NumScanKeys);
+	if (node->biss_ScanDesc)
+		yb_init_bitmap_index_scandesc(node);
 }
 
 /* ----------------------------------------------------------------
@@ -329,17 +310,6 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 	 */
 
 	/*
-	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop
-	 * here.  This allows an index-advisor plugin to EXPLAIN a plan containing
-	 * references to nonexistent indexes.
-	 *
-	 * However, if we are doing an aggregate, we need to collect more
-	 * information to determine if the Bitmap Index Scan will require a recheck.
-	 */
-	if (eflags & EXEC_FLAG_EXPLAIN_ONLY && !(eflags & EXEC_FLAG_YB_AGG_PARENT))
-		return indexstate;
-
-	/*
 	 * Open the index and main table relations. Unlike Postgres, Yugabyte needs
 	 * both to properly construct the request.
 	 *
@@ -375,10 +345,18 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 						   &indexstate->biss_ArrayKeys,
 						   &indexstate->biss_NumArrayKeys);
 
-	indexstate->biss_requires_recheck = YbPredetermineNeedsRecheck(relation, index,
-																   true /* xs_want_itup */ ,
-																   indexstate->biss_ScanKeys,
-																   indexstate->biss_NumScanKeys);
+	/*
+	 * TODO #26493
+	 * yb_index_might_recheck need to analyze runtime keys as well to see if
+	 * there are attributes with types narrower than the parameters types they
+	 * are compared to.
+	 * Without proper fix we have to assume possibility of recheck if we have
+	 * any runtime (parametrized) keys at all.
+	 */
+	indexstate->biss_might_recheck = indexstate->biss_NumRuntimeKeys > 0 ||
+		yb_index_might_recheck(relation, index, true /* xs_want_itup */ ,
+							   indexstate->biss_ScanKeys,
+							   indexstate->biss_NumScanKeys);
 
 	/* Got the info for aggregate pushdown. EXPLAIN can return now. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)

@@ -697,18 +697,18 @@ YbGetAllRelfilenodes()
 		elog(ERROR, "SPI_prepare failed for \"%s\"", query);
 
 	int saved_yb_fetch_row_limit = yb_fetch_row_limit;
-	bool saved_yb_is_calling_internal_function_for_ddl = yb_is_calling_internal_function_for_ddl;
+	bool saved_yb_is_calling_internal_sql_for_ddl = yb_is_calling_internal_sql_for_ddl;
 	/*
 	 * We are fetching relfilenode column, each row has only 4-bytes, let's
 	 * fetch 256K rows at a time.
 	 */
 	yb_fetch_row_limit = 1024 * 256;
-	yb_is_calling_internal_function_for_ddl = true;
+	yb_is_calling_internal_sql_for_ddl = true;
 	PG_TRY();
 	{
 		int spirc = SPI_execute_plan(plan, NULL, NULL, true, 0);
 		yb_fetch_row_limit = saved_yb_fetch_row_limit;
-		yb_is_calling_internal_function_for_ddl = saved_yb_is_calling_internal_function_for_ddl;
+		yb_is_calling_internal_sql_for_ddl = saved_yb_is_calling_internal_sql_for_ddl;
 		if (spirc != SPI_OK_SELECT)
 			elog(ERROR, "failed to get relfilenode tuple");
 		YBC_LOG_INFO("SPI_processed = %lu", SPI_processed);
@@ -716,7 +716,7 @@ YbGetAllRelfilenodes()
 	PG_CATCH();
 	{
 		yb_fetch_row_limit = saved_yb_fetch_row_limit;
-		yb_is_calling_internal_function_for_ddl = saved_yb_is_calling_internal_function_for_ddl;
+		yb_is_calling_internal_sql_for_ddl = saved_yb_is_calling_internal_sql_for_ddl;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -1067,7 +1067,7 @@ GetTableOidFromRelOptions(List *relOptions,
 }
 
 /*
- * GetColocationIdFromRelOptions
+ * YbGetColocationIdFromRelOptions
  *		Scans through relOptions for any 'colocation_id' options.
  *		Returns that ID, or InvalidOid if unspecified.
  *

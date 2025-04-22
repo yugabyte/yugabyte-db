@@ -579,7 +579,8 @@ public class TestPgEstimatedDocdbResultWidth extends BasePgSQLTest {
        * count(*) is pushed down to DocDB and DocDB returns the result of type
        * INT which is 8 bytes and 1 byte for null indicator.
        */
-      testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt, "SELECT count(*) FROM pg_class",
+      testAggregateFunctionsDocdbResultWidhEstimationHelper(stmt,
+        "/*+ SeqScan(pg_class) */ SELECT count(*) FROM pg_class",
         "pg_class", 9);
     }
   }

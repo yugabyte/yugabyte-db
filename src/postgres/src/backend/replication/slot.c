@@ -105,15 +105,15 @@ ReplicationSlot *MyReplicationSlot = NULL;
 int			max_replication_slots = 0;	/* the maximum number of replication
 										 * slots */
 
-/* Constants for plugin names */
+/* YB: Constants for plugin names */
 const char *YB_OUTPUT_PLUGIN = "yboutput";
 const char *PG_OUTPUT_PLUGIN = "pgoutput";
 
-/* Constants for replication slot LSN types */
+/* YB: Constants for replication slot LSN types */
 const char *LSN_TYPE_SEQUENCE = "SEQUENCE";
 const char *LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
 
-/* Constants for replication slot ordering mode */
+/* YB: Constants for replication slot ordering mode */
 const char *ORDERING_MODE_ROW = "ROW";
 const char *ORDERING_MODE_TRANSACTION = "TRANSACTION";
 
@@ -1787,9 +1787,10 @@ CreateSlotOnDisk(ReplicationSlot *slot)
 	}
 
 	/*
-	 * Cleanup the directory if it was used previously. This isn't required in
-	 * PG as this function is called at the time of slot creation. In YB, this
-	 * is called as part of StartLogicalReplication, so we have to cleanup here.
+	 * YB: Cleanup the directory if it was used previously. This isn't required
+	 * in PG as this function is called at the time of slot creation. In YB,
+	 * this is called as part of StartLogicalReplication, so we have to cleanup
+	 * here.
 	 */
 	if (IsYugaByteEnabled() && stat(path, &st) == 0)
 		rmtree(path, true);

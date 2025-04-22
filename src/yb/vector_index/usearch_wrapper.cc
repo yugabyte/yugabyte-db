@@ -31,7 +31,7 @@
 
 namespace unum::usearch {
 
-// Expcilit specialization for the operator== is required for usearch need, as a compiler is not
+// Explicit specialization for the operator== is required for usearch need, as a compiler is not
 // smart enough to resolve StronglyTypedUuid's comparison operator, where one argument is different
 // from StronglyTypedUuid but can be implicitly casted the corresponding StronglyTypedUuid.
 bool operator==(const yb::vector_index::VectorId& lhs,
@@ -210,8 +210,8 @@ class UsearchIndex :
   Result<std::vector<VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const SearchOptions& options) const {
     SemaphoreLock lock(*search_semaphore_);
-    auto usearch_results = index_.filtered_search(
-        query_vector.data(), options.max_num_results, options.filter);
+    auto usearch_results = index_.filtered_search_with_ef(
+        query_vector.data(), options.max_num_results, options.filter, options.ef);
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());

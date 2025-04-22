@@ -535,7 +535,6 @@ TypeCreate(Oid newTypeOid,
 			typeObjectId = YbLookupOidAssignmentForType(get_namespace_name(typeNamespace),
 														typeName);
 		}
-		/* else allow system to assign oid */
 		else
 		{
 			typeObjectId = GetNewOidWithIndex(pg_type_desc, TypeOidIndexId,
@@ -548,7 +547,7 @@ TypeCreate(Oid newTypeOid,
 							  values, nulls);
 
 		/*
-		 * pg_type has PK(oid), so if row type OID for the shared relation
+		 * YB: pg_type has PK(oid), so if row type OID for the shared relation
 		 * is taken in any DB, this step will fail gracefully.
 		 */
 		YBCatalogTupleInsert(pg_type_desc, tup, ybSharedInsert);

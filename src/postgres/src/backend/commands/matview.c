@@ -314,7 +314,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	}
 
 	/*
-	 * Required to allow the creation for the temp table since we directly
+	 * YB: Required to allow the creation for the temp table since we directly
 	 * call make_new_heap instead of going through DefineRelation.
 	 * For postgres xid cleanup, mark the current transaction as running a
 	 * concurrent refresh.

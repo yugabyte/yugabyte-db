@@ -847,6 +847,7 @@ heapam_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 				break;
 			case HEAPTUPLE_RECENTLY_DEAD:
 				*tups_recently_dead += 1;
+				/* fall through */
 				yb_switch_fallthrough();
 			case HEAPTUPLE_LIVE:
 				/* Live or recently dead, must copy it */
@@ -1056,6 +1057,7 @@ heapam_scan_analyze_next_tuple(TableScanDesc scan, TransactionId OldestXmin,
 		}
 
 		ItemPointerSet(&targtuple->t_self, hscan->rs_cblock, hscan->rs_cindex);
+
 		targtuple->t_tableOid = RelationGetRelid(scan->rs_rd);
 		targtuple->t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
 		targtuple->t_len = ItemIdGetLength(itemid);

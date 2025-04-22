@@ -22380,19 +22380,6 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
-         <primary>yb_servers</primary>
-        </indexterm>
-        <function>yb_servers</function> ()
-        <returnvalue>record</returnvalue>
-       </para>
-       <para>
-        Returns information about all available server endpoints for ysql database connections.
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
          <primary>pg_backend_pid</primary>
         </indexterm>
         <function>pg_backend_pid</function> ()

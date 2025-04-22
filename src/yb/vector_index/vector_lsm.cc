@@ -570,6 +570,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   LOG_WITH_PREFIX(INFO) << "Loaded " << immutable_chunks_.size() << " chunks, "
                         << "last serial no: " << last_serial_no_ << ", "
                         << "next manifest no: " << next_manifest_file_no_;
+  VLOG_WITH_PREFIX(4) << "Loaded " << AsString(immutable_chunks_);
 
   return Status::OK();
 }
@@ -1051,6 +1052,7 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Noting to flush";
       return Status::OK();
     }
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Flushing " << mutable_chunk_->num_entries << " entries";
     RETURN_NOT_OK(DoFlush(wait ? &promise : nullptr));
     mutable_chunk_ = nullptr;
   }

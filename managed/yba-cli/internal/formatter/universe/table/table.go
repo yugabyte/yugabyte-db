@@ -10,6 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -29,11 +30,11 @@ const (
 	parentTableUUIDHeader    = "Parent Table UUID"
 	pgSchemaNameHeader       = "PG Schema Name"
 	relationTypeHeader       = "Relation Type"
-	sizeBytesHeader          = "SST size (in bytes)"
+	sizeBytesHeader          = "SST size"
 	tableIDHeader            = "Table ID"
 	tableSpaceHeader         = "TableSpace"
 	tableTypeHeader          = "Table Type"
-	walSizeBytesHeader       = "WAL Size (in bytes)"
+	walSizeBytesHeader       = "WAL Size"
 )
 
 // Context for table outputs
@@ -178,7 +179,8 @@ func (c *Context) RelationType() string {
 
 // SizeBytes returns the size in bytes of the table
 func (c *Context) SizeBytes() string {
-	return fmt.Sprintf("%0.2f", c.t.GetSizeBytes())
+	size, unit := util.HumanReadableSize(c.t.GetSizeBytes())
+	return fmt.Sprintf("%0.2f %s", size, unit)
 }
 
 // TableID returns the table id of the table
@@ -198,7 +200,8 @@ func (c *Context) TableType() string {
 
 // WalSizeBytes returns the wal size in bytes of the table
 func (c *Context) WalSizeBytes() string {
-	return fmt.Sprintf("%0.2f", c.t.GetWalSizeBytes())
+	size, unit := util.HumanReadableSize(c.t.GetWalSizeBytes())
+	return fmt.Sprintf("%0.2f, %s", size, unit)
 }
 
 // MarshalJSON function

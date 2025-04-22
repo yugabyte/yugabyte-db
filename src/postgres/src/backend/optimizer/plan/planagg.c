@@ -419,9 +419,10 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	subroot->limit_tuples = 1.0;
 
 	/*
-	 * Since we are essentially planning a different query we want to save the aliasing
-	 * information for the current query being planned and set the information to
-	 * its original state. This prevents detection of bogus hint alias name conflicts.
+	 * YB: Since we are essentially planning a different query we want to save
+	 * the aliasing information for the current query being planned and set the
+	 * information to its original state. This prevents detection of bogus hint
+	 * alias name conflicts.
 	 */
 	int saveYbBaseRelCnt = subroot->glob->ybBaseRelCnt;
 	subroot->glob->ybBaseRelCnt = 0;
@@ -433,7 +434,7 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	final_rel = query_planner(subroot, minmax_qp_callback, NULL);
 
 	/*
-	 * Restore the hint alias info.
+	 * YB: Restore the hint alias info.
 	 */
 	subroot->glob->ybBaseRelCnt = saveYbBaseRelCnt;
 	list_free(subroot->glob->ybPlanHintsAliasMapping);

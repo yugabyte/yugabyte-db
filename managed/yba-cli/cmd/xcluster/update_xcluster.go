@@ -152,7 +152,7 @@ var updateXClusterCmd = &cobra.Command{
 			if len(tableNeedBootstrapUUIDs) > 0 || allowBoostrap {
 				logrus.Debug("Updating tables needing bootstrap\n")
 				bootstrapParams := ybaclient.BootstrapParams{
-					Tables: tableNeedBootstrapUUIDs,
+					Tables: util.StringSliceFromString(tableNeedBootstrapUUIDs),
 				}
 
 				if allowBoostrap {
@@ -348,7 +348,7 @@ func init() {
 		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 
 	updateXClusterCmd.Flags().Bool("allow-bootstrap", false,
-		"Allow full copy on all the tables being added to the replication. "+
+		"[Optional] Allow full copy on all the tables being added to the replication. "+
 			"The same as passing the same set passed to table-uuids to tables-need-full-copy-uuids."+
 			" (default false)")
 

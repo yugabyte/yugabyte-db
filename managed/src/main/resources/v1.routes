@@ -353,6 +353,7 @@ POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     c
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseActionsController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 PUT     /customers/:cUUID/universes/:uniUUID/update_lb_config                  com.yugabyte.yw.controllers.UniverseActionsController.updateLoadBalancerConfig(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/unlock                            com.yugabyte.yw.controllers.UniverseActionsController.unlockUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/universes/:uniUUID/update_additional_services        com.yugabyte.yw.controllers.UniverseActionsController.setUpdateAdditionalServices(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # xCluster Replication API
 POST    /customers/:cUUID/xcluster_configs                                     com.yugabyte.yw.controllers.XClusterConfigController.create(cUUID: java.util.UUID, request: Request)
@@ -559,7 +560,7 @@ PUT    /customers/:cUUID/universes/:uniUUID/update_scheduled_script            c
 GET    /customers/:cUUID/support_bundle/components                             com.yugabyte.yw.controllers.SupportBundleController.getComponents(cUUID: java.util.UUID)
 POST   /customers/:cUUID/universes/:uniUUID/support_bundle                     com.yugabyte.yw.controllers.SupportBundleController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 GET    /customers/:cUUID/universes/:uniUUID/support_bundle                     com.yugabyte.yw.controllers.SupportBundleController.list(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET    /customers/:cUUID/universes/:uniUUID/support_bundle/estimate_size       com.yugabyte.yw.controllers.SupportBundleController.estimateSize(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/universes/:uniUUID/support_bundle/estimate_size       com.yugabyte.yw.controllers.SupportBundleController.estimateSize(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 GET    /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             com.yugabyte.yw.controllers.SupportBundleController.get(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID)
 GET    /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID/download    com.yugabyte.yw.controllers.SupportBundleController.download(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID)
 DELETE /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             com.yugabyte.yw.controllers.SupportBundleController.delete(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID, request: Request)

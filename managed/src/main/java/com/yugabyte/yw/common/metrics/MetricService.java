@@ -146,7 +146,7 @@ public class MetricService {
     return buildMetricTemplate(metric, metricExpiryPeriodSec)
         .setCustomerUUID(customer.getUuid())
         .setSourceUuid(customer.getUuid())
-        .setLabels(MetricLabelsBuilder.create().appendSource(customer).getMetricLabels());
+        .setLabels(MetricLabelsBuilder.create().fromCustomer(customer).getMetricLabels());
   }
 
   public static Metric buildMetricTemplate(PlatformMetrics metric, Universe universe) {
@@ -169,6 +169,6 @@ public class MetricService {
     return buildMetricTemplate(metric, metricExpiryPeriodSec)
         .setCustomerUUID(customer.getUuid())
         .setSourceUuid(universe.getUniverseUUID())
-        .setLabels(MetricLabelsBuilder.create().appendSource(universe).getMetricLabels());
+        .setLabels(MetricLabelsBuilder.create().fromUniverse(customer, universe).getMetricLabels());
   }
 }

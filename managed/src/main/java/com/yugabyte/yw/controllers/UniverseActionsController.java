@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -350,5 +351,40 @@ public class UniverseActionsController extends AuthenticatedController {
         .createAuditEntry(
             request, Audit.TargetType.Universe, universeUUID.toString(), Audit.ActionType.Unlock);
     return empty();
+  }
+
+  @ApiOperation(
+      notes = "YbaApi Internal.",
+      hidden = true,
+      value = "Set additional services state",
+      nickname = "setUpdateAdditionalServices",
+      response = YBPTask.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result setUpdateAdditionalServices(
+      UUID customerUUID, UUID universeUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    UUID taskUUID =
+        universeActionsHandler.updateAdditionalServicesState(
+            customer,
+            universe,
+            formFactory.getFormDataOrBadRequest(
+                request.body().asJson(), AdditionalServicesStateData.class));
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.UpdateAdditionalServicesState,
+            taskUUID);
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 }

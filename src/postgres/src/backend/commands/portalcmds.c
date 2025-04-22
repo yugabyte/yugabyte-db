@@ -302,6 +302,7 @@ PortalCleanup(Portal portal)
 
 			/* We must make the portal's resource owner current */
 			saveResourceOwner = CurrentResourceOwner;
+			/* YB: wrap in try-catch for transparent query retry */
 			PG_TRY();
 			{
 				if (portal->resowner)

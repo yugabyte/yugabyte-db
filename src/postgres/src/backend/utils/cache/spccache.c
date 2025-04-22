@@ -46,13 +46,14 @@ static HTAB *TableSpaceCacheHash = NULL;
 typedef struct
 {
 	Oid			oid;			/* lookup key - must be first */
-	union
+	union	/* YB: change opts to union */
 	{
 		TableSpaceOpts *pg_opts;
 		YBTableSpaceOpts *yb_opts;
 	}			opts;			/* options, or NULL if none */
 	YbGeolocationDistance ts_distance;
 } TableSpaceCacheEntry;
+
 
 /*
  * InvalidateTableSpaceCacheCallback
@@ -396,6 +397,8 @@ get_tablespace_page_costs(Oid spcid,
 						  double *spc_seq_page_cost)
 {
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
+
+	Assert(spc != NULL);
 
 	if (spc_random_page_cost)
 	{

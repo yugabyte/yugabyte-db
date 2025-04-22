@@ -209,12 +209,20 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	Name		yb_lsn_type_arg;
 	char	   *yb_lsn_type = "SEQUENCE";
 
+	Name		yb_ordering_mode_arg;
 	char	   *yb_ordering_mode = "TRANSACTION";
 
+	/* YB */
 	if (!PG_ARGISNULL(4))
 	{
 		yb_lsn_type_arg = PG_GETARG_NAME(4);
 		yb_lsn_type = NameStr(*yb_lsn_type_arg);
+	}
+
+	if (!PG_ARGISNULL(5))
+	{
+		yb_ordering_mode_arg = PG_GETARG_NAME(5);
+		yb_ordering_mode = NameStr(*yb_ordering_mode_arg);
 	}
 
 	Datum		result;
@@ -869,10 +877,11 @@ pg_replication_slot_advance(PG_FUNCTION_ARGS)
 static Datum
 copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("copy_replication_slot is unavailable."),
-			 errdetail("Copy of a replication slot is currently not supported.")));
+	if (IsYugaByteEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("copy_replication_slot is unavailable."),
+				 errdetail("Copy of a replication slot is currently not supported.")));
 
 	Name		src_name = PG_GETARG_NAME(0);
 	Name		dst_name = PG_GETARG_NAME(1);

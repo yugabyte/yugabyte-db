@@ -47,6 +47,7 @@ namespace yb::pggate {
  */
 thread_local void* thread_local_memory_context_ = nullptr;
 thread_local void* pg_strtok_ptr = nullptr;
+thread_local int yb_expression_version = 0;
 thread_local void* jump_buffer = nullptr;
 thread_local void* err_status = nullptr;
 thread_local std::optional<CachedRegexpHolder> re_cache;
@@ -106,6 +107,14 @@ void* PgGetThreadLocalStrTokPtr() {
 
 void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   pg_strtok_ptr = new_pg_strtok_ptr;
+}
+
+int PgGetThreadLocalYbExpressionVersion() {
+  return yb_expression_version;
+}
+
+void PgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
+  yb_expression_version = yb_expr_version;
 }
 
 YbcPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache() {

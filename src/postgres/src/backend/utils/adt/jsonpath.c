@@ -331,6 +331,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 			break;
 		case jpiFilter:
 			argNestingLevel++;
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case jpiIsUnknown:
 		case jpiNot:
@@ -442,12 +443,15 @@ alignStringInfoInt(StringInfo buf)
 	{
 		case 3:
 			appendStringInfoCharMacro(buf, 0);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case 2:
 			appendStringInfoCharMacro(buf, 0);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case 1:
 			appendStringInfoCharMacro(buf, 0);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		default:
 			break;
@@ -872,6 +876,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiString:
 		case jpiVariable:
 			read_int32(v->content.value.datalen, base, pos);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case jpiNumeric:
 		case jpiBool:

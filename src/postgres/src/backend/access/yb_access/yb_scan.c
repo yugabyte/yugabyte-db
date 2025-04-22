@@ -764,8 +764,7 @@ ybcCalculateIndexRelfileNodeId(Relation rel, Relation index,
 	Assert(index);
 	if (!index->rd_index->indisprimary)
 		return YbGetRelfileNodeId(index);
-	else if (params->index_only_scan ||
-			 YBCIsNonembeddedYbctidsOnlyFetch(params))
+	else if (params->index_only_scan)
 		return YbGetRelfileNodeId(rel);
 	return InvalidOid;
 }
@@ -2692,14 +2691,18 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 
 	YbAttnumBmsState result = ybcAttnumBmsConstruct();
 
-	if (YBCIsNonembeddedYbctidsOnlyFetch(params))
+	if (params->fetch_ybctids_only)
 	{
-		ybcAttnumBmsAdd(&result, YBIdxBaseTupleIdAttributeNumber);
+		Assert(index);
+		ybcAttnumBmsAdd(&result,
+						index->rd_index->indisprimary ?
+						YBTupleIdAttributeNumber :
+						YBIdxBaseTupleIdAttributeNumber);
 		return result;
 	}
 
 	/* Catalog requests do not have a pg_scan_plan and require ybctid */
-	if (!pg_scan_plan || params->fetch_ybctids_only)
+	if (!pg_scan_plan)
 		ybcAttnumBmsAdd(&result, YBTupleIdAttributeNumber);
 	else
 	{
@@ -2715,14 +2718,18 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 		ybcPullVarattnosIntoAttnumBms(pg_scan_plan->plan.qual, target_relid,
 									  &result);
 
+		if (yb_scan->hash_code_keys != NIL)
+			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
+									   &result);
+
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbAddBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
 										  target_relid,
 										  &result);
-
-		if (yb_scan->hash_code_keys != NIL)
-			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
-									   &result);
+		else if (IsA(pg_scan_plan, IndexOnlyScan))
+			ybcPullVarattnosIntoAttnumBms(((IndexOnlyScan *) pg_scan_plan)->recheckqual,
+										  target_relid,
+										  &result);
 
 		YbAddOrdinaryColumnsNeedingPgRecheck(yb_scan, &result);
 
@@ -3257,6 +3264,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 		/* Do a preliminary check to skip rows we can guarantee don't match. */
 		if (ybIsTupMismatch(tup, ybScan))
 		{
+			YBCPgIncrementIndexRecheckCount();
 			heap_freetuple(tup);
 			continue;
 		}

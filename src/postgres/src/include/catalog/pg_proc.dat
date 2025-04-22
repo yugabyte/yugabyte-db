@@ -10889,10 +10889,10 @@
 { oid => '3786', descr => 'set up a logical replication slot',
   proname => 'pg_create_logical_replication_slot', provolatile => 'v',
   proparallel => 'u', prorettype => 'record',
-  proargtypes => 'name name bool bool name',
-  proallargtypes => '{name,name,bool,bool,name,name,pg_lsn}',
-  proargmodes => '{i,i,i,i,i,o,o}',
-  proargnames => '{slot_name,plugin,temporary,twophase,yb_lsn_type,slot_name,lsn}',
+  proargtypes => 'name name bool bool name name',
+  proallargtypes => '{name,name,bool,bool,name,name,name,pg_lsn}',
+  proargmodes => '{i,i,i,i,i,i,o,o}',
+  proargnames => '{slot_name,plugin,temporary,twophase,yb_lsn_type,yb_ordering_mode,slot_name,lsn}',
   prosrc => 'pg_create_logical_replication_slot' },
 { oid => '4222',
   descr => 'copy a logical replication slot, changing temporality and plugin',
@@ -12169,7 +12169,6 @@
   proname => 'yb_index_check', provolatile => 's',
   prorettype => 'void', proargtypes => 'oid',
   prosrc => 'yb_index_check' },
-]
 
 # Statistics Import
 { oid => '8091',
@@ -12204,3 +12203,5 @@
   proargtypes => 'regclass name bool',
   proargnames => '{relation,attname,inherited}',
   prosrc => 'pg_clear_attribute_stats' },
+
+]

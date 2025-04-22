@@ -31,10 +31,12 @@
  * make a reasonable number of tries.
  *
  * We time out and declare error after NUM_DELAYS delays (thus, exactly
- * that many tries). With the given settings, this will usually take 30 or
- * so seconds (YB: this has been changed from 2 minutes). It seems better to
- * fix the total number of tries (and thus the probability of unintended
- * failure) than to fix the total time spent.
+ * that many tries).  With the given settings, this will usually take 2 or
+ * so minutes.  It seems better to fix the total number of tries (and thus
+ * the probability of unintended failure) than to fix the total time
+ * spent.
+ *
+ * YB: change 2 or so minutes to 30 seconds.
  *
  * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California

@@ -348,7 +348,7 @@ shell_out(PG_FUNCTION_ARGS)
  * that operate on the type are not secure against malformed input.
  * We do want to allow output, though.
  *
- * YB note: we allow it in YSQL upgrade mode.
+ * YB note: we allow pg_node_tree_in in YSQL upgrade mode.
  */
 Datum
 pg_node_tree_in(PG_FUNCTION_ARGS)

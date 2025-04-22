@@ -808,6 +808,7 @@
 #recovery_init_sync_method = fsync	# fsync, syncfs (Linux 5.8+)
 #yb_enable_extended_sql_codes = off	# enable YBxxx SQL status codes
 
+
 #------------------------------------------------------------------------------
 # CONFIG FILE INCLUDES
 #------------------------------------------------------------------------------

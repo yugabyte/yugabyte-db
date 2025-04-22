@@ -1521,7 +1521,7 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 	}
 
 	/*
-	 * Get whether the indexed table is colocated
+	 * YB: Get whether the indexed table is colocated
 	 * (either via database or a tablegroup).
 	 * If the indexed table is colocated, then this index is colocated as well.
 	 */
@@ -3622,7 +3622,6 @@ validate_index(Oid heapId, Oid indexId, Snapshot snapshot)
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
-	/* And the target index relation */
 	indexRelation = index_open(indexId, RowExclusiveLock);
 
 	/*

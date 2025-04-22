@@ -3,10 +3,10 @@
 package task
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/model"
 	"node-agent/util"
@@ -16,9 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 
-	"github.com/creack/pty"
 	"github.com/olekukonko/tablewriter"
 	funk "github.com/thoas/go-funk"
 )
@@ -48,22 +46,10 @@ const (
 	nodeExporterPort     = "node_exporter_port"
 )
 
-var (
-	redactParams = map[string]bool{
-		"jwt":       true,
-		"api_token": true,
-		"password":  true,
-	}
-	userVariables = []string{"LOGNAME", "USER", "LNAME", "USERNAME"}
-)
-
-// ShellTask handles command execution.
+// ShellTask handles command execution using module.Command.
 type ShellTask struct {
 	// Name of the task.
-	name     string
-	cmd      string
-	user     string
-	args     []string
+	command  *module.Command
 	stdout   util.Buffer
 	stderr   util.Buffer
 	exitCode *atomic.Value
@@ -77,10 +63,7 @@ func NewShellTask(name string, cmd string, args []string) *ShellTask {
 // NewShellTaskWithUser returns a shell task executor.
 func NewShellTaskWithUser(name string, user string, cmd string, args []string) *ShellTask {
 	return &ShellTask{
-		name:     name,
-		user:     user,
-		cmd:      cmd,
-		args:     args,
+		command:  module.NewCommandWithUser(name, user, cmd, args),
 		exitCode: &atomic.Value{},
 		stdout:   util.NewBuffer(MaxBufferCapacity),
 		stderr:   util.NewBuffer(MaxBufferCapacity),
@@ -89,168 +72,25 @@ func NewShellTaskWithUser(name string, user string, cmd string, args []string) *
 
 // TaskName returns the name of the shell task.
 func (s *ShellTask) TaskName() string {
-	return s.name
-}
-
-func (s *ShellTask) redactCommandArgs(args ...string) []string {
-	redacted := []string{}
-	redactValue := false
-	for _, param := range args {
-		if strings.HasPrefix(param, "-") {
-			if _, ok := redactParams[strings.TrimLeft(param, "-")]; ok {
-				redactValue = true
-			} else {
-				redactValue = false
-			}
-			redacted = append(redacted, param)
-		} else if redactValue {
-			redacted = append(redacted, "REDACTED")
-		} else {
-			redacted = append(redacted, param)
-		}
-	}
-	return redacted
-}
-
-func (s *ShellTask) command(
-	ctx context.Context,
-	userDetail *util.UserDetail,
-	name string,
-	arg ...string,
-) (*exec.Cmd, error) {
-	cmd := exec.CommandContext(ctx, name, arg...)
-	if !userDetail.IsCurrent {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-		cmd.SysProcAttr.Credential = &syscall.Credential{
-			Uid: userDetail.UserID,
-			Gid: userDetail.GroupID,
-		}
-	}
-	pwd := userDetail.User.HomeDir
-	if pwd == "" {
-		pwd = "/tmp"
-	}
-	os.Setenv("PWD", pwd)
-	os.Setenv("HOME", pwd)
-	for _, userVar := range userVariables {
-		os.Setenv(userVar, userDetail.User.Username)
-	}
-	cmd.Dir = pwd
-	return cmd, nil
-}
-
-func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) ([]string, error) {
-	// Approximate capacity of 100.
-	env := make([]string, 0, 100)
-	// Interactive shell to source ~/.bashrc.
-	cmd, err := s.command(ctx, userDetail, "bash")
-	// Create a pseudo tty (non stdin) to act like SSH login.
-	// Otherwise, the child process is stopped because it is a background process.
-	ptty, err := pty.Start(cmd)
-	if err != nil {
-		// Return the default env.
-		env = append(env, os.Environ()...)
-		util.FileLogger().Warnf(
-			ctx, "Failed to run command to get env variables. Error: %s", err.Error())
-		return env, err
-	}
-	defer ptty.Close()
-	// Do not write to history file.
-	ptty.Write([]byte("unset HISTFILE >/dev/null 2>&1\n"))
-	// Run env and end each output line with NULL instead of newline.
-	ptty.Write([]byte("env -0 2>/dev/null\n"))
-	ptty.Write([]byte("exit 0\n"))
-	// End of transmission.
-	ptty.Write([]byte{4})
-	scanner := bufio.NewScanner(ptty)
-	// Custom delimiter to tokenize at NULL byte.
-	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
-		if atEOF && len(data) == 0 {
-			return 0, nil, nil
-		}
-		var token []byte
-		for i, b := range data {
-			if b == 0 {
-				// NULL marker is found.
-				return i + 1, token, nil
-			}
-			if b != '\r' {
-				if token == nil {
-					token = make([]byte, 0, len(data))
-				}
-				token = append(token, b)
-			}
-		}
-		if atEOF {
-			return len(data), token, nil
-		}
-		return 0, nil, nil
-	})
-	beginOutput := false
-	for scanner.Scan() {
-		entry := scanner.Text()
-		sepIdx := strings.Index(entry, "=")
-		if !beginOutput {
-			if sepIdx > 0 {
-				// Remove any preceding input commands followed by newline
-				// as STDIN and STDOUT are the same.
-				nIdx := strings.LastIndex(entry[:sepIdx], "\n")
-				if nIdx >= 0 {
-					entry = entry[nIdx+1:]
-				}
-			}
-			beginOutput = true
-		}
-		if sepIdx > 0 {
-			env = append(env, entry)
-		}
-	}
-	if util.FileLogger().IsDebugEnabled() {
-		util.FileLogger().Debugf(ctx, "Env: %v", env)
-	}
-	err = cmd.Wait()
-	if err != nil {
-		// Return the default env.
-		env = append(env, os.Environ()...)
-		util.FileLogger().Warnf(
-			ctx, "Failed to get env variables. Error: %s", err.Error())
-		return env, err
-	}
-	return env, nil
-}
-
-// Command returns a command with the environment set.
-func (s *ShellTask) Command(ctx context.Context, name string, arg ...string) (*exec.Cmd, error) {
-	userDetail, err := util.UserInfo(s.user)
-	if err != nil {
-		return nil, err
-	}
-	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
-		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
-	env, _ := s.userEnv(ctx, userDetail)
-	cmd, err := s.command(ctx, userDetail, name, arg...)
-	if err != nil {
-		util.FileLogger().Warnf(ctx, "Failed to create command %s. Error: %s", name, err.Error())
-		return nil, err
-	}
-	cmd.Env = append(cmd.Env, env...)
-	return cmd, nil
+	return s.command.Name()
 }
 
 // Process runs the the command Task.
 func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
-	util.FileLogger().Debugf(ctx, "Starting the command - %s", s.name)
+	util.FileLogger().Debugf(ctx, "Starting the command - %s", s.command.Name())
 	taskStatus := &TaskStatus{Info: s.stdout, ExitStatus: &ExitStatus{Code: 1, Error: s.stderr}}
-	cmd, err := s.Command(ctx, s.cmd, s.args...)
+	cmd, err := s.command.Create(ctx)
 	if err != nil {
-		util.FileLogger().Errorf(ctx, "Command creation for %s failed - %s", s.name, err.Error())
+		util.FileLogger().
+			Errorf(ctx, "Command creation for %s failed - %s", s.command.Name(), err.Error())
 		return taskStatus, err
 	}
 	cmd.Stdout = s.stdout
 	cmd.Stderr = s.stderr
 	if util.FileLogger().IsDebugEnabled() {
-		redactedArgs := s.redactCommandArgs(s.args...)
-		util.FileLogger().Debugf(ctx, "Running command %s with args %v", s.cmd, redactedArgs)
+		redactedArgs := s.command.RedactCommandArgs()
+		util.FileLogger().
+			Debugf(ctx, "Running command %s with args %v", s.command.Cmd(), redactedArgs)
 	}
 	err = cmd.Run()
 	if err == nil {
@@ -258,7 +98,7 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		taskStatus.ExitStatus.Code = 0
 		if util.FileLogger().IsDebugEnabled() {
 			util.FileLogger().
-				Debugf(ctx, "Command %s executed successfully - %s", s.name, s.stdout.String())
+				Debugf(ctx, "Command %s executed successfully - %s", s.command.Name(), s.stdout.String())
 		}
 	} else {
 		taskStatus.ExitStatus.Error = s.stderr
@@ -267,10 +107,10 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		}
 		if util.FileLogger().IsDebugEnabled() && s.stdout.Len() > 0 {
 			util.FileLogger().
-				Debugf(ctx, "Output for failed command %s - %s", s.name, s.stdout.String())
+				Debugf(ctx, "Output for failed command %s - %s", s.command.Name(), s.stdout.String())
 		}
 		errMsg := fmt.Sprintf("%s: %s", err.Error(), s.stderr.String())
-		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.name, errMsg)
+		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.command.Name(), errMsg)
 	}
 	s.exitCode.Store(taskStatus.ExitStatus.Code)
 	return taskStatus, err
@@ -301,7 +141,7 @@ func (s *ShellTask) CurrentTaskStatus() *TaskStatus {
 
 // String implements the AsyncTask method.
 func (s *ShellTask) String() string {
-	return s.cmd
+	return s.command.Name()
 }
 
 // Result returns the result.

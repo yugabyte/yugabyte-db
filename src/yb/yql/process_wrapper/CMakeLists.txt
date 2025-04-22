@@ -18,3 +18,6 @@ set(PROCESS_WRAPPER_LIBS
 ADD_YB_LIBRARY(yb_process_wrapper
                SRCS ${PROCESS_WRAPPER_SRCS}
                DEPS ${PROCESS_WRAPPER_LIBS})
+
+set(YB_TEST_LINK_LIBS yb_process_wrapper server_process ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(process_wrapper-test)

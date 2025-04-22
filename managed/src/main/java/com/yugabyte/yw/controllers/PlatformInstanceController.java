@@ -95,6 +95,10 @@ public class PlatformInstanceController extends AuthenticatedController {
       config.get().updateLastFailover();
     }
 
+    // Reload from DB.
+    config.get().refresh();
+    // Save the local HA config before DB record is replaced in backup-restore during promotion.
+    replicationManager.saveLocalHighAvailabilityConfig(config.get());
     // Sync instances immediately after being added
     replicationManager.oneOffSync();
 
@@ -148,6 +152,10 @@ public class PlatformInstanceController extends AuthenticatedController {
             Audit.ActionType.Delete);
     PlatformInstance.delete(instanceUUID);
 
+    // Reload from DB.
+    config.get().refresh();
+    // Save the local HA config before DB record is replaced in backup-restore during promotion.
+    replicationManager.saveLocalHighAvailabilityConfig(config.get());
     return ok();
   }
 
@@ -234,8 +242,15 @@ public class PlatformInstanceController extends AuthenticatedController {
     // Cache local instance address before restore so we can query to new corresponding model.
     String localInstanceAddr = instance.get().getAddress();
 
-    // Save the local HA config before it is wiped out.
-    replicationManager.saveLocalHighAvailabilityConfig(config.get());
+    // Backward compatibility if the config is not present.
+    // This conditional check is to avoid incorrect config if this promoteInstance is run again
+    // after a promotion failure before isLocal is applied after a restore.
+    if (replicationManager
+        .maybeGetLocalHighAvailabilityConfig(config.get().getClusterKey())
+        .isEmpty()) {
+      // Save the local HA config before DB record is replaced in backup-restore during promotion.
+      replicationManager.saveLocalHighAvailabilityConfig(config.get());
+    }
 
     // Restore the backup.
     // For K8s, restore Yba DB inline instead of restoring after restart

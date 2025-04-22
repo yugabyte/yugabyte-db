@@ -130,7 +130,7 @@ typedef struct TupleTableSlot
 #define FIELDNO_TUPLETABLESLOT_ISNULL 6
 	bool	   *tts_isnull;		/* current per-attribute isnull flags */
 	MemoryContext tts_mcxt;		/* slot itself is in this context */
-	ItemPointerData tts_tid;	/* stored tuple's tid (containing yb ctid) */
+	ItemPointerData tts_tid;	/* stored tuple's tid */
 	Oid			tts_tableOid;	/* table oid of tuple */
 
 	/* YugaByte support */

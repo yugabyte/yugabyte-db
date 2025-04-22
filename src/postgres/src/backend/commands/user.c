@@ -668,6 +668,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 				errorConflictingDefElem(defel, pstate);
 			dbypassRLS = defel;
 		}
+		/* YB */
 		else if (strcmp(defel->defname, "profile") == 0)
 		{
 			if (dprofile)
@@ -676,6 +677,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dprofile = defel;
 		}
+		/* YB */
 		else if (strcmp(defel->defname, "noprofile") == 0)
 		{
 			if (dnoprofile)
@@ -684,6 +686,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dnoprofile = defel;
 		}
+		/* YB */
 		else if (strcmp(defel->defname, "unlocked") == 0)
 		{
 			if (dunlocked)
@@ -867,7 +870,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 
 	if (dconnlimit)
 	{
-		/* Check connection limit for postgres. */
+		/* YB: Check connection limit for postgres. */
 		if (roleid == 10 && connlimit != -1)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -923,13 +926,13 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	new_tuple = heap_modify_tuple(tuple, pg_authid_dsc, new_record,
 								  new_record_nulls, new_record_repl);
 	/*
-	 * The new_record_repl means which attribute of the tuple this ALTER ROLE
-	 * statement has provided a value, new_record_repl[i] is true does not mean
-	 * the provided value is different from the current value. Also sometimes
-	 * PG just sets new_record_repl[i] to true to indicate that an attribute as
-	 * changed even if it no value is provided in the ALTER ROLE statement
-	 * (e.g., for Anum_pg_authid_rolvaliduntil). So we do the deep comparison
-	 * to check whether there is any real change in new_tuple.
+	 * YB: The new_record_repl means which attribute of the tuple this ALTER
+	 * ROLE statement has provided a value, new_record_repl[i] is true does not
+	 * mean the provided value is different from the current value. Also
+	 * sometimes PG just sets new_record_repl[i] to true to indicate that an
+	 * attribute as changed even if it no value is provided in the ALTER ROLE
+	 * statement (e.g., for Anum_pg_authid_rolvaliduntil). So we do the deep
+	 * comparison to check whether there is any real change in new_tuple.
 	 */
 	if (!IsYugaByteEnabled() ||
 		!yb_enable_nop_alter_role_optimization ||
@@ -1163,7 +1166,8 @@ DropRole(DropRoleStmt *stmt)
 		}
 
 		/*
-		 * If the role is attached to a profile, auto-remove that association.
+		 * YB: If the role is attached to a profile, auto-remove that
+		 * association.
 		 */
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 			YbRemoveRoleProfileForRoleIfExists(roleid);
@@ -1308,7 +1312,7 @@ RenameRole(const char *oldname, const char *newname)
 						newname),
 				 errdetail("Role names starting with \"pg_\" are reserved.")));
 
-	/* Check whether postgres is being renamed. */
+	/* YB: Check whether postgres is being renamed. */
 	if (roleid == 10 && strcmp(newname, "postgres") != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
@@ -1495,6 +1499,7 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to reassign objects")));
 
+		/* YB */
 		if (superuser_arg(roleid) && !superuser())
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),

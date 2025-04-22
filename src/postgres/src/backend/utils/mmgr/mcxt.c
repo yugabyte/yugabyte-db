@@ -363,8 +363,8 @@ MemoryContextReset(MemoryContext context)
 	if (context->firstchild != NULL)
 		MemoryContextDeleteChildren(context);
 
+	/* Save a function call if no pallocs since startup or last reset */
 	/*
-	 * Save a function call if no pallocs since startup or last reset.
 	 * NOTE: When "yb_memctx" is not null, ResetOnly() must be called to inform YugaByte code layer
 	 * that resetting is happening. While the state variable "isReset" controls the objects in
 	 * Postgres, and the opaque object "yb_memctx" controls YugaByte objects.

@@ -20,7 +20,7 @@ yba universe describe --name <universe-name>
 
 ```
   -n, --name string     [Required] The name of the universe to be described.
-  -o, --output string   Select the desired output format. Allowed values: table, json, pretty, cli-flag, cli-json, cli-yaml. (default "table")
+  -o, --output string   [Optional] Select the desired output format. "cli-" outputs can be used directly in "yba universe create" command. Allowed values: table, json, pretty, cli-flag, cli-json, cli-yaml. (default "table")
   -h, --help            help for describe
 ```
 

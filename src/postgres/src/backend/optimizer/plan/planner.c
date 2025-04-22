@@ -74,14 +74,16 @@ double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 int			force_parallel_mode = FORCE_PARALLEL_OFF;
 bool		parallel_leader_participation = true;
 
-/* GUC flag, whether to attempt single RPC lock+select in RR and RC levels. */
-bool		yb_lock_pk_single_rpc = true;
-
 /* Hook for plugins to get control in planner() */
 planner_hook_type planner_hook = NULL;
 
 /* Hook for plugins to get control when grouping_planner() plans upper rels */
 create_upper_paths_hook_type create_upper_paths_hook = NULL;
+
+/*
+ * YB: GUC flag, whether to attempt single RPC lock+select in RR and RC levels.
+ */
+bool		yb_lock_pk_single_rpc = true;
 
 
 /* Expression kind codes for preprocess_expression */
@@ -257,6 +259,8 @@ static bool group_by_has_partkey(RelOptInfo *input_rel,
 								 List *targetList,
 								 List *groupClause);
 static int	common_prefix_cmp(const void *a, const void *b);
+
+/* YB declarations */
 static void ybAppendHintNameDisplayText(char *name, StringInfoData *buf);
 static char *ybGenerateHintStringBlock(PlannedStmt *plannedStmt, Plan *plan,
 									   int *maxBlockScanCnt);
@@ -266,6 +270,7 @@ static bool ybGenerateHintStringNode(PlannedStmt *plannedStmt, Plan *plan,
 									 List **scanList, List **subPlanHintStrings,
 									 int *maxBlockScanCnt, int numWorkers);
 static int ybCmpHintAliases(const ListCell *lc1, const ListCell *lc2);
+
 
 /*****************************************************************************
  *
@@ -409,7 +414,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	 * restriction, but for now it seems best not to have parallel workers
 	 * trying to create their own parallel workers.
 	 *
-	 * TODO GHI 23549: enable parallel query in serializable isolation.
+	 * YB: TODO GHI 23549: enable parallel query in serializable isolation.
 	 */
 	if ((cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
 		IsUnderPostmaster &&
@@ -1157,7 +1162,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	set_cheapest(final_rel);
 
 	/*
-	 * For the top-level query, parent_root is NULL. In all other cases,
+	 * YB: For the top-level query, parent_root is NULL. In all other cases,
 	 * update the number of relations that survived constraint exclusion
 	 * and partition pruning.
 	 */
@@ -1979,12 +1984,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * handled by the ModifyTable node instead.  However, root->rowMarks
 		 * is what goes into the LockRows node.)
 		 *
-		 * In isolation level SERIALIZABLE, locking is done in the scans, but
-		 * the LockRows path usually still needs to be created in case the plan
-		 * created in SERIALIZABLE is executed in isolation level RR or RC.
-		 * However, there is no need for a LockRows node if we do the locking in
-		 * the scan in all isolation levels, which is the case with single-RPC
-		 * locking on a PK.
+		 * YB: In isolation level SERIALIZABLE, locking is done in the scans,
+		 * but the LockRows path usually still needs to be created in case the
+		 * plan created in SERIALIZABLE is executed in isolation level RR or
+		 * RC. However, there is no need for a LockRows node if we do the
+		 * locking in the scan in all isolation levels, which is the case with
+		 * single-RPC locking on a PK.
 		 */
 		if (parse->rowMarks && !yb_skip_lockrows(path))
 		{
@@ -4788,6 +4793,7 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	bool		allow_hash;
 	Path	   *path;
 	ListCell   *lc;
+
 	List	   *yb_distinct_paths;
 
 	/* YB: Figure out paths that are already distinct. */

@@ -224,6 +224,27 @@ TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
   ASSERT_OK(conn.CommitTransaction());
 }
 
+TEST_F(PgRowLockTest, ObjectLocksNotSupported) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  auto VerifyAcquireTableLockNotSupport = [&](const std::string& lock_mode) -> void {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    auto s = conn.Execute(Format("LOCK TABLE test IN $0 MODE", lock_mode));
+    ASSERT_NOK(s);
+    ASSERT_STR_CONTAINS(s.message().ToBuffer(),
+        Format("ERROR:  $0 not supported yet", lock_mode));
+    ASSERT_OK(conn.RollbackTransaction());
+  };
+
+  VerifyAcquireTableLockNotSupport("SHARE");
+  VerifyAcquireTableLockNotSupport("SHARE ROW EXCLUSIVE");
+  VerifyAcquireTableLockNotSupport("EXCLUSIVE");
+  VerifyAcquireTableLockNotSupport("ACCESS EXCLUSIVE");
+  VerifyAcquireTableLockNotSupport("ROW SHARE");
+  VerifyAcquireTableLockNotSupport("ROW EXCLUSIVE");
+  VerifyAcquireTableLockNotSupport("SHARE UPDATE EXCLUSIVE");
+}
+
 class PgMiniTestNoTxnRetry : public PgRowLockTest {
  protected:
   void BeforePgProcessStart() override {

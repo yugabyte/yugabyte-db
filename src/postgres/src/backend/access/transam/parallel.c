@@ -182,7 +182,7 @@ CreateParallelContext(const char *library_name, const char *function_name,
 	/* Number of workers should be non-negative. */
 	Assert(nworkers >= 0);
 
-	/* TODO GHI 23549 */
+	/* YB: TODO GHI 23549 */
 	if (IsolationIsSerializable())
 		nworkers = 0;
 

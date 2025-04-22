@@ -33,6 +33,7 @@ DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 using namespace std::literals;
 
@@ -64,9 +65,9 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 
   Status AssertNumLocks(size_t granted_locks, size_t waiting_locks) {
     SCHECK_EQ(NumGrantedLocks(), granted_locks, IllegalState,
-              Format("Found mum granted locks != Expected num granted locks"));
+              Format("Found num granted locks != Expected num granted locks"));
     SCHECK_EQ(NumWaitingLocks(), waiting_locks, IllegalState,
-              Format("Found mum waiting locks != Expected num waiting locks"));
+              Format("Found num waiting locks != Expected num waiting locks"));
     return Status::OK();
   }
 
@@ -76,7 +77,46 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   }
 
+  void VerifyBlockingBehavior(
+      PGConn& conn1, PGConn& conn2, const std::string& lock_stmt_1,
+      const std::string& lock_stmt_2) {
+    LOG(INFO) << "Checking blocking behavior: " << lock_stmt_1 << " and " << lock_stmt_2;
+    ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn1.Execute(lock_stmt_1));
+
+    // In sync point ObjectLockedBatchEntry::Lock, the lock is in waiting state.
+    SyncPoint::GetInstance()->LoadDependency({{"WaitingLock", "ObjectLockedBatchEntry::Lock"}});
+    SyncPoint::GetInstance()->ClearTrace();
+    SyncPoint::GetInstance()->EnableProcessing();
+
+    auto conn2_lock_future = std::async(std::launch::async, [&]() -> Status {
+      RETURN_NOT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      RETURN_NOT_OK(conn2.Execute(lock_stmt_2));
+      RETURN_NOT_OK(conn2.Execute("INSERT INTO test (k, v) VALUES (11, 1)"));
+      RETURN_NOT_OK(conn2.CommitTransaction());
+      return Status::OK();
+    });
+
+    // Ensure lock is in waiting state.
+    DEBUG_ONLY_TEST_SYNC_POINT("WaitingLock");
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test WHERE v = 1")), 0);
+
+    // After conn1 releases the lock, conn2 should be able to acquire it.
+    ASSERT_OK(conn1.CommitTransaction());
+    ASSERT_OK(conn2_lock_future.get());
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test WHERE v = 1")), 1);
+    ASSERT_OK(conn2.Execute("DELETE FROM test WHERE v = 1"));
+  }
+
   tserver::TSLocalLockManagerPtr lock_manager_;
+};
+
+class TestWithTransactionalDDL: public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgObjectLocksTestRF1::SetUp();
+  }
 };
 
 TEST_F(PgObjectLocksTestRF1, TestSanity) {
@@ -131,6 +171,42 @@ TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
 }
 
+TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {
+  CreateTestTable();
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  const std::vector<std::pair<std::string, std::string>> blocking_pairs = {
+    {"ACCESS EXCLUSIVE", "ACCESS SHARE"},
+    {"ACCESS EXCLUSIVE", "ROW SHARE"},
+    {"ACCESS EXCLUSIVE", "ROW EXCLUSIVE"},
+    {"ACCESS EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+    {"ACCESS EXCLUSIVE", "SHARE"},
+    {"ACCESS EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+    {"ACCESS EXCLUSIVE", "EXCLUSIVE"},
+    {"ACCESS EXCLUSIVE", "ACCESS EXCLUSIVE"},
+    {"EXCLUSIVE", "ROW SHARE"},
+    {"EXCLUSIVE", "ROW EXCLUSIVE"},
+    {"EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+    {"EXCLUSIVE", "SHARE"},
+    {"EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+    {"EXCLUSIVE", "EXCLUSIVE"},
+    {"SHARE ROW EXCLUSIVE", "ROW EXCLUSIVE"},
+    {"SHARE ROW EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+    {"SHARE ROW EXCLUSIVE", "SHARE"},
+    {"SHARE ROW EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+    {"SHARE", "ROW EXCLUSIVE"},
+    {"SHARE", "SHARE UPDATE EXCLUSIVE"},
+    {"SHARE UPDATE EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+  };
+
+  for (const auto& pair : blocking_pairs) {
+    std::string lock_stmt_1 = "LOCK TABLE test IN " + pair.first + " MODE";
+    std::string lock_stmt_2 = "LOCK TABLE test IN " + pair.second + " MODE";
+    VerifyBlockingBehavior(conn1, conn2, lock_stmt_1, lock_stmt_2);
+    VerifyBlockingBehavior(conn1, conn2, lock_stmt_2, lock_stmt_1);
+  }
+}
+
 // Test that the exclusive locks are released only after the DDL schema changes have been applied
 // at the docdb layer.
 #ifndef NDEBUG
@@ -151,7 +227,7 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
   ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
 
   auto status_future = std::async(std::launch::async, [&conn]() -> Status {
-    RETURN_NOT_OK(conn.Fetch("SELECT * FROM TEST WHERE k=1"));
+    RETURN_NOT_OK(conn.Fetch("SELECT * FROM test WHERE k=1"));
     return Status::OK();
   });
 
@@ -159,6 +235,35 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
     return NumWaitingLocks() >= 1;
   }, 5s * kTimeMultiplier, "Timed out waiting for num waiting locks == 1"));
   DEBUG_ONLY_TEST_SYNC_POINT("ExclusiveLocksRemovedAfterDocDBSchemaChange");
+  ASSERT_OK(status_future.get());
+}
+
+// TODO(bkolagani): Once https://github.com/yugabyte/yugabyte-db/issues/26815 is addressed, add a
+// similar test asserting that a kPlain txn with explicit exclusive locks acquired using `LOCK ...`
+// releases them post commit & resets state in PgClientSession::Impl::ReleaseObjectLocksIfNecessary.
+TEST_F_EX(PgObjectLocksTestRF1, LocksNotRealesedLocallyOnCommit, TestWithTransactionalDDL) {
+  CreateTestTable();
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto status_future = std::async(std::launch::async, [&conn2]() -> Status {
+    RETURN_NOT_OK(conn2.Fetch("SELECT * FROM test WHERE k=1"));
+    return Status::OK();
+  });
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"PlainTxnStateReset", "LocksNotRealesedLocallyOnCommitWithTransactionalDDL:1"},
+    {"LocksNotRealesedLocallyOnCommitWithTransactionalDDL:2", "DoReleaseObjectLocksIfNecessary"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn1.CommitTransaction());
+  DEBUG_ONLY_TEST_SYNC_POINT("LocksNotRealesedLocallyOnCommitWithTransactionalDDL:1");
+  ASSERT_NE(status_future.wait_for(2s * kTimeMultiplier), std::future_status::ready);
+  DEBUG_ONLY_TEST_SYNC_POINT("LocksNotRealesedLocallyOnCommitWithTransactionalDDL:2");
   ASSERT_OK(status_future.get());
 }
 #endif

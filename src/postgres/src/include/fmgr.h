@@ -700,8 +700,6 @@ extern Datum ReceiveFunctionCall(FmgrInfo *flinfo, fmStringInfo buf,
 extern Datum OidReceiveFunctionCall(Oid functionId, fmStringInfo buf,
 									Oid typioparam, int32 typmod);
 extern bytea *SendFunctionCall(FmgrInfo *flinfo, Datum val);
-extern void StringInfoSendFunctionCall(fmStringInfo buf, FmgrInfo *flinfo,
-									   Datum val);
 extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
 
 
@@ -782,7 +780,9 @@ extern PGDLLIMPORT fmgr_hook_type fmgr_hook;
 #define FmgrHookIsNeeded(fn_oid)							\
 	(!needs_fmgr_hook ? false : (*needs_fmgr_hook)(fn_oid))
 
-/* Yugabyte support */
+/* YB */
+extern void StringInfoSendFunctionCall(fmStringInfo buf, FmgrInfo *flinfo,
+									   Datum val);
 extern bool is_builtin_func(Oid id);
 
 #endif							/* FMGR_H */

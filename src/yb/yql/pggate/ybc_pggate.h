@@ -57,6 +57,8 @@ void YBCRestorePgSessionState(const YbcPgSessionState* session_data);
 
 YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade);
 
+void YBCPgIncrementIndexRecheckCount();
+
 uint64_t YBCPgGetSessionID();
 
 // Initialize YBCPgMemCtx.
@@ -850,6 +852,10 @@ void YBCPgResetCurrentMemCtxThreadLocalVars();
 void* YBCPgGetThreadLocalStrTokPtr();
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
+
+int YBCPgGetThreadLocalYbExpressionVersion();
+
+void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version);
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
 

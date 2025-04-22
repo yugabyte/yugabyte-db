@@ -121,10 +121,12 @@ GetMemoryChunkContext(void *pointer)
 {
 	MemoryContext context;
 
+	/* YB */
 	if (pointer == NULL)
 	{
 		YBC_LOG_ERROR_STACK_TRACE("GetMemoryChunkContext: null pointer");
 	}
+
 	/*
 	 * Try to detect bogus pointers handed to us, poorly though we can.
 	 * Presumably, a pointer that isn't MAXALIGNED isn't pointing at an
@@ -224,6 +226,7 @@ extern MemoryContext GenerationContextCreate(MemoryContext parent,
 #define ALLOCSET_START_SMALL_SIZES \
 	ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE, ALLOCSET_DEFAULT_MAXSIZE
 
+
 /*
  * Threshold above which a request in an AllocSet context is certain to be
  * allocated separately (and thereby have constant allocation overhead).
@@ -236,8 +239,8 @@ extern MemoryContext GenerationContextCreate(MemoryContext parent,
 #define SLAB_LARGE_BLOCK_SIZE		(8 * 1024 * 1024)
 
 /*
- * Tracking memory consumption for both PG backend and pggate tcmalloc acutal
- * heap consumption.
+ * YB: Tracking memory consumption for both PG backend and pggate tcmalloc
+ * actual heap consumption.
  * Global accessible in one PG backend process.
  */
 typedef struct YbPgMemTracker

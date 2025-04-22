@@ -695,6 +695,7 @@ SnapBuildExportSnapshotImpl(SnapBuild *builder, const uint64_t *yb_read_time)
 
 	SnapshotData yb_snap = {};
 
+	/* YB */
 	if (builder)
 	{
 		Assert(!yb_read_time);

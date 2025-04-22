@@ -58,7 +58,7 @@ ExecLimit(PlanState *pstate)
 	outerPlan = outerPlanState(node);
 
 	/*
-	 * Initialize LIMIT count and offset.
+	 * YB: Initialize LIMIT count and offset.
 	 */
 	if (IsYugaByteEnabled())
 	{
@@ -72,6 +72,7 @@ ExecLimit(PlanState *pstate)
 	switch (node->lstate)
 	{
 		case LIMIT_INITIAL:
+
 			/*
 			 * First call for this node, so compute limit/offset. (We can't do
 			 * this any earlier, because parameters from upper nodes will not
@@ -81,13 +82,15 @@ ExecLimit(PlanState *pstate)
 			recompute_limits(node);
 
 			/*
-			 * Update LIMIT count and offset after recomputing.
+			 * YB: Update LIMIT count and offset after recomputing.
 			 */
 			if (IsYugaByteEnabled())
 			{
 				pstate->state->yb_exec_params.limit_count = node->count;
 				pstate->state->yb_exec_params.limit_offset = node->offset;
 			}
+
+			/* FALL THRU */
 			yb_switch_fallthrough();
 
 		case LIMIT_RESCAN:
@@ -241,6 +244,7 @@ ExecLimit(PlanState *pstate)
 			}
 
 			Assert(node->lstate == LIMIT_WINDOWEND_TIES);
+			/* FALL THRU */
 			yb_switch_fallthrough();
 
 		case LIMIT_WINDOWEND_TIES:
