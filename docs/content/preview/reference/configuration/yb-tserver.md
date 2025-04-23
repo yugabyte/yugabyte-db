@@ -47,11 +47,11 @@ This page categorizes configuration flags into the following sections, making it
 
 | Category                     | Description |
 |------------------------------|-------------|
-| General Configuration        | Basic server setup including overall system settings, logging, and web interface configurations. |
-| Networking                   | Flags that control network interfaces, RPC endpoints, DNS caching, and geo-distribution settings. |
-| Storage & Data Management    | Parameters for managing data directories, WAL configurations, sharding, CDC, and TTL-based file expiration. |
-| Performance Tuning           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
-| Security                     | Settings for encryption, SSL/TLS, and authentication to secure both node-to-node and client-server communications. |
+| [General Configuration](#general-configuration)        | Basic server setup including overall system settings, logging, and web interface configurations. |
+| [Networking](#networking)                   | Flags that control network interfaces, RPC endpoints, DNS caching, and geo-distribution settings. |
+| [Storage & Data Management](#storage--data-management)    | Parameters for managing data directories, WAL configurations, sharding, CDC, and TTL-based file expiration. |
+| [Performance Tuning](#performance-tuning)           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
+| [Security](#security)                     | Settings for encryption, SSL/TLS, and authentication to secure both node-to-node and client-server communications. |
 
 ## General Configuration
 
@@ -91,7 +91,7 @@ Comma separated RPC addresses of the YB-Masters which the tablet server should c
 
 ##### --rpc_bind_addresses
 
-Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections. The values must match on all [yb-master](../yb-master/#rpc-bind-addresses) and yb-tserver configurations. (Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`)*
+Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections. (Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`) *
 
 ##### --server_broadcast_addresses
 
@@ -190,8 +190,7 @@ Directory that contains certificate authority, private key and certificates for 
 
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
-
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. *
 (Default: `true`)
 
 ##### --dump_certificate_entries
@@ -204,9 +203,7 @@ Use client-to-server (client-to-node) encryption to protect data in transit betw
 
 ##### --use_node_to_node_encryption
 
-Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled. (Default: `false`)
-
-When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.  *
+Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe.  *
 
 ##### --cipher_list
 
