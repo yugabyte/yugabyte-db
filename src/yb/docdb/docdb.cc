@@ -244,15 +244,15 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
                              LWKeyValueWriteBatchPB* write_batch,
                              InitMarkerBehavior init_marker_behavior,
                              std::atomic<int64_t>* monotonic_counter,
-                             HybridTime* restart_read_ht,
+                             ReadRestartData* read_restart_data,
                              const string& table_name) {
-  DCHECK_ONLY_NOTNULL(restart_read_ht);
+  DCHECK_ONLY_NOTNULL(read_restart_data);
   DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, pending_op, monotonic_counter);
 
   DocOperationApplyData data = {
     .doc_write_batch = &doc_write_batch,
     .read_operation_data = read_operation_data,
-    .restart_read_ht = restart_read_ht,
+    .read_restart_data = read_restart_data,
     .schema_packing_provider = schema_packing_provider,
   };
 

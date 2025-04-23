@@ -396,8 +396,8 @@ std::string DocRowwiseIterator::ToString() const {
   return "DocRowwiseIterator";
 }
 
-Result<HybridTime> DocRowwiseIterator::RestartReadHt() {
-  return db_iter_->RestartReadHt();
+Result<ReadRestartData> DocRowwiseIterator::GetReadRestartData() {
+  return db_iter_->GetReadRestartData();
 }
 
 HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {

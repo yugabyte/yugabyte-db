@@ -87,8 +87,8 @@ void YQLVTableIterator::Advance(bool increment) {
 YQLVTableIterator::~YQLVTableIterator() {
 }
 
-Result<HybridTime> YQLVTableIterator::RestartReadHt() {
-  return HybridTime::kInvalid;
+Result<ReadRestartData> YQLVTableIterator::GetReadRestartData() {
+  return ReadRestartData{};
 }
 
 }  // namespace master

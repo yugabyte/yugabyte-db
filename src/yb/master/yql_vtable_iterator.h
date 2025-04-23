@@ -40,7 +40,7 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
   std::string ToString() const override;
 
-  Result<HybridTime> RestartReadHt() override;
+  Result<ReadRestartData> GetReadRestartData() override;
 
  private:
   void Advance(bool increment);

@@ -240,9 +240,9 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
   }
   // If a restart read is required, then we return this fact to caller and don't perform the write
   // operation.
-  if (status.ok() && restart_read_ht_.is_valid()) {
+  if (status.ok() && read_restart_data_.is_valid()) {
     auto restart_time = response()->mutable_restart_read_time();
-    restart_time->set_read_ht(restart_read_ht_.ToUint64());
+    restart_time->set_read_ht(read_restart_data_.restart_time.ToUint64());
     auto local_limit = context_->ReportReadRestart();
     if (!local_limit.ok()) {
       Cancel(local_limit.status());
@@ -250,6 +250,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     }
     restart_time->set_deprecated_max_of_read_time_and_local_limit_ht(local_limit->ToUint64());
     restart_time->set_local_limit_ht(local_limit->ToUint64());
+    response()->set_restart_read_key(read_restart_data_.key);
     // Global limit is ignored by caller, so we don't set it.
     Cancel(Status::OK());
     return;
@@ -931,15 +932,15 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
         doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
         scoped_read_operation_, &write_batch, init_marker_behavior,
-        tablet->monotonic_counter(), &restart_read_ht_, tablet->metadata()->table_name()));
+        tablet->monotonic_counter(), &read_restart_data_, tablet->metadata()->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.
-    if (!restart_read_ht_.is_valid() || !allow_immediate_read_restart_) {
+    if (!read_restart_data_.is_valid() || !allow_immediate_read_restart_) {
       break;
     }
 
-    read_operation_data.read_time.read = restart_read_ht_;
+    read_operation_data.read_time.read = read_restart_data_.restart_time;
     if (!local_limit_updated) {
       local_limit_updated = true;
       safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
@@ -948,7 +949,7 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
           safe_time);
     }
 
-    restart_read_ht_ = HybridTime();
+    read_restart_data_ = ReadRestartData();
 
     write_batch.mutable_write_pairs()->clear();
 
@@ -1388,7 +1389,7 @@ void WriteQuery::PgsqlRespondSchemaVersionMismatch() {
 }
 
 void WriteQuery::PgsqlExecuteDone(const Status& status) {
-  if (!status.ok() || restart_read_ht_.is_valid() || schema_version_mismatch_) {
+  if (!status.ok() || read_restart_data_.is_valid() || schema_version_mismatch_) {
     StartSynchronization(std::move(self_), status);
     return;
   }

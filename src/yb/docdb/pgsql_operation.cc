@@ -1870,7 +1870,7 @@ Result<bool> PgsqlWriteOperation::ReadRow(
   if (!VERIFY_RESULT(iterator.PgFetchNext(table_row))) {
     return false;
   }
-  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+  data.read_restart_data->MakeAtLeast(VERIFY_RESULT(iterator.GetReadRestartData()));
 
   return true;
 }
@@ -2164,14 +2164,14 @@ Result<size_t> PgsqlReadOperation::Execute() {
 
   VTRACE(1, "Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
   if (table_iter_) {
-    *restart_read_ht_ = VERIFY_RESULT(table_iter_->RestartReadHt());
+    *read_restart_data_ = VERIFY_RESULT(table_iter_->GetReadRestartData());
   } else {
-    *restart_read_ht_ = HybridTime::kInvalid;
+    *read_restart_data_ = ReadRestartData();
   }
   if (index_iter_) {
-    restart_read_ht_->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
+    read_restart_data_->MakeAtLeast(VERIFY_RESULT(index_iter_->GetReadRestartData()));
   }
-  if (!restart_read_ht_->is_valid()) {
+  if (!read_restart_data_->is_valid()) {
     RETURN_NOT_OK(delayed_failure_);
   }
 
@@ -2925,7 +2925,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
       // to continue seeking through all the given batch arguments even though one
       // of them wasn't found. If it wasn't found, table_iter_ becomes invalid
       // and we have to make a new iterator.
-      // TODO (dmitry): In case of iterator recreation info from RestartReadHt field will be lost.
+      // TODO (dmitry): In case of iterator recreation info from ReadRestartData field will be lost.
       //                The #17159 issue is created for this problem.
       iter.emplace(&table_iter_);
       RETURN_NOT_OK(iter->InitForYbctid(data_, projection, doc_read_context, Bounds(key_provider)));
