@@ -17,7 +17,6 @@
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/mini_master.h"
@@ -234,7 +233,7 @@ Result<std::string> XClusterDDLReplicationTestBase::GetReplicationRole(
     Cluster& cluster, const NamespaceName& database) {
   const auto& db_name = database.empty() ? namespace_name : database;
   auto conn = VERIFY_RESULT(cluster.ConnectToDB(db_name));
-  return conn.FetchRowAsString("SHOW yb_xcluster_ddl_replication.replication_role");
+  return conn.FetchRowAsString("SELECT yb_xcluster_ddl_replication.get_replication_role();");
 }
 
 Status XClusterDDLReplicationTestBase::ValidateReplicationRole(

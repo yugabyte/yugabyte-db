@@ -12,15 +12,26 @@
 //
 
 #include "yb/cdc/xcluster_types.h"
+
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_types.pb.h"
+
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/xcluster/xcluster_manager.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/logging_test_util.h"
@@ -141,6 +152,62 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {
     ASSERT_OK(producer_cluster_.mini_cluster_.get()->RestartSync());
   }
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
+TEST_F(XClusterDDLReplicationTest, ExtensionRoleUpdating) {
+  ASSERT_OK(SetUpClusters());
+  auto& catalog_manager =
+      ASSERT_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
+  const auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name));
+  auto* tserver = producer_cluster_.mini_cluster_->mini_tablet_server(0);
+  auto& xcluster_context = tserver->server()->GetXClusterContext();
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+
+  // We expect role NOT_AUTOMATIC_MODE here since no replication is set up yet.
+  EXPECT_EQ(
+      xcluster_context.GetXClusterRole(namespace_id),
+      XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE);
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  // Bootstrap here would have no effect because the database is empty so we skip it for the test.
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // The producer should have role AUTOMATIC_SOURCE after automatic mode replication is set up.
+  // We should see this both at the TServer's xcluster_context and on the existing Postgres backend.
+  {
+    EXPECT_EQ(
+        xcluster_context.GetXClusterRole(namespace_id),
+        XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_SOURCE);
+    std::string current_role = ASSERT_RESULT(
+        conn.FetchRowAsString("SELECT yb_xcluster_ddl_replication.get_replication_role()"));
+    EXPECT_EQ(current_role, "source");
+  }
+
+  // Manually change the role to AUTOMATIC_TARGET and verify the change is seen.
+  ASSERT_OK(xcluster_manager->SetXClusterRole(
+      catalog_manager.GetLeaderEpochInternal(), namespace_id,
+      XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET));
+  // TODO(mlillibridge): replace with a call to wait for heartbeats once that call is available.
+  std::this_thread::sleep_for(30s);
+  {
+    EXPECT_EQ(
+        xcluster_context.GetXClusterRole(namespace_id),
+        XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET);
+    std::string current_role = ASSERT_RESULT(
+        conn.FetchRowAsString("SELECT yb_xcluster_ddl_replication.get_replication_role()"));
+    EXPECT_EQ(current_role, "target");
+  }
+
+  ASSERT_OK(DeleteOutboundReplicationGroup());
+  // TODO(mlillibridge): modify DeleteOutboundReplicationGroup() with a call to wait for heartbeats
+  // once that call is available.
+  std::this_thread::sleep_for(30s);
+
+  // After replication is dropped, we should be back to role NOT_AUTOMATIC_MODE.
+  EXPECT_EQ(
+      xcluster_context.GetXClusterRole(namespace_id),
+      XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE);
 }
 
 TEST_F(XClusterDDLReplicationTest, TestExtensionDeletionWithMultipleReplicationGroups) {
@@ -317,6 +384,30 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
       &producer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
       producer_table_name_new_user_str));
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
+}
+
+TEST_F(XClusterDDLReplicationTest, CreateTableInExistingConnection) {
+  ASSERT_OK(SetUpClusters());
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+
+    ASSERT_OK(
+        CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    // Bootstrap here would have no effect because the database is empty so we skip it for the test.
+    ASSERT_OK(CreateReplicationFromCheckpoint());
+
+    // Here we create a table using a connection open before replication got set up.
+    ASSERT_OK(conn.Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
+
+  {
+    auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    std::string row_count =
+        ASSERT_RESULT(conn.FetchRowAsString("SELECT count(*) FROM test_table_1;"));
+    // Check that the CREATE TABLE DDL got replicated.
+    ASSERT_EQ(row_count, "0");
+  }
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
@@ -1248,6 +1339,9 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingDDL) {
         "Could not find matching table");
     // Note that A will get marked as a target at this point.
     // TODO(#26160): reset A back to a source on replication failure.
+    // TODO(mlillibridge): Add a call to wait for heartbeats to create replication from checkpoint
+    // code once that call is available.
+    std::this_thread::sleep_for(30s);
     ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
     ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
 

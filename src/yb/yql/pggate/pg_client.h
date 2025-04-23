@@ -34,11 +34,9 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
 
-#include "yb/util/enums.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -157,6 +155,8 @@ class PgClient {
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetCatalogMasterVersion();
+
+  Result<uint32_t> GetXClusterRole(uint32_t db_oid);
 
   Status CreateSequencesDataTable();
 

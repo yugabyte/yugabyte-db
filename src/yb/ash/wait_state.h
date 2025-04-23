@@ -22,9 +22,6 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/casts.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -270,6 +267,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kImportTxnSnapshot)
   (kClearExportedTxnSnapshots)
   (kPollVectorIndexReady)
+  (kGetXClusterRole)
 );
 
 struct WaitStatesDescription {
@@ -486,7 +484,7 @@ class WaitStateInfo {
   }
 
   virtual void VTrace(int level, GStringPiece data) {
-    VTraceTo(nullptr, level, data);
+    VTraceTo(/*trace=*/nullptr, level, data);
   }
 
   virtual std::string DumpTraceToString() {
