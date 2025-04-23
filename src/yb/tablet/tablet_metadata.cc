@@ -563,7 +563,8 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
       }
       RSTATUS_DCHECK(
           table_info->index_info && table_info->index_info->is_vector_index(), Corruption,
-          "Only vector indexes could be colocated to the non colocated table");
+          "Only vector indexes could be colocated to the non colocated table: $0",
+          table_info->ToString());
     }
     if (overwrite) {
       auto schema = tables.begin()->second->doc_read_context->mutable_schema();
@@ -1165,6 +1166,7 @@ Status RaftGroupMetadata::SaveTo(const std::string& path) {
     std::lock_guard lock(data_mutex_);
     ToSuperBlockUnlocked(&pb);
   }
+  LOG_WITH_FUNC(INFO) << "path: " << path << ", pb: " << AsString(pb);
 
   return SaveToDiskUnlocked(pb, path);
 }
@@ -1205,6 +1207,7 @@ Status RaftGroupMetadata::MergeWithRestored(
     const std::string& path, dockv::OverwriteSchemaPacking overwrite) {
   RaftGroupReplicaSuperBlockPB snapshot_superblock;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
+  LOG_WITH_FUNC(INFO) << "Superblock: " << AsString(snapshot_superblock);
   std::lock_guard lock(data_mutex_);
   return kv_store_.MergeWithRestored(
       snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);

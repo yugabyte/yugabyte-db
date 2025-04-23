@@ -2616,7 +2616,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       bool is_clone,
       ExternalTableSnapshotData* table_data);
   Status RepartitionTable(
-      scoped_refptr<TableInfo> table,
+      const TableInfoPtr& table,
       ExternalTableSnapshotData* table_data,
       const LeaderEpoch& epoch,
       bool is_clone);
@@ -2647,8 +2647,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // to the in-memory vector of table_ids_ of the parent tablet as the tablet is recreated in clone
   // and doesn't have table ids.
   Status UpdateColocatedUserTableInfoForClone(
-      scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
-      const LeaderEpoch& epoch);
+      const TableInfoPtr& table, const TableId& new_parent_table_id,
+      ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch);
   Status PreprocessTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
   Status ImportTabletEntry(
       const SysRowEntry& entry, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map);

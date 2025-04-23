@@ -513,7 +513,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(DeleteStorages(CompleteShutdownStorages(op_pauses)));
+    for (const auto& path : CompleteShutdownStorages(op_pauses)) {
+      if (env().FileExists(path)) {
+        RETURN_NOT_OK(env().DeleteRecursively(path));
+      }
+    }
 
     auto s = CopyDirectory(
         &rocksdb_env(), snapshot_dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
@@ -521,6 +525,24 @@ Status TabletSnapshots::RestoreCheckpoint(
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
+
+    {
+      auto& env = this->env();
+      auto children = VERIFY_RESULT(env.GetChildren(db_dir, ExcludeDots::kTrue));
+      for (const auto& child : children) {
+        if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
+          continue;
+        }
+        auto source_dir = JoinPathSegments(db_dir, child);
+        if (!env.DirExists(source_dir)) {
+          continue;
+        }
+        auto dest_dir = docdb::GetStorageDir(db_dir, child);
+        LOG_WITH_PREFIX(INFO) << "Moving " << source_dir << " => " << dest_dir;
+        RETURN_NOT_OK(env.RenameFile(source_dir, dest_dir));
+      }
+    }
+
     auto tablet_metadata_file = TabletMetadataFile(db_dir);
     if (env().FileExists(tablet_metadata_file)) {
       RETURN_NOT_OK(env().DeleteFile(tablet_metadata_file));
