@@ -51,7 +51,6 @@ class ObjectLockManagerImpl;
 class ObjectLockManager {
  public:
   ObjectLockManager();
-
   ~ObjectLockManager();
 
   // Attempt to lock a batch of keys and track the lock against the given object_lock_owner key. The
@@ -61,8 +60,8 @@ class ObjectLockManager {
   //
   // Returns false if was not able to acquire lock until deadline.
   MUST_USE_RESULT bool Lock(
-      const ObjectLockOwner& object_lock_owner,
-      LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline);
+      LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline,
+      const ObjectLockOwner& object_lock_owner);
 
   // Release the batch of locks, if they were acquired at the first place.
   void Unlock(const std::vector<TrackedLockEntryKey>& lock_entry_keys);
