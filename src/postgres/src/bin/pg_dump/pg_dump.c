@@ -15915,6 +15915,17 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 	free(namecopy);
 }
 
+static void
+freeYbTablePropertiesIfRequired(YbTableProperties yb_properties)
+{
+	if (!yb_properties)
+		return;
+
+	if (yb_properties->tablegroup_name)
+		free(yb_properties->tablegroup_name);
+	free(yb_properties);
+}
+
 /*
  * dumpTableSchema
  *	  write the declaration (not data) of one user-defined table or view
@@ -16057,7 +16068,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX
 			 || tbinfo->relkind == RELKIND_MATVIEW || tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
 		{
-			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+			yb_properties = (YbTableProperties) pg_malloc0(sizeof(YbTablePropertiesData));
 		}
 		PQExpBuffer yb_reloptions = createPQExpBuffer();
 		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
@@ -16722,6 +16733,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 								  tbinfo->attfdwoptions[j]);
 			}
 		}
+
+		freeYbTablePropertiesIfRequired(yb_properties);
 	}
 
 	/*
@@ -16940,7 +16953,7 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 		if (is_colocated_database && !is_legacy_colocated_database)
 		{
 			YbTableProperties yb_properties;
-			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+			yb_properties = (YbTableProperties) pg_malloc0(sizeof(YbTablePropertiesData));
 			PQExpBuffer yb_reloptions = createPQExpBuffer();
 			getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
 				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
@@ -16960,6 +16973,8 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 				}
 			}
 			destroyPQExpBuffer(yb_reloptions);
+
+			freeYbTablePropertiesIfRequired(yb_properties);
 		}
 		/* Plain secondary index */
 		appendPQExpBuffer(q, "%s", indxinfo->indexdef);
@@ -19174,7 +19189,7 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 			res = ExecuteSqlQueryForSingleRow(fout, query->data);
 			int i_grpname = PQfnumber(res, "grpname");
 			properties->tablegroup_name =
-				PQgetisnull(res, 0, i_grpname) ? "" : PQgetvalue(res, 0, i_grpname);
+				PQgetisnull(res, 0, i_grpname) ? pg_strdup("") : pg_strdup(PQgetvalue(res, 0, i_grpname));
 
 			PQclear(res);
 			destroyPQExpBuffer(query);
