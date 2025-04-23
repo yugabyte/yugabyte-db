@@ -941,7 +941,18 @@ Status PopulateCDCSDKIntentRecord(
 
       if (colocated) {
         colocation_id = decoded_key.doc_key().colocation_id();
-        auto table_info = CHECK_RESULT(tablet->metadata()->GetTableInfo(colocation_id));
+        auto tablet_info_result = tablet->metadata()->GetTableInfo(colocation_id);
+        if (!tablet_info_result.ok()) {
+          if (!tablet_info_result.status().IsNotFound()) {
+            return tablet_info_result.status();
+          }
+          LOG(WARNING) << "Did not find table info for colocated table with colocation id: "
+                       << colocation_id << " and tablet id: " << tablet->tablet_id()
+                       << ". This could be because the object corresponding to colocation id has "
+                          "been deleted.";
+          continue;
+        }
+        auto table_info = *tablet_info_result;
 
         const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
             tablet_peer, intents.begin()->intent_ht.hybrid_time().ToUint64(), cached_schema_details,
@@ -1352,7 +1363,18 @@ Status PopulateCDCSDKWriteRecord(
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
       if (colocated) {
         colocation_id = decoded_key.doc_key().colocation_id();
-        auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo(colocation_id));
+        auto tablet_info_result = tablet_ptr->metadata()->GetTableInfo(colocation_id);
+        if (!tablet_info_result.ok()) {
+          if (!tablet_info_result.status().IsNotFound()) {
+            return tablet_info_result.status();
+          }
+          LOG(WARNING) << "Did not find table info for colocated table with colocation id: "
+                       << colocation_id << " and tablet id: " << tablet_ptr->tablet_id()
+                       << ". This could be because the object corresponding to colocation id has "
+                          "been deleted.";
+          continue;
+        }
+        auto table_info = *tablet_info_result;
 
         const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
             tablet_peer, msg->hybrid_time(), cached_schema_details, client, table_info->table_id,
