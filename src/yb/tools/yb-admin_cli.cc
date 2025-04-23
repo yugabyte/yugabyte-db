@@ -1599,7 +1599,7 @@ const auto create_database_snapshot_args =
     "then takes the default value controlled by gflag default_retention_hours)";
 Status create_database_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1 && args.size() > 2) {
+  if (args.size() < 1 || args.size() > 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
