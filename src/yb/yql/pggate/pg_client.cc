@@ -24,6 +24,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/object_lock_shared_state.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/call_data.h"
@@ -43,10 +45,12 @@
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
@@ -809,6 +813,28 @@ class PgClient::Impl : public BigDataFetcher {
     SCHECK_EQ(end - out, size, InternalError, "Obtained size does not match serialized size");
 
     return session_shared_mem_->exchange().SendRequest();
+  }
+
+  bool TryAcquireObjectLockInSharedMemory(
+      SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
+      docdb::ObjectLockFastpathLockType lock_type) {
+    if (!FLAGS_enable_object_lock_fastpath) {
+      return false;
+    }
+
+    auto* lock_shared = PgSharedMemoryManager().SharedData()->object_lock_state();
+    if (!lock_shared || !session_shared_mem_) {
+      LOG(WARNING) << "Not using object locking fastpath: shared memory not ready";
+      return false;
+    }
+    return lock_shared->Lock({
+        .owner = SHARED_MEMORY_LOAD(session_shared_mem_->object_locking_data()),
+        .subtxn_id = subtxn_id,
+        .database_oid = lock_id.db_oid,
+        .relation_oid = lock_id.relation_oid,
+        .object_oid = lock_id.object_oid,
+        .object_sub_oid = lock_id.object_sub_oid,
+        .lock_type = lock_type});
   }
 
   void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) override {
@@ -1780,6 +1806,12 @@ Status PgClient::DeleteDBSequences(int64_t db_oid) {
 PerformResultFuture PgClient::PerformAsync(
     tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
   return impl_->PerformAsync(options, std::move(operations), metrics);
+}
+
+bool PgClient::TryAcquireObjectLockInSharedMemory(
+    SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
+    docdb::ObjectLockFastpathLockType lock_type) {
+  return impl_->TryAcquireObjectLockInSharedMemory(subtxn_id, lock_id, lock_type);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {

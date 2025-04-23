@@ -11,9 +11,12 @@
 // under the License.
 //
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -34,12 +37,14 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
-DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
+DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
+DECLARE_bool(TEST_check_broadcast_address);
 
 DECLARE_string(TEST_block_alter_table);
 
@@ -860,6 +865,61 @@ TEST_F_EX(PgObjectLocksTestRF1, TestDisableReuseAbortedPlainTxn, TestWithTransac
   ASSERT_NOK(conn2.Execute("LOCK TABLE test in ACCESS SHARE mode"));
   ASSERT_OK(conn2.RollbackTransaction());
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromMilliseconds(5 * kTimeMultiplier)));
+}
+
+class PgObjectLocksFastpathTest : public PgObjectLocksTestRF1 {
+ protected:
+  auto TServerSharedObject() {
+    return cluster_->mini_tablet_server(0)->server()->shared_object();
+  }
+
+  docdb::ObjectLockSharedStateManager& ObjectLockSharedStateManager() {
+    return *cluster_->mini_tablet_server(0)->server()->ObjectLockSharedStateManager();
+  }
+
+  void BeforePgProcessStart() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+  }
+
+  void SetUp() override {
+    PgObjectLocksTestRF1::SetUp();
+    ASSERT_OK(WaitFor([&] {
+      return TServerSharedObject()->object_lock_state() != nullptr;
+    }, 5s * kTimeMultiplier, "tserver shared memory initialization"));
+  }
+
+  TransactionId LastOwner() {
+    return ObjectLockSharedStateManager().TEST_last_owner();
+  }
+};
+
+TEST_F(PgObjectLocksFastpathTest, TestSimple) {
+  CreateTestTable();
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+
+  auto txn_id = LastOwner();
+
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  ASSERT_EQ(LastOwner(), txn_id);
+
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (101, 1)"));
+  ASSERT_EQ(LastOwner(), txn_id);
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  ASSERT_EQ(LastOwner(), txn_id);
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (102, 2)"));
+  ASSERT_EQ(LastOwner(), txn_id);
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  ASSERT_NE(LastOwner(), txn_id);
 }
 
 }  // namespace yb::pgwrapper

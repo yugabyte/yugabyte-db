@@ -79,6 +79,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;
 
+  docdb::ObjectLockSharedStateManager* ObjectLockSharedStateManager() const override {
+    return nullptr;
+  }
+
   const std::shared_future<client::YBClient*>& client_future() const override;
 
   Status GetLiveTServers(

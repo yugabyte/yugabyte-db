@@ -31,6 +31,7 @@ include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
 set(DOCDB_SHARED_SRCS
         lock_util.cc
+        object_lock_shared_state.cc
         )
 
 set(DOCDB_SHARED_DEPS
@@ -86,6 +87,7 @@ set(DOCDB_SRCS
         local_waiting_txn_registry.cc
         lock_batch.cc
         object_lock_manager.cc
+        object_lock_shared_state_manager.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
         ql_rowwise_iterator_interface.cc

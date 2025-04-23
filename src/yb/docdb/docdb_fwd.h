@@ -16,6 +16,7 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb.fwd.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"

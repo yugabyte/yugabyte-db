@@ -30,6 +30,8 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -220,6 +222,10 @@ class PgClient {
 
   PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics);
+
+  bool TryAcquireObjectLockInSharedMemory(
+      SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
+      docdb::ObjectLockFastpathLockType lock_type);
 
   Result<bool> CheckIfPitrActive();
 
