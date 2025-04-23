@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { connect, useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
+import { useQueryClient } from 'react-query';
 
 import { FirstStep } from './FirstStep/FirstStep';
 import {
@@ -57,6 +58,7 @@ export const UniverseSupportBundle = (props) => {
   const isK8sUniverse = getIsKubernetesUniverse(props.currentUniverse);
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);
+  const queryClient = useQueryClient();
 
   const resetSteps = () => {
     if (supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
@@ -125,6 +127,12 @@ export const UniverseSupportBundle = (props) => {
     downloadSupportBundle(universeUUID, bundleUUID);
   };
 
+  const onClose = () => {
+    queryClient.removeQueries('estimatedSupportBundleSize');
+    resetSteps();
+    closeModal();
+  };
+
   const isSubmitDisabled = steps === stepsObj.secondStep && payload?.components?.length === 0;
   return (
     <Fragment>
@@ -137,10 +145,7 @@ export const UniverseSupportBundle = (props) => {
         className="universe-support-bundle"
         title="Support Bundle"
         open={showModal && visibleModal === 'supportBundleModal'}
-        onClose={() => {
-          resetSteps();
-          closeModal();
-        }}
+        onClose={onClose}
         overrideHeight="fit-content"
         cancelLabel="Close"
         submitLabel={steps === stepsObj.secondStep ? 'Create Bundle' : undefined}
@@ -171,6 +176,8 @@ export const UniverseSupportBundle = (props) => {
                   setPayload(defaultOptions);
                 }
               }}
+              payload={payload}
+              universeUUID={universeDetails.universeUUID}
               isK8sUniverse={isK8sUniverse}
               universeStatus={getUniverseStatus(props.currentUniverse)}
             />
@@ -221,6 +228,12 @@ export function downloadSupportBundle(universeUUID, supportBundleUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/support_bundle/${supportBundleUUID}/download`;
   window.open(endpoint, '_blank');
+}
+
+export function fetchEstimatedSupportBundleSize(universeUUID, supportBundle) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/support_bundle/estimate_size`;
+  return axios.post(endpoint, supportBundle).then((response) => response.data);
 }
 
 function mapStateToProps(state) {
