@@ -16,10 +16,12 @@ import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
@@ -93,12 +95,19 @@ public class YNPProvisioning extends AbstractTaskBase {
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
-      AdditionalServicesStateData data = universe.getUniverseDetails().additionalServicesStateData;
-      if (data != null
-          && data.getEarlyoomConfig() != null
-          && data.getEarlyoomConfig().isEnabled()) {
-        ynpNode.put("earlyoom_enable", true);
-        ynpNode.put("earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+      Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
+      boolean enableEarlyoomFeature =
+          confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
+      if (enableEarlyoomFeature) {
+        ObjectNode earlyoomNode = mapper.createObjectNode();
+        AdditionalServicesStateData data =
+            universe.getUniverseDetails().additionalServicesStateData;
+        if (data != null && data.isEarlyoomEnabled()) {
+          earlyoomNode.put("earlyoom_enable", true);
+          earlyoomNode.put(
+              "earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+        }
+        ynpNode.put("earlyoom", earlyoomNode);
       }
       if (provider.getDetails().getNtpServers() != null
           && !provider.getDetails().getNtpServers().isEmpty()) {
