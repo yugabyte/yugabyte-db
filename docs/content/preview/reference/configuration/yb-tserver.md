@@ -45,61 +45,169 @@ Use `--helpon` to displays help on modules named by the specified flag value.
 
 This page categorizes configuration flags into the following sections, making it easier to navigate:
 
-| Category | Description |
-|-----------|---------|
-| General & Networking | Configuration flags for server addresses, networking, and general cluster settings. |
-| Storage & Data Management | Flags related to data directories, WAL configuration, and data retention policies. |
-| Memory & Performance | Controls resource allocation, memory management, and performance optimizations. |
-| Security & Authentication | Manages encryption, SSL/TLS security settings, and authentication methods for secure communication. |
-| Advanced Features & Debugging | Provides access to advanced features, debugging tools, and experimental settings. |
+| Category                     | Description |
+|------------------------------|-------------|
+| General Configuration        | Basic server setup including overall system settings, logging, and web interface configurations. |
+| Networking                   | Flags that control network interfaces, RPC endpoints, DNS caching, and geo-distribution settings. |
+| Storage & Data Management    | Parameters for managing data directories, WAL configurations, sharding, CDC, and TTL-based file expiration. |
+| Performance Tuning           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
+| Security                     | Settings for encryption, SSL/TLS, and authentication to secure both node-to-node and client-server communications. |
 
-### General & Networking
+## General Configuration
 
-| Flag Name                   | Type    | Description                                                            | Default              |
-|-----------------------------|---------|------------------------------------------------------------------------|----------------------|
-| `--flagfile`                | String  | Specifies file to load configuration flags from.                       | `""`                 |
-| `--rpc_bind_addresses`      | String  | Comma-separated IPs for RPC server binding.                            | Host private IP      |
-| `--server_broadcast_addresses` | String  | Public IP or DNS for inter-node communication.                         | `""`                 |
-| `--dns_cache_expiration_ms` | Integer | DNS cache expiration in milliseconds.                                  | `60000`              |
-| `--max_clock_skew_usec`     | Integer | Max expected clock skew between nodes, in microseconds.                | `500000`             |
+##### --version
 
-### Storage & Data Management
+Shows version and build info, then exits.
 
-| Flag Name                | Type    | Description                                                             | Default              |
-|--------------------------|---------|-------------------------------------------------------------------------|----------------------|
-| `--fs_data_dirs`         | String  | Comma-separated list of mount paths for YB-TServer data.                | Required             |
-| `--fs_wal_dirs`          | String  | WAL log storage directory.                                              | Same as `fs_data_dirs` |
-| `--log_segment_size_mb`  | Integer | Size of each WAL log segment in MB.                                     | `64`                 |
-| `--enable_automatic_tablet_splitting` | Boolean | Enables automatic tablet splitting.                              | `true`               |
-| `--yb_num_shards_per_tserver` | Integer | Default number of YCQL shards per tserver.                             | `-1` (auto)          |
+##### --flagfile
 
+Specifies the file to load the configuration flags from. The configuration flags must be in the same format as supported by the command line flags. (Default: None - stable)
 
-### Memory & Performance
+##### --fs_data_dirs
 
-| Flag Name                          | Type    | Description                                                             | Default              |
-|------------------------------------|---------|-------------------------------------------------------------------------|----------------------|
-| `--memory_limit_hard_bytes`        | Integer | Hard memory limit for the process in bytes.                             | `0`                  |
-| `--default_memory_limit_to_ram_ratio` | Float  | RAM percentage used if hard byte limit is `0`.                          | `0.85`               |
-| `--db_block_cache_size_percentage` | Integer | Percentage of memory for RocksDB block cache.                          | `50`                 |
-| `--tablet_overhead_size_percentage`| Integer | Percent of memory reserved for tablet overhead.                         | `0`                  |
-| `--use_memory_defaults_optimized_for_ysql` | Boolean | Optimizes memory allocation for YSQL-heavy workloads.         | `false`              |
+Specifies a comma-separated list of mount directories, where yb-tserver will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory. Changing the value of this flag after the cluster has already been created is not supported. This argument must be specified.  (Default: None - stable)
 
-### Security & Authentication
+##### --fs_wal_dirs
 
-| Flag Name                       | Type    | Description                                                            | Default              |
-|---------------------------------|---------|------------------------------------------------------------------------|----------------------|
-| `--certs_dir`                   | String  | Directory containing SSL certs for server communication.               | `""`                 |
-| `--use_node_to_node_encryption`| Boolean | Enable encrypted communication between nodes.                          | `false`              |
-| `--use_client_to_server_encryption` | Boolean | Enable TLS encryption between client and server.                  | `false`              |
-| `--allow_insecure_connections` | Boolean | Allow non-TLS connections (only when encryption is disabled).          | `true`               |
-| `--ssl_protocols`              | String  | Allowed list of TLS protocols for RPC communication.                   | `""`                 |
+Specifies a comma-separated list of directories, where yb-tserver will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory. This is an optional argument. (Default: The same value as `--fs_data_dirs`)
 
-### Advanced Features & Debugging
+##### --max_clock_skew_usec
 
-| Flag Name                          | Type    | Description                                                            | Default              |
-|------------------------------------|---------|------------------------------------------------------------------------|----------------------|
-| `--log_dir`                        | String  | Directory for writing logs.                                            | Same as `fs_data_dirs` |
-| `--raft_heartbeat_interval_ms`     | Integer | Time between Raft heartbeat messages.                                  | `500`                |
-| `--enable_stream_compression`     | Boolean | Enables compression of RPC messages.                                   | `true`               |
-| `--stream_compression_algo`       | Integer | Algorithm used for compression (e.g., LZ4 = 3).                         | `0` (None)           |
-| `--cdc_enable`                    | Boolean | Enable Change Data Capture (CDC) functionality.                        | `false`              |
+Specifies the expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment. (Default: `500000` (500,000 µs = 500ms))
+
+##### --tablet_server_svc_queue_length
+
+Specifies the RPC queue size for the tablet server to serve reads and writes from applications. (Default: `5000`)
+
+##### --webserver_interface
+
+The address to bind for the web server user interface. (Default: `0.0.0.0` (`127.0.0.1`))
+
+## Networking
+
+##### --tserver_master_addrs
+
+Comma separated RPC addresses of the YB-Masters which the tablet server should connect to. The CQL proxy reads this flag as well to determine the new set of masters. The number of comma-separated values should match the total number of YB-Master servers (or the replication factor). This argument must be specified. (Default: 127.0.0.1:7100 - stable) 
+
+##### --rpc_bind_addresses
+
+Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections. The values must match on all [yb-master](../yb-master/#rpc-bind-addresses) and yb-tserver configurations. (Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`)*
+
+##### --server_broadcast_addresses
+
+Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.  (Default: None)
+
+##### --dns_cache_expiration_ms
+
+Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption. (Default: `60000` (1 minute)). 
+
+If you change this value from the default, be sure to add the identical value to all YB-Master and YB-TServer configurations.
+
+##### --use_private_ip
+
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never`, `zone`, `cloud`, and `region`. (Default: `never`)*
+
+##### --enable_stream_compression
+
+Controls whether YugabyteDB uses RPC streamm compression. (Default: `true`)
+
+##### --stream_compression_algo
+
+Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
+
+0: No compression (default value)
+1: Gzip
+2: Snappy
+3: LZ4
+
+In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead. However, the default is set to 0, to avoid latency penalty on workloads.
+
+## Storage & Data Management
+
+##### --yb_num_shards_per_tserver
+
+The default number of shards (tablets) per YB-TServer for each YCQL table when a user table is created. If the value is -1, the system automatically determines an appropriate value based on the number of CPU cores; it is determined to 1 if enable_automatic_tablet_splitting is set to true. (Default: -1 - runtime) *
+
+##### --ysql_num_shards_per_tserver
+
+The default number of shards (tablets) per YB-TServer for each YSQL table when a user table is created. If the value is -1, the system automatically determines an appropriate value based on the number of CPU cores; it is determined to 1 if enable_automatic_tablet_splitting is set to true. (Default: -1 - runtime) *
+
+##### --yb_enable_cdc_consistent_snapshot_streams
+
+Enable support for creating streams for transactional CDC. Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity). (Default: `false`) * 
+
+<!-- default in yb all server is different from tserver page -->
+
+##### --cdc_state_checkpoint_update_interval_ms
+
+Rate at which CDC state's checkpoint is updated. (Default: 15000 - runtime)
+
+##### --cdc_ybclient_reactor_threads
+
+The number of reactor threads to be used for processing `ybclient` requests for CDC. Increase to improve throughput on large tablet setups. (Default: `50`)
+
+<!-- all tserver page mention it as deprecreated -->
+
+##### --cdc_max_stream_intent_records
+
+Maximum number of intent records allowed in a single CDC batch.
+
+Default: `1000`
+
+<!-- default is different in all tserver flags vs tserver page -->
+
+## Performance Tuning
+
+##### --use_memory_defaults_optimized_for_ysql
+
+If true, the recommended defaults for the memory usage settings take into account the amount of RAM and cores available and are optimized for using YSQL. If false, the recommended defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available. (Default: false) *
+
+##### --memory_limit_hard_bytes
+
+Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#--default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting. (Default: 0 - stable)
+
+##### --db_block_cache_size_bytes
+
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#--db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache. (Default: -1)
+
+##### --evict_failed_followers
+
+Whether to evict followers from the Raft config that have fallen too far behind the leader's log to catch up normally or have been unreachable by the leader for longer than [`--follower_unavailable_considered_failed_sec`](#--follower_unavailable_considered_failed_sec) (Default: true - advanced)
+
+##### --follower_unavailable_considered_failed_sec
+
+The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is re-replicated elsewhere. (Default: `900` (15 minutes)) * 
+
+## Security
+
+##### --certs_dir
+
+Directory that contains certificate authority, private key and certificates for this server. By default 'certs' subdir in data folder is used. (Default: None , Uses `<data drive>/yb-data/tserver/data/certs` )
+
+##### --certs_for_client_dir
+
+Directory that contains certificate authority, private key and certificates for this server that should be used for client to server communications. When empty, the same dir as for server to server communications is used. (Default: None (Use the same directory as certs_dir.))
+
+##### --allow_insecure_connections
+
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
+
+(Default: `true`)
+
+##### --dump_certificate_entries
+
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enable this flag to debug certificate issues. (Default: `false`)
+
+##### --use_client_to_server_encryption
+
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs. (Default: `false`)
+
+##### --use_node_to_node_encryption
+
+Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled. (Default: `false`)
+
+When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.  *
+
+##### --cipher_list
+
+Define the list of available ciphers (TLSv1.2 and below). (Default: None) *
