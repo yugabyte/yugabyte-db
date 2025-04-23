@@ -18,8 +18,6 @@ Use Anomalies to monitor your cluster for anomalies in performance - whether wit
 
 To detect anomalies, click the cluster **Perf Advisor** tab, choose **Anomalies**, and click **Run Detection**.
 
-For meaningful results, run your workload for at least an hour before running the scan.
-
 To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
 
 ![Troubleshooting Platform](/images/yb-cloud/managed-monitor-anomalies.png)
