@@ -30,7 +30,7 @@ namespace docdb {
 struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
   ReadOperationData read_operation_data;
-  HybridTime* restart_read_ht;
+  ReadRestartData* read_restart_data;
   SchemaPackingProvider* schema_packing_provider;  // null okay
 
   CoarseTimePoint deadline() const {
@@ -42,7 +42,7 @@ struct DocOperationApplyData {
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(read_operation_data, restart_read_ht);
+    return YB_STRUCT_TO_STRING(read_operation_data, read_restart_data);
   }
 };
 

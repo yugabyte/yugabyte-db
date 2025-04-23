@@ -24,7 +24,7 @@ Read restart errors are raised to maintain the _read-after-commit-visibility_ gu
 YugabyteDB doesn't require atomic clocks, but instead allows a configurable setting for maximum clock skew. Time synchronization protocols such as NTP synchronize commodity hardware clocks periodically to keep the skew low and bounded. Additionally, YugabyteDB has optimizations to resolve this ambiguity internally with best-effort. However, when it can't resolve the error internally, YugabyteDB outputs a `read restart` error to the external client, similar to the following:
 
 ```output
-ERROR:  Query error: Restart read required at: { read: { physical: 1656351408684482 } local_limit: { physical: 1656351408684482 } global_limit: <min> in_txn_limit: <max> serial_no: 0 }
+ERROR:  Query error: Restart read required
 ```
 
 The following scenario describes how clock skew can result in the above mentioned ambiguity around data visibility in detail:

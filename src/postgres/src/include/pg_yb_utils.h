@@ -1085,7 +1085,10 @@ void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
 									const char ***msg_args,
 									const char **detail_buf,
 									size_t *detail_nargs,
-									const char ***detail_args);
+									const char ***detail_args,
+									const char **detail_log_buf,
+									size_t *detail_log_nargs,
+									const char ***detail_log_args);
 
 bool YbIsBatchedExecution();
 void YbSetIsBatchedExecution(bool value);
@@ -1126,14 +1129,19 @@ OptSplit *YbGetSplitOptions(Relation rel);
 			const char *funcname = YBCStatusFuncname(_status); \
 			const char *msg_buf = NULL; \
 			const char *detail_buf = NULL; \
+			const char *detail_log_buf = NULL; \
 			size_t msg_nargs = 0; \
 			size_t detail_nargs = 0; \
+			size_t detail_log_nargs = 0; \
 			const char **msg_args = NULL; \
 			const char **detail_args = NULL; \
+			const char **detail_log_args = NULL; \
 			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, \
 										   &msg_buf, &msg_nargs, &msg_args, \
 										   &detail_buf, &detail_nargs, \
-										   &detail_args); \
+										   &detail_args, &detail_log_buf, \
+										   &detail_log_nargs, \
+										   &detail_log_args); \
 			YBCFreeStatus(_status); \
 			if (errstart(adjusted_elevel, __FILE__, \
 						 lineno > 0 ? lineno : __LINE__, \
@@ -1144,6 +1152,10 @@ OptSplit *YbGetSplitOptions(Relation rel);
 				yb_errmsg_from_status(msg_buf, msg_nargs, msg_args); \
 				if (detail_buf) \
 					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
+				if (detail_log_buf) \
+					yb_errdetail_log_from_status(detail_log_buf, \
+												 detail_log_nargs, \
+												 detail_log_args); \
 				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
 				errhidecontext(true); \

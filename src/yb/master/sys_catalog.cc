@@ -1085,12 +1085,12 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
       // has db_oid column as primary key in ASC order and we use the row for template1 to store
       // global catalog version. The db_oid of template1 is 1, which is the smallest db_oid.
       // Therefore we only need to read the first row to retrieve the global catalog version.
-      *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+      *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
       return Status::OK();
     }
   }
 
-  *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+  *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
   return Status::OK();
 }
 

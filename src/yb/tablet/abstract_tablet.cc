@@ -55,7 +55,7 @@ Status AbstractTablet::HandleQLReadRequest(
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
       ql_storage, read_operation_data, *doc_read_context, pending_op, &resultset,
-      &result->restart_read_ht);
+      &result->read_restart_data);
   TRACE("Done Execute");
   if (!s.ok()) {
     if (s.IsQLError()) {
@@ -94,7 +94,7 @@ Status AbstractTablet::ProcessPgsqlReadRequest(
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute(
       ql_storage, read_operation_data, is_explicit_request_read_time, *doc_read_context,
-      index_doc_read_context.get(), pending_op, result->rows_data, &result->restart_read_ht);
+      index_doc_read_context.get(), pending_op, result->rows_data, &result->read_restart_data);
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);

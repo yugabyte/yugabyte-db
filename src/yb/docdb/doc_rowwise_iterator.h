@@ -76,7 +76,7 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   // verify the row exists.
   bool LivenessColumnExists() const;
 
-  Result<HybridTime> RestartReadHt() override;
+  Result<ReadRestartData> GetReadRestartData() override;
 
   void Seek(Slice key) override;
 

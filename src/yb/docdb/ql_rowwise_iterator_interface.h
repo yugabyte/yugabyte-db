@@ -52,7 +52,7 @@ class YQLRowwiseIteratorIf {
 
   // If restart is required returns restart hybrid time, based on iterated records.
   // Otherwise returns invalid hybrid time.
-  virtual Result<HybridTime> RestartReadHt() = 0;
+  virtual Result<ReadRestartData> GetReadRestartData() = 0;
 
   // Returns max seen hybrid time. Only used by tests for validation.
   virtual HybridTime TEST_MaxSeenHt();

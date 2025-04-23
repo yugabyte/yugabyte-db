@@ -1542,7 +1542,7 @@ Result<bool> PgsqlWriteOperation::ReadRow(
   if (!VERIFY_RESULT(iterator.PgFetchNext(table_row))) {
     return false;
   }
-  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+  data.read_restart_data->MakeAtLeast(VERIFY_RESULT(iterator.GetReadRestartData()));
 
   return true;
 }
@@ -1787,7 +1787,7 @@ Result<size_t> PgsqlReadOperation::Execute(
     const DocReadContext* index_doc_read_context,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     WriteBuffer* result_buffer,
-    HybridTime* restart_read_ht) {
+    ReadRestartData* read_restart_data) {
   // Verify that this request references no columns marked for deletion.
   RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(doc_read_context.schema(),
                                                  request_));
@@ -1803,6 +1803,7 @@ Result<size_t> PgsqlReadOperation::Execute(
 
   // Fetching data.
   bool has_paging_state = false;
+  auto* restart_read_ht = &(read_restart_data->restart_time);
   if (request_.batch_arguments_size() > 0) {
     PgsqlReadRequestYbctidProvider key_provider(doc_read_context, request_, response_);
     fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(
@@ -1825,11 +1826,11 @@ Result<size_t> PgsqlReadOperation::Execute(
   VTRACE(1, "Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
   SCHECK(table_iter_ != nullptr, InternalError, "table iterator is invalid");
 
-  *restart_read_ht = VERIFY_RESULT(table_iter_->RestartReadHt());
+  *read_restart_data = VERIFY_RESULT(table_iter_->GetReadRestartData());
   if (index_iter_) {
-    restart_read_ht->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
+    read_restart_data->MakeAtLeast(VERIFY_RESULT(index_iter_->GetReadRestartData()));
   }
-  if (!restart_read_ht->is_valid()) {
+  if (!read_restart_data->is_valid()) {
     RETURN_NOT_OK(delayed_failure_);
   }
 
@@ -2258,7 +2259,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
       // to continue seeking through all the given batch arguments even though one
       // of them wasn't found. If it wasn't found, table_iter_ becomes invalid
       // and we have to make a new iterator.
-      // TODO (dmitry): In case of iterator recreation info from RestartReadHt field will be lost.
+      // TODO (dmitry): In case of iterator recreation info from ReadRestartData field will be lost.
       //                The #17159 issue is created for this problem.
       iter.emplace(&table_iter_);
       RETURN_NOT_OK(iter->InitForYbctid(

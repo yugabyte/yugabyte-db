@@ -144,6 +144,9 @@ message WriteResponsePB {
   optional fixed64 local_limit_ht = 14;
 
   optional TabletConsensusInfoPB tablet_consensus_info = 15;
+
+  // key causing read restart. Present when restart_read_time is.
+  optional string restart_read_key = 16;
 }
 
 // A list tablets request
@@ -268,6 +271,9 @@ message ReadResponsePB {
   optional fixed64 local_limit_ht = 10;
 
   optional TabletConsensusInfoPB tablet_consensus_info = 11;
+
+  // key causing read restart. Present when restart_read_time is.
+  optional string restart_read_key = 12;
 }
 
 message GetTabletKeyRangesRequestPB {

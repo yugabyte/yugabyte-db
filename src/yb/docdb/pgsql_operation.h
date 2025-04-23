@@ -173,7 +173,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                          const DocReadContext* index_doc_read_context,
                          std::reference_wrapper<const ScopedRWOperation> pending_op,
                          WriteBuffer* result_buffer,
-                         HybridTime* restart_read_ht);
+                         ReadRestartData* read_restart_data);
 
   Status GetSpecialColumn(ColumnIdRep column_id, QLValuePB* result);
 

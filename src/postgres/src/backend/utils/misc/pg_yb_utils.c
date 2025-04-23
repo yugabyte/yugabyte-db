@@ -773,7 +773,10 @@ void
 GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
 							   const char **msg_buf, size_t *msg_nargs,
 							   const char ***msg_args, const char **detail_buf,
-							   size_t *detail_nargs, const char ***detail_args)
+							   size_t *detail_nargs, const char ***detail_args,
+							   const char **detail_log_buf,
+							   size_t *detail_log_nargs,
+							   const char ***detail_log_args)
 {
 	const char	*status_msg = YBCMessageAsCString(s);
 	size_t		 status_nargs;
@@ -787,6 +790,9 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
 	*detail_buf = NULL;
 	*detail_nargs = 0;
 	*detail_args = NULL;
+	*detail_log_buf = NULL;
+	*detail_log_nargs = 0;
+	*detail_log_args = NULL;
 	elog(DEBUG2, "status_msg=%s pg_err_code=%d", status_msg, pg_err_code);
 
 	switch(pg_err_code)
@@ -806,6 +812,36 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
 			*detail_buf = status_msg;
 			*detail_nargs = status_nargs;
 			*detail_args = status_args;
+			break;
+		case ERRCODE_YB_RESTART_READ:
+			*msg_buf = "Restart read required";
+			*msg_nargs = 0;
+			*msg_args = NULL;
+
+			/*
+			 * Read restart errors occur when writes fall within the uncertianty
+			 * interval [read_time, global_limit).
+			 *
+			 * Moreover, read_time can be less than the current time since it
+			 * is picked as the docdb tablet's safe time as an optimization in
+			 * some cases.
+			 *
+			 * As a consequence, read_time may be lower than the commit time of the
+			 * previous transaction from the same session.
+			 *
+			 * In this case, a read restart error may be issued to move the read
+			 * time past the commit time.
+			 *
+			 * To capture such cases, print the start time of the statement. This
+			 * allows comparison between the start time and the original read time.
+			 */
+			*detail_log_buf = psprintf("%s, stmt_start_time: %s, txn_start_time: %s, iso:%d",
+									   status_msg,
+									   timestamptz_to_str(GetCurrentStatementStartTimestamp()),
+									   timestamptz_to_str(GetCurrentTransactionStartTimestamp()),
+									   XactIsoLevel);
+			*detail_log_nargs = status_nargs;
+			*detail_log_args = status_args;
 			break;
 		case ERRCODE_YB_DEADLOCK:
 			*msg_buf = "deadlock detected";

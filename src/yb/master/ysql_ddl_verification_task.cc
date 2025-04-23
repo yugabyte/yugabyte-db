@@ -185,7 +185,7 @@ Status PgEntryExistsWithReadTime(
   // If no rows found, the entry does not exist.
   qlexpr::QLTableRow row;
   if (!VERIFY_RESULT(iter->FetchNext(&row))) {
-    *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+    *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
     *result = false;
     return Status::OK();
   }
@@ -195,12 +195,12 @@ Status PgEntryExistsWithReadTime(
   if (is_rewritten_table) {
     const auto& relfilenode = row.GetValue(relfilenode_col);
     if (relfilenode->uint32_value() != *relfilenode_oid) {
-      *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+      *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
       *result = false;
       return Status::OK();
     }
   }
-  *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+  *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
   *result = true;
   return Status::OK();
 }
@@ -297,7 +297,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   //   the old PG table is deleted from pg_class while the old DocDB table is kept
   //   for testing purpose.
   if (!table_found) {
-    *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+    *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
     if (l->is_being_deleted_by_ysql_ddl_txn()) {
       *result = true;
       return Status::OK();
@@ -319,7 +319,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   }
 
   // Table present in PG catalog.
-  *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+  *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
 
   if (l->is_being_deleted_by_ysql_ddl_txn()) {
     LOG(INFO) << "Ysql Drop transaction for " << table->ToString()
@@ -520,7 +520,7 @@ Status ReadPgAttributeWithReadTime(
     pg_cols->emplace_back(attnum, attname);
   }
 
-  *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+  *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
   return Status::OK();
 }
 } // namespace

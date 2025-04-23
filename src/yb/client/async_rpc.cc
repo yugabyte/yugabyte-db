@@ -446,10 +446,21 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
   auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
   if (restart_read_time) {
     auto read_point = batcher_->read_point();
+    auto tablet_id = req_.tablet_id();
+    HybridTime original_read_time;
     if (read_point) {
-      read_point->RestartRequired(req_.tablet_id(), restart_read_time);
+      original_read_time = read_point->GetReadTime(tablet_id).read;
+      read_point->RestartRequired(tablet_id, restart_read_time);
     }
-    Failed(STATUS(TryAgain, Format("Restart read required at: $0", restart_read_time), Slice(),
+    auto leader_uuid = tablet().current_leader_uuid();
+    auto table_name = table()->name().ToString();
+    auto key = resp_.restart_read_key();
+    Failed(STATUS(TryAgain,
+                  Format("restart_read_time: $0, original_read_time: $1"
+                         ", table: $2, tablet: $3, leader_uuid: $4, key: $5",
+                         restart_read_time, original_read_time,
+                         table_name, tablet_id, leader_uuid, key),
+                  Slice(),
                   TransactionError(TransactionErrorCode::kReadRestartRequired)));
     return false;
   }
