@@ -32,7 +32,9 @@ Internode (server-to-server or node-to-node) communication, including xCluster, 
 
 To enable login to the machines running these servers, the SSH port 22 should be opened.
 
-xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes. Note that YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
+xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes.
+
+Port 7000 (to access the [admin UI](#admin-web-server)) should also be open to all nodes, as requests made to the Master UI of a non-leader Master are internally redirected to the leader Master's 7000 port.
 
 Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB software on YugabyteDB Anywhere, the following ports must be open on all YugabyteDB nodes, and be reachable from YugabyteDB Anywhere nodes:
 
