@@ -144,15 +144,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
     return result;
   }
 
-  static void WaitForCatalogVersionToPropagate() {
-    // This is an estimate that should exceed the tserver to master hearbeat interval.
-    // However because it is an estimate, this function may return before the catalog version is
-    // actually propagated.
-    constexpr int kSleepSeconds = 2;
-    LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
-    std::this_thread::sleep_for(kSleepSeconds * 1s);
-  }
-
   // Verify that all the tservers have identical shared memory db catalog version array by
   // making RPCs to the tservers. Unallocated array slots should have value 0. Return a
   // ShmCatalogVersionMap which represents the contents of allocated slots in the shared
@@ -495,15 +486,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   void VerifyCatCacheRefreshMetricsHelper(
       int num_full_refreshes, int num_delta_refreshes) {
-    ExternalTabletServer* ts = cluster_->tablet_server(0);
-    auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
-    EasyCurl c;
-    faststring buf;
-
-    auto json_metrics_url =
-        Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
-    ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
-    auto json_metrics = ParseJsonMetrics(buf.ToString());
+    auto json_metrics = GetJsonMetrics();
 
     int count = 0;
     for (const auto& metric : json_metrics) {

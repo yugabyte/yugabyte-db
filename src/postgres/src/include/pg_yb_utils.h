@@ -1371,4 +1371,6 @@ extern bool YbIsInvalidationMessageEnabled();
 
 extern bool YbRefreshMatviewInPlace();
 
+extern void YbForceSendInvalMessages();
+
 #endif							/* PG_YB_UTILS_H */

@@ -1,6 +1,7 @@
 # pg_hint_plan extension
 
 comment = ''
-default_version = '1.5.1'
+default_version = '1.5.1-yb-1.0'
+module_pathname = '$libdir/pg_hint_plan'
 relocatable = false
 schema = hint_plan
