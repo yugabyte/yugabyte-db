@@ -36,6 +36,11 @@ const useStyles = makeStyles((theme) => ({
   },
   addQueryButton: {
     width: 'fit-content'
+  },
+  inputFieldComponent: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5)
   }
 }));
 
@@ -90,39 +95,44 @@ export const EditCustomPrometheusQueriesModal = ({
             return (
               <div className={classes.prometheusQueryRow} key={prometheusQuery.id}>
                 <Box display="flex" flexDirection="column" gridGap={theme.spacing(1.5)} flex={1}>
-                  <YBInputField
-                    control={control}
-                    name={`customPrometheusQueries.${index}.folderName`}
-                    placeholder={t('folderName')}
-                    fullWidth
-                    onBlur={() => trigger('customPrometheusQueries')}
-                    rules={{
-                      required: t('formFieldRequired', { keyPrefix: 'common' }),
-                      pattern: {
-                        value: /^[^#%&{}\<>*?/!'"@:+=`|$]*$/,
-                        message: t('validationError.folderNameHasSpecialCharacters')
-                      },
-                      validate: (value) => {
-                        const existingPrometheusQueries = getValues('customPrometheusQueries');
-                        return existingPrometheusQueries.find(
-                          (existingPrometheusQuery, comparisonIndex) =>
-                            comparisonIndex !== index &&
-                            existingPrometheusQuery.folderName === value
-                        )
-                          ? t('validationError.folderNameMustBeUnique')
-                          : true;
-                      }
-                    }}
-                  />
-                  <YBInputField
-                    control={control}
-                    name={`customPrometheusQueries.${index}.query`}
-                    placeholder={t('prometheusQuery')}
-                    rules={{
-                      required: t('formFieldRequired', { keyPrefix: 'common' })
-                    }}
-                    fullWidth
-                  />
+                  <Typography variant="body1">{t('customQuery')}</Typography>
+                  <div className={classes.inputFieldComponent}>
+                    <Typography variant="body2">{t('folderName')}</Typography>
+                    <YBInputField
+                      control={control}
+                      name={`customPrometheusQueries.${index}.folderName`}
+                      fullWidth
+                      onBlur={() => trigger('customPrometheusQueries')}
+                      rules={{
+                        required: t('formFieldRequired', { keyPrefix: 'common' }),
+                        pattern: {
+                          value: /^[^#%&{}\<>*?/!'"@:+=`|$]*$/,
+                          message: t('validationError.folderNameHasSpecialCharacters')
+                        },
+                        validate: (value) => {
+                          const existingPrometheusQueries = getValues('customPrometheusQueries');
+                          return existingPrometheusQueries.find(
+                            (existingPrometheusQuery, comparisonIndex) =>
+                              comparisonIndex !== index &&
+                              existingPrometheusQuery.folderName === value
+                          )
+                            ? t('validationError.folderNameMustBeUnique')
+                            : true;
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className={classes.inputFieldComponent}>
+                    <Typography variant="body2">{t('prometheusQuery')}</Typography>
+                    <YBInputField
+                      control={control}
+                      name={`customPrometheusQueries.${index}.query`}
+                      rules={{
+                        required: t('formFieldRequired', { keyPrefix: 'common' })
+                      }}
+                      fullWidth
+                    />
+                  </div>
                 </Box>
                 <Box justifyContent="top">
                   <YBButton
