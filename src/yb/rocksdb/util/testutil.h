@@ -349,6 +349,10 @@ class SleepingBackgroundTask {
         done_with_sleep_(false),
         sleeping_(false) {}
 
+  ~SleepingBackgroundTask() {
+    WakeUp();
+  }
+
   bool IsSleeping() {
     MutexLock l(&mutex_);
     return sleeping_;
