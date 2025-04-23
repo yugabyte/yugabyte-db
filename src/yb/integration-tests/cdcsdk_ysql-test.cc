@@ -4822,7 +4822,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithAct
   ASSERT_OK(SetUpWithParams(1, 1, true));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, num_tablets, true /* add_pk */,
+      true /* colocated */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -11836,6 +11838,45 @@ TEST_F(CDCSDKYsqlTest, TestCDCFlushLagMetricWithgRPCModel) {
 
   // Assert that cdcsdk_flush_lag value remains zero.
   ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
+}
+
+TEST_F(CDCSDKYsqlTest, TestDropIndexWithColocatedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Add a column and create index on that column.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_test_table_value_2 ON test_table(value_2)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(1,100), 10, 11)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(101,200), 11, 12)"));
+
+  // Add another column, drop the previous index and create index on the newly added column.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_3 int"));
+  ASSERT_OK(conn.Execute("DROP INDEX idx_test_table_value_2"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_test_table_value_3 ON test_table(value_3)"));
+
+  // Restart the test cluster to clear the caches.
+  ASSERT_OK(test_cluster()->RestartSync());
+  LOG(INFO) << "All nodes restarted";
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 }
 
 }  // namespace cdc
