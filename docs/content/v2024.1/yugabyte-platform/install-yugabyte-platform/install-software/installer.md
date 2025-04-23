@@ -445,7 +445,6 @@ You can configure YBA Installer by setting the following options.
 | `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
 | `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. | |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
-| `as_root` | If you are providing a custom configuration file, set to true to perform a [sudo installation](#non-sudo-installation), or false for non-sudo. If the configuration is [auto-generated](#configure-yba-installer), this is set automatically according to whether you used sudo to run the command that triggered the auto generation - true with sudo, or false for non-sudo. Note that you can't switch between running yba-ctl as sudo and non-sudo. | {{<icon/partial>}} |
 
 {{<icon/partial>}} You can't change these settings after installation.
 
