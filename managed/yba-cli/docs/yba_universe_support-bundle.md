@@ -39,6 +39,7 @@ yba universe support-bundle [flags]
 ### SEE ALSO
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
+* [yba universe support-bundle create](yba_universe_support-bundle_create.md)	 - Create a support bundle for a YugabyteDB Anywhere universe
 * [yba universe support-bundle delete](yba_universe_support-bundle_delete.md)	 - Delete a support bundle for a YugabyteDB Anywhere universe
 * [yba universe support-bundle describe](yba_universe_support-bundle_describe.md)	 - Describe a support bundle for a YugabyteDB Anywhere universe
 * [yba universe support-bundle download](yba_universe_support-bundle_download.md)	 - Download a support bundle for a YugabyteDB Anywhere universe
