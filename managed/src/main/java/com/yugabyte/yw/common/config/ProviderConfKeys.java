@@ -471,4 +471,12 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " service per Namespace",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> gcpConnectionDrainingTimeout =
+      new ConfKeyInfo<>(
+          "yb.gcp.operations.connection_draining_timeout",
+          ScopeType.PROVIDER,
+          "GCP Connection Draining Timeout",
+          "Set the connection draining timeout for the GCP load balancer.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
