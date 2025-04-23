@@ -30,7 +30,7 @@ Cluster load shows the number of active connections to the cluster (bars) and th
 
 The view shows the status of your cluster at a glance:
 
-- When it was, idle, active, or bottlenecked
+- When it was idle, active, or bottlenecked
 - What type of load - CPU, I/O, or something else
 
 Each bar shows the connections broken down by state.
@@ -39,11 +39,11 @@ Each bar shows the connections broken down by state.
 | :-------- | :---------- |
 | WaitOnCondition |  |
 | Timeout |  |
-| TServerWait |  |
+| TServerWait | Waiting for TServer threads to complete |
 | Network |  |
-| Lock    |  |
+| Lock    | Waiting on a lock |
 | IO      |  |
-| CPU     |  |
+| CPU     | Query is running normally |
 | Client  |  |
 
 In a typical scenario, an application sends a query to a YSQL process, and that process contacts its local TServer. The TServer farms out the SQL to the appropriate nodes that have the data needed to satisfy the query. Therefore, a typical query requires at least two connections to the cluster: one for the YSQL process, and at least one TServer thread. (There can be multiple TServer threads active if the query has data on multiple nodes.)
@@ -75,15 +75,19 @@ To see anomaly details, click the row. This displays a detailed chart for the sp
 
 ### Application anomalies
 
-Uneven SQL Connections: If connections are not balanced across nodes, a load balancer may be required to prevent node hotspots.
+SQL Connections are Spread Unevenly
+: If connections are not balanced across nodes, a load balancer may be required to prevent node hotspots.
 
 ### Database anomalies
 
-**Hash index where range**. Schema mismatch can cause poor performance for range queries.
+Hash index where range
+: Schema mismatch can cause poor performance for range queries.
 
-**Redundant/Unused Indexes**. Adds write overhead and bloats memory use.
+Redundant/Unused Indexes**
+: Adds write overhead and bloats memory use.
 
-**Uneven read/writes**. May indicate shard-level skew.
+Uneven read/writes
+: May indicate shard-level skew.
 
 ### Node anomalies
 
