@@ -186,6 +186,12 @@ Set up different pools with different load balancing policies as needed for your
 For more information, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
 {{</tip>}}
 
+### Database migrations and connection pools
+
+In some cases, connection pools may trigger unexpected errors while running a sequence of database migrations or other DDL operations.
+
+Because YugabyteDB is distributed, it can take a while for the result of a DDL to fully propagate to all caches on all nodes in a cluster. As a result, after a DDL statement completes, the next DDL statement that runs right afterwards on a different PostgreSQL connection may, in rare cases, see errors such as `duplicate key value violates unique constraint "pg_attribute_relid_attnum_index"` (see issue {{<issue 12449>}}). It is recommended to use a single connection while running a sequence of DDL operations, as is common with application migration scripts with tools such as Flyway or Active Record.
+
 ## Use YSQL Connection Manager
 
 YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/tp idea="1368">}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
