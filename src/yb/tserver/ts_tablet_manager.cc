@@ -1393,7 +1393,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   std::vector<tablet::TableInfoPtr> colocated_tables_infos;
 
   for (const auto& colocated_table : ToRepeatedPtrField(request->colocated_tables())) {
-    VLOG(3) << Format(
+    LOG(INFO) << Format(
         "Adding table $0 to the tablet: $1", colocated_table.table_id(), target_tablet_id);
     colocated_tables_infos.push_back(VERIFY_RESULT(
         tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table)));
@@ -1486,8 +1486,9 @@ Status TSTabletManager::ApplyCloneTablet(
   }
 
   LOG(INFO) << Format(
-      "Starting apply of clone op with seq_no $0 on source tablet $1 to target tablet $2",
-      clone_request_seq_no, source_tablet_id, operation->request()->target_tablet_id());
+      "Starting apply of clone op with seq_no $0 on source T $1 P $3 to target T $2 P $3",
+      clone_request_seq_no, source_tablet_id, operation->request()->target_tablet_id(),
+      fs_manager_->uuid());
   auto status = DoApplyCloneTablet(operation, raft_log, committed_raft_config);
   if (!status.ok()) {
     if (FLAGS_TEST_expect_clone_apply_failure) {
