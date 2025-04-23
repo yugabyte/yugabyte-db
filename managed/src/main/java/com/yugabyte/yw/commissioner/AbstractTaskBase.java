@@ -36,12 +36,14 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.TaskInfo;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.inject.Inject;
@@ -368,6 +370,43 @@ public abstract class AbstractTaskBase implements ITask {
 
   protected TaskCache getTaskCache() {
     return getRunnableTask().getTaskCache();
+  }
+
+  /** This returns the current runtime info from the running task. */
+  protected <T> T getRuntimeInfo(Class<T> clazz) {
+    TaskInfo parentTaskInfo = TaskInfo.getOrBadRequest(getRunnableTask().getTaskUUID());
+    JsonNode node = parentTaskInfo.getRuntimeInfo();
+    if (node == null || node.isNull()) {
+      try {
+        return Json.mapper().treeToValue(Json.newObject(), clazz);
+      } catch (Exception e) {
+        log.error("Error in creating instance of {}", clazz.getName(), e);
+        throw new RuntimeException(e);
+      }
+    }
+    return Json.fromJson(node, clazz);
+  }
+
+  /** This updates the runtime info of the current task via the updater (consumer). */
+  protected <T> void updateRuntimeInfo(Class<T> clazz, Consumer<T> updater) {
+    TaskInfo.updateInTxn(
+        getUserTaskUUID(),
+        tf -> {
+          T runtimeInfo;
+          JsonNode node = tf.getRuntimeInfo();
+          if (node == null || node.isNull()) {
+            try {
+              runtimeInfo = Json.mapper().treeToValue(Json.newObject(), clazz);
+            } catch (Exception e) {
+              log.error("Error in creating instance of {}", clazz.getName(), e);
+              throw new RuntimeException(e);
+            }
+          } else {
+            runtimeInfo = Json.fromJson(node, clazz);
+          }
+          updater.accept(runtimeInfo);
+          tf.setRuntimeInfo(Json.toJson(runtimeInfo));
+        });
   }
 
   protected <T> T getInstanceOf(Class<T> clazz) {

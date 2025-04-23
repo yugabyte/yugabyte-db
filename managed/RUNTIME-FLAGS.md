@@ -143,6 +143,7 @@
 | "Standby Prometheus scrape interval" | "yb.metrics.scrape_interval_standby" | "GLOBAL" | "Need to increase it in case federation metrics request takes more time  than main Prometheus scrape period to complete" | "String" |
 | "Enable viewing metrics in timezone selected at the metrics page" | "yb.ui.metrics.enable_timezone" | "GLOBAL" | "Enable viewing metrics in timezone selected at the metrics page and will be preserved at session level" | "Boolean" |
 | "Node Agent Server Cert Expiry Notice" | "yb.node_agent.server_cert_expiry_notice" | "GLOBAL" | "Duration to start notifying about expiry before node agent server cert actually expires" | "Duration" |
+| "Enable Task Runtime Info on Retry" | "yb.task.enable_task_runtime_info_on_retry" | "GLOBAL" | "Use the runtime info from the previously failed task on retry" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |

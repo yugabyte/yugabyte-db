@@ -1545,4 +1545,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Duration to start notifying about expiry before node agent server cert actually expires",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
+      new ConfKeyInfo<>(
+          "yb.task.enable_task_runtime_info_on_retry",
+          ScopeType.GLOBAL,
+          "Enable Task Runtime Info on Retry",
+          "Use the runtime info from the previously failed task on retry",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

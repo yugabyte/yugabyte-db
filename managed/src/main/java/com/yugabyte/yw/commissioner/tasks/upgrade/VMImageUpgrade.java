@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -51,12 +52,16 @@ import org.apache.commons.lang3.StringUtils;
 @Abortable
 public class VMImageUpgrade extends UpgradeTaskBase {
 
-  private final Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
+  // AZ to node name to volume ID. The name to volume ID assignment makes sure that it is
+  // deterministic on retry after a partial failure.
+  private final Map<UUID, Map<String, String>> replacementRootVolumes = new ConcurrentHashMap<>();
   private final Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
 
   private final RuntimeConfGetter confGetter;
   private final ImageBundleUtil imageBundleUtil;
   private final XClusterUniverseService xClusterUniverseService;
+
+  private volatile RuntimeInfo runtimeInfo;
 
   @Inject
   protected VMImageUpgrade(
@@ -68,6 +73,25 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     this.confGetter = confGetter;
     this.imageBundleUtil = imageBundleUtil;
     this.xClusterUniverseService = xClusterUniverseService;
+  }
+
+  /** Task runtime progress info. */
+  public static class RuntimeInfo {
+    @JsonProperty("volumesCreated")
+    boolean volumesCreated;
+
+    @JsonProperty("replacementRootVolumes")
+    // AZ to node name to volume ID.
+    Map<UUID, Map<String, String>> replacementRootVolumes = new ConcurrentHashMap<>();
+
+    @JsonProperty("replacementRootDevices")
+    Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
+
+    @JsonProperty("volumeReplacedNodes")
+    Set<UUID> volumeReplacedNodes = ConcurrentHashMap.newKeySet();
+
+    @JsonProperty("replacementCompletedNodes")
+    Set<UUID> replacementCompletedNodes = ConcurrentHashMap.newKeySet();
   }
 
   @Override
@@ -105,6 +129,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       }
     }
     addBasicPrecheckTasks();
+    runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
   }
 
   @Override
@@ -212,12 +237,29 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   private void createVMImageUpgradeTasks(Set<NodeDetails> nodes) {
     Map<NodeDetails, ImageSettings> imageSettingsMap = getImageSettingsForNodes(nodes);
-
-    createRootVolumeCreationTasks(imageSettingsMap).setSubTaskGroupType(getTaskSubGroupType());
+    if (runtimeInfo.volumesCreated) {
+      replacementRootDevices.putAll(runtimeInfo.replacementRootDevices);
+      replacementRootVolumes.putAll(runtimeInfo.replacementRootVolumes);
+    } else {
+      createRootVolumeCreationTasks(imageSettingsMap)
+          .setSubTaskGroupType(getTaskSubGroupType())
+          .setAfterGroupRunListener(
+              g ->
+                  updateRuntimeInfo(
+                      RuntimeInfo.class,
+                      info -> {
+                        info.replacementRootDevices = replacementRootDevices;
+                        info.replacementRootVolumes = replacementRootVolumes;
+                        info.volumesCreated = true;
+                      }));
+    }
 
     Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
     Universe universe = getUniverse();
     for (NodeDetails node : imageSettingsMap.keySet()) {
+      if (runtimeInfo.replacementCompletedNodes.contains(node.getNodeUuid())) {
+        continue;
+      }
       ImageSettings imageSettings = imageSettingsMap.get(node);
       final UUID imageBundleUUID = imageSettings.imageBundleUUID;
       final String sshUserOverride = imageSettings.sshUserOverride;
@@ -241,13 +283,20 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.
-      processTypes.forEach(
-          processType ->
-              createServerControlTask(
-                      node, processType, "stop", params -> params.isIgnoreError = true)
-                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
-
-      createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
+      if (!runtimeInfo.volumeReplacedNodes.contains(node.getNodeUuid())) {
+        processTypes.forEach(
+            processType ->
+                createServerControlTask(
+                        node, processType, "stop", params -> params.isIgnoreError = true)
+                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
+        createRootVolumeReplacementTask(node)
+            .setSubTaskGroupType(getTaskSubGroupType())
+            .setAfterGroupRunListener(
+                g ->
+                    updateRuntimeInfo(
+                        RuntimeInfo.class,
+                        info -> info.volumeReplacedNodes.add(node.getNodeUuid())));
+      }
       node.machineImage = machineImage;
       if (StringUtils.isNotBlank(sshUserOverride)) {
         node.sshUserOverride = sshUserOverride;
@@ -290,7 +339,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               createWaitForYbcServerTask(new HashSet<>(Arrays.asList(node)))
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
             } else {
-              long startTime = System.currentTimeMillis();
               // Todo: remove the following subtask.
               // We have an issue where the tserver gets running once the VM with the new image is
               // up.
@@ -346,7 +394,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   }
                 }
               })
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse)
+          .setAfterGroupRunListener(
+              g ->
+                  updateRuntimeInfo(
+                      RuntimeInfo.class,
+                      info -> info.replacementCompletedNodes.add(node.getNodeUuid())));
     }
 
     // Update the imageBundleUUID in the cluster -> userIntent
@@ -365,7 +418,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private SubTaskGroup createRootVolumeCreationTasks(Map<NodeDetails, ImageSettings> settingsMap) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
         settingsMap.keySet().stream().collect(Collectors.groupingBy(n -> n.azUuid));
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateRootVolumes");
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateRootVolumes", getTaskSubGroupType());
 
     rootVolumesPerAZ.forEach(
         (key, value) -> {
@@ -385,14 +438,17 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           fillCreateParamsForNode(params, userIntent, node);
           params.numVolumes = numVolumes;
           params.setMachineImage(machineImage);
-          params.bootDisksPerZone = this.replacementRootVolumes;
+          params.bootDisksPerNodePerZone = this.replacementRootVolumes;
           params.rootDevicePerZone = this.replacementRootDevices;
+          params.nodeNames =
+              value.stream().map(NodeDetails::getNodeName).collect(Collectors.toList());
 
           log.info(
-              "Creating {} root volumes using {} in AZ {}",
+              "Creating {} root volumes using {} in AZ {} for nodes {}",
               params.numVolumes,
               params.getMachineImage(),
-              node.cloudInfo.az);
+              node.cloudInfo.az,
+              params.nodeNames);
 
           CreateRootVolumes task = createTask(CreateRootVolumes.class);
           task.initialize(params);
@@ -404,12 +460,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("ReplaceRootVolume");
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ReplaceRootVolume", getTaskSubGroupType());
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
     replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
-    replaceParams.bootDisksPerZone = this.replacementRootVolumes;
+    replaceParams.bootDisksPerNodePerZone = this.replacementRootVolumes;
     replaceParams.rootDevicePerZone = this.replacementRootDevices;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);

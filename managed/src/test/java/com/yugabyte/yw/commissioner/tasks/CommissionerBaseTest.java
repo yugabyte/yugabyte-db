@@ -68,6 +68,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -226,6 +227,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     factory.globalRuntimeConf().setValue(ENABLE_CUSTOM_HOOKS_PATH, "true");
     factory.globalRuntimeConf().setValue(ENABLE_SUDO_PATH, "true");
     factory.globalRuntimeConf().setValue("yb.universe.consistency_check_enabled", "true");
+    // Disable this to check idempotency of the task.
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableTaskRuntimeInfoOnRetry.getKey(), "false");
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
@@ -574,7 +579,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       boolean checkStrictOrdering,
       int abortStep) {
     try {
-
       // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
       // and it spams logs like crazy - which will cause OOMs in Jenkins
       // - as Jenkins caches stdout in memory until test finishes.

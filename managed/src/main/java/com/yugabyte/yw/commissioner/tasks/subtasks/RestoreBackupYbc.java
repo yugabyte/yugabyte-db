@@ -205,7 +205,8 @@ public class RestoreBackupYbc extends YbcTaskBase {
         restoreBackupParams.currentIdx = taskParams().index;
         restoreBackupParams.nodeIp = nodeIp;
         restoreParams = Json.toJson(restoreBackupParams);
-        getRunnableTask().setTaskParams(restoreParams);
+        final JsonNode restoreParamsRef = restoreParams;
+        TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(restoreParamsRef));
       }
 
       try {

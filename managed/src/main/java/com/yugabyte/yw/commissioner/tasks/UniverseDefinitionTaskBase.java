@@ -1981,7 +1981,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
               })
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+          .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
     // Configure the masters to update the masters addresses in their conf files.
     if (CollectionUtils.isNotEmpty(masterNodes)) {
@@ -1993,19 +1993,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
               })
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+          .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
     // Update the master addresses in memory.
     if (CollectionUtils.isNotEmpty(tserverNodes)) {
       createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+          .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
     // Update the master addresses in memory.
     if (CollectionUtils.isNotEmpty(masterNodes)) {
       createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+          .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
   }
 
@@ -2097,7 +2097,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Update the task details for the task info in the DB.
+   * Update the task details for the task info in the DB. This is used during freezing in
+   * transaction.
    *
    * @param taskParams the given task params(details).
    */
