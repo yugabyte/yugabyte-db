@@ -252,7 +252,7 @@ YSQL also supports JSONB expression indexes, which can be used to speed up data 
 
 {{< /note >}}
 
-## Paralleling across tablets
+## Parallelizing across tablets
 
 For large or batch SELECT or DELETE that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
 
