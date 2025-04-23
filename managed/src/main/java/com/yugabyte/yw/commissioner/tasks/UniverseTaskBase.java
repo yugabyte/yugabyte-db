@@ -3837,9 +3837,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (!forXCluster) {
         // Save backupUUID to taskInfo of the CreateBackup task.
         try {
-          TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
-          taskInfo.setTaskParams(mapper.valueToTree(backupRequestParams));
-          taskInfo.save();
+          TaskInfo.updateInTxn(
+              getUserTaskUUID(), tf -> tf.setTaskParams(mapper.valueToTree(backupRequestParams)));
         } catch (Exception ex) {
           log.error(ex.getMessage());
         }

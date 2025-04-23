@@ -1661,4 +1661,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " disabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
+      new ConfKeyInfo<>(
+          "yb.task.enable_task_runtime_info_on_retry",
+          ScopeType.GLOBAL,
+          "Enable Task Runtime Info on Retry",
+          "Use the runtime info from the previously failed task on retry",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
