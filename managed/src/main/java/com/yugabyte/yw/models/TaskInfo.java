@@ -18,8 +18,10 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.models.helpers.TaskDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.helpers.YBAError;
 import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
@@ -48,6 +50,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -63,6 +67,9 @@ public class TaskInfo extends Model {
 
   private static final FetchGroup<TaskInfo> GET_SUBTASKS_FG =
       FetchGroup.of(TaskInfo.class, "uuid, subTaskGroupType, taskState");
+
+  // This is a key lock for task info by UUID.
+  private static final KeyLock<UUID> TASK_INFO_KEY_LOCK = new KeyLock<UUID>();
 
   public static final Set<State> COMPLETED_STATES =
       Sets.immutableEnumSet(State.Success, State.Failure, State.Aborted);
@@ -229,6 +236,40 @@ public class TaskInfo extends Model {
     this.owner = owner;
   }
 
+  /**
+   * Update the task info record in transaction. Use this for updates by tasks.
+   *
+   * @param taskUuid the task UUID.
+   * @param updater the updater to change the fields.
+   * @return the updated task info.
+   */
+  public static TaskInfo updateInTxn(UUID taskUuid, Consumer<TaskInfo> updater) {
+    TASK_INFO_KEY_LOCK.acquireLock(taskUuid);
+    try {
+      // Perform the below code block in transaction.
+      AtomicReference<TaskInfo> taskInfoRef = new AtomicReference<>();
+      TransactionUtil.doInTxn(
+          () -> {
+            TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
+            updater.accept(taskInfo);
+            taskInfo.save();
+          },
+          TransactionUtil.DEFAULT_RETRY_CONFIG);
+      return taskInfoRef.get();
+    } finally {
+      TASK_INFO_KEY_LOCK.releaseLock(taskUuid);
+    }
+  }
+
+  /**
+   * Inherit properties or fields from the previous task info on retry.
+   *
+   * @param previousTaskInfo the previous task info.
+   */
+  public void inherit(TaskInfo previousTaskInfo) {
+    setRuntimeInfo(previousTaskInfo.getRuntimeInfo());
+  }
+
   @JsonIgnore
   public String getErrorMessage() {
     YBAError error = getTaskError();
@@ -269,6 +310,22 @@ public class TaskInfo extends Model {
       details = new TaskDetails();
     }
     details.setVersion(version);
+  }
+
+  @JsonIgnore
+  public synchronized JsonNode getRuntimeInfo() {
+    if (details == null) {
+      return null;
+    }
+    return details.getRuntimeInfo();
+  }
+
+  @JsonIgnore
+  public synchronized void setRuntimeInfo(JsonNode taskRuntimeInfo) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setRuntimeInfo(taskRuntimeInfo);
   }
 
   public boolean hasCompleted() {

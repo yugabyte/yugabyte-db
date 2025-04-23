@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,4 +12,5 @@ import lombok.Setter;
 public class TaskDetails {
   private String version;
   private YBAError error;
+  private JsonNode runtimeInfo;
 }
