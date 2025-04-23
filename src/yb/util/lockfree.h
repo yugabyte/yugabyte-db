@@ -179,6 +179,10 @@ class LockFreeStack {
     CHECK(IsAcceptableAtomicImpl(head_));
   }
 
+  void Clear() {
+    head_.store(nullptr, std::memory_order_release);
+  }
+
   void Push(T* value) {
     Head old_head = head_.load(boost::memory_order_acquire);
     for (;;) {

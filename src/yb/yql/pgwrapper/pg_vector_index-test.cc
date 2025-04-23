@@ -359,13 +359,11 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(
     std::future<void> future;
     if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
       future = std::async([this] {
-        cds::threading::Manager::attachThread();
         std::this_thread::sleep_for(1s);
         CHECK_OK(cluster_->mini_tablet_server(1)->Restart());
         ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks)
             = false;
         std::this_thread::sleep_for(5s * kTimeMultiplier);
-        cds::threading::Manager::detachThread();
       });
     }
     RETURN_NOT_OK(CreateIndex(conn));

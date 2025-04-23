@@ -20,8 +20,6 @@ find_library(BID_STATIC_LIB libbid.a
   NO_CMAKE_SYSTEM_PATH
   NO_SYSTEM_ENVIRONMENT_PATH)
 
-message(WARNING "BID_INCLUDE_DIR: ${BID_INCLUDE_DIR}")
-
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(BID REQUIRED_VARS
   BID_STATIC_LIB BID_INCLUDE_DIR)

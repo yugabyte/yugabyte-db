@@ -160,19 +160,9 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <cds/container/basket_queue.h>
-#include <cds/container/moir_queue.h>
-#include <cds/container/optimistic_queue.h>
-#include <cds/container/rwqueue.h>
-#include <cds/container/segmented_queue.h>
-#include <cds/container/vyukov_mpmc_cycle_queue.h>
-#include <cds/gc/dhp.h>
-#include <cds/init.h>
 #undef EV_ERROR // On mac is it defined as some number, but ev++.h uses it in enum
 #include <ev++.h>
-#include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
-#include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gmock/gmock.h>
 #include <google/protobuf/arena.h>

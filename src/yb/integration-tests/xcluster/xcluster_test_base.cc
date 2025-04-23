@@ -165,11 +165,9 @@ void XClusterTestBase::TearDown() {
 
 Status XClusterTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster) {
   auto producer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
     return run_on_cluster(producer_cluster());
   });
   auto consumer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
     return run_on_cluster(consumer_cluster());
   });
 
@@ -182,11 +180,9 @@ Status XClusterTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> r
 
 Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster) {
   auto producer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
     return run_on_cluster(&producer_cluster_);
   });
   auto consumer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
     return run_on_cluster(&consumer_cluster_);
   });
 
