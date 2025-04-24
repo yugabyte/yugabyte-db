@@ -1134,6 +1134,9 @@ class TransactionParticipant::Impl
     return min_replay_txn_start_ht_.load(std::memory_order_acquire);
   }
 
+  // Returns the minimum start time among all running transactions.
+  // Returns kInvalid if loading of transactions is not completed.
+  // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
