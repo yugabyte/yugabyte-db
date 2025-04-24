@@ -250,6 +250,11 @@ DEFINE_NON_RUNTIME_int32(stateful_svc_default_queue_length, 50,
 DEFINE_RUNTIME_bool(tserver_heartbeat_add_replication_status, true,
     "Add replication status to heartbeats tserver sends to master");
 
+DEFINE_RUNTIME_int32(
+    check_lagging_catalog_versions_interval_secs, 900,
+    "Interval at which pg backends are checked for lagging catalog versions.");
+TAG_FLAG(check_lagging_catalog_versions_interval_secs, advanced);
+
 namespace yb::tserver {
 
 namespace {
@@ -741,6 +746,10 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(maintenance_manager_->Init());
 
+  if (FLAGS_enable_ysql) {
+    ScheduleCheckLaggingCatalogVersions();
+  }
+
   google::FlushLogFiles(google::INFO); // Flush the startup messages.
 
   return Status::OK();
@@ -1028,7 +1037,7 @@ Status TabletServer::GetTserverCatalogMessageLists(
     LOG(WARNING) << "Could not find messages for database " << db_oid;
     return Status::OK();
   }
-  const auto& messages_vec = it->second;
+  const auto& messages_vec = it->second.queue;
   uint64_t expected_version = ysql_catalog_version + 1;
   std::set<uint64_t> current_versions;
   for (const auto& info : messages_vec) {
@@ -1238,8 +1247,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
         ysql_last_breaking_catalog_version_ = new_breaking_version;
       }
       // Create the entry of db_oid if not exists.
-      ysql_db_invalidation_messages_map_.insert(make_pair(
-          db_oid, std::deque<std::pair<uint64_t, std::optional<std::string>>>()));
+      ysql_db_invalidation_messages_map_.insert(
+          std::make_pair(db_oid, InvalidationMessagesInfo()));
     }
   }
   if (!catalog_version_table_in_perdb_mode_.has_value() &&
@@ -1345,7 +1354,7 @@ void TabletServer::SetYsqlDBCatalogInvalMessages(
       auto it2 = ysql_db_invalidation_messages_map_.find(db_oid);
       if (it2 != ysql_db_invalidation_messages_map_.end()) {
         // The db_oid isn't new and it is already exists in ysql_db_invalidation_messages_map_.
-        db_message_lists = &it2->second;
+        db_message_lists = &it2->second.queue;
         // The messages are in ascending order of current_version. We may have a picture like
         // Existing: x, x+1, x+2, ..., x+i, x+i+1, x+i+2
         // Incoming:                   x+i, x+i+1, x+i+2, x+i+3, ... x+i+j
@@ -1400,6 +1409,37 @@ void TabletServer::SetYsqlDBCatalogInvalMessages(
       db_message_lists->pop_front();
     }
   }
+}
+
+void TabletServer::DoGarbageCollectionOfInvalidationMessages(
+    const std::map<uint32_t, std::vector<uint64_t>>& db_local_catalog_versions_map,
+    std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions) {
+  std::lock_guard l(lock_);
+
+  // Do garbage collection for each database in ysql_db_invalidation_messages_map_.
+  for (auto it = ysql_db_invalidation_messages_map_.begin();
+       it != ysql_db_invalidation_messages_map_.end(); ++it) {
+    // TODO (myang) implement GC of ysql_db_invalidation_messages_map_.
+  }
+}
+
+Status TabletServer::CheckYsqlLaggingCatalogVersions() {
+  auto deadline = CoarseMonoClock::Now() + default_client_timeout();
+  auto pg_conn = VERIFY_RESULT(CreateInternalPGConn("template1", deadline));
+  const std::string query = "SELECT datid, local_catalog_version FROM "
+                            "yb_pg_stat_get_backend_local_catalog_version(NULL) "
+                            "ORDER BY datid ASC, local_catalog_version ASC";
+  auto rows = VERIFY_RESULT((pg_conn.FetchRows<pgwrapper::PGOid, pgwrapper::PGUint64>(query)));
+  std::map<uint32_t, std::vector<uint64_t>> db_local_catalog_versions_map;
+  for (const auto& [datid, local_catalog_version] : rows) {
+    db_local_catalog_versions_map[datid].push_back(local_catalog_version);
+  }
+  LOG(INFO) << "db_local_catalog_versions_map: " << yb::ToString(db_local_catalog_versions_map);
+  std::map<uint32_t, std::vector<uint64_t>> garbage_collected_db_versions;
+  DoGarbageCollectionOfInvalidationMessages(
+      db_local_catalog_versions_map, &garbage_collected_db_versions);
+  LOG(INFO) << "garbage_collected_db_versions: " << yb::ToString(garbage_collected_db_versions);
+  return Status::OK();
 }
 
 void TabletServer::WriteServerMetaCacheAsJson(JsonWriter* writer) {
@@ -1745,6 +1785,23 @@ Status TabletServer::SetCDCServiceEnabled() {
 
 TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
   return *xcluster_context_;
+}
+
+void TabletServer::ScheduleCheckLaggingCatalogVersions() {
+  LOG(INFO) << __func__;
+  messenger()->scheduler().Schedule(
+    [this](const Status& status) {
+      if (!status.ok()) {
+        LOG(INFO) << status;
+        return;
+      }
+      auto s = CheckYsqlLaggingCatalogVersions();
+      if (!s.ok()) {
+        LOG(WARNING) << "Could not get the set of lagging catalog versions: " << s;
+      }
+      ScheduleCheckLaggingCatalogVersions();
+    },
+    std::chrono::seconds(FLAGS_check_lagging_catalog_versions_interval_secs));
 }
 
 void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server,
