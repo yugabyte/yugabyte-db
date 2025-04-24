@@ -39,6 +39,10 @@ However, on-premises cron-based universes must be upgraded manually. To do this,
 
 Provision nodes for on-premises universes using the `node-agent-provision.sh` script. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
+YugabyteDB Anywhere v2024.2 and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2024.2 or later, all your universes must be using node agent.
+
+YugabyteDB Anywhere will attempt to automatically update universes. If it is unable to update a universe, make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by navigating to the universe and clicking **Actions>Install Node Agent**.
+
 ## xCluster
 
 If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
