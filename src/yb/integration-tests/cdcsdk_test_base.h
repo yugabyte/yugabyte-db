@@ -56,6 +56,7 @@ DECLARE_bool(TEST_stop_committed_op_id_updation);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(cdc_send_null_before_image_if_not_exists);
 DECLARE_bool(enable_tablet_split_of_replication_slot_streamed_tables);
+DECLARE_bool(TEST_simulate_load_txn_for_cdc);
 
 namespace yb {
 using client::YBClient;

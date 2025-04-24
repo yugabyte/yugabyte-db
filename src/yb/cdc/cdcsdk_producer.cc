@@ -2359,9 +2359,18 @@ bool CanUpdateCheckpointOpId(
 Result<uint64_t> GetConsistentStreamSafeTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
     const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
-    const CoarseTimePoint& deadline) {
+    const CoarseTimePoint& deadline, bool* txn_load_in_progress) {
   HybridTime consistent_stream_safe_time = tablet_ptr->GetMinStartHTRunningTxnsForCDCProducer();
-  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kInvalid
+  // GetMinStartHTRunningTxnsForCDCProducer returns kInvalid when loading of transactions is not yet
+  // complete.
+  if (!consistent_stream_safe_time.is_valid()) {
+    *txn_load_in_progress = true;
+    return HybridTime::kInitial.ToUint64();
+  }
+
+  // GetMinStartHTRunningTxnsForCDCProducer returns kMax when there are no running transactions. In
+  // this case use leader_safe_time,
+  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kMax
                                     ? leader_safe_time
                                     : consistent_stream_safe_time;
 
@@ -2596,6 +2605,26 @@ bool CheckResponseSafeTimeCorrectness(
   return is_entire_wal_read;
 }
 
+uint64_t GetCommitTimeThreshold(
+    const std::optional<uint64_t>& consistent_snapshot_time, const int64_t& safe_hybrid_time_req) {
+  uint64_t commit_time_threshold = 0;
+
+  if (consistent_snapshot_time.has_value()) {
+    if (safe_hybrid_time_req >= 0) {
+      commit_time_threshold =
+          std::max(static_cast<uint64_t>(safe_hybrid_time_req), *consistent_snapshot_time);
+    } else {
+      commit_time_threshold = *consistent_snapshot_time;
+    }
+  } else {
+    if (safe_hybrid_time_req >= 0) {
+      commit_time_threshold = static_cast<uint64_t>(safe_hybrid_time_req);
+    }
+  }
+
+  return commit_time_threshold;
+}
+
 // CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
 
@@ -2641,6 +2670,7 @@ Status GetChangesForCDCSDK(
   bool pending_intents = false;
   int wal_segment_index = GetWalSegmentIndex(wal_segment_index_req);
   bool wait_for_wal_update = false;
+  bool txn_load_in_progress = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   auto leader_safe_time = tablet_ptr->SafeTime();
@@ -2650,7 +2680,8 @@ Status GetChangesForCDCSDK(
     leader_safe_time = HybridTime::kInvalid;
   }
   uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
-      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline));
+      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline,
+      &txn_load_in_progress));
   OpId historical_max_op_id = tablet_ptr->transaction_participant()
                                   ? tablet_ptr->transaction_participant()->GetHistoricalMaxOpId()
                                   : OpId::Invalid();
@@ -2774,7 +2805,14 @@ Status GetChangesForCDCSDK(
       size_t next_checkpoint_index = 0;
 
       consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
-          tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline));
+          tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline,
+          &txn_load_in_progress));
+
+      if (txn_load_in_progress) {
+        LOG(INFO) << "Loading of transactions is in progress for tablet: " << tablet_id
+                  << " . Will not stream any record in this call.";
+        break;
+      }
 
       DCHECK(last_readable_opid_index);
       if (FLAGS_cdc_enable_consistent_records)
@@ -2841,20 +2879,8 @@ Status GetChangesForCDCSDK(
         // We should not stream messages we have already streamed again in this case,
         // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
         // safe_hybrid_time_req.
-
-        uint64_t commit_time_threshold = 0;
-        if (consistent_snapshot_time.has_value()) {
-          if (safe_hybrid_time_req >= 0) {
-            commit_time_threshold = std::max((uint64_t)safe_hybrid_time_req,
-                                             *consistent_snapshot_time);
-          } else {
-            commit_time_threshold = *consistent_snapshot_time;
-          }
-        } else {
-          if (safe_hybrid_time_req >= 0) {
-            commit_time_threshold = (uint64_t)safe_hybrid_time_req;
-          }
-        }
+        uint64_t commit_time_threshold =
+            GetCommitTimeThreshold(consistent_snapshot_time, safe_hybrid_time_req);
         VLOG(3) << "Commit time Threshold = " << commit_time_threshold;
         VLOG(3) << "Txn commit time       = " << GetTransactionCommitTime(msg);
 
@@ -3164,7 +3190,7 @@ Status GetChangesForCDCSDK(
   // request safe in the response as well.
   auto computed_safe_hybrid_time_req =
       HybridTime((safe_hybrid_time_req > 0) ? safe_hybrid_time_req : 0);
-  auto safe_time = wait_for_wal_update
+  auto safe_time = (wait_for_wal_update || txn_load_in_progress)
                        ? computed_safe_hybrid_time_req
                        : GetCDCSDKSafeTimeForTarget(
                              leader_safe_time.get(), safe_hybrid_time_resp, have_more_messages,
