@@ -530,7 +530,15 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // that there is no invalidation message. There is nothing in the PG catalog cache that can
   // be invalidated by an empty string.
   using InvalidationMessagesQueue = std::deque<std::pair<uint64_t, std::optional<std::string>>>;
-  using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesQueue>;
+  // If cutoff_catalog_version > 0, we can garbage collect any slots that have catalog version
+  // <= cutoff_catalog_version because no backends on this node will ever need those invalidation
+  // messages in order to support incremental catalog cache refresh. A backend will need at least
+  // cutoff_catalog_version + 1 for incremental catalog cache refresh.
+  struct InvalidationMessagesInfo {
+    uint64_t cutoff_catalog_version = 0;
+    InvalidationMessagesQueue queue;
+  };
+  using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesInfo>;
   DbOidToInvalidationMessagesMap ysql_db_invalidation_messages_map_ GUARDED_BY(lock_);
 
   // See same variable comments in CatalogManager.
@@ -572,6 +580,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void InvalidatePgTableCache();
   void InvalidatePgTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                               const std::unordered_set<uint32_t>& db_oids_deleted);
+
+  void ScheduleCheckLaggingCatalogVersions();
+  Status CheckYsqlLaggingCatalogVersions();
+
+  void DoGarbageCollectionOfInvalidationMessages(
+      const std::map<uint32_t, std::vector<uint64_t>>& db_local_catalog_versions_map,
+      std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions);
 
   std::string log_prefix_;
 
