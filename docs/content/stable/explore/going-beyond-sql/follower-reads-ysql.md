@@ -39,11 +39,14 @@ The following YSQL configuration parameters control the behavior of follower rea
 
 - `yb_follower_read_staleness_ms` sets the maximum allowable staleness. The default value is 30000 (30 seconds).
 
-  Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms). If the users want to monitor whether any reads are getting redirected to the leader, they can monitor the metric - `consistent_prefix_failed_reads`, it will show the number of such requests redirected.
+  Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms). 
+
+  Note that even if the tablet leader is on the closest node, you would still read from `Now()-yb_follower_read_staleness_ms`. Therefore, when follower reads are used, the read is always stale, even if you are reading from a tablet leader.
+
+  If the users want to monitor whether any reads are getting redirected to the leader, they can monitor the metric - `consistent_prefix_failed_reads`, it will show the number of such requests redirected.
 
 - `ysql_follower_reads_avoid_waiting_for_safe_time` governs whether a stale read will “wait” at the follower, or be redirected to the “leader” immediately.
 
-Note that even if the tablet leader is on the closest node, you would still read from `Now()-yb_follower_read_staleness_ms`. Therefore, when follower reads are used, the read is always stale, even if you are reading from a tablet leader.
 
 ## Expected behavior
 
