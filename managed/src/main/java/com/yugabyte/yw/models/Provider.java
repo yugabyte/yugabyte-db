@@ -354,14 +354,28 @@ public class Provider extends Model {
   }
 
   public void setUsabilityState(UsabilityState usabilityState) {
+    this.prevUsabilityState = getUsabilityState();
     this.usabilityState = usabilityState;
   }
+
+  @Column
+  @ApiModelProperty(value = "Update source if current state is UPDATING", accessMode = READ_ONLY)
+  private UpdateSource updateSource = null;
+
+  @Column
+  @ApiModelProperty(value = "Previous usability state", accessMode = READ_ONLY)
+  private UsabilityState prevUsabilityState = UsabilityState.READY;
 
   public enum UsabilityState {
     READY,
     UPDATING,
     ERROR,
     DELETING
+  }
+
+  public enum UpdateSource {
+    USER,
+    AUTO
   }
 
   /** Query Helper for Provider with uuid */

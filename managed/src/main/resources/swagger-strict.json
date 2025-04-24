@@ -9646,11 +9646,23 @@
           "description" : "Provider name",
           "type" : "string"
         },
+        "prevUsabilityState" : {
+          "description" : "Previous usability state",
+          "enum" : [ "READY", "UPDATING", "ERROR", "DELETING" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
         "regions" : {
           "items" : {
             "$ref" : "#/definitions/Region"
           },
           "type" : "array"
+        },
+        "updateSource" : {
+          "description" : "Update source if current state is UPDATING",
+          "enum" : [ "USER", "AUTO" ],
+          "readOnly" : true,
+          "type" : "string"
         },
         "usabilityState" : {
           "description" : "Current usability state",
