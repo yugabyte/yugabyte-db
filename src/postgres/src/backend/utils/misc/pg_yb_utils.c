@@ -131,6 +131,8 @@ static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
+static bool YbHasDdlMadeChanges();
+
 uint64_t
 YBGetActiveCatalogCacheVersion()
 {
@@ -1242,6 +1244,7 @@ typedef struct
 	List	   *altered_table_ids;
 
 	YbCatalogMessageList *committed_pg_txn_messages;
+	bool force_send_inval_messages;
 } YbDdlTransactionState;
 
 static YbDdlTransactionState ddl_transaction_state = {0};
@@ -2756,10 +2759,10 @@ YbCopyCommittedPgTxnMessages(SharedInvalidationMessage *currentInvalMessages)
 void
 YBCommitTransactionContainingDDL()
 {
-	const bool	has_write = YBCPgHasWriteOperationsInDdlTxnMode();
+	const bool	has_change = YbHasDdlMadeChanges();
 
 	MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
-									has_write);
+									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
 	if (yb_test_fail_next_ddl)
@@ -2787,7 +2790,7 @@ YBCommitTransactionContainingDDL()
 	int			numCatCacheMsgs = 0;
 	int			numRelCacheMsgs = 0;
 	bool		enable_inval_msgs = YbIsInvalidationMessageEnabled();
-	if (has_write)
+	if (has_change)
 	{
 		const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(ddl_transaction_state.catalog_modification_aspects.applied);
 
@@ -2999,10 +3002,10 @@ YBDecrementDdlNestingLevel()
 	 */
 	if (ddl_transaction_state.nesting_level > 0)
 	{
-		const bool	has_write = YBCPgHasWriteOperationsInDdlTxnMode();
+		const bool	has_change = YbHasDdlMadeChanges();
 
 		MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
-										has_write);
+										has_change);
 	}
 	/*
 	 * The transaction contains DDL statements and uses a separate DDL
@@ -7456,4 +7459,16 @@ YbRefreshMatviewInPlace()
 {
 	return yb_refresh_matview_in_place ||
 		   YBCPgYsqlMajorVersionUpgradeInProgress();
+}
+
+static bool
+YbHasDdlMadeChanges()
+{
+	return YBCPgHasWriteOperationsInDdlTxnMode() || ddl_transaction_state.force_send_inval_messages;
+}
+
+void
+YbForceSendInvalMessages()
+{
+	ddl_transaction_state.force_send_inval_messages = true;
 }

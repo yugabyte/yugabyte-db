@@ -4100,15 +4100,8 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   EasyCurl c;
   faststring buf;
 
-  auto prometheus_metrics_url =
-      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
-  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
-  auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
-
-  auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
-  ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
-  auto json_metrics = ParseJsonMetrics(buf.ToString());
+  auto prometheus_metrics = GetPrometheusMetrics();
+  auto json_metrics = GetJsonMetrics();
 
   for (const auto& metrics : {json_metrics, prometheus_metrics}) {
     int64_t expected_total_cache_misses = 0;
