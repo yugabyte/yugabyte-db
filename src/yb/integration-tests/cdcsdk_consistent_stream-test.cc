@@ -1227,5 +1227,54 @@ TEST_F(CDCSDKConsistentStreamTest, TestConsumptionContinuationAfterSegmentGC) {
   ASSERT_EQ(change_resp.records.size(), 300);
 }
 
+TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_load_txn_for_cdc) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  auto tablet = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet.begin()->tablet_id()));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Perform txn 1 and commit it.
+  ASSERT_OK(WriteRowsHelper(0, 2, &test_cluster_, true /* commit */));
+
+  // Start txn 2 but do not commit it.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (999999, 999999)"));
+
+  // Perform txn 3 and commit it.
+  ASSERT_OK(WriteRowsHelper(2, 4, &test_cluster_, true /* commit */));
+
+  // Since load transactions is in progress we should not ship any records.
+  auto get_change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablet));
+  ASSERT_EQ(get_change_resp.cdc_sdk_proto_records_size(), 0);
+
+  // Simulate load txn complete by switching off the flag.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_load_txn_for_cdc) = false;
+
+  // Now that load transactions is complete, we can ship txn 1 (BEGIN, DDL, 2 INSERTS, COMMIT).
+  // However, since txn 2 is running, we will not ship txn 2 and 3.
+  get_change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablet));
+  ASSERT_EQ(get_change_resp.cdc_sdk_proto_records_size(), 5);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto tablet_safe = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+        return tablet_safe->GetMinStartHTRunningTxnsForCDCProducer() == HybridTime::kMax;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the commit of running txn."));
+
+  // Now that there are no running transactions we can ship all the records from all the
+  // transactions.
+  get_change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablet));
+  ASSERT_EQ(get_change_resp.cdc_sdk_proto_records_size(), 12);
+}
+
 }  // namespace cdc
 }  // namespace yb
