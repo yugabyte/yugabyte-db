@@ -287,7 +287,7 @@ SET row_security = off;
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
 \if :use_roles
@@ -378,7 +378,7 @@ SET row_security = off;
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
 \if :use_roles
