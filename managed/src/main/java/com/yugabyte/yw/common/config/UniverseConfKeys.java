@@ -1613,4 +1613,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Amount of space (in KB) we want as buffer for NFS precheck",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> rollingOpsWaitAfterEachPodMs =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms",
+          ScopeType.UNIVERSE,
+          "Wait after each pod restart in rolling operations",
+          "Time to wait after each pod restart before restarting the next pod in rolling"
+              + " operations",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
