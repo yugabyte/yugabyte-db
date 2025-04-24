@@ -34,7 +34,7 @@
 #include "yb/vector_index/vector_lsm.h"
 
 DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
-                      "Number of vector in initial vector index chunk");
+    "Number of vector in initial vector index chunk");
 
 DEFINE_RUNTIME_PREVIEW_uint32(vector_index_ef, 128,
     "The \"expansion\" parameter for search");
@@ -139,22 +139,21 @@ EncodedDistance EncodeDistance(float distance) {
   }
 }
 
-struct VectorIndexMergeFilter {
-  const std::string& log_prefix;
-  docdb::BoundedRocksDbIterator iter;
-
-  explicit VectorIndexMergeFilter(const std::string& log_prefix_, const DocDB& doc_db)
-      : log_prefix(log_prefix_), iter(doc_db.regular, {}, doc_db.key_bounds)
+class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
+ public:
+  explicit VectorMergeFilter(const std::string& log_prefix, const DocDB& doc_db)
+      : log_prefix_(log_prefix), iter_(doc_db.regular, {}, doc_db.key_bounds)
   {}
 
   const std::string& LogPrefix() const {
-    return log_prefix;
+    return log_prefix_;
   }
 
-  rocksdb::FilterDecision operator()(vector_index::VectorId vector_id) {
+  rocksdb::FilterDecision Filter(vector_index::VectorId vector_id) override {
     if (FLAGS_vector_index_skip_filter_check) {
       return rocksdb::FilterDecision::kKeep;
     }
+
     // TODO(vector_index): Revise once regular compaction correctly handles VectorId <=> ybctid;
     // additionally check the following points:
     // 1) Should tombstoned mapping be taken into account for filtering decision?
@@ -168,13 +167,17 @@ struct VectorIndexMergeFilter {
 
     // Simple filtering by VectorId <=> ybctid presence in the regulard db.
     auto key = dockv::DocVectorKey(vector_id);
-    const auto& db_entry = iter.Seek(key.AsSlice());
+    const auto& db_entry = iter_.Seek(key.AsSlice());
     auto keep  = db_entry.Valid() && db_entry.key.starts_with(key.AsSlice());
     auto decision = keep ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
 
     VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
     return decision;
   }
+
+ private:
+  const std::string& log_prefix_;
+  docdb::BoundedRocksDbIterator iter_;
 };
 
 template<vector_index::IndexableVectorType Vector,
@@ -212,21 +215,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
               const std::string& data_root_dir,
               rpc::ThreadPool& thread_pool,
               const PgVectorIdxOptionsPB& idx_options) {
-    using Options = typename LSM::Options;
-    using VectorIndexPtr  = typename Options::VectorIndexPtr;
-    using VectorIndexPtrs = typename Options::VectorIndexPtrs;
-
-    index_id_ = idx_options.id();
-
-    auto vector_index_merger =
-       [this](VectorIndexPtr& target, const VectorIndexPtrs& source) {
-          const auto& log_prefix = lsm_.options().log_prefix;
-          VectorIndexMergeFilter filter(log_prefix, doc_db_);
-          return vector_index::Merge(target, source, std::ref(filter));
-       };
-
     name_ = RemoveLogPrefixColon(log_prefix);
-    Options lsm_options = {
+    typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
@@ -234,7 +224,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = &thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
-      .vector_index_merger = std::move(vector_index_merger),
+      .vector_merge_filter_factory = [this]() {
+        return std::make_unique<VectorMergeFilter>(
+            std::cref(lsm_.options().log_prefix), std::cref(doc_db_));
+      },
     };
     return lsm_.Open(std::move(lsm_options));
   }
