@@ -528,6 +528,7 @@
         "azOverrides": "AZ Overrides",
         "forceApply": "Force Apply",
         "k8sOverrides": "Kubernetes Overrides",
+        "validateAndSaveSuccess": "Validated and Saved Successfully",
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
