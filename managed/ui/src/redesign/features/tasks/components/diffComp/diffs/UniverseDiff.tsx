@@ -92,6 +92,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           }}
         />
       );
+      this.changesCount++;
     }
   }
 
@@ -618,6 +619,11 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     const beforeComp: JSX.Element[] = [];
     const afterComp: JSX.Element[] = [];
 
+    const changesCountByOperation = {
+      [DiffOperation.ADDED]: 0,
+      [DiffOperation.REMOVED]: 0,
+      [DiffOperation.CHANGED]: 0
+    };
     // Check for the added instance tags.
     beforeInstanceTags &&
       Object.keys(beforeInstanceTags).forEach((key) => {
@@ -628,6 +634,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           );
           afterComp.push(<InstanceTagsField operation={DiffOperation.REMOVED} value={'---'} />);
           this.changesCount++;
+          changesCountByOperation[DiffOperation.REMOVED]++;
         } else if (afterInstanceTags && beforeInstanceTags[key] !== afterInstanceTags[key]) {
           attributes.push(<InstanceTagsField value={key} />);
           beforeComp.push(
@@ -637,6 +644,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
             <InstanceTagsField operation={DiffOperation.ADDED} value={afterInstanceTags[key]} />
           );
           this.changesCount++;
+          changesCountByOperation[DiffOperation.CHANGED]++;
         }
       });
     afterInstanceTags &&
@@ -648,6 +656,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
             <InstanceTagsField operation={DiffOperation.ADDED} value={afterInstanceTags[key]} />
           );
           this.changesCount++;
+          changesCountByOperation[DiffOperation.ADDED]++;
         }
       });
     this.cards[ClusterType.PRIMARY].push(
@@ -666,11 +675,11 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           element: <>{beforeComp}</>
         }}
         operation={
-          size(afterInstanceTags) === 0
-            ? DiffOperation.REMOVED
-            : size(beforeInstanceTags) === 0
+          changesCountByOperation[DiffOperation.CHANGED] > 0
+            ? DiffOperation.CHANGED
+            : changesCountByOperation[DiffOperation.ADDED] > 0
             ? DiffOperation.ADDED
-            : DiffOperation.CHANGED
+            : DiffOperation.REMOVED
         }
       />
     );
