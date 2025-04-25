@@ -1782,7 +1782,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
       }
       MaybeIncludeSample(resp, wait_state_pb, sample_size, samples_considered);
     }
-    VLOG(2) << "Tracker call sending " << resp->DebugString();
+    VLOG_IF(2, resp->wait_states_size() > 0) << "Tracker call sending " << resp->DebugString();
   }
 
   Status ActiveSessionHistory(

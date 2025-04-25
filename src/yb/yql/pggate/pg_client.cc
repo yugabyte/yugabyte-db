@@ -36,6 +36,7 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -52,7 +53,8 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
 
 DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
-    "Pg client heartbeat interval in ms.");
+    "Pg client heartbeat interval in ms. Needs to be greater than 1000ms.");
+DEFINE_validator(pg_client_heartbeat_interval_ms, FLAG_GT_VALUE_VALIDATOR(1000));
 
 DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
@@ -1459,6 +1461,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   rpc::RpcController* PrepareHeartbeatController() {
     heartbeat_controller_.Reset();
+    // Should update the flag validator if the 1s grace period is changed.
     heartbeat_controller_.set_timeout(FLAGS_pg_client_heartbeat_interval_ms * 1ms - 1s);
     return &heartbeat_controller_;
   }

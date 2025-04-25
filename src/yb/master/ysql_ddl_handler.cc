@@ -186,6 +186,11 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
   return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
+bool CatalogManager::HasDdlVerificationState(const TransactionId& txn) const {
+  LockGuard lock(ddl_txn_verifier_mutex_);
+  return ysql_ddl_txn_verfication_state_map_.contains(txn);
+}
+
 Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
                                                   const string& pb_txn_id,
                                                   std::optional<bool> is_committed,

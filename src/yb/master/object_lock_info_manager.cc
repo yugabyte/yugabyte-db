@@ -45,6 +45,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
@@ -122,6 +123,7 @@ class ObjectLockInfoManager::Impl {
       ReleaseObjectLockRequestPB&& req, std::optional<LeaderEpoch> leader_epoch = std::nullopt,
       std::optional<StdStatusCallback> callback = std::nullopt);
   void UnlockObject(const TransactionId& txn_id);
+  bool IsDdlVerificationInProgress(const TransactionId& txn) const;
 
   Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp,
                           rpc::RpcContext& rpc,
@@ -278,6 +280,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::string LogPrefix() const override;
 
  private:
+  Status DoLaunch();
   void LaunchFrom(size_t from_idx);
   void Done(size_t i, const Status& s);
   void CheckForDone();
@@ -304,6 +307,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::optional<uint64_t> requestor_latest_lease_epoch_;
   CoarseTimePoint deadline_;
   const TracePtr trace_;
+  bool launched_ = false;
 };
 
 template <class Req, class Resp>
@@ -524,6 +528,10 @@ std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLo
     object_lock_infos_map_.insert({ts_uuid, info});
     return info;
   }
+}
+
+bool ObjectLockInfoManager::Impl::IsDdlVerificationInProgress(const TransactionId& txn) const {
+  return catalog_manager_.HasDdlVerificationState(txn);
 }
 
 bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts_uuid) const {
@@ -1110,19 +1118,31 @@ std::string UpdateAllTServers<Req>::LogPrefix() const {
 
 template <class Req>
 Status UpdateAllTServers<Req>::Launch() {
+  auto s = DoLaunch();
+  if (!launched_) {
+    DoCallbackAndRespond(s);
+  }
+  return s;
+}
+
+template <class Req>
+Status UpdateAllTServers<Req>::DoLaunch() {
   if (!txn_id_) {
     return STATUS(
         InvalidArgument, "Could not parse txn_id for the request. $0", txn_id_.status().ToString());
-  }
-  VLOG_WITH_PREFIX(2) << " processing request: " << req_.ShortDebugString();
-  auto s = BeforeRpcs();
-  if (!s.ok()) {
-    DoCallbackAndRespond(s);
-    return s;
+  } else if (
+      IsReleaseRequest() && object_lock_info_manager_.IsDdlVerificationInProgress(*txn_id_)) {
+    VLOG_WITH_PREFIX(1) << " is already scheduled for ddl verification. "
+                        << "Ignoring release request, as it will be released by the ddl verifier.";
+    return Status::OK();
   }
 
+  VLOG_WITH_PREFIX(2) << " processing request: " << req_.ShortDebugString();
+  RETURN_NOT_OK(BeforeRpcs());
+
+  // Do this check after the BeforeRpcs() call, to ensure that the request was added to
+  // in progress requests.
   if (PREDICT_FALSE(FLAGS_TEST_skip_launch_release_request) && IsReleaseRequest()) {
-    DoCallbackAndRespond(Status::OK());
     return Status::OK();
   }
 
@@ -1130,6 +1150,7 @@ Status UpdateAllTServers<Req>::Launch() {
   ts_descriptors_ = object_lock_info_manager_.GetAllTSDescriptorsWithALiveLease();
   statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
   LaunchFrom(0);
+  launched_ = true;
   return Status::OK();
 }
 
