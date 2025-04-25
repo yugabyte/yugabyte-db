@@ -24,9 +24,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -815,8 +815,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", b.getBackupInfo().storageLocation);
     Result result = restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, user);
-    assertEquals(FORBIDDEN, result.status());
-    assertEquals("User doesn't have access", contentAsString(result));
+    assertEquals(UNAUTHORIZED, result.status());
+    assertEquals("Unable to authorize user", contentAsString(result));
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 

@@ -225,9 +225,10 @@ public class RoleUtilTest extends FakeDBApplication {
                 new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     Role roleUpdated = Role.getOrBadRequest(customer.getUuid(), role.getRoleUUID());
     assertEquals(5, roleUpdated.getPermissionDetails().getPermissionList().size());
-    assertEquals(1, RoleBinding.getAll().size());
+    // 1 role binding for superadmin, and 1 for the custom role binding.
+    assertEquals(2, RoleBinding.getAll().size());
     assertEquals(
-        3, RoleBinding.getAll().get(0).getResourceGroup().getResourceDefinitionSet().size());
+        3, RoleBinding.getAll().get(1).getResourceGroup().getResourceDefinitionSet().size());
     ResourceDefinition expectedRD1 =
         ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
     ResourceDefinition expectedRD2 =

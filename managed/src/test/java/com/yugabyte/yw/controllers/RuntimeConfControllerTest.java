@@ -97,7 +97,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     defaultProvider = ModelFactory.kubernetesProvider(defaultCustomer);
-    Users user = ModelFactory.testUser(defaultCustomer, Users.Role.SuperAdmin);
+    Users user = ModelFactory.testSuperAdminUserNewRbac(defaultCustomer);
     authToken = user.createAuthToken();
   }
 
