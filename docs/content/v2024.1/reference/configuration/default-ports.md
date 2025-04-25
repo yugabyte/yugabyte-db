@@ -40,7 +40,7 @@ xCluster uses the YB-Master port 7100 for the initial communication, and then us
 
 Port 7000 (to access the [admin UI](#admin-web-server)) should also be open to all nodes, as requests made to the Master UI of a non-leader Master are internally redirected to the leader Master's 7000 port.
 
-YB Controller manages backup and restore operations, and requires the following port be open on all YugabyteDB nodes:
+The YB Controller service manages backup and restore operations. If you are using YB Controller, open the following port on all YugabyteDB nodes:
 
 | Service       | Port  |
 | ------------- | ----- |
