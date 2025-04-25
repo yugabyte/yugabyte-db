@@ -33,9 +33,6 @@
 #include "yb/tserver/tablet_server.h"
 
 #include <algorithm>
-#include <limits>
-#include <list>
-#include <thread>
 #include <utility>
 
 #include "yb/cdc/cdc_service.h"
@@ -59,7 +56,6 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/hash/city.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_ddl.pb.h"
@@ -76,7 +72,6 @@
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/rpc_server.h"
-#include "yb/server/webserver.h"
 #include "yb/server/ycql_stat_provider.h"
 
 #include "yb/tablet/maintenance_manager.h"
@@ -91,6 +86,9 @@
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
+#include "yb/tserver/stateful_services/pg_cron_leader_service.h"
+#include "yb/tserver/stateful_services/test_echo_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -101,20 +99,17 @@
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/ysql_lease_poller.h"
-#include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
-#include "yb/tserver/stateful_services/pg_cron_leader_service.h"
-#include "yb/tserver/stateful_services/test_echo_service.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
@@ -1608,6 +1603,8 @@ Status TabletServer::XClusterPopulateMasterHeartbeatRequest(
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp) {
   xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
+  xcluster_context_->UpdateXClusterInfoPerNamespace(
+      resp.xcluster_heartbeat_info().xcluster_info_per_namespace());
 
   auto* xcluster_consumer = GetXClusterConsumer();
 

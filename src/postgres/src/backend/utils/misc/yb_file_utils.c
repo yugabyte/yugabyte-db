@@ -60,6 +60,9 @@ yb_write_struct_to_file(const char *tempfile_name, const char *file_name,
 {
 	FILE	   *temp_fpout;
 
+	if (!struct_ptr)
+		return;
+
 	temp_fpout = AllocateFile(tempfile_name, PG_BINARY_W);
 	if (temp_fpout == NULL)
 	{
@@ -94,7 +97,6 @@ yb_write_struct_to_file(const char *tempfile_name, const char *file_name,
 						tempfile_name)));
 		unlink(tempfile_name);
 	}
-
 	else if (rename(tempfile_name, file_name) < 0)
 	{
 		ereport(LOG,

@@ -30,6 +30,7 @@
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
       "back": "Back",
+      "next": "Next",
       "selectAll": "Select All",
       "selected": "Selected",
       "note": "Note :",
@@ -312,6 +313,7 @@
           "title": "Custom Queries",
           "infoText": "The provided PromQL expressions will be run and the result will be stored in the support bundle under the corresponding folder name.",
           "addCustomQuery": "Add Custom Query",
+          "customQuery": "Custom Query",
           "folderName": "Folder Name",
           "prometheusQuery": "PromQL expression",
           "validationError": {
@@ -2964,6 +2966,51 @@
       "github": "GitHub",
       "freeTShirtAt": "Free t-shirt at",
       "yugabyteInc": "Yugabyte, Inc."
+    },
+    "createUniverseV2": {
+      "title": "Create Universe",
+      "steps": {
+        "general": "General",
+        "generalSettings": "General Settings",
+        "placement": "Placement",
+        "resilienceAndRegions": "Resilience and Regions",
+        "nodesAndAvailabilityZone": "Nodes and Availability Zones",
+        "hardware": "Hardware",
+        "instanceSettings": "Instance Settings",
+        "database": "Database",
+        "databaseSettings": "Database Settings",
+        "security": "Security",
+        "securitySettings": "Security Settings",
+        "advanced": "Advanced",
+        "proxySettings": "Proxy Settings",
+        "otherAdvancedSettings": "Other Advanced Settings",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost"
+      },
+      "generalSettings": {
+        "title": "General Settings",
+        "universeName":"Universe Name",
+        "universeNamePlaceholder": "Enter Universe Name",
+        "cloudProvider": "Cloud Provider",
+        "providerconfiguration": "Provider Configuration",
+        "providerConfigurationPlaceholder": "Select Provider Configuration",
+        "databaseVersion": "Database Version",
+        "databaseVersionPlaceholder": "Select Database Version",
+        "errMsg": {
+          "universeNameRequired": "Universe name is required",
+          "cloudProviderRequired": "Cloud provider is required",
+          "providerConfigurationRequired": "Provider configuration is required",
+          "databaseVersionRequired": "Database version is required"
+        }
+      },
+      "resilienceAndRegions": {
+        "title": "Resilience",
+        "resilienceType": {
+          "regular": "Regular Cluster",
+          "singleNode": "Single-Node Cluster",
+          "quickSetup": "Quick Setup"
+        }
+      }
     }
   }
 }

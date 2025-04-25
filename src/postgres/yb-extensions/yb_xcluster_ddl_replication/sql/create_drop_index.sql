@@ -1,4 +1,5 @@
 CALL TEST_reset();
+SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 CREATE SCHEMA create_index;
 SET search_path TO create_index;

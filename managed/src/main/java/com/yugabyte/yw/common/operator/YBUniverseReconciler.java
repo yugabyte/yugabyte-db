@@ -55,6 +55,7 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
@@ -1177,6 +1178,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
     String storageClass = ybUniverse.getSpec().getDeviceInfo().getStorageClass();
     String kubeNamespace = ybUniverse.getMetadata().getNamespace();
+    String domainName =
+        maybeGetKubeDomainFromOverrides(ybUniverse.getSpec().getKubernetesOverrides());
     KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
     providerData.regionList =
         providerData.regionList.stream()
@@ -1197,6 +1200,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                                 HashMap<String, String> tempMap = new HashMap<>(z.config);
                                 if (StringUtils.isNotBlank(storageClass)) {
                                   tempMap.put("STORAGE_CLASS", storageClass);
+                                }
+                                if (StringUtils.isNotBlank(domainName)) {
+                                  tempMap.put("KUBE_DOMAIN", domainName);
                                 }
                                 tempMap.put("KUBENAMESPACE", kubeNamespace);
                                 z.config = tempMap;
@@ -1306,5 +1312,16 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     } catch (Exception e) {
       log.error("Error deleting release cr", e);
     }
+  }
+
+  private String maybeGetKubeDomainFromOverrides(KubernetesOverrides overrides) {
+    if (overrides != null && overrides.getAdditionalProperties() != null) {
+      for (Map.Entry<String, Object> entry : overrides.getAdditionalProperties().entrySet()) {
+        if (entry.getKey().equals("domainName")) {
+          return entry.getValue().toString();
+        }
+      }
+    }
+    return null;
   }
 }

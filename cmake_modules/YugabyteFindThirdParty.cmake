@@ -101,12 +101,6 @@ macro(yb_find_third_party_dependencies)
     SHARED_LIB "${GLOG_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS glog)
 
-  find_package(CDS REQUIRED)
-  include_directories(SYSTEM ${CDS_INCLUDE_DIR})
-  ADD_THIRDPARTY_LIB(cds
-    STATIC_LIB "${CDS_STATIC_LIB}"
-    SHARED_LIB "${CDS_SHARED_LIB}")
-
   if (NOT APPLE)
     ## libunwind (dependent of glog)
     ## Doesn't build on OSX.
@@ -410,4 +404,19 @@ macro(yb_find_third_party_dependencies)
   ADD_THIRDPARTY_LIB(clockbound
     STATIC_LIB ${CLOCKBOUND_STATIC_LIB}
     INCLUDE_DIRS ${CLOCKBOUND_INCLUDE_DIR})
+
+  ## Bson
+  find_package(Bson REQUIRED)
+  include_directories(SYSTEM ${BSON_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(bson
+    STATIC_LIB "${BSON_STATIC_LIB}")
+
+  ## Bid
+  if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+    find_package(Bid REQUIRED)
+    include_directories(SYSTEM ${BID_INCLUDE_DIR})
+    ADD_THIRDPARTY_LIB(bid
+      STATIC_LIB "${BID_STATIC_LIB}")
+  endif()
+
 endmacro()

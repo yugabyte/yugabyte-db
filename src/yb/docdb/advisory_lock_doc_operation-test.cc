@@ -58,11 +58,11 @@ class AdvisoryLockDocOperationTest : public DocDBTestBase {
     RETURN_NOT_OK(op.Init(
         &response, std::make_shared<DocReadContext>(DocReadContext::TEST_Create(schema))));
     auto doc_write_batch = MakeDocWriteBatch();
-    HybridTime restart_read_ht;
+    ReadRestartData read_restart_data;
     RETURN_NOT_OK(op.Apply({
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = ReadOperationData(),
-      .restart_read_ht = &restart_read_ht,
+      .read_restart_data = &read_restart_data,
       .schema_packing_provider = nullptr,
     }));
     return WriteToRocksDB(doc_write_batch, HybridTime::kMax);

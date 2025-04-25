@@ -229,10 +229,8 @@ TransactionErrorCode GetTransactionErrorCode(const Status& status) {
 struct PgClientSessionOperation {
   std::shared_ptr<client::YBPgsqlOp> op;
   std::unique_ptr<PgsqlReadRequestPB> vector_index_read_request;
-
-  // TODO(vector_index) Support multiple reads in a single perform.
-  std::unique_ptr<rpc::Sidecars> vector_index_sidecars{};
-  MonoTime vector_index_fetch_start{};
+  // TODO(vector_index): Handle table-splitting when it will be supported.
+  size_t partition_idx = 0;
 };
 
 using PgClientSessionOperations = std::vector<PgClientSessionOperation>;
@@ -420,9 +418,188 @@ Status GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr
   return Status::OK();
 }
 
+struct FetchedVector {
+  uint64_t distance;
+  RefCntSlice data;
+  size_t partition_idx;
+};
+
+struct VectorIndexQueryPartitionData {
+  size_t number_of_vectors_returned_to_postgres = 0;
+  size_t number_of_vectors_fetched_from_tablet = 0;
+  bool whether_all_vectors_was_fetched = false;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        number_of_vectors_returned_to_postgres, number_of_vectors_fetched_from_tablet,
+        whether_all_vectors_was_fetched);
+  }
+};
+
+class VectorIndexQuery {
+ public:
+  VectorIndexQuery() = default;
+
+  bool active() const {
+    return active_;
+  }
+
+  bool IsContinuation(const PgsqlPagingStatePB& paging_state) const {
+    return paging_state.main_key() == id_.ToString();
+  }
+
+  void Prepare(
+      const PgsqlReadRequestPB& read_req, const client::YBTablePtr& table,
+      PgClientSessionOperations& ops) {
+    DCHECK(!active_);
+    active_ = true;
+    auto partitions = table->GetPartitionsShared();
+    if (partitions_.empty()) {
+      partitions_.resize(partitions->size());
+    } else {
+      DCHECK_EQ(partitions_.size(), partitions->size());
+      DCHECK_EQ(table_->id(), table->id());
+    }
+    table_ = table;
+    auto prefetch_size = read_req.index_request().vector_idx_options().prefetch_size();
+    prefetch_size_ = prefetch_size < 0 ? std::numeric_limits<size_t>::max() : prefetch_size;
+
+    sidecars_ = std::make_unique<rpc::Sidecars>();
+    size_t partition_idx = 0;
+    for (const auto& key : *partitions) {
+      const auto& partition_state = partitions_[partition_idx];
+      if (!partition_state.whether_all_vectors_was_fetched &&
+          partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
+              > partition_state.number_of_vectors_fetched_from_tablet) {
+        auto new_read_req = std::make_unique<PgsqlReadRequestPB>(read_req);
+        new_read_req->set_partition_key(key);
+        new_read_req->mutable_index_request()->mutable_vector_idx_options()
+            ->set_num_top_vectors_to_remove(partition_state.number_of_vectors_fetched_from_tablet);
+        auto read_op = std::make_shared<client::YBPgsqlReadOp>(
+            table, *sidecars_, new_read_req.get());
+        ops.push_back(PgClientSessionOperation {
+          .op = std::move(read_op),
+          .vector_index_read_request = std::move(new_read_req),
+          .partition_idx = partition_idx,
+        });
+      }
+      ++partition_idx;
+    }
+    return_paging_state_ = read_req.return_paging_state();
+    fetch_start_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
+  }
+
+  Status ProcessResponse(
+      const PgClientSessionOperations& ops, TabletReadTime* used_read_time,
+      PgPerformResponsePB& resp, rpc::Sidecars& sidecars) {
+    active_ = false;
+    auto dump_stats = fetch_start_ != MonoTime();
+    auto process_start_time = MonoTime::NowIf(dump_stats);
+
+    MonoTime reduce_start_time;
+    if (!ops.empty()) {
+      ProcessOperationsResponse(ops, used_read_time);
+      reduce_start_time = MonoTime::NowIf(dump_stats);
+
+      // TODO(vector_index): Actually "old" vectors already sorted.
+      // So we could sort newly added vectors, then just merge with this first part.
+      // Or even more advances, there are several sorted chunks in vectors.
+      // Could merge them instead of full sort.
+      std::ranges::sort(vectors_, [](const auto& lhs, const auto& rhs) {
+        return lhs.distance < rhs.distance;
+      });
+    } else {
+      reduce_start_time = process_start_time;
+    }
+
+    auto& responses = *resp.mutable_responses();
+    auto& out_resp = *responses.Add();
+    auto& write_buffer = sidecars.Start();
+
+    size_t response_size = std::min(prefetch_size_, vectors_.size());
+
+    pggate::PgWire::WriteInt64(response_size, &write_buffer);
+    for (size_t i = 0; i != response_size; ++i) {
+      const auto& vector = vectors_[i];
+      ++partitions_[vector.partition_idx].number_of_vectors_returned_to_postgres;
+      out_resp.mutable_vector_index_distances()->Add(vector.distance);
+      write_buffer.Append(vector.data.AsSlice());
+    }
+    vectors_.erase(vectors_.begin(), vectors_.begin() + response_size);
+
+    // TODO(vector_index): Check actual response status.
+    out_resp.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+    out_resp.set_rows_data_sidecar(narrow_cast<int32_t>(sidecars.Complete()));
+    out_resp.set_partition_list_version(table_->GetPartitionListVersion());
+    if (return_paging_state_ && CouldFetchMore()) {
+      auto& paging_state = *out_resp.mutable_paging_state();
+      paging_state.set_table_id(table_->id());
+      paging_state.set_main_key(id_.ToString());
+      if (used_read_time) {
+        used_read_time->value.ToPB(paging_state.mutable_read_time());
+      }
+      VLOG_WITH_FUNC(3) << "Paging state: " << AsString(paging_state);
+    }
+
+    LOG_IF(INFO, dump_stats)
+        << "VI_STATS: Fetch time: "
+        << (process_start_time - fetch_start_).ToPrettyString()
+        << ", collect time: " << (reduce_start_time - process_start_time).ToPrettyString()
+        << ", reduce time: " << (MonoTime::Now() - reduce_start_time).ToPrettyString();
+
+    return Status::OK();
+  }
+
+ private:
+  bool CouldFetchMore() const {
+    if (!vectors_.empty()) {
+      return true;
+    }
+    auto pred = [](const auto& partition) {
+      return !partition.whether_all_vectors_was_fetched;
+    };
+    return std::ranges::any_of(partitions_, pred);
+  }
+
+  void ProcessOperationsResponse(
+      const PgClientSessionOperations& ops, TabletReadTime* used_read_time) {
+    for (const auto& op : ops) {
+      auto op_sidecars = sidecars_->Extract(*op.op->sidecar_index());
+      auto& op_resp = op.op->response();
+      auto& distances = op_resp.vector_index_distances();
+      auto& ends = op_resp.vector_index_ends();
+      size_t sidecar_offset = 8;
+      for (int index = 0; index != distances.size(); ++index) {
+        auto new_offset = ends[index];
+        vectors_.push_back(FetchedVector {
+          .distance = distances[index],
+          .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
+          .partition_idx = op.partition_idx,
+        });
+        sidecar_offset = new_offset;
+      }
+      partitions_[op.partition_idx].number_of_vectors_fetched_from_tablet += distances.size();
+      if (make_unsigned(distances.size()) < prefetch_size_) {
+        partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
+      }
+    }
+  }
+
+  Uuid id_ = Uuid::Generate();
+  bool active_ = false;
+  size_t prefetch_size_ = 0;
+  std::vector<FetchedVector> vectors_;
+  client::YBTablePtr table_;
+  std::vector<VectorIndexQueryPartitionData> partitions_;
+  std::unique_ptr<rpc::Sidecars> sidecars_;
+  bool return_paging_state_ = false;
+  MonoTime fetch_start_;
+};
+using VectorIndexQueryPtr = std::shared_ptr<VectorIndexQuery>;
+
 Result<PgClientSessionOperations> PrepareOperations(
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
-    PgTableCache* table_cache) {
+    PgTableCache* table_cache, VectorIndexQueryPtr& vector_index_query) {
   auto write_time = HybridTime::FromPB(req->write_time());
   PgClientSessionOperations ops;
   ops.reserve(req->ops().size());
@@ -446,23 +623,11 @@ Result<PgClientSessionOperations> PrepareOperations(
           LOG(DFATAL) << status << ": " << req->ShortDebugString();
           return status;
         }
-        auto partitions = table->GetPartitionsShared();
-        auto vector_index_sidecars = std::make_unique<rpc::Sidecars>();
-        size_t first_idx = ops.size();
-        for (const auto& key : *partitions) {
-          auto new_read = std::make_unique<PgsqlReadRequestPB>(read);
-          new_read->set_partition_key(key);
-          auto read_op = std::make_shared<client::YBPgsqlReadOp>(
-              table, *vector_index_sidecars, new_read.get());
-          ops.push_back(PgClientSessionOperation {
-            .op = std::move(read_op),
-            .vector_index_read_request = std::move(new_read),
-          });
+        if (!vector_index_query ||
+            !vector_index_query->IsContinuation(read.index_request().paging_state())) {
+          vector_index_query = std::make_shared<VectorIndexQuery>();
         }
-        ops[first_idx].vector_index_sidecars = std::move(vector_index_sidecars);
-        if (FLAGS_vector_index_dump_stats) {
-          ops[first_idx].vector_index_fetch_start = MonoTime::Now();
-        }
+        vector_index_query->Prepare(read, table, ops);
       } else {
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
         if (read_from_followers) {
@@ -532,6 +697,7 @@ struct PerformData {
   UsedReadTimeApplier used_read_time_applier;
   PgResponseCache::Setter cache_setter;
   HybridTime used_in_txn_limit;
+  VectorIndexQueryPtr vector_index_query;
 
   PerformData(
       uint64_t session_id_, PgTableCache* table_cache_, PgPerformRequestPB* req_,
@@ -588,8 +754,8 @@ struct PerformData {
     if (used_in_txn_limit) {
       resp.set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
     }
-    if (!ops.empty() && ops.front().vector_index_read_request) {
-      return ProcessVectorIndexResponse(used_read_time);
+    if (vector_index_query && vector_index_query->active()) {
+      return vector_index_query->ProcessResponse(ops, used_read_time, resp, sidecars);
     }
     auto& responses = *resp.mutable_responses();
     responses.Reserve(narrow_cast<int>(ops.size()));
@@ -675,65 +841,6 @@ struct PerformData {
         table_cache.Invalidate(op.op->table()->id());
       }
     }
-
-    return Status::OK();
-  }
-
-  Status ProcessVectorIndexResponse(TabletReadTime* used_read_time) {
-    auto& front = ops.front();
-    auto dump_stats = front.vector_index_fetch_start != MonoTime();
-    auto process_start_time = MonoTime::NowIf(dump_stats);
-    const auto& read = *front.vector_index_read_request;
-    auto& responses = *resp.mutable_responses();
-
-    std::vector<RefCntSlice> all_sidecars;
-    all_sidecars.reserve(ops.size());
-    std::vector<std::pair<uint64_t, Slice>> vectors;
-
-    for (const auto& op : ops) {
-      auto op_sidecars = front.vector_index_sidecars->Extract(*op.op->sidecar_index());
-      all_sidecars.push_back(op_sidecars);
-      auto sidecars_data = op_sidecars.data();
-      auto& op_resp = op.op->response();
-      auto& distances = op_resp.vector_index_distances();
-      auto& ends = op_resp.vector_index_ends();
-      size_t sidecar_offset = 8;
-      for (int index = 0; index != distances.size(); ++index) {
-        auto new_offset = ends[index];
-        vectors.emplace_back(
-            distances[index], Slice(sidecars_data + sidecar_offset, sidecars_data + new_offset));
-        sidecar_offset = new_offset;
-      }
-    }
-
-    auto reduce_start_time = MonoTime::NowIf(dump_stats);
-
-    std::ranges::sort(vectors, [](const auto& lhs, const auto& rhs) {
-      return lhs.first < rhs.first;
-    });
-
-    auto& out_resp = *responses.Add();
-    auto& write_buffer = sidecars.Start();
-    auto prefetch_size = read.index_request().vector_idx_options().prefetch_size();
-    if (prefetch_size >= 0 && vectors.size() > make_unsigned(prefetch_size)) {
-      vectors.resize(prefetch_size);
-    }
-
-    pggate::PgWire::WriteInt64(vectors.size(), &write_buffer);
-    for (const auto& [distance, data] : vectors) {
-      out_resp.mutable_vector_index_distances()->Add(distance);
-      write_buffer.Append(data);
-    }
-
-    out_resp.set_status(front.op->response().status());
-    out_resp.set_rows_data_sidecar(narrow_cast<int32_t>(sidecars.Complete()));
-    out_resp.set_partition_list_version(front.op->table()->GetPartitionListVersion());
-
-    LOG_IF(INFO, dump_stats)
-        << "VI_STATS: Fetch time: "
-        << (process_start_time - front.vector_index_fetch_start).ToPrettyString()
-        << ", collect time: " << (reduce_start_time - process_start_time).ToPrettyString()
-        << ", reduce time: " << (MonoTime::Now() - reduce_start_time).ToPrettyString();
 
     return Status::OK();
   }
@@ -2326,7 +2433,8 @@ class PgClientSession::Impl {
     data->subtxn_id = options.active_sub_transaction_id();
 
     data->ops = VERIFY_RESULT(PrepareOperations(
-        &data->req, session, &data->sidecars, &table_cache()));
+        &data->req, session, &data->sidecars, &table_cache(), vector_index_query_data_));
+    data->vector_index_query = vector_index_query_data_;
     TracePtr trace(Trace::CurrentTrace());
     session->FlushAsync([this, data, trace](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3008,7 +3116,7 @@ class PgClientSession::Impl {
     client_.ReleaseObjectLocksGlobalAsync(
         *release_req, [release_req](Status s) {
           WARN_NOT_OK(
-              s, Format("Realese global locks failed for req $0", release_req->ShortDebugString()));
+              s, Format("Release global locks failed for req $0", release_req->ShortDebugString()));
         }, deadline - ToCoarse(MonoTime::Now()));
     return Status::OK();
   }
@@ -3057,6 +3165,7 @@ class PgClientSession::Impl {
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
 
   std::atomic<bool> plain_session_has_exclusive_object_locks_{false};
+  VectorIndexQueryPtr vector_index_query_data_;
 };
 
 PgClientSession::PgClientSession(

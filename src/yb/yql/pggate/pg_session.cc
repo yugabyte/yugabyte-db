@@ -16,38 +16,31 @@
 #include "yb/yql/pggate/pg_session.h"
 
 #include <algorithm>
-#include <future>
 #include <optional>
 #include <utility>
 
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/tablespace_parser.h"
-#include "yb/qlexpr/ql_expr.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
-#include "yb/common/transaction_error.h"
+#include "yb/common/tablespace_parser.h"
 
 #include "yb/gutil/casts.h"
-
-#include "yb/tserver/pg_client.messages.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
 
@@ -496,6 +489,10 @@ Status PgSession::DropDatabase(const std::string& database_name, PgOid database_
 Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
   *version = VERIFY_RESULT(pg_client_.GetCatalogMasterVersion());
   return Status::OK();
+}
+
+Result<int> PgSession::GetXClusterRole(uint32_t db_oid) {
+  return pg_client_.GetXClusterRole(db_oid);
 }
 
 Status PgSession::CancelTransaction(const unsigned char* transaction_id) {

@@ -1287,7 +1287,6 @@ Status StepDown(
 std::thread RestartsThread(
     MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag) {
   return std::thread([cluster, interval, stop_flag] {
-    CDSAttacher attacher;
     SetFlagOnExit set_stop_on_exit(stop_flag);
     int it = 0;
     while (!stop_flag->load(std::memory_order_acquire)) {

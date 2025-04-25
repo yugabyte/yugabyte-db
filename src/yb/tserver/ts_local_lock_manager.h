@@ -17,8 +17,6 @@
 
 #include <memory>
 
-#include <boost/multi_index/hashed_index.hpp>
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.pb.h"
 #include "yb/docdb/object_lock_manager.h"

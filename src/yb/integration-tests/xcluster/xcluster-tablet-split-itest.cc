@@ -809,7 +809,6 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
   // Setup a new thread for continuous writing to producer.
   std::atomic<bool> stop(false);
   std::thread write_thread([this, &stop] {
-    CDSAttacher attacher;
     client::TableHandle producer_table;
     ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
     auto producer_session = client_->NewSession(60s);
@@ -1186,7 +1185,6 @@ TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
   std::atomic<bool> stop(false);
   int32_t rows_written = 0;
   std::thread write_thread([this, &stop, &rows_written] {
-    CDSAttacher attacher;
     client::TableHandle producer_table;
     ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
     auto producer_session = client_->NewSession(60s * kTimeMultiplier);

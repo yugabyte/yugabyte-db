@@ -423,12 +423,6 @@ void InitThreading();
 
 void SetThreadName(const std::string& name);
 
-class CDSAttacher {
- public:
-  CDSAttacher();
-  ~CDSAttacher();
-};
-
 void RenderAllThreadStacks(std::ostream& output);
 size_t CountManagedThreads();
 size_t CountStartedThreads();

@@ -216,6 +216,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     using VectorIndexPtr  = typename Options::VectorIndexPtr;
     using VectorIndexPtrs = typename Options::VectorIndexPtrs;
 
+    index_id_ = idx_options.id();
+
     auto vector_index_merger =
        [this](VectorIndexPtr& target, const VectorIndexPtrs& source) {
           const auto& log_prefix = lsm_.options().log_prefix;
@@ -334,7 +336,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
  private:
   std::string DirName() const {
-    return kVectorIndexDirPrefix + table_id_;
+    return kVectorIndexDirPrefix + index_id_;
   }
 
   const TableId table_id_;
@@ -342,6 +344,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const ColumnId column_id_;
   const HybridTime hybrid_time_;
   const DocDB doc_db_;
+  std::string index_id_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
 

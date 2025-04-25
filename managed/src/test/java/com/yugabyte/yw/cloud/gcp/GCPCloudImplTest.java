@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.google.api.services.compute.model.Backend;
@@ -19,6 +18,8 @@ import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -38,21 +40,28 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
 
 public class GCPCloudImplTest extends FakeDBApplication {
 
-  private GCPCloudImpl gcpCloudImpl;
+  @Spy @InjectMocks GCPCloudImpl gcpCloudImpl;
   private Customer customer;
   private Provider defaultProvider;
   private Region defaultRegion;
   @Mock private GCPProjectApiClient mockApiClient;
+  @Mock RuntimeConfGetter mockConfGetter;
   private String GCPBaseUrl = "https://compute.googleapis.com/compute/v1/projects/project/";
 
   @Before
   public void setup() throws Exception {
-    gcpCloudImpl = spy(new GCPCloudImpl());
+    MockitoAnnotations.openMocks(this);
+    when(mockConfGetter.getConfForScope(
+            any(Provider.class), eq(ProviderConfKeys.gcpConnectionDrainingTimeout)))
+        .thenReturn(Duration.ofMinutes(5));
     customer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.gcpProvider(customer);
     defaultRegion = new Region();

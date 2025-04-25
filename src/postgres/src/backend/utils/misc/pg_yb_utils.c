@@ -131,6 +131,8 @@ static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
+static bool YbHasDdlMadeChanges();
+
 uint64_t
 YBGetActiveCatalogCacheVersion()
 {
@@ -857,7 +859,10 @@ void
 GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
 							   const char **msg_buf, size_t *msg_nargs,
 							   const char ***msg_args, const char **detail_buf,
-							   size_t *detail_nargs, const char ***detail_args)
+							   size_t *detail_nargs, const char ***detail_args,
+							   const char **detail_log_buf,
+							   size_t *detail_log_nargs,
+							   const char ***detail_log_args)
 {
 	const char *status_msg = YBCMessageAsCString(s);
 	size_t		status_nargs;
@@ -871,6 +876,9 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
 	*detail_buf = NULL;
 	*detail_nargs = 0;
 	*detail_args = NULL;
+	*detail_log_buf = NULL;
+	*detail_log_nargs = 0;
+	*detail_log_args = NULL;
 	elog(DEBUG2, "status_msg=%s pg_err_code=%d", status_msg, pg_err_code);
 
 	switch (pg_err_code)
@@ -890,6 +898,36 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
 			*detail_buf = status_msg;
 			*detail_nargs = status_nargs;
 			*detail_args = status_args;
+			break;
+		case ERRCODE_YB_RESTART_READ:
+			*msg_buf = "Restart read required";
+			*msg_nargs = 0;
+			*msg_args = NULL;
+
+			/*
+			 * Read restart errors occur when writes fall within the uncertianty
+			 * interval [read_time, global_limit).
+			 *
+			 * Moreover, read_time can be less than the current time since it
+			 * is picked as the docdb tablet's safe time as an optimization in
+			 * some cases.
+			 *
+			 * As a consequence, read_time may be lower than the commit time of the
+			 * previous transaction from the same session.
+			 *
+			 * In this case, a read restart error may be issued to move the read
+			 * time past the commit time.
+			 *
+			 * To capture such cases, print the start time of the statement. This
+			 * allows comparison between the start time and the original read time.
+			 */
+			*detail_log_buf = psprintf("%s, stmt_start_time: %s, txn_start_time: %s, iso:%d",
+									   status_msg,
+									   timestamptz_to_str(GetCurrentStatementStartTimestamp()),
+									   timestamptz_to_str(GetCurrentTransactionStartTimestamp()),
+									   XactIsoLevel);
+			*detail_log_nargs = status_nargs;
+			*detail_log_args = status_args;
 			break;
 		case ERRCODE_YB_DEADLOCK:
 			*msg_buf = "deadlock detected";
@@ -1206,6 +1244,7 @@ typedef struct
 	List	   *altered_table_ids;
 
 	YbCatalogMessageList *committed_pg_txn_messages;
+	bool force_send_inval_messages;
 } YbDdlTransactionState;
 
 static YbDdlTransactionState ddl_transaction_state = {0};
@@ -2720,10 +2759,10 @@ YbCopyCommittedPgTxnMessages(SharedInvalidationMessage *currentInvalMessages)
 void
 YBCommitTransactionContainingDDL()
 {
-	const bool	has_write = YBCPgHasWriteOperationsInDdlTxnMode();
+	const bool	has_change = YbHasDdlMadeChanges();
 
 	MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
-									has_write);
+									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
 	if (yb_test_fail_next_ddl)
@@ -2751,7 +2790,7 @@ YBCommitTransactionContainingDDL()
 	int			numCatCacheMsgs = 0;
 	int			numRelCacheMsgs = 0;
 	bool		enable_inval_msgs = YbIsInvalidationMessageEnabled();
-	if (has_write)
+	if (has_change)
 	{
 		const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(ddl_transaction_state.catalog_modification_aspects.applied);
 
@@ -2963,10 +3002,10 @@ YBDecrementDdlNestingLevel()
 	 */
 	if (ddl_transaction_state.nesting_level > 0)
 	{
-		const bool	has_write = YBCPgHasWriteOperationsInDdlTxnMode();
+		const bool	has_change = YbHasDdlMadeChanges();
 
 		MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
-										has_write);
+										has_change);
 	}
 	/*
 	 * The transaction contains DDL statements and uses a separate DDL
@@ -7420,4 +7459,16 @@ YbRefreshMatviewInPlace()
 {
 	return yb_refresh_matview_in_place ||
 		   YBCPgYsqlMajorVersionUpgradeInProgress();
+}
+
+static bool
+YbHasDdlMadeChanges()
+{
+	return YBCPgHasWriteOperationsInDdlTxnMode() || ddl_transaction_state.force_send_inval_messages;
+}
+
+void
+YbForceSendInvalMessages()
+{
+	ddl_transaction_state.force_send_inval_messages = true;
 }

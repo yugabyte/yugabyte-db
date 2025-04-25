@@ -442,6 +442,8 @@ message SysObjectLockEntryPB {
 message SysXClusterConfigEntryPB {
   optional uint32 version = 1;
   optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
+  // Local NamespaceId -> xCluster info for that namespace.
+  map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 3;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for Redis Config.

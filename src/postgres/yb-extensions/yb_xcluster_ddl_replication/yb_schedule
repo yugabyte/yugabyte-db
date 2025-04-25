@@ -1,4 +1,7 @@
 test: setup
+
+test: routines
+
 test: create_drop_table
 test: create_drop_index
 

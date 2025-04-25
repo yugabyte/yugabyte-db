@@ -605,7 +605,7 @@ void ColumnFamilyData::RecalculateWriteStallConditions(
     write_controller_token_ = write_controller->GetStopToken();
     RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
         "[%s] Stopping writes because we have %" PRIu64 " bytes to flush, while % " PRIu64
-        "is allowed",
+        " is allowed",
         name_.c_str(), imm()->TotalDataSize(), mutable_cf_options.max_flushing_bytes);
   } else if (imm()->NumNotFlushed() >= mutable_cf_options.max_write_buffer_number) {
     write_controller_token_ = write_controller->GetStopToken();

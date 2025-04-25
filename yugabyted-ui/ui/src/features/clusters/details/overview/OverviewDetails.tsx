@@ -19,6 +19,7 @@ import {
   useGetClusterTablesQuery,
   GetClusterTablesApiEnum,
 } from "@app/api/src";
+import XClusterTab from "../xcluster/XClusterTab";
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
@@ -46,6 +47,11 @@ const tabList: ITabListItem[] = [
     name: "tabNodes",
     component: NodesTab,
     testId: "ClusterTabList-Nodes",
+  },
+  {
+    name: "xCluster",
+    component: XClusterTab,
+    testId: "XClusterTabList"
   },
   {
     name: "tabActivity",

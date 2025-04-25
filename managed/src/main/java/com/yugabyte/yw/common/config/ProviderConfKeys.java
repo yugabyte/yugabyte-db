@@ -506,4 +506,12 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Default earlyoom arguments",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpConnectionDrainingTimeout =
+      new ConfKeyInfo<>(
+          "yb.gcp.operations.connection_draining_timeout",
+          ScopeType.PROVIDER,
+          "GCP Connection Draining Timeout",
+          "Set the connection draining timeout for the GCP load balancer.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -17,6 +17,7 @@
 #include <shared_mutex>
 #include <unordered_map>
 
+#include "yb/common/common_types.pb.h"  // gcc needs for std::unordered_map XClusterNamespaceInfoPB
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_types.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
@@ -35,17 +36,24 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const override;
 
+  XClusterNamespaceInfoPB_XClusterRole GetXClusterRole(
+      const NamespaceId& namespace_id) const override EXCLUDES(mutex_);
+
   bool IsReadOnlyMode(const NamespaceId& namespace_id) const override;
-  bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const override
-      EXCLUDES(target_namespaces_in_automatic_mode_mutex_);
+  bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const override EXCLUDES(mutex_);
 
   bool SafeTimeComputationRequired() const override;
   bool SafeTimeComputationRequired(const NamespaceId& namespace_id) const override;
 
   void UpdateSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+
+  void UpdateXClusterInfoPerNamespace(
+      const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
+          automatic_mode_replication_state_per_namespace) EXCLUDES(mutex_);
+
   void UpdateTargetNamespacesInAutomaticModeSet(
       const std::unordered_set<NamespaceId>& target_namespaces_in_automatic_mode) override
-      EXCLUDES(target_namespaces_in_automatic_mode_mutex_);
+      EXCLUDES(mutex_);
 
   Status SetSourceTableInfoMappingForCreateTable(
       const YsqlFullTableName& table_name, const PgObjectId& source_table_id,
@@ -60,11 +68,14 @@ class TserverXClusterContext : public TserverXClusterContextIf {
  private:
   XClusterSafeTimeMap safe_time_map_;
 
-  mutable std::shared_mutex target_namespaces_in_automatic_mode_mutex_;
+  mutable std::shared_mutex mutex_;
+  bool have_received_a_heartbeat_ GUARDED_BY(mutex_) = false;
   // The set of namespaces that for this universe are targets of xCluster automatic mode
   // replication.
-  std::unordered_set<NamespaceId> target_namespaces_in_automatic_mode_
-      GUARDED_BY(target_namespaces_in_automatic_mode_mutex_);
+  std::unordered_set<NamespaceId> target_namespaces_in_automatic_mode_ GUARDED_BY(mutex_);
+
+  std::unordered_map<NamespaceId, XClusterNamespaceInfoPB> xcluster_info_per_namespace_
+      GUARDED_BY(mutex_);
 
   struct CreateTableInfo {
     PgObjectId source_table_id;

@@ -257,3 +257,53 @@ RestoreDetailsListResponse:
               $ref: '../schemas/_index.yaml#/RestoreDetails'
         required:
           - restore
+xClusterResponse:
+  description: List of all xCluster replication groups
+  content:
+    application/json:
+      schema:
+        title: xCluster Replication Groups
+        type: object
+        properties:
+          inbound_replication_groups:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/xClusterInboundGroup'
+          outbound_replication_groups:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/xClusterOutboundGroup'
+        required:
+          - replication_groups
+xClusterNamespaceResponse:
+  description: List of all namespaces and tables present in a replication group.
+  content:
+    application/json:
+      schema:
+        type: object
+        title: xCluster Namespace Metrics
+        properties:
+          replication_group_id:
+            type: string
+            description: Unique replication group id of each replication
+          namespace_list:
+            type: array
+            items:
+              $ref: '../schemas/_index.yaml#/NamespacesInfo'
+          source_placement_location:
+            type: array
+            items:
+              $ref: "../schemas/_index.yaml#/xClusterPlacementLocation"
+          target_placement_location:
+            type: array
+            items:
+              $ref: "../schemas/_index.yaml#/xClusterPlacementLocation"
+          source_universe_uuid:
+            type: string
+          target_universe_uuid:
+            type: string
+        required:
+          - replication_group_id
+          - namespace_list

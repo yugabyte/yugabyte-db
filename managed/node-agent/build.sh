@@ -38,7 +38,6 @@ to_lower() {
 readonly build_os=$(to_lower "$(uname -s)")
 readonly build_arch=$(to_lower "$(uname -m)")
 
-
 setup_protoc() {
     if [ ! -f "$GOBIN"/protoc ]; then
         pushd "$project_dir"
@@ -218,7 +217,6 @@ package_for_platform() {
     cp -rf node-agent-provision.sh "${script_dir}"/node-agent-provision.sh
     cp -rf earlyoom-installer.sh "${script_dir}"/earlyoom-installer.sh
     cp -rf configure_earlyoom_service.sh "${script_dir}"/configure_earlyoom_service.sh
-    cp -rf earlyoom "${script_dir}"/earlyoom #TODO: build
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
     pushd "$project_dir"
     cp -rf ../devops/roles/configure-cluster-server/templates/* "${script_dir}"/ynp/modules/provision/systemd/templates/
