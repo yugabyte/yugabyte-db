@@ -518,6 +518,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
+  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);

@@ -1692,6 +1692,16 @@ class PgClientSession::Impl {
     return DoFinishTransaction(req, deadline, txn_value, kind);
   }
 
+  Status CleanupObjectLocks() {
+    return MergeStatus(
+        ReleaseObjectLocksIfNecessary(
+            GetSessionData(PgClientSessionKind::kPlain).transaction, PgClientSessionKind::kPlain,
+            CoarseTimePoint::max()),
+        ReleaseObjectLocksIfNecessary(
+            GetSessionData(PgClientSessionKind::kDdl).transaction, PgClientSessionKind::kDdl,
+            CoarseTimePoint::max()));
+  }
+
   Status Perform(
       PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     VLOG(5) << "Perform rpc: " << req->ShortDebugString();
@@ -2276,6 +2286,7 @@ class PgClientSession::Impl {
   }
 
   void StartShutdown() {
+    WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
     if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
       txn->Abort();
     }
@@ -2369,16 +2380,15 @@ class PgClientSession::Impl {
           ERROR_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
                        "WaitForDdlVerificationToFinish call failed");
         }
-        // Since release of object locks will be handled by master's ddl verification task, skip
-        // supplying the txn, but reset required state.
-        return ReleaseObjectLocksIfNecessary(nullptr, used_session_kind, deadline);
       }
     }
-    // Release object locks for the following:
-    // 1. DDLs not performing docdb schema changes aren't tracked by master's ddl verification task,
-    //    but might have acquired some object locks. For instance, as part of CREATE INDEX, we
-    //    launch a DDL that changes the permissions of the index and increments the catalog version.
-    // 2. Plain DML transactions.
+    // Notify master/local tserver's lock manager of the release. We expect 3 types of transactions
+    // here.
+    // 1. transactions with docdb schema changes tracked by master's ddl verifier.
+    // 2. transactions without docdb schema changes (hence not tracked by master's ddl verification
+    //    task) but with exclusive object locks. For instance, as part of CREATE INDEX, we launch
+    //    a DDL that changes the permissions of the index and increments the catalog version.
+    // 3. DMLs without any exclusive locks
     return ReleaseObjectLocksIfNecessary(txn, used_session_kind, deadline);
   }
 
@@ -3103,30 +3113,23 @@ class PgClientSession::Impl {
   Status DoReleaseObjectLocks(
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
       CoarseTimePoint deadline, bool has_exclusive_locks) {
-    VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "Requesting release of " << (has_exclusive_locks ? "global" : "local")
-        << " locks for " << " txn " << txn_id << " subtxn_id " << AsString(subtxn_id);
+    VLOG_WITH_PREFIX_AND_FUNC(1) << "Requesting release of "
+                                 << (has_exclusive_locks ? "global" : "local") << " locks for txn "
+                                 << txn_id << " subtxn_id " << AsString(subtxn_id);
     if (!has_exclusive_locks) {
       return ts_lock_manager()->ReleaseObjectLocks(
           ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
               instance_uuid(), txn_id, subtxn_id),
           deadline);
     }
-    // TODO: Need to handle failures here, else there could be a leak of exclusive locks. The
-    // problem is only with the following types of transactions.
-    // 1. DDLs that don't have schema changes (not tracked by master's bg DDL verification task).
-    // 2. Any plain transaction that takes explicit global locks using 'LOCK TABLE ...'.
-    // This is mostly addressed by retrying the release request. However, we stil need to handle
-    // the case where the pg-client/session misses the heartbeat and needs clean up (#26673).
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_id, subtxn_id, lease_epoch_, context_.clock.get()));
-    ReleaseWithRetries(client_, release_req);
+    ReleaseWithRetries(release_req);
     return Status::OK();
   }
 
   void ReleaseWithRetries(
-      client::YBClient& client,
       std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB> release_req, int attempt = 1) {
     // Practically speaking, if the TServer cannot reach the master/leader for the ysql lease
     // interval it can safely give up. The Master is responsible for cleaning up the locks for any
@@ -3138,13 +3141,13 @@ class PgClientSession::Impl {
                 << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
       return;
     } else if (attempt > GetAtomicFlag(&FLAGS_ysql_max_retries_for_release_object_lock_requests)) {
-      LOG(DFATAL) << "Release global locks failing completely after " << attempt
-                  << " attempts. No more retries. req " << release_req->ShortDebugString();
+      LOG(ERROR) << "Release global locks failing completely after " << attempt
+                 << " attempts. No more retries. req " << release_req->ShortDebugString();
       return;
     }
-    client.ReleaseObjectLocksGlobalAsync(
+    client_.ReleaseObjectLocksGlobalAsync(
         *release_req,
-        [this, &client, release_req, attempt](Status s) {
+        [this, release_req, attempt](const Status& s) {
           if (s.ok()) {
             VLOG(1) << "Release global request done. "
                     << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
@@ -3153,7 +3156,7 @@ class PgClientSession::Impl {
             VLOG_WITH_PREFIX(1) << "Release global locks failed. Will retry."
                                 << " status " << s
                                 << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-            ReleaseWithRetries(client, release_req, attempt + 1);
+            ReleaseWithRetries(release_req, attempt + 1);
           }
         },
         timeout);
