@@ -38,11 +38,11 @@ Each bar shows the connections broken down by state.
 | WaitOnCondition |  |
 | Timeout | Waiting for `pgsleep()` function |
 | TServerWait | Waiting for TServer threads to complete |
-| Network | Waiting for client to either read results or send more data |
+| Network |  |
 | Lock    | Waiting on a lock |
 | IO      | Reading or writing from storage, such as writing to WAL or reading tablets from storage |
 | CPU     | Query is running normally |
-| Client  |  |
+| Client  | Waiting for client to either read results or send more data |
 
 In a typical scenario, an application sends a query to a YSQL process, and that process contacts its local TServer. The TServer farms out the SQL to the appropriate nodes that have the data needed to satisfy the query. Therefore, a typical query requires at least two connections to the cluster: one for the YSQL process, and at least one TServer thread. (There can be multiple TServer threads active if the query has data on multiple nodes.)
 
