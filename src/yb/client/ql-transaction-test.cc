@@ -491,7 +491,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   latch.Wait();
   VerifyData(kTransactions);
   AssertNoRunningTransactions();
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll, UserTabletsOnly::kFalse);
   uint64_t max_active_segment_sequence_number = 0;
   for (const auto& peer : peers) {
     if (peer->TEST_table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {

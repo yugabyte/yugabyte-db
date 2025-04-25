@@ -3072,7 +3072,9 @@ void TabletServiceImpl::Publish(
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
                                     rpc::RpcContext context) {
-  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers(
+      /*tablet_ptrs=*/ nullptr,
+      UserTabletsOnly(req->include_user_tablets_only()));
   RepeatedPtrField<StatusAndSchemaPB>* peer_status = resp->mutable_status_and_schema();
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();

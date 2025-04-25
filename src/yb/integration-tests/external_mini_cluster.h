@@ -489,7 +489,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // state.
   Status WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
-  Result<tserver::ListTabletsResponsePB> ListTablets(ExternalTabletServer* ts);
+  Result<tserver::ListTabletsResponsePB> ListTablets(
+      ExternalTabletServer* ts, bool user_tablets_only = true);
 
   Result<std::vector<tserver::ListTabletsForTabletServerResponsePB_Entry>> GetTablets(
       ExternalTabletServer* ts);

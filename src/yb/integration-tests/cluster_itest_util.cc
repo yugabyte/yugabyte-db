@@ -1197,8 +1197,10 @@ Status RemoveServer(const TServerDetails* leader,
 
 Status ListTablets(const TServerDetails* ts,
                    const MonoDelta& timeout,
-                   vector<ListTabletsResponsePB::StatusAndSchemaPB>* tablets) {
+                   vector<ListTabletsResponsePB::StatusAndSchemaPB>* tablets,
+                   bool user_tablets_only) {
   tserver::ListTabletsRequestPB req;
+  req.set_include_user_tablets_only(user_tablets_only);
   tserver::ListTabletsResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(timeout);

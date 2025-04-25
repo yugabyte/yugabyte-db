@@ -75,7 +75,6 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_flags.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -982,10 +981,8 @@ void StepDownRandomTablet(MiniCluster* cluster) {
 
 std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id) {
   std::unordered_set<string> tablet_ids;
-  for (auto peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-    if (IsForTable(*peer, table_id)) {
-      tablet_ids.insert(peer->tablet_id());
-    }
+  for (auto peer : ListTableTabletPeers(cluster, table_id)) {
+    tablet_ids.insert(peer->tablet_id());
   }
   return tablet_ids;
 }
@@ -1020,22 +1017,14 @@ bool PeerMatchesFilter(const tablet::TabletPeerPtr& peer, ListPeersFilter filter
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter,
-    IncludeTransactionStatusTablets include_transaction_status_tablets) {
-  auto filter_transaction_status_tablets = [include_transaction_status_tablets](const auto& peer) {
-    if (include_transaction_status_tablets) {
-      return true;
-    }
-    auto tablet = peer->shared_tablet();
-    return tablet && tablet->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE;
-  };
-
-  return ListTabletPeers(cluster, [filter, &filter_transaction_status_tablets](const auto& peer) {
-    return filter_transaction_status_tablets(peer) && PeerMatchesFilter(peer, filter);
-  });
+    UserTabletsOnly user_tablets_only) {
+  return ListTabletPeers(cluster, [filter](const auto& peer) {
+    return PeerMatchesFilter(peer, filter);
+  }, user_tablets_only);
 }
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
-    MiniCluster* cluster, TabletPeerFilter filter) {
+    MiniCluster* cluster, TabletPeerFilter filter, UserTabletsOnly user_tablets_only) {
   std::vector<tablet::TabletPeerPtr> result;
 
   for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
@@ -1043,7 +1032,8 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     if (!server) { // Server is shut down.
       continue;
     }
-    auto peers = server->tablet_manager()->GetTabletPeers();
+    auto peers = server->tablet_manager()->GetTabletPeers(
+        /*tablet_ptrs=*/ nullptr, user_tablets_only);
     for (const auto& peer : peers) {
       WARN_NOT_OK(
           // Checking for consensus is not enough here, we also need to not wait for peers
@@ -1067,7 +1057,7 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeers(
   auto peers = ListTabletPeers(
       cluster, [&tablet_id, filter = std::move(filter)](const auto& peer) {
         return (peer->tablet_id() == tablet_id) && (!filter || filter(peer));
-      });
+      }, UserTabletsOnly::kFalse);
 
   // Sanity check to make sure table is the same accross all peers.
   TableId table_id;
@@ -1104,14 +1094,14 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
                tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
            CHECK_RESULT(peer->GetConsensus())->GetLeaderStatus() !=
                consensus::LeaderStatus::NOT_LEADER;
-  });
+  }, UserTabletsOnly::kFalse);
 }
 
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
       MiniCluster* cluster, const TableId& table_id, ListPeersFilter filter) {
   return ListTabletPeers(cluster, [&table_id, filter](const tablet::TabletPeerPtr& peer) {
     return IsForTable(*peer, table_id) && PeerMatchesFilter(peer, filter);
-  });
+  }, UserTabletsOnly::kFalse);
 }
 
 Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
@@ -1141,7 +1131,7 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
     MiniCluster* cluster, const TableId& table_id) {
   return ListTabletPeers(cluster, [&table_id](const tablet::TabletPeerPtr& peer) {
     return IsForTable(*peer, table_id) && IsActive(*peer);
-  });
+  }, UserTabletsOnly::kFalse);
 }
 
 std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(MiniCluster* cluster) {
@@ -1191,7 +1181,7 @@ Result<tablet::TabletPeerPtr> GetLeaderPeerForTablet(
     auto consensus_result = peer->GetConsensus();
     return tablet_id == peer->tablet_id() && consensus_result &&
            consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
-  });
+  }, UserTabletsOnly::kFalse);
 
   SCHECK_EQ(
       leaders.size(), 1, IllegalState,
@@ -1229,7 +1219,7 @@ Status WaitUntilTabletHasLeader(
                 : leader_status != consensus::LeaderStatus::NOT_LEADER;
           }
           return false;
-        });
+        }, UserTabletsOnly::kFalse);
         return tablet_peers.size() == 1;
       },
       deadline, "Waiting for election in tablet " + tablet_id);
@@ -1666,7 +1656,7 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster) {
 }
 
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
-  auto peers = ListTabletPeers(cluster, filter, IncludeTransactionStatusTablets::kFalse);
+  auto peers = ListTabletPeers(cluster, filter);
   for (const auto& peer : peers) {
     peer->shared_tablet()->TEST_DocDBDumpToLog(tablet::IncludeIntents::kTrue);
   }
@@ -1674,7 +1664,7 @@ void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
 
 std::vector<std::string> DumpDocDBToStrings(MiniCluster* cluster, ListPeersFilter filter) {
   std::vector<std::string> result;
-  auto peers = ListTabletPeers(cluster, filter, IncludeTransactionStatusTablets::kFalse);
+  auto peers = ListTabletPeers(cluster, filter);
   for (const auto& peer : peers) {
     result.push_back(peer->shared_tablet()->TEST_DocDBDumpStr());
   }

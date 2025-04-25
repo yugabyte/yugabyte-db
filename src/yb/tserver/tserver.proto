@@ -154,6 +154,7 @@ message WriteResponsePB {
 
 // A list tablets request
 message ListTabletsRequestPB {
+  optional bool include_user_tablets_only = 1 [ default = false ];
 }
 
 // A list tablets response
