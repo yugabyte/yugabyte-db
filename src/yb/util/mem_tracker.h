@@ -641,7 +641,7 @@ class ScopedTrackedConsumption {
 
   int64_t consumption() const { return consumption_; }
 
-  const MemTrackerPtr& mem_tracker() { return tracker_; }
+  const MemTrackerPtr& mem_tracker() const { return tracker_; }
 
  private:
   MemTrackerPtr tracker_;

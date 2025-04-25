@@ -21,9 +21,7 @@
 
 #include <boost/intrusive/list.hpp>
 
-#include <cds/container/basket_queue.h>
-#include <cds/gc/dhp.h>
-
+#include "yb/util/concurrent_queue.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
@@ -43,7 +41,7 @@ namespace {
 
 class Worker;
 
-using TaskQueue = cds::container::BasketQueue<cds::gc::DHP, ThreadPoolTask*>;
+using TaskQueue = RWQueue<ThreadPoolTask*>;
 using WaitingWorkers = LockFreeStack<Worker>;
 
 struct ThreadPoolShare {

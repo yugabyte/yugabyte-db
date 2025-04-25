@@ -804,6 +804,10 @@ class TransactionParticipant::Impl
   }
 
   Status Cleanup(TransactionIdApplyOpIdMap&& txns, TransactionStatusManager* status_manager) {
+    DEBUG_ONLY_TEST_SYNC_POINT("TransactionParticipant::Impl::Cleanup");
+    // Execute WaitLoaded outside of this->mutex_, else there's possibility of a deadlock since
+    // the loader needs this->mutex_ in TransactionLoaderContext::LoadTransaction to finish load.
+    RETURN_NOT_OK(loader_.WaitLoaded(txns));
     TransactionIdSet set;
     {
       std::lock_guard lock(mutex_);
@@ -811,8 +815,6 @@ class TransactionParticipant::Impl
 
       if (cdcsdk_checkpoint_op_id != OpId::Max()) {
         for (const auto& [transaction_id, apply_op_id] : txns) {
-          RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
-
           const OpId* apply_record_op_id = &apply_op_id;
           if (!apply_op_id.valid()) {
             // Apply op id is unknown -- may be from before upgrade to version that writes
@@ -1132,6 +1134,9 @@ class TransactionParticipant::Impl
     return min_replay_txn_start_ht_.load(std::memory_order_acquire);
   }
 
+  // Returns the minimum start time among all running transactions.
+  // Returns kInvalid if loading of transactions is not completed.
+  // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
     if (result == HybridTime::kMax || result == HybridTime::kInvalid

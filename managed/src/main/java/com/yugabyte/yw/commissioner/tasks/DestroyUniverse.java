@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
@@ -133,6 +134,9 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       // cleanup the supportBundles if any
       deleteSupportBundle(universe.getUniverseUUID());
+
+      // Delete all schedules.
+      ScheduleUtil.deleteAllSchedulesForUnivere(universe);
 
       preTaskActions();
 

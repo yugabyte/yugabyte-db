@@ -201,11 +201,11 @@ class DocOperationTest : public DocDBTestBase {
         /* unique_index_key_projection= */ nullptr, txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
-    HybridTime restart_read_ht;
+    ReadRestartData read_restart_data;
     ASSERT_OK(ql_write_op.Apply({
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = ReadOperationData(),
-      .restart_read_ht = &restart_read_ht,
+      .read_restart_data = &read_restart_data,
       .schema_packing_provider = nullptr,
     }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
@@ -351,13 +351,13 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     const qlexpr::QLRSRowDesc rsrow_desc(*rsrow_desc_pb);
     WriteBuffer rows_data(1024);
     qlexpr::QLResultSet resultset(&rsrow_desc, &rows_data);
-    HybridTime read_restart_ht;
+    ReadRestartData read_restart_data;
     auto doc_read_context = DocReadContext::TEST_Create(schema);
     auto pending_op = ScopedRWOperation::TEST_Create();
     EXPECT_OK(read_op.Execute(
         ql_storage, ReadOperationData::FromSingleReadTime(read_time), doc_read_context, pending_op,
-        &resultset, &read_restart_ht));
-    EXPECT_FALSE(read_restart_ht.is_valid());
+        &resultset, &read_restart_data));
+    EXPECT_FALSE(read_restart_data.is_valid());
 
     // Transfer the column values from result set to rowblock.
     auto data_str = rows_data.ToBuffer();
@@ -388,7 +388,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   ASSERT_OK(redis_write_operation.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = {},
-      .restart_read_ht = nullptr,
+      .read_restart_data = nullptr,
       .schema_packing_provider = nullptr,
   }));
 

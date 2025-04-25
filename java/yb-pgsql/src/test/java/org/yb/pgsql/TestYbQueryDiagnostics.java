@@ -368,16 +368,10 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         try {
             TestUtils.waitFor(() -> {
                 return !isBackgroundWorkerRunning(databaseConnectionBgworkerName);
-            }, 10000L, 1000);
+            }, 20000L, 1000);
         } catch (Exception e) {
             fail("DatabaseConnectionBgWorker did not complete as expected");
         }
-        //sleepfor 5sec
-        // try {
-        //     Thread.sleep(5000);
-        // } catch (InterruptedException e) {
-        //     fail("DatabaseConnectionBgWorker did not complete as expected");
-        // }
     }
 
     /*
@@ -771,6 +765,44 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
 
         return queryText;
+    }
+
+    private void setUpTablesForCboStats() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA test_schema");
+            statement.execute("CREATE TABLE test_schema.table1 (id INTEGER)");
+            statement.execute("CREATE TABLE test_schema.table2 (name TEXT)");
+
+            // Instead of inserting data we directly
+            // import statistics that are generated from cbo_stat_dump tool
+            ImportStatistics();
+        }
+    }
+
+    private void ImportStatistics() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            String importStatsPath = "src/test/resources/import_statistics.sql";
+
+            try {
+                Path path = Paths.get(importStatsPath);
+                List<String> sqlStatements = Files.readAllLines(path);
+                for (String sql : sqlStatements) {
+                    LOG.info("Executing SQL: " + sql);
+                    if (!sql.trim().isEmpty() && !sql.trim().startsWith("--")) {
+                        statement.execute(sql);
+                    }
+                }
+            } catch (Exception e) {
+                throw new Exception(
+                        "Failed to execute import_statistics.sql: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    private String getQueryWithAllTablesJoined() throws Exception {
+        return "SELECT * " + //
+               "FROM test_schema.table1 t1 " + //
+               "CROSS JOIN test_schema.table2 t2";
     }
 
     private void validateAgainstFile(String expectedFilePath, String actualData) throws Exception{
@@ -2230,6 +2262,140 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
 
             assertFalse("schema_details file should not exist", Files.exists(schemaDetailsPath));
+        }
+    }
+
+    /*
+     * Tests if yb_query_diagnostics_status view is persistent across crashes.
+     */
+    @Test
+    public void testViewPersistence() throws Exception {
+        setUpQueryDiagnostics();
+
+        int successfulDiagnosticsInterval = 10;
+        Path successfulBundlePath;
+        String successfulQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams successfulParams = new QueryDiagnosticsParams(
+                successfulDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        Path inProgressBundlePath;
+        int inProgressDiagnosticsInterval = 100;
+        String inProgressQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams inProgressParams = new QueryDiagnosticsParams(
+                inProgressDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        Path cancelledBundlePath;
+        int cancelledDiagnosticsInterval = 100;
+        String cancelQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams cancelledParams = new QueryDiagnosticsParams(
+                cancelledDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            // successful bundle
+            successfulBundlePath = runQueryDiagnostics(statement,
+                                                       successfulQueryId, successfulParams);
+            waitForBundleCompletion(successfulQueryId, statement, successfulDiagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            // bundle in progress
+            inProgressBundlePath = runQueryDiagnostics(statement, inProgressQueryId,
+                                                       inProgressParams);
+
+            // cancel bundle
+            cancelledBundlePath = runQueryDiagnostics(statement, cancelQueryId, cancelledParams);
+            statement.execute("SELECT yb_cancel_query_diagnostics('" + cancelQueryId + "')");
+
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
+        }
+
+        miniCluster.restart();
+        connection = getConnectionBuilder().connect();
+
+        try (Statement statement = connection.createStatement()) {
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
+
+            // successful bundle
+            QueryDiagnosticsStatus successfulBundleViewEntry =
+                    getViewData(statement, successfulQueryId, "");
+            QueryDiagnosticsStatus expectedSuccessfulBundleViewEntry =
+                    new QueryDiagnosticsStatus(successfulBundlePath, "Success",
+                                               noQueriesExecutedWarning, successfulParams);
+            assertQueryDiagnosticsStatus(expectedSuccessfulBundleViewEntry,
+                    successfulBundleViewEntry);
+
+            // bundle in progress
+            QueryDiagnosticsStatus inProgressBundleViewEntry =
+                    getViewData(statement, inProgressQueryId, "");
+            QueryDiagnosticsStatus expectedInProgressBundleViewEntry = new QueryDiagnosticsStatus(
+                    inProgressBundlePath, "Postmaster Shutdown", "", inProgressParams);
+            assertQueryDiagnosticsStatus(expectedInProgressBundleViewEntry,
+                    inProgressBundleViewEntry);
+
+            // cancelled bundle
+            QueryDiagnosticsStatus cancelledBundleViewEntry =
+                    getViewData(statement, cancelQueryId, "");
+            QueryDiagnosticsStatus expectedCancelledBundleViewEntry =
+                    new QueryDiagnosticsStatus(cancelledBundlePath, "Cancelled",
+                                               "Bundle was cancelled", cancelledParams);
+            assertQueryDiagnosticsStatus(expectedCancelledBundleViewEntry,
+                                         cancelledBundleViewEntry);
+        }
+    }
+
+    @Test
+    public void testCboStats() throws Exception {
+        setUpQueryDiagnostics();
+
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            setUpTablesForCboStats();
+            String query = getQueryWithAllTablesJoined();
+
+            printQueryOutput(statement, query);
+
+            String queryId = getQueryIdFromPgStatStatements(statement, query);
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId,
+                    queryDiagnosticsParams);
+            statement.execute(query);
+
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            Path statisticsJsonPath = getFilePathFromBaseDir(bundleDataPath,
+                    "statistics.json");
+            assertTrue("statistics.json file does not exist",
+                    Files.exists(statisticsJsonPath));
+            assertGreaterThan("statistics.json file is empty",
+                    Files.size(statisticsJsonPath), 0L);
+            String statisticsJsonContent = new String(Files.readAllBytes(statisticsJsonPath));
+            LOG.info("Statistics JSON content:\n" + statisticsJsonContent);
+
+            validateAgainstFile(
+                    "src/test/resources/expected/statistics_json.out",
+                    statisticsJsonContent);
         }
     }
 }

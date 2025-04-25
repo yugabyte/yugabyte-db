@@ -7167,6 +7167,85 @@ TEST_F(DBTest, LastWriteBufferDelay) {
   sleeping_task.WaitUntilDone();
 }
 
+TEST_F(DBTest, MaxFlushingBytes) {
+  constexpr auto kSingleMemtableLimit = 100_KB;
+  constexpr auto kNumEntriesPerMemtableLimit = 100;
+  constexpr auto kMaxFlushingMemTableLimits = 10;
+
+  Options options;
+  options.env = env_;
+  options = CurrentOptions(options);
+  options.db_write_buffer_size = kSingleMemtableLimit;
+  options.max_flushing_bytes =
+      kSingleMemtableLimit * kMaxFlushingMemTableLimits - kSingleMemtableLimit / 2;
+  options.max_write_buffer_number = 9999;
+  options.arena_block_size = 4 * 1024;
+  options.level0_slowdown_writes_trigger = 999999;
+  options.level0_stop_writes_trigger = 999999;
+  options.disable_auto_compactions = true;
+  options.info_log_level = InfoLogLevel::INFO_LEVEL;
+  options.info_log = std::make_shared<yb::YBRocksDBLogger>(options.log_prefix);
+
+  for (bool with_cf : {false, true}) {
+    for (int iter = 0; iter < 2; ++iter) {
+      // Block flushes.
+      test::SleepingBackgroundTask sleeping_task;
+      env_->SetBackgroundThreads(1, Env::Priority::HIGH);
+      env_->Schedule(
+          &test::SleepingBackgroundTask::DoSleepTask, &sleeping_task, Env::Priority::HIGH);
+      sleeping_task.WaitUntilSleeping();
+
+      if (iter == 0) {
+        Destroy(options);
+      }
+      if (with_cf) {
+        ReopenWithColumnFamilies({"default"}, options);
+      } else {
+        Reopen(options);
+      }
+
+      LOG(INFO) << "with_cf: " << with_cf << " iter: " << iter;
+
+      const auto num_sst_files_before = db_->GetLiveFilesMetaData().size();
+
+      std::atomic<int> callback_count(0);
+      auto& sync_point = *yb::SyncPoint::GetInstance();
+      sync_point.SetCallBack("DBImpl::DelayWrite:Wait", [&](void* arg) {
+        callback_count.fetch_add(1);
+        sleeping_task.WakeUp();
+      });
+      sync_point.EnableProcessing();
+
+      const auto value_size = static_cast<int>(kSingleMemtableLimit / kNumEntriesPerMemtableLimit);
+
+      Random rnd(301);
+      int key_idx = 0;
+      for (int i = 0; i < kNumEntriesPerMemtableLimit * (kMaxFlushingMemTableLimits - 1);
+           ++i, ++key_idx) {
+        ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, value_size)));
+      }
+      auto& write_controller = dbfull()->TEST_write_controler();
+      ASSERT_FALSE(write_controller.NeedsDelay());
+      ASSERT_FALSE(write_controller.IsStopped());
+      ASSERT_EQ(0, callback_count.load());
+
+      // This should trigger stopping writes.
+      for (int i = 0; i < kNumEntriesPerMemtableLimit; ++i, ++key_idx) {
+        ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, value_size)));
+      }
+      ASSERT_GE(callback_count.load(), 1);
+
+      sync_point.DisableProcessing();
+      sleeping_task.WaitUntilDone();
+
+      auto sst_files_meta = db_->GetLiveFilesMetaData();
+      ASSERT_EQ(sst_files_meta.size(), num_sst_files_before + 1);
+      ASSERT_LE(
+          sst_files_meta.back().total_size, kSingleMemtableLimit * kMaxFlushingMemTableLimits);
+    }
+  }
+}
+
 TEST_F(DBTest, FailWhenCompressionNotSupportedTest) {
   CompressionType compressions[] = {kZlibCompression, kBZip2Compression,
                                     kLZ4Compression,  kLZ4HCCompression};

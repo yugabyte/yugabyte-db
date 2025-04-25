@@ -296,7 +296,7 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
       // Set up the extension and set our role as a target to prevent writes.
       Synchronizer sync;
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
-          catalog_manager_, namespace_name, XClusterDDLReplicationRole::kTarget,
+          catalog_manager_, namespace_id, XClusterDDLReplicationRole::kTarget,
           sync.AsStdStatusCallback()));
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
     }

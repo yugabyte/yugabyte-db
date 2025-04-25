@@ -105,12 +105,9 @@
 #include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/version.hpp>
-#include <cds/init.h>
 #undef EV_ERROR // On mac is it defined as some number, but ev++.h uses it in enum
 #include <ev++.h>
-#include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
-#include <glog/logging.h>
 #include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
 #include <google/protobuf/descriptor.pb.h>

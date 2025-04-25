@@ -14,19 +14,15 @@
 //
 
 #include <atomic>
+#include <regex>
 #include <string>
 #include <thread>
 
 #include <boost/lockfree/queue.hpp>
-#include <cds/container/basket_queue.h>
-#include <cds/container/moir_queue.h>
-#include <cds/container/optimistic_queue.h>
-#include <cds/container/rwqueue.h>
-#include <cds/container/segmented_queue.h>
-#include <cds/container/vyukov_mpmc_cycle_queue.h>
-#include <cds/gc/dhp.h>
 #include <gtest/gtest.h>
 
+#include "yb/util/concurrent_queue.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -34,6 +30,9 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+
+DEFINE_test_flag(string, queue_name_regex, "",
+    "Regex to filter queue by name in LockfreeTest.QueuePerformance test");
 
 using namespace std::literals;
 
@@ -44,13 +43,14 @@ struct TestEntry : public MPSCQueueEntry<TestEntry> {
   size_t index;
 };
 
-TEST(LockfreeTest, MPSCQueueSimple) {
+template<class Queue, class NoneValue>
+void TestQueueSimple(const NoneValue& none_value) {
   const size_t kTotalEntries = 10;
   std::vector<TestEntry> entries(kTotalEntries);
   for (size_t i = 0; i != entries.size(); ++i) {
     entries[i].index = i;
   }
-  MPSCQueue<TestEntry> queue;
+  Queue queue;
 
   // Push pop 1 entry
   queue.Push(&entries[0]);
@@ -64,6 +64,13 @@ TEST(LockfreeTest, MPSCQueueSimple) {
   for (auto& entry : entries) {
     ASSERT_EQ(&entry, queue.Pop());
   }
+
+  for (auto& entry : entries) {
+    queue.Push(&entry);
+  }
+
+  queue.Clear();
+  ASSERT_EQ(none_value, queue.Pop());
 
   // Mixed push and pop
   queue.Push(&entries[0]);
@@ -82,12 +89,20 @@ TEST(LockfreeTest, MPSCQueueSimple) {
   ASSERT_EQ(&entries[5], queue.Pop());
   ASSERT_EQ(&entries[6], queue.Pop());
   ASSERT_EQ(&entries[7], queue.Pop());
-  ASSERT_EQ(nullptr, queue.Pop());
+  ASSERT_EQ(none_value, queue.Pop());
   queue.Push(&entries[8]);
   queue.Push(&entries[9]);
   ASSERT_EQ(&entries[8], queue.Pop());
   ASSERT_EQ(&entries[9], queue.Pop());
-  ASSERT_EQ(nullptr, queue.Pop());
+  ASSERT_EQ(none_value, queue.Pop());
+}
+
+TEST(LockfreeTest, MPSCQueueSimple) {
+  TestQueueSimple<MPSCQueue<TestEntry>>(nullptr);
+}
+
+TEST(LockfreeTest, RWQueueSimple) {
+  TestQueueSimple<RWQueue<TestEntry*>>(std::nullopt);
 }
 
 TEST(LockfreeTest, MPSCQueueConcurrent) {
@@ -235,58 +250,9 @@ class QueuePerformanceHelper {
   }
 
   void RunAll() {
-    typedef cds::opt::allocator<BlockAllocator<int>> OptAllocator;
     TestQueue<boost::lockfree::queue<ptrdiff_t, boost::lockfree::fixed_sized<true>>>(
         "boost::lockfree::queue", 50000);
-    TestQueue<cds::container::BasketQueue<cds::gc::HP, ptrdiff_t>>("BasketQueue");
-    TestQueue<cds::container::BasketQueue<cds::gc::DHP, ptrdiff_t>>("BasketQueue/DHP");
-    TestQueue<cds::container::BasketQueue<
-        cds::gc::HP, ptrdiff_t,
-        cds::container::basket_queue::make_traits<OptAllocator>::type>>(
-            "BasketQueue/BlockAllocator");
-    TestQueue<cds::container::BasketQueue<
-        cds::gc::DHP, ptrdiff_t,
-        cds::container::basket_queue::make_traits<OptAllocator>::type>>(
-            "BasketQueue/BlockAllocator/DHP");
-    // FCQueue disabled, since looks like it has bugs.
-    // TestQueue<cds::container::FCQueue<ptrdiff_t>>("FCQueue");
-    TestQueue<cds::container::MoirQueue<cds::gc::HP, ptrdiff_t>>("MoirQueue");
-    TestQueue<cds::container::MoirQueue<cds::gc::DHP, ptrdiff_t>>("MoirQueue/DHP");
-    TestQueue<cds::container::MoirQueue<
-        cds::gc::HP, ptrdiff_t,
-        cds::container::msqueue::make_traits<OptAllocator>::type>>(
-            "MoirQueue/BlockAllocator");
-    TestQueue<cds::container::MoirQueue<
-        cds::gc::DHP, ptrdiff_t,
-        cds::container::msqueue::make_traits<OptAllocator>::type>>(
-            "MoirQueue/BlockAllocator/DHP");
-    TestQueue<cds::container::MSQueue<cds::gc::HP, ptrdiff_t>>("MSQueue");
-    TestQueue<cds::container::MSQueue<cds::gc::DHP, ptrdiff_t>>("MSQueue/DHP");
-    TestQueue<cds::container::MSQueue<
-        cds::gc::HP, ptrdiff_t,
-        cds::container::msqueue::make_traits<OptAllocator>::type>>(
-            "MSQueue/BlockAllocator");
-    TestQueue<cds::container::MSQueue<
-        cds::gc::DHP, ptrdiff_t,
-        cds::container::msqueue::make_traits<OptAllocator>::type>>(
-            "MSQueue/BlockAllocator/DHP");
-    TestQueue<cds::container::OptimisticQueue<cds::gc::HP, ptrdiff_t>>("OptimisticQueue");
-    TestQueue<cds::container::OptimisticQueue<cds::gc::DHP, ptrdiff_t>>("OptimisticQueue/DHP");
-    TestQueue<cds::container::OptimisticQueue<
-        cds::gc::HP, ptrdiff_t,
-        cds::container::optimistic_queue::make_traits<OptAllocator>::type>>(
-            "OptimisticQueue/BlockAllocator");
-    TestQueue<cds::container::OptimisticQueue<
-        cds::gc::DHP, ptrdiff_t,
-        cds::container::optimistic_queue::make_traits<OptAllocator>::type>>(
-            "OptimisticQueue/BlockAllocator/DHP");
-    TestQueue<cds::container::RWQueue<ptrdiff_t>>("RWQueue");
-    // On GCC11, segmented queue seems to call sized delete with a different size than it allocates
-    // with, which causes a segfault in tcmalloc.
-    // See issue https://github.com/khizmax/libcds/issues/181.
-    // TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/16", 16);
-    // TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/128", 128);
-    TestQueue<cds::container::VyukovMPMCCycleQueue<ptrdiff_t>>("VyukovMPMCCycleQueue", 50000);
+    TestQueue<RWQueue<ptrdiff_t>>("YBRWQueue");
   }
  private:
   template <class T, class... Args>
@@ -309,7 +275,6 @@ class QueuePerformanceHelper {
     for (size_t i = 0; i != workers_; ++i) {
       Role role = mixed_mode_ ? Role::kBoth : (i & 1 ? Role::kReader : Role::kWriter);
       threads.emplace_back([queue, &start_latch, &finish_latch, &pushes, &pops, role] {
-        CDSAttacher attacher;
         start_latch.CountDown();
         start_latch.Wait();
         bool push_done = false;
@@ -368,7 +333,7 @@ class QueuePerformanceHelper {
     start_latch.Wait();
     auto start = MonoTime::Now();
 
-    bool wait_result = finish_latch.WaitUntil(start + 10s);
+    bool wait_result = finish_latch.WaitUntil(start + 30s);
     auto stop = MonoTime::Now();
     auto passed = stop - start;
 
@@ -395,14 +360,14 @@ class QueuePerformanceHelper {
     }
   }
 
-  template <class T>
-  void TestQueue(const std::string& name) {
-    T queue;
-    DoTestQueue(name, &queue);
-  }
-
   template <class T, class... Args>
   void TestQueue(const std::string& name, Args&&... args) {
+    if (!name.empty() && !FLAGS_TEST_queue_name_regex.empty()) {
+      std::regex regex(FLAGS_TEST_queue_name_regex, std::regex::egrep);
+      if (!regex_match(name, regex)) {
+        return;
+      }
+    }
     T queue(std::forward<Args>(args)...);
     DoTestQueue(name, &queue);
   }
@@ -413,11 +378,8 @@ class QueuePerformanceHelper {
 
 TEST(LockfreeTest, QueuePerformance) {
   InitGoogleLoggingSafeBasic("lockfree");
-  cds::gc::hp::GarbageCollector::construct(0 /* nHazardPtrCount */, 1000 /* nMaxThreadCount */);
   InitThreading();
 
-  // We should move it is ThreadMgr in case we decide to use some data struct that uses GC.
-  // I.e. anything that is customized with cds::gc::HP/cds::gc::DHP.
   QueuePerformanceHelper helper;
   helper.Warmup();
   helper.Perform(0x100, false);

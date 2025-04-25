@@ -307,7 +307,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           JsonNode additionalDetails = gFlagsAuditHandler.constructGFlagAuditPayload(taskParams());
-          auditService.updateAdditionalDetils(getTaskUUID(), additionalDetails);
+          auditService.updateAdditionalDetails(getTaskUUID(), additionalDetails);
 
           Universe universe = getUniverse();
           List<UniverseDefinitionTaskParams.Cluster> curClusters =

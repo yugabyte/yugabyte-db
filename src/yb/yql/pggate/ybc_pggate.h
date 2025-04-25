@@ -143,6 +143,8 @@ bool YBCIsCronLeader();
 YbcStatus YBCSetCronLastMinute(int64_t last_minute);
 YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
 
+int YBCGetXClusterRole(uint32_t db_oid);
+
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
 //--------------------------------------------------------------------------------------------------

@@ -104,7 +104,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
   -d '{
   "name": "ybconnector",
   "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
     "database.hostname":"'$IP'",
     "database.port":"5433",
     "database.master.addresses": "'$IP':7100",
@@ -139,7 +139,7 @@ Do the following:
       -d '{
       "name": "ybconnector",
       "config": {
-        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
         "database.hostname":"'$IP'",
         "database.port":"5433",
         "database.master.addresses": "'$IP':7100",

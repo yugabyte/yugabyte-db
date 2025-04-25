@@ -347,7 +347,7 @@ class HybridScanChoices : public ScanChoices {
 
   size_t schema_num_keys_;
 
-  EncodedDocHybridTime last_seen_ht_checkpoint_{DocHybridTime::kMin};
+  MaxSeenHtData max_seen_ht_checkpoint_ = {};
 };
 
 }  // namespace docdb

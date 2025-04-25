@@ -208,6 +208,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 
 	Name		yb_lsn_type_arg;
 	char	   *yb_lsn_type = "SEQUENCE";
+
+	Name		yb_ordering_mode_arg;
 	char	   *yb_ordering_mode = "TRANSACTION";
 
 	/* YB */
@@ -215,6 +217,12 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	{
 		yb_lsn_type_arg = PG_GETARG_NAME(4);
 		yb_lsn_type = NameStr(*yb_lsn_type_arg);
+	}
+
+	if (!PG_ARGISNULL(5))
+	{
+		yb_ordering_mode_arg = PG_GETARG_NAME(5);
+		yb_ordering_mode = NameStr(*yb_ordering_mode_arg);
 	}
 
 	Datum		result;

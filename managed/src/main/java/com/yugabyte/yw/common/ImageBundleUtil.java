@@ -264,7 +264,7 @@ public class ImageBundleUtil {
         enableVMOSPatching);
   }
 
-  public boolean migrateYBADefaultBundles(
+  public boolean shouldMigrateYBADefaultBundles(
       Map<String, String> currOSVersionDBMap, Provider provider) {
     String providerCode = provider.getCode();
     if (currOSVersionDBMap != null

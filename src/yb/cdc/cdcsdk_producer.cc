@@ -941,7 +941,18 @@ Status PopulateCDCSDKIntentRecord(
 
       if (colocated) {
         colocation_id = decoded_key.doc_key().colocation_id();
-        auto table_info = CHECK_RESULT(tablet->metadata()->GetTableInfo(colocation_id));
+        auto tablet_info_result = tablet->metadata()->GetTableInfo(colocation_id);
+        if (!tablet_info_result.ok()) {
+          if (!tablet_info_result.status().IsNotFound()) {
+            return tablet_info_result.status();
+          }
+          LOG(WARNING) << "Did not find table info for colocated table with colocation id: "
+                       << colocation_id << " and tablet id: " << tablet->tablet_id()
+                       << ". This could be because the object corresponding to colocation id has "
+                          "been deleted.";
+          continue;
+        }
+        auto table_info = *tablet_info_result;
 
         const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
             tablet_peer, intents.begin()->intent_ht.hybrid_time().ToUint64(), cached_schema_details,
@@ -1201,15 +1212,22 @@ Status PopulateCDCSDKIntentRecord(
 
 void FillBeginRecordForSingleShardTransaction(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, GetChangesResponsePB* resp,
-    const uint64_t& commit_timestamp, CDCThroughputMetrics* throughput_metrics) {
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    const uint64_t& commit_timestamp, const StreamMetadata& metadata,
+    CDCThroughputMetrics* throughput_metrics) {
+  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
+    // We do not want to stream any transactional message if the table is not present in the stream
+    // metadata.
+    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
+      continue;
+    }
+
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
       LOG(WARNING) << tablet_result.status();
       continue;
     }
     auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
+    auto table_name = table_info->table_name;
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
         (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
@@ -1223,7 +1241,6 @@ void FillBeginRecordForSingleShardTransaction(
     row_message->set_commit_time(commit_timestamp);
     // No need to add record_time to the Begin record since it does not have any intent associated
     // with it.
-
     throughput_metrics->records_sent++;
     throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
   }
@@ -1231,16 +1248,22 @@ void FillBeginRecordForSingleShardTransaction(
 
 void FillCommitRecordForSingleShardTransaction(
     const OpId& op_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    GetChangesResponsePB* resp, const uint64_t& commit_timestamp,
+    GetChangesResponsePB* resp, const uint64_t& commit_timestamp, const StreamMetadata& metadata,
     CDCThroughputMetrics* throughput_metrics) {
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
+    // We do not want to stream any transactional message if the table is not present in the stream
+    // metadata.
+    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
+      continue;
+    }
+
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
       LOG(WARNING) << tablet_result.status();
       continue;
     }
     auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
+    auto table_name = table_info->table_name;
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
         (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
@@ -1278,7 +1301,7 @@ Status PopulateCDCSDKWriteRecord(
     CDCThroughputMetrics* throughput_metrics) {
   if (FLAGS_cdc_populate_end_markers_transactions) {
     FillBeginRecordForSingleShardTransaction(
-        tablet_peer, resp, msg->hybrid_time(), throughput_metrics);
+        tablet_peer, resp, msg->hybrid_time(), metadata, throughput_metrics);
   }
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
@@ -1352,7 +1375,18 @@ Status PopulateCDCSDKWriteRecord(
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
       if (colocated) {
         colocation_id = decoded_key.doc_key().colocation_id();
-        auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo(colocation_id));
+        auto tablet_info_result = tablet_ptr->metadata()->GetTableInfo(colocation_id);
+        if (!tablet_info_result.ok()) {
+          if (!tablet_info_result.status().IsNotFound()) {
+            return tablet_info_result.status();
+          }
+          LOG(WARNING) << "Did not find table info for colocated table with colocation id: "
+                       << colocation_id << " and tablet id: " << tablet_ptr->tablet_id()
+                       << ". This could be because the object corresponding to colocation id has "
+                          "been deleted.";
+          continue;
+        }
+        auto table_info = *tablet_info_result;
 
         const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
             tablet_peer, msg->hybrid_time(), cached_schema_details, client, table_info->table_id,
@@ -1590,7 +1624,7 @@ Status PopulateCDCSDKWriteRecord(
     }
 
     FillCommitRecordForSingleShardTransaction(
-        OpId(msg->id().term(), msg->id().index()), tablet_peer, resp, msg->hybrid_time(),
+        OpId(msg->id().term(), msg->id().index()), tablet_peer, resp, msg->hybrid_time(), metadata,
         throughput_metrics);
   }
 
@@ -1717,16 +1751,22 @@ void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint)
 
 void FillBeginRecord(
     const TransactionId& transaction_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    GetChangesResponsePB* resp, const uint64_t& commit_timestamp,
+    GetChangesResponsePB* resp, const uint64_t& commit_timestamp, const StreamMetadata& metadata,
     CDCThroughputMetrics* throughput_metrics) {
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
+    // We do not want to stream any transactional message if the table is not present in the stream
+    // metadata.
+    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
+      continue;
+    }
+
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
       LOG(WARNING) << tablet_result.status();
       continue;
     }
     auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
+    auto table_name = table_info->table_name;
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
         (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
@@ -1750,16 +1790,22 @@ void FillBeginRecord(
 void FillCommitRecord(
     const OpId& op_id, const TransactionId& transaction_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, CDCSDKCheckpointPB* checkpoint,
-    GetChangesResponsePB* resp, const uint64_t& commit_timestamp,
+    GetChangesResponsePB* resp, const uint64_t& commit_timestamp, const StreamMetadata& metadata,
     CDCThroughputMetrics* throughput_metrics) {
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
+    // We do not want to stream any transactional message if the table is not present in the stream
+    // metadata.
+    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
+      continue;
+    }
+
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
       LOG(WARNING) << tablet_result.status();
       continue;
     }
     auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
+    auto table_name = table_info->table_name;
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
         (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
@@ -1805,7 +1851,7 @@ Status ProcessIntents(
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
-    FillBeginRecord(transaction_id, tablet_peer, resp, commit_time, throughput_metrics);
+    FillBeginRecord(transaction_id, tablet_peer, resp, commit_time, metadata, throughput_metrics);
   }
 
   RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
@@ -1853,7 +1899,8 @@ Status ProcessIntents(
   if (end_of_transaction) {
     if (FLAGS_cdc_populate_end_markers_transactions) {
       FillCommitRecord(
-          op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time, throughput_metrics);
+          op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time, metadata,
+          throughput_metrics);
     }
   } else {
     SetKeyWriteId(reverse_index_key, write_id, checkpoint);
@@ -2337,9 +2384,18 @@ bool CanUpdateCheckpointOpId(
 Result<uint64_t> GetConsistentStreamSafeTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
     const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
-    const CoarseTimePoint& deadline) {
+    const CoarseTimePoint& deadline, bool* txn_load_in_progress) {
   HybridTime consistent_stream_safe_time = tablet_ptr->GetMinStartHTRunningTxnsForCDCProducer();
-  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kInvalid
+  // GetMinStartHTRunningTxnsForCDCProducer returns kInvalid when loading of transactions is not yet
+  // complete.
+  if (!consistent_stream_safe_time.is_valid()) {
+    *txn_load_in_progress = true;
+    return HybridTime::kInitial.ToUint64();
+  }
+
+  // GetMinStartHTRunningTxnsForCDCProducer returns kMax when there are no running transactions. In
+  // this case use leader_safe_time,
+  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kMax
                                     ? leader_safe_time
                                     : consistent_stream_safe_time;
 
@@ -2574,6 +2630,26 @@ bool CheckResponseSafeTimeCorrectness(
   return is_entire_wal_read;
 }
 
+uint64_t GetCommitTimeThreshold(
+    const std::optional<uint64_t>& consistent_snapshot_time, const int64_t& safe_hybrid_time_req) {
+  uint64_t commit_time_threshold = 0;
+
+  if (consistent_snapshot_time.has_value()) {
+    if (safe_hybrid_time_req >= 0) {
+      commit_time_threshold =
+          std::max(static_cast<uint64_t>(safe_hybrid_time_req), *consistent_snapshot_time);
+    } else {
+      commit_time_threshold = *consistent_snapshot_time;
+    }
+  } else {
+    if (safe_hybrid_time_req >= 0) {
+      commit_time_threshold = static_cast<uint64_t>(safe_hybrid_time_req);
+    }
+  }
+
+  return commit_time_threshold;
+}
+
 // CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
 
@@ -2619,6 +2695,7 @@ Status GetChangesForCDCSDK(
   bool pending_intents = false;
   int wal_segment_index = GetWalSegmentIndex(wal_segment_index_req);
   bool wait_for_wal_update = false;
+  bool txn_load_in_progress = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   auto leader_safe_time = tablet_ptr->SafeTime();
@@ -2628,7 +2705,8 @@ Status GetChangesForCDCSDK(
     leader_safe_time = HybridTime::kInvalid;
   }
   uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
-      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline));
+      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline,
+      &txn_load_in_progress));
   OpId historical_max_op_id = tablet_ptr->transaction_participant()
                                   ? tablet_ptr->transaction_participant()->GetHistoricalMaxOpId()
                                   : OpId::Invalid();
@@ -2752,7 +2830,14 @@ Status GetChangesForCDCSDK(
       size_t next_checkpoint_index = 0;
 
       consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
-          tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline));
+          tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline,
+          &txn_load_in_progress));
+
+      if (txn_load_in_progress) {
+        LOG(INFO) << "Loading of transactions is in progress for tablet: " << tablet_id
+                  << " . Will not stream any record in this call.";
+        break;
+      }
 
       DCHECK(last_readable_opid_index);
       if (FLAGS_cdc_enable_consistent_records)
@@ -2819,20 +2904,8 @@ Status GetChangesForCDCSDK(
         // We should not stream messages we have already streamed again in this case,
         // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
         // safe_hybrid_time_req.
-
-        uint64_t commit_time_threshold = 0;
-        if (consistent_snapshot_time.has_value()) {
-          if (safe_hybrid_time_req >= 0) {
-            commit_time_threshold = std::max((uint64_t)safe_hybrid_time_req,
-                                             *consistent_snapshot_time);
-          } else {
-            commit_time_threshold = *consistent_snapshot_time;
-          }
-        } else {
-          if (safe_hybrid_time_req >= 0) {
-            commit_time_threshold = (uint64_t)safe_hybrid_time_req;
-          }
-        }
+        uint64_t commit_time_threshold =
+            GetCommitTimeThreshold(consistent_snapshot_time, safe_hybrid_time_req);
         VLOG(3) << "Commit time Threshold = " << commit_time_threshold;
         VLOG(3) << "Txn commit time       = " << GetTransactionCommitTime(msg);
 
@@ -3142,7 +3215,7 @@ Status GetChangesForCDCSDK(
   // request safe in the response as well.
   auto computed_safe_hybrid_time_req =
       HybridTime((safe_hybrid_time_req > 0) ? safe_hybrid_time_req : 0);
-  auto safe_time = wait_for_wal_update
+  auto safe_time = (wait_for_wal_update || txn_load_in_progress)
                        ? computed_safe_hybrid_time_req
                        : GetCDCSDKSafeTimeForTarget(
                              leader_safe_time.get(), safe_hybrid_time_resp, have_more_messages,

@@ -72,7 +72,7 @@ Create and deploy the source connector as follows, changing the parameters as pe
 curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/json" localhost:8083/connectors/ -d '{
   "name": "srcdb",
   "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
     "database.hostname":"10.9.205.161",
     "database.port":"5433",
     "database.master.addresses": "10.9.205.161:7100",

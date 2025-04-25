@@ -134,7 +134,7 @@ Status AssembleDocWriteBatch(
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
-    HybridTime* restart_read_ht,
+    ReadRestartData* read_restart_data,
     const std::string& table_name);
 
 struct ExternalTxnApplyStateData {

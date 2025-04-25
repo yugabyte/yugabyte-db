@@ -71,6 +71,7 @@
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

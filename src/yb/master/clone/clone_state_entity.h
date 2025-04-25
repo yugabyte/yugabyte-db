@@ -36,6 +36,7 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
  public:
   struct ColocatedTableData {
     TableId new_table_id;
+    TableId old_table_id;
     SysTablesEntryPB table_entry_pb;
     int new_schema_version;
   };

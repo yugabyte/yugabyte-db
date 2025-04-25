@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <span>
+
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -539,8 +541,8 @@ class DocDBTableLocksConflictMatrixTest : public DocDBTest {
   }
 
   static Result<bool> ObjectLocksConflict(
-      const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& lhs,
-      const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& rhs);
+      std::span<const std::pair<KeyEntryType, dockv::IntentTypeSet>> lhs,
+      std::span<const std::pair<KeyEntryType, dockv::IntentTypeSet>> rhs);
 };
 
 class DocDBTestRedis : public DocDBTest {
@@ -642,8 +644,8 @@ void TestKeyBytes(const char* title, std::vector<std::string>* out = nullptr) {
 }
 
 Result<bool> DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(
-    const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& lhs,
-    const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& rhs) {
+    std::span<const std::pair<KeyEntryType, dockv::IntentTypeSet>> lhs,
+    std::span<const std::pair<KeyEntryType, dockv::IntentTypeSet>> rhs) {
   for (const auto& [lhs_type, lhs_intents] : lhs) {
     bool found_entry_with_type = false;
     for (const auto& [rhs_type, rhs_intents] : rhs) {

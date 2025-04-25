@@ -2142,6 +2142,7 @@ void TabletServiceAdminImpl::CloneTablet(
   }
   PerformAtLeader(req, resp, &context, server_, "CloneTablet",
       [req, resp, &context, this](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+    LOG_WITH_FUNC(INFO) << "CloneTablet, req: " << AsString(*req);
     const auto consensus_result = leader_tablet_peer.peer->GetConsensus();
     if (!consensus_result) {
       return consensus_result.status().CloneAndAddErrorCode(
@@ -2176,7 +2177,9 @@ Result<HostPort> TabletServiceAdminImpl::GetLocalPgHostPort() {
 
 void TabletServiceAdminImpl::ClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp, rpc::RpcContext context) {
+  LOG_WITH_FUNC(INFO) << "req: " << AsString(*req);
   auto status = DoClonePgSchema(req, resp);
+  LOG_WITH_FUNC(INFO) << "resp: " << AsString(*resp) << ", status: " << status;
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
   } else {

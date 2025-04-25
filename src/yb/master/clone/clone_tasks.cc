@@ -79,6 +79,7 @@ AsyncClonePgSchema::AsyncClonePgSchema(
 std::string AsyncClonePgSchema::description() const { return "Async Clone PG Schema RPC"; }
 
 void AsyncClonePgSchema::HandleResponse(int attempt) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "attempt: " << attempt;
   Status resp_status;
   if (resp_.has_error()) {
     resp_status = StatusFromPB(resp_.error().status());

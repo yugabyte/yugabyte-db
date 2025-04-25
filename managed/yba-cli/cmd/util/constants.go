@@ -269,6 +269,18 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Allowed states for support bundle
+const (
+	// RunningSupportBundleState state
+	RunningSupportBundleState = "Running"
+	// AbortedSupportBundleState state
+	AbortedSupportBundleState = "Aborted"
+	// SuccessSupportBundleState state
+	SuccessSupportBundleState = "Success"
+	// FailedSupportBundleState state
+	FailedSupportBundleState = "Failed"
+)
+
 // Allowed states for XCluster Universe Lifecycle
 const (
 	// InitializedXClusterState indicates the XCluster universe is initialized
@@ -346,6 +358,8 @@ const (
 	SecurityOperation = "Security"
 	// PITROperation type
 	PITROperation = "PITR"
+	// SupportBundleOperation type
+	SupportBundleOperation = "SupportBundle"
 )
 
 // Different resource types that are supported in CLI
@@ -575,6 +589,33 @@ const (
 	OIDCGroupMappingType = "OIDC"
 	// LDAPGroupMappingType type
 	LDAPGroupMappingType = "LDAP"
+)
+
+// GlobalScopeUUID is the UUID for global scope
+const GlobalScopeUUID = "00000000-0000-0000-0000-000000000000"
+
+// LDAP SSL Types
+const (
+	// LdapSSLType - LDAPS
+	LDAPWithSSL = "ldaps"
+	// LdapSSLType - StartTLS
+	LDAPWithStartTLS = "starttls"
+	// LdapSSLType - None
+	LDAPWithoutSSL = "none"
+)
+
+// LDAP TLS Versions
+const (
+	LdapTLSVersion1   = "TLSv1"
+	LdapTLSVersion1_1 = "TLSv1_1"
+	LdapTLSVersion1_2 = "TLSv1_2"
+)
+
+// LDAP Group Search Scopes
+const (
+	LdapGroupSearchScopeObject   = "OBJECT"
+	LdapGroupSearchScopeOneLevel = "ONELEVEL"
+	LdapGroupSearchScopeSubtree  = "SUBTREE"
 )
 
 // CompletedTaskStates returns set of states that mark the task as completed

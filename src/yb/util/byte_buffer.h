@@ -16,19 +16,28 @@
 #include <cstddef>
 #include <string>
 
+#include "yb/util/mem_tracker.h"
 #include "yb/util/slice.h"
 
 namespace yb {
 
 // Utility class to store arbitrary amount of byte with inplace buffer of specified size.
-template <size_t SmallLen>
-class ByteBuffer {
+template <size_t SmallLen, bool kTrackMemoryUsage>
+class ByteBufferBase {
  public:
   static_assert(SmallLen >= sizeof(void*), "Too small buffer");
 
-  ByteBuffer() : size_(0) {}
+  ByteBufferBase() requires (kTrackMemoryUsage == false) : size_(0) {}
 
-  explicit ByteBuffer(const std::string& str) {
+  explicit ByteBufferBase(const MemTrackerPtr& mem_tracker)
+      : size_(0), consumption_(mem_tracker, 0) {}
+
+  explicit ByteBufferBase(const std::string& str) requires (kTrackMemoryUsage == false) {
+    Assign(str.c_str(), str.size());
+  }
+
+  ByteBufferBase(const MemTrackerPtr& mem_tracker, const std::string& str)
+      : consumption_(mem_tracker, 0) {
     Assign(str.c_str(), str.size());
   }
 
@@ -36,11 +45,21 @@ class ByteBuffer {
     Assign(str.c_str(), str.size());
   }
 
-  explicit ByteBuffer(Slice slice) {
+  explicit ByteBufferBase(Slice slice) requires (kTrackMemoryUsage == false) {
     Assign(slice.cdata(), slice.cend());
   }
 
-  ByteBuffer(Slice slice1, Slice slice2) {
+  ByteBufferBase(const MemTrackerPtr& mem_tracker, Slice slice)
+      : consumption_(mem_tracker, 0) {
+    Assign(slice.cdata(), slice.cend());
+  }
+
+  ByteBufferBase(Slice slice1, Slice slice2) requires (kTrackMemoryUsage == false) {
+    Assign(slice1, slice2);
+  }
+
+  ByteBufferBase(const MemTrackerPtr& mem_tracker, Slice slice1, Slice slice2)
+      : consumption_(mem_tracker, 0) {
     Assign(slice1, slice2);
   }
 
@@ -48,15 +67,20 @@ class ByteBuffer {
     Assign(slice.cdata(), slice.cend());
   }
 
-  ByteBuffer(const ByteBuffer<SmallLen>& rhs) {
+  ByteBufferBase(const ByteBufferBase<SmallLen, true>& rhs)
+      : consumption_(rhs.consumption_.mem_tracker(), 0) {
     Assign(rhs.ptr(), rhs.size_);
   }
 
-  void operator=(const ByteBuffer<SmallLen>& rhs) {
+  ByteBufferBase(const ByteBufferBase<SmallLen, false>& rhs) requires (kTrackMemoryUsage == false) {
     Assign(rhs.ptr(), rhs.size_);
   }
 
-  ByteBuffer(ByteBuffer<SmallLen>&& rhs) {
+  void operator=(const ByteBufferBase<SmallLen, kTrackMemoryUsage>& rhs) {
+    Assign(rhs.ptr(), rhs.size_);
+  }
+
+  ByteBufferBase(ByteBufferBase<SmallLen, kTrackMemoryUsage>&& rhs) {
     if (!rhs.big()) {
       memcpy(small_buffer_, rhs.small_buffer_, rhs.size_);
     } else {
@@ -67,9 +91,10 @@ class ByteBuffer {
 
     size_ = rhs.size_;
     rhs.size_ = 0;
+    consumption_ = std::move(rhs.consumption_);
   }
 
-  void operator=(ByteBuffer<SmallLen>&& rhs) {
+  void operator=(ByteBufferBase<SmallLen, kTrackMemoryUsage>&& rhs) {
     if (!rhs.big()) {
       memcpy(ptr(), rhs.small_buffer_, rhs.size_);
     } else {
@@ -83,9 +108,10 @@ class ByteBuffer {
 
     size_ = rhs.size_;
     rhs.size_ = 0;
+    consumption_ = std::move(rhs.consumption_);
   }
 
-  ~ByteBuffer() {
+  ~ByteBufferBase() {
     if (big()) {
       free(big_buffer_);
     }
@@ -152,7 +178,7 @@ class ByteBuffer {
   }
 
   template <size_t OtherSmallLen>
-  void Append(const ByteBuffer<OtherSmallLen>& rhs) {
+  void Append(const ByteBufferBase<OtherSmallLen, kTrackMemoryUsage>& rhs) {
     Append(rhs.ptr(), rhs.size_);
   }
 
@@ -253,6 +279,12 @@ class ByteBuffer {
   }
 
  private:
+  void DoConsume(int64_t delta) {
+    if constexpr (kTrackMemoryUsage) {
+      consumption_.Add(delta);
+    }
+  }
+
   void DoAppend(size_t keep_size, const char* a, size_t len) {
     size_t new_size = keep_size + len;
     memcpy(EnsureCapacity(new_size, keep_size) + keep_size, a, len);
@@ -267,12 +299,15 @@ class ByteBuffer {
     }
 
     bool was_big = big();
+    const auto old_capacity = capacity_;
     while ((capacity_ <<= 1ULL) < capacity) {}
     char* new_buffer = static_cast<char*>(malloc(capacity_));
+    DoConsume(capacity_);
     char*& big_buffer = big_buffer_;
     if (was_big) {
       memcpy(new_buffer, big_buffer, keep_size);
       free(big_buffer);
+      DoConsume(-old_capacity);
     } else {
       memcpy(new_buffer, small_buffer_, keep_size);
     }
@@ -297,25 +332,39 @@ class ByteBuffer {
     char small_buffer_[SmallLen];
     char* big_buffer_;
   };
+  [[no_unique_address]] std::conditional_t<
+      kTrackMemoryUsage, ScopedTrackedConsumption, std::tuple<>> consumption_;
 };
 
-template <size_t SmallLenLhs, size_t SmallLenRhs>
-bool operator<(const ByteBuffer<SmallLenLhs>& lhs, const ByteBuffer<SmallLenRhs>& rhs) {
+template <
+    size_t SmallLenLhs, bool kTrackMemoryUsageLhs, size_t SmallLenRhs, bool kTrackMemoryUsageRhs>
+bool operator<(
+    const ByteBufferBase<SmallLenLhs, kTrackMemoryUsageLhs>& lhs,
+    const ByteBufferBase<SmallLenRhs, kTrackMemoryUsageRhs>& rhs) {
   return lhs.AsSlice().compare(rhs.AsSlice()) < 0;
 }
 
-template <size_t SmallLenLhs, size_t SmallLenRhs>
-bool operator==(const ByteBuffer<SmallLenLhs>& lhs, const ByteBuffer<SmallLenRhs>& rhs) {
+template <
+    size_t SmallLenLhs, bool kTrackMemoryUsageLhs, size_t SmallLenRhs, bool kTrackMemoryUsageRhs>
+bool operator==(
+    const ByteBufferBase<SmallLenLhs, kTrackMemoryUsageLhs>& lhs,
+    const ByteBufferBase<SmallLenRhs, kTrackMemoryUsageRhs>& rhs) {
   return lhs.AsSlice() == rhs.AsSlice();
 }
 
 struct ByteBufferHash {
   typedef std::size_t result_type;
 
-  template <size_t SmallLen>
-  result_type operator()(const ByteBuffer<SmallLen>& buffer) const {
+  template <size_t SmallLen, bool kTrackMemoryUsage>
+  result_type operator()(const ByteBufferBase<SmallLen, kTrackMemoryUsage>& buffer) const {
     return buffer.AsSlice().hash();
   }
 };
+
+template <size_t SmallLen>
+using ByteBuffer = ByteBufferBase<SmallLen, false>;
+
+template <size_t SmallLen>
+using MemTrackedByteBuffer = ByteBufferBase<SmallLen, true>;
 
 } // namespace yb

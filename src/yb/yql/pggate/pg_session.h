@@ -28,10 +28,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/tserver/tserver_util_fwd.h"
-
 #include "yb/util/lw_function.h"
-#include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
@@ -88,6 +85,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status DropDatabase(const std::string& database_name, PgOid database_oid);
 
   Status GetCatalogMasterVersion(uint64_t *version);
+
+  Result<int> GetXClusterRole(uint32_t db_oid);
 
   Status CancelTransaction(const unsigned char* transaction_id);
 
