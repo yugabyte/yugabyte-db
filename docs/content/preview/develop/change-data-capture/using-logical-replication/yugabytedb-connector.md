@@ -1397,7 +1397,7 @@ To deploy the connector, you install the connector archive, configure the connec
 
 **Procedure**
 
-1. Download the [YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1.SNAPSHOT.1).
+1. Download the latest [YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/).
 2. Extract the files into your Kafka Connect environment.
 3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
