@@ -861,8 +861,7 @@ TEST_P(PgVectorIndexTest, Options) {
       LOG(INFO) << "Query: " << query;
       ASSERT_OK(conn.Execute(query));
     }
-    auto peers = ListTabletPeers(
-        cluster_.get(), ListPeersFilter::kLeaders, IncludeTransactionStatusTablets::kFalse);
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
       auto tablet = peer->shared_tablet();
       auto vector_indexes = tablet->vector_indexes().List();

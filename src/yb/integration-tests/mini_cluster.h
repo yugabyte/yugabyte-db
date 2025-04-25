@@ -56,8 +56,9 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
@@ -81,7 +82,6 @@ class MiniTabletServer;
 
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
-YB_STRONGLY_TYPED_BOOL(IncludeTransactionStatusTablets);
 YB_STRONGLY_TYPED_BOOL(RequireLeaderIsReady)
 
 struct MiniClusterOptions {
@@ -356,11 +356,11 @@ std::unordered_set<std::string> ListActiveTabletIdsForTable(
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter,
-    IncludeTransactionStatusTablets include_transaction_status_tablets =
-        IncludeTransactionStatusTablets::kTrue);
+    UserTabletsOnly user_tablets_only = UserTabletsOnly::kTrue);
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
-    MiniCluster* cluster, TabletPeerFilter filter);
+    MiniCluster* cluster, TabletPeerFilter filter,
+    UserTabletsOnly user_tablets_only = UserTabletsOnly::kTrue);
 
 Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeers(
     MiniCluster* cluster, const TabletId& tablet_id, TabletPeerFilter filter = TabletPeerFilter());

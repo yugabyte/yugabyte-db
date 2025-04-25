@@ -80,6 +80,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 
@@ -2489,10 +2490,11 @@ Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
   return server_->GetRegistration(reg, server::RpcOnly::kTrue);
 }
 
-TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(TabletPtrs* tablet_ptrs) const {
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(
+    TabletPtrs* tablet_ptrs, UserTabletsOnly user_tablets_only) const {
   SharedLock<RWMutex> shared_lock(mutex_);
   TabletPeers peers;
-  GetTabletPeersUnlocked(&peers);
+  GetTabletPeersUnlocked(&peers, user_tablets_only);
   if (tablet_ptrs) {
     for (const auto& peer : peers) {
       if (!peer) continue;
@@ -2517,16 +2519,25 @@ TSTabletManager::TabletPeers TSTabletManager::GetTabletPeersWithTableId(
   return filtered_peers;
 }
 
-void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
+void TSTabletManager::GetTabletPeersUnlocked(
+    TabletPeers* tablet_peers,  UserTabletsOnly user_tablets_only) const {
   DCHECK(tablet_peers != nullptr);
   // See AppendKeysFromMap for why this is done.
   if (tablet_peers->empty()) {
     tablet_peers->reserve(tablet_map_.size());
   }
-  for (const auto& entry : tablet_map_) {
-    if (entry.second != nullptr) {
-      tablet_peers->push_back(entry.second);
+  for (const auto& [_, peer] : tablet_map_) {
+    if (peer == nullptr) {
+      continue;
     }
+    if (user_tablets_only) {
+      auto tablet_ptr = peer->shared_tablet();
+      if (tablet_ptr &&
+          tablet_ptr->metadata()->namespace_name() == master::kSystemNamespaceName) {
+        continue;
+      }
+    }
+    tablet_peers->push_back(peer);
   }
 }
 

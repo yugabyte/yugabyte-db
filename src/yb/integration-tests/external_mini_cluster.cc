@@ -1867,9 +1867,11 @@ Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
   return ts_admin_service_proxy->FlushTablets(req, &resp, &controller);
 }
 
-Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(ExternalTabletServer* ts) {
+Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(
+    ExternalTabletServer* ts, bool user_tablets_only) {
   rpc::RpcController rpc;
   ListTabletsRequestPB req;
+  req.set_include_user_tablets_only(user_tablets_only);
   ListTabletsResponsePB resp;
   rpc.set_timeout(opts_.timeout);
   TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
