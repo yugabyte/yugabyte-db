@@ -213,6 +213,41 @@ Include the primary key definition in the `CREATE TABLE` statement. Primary Key 
 
 Refer to the [Manual review guideline](../../known-issues/) for a detailed list of limitations and suggested workarounds associated with the source databases when migrating to YugabyteDB Voyager.
 
+### Import schema
+
+Import the schema using the `yb-voyager import schema` command.
+
+{{< note title="Usage for target_db_schema" >}}
+
+The `target_db_schema` argument specifies the schema of the target YugabyteDB database and is applicable _only for_ MySQL and Oracle.
+`yb-voyager` imports the source database into the `public` schema of the target YugabyteDB database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
+
+{{< /note >}}
+
+An example invocation of the command with required arguments is as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
+```
+
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+
+{{< note title="NOT VALID constraints are not imported" >}}
+
+Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
+
+Voyager will add these constraints back during [Post snapshot import](#post-snapshot-import).
+
+{{< /note >}}
+
+yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
+
 ### Export data
 
 Dump the source data into the `EXPORT_DIR/data` directory using the `yb-voyager export data` command as follows:
@@ -269,41 +304,6 @@ Consider the following caveats before using the feature:
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) will have no effect.
 - In MySQL RDS, writes are not allowed during the data export process.
 - Sequences that are not associated with any column or attached to columns of non-integer types are not supported for resuming value generation.
-
-### Import schema
-
-Import the schema using the `yb-voyager import schema` command.
-
-{{< note title="Usage for target_db_schema" >}}
-
-The `target_db_schema` argument specifies the schema of the target YugabyteDB database and is applicable _only for_ MySQL and Oracle.
-`yb-voyager` imports the source database into the `public` schema of the target YugabyteDB database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
-
-{{< /note >}}
-
-An example invocation of the command with required arguments is as follows:
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import schema --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
-```
-
-Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
-
-{{< note title="NOT VALID constraints are not imported" >}}
-
-Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
-
-Voyager will add these constraints back during [Post snapshot import](#post-snapshot-import).
-
-{{< /note >}}
-
-yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
 ### Import data
 
