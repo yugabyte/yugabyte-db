@@ -1139,7 +1139,7 @@ public class GFlagsUtil {
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
       int ysqlPort = node.ysqlServerRpcPort;
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling) {
+      if (taskParams.enableConnectionPooling) {
         ysqlPort = node.internalYsqlServerRpcPort;
       }
       mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
