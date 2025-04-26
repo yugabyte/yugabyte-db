@@ -251,6 +251,7 @@ set(TSERVER_SRCS
   remote_bootstrap_anchor_client.cc
   remote_client_base.cc
   remote_bootstrap_client.cc
+  remote_bootstrap_info.cc
   remote_bootstrap_file_downloader.cc
   remote_bootstrap_service.cc
   remote_bootstrap_session.cc
@@ -406,6 +407,7 @@ set(YB_TEST_LINK_LIBS
   yb-tserver_util
   tablet_test_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(remote_bootstrap_file_downloader-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
 ADD_YB_TEST(remote_bootstrap_service-test)

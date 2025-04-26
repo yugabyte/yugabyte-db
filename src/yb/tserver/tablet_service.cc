@@ -3775,6 +3775,27 @@ void TabletServiceAdminImpl::TestRetry(
   }
 }
 
+void TabletServiceAdminImpl::GetActiveRbsInfo(
+    const GetActiveRbsInfoRequestPB* req, GetActiveRbsInfoResponsePB* resp,
+    rpc::RpcContext context) {
+  for (const auto& peer : server_->tablet_manager()->GetTabletPeers()) {
+    auto rbs_info = peer->status_listener()->GetRbsProgressInfo();
+    if (!rbs_info) continue;
+    auto* rbs_resp_info = resp->add_rbs_infos();
+    rbs_resp_info->set_tablet_id(peer->tablet_id());
+    rbs_resp_info->set_source_ts_uuid(rbs_info->source_ts_uuid);
+    rbs_resp_info->set_sst_bytes_to_download(rbs_info->sst_bytes_to_download);
+    rbs_resp_info->set_sst_bytes_downloaded(rbs_info->sst_bytes_downloaded);
+
+    auto sst_end_time_micros = (rbs_info->sst_end_time_micros == 0) ?
+                               GetCurrentTimeMicros() :
+                               rbs_info->sst_end_time_micros;
+    rbs_resp_info->set_sst_download_elapsed_sec(
+        (sst_end_time_micros - rbs_info->sst_start_time_micros) / 1000000);
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 
