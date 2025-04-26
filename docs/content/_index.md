@@ -55,10 +55,12 @@ Built using a combination of high-performance document store, per-shard distribu
     linkUrl2="/preview/develop/multi-cloud/"
     linkText3="Drivers and ORMs"
     linkUrl3="/preview/drivers-orms/"
+    button2Text="Learn more"
+    button2Url="cloud-quickstart"
   >}}
   {{< sections/3-box-card
-    title="Architecture"
-    description="Learn the internals of queries, transactions, storage, and more."
+    title="Under the hood"
+    description="Learn about YugabyteDB's modern architecture."
     linkText1="Query layer"
     linkUrl1="/preview/architecture/query-layer/"
     linkText2="Storage layer"
