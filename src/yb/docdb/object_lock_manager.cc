@@ -230,19 +230,20 @@ bool ObjectLockManagerImpl::Lock(
     const ObjectLockOwner& object_lock_owner) {
   TRACE("Locking a batch of $0 keys", key_to_intent_type.size());
   auto& transaction_entry = Reserve(key_to_intent_type, object_lock_owner);
-  auto owner_as_string = make_lw_function([&object_lock_owner] {
+  auto owner_as_string = [&object_lock_owner] {
     return AsString(object_lock_owner);
-  });
+  };
   for (auto it = key_to_intent_type.begin(); it != key_to_intent_type.end(); ++it) {
     const auto& intent_types = it->intent_types;
     VLOG(4) << "Locking " << AsString(intent_types) << ": "
             << AsString(it->key);
     if (!LockSingleEntry(
-        *it, deadline, transaction_entry, object_lock_owner.subtxn_id, owner_as_string)) {
+        *it, deadline, transaction_entry, object_lock_owner.subtxn_id,
+        make_lw_function(owner_as_string))) {
       while (it != key_to_intent_type.begin()) {
         --it;
         UnlockSingleEntry(
-            *it, transaction_entry, object_lock_owner.subtxn_id, owner_as_string);
+            *it, transaction_entry, object_lock_owner.subtxn_id, make_lw_function(owner_as_string));
       }
       Cleanup(key_to_intent_type);
       return false;
