@@ -3150,7 +3150,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createWaitForServersTasks(
-      Collection<NodeDetails> nodes, ServerType type, Universe currentUniverseState) {
+      Collection<NodeDetails> nodes, ServerType type, @Nullable Universe currentUniverseState) {
     return createWaitForServersTasks(
         nodes,
         type,
@@ -6946,7 +6946,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // End of Schedule backup methods
 
   public SubTaskGroup createUpdateUniverseFieldsTask(Consumer<Universe> fieldModifer) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseFields");
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UpdateUniverseFields", SubTaskGroupType.ConfigureUniverse);
     UpdateUniverseFields.Params params = new UpdateUniverseFields.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.fieldModifier = fieldModifer;
