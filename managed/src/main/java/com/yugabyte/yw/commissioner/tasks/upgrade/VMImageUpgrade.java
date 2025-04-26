@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -327,7 +328,24 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         }
       }
       createSetNodeStateTask(node, NodeState.Live);
-      createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
+      createUpdateUniverseFieldsTask(
+              u -> {
+                NodeDetails nodeDetails = u.getNode(node.nodeName);
+                if (nodeDetails != null) {
+                  nodeDetails.machineImage = node.machineImage;
+                  nodeDetails.sshUserOverride = node.sshUserOverride;
+                  nodeDetails.sshPortOverride = node.sshPortOverride;
+                  nodeDetails.ybPrebuiltAmi = node.ybPrebuiltAmi;
+                  if (!taskParams().isSoftwareUpdateViaVm) {
+                    u.updateConfig(
+                        ImmutableMap.of(
+                            Universe.USE_CUSTOM_IMAGE,
+                            Boolean.toString(
+                                u.getUniverseDetails().nodeDetailsSet.stream()
+                                    .allMatch(n -> n.ybPrebuiltAmi))));
+                  }
+                }
+              })
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
