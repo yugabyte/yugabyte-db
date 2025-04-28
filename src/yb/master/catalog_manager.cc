@@ -949,7 +949,7 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
       state_(kConstructed),
       load_balance_policy_(std::make_unique<ClusterLoadBalancer>(this)),
       tablegroup_manager_(std::make_unique<YsqlTablegroupManager>()),
-      object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(master_, this)),
+      object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(*master_, *this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
@@ -6343,7 +6343,7 @@ void CatalogManager::AcquireObjectLocksGlobal(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->LockObject(*req, resp, std::move(rpc));
+  object_lock_info_manager_->LockObject(*req, *resp, std::move(rpc));
 }
 
 void CatalogManager::ReleaseObjectLocksGlobal(
@@ -6355,7 +6355,7 @@ void CatalogManager::ReleaseObjectLocksGlobal(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->UnlockObject(*req, resp, std::move(rpc));
+  object_lock_info_manager_->UnlockObject(*req, *resp, std::move(rpc));
 }
 
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,

@@ -428,7 +428,7 @@ class ApplyToValue {
   Extractor extractor_;
 };
 
-class PgClientServiceImpl::Impl {
+class PgClientServiceImpl::Impl : public LeaseEpochValidator {
  public:
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
@@ -509,6 +509,16 @@ class PgClientServiceImpl::Impl {
     }
   }
 
+  uint64_t lease_epoch() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return lease_epoch_;
+  }
+
+  bool IsLeaseValid(uint64_t lease_epoch) override EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return lease_epoch == lease_epoch_;
+  }
+
   Status Heartbeat(
       const PgHeartbeatRequestPB& req, PgHeartbeatResponsePB* resp, rpc::RpcContext* context) {
     if (req.session_id() == std::numeric_limits<uint64_t>::max()) {
@@ -520,15 +530,10 @@ class PgClientServiceImpl::Impl {
     }
 
     auto session_id = ++session_serial_no_;
-    uint64_t lease_epoch;
-    {
-      std::lock_guard lock(mutex_);
-      lease_epoch = lease_epoch_;
-    }
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
-        session_context_, session_id, lease_epoch, tablet_server_.ts_local_lock_manager(),
+        session_context_, session_id, lease_epoch(), this, tablet_server_.ts_local_lock_manager(),
         messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {

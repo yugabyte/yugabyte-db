@@ -103,6 +103,10 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
 
+DEFINE_RUNTIME_int32(ysql_max_retries_for_release_object_lock_requests, 10,
+                      "Maximum retries for a object lock release request sent to the Master(s). "
+                      "This does not include the retries done internally at the ybclient layer.");
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
@@ -1129,11 +1133,13 @@ class PgClientSession::Impl {
   Impl(
       TransactionBuilder&& transaction_builder, std::shared_ptr<PgClientSession> shared_this,
       client::YBClient& client, const PgClientSessionContext& context, uint64_t id,
-      uint64_t lease_epoch, tserver::TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
+      uint64_t lease_epoch, LeaseEpochValidator* lease_validator,
+      tserver::TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
       : client_(client),
         context_(context),
         shared_this_(std::move(shared_this)),
         id_(id),
+        lease_validator_(lease_validator),
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
         transaction_provider_(std::move(transaction_builder)),
@@ -2999,18 +3005,50 @@ class PgClientSession::Impl {
           deadline);
     }
     // TODO: Need to handle failures here, else there could be a leak of exclusive locks. The
-    // problem is only with the following types of transactions. (GHI #26498)
+    // problem is only with the following types of transactions.
     // 1. DDLs that don't have schema changes (not tracked by master's bg DDL verification task).
     // 2. Any plain transaction that takes explicit global locks using 'LOCK TABLE ...'.
+    // This is mostly addressed by retrying the release request. However, we stil need to handle
+    // the case where the pg-client/session misses the heartbeat and needs clean up (#26673).
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_id, subtxn_id, lease_epoch_, context_.clock.get()));
-    client_.ReleaseObjectLocksGlobalAsync(
-        *release_req, [release_req](Status s) {
-          WARN_NOT_OK(
-              s, Format("Realese global locks failed for req $0", release_req->ShortDebugString()));
-        }, deadline - ToCoarse(MonoTime::Now()));
+    ReleaseWithRetries(client_, release_req);
     return Status::OK();
+  }
+
+  void ReleaseWithRetries(
+      client::YBClient& client,
+      std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB> release_req, int attempt = 1) {
+    // Practically speaking, if the TServer cannot reach the master/leader for the ysql lease
+    // interval it can safely give up. The Master is responsible for cleaning up the locks for any
+    // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
+    // used here defaults to 60s, which is much larger than the default lease interval of 15s.
+    auto timeout = MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+    if (!lease_validator_->IsLeaseValid(lease_epoch_)) {
+      LOG(INFO) << "Lease epoch " << lease_epoch_ << " is not valid. Will not retry "
+                << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+      return;
+    } else if (attempt > GetAtomicFlag(&FLAGS_ysql_max_retries_for_release_object_lock_requests)) {
+      LOG(DFATAL) << "Release global locks failing completely after " << attempt
+                  << " attempts. No more retries. req " << release_req->ShortDebugString();
+      return;
+    }
+    client.ReleaseObjectLocksGlobalAsync(
+        *release_req,
+        [this, &client, release_req, attempt](Status s) {
+          if (s.ok()) {
+            VLOG(1) << "Release global request done. "
+                    << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+            return;
+          } else {
+            VLOG_WITH_PREFIX(1) << "Release global locks failed. Will retry."
+                                << " status " << s
+                                << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+            ReleaseWithRetries(client, release_req, attempt + 1);
+          }
+        },
+        timeout);
   }
 
   UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result,
@@ -3036,6 +3074,7 @@ class PgClientSession::Impl {
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
+  LeaseEpochValidator* lease_validator_;
   const uint64_t lease_epoch_;
   const tserver::TSLocalLockManagerPtr ts_lock_manager_;
   TransactionProvider transaction_provider_;
@@ -3062,12 +3101,11 @@ class PgClientSession::Impl {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
     client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-    uint64_t id, uint64_t lease_epoch,
+    uint64_t id, uint64_t lease_epoch, LeaseEpochValidator* lease_validator,
     tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler)
     : impl_(new Impl(
-        std::move(transaction_builder), {std::move(shared_this_source), this}, client, context, id,
-        lease_epoch, std::move(ts_local_lock_manager), scheduler)) {
-}
+          std::move(transaction_builder), {std::move(shared_this_source), this}, client, context,
+          id, lease_epoch, lease_validator, std::move(ts_local_lock_manager), scheduler)) {}
 
 PgClientSession::~PgClientSession() = default;
 
