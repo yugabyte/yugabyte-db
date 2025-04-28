@@ -181,7 +181,24 @@ public class NodeAgentEnabler {
    * @return true if it should be marked, else false.
    */
   public boolean shouldMarkUniverse(Universe universe) {
+    // Not mandatory now, but mark it for future back-fill.
     return isEnabled() && isNodeAgentEnabled(universe, p -> true).orElse(false) == false;
+  }
+
+  /**
+   * Checks if node agent is mandatory for the provider.
+   *
+   * @param provider the provider.
+   * @return true if it is mandatory, else false.
+   */
+  public boolean isNodeAgentMandatory(Provider provider) {
+    boolean clientEnabled =
+        confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+    if (!clientEnabled) {
+      log.trace("Node agent client is disabled for provider {}", provider.getUuid());
+      return false;
+    }
+    return provider.getDetails().isEnableNodeAgent();
   }
 
   /**
@@ -338,6 +355,15 @@ public class NodeAgentEnabler {
   @VisibleForTesting
   void scanUniverses() {
     try {
+      boolean processNextUniverse =
+          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnablerRunInstaller);
+      if (!processNextUniverse) {
+        if (customerNodeAgentInstallers.isEmpty()) {
+          // No installer is running.
+          return;
+        }
+        log.info("Installer is disabled. Waiting for running installations to complete");
+      }
       // Sort customer by name for deterministic order.
       Iterator<Customer> customerIter =
           Customer.getAll().stream()
@@ -404,49 +430,55 @@ public class NodeAgentEnabler {
             // Go to next universe.
           }
         }
-        log.debug("Continuing to the next eligible universe for customer {}", customer.getUuid());
-        Iterator<Universe> universeIter =
-            customer.getUniverses().stream()
-                .sorted(
-                    Comparator.comparing(Universe::getCreationDate)
-                        .thenComparing(Universe::getName))
-                .iterator();
-        while (universeIter.hasNext()) {
-          Universe universe = universeIter.next();
-          // Round-robin to give equal priority to every universe within each customer.
-          if (installer != null && installer.alreadyProcessed(universe)) {
-            log.trace(
-                "Skipping processed universe {} for customer {} in the current interation",
+        if (processNextUniverse) {
+          log.debug("Continuing to the next eligible universe for customer {}", customer.getUuid());
+          Iterator<Universe> universeIter =
+              customer.getUniverses().stream()
+                  .sorted(
+                      Comparator.comparing(Universe::getCreationDate)
+                          .thenComparing(Universe::getName))
+                  .iterator();
+          while (universeIter.hasNext()) {
+            Universe universe = universeIter.next();
+            // Round-robin to give equal priority to every universe within each customer.
+            if (installer != null && installer.alreadyProcessed(universe)) {
+              log.trace(
+                  "Skipping processed universe {} for customer {} in the current interation",
+                  universe.getName(),
+                  customer.getUuid());
+              continue;
+            }
+            if (!shouldInstallNodeAgents(universe, false /* Ignore universe lock */)) {
+              log.trace(
+                  "Skipping installation for universe {} for customer {} as it is not eligible",
+                  universe.getName(),
+                  customer.getUuid());
+              continue;
+            }
+            log.info(
+                "Picking up universe {} ({}) for customer {} for installation",
                 universe.getName(),
-                customer.getUuid());
-            continue;
-          }
-          if (!shouldInstallNodeAgents(universe, false /* Ignore universe lock */)) {
-            log.trace(
-                "Skipping installation for universe {} for customer {} as it is not eligible",
-                universe.getName(),
-                customer.getUuid());
-            continue;
-          }
-          log.info(
-              "Picking up universe {} ({}) for customer {} for installation",
-              universe.getName(),
-              universe.getUniverseUUID(),
-              customer.getUuid());
-          try {
-            UniverseNodeAgentInstaller nextInstaller =
-                new UniverseNodeAgentInstaller(customer.getUuid(), universe);
-            nextInstaller.future =
-                CompletableFuture.runAsync(nextInstaller, universeInstallerExecutor);
-            customerNodeAgentInstallers.put(customer.getUuid(), nextInstaller);
-            // Break to go to next customer.
-            break;
-          } catch (RejectedExecutionException e) {
-            log.error(
-                "Failed to submit installer for universe {} - {}",
                 universe.getUniverseUUID(),
-                e.getMessage());
+                customer.getUuid());
+            try {
+              UniverseNodeAgentInstaller nextInstaller =
+                  new UniverseNodeAgentInstaller(customer.getUuid(), universe);
+              nextInstaller.future =
+                  CompletableFuture.runAsync(nextInstaller, universeInstallerExecutor);
+              customerNodeAgentInstallers.put(customer.getUuid(), nextInstaller);
+              // Break to go to next customer.
+              break;
+            } catch (RejectedExecutionException e) {
+              log.error(
+                  "Failed to submit installer for universe {} - {}",
+                  universe.getUniverseUUID(),
+                  e.getMessage());
+            }
           }
+        } else {
+          log.info(
+              "Skipping next universe for customer {} because installer is disabled",
+              customer.getUuid());
         }
         if (installer != null && customerNodeAgentInstallers.get(customer.getUuid()) == installer) {
           // Same reference means no new installer was created.
