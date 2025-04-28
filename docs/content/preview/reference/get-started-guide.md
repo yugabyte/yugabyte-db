@@ -140,11 +140,14 @@ Find resources for getting started, migrating existing databases, using your dat
 
 ### Connection management
 
+[Built-in Connection Manager Turns Key  PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
+: Use YugabyteDB's built-in Connection Manager to improve performance and simplify application architecture.
+
 [Database Connection Management: Exploring Pools and Performance](https://www.yugabyte.com/blog/database-connection-management/)
-: Database connection management with YugabyteDB.
+: Manage database connections effectively, using connection pooling and tuning parameters to reduce latency and handle high concurrency.
 
 [Understanding Client Connections and How Connection Pooling Works in YugabyteDB YSQL](https://www.yugabyte.com/blog/how-connection-pooling-works/)
-: YugabyteDB's connection pooling optimizes database performance by reusing connections, reducing latency and resource overhead.
+: Learn about client connections and how you can use third-party connection poolers in YugabyteDB.
 
 ## Troubleshooting
 
