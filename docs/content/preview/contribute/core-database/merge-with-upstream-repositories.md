@@ -156,7 +156,7 @@ This merge can technically be handled similarly as [direct-descendant merge](#co
 However, there is a much faster alternative that should be taken.
 A prerequisite for using this alternative is that the target version contains all the commits of the source version (or, nearly equivalently, the target version was released later than the source version).
 For example, PG 15.2 should contain all commits in PG 11.2, considering backports as equivalent to each other, and for any commits only in PG 11.2, they are likely irrelevant for PG 15.2.
-Another example, PG 15.12 to PG 16.1 cannot use this alternative strategy since 15.2 has backports from master that 16.1 does not have.
+Another example, PG 15.12 to PG 16.1 cannot use this alternative strategy since 15.12 has backports from master that 16.1 does not have.
 This prerequisite generally shouldn't fail since major version upgrades should aim for the latest minor version of a major version.
 
 The steps below detail a hypothetical merge of PG 15.12 to PG 18.1.
