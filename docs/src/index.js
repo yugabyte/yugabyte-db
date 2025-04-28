@@ -106,7 +106,7 @@ function yugabyteScrollLeftNav(activeLink) {
  * based on the container width.
  */
 function yugabytePageFinderWidth() {
-  yugabytePageFinderList.forEach(({width, parent}) => {
+  yugabytePageFinderList.forEach(({ width, parent }) => {
     if (parent) {
       const innerContainer = document.querySelector('.content-area');
       if (width > innerContainer.offsetWidth) {
@@ -172,6 +172,8 @@ function yugabyteActiveLeftNav() {
 }
 
 $(document).ready(() => {
+  var abc = 'sami';
+  console.log('hello');
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
     $('body').addClass('is-safari');
