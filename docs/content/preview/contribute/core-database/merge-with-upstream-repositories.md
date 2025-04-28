@@ -55,7 +55,7 @@ Note: as of today, there is no foolproof linter check that the CSV is updated pr
 ### How upstream repositories are embedded
 
 Orthogonally, there is the matter of how external repositories are embedded into YugabyteDB.
-Historically, this has been via copy-paste of code, and committing that as one large commit.
+Historically, this has been via squash merge, committing everything as one large commit.
 There had also been usage of git submodules in the past, but that was scrapped primarily because developers accidentally reverted the submodules to older commits.
 That is not a strong reason considering there could be checks to counter that; however, submodules often do not make much sense when they do not compile standalone because of strong dependencies with YugabyteDB itself.
 
@@ -75,12 +75,12 @@ There are three main ways upstream code is updated then merged into YugabyteDB.
 
 In addition, there are slight differences depending on how the upstream repository is embedded.
 
-### Embedded via copy-paste
+### Embedded via squash
 
 The steps that follow will use PostgreSQL as an example.
-At the time of writing, PostgreSQL uses the copy-paste embedding strategy.
+At the time of writing, PostgreSQL uses the squash embedding strategy.
 
-#### Copy-paste point-imports
+#### Squash point-imports
 
 1. Find the appropriate upstream postgres commits.
    For example, if this import is for `yugabyte/yugabyte-db` repo `2025.1` branch based on PG 15.x, then prioritize using upstream postgres commits on `REL_15_STABLE` over those on `master` because they would have resolved conflicts for us.
@@ -121,7 +121,7 @@ At the time of writing, PostgreSQL uses the copy-paste embedding strategy.
    This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
    **Make sure the commit hashes have not changed when landing to `yb-pg<version>`.**
 
-#### Copy-paste direct-descendant merge
+#### Squash direct-descendant merge
 
 A direct-descendant merge for PostgreSQL is typically a minor version upgrade.
 An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd531080239c350528da38268ac0fa0e](https://github.com/yugabyte/postgres/commit/12398eddbd531080239c350528da38268ac0fa0e) and [`yugabyte/yugabyte-db` e99df6f4d97e5c002d3c4b89c74a778ad0ac0932](https://github.com/yugabyte/yugabyte-db/commit/e99df6f4d97e5c002d3c4b89c74a778ad0ac0932).
@@ -146,13 +146,13 @@ An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd5310802
    This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
    **Make sure the commit hashes have not changed when landing to `yb-pg<version>`.**
 
-#### Copy-paste non-direct-descendant merge
+#### Squash non-direct-descendant merge
 
 A non-direct-descendant merge for PostgreSQL is typically a major version upgrade.
 An example is PG 11.2 to 15.2 as _initially_ done in [`yugabyte/yugabyte-db` 55782d561e55ef972f2470a4ae887dd791bb4a97](https://github.com/yugabyte/yugabyte-db/commit/55782d561e55ef972f2470a4ae887dd791bb4a97).
 Note that this was done before `upstream_repositories.csv` was in place, so it lacks formality and should not be looked at as a model example.
 
-This merge can technically be handled similarly as [direct-descendant merge](#copy-paste-direct-descendant-merge).
+This merge can technically be handled similarly as [direct-descendant merge](#squash-direct-descendant-merge).
 However, there is a much faster alternative that should be taken.
 A prerequisite for using this alternative is that the target version contains all the commits of the source version (or, nearly equivalently, the target version was released later than the source version).
 For example, PG 15.2 should contain all commits in PG 11.2, considering backports as equivalent to each other, and for any commits only in PG 11.2, they are likely irrelevant for PG 15.2.
@@ -177,7 +177,7 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 1. Create a new branch `yb-pg18` on `REL_18_1`, then apply each change recorded above.
    If cherry-picking commits, use `-x`.
    For merge conflicts, resolve and amend them to the same commit, describing resolutions within the commit messages themselves.
-   The procedure here is very much like the first two steps of [doing point-imports](#copy-paste-point-imports).
+   The procedure here is very much like the first two steps of [doing point-imports](#squash-point-imports).
 1. TODO(jason)
 
 ### Embedded via subtree
