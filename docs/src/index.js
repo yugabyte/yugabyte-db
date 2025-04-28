@@ -172,8 +172,6 @@ function yugabyteActiveLeftNav() {
 }
 
 $(document).ready(() => {
-  var abc = 'sami';
-  console.log('hello');
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
     $('body').addClass('is-safari');
