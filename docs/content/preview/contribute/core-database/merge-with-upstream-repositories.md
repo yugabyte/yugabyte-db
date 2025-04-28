@@ -177,7 +177,7 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 1. Create a new branch `yb-pg18` on `REL_18_1`, then apply each change recorded above.
    If cherry-picking commits, use `-x`.
    For merge conflicts, resolve and amend them to the same commit, describing resolutions within the commit messages themselves.
-   The procedure here is very much like the first two steps of [doing point-imports](copy-paste-point-imports).
+   The procedure here is very much like the first two steps of [doing point-imports](#copy-paste-point-imports).
 1. TODO(jason)
 
 ### Embedded via subtree
