@@ -534,6 +534,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables() const;
+  std::vector<TableInfoPtr> GetAllColocatedTableInfos() const;
 
   std::vector<TableId> GetAllColocatedTablesUnlocked() const REQUIRES(data_mutex_);
 
