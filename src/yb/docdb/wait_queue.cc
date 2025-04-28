@@ -468,6 +468,10 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return pg_session_req_version_;
   }
 
+  bool IsForAdvisoryLock() const {
+    return is_advisory_lock_req_;
+  }
+
  private:
   int64_t MicrosSinceCreation() const {
     return GetCurrentTimeMicros() - wq_entry_time.GetPhysicalValueMicros();
@@ -1904,6 +1908,12 @@ class WaitQueue::Impl {
         waiter_info->add_blocking_txn_ids(id.data(), id.size());
       }
       for (auto& [intent_key, intent_data] : lock_info.intents) {
+        if (waiter->IsForAdvisoryLock() && !intent_data.full_doc_key) {
+          // For advisory lock waiters, return the intents corresponding to the full doc key alone
+          // since the rest don't make sense i.e. might not have fields like database id etc set.
+          VLOG_WITH_PREFIX(2) << "Skipping " << intent_data.ToString() << " for pg_locks.";
+          continue;
+        }
         if (max_txn_locks && (waiter_info->locks_size() + granted_locks_size >= max_txn_locks)) {
           waiter_info->set_has_additional_waiting_locks(true);
           break;
