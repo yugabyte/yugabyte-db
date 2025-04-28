@@ -348,12 +348,9 @@ public class TestYbBackup extends BasePgSQLTest {
     }
 
     // Verify that the new database and tables are properly configured.
-    List<String> tbl1Tablets = YBBackupUtil.getTabletsForTable("ysql." + restoreDBName,
-                                                                "test_tbl1");
-    List<String> tbl2Tablets = YBBackupUtil.getTabletsForTable("ysql." + restoreDBName,
-                                                                "test_tbl2");
-    List<String> tbl3Tablets = YBBackupUtil.getTabletsForTable("ysql." + restoreDBName,
-                                                                "test_tbl3");
+    List<String> tbl1Tablets = getTabletsForYsqlTable(restoreDBName, "test_tbl1");
+    List<String> tbl2Tablets = getTabletsForYsqlTable(restoreDBName, "test_tbl2");
+    List<String> tbl3Tablets = getTabletsForYsqlTable(restoreDBName, "test_tbl3");
     // test_tbl1 and test_tbl2 are colocated and so should share the exact same tablet.
     assertEquals("test_tbl1 is not colocated", 1, tbl1Tablets.size());
     assertEquals("test_tbl2 is not colocated", 1, tbl2Tablets.size());
@@ -1399,10 +1396,10 @@ public class TestYbBackup extends BasePgSQLTest {
           ", 'R" + String.valueOf(1 + i % 3) + "')"); // geo
       }
 
-      List<String> tblTablets = getTabletsForTable("yugabyte", "tbl");
-      List<String> tblR1Tablets = getTabletsForTable("yugabyte", "tbl_r1");
-      List<String> tblR2Tablets = getTabletsForTable("yugabyte", "tbl_r2");
-      List<String> tblR3Tablets = getTabletsForTable("yugabyte", "tbl_r3");
+      List<String> tblTablets = getTabletsForYsqlTable("yugabyte", "tbl");
+      List<String> tblR1Tablets = getTabletsForYsqlTable("yugabyte", "tbl_r1");
+      List<String> tblR2Tablets = getTabletsForYsqlTable("yugabyte", "tbl_r2");
+      List<String> tblR3Tablets = getTabletsForYsqlTable("yugabyte", "tbl_r3");
 
       String backupDir = YBBackupUtil.getTempBackupDir(), output = null;
       List<String> args = new ArrayList<>(Arrays.asList("--keyspace", "ysql.yugabyte"));
