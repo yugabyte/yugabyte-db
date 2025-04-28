@@ -394,6 +394,31 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
       afterComp.push(<DeviceInfoField content={<>&nbsp;</>} />, ...after1);
     }
 
+    if (beforeValue?.userIntent?.dedicatedNodes !== afterValue?.userIntent?.dedicatedNodes) {
+      attributes.push(<DeviceInfoHeader content="Master Placement" />);
+      beforeComp.push(
+        <DeviceInfoField
+          content={
+            beforeValue?.userIntent?.dedicatedNodes
+              ? MasterPlacementMode.DEDICATED
+              : MasterPlacementMode.COLOCATED
+          }
+          operation={DiffOperation.REMOVED}
+        />
+      );
+      afterComp.push(
+        <DeviceInfoField
+          content={
+            afterValue?.userIntent?.dedicatedNodes
+              ? MasterPlacementMode.DEDICATED
+              : MasterPlacementMode.COLOCATED
+          }
+          operation={DiffOperation.ADDED}
+        />
+      );
+      this.changesCount++;
+    }
+
     if (beforeValue.userIntent.masterInstanceType !== afterValue.userIntent.masterInstanceType) {
       this.cards[clusterType].push(
         <DiffCard
