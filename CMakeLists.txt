@@ -291,7 +291,10 @@ else()
   message("CMake will not export the compilation database")
 endif()
 
-if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+# DocumentDB extension is not available in aarch64 and arm64(#26954) builds.
+# (#26948): Builds like those on ubuntu22.04 do not have libpcre2, which this extension depends on.
+find_library(PCRE2_LIB libpcre2-posix.so)
+if(PCRE2_LIB AND NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$" )
   set(YB_ENABLE_YSQL_DOCUMENTDB_EXT TRUE)
   ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
 endif()

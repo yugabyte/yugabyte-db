@@ -330,4 +330,7 @@ ADD_YB_CQL_TEST(cql_geo_transactions-test)
 ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
 ADD_YB_CQL_TEST(tablet_limits_integration_test)
 
+ADD_YB_TEST(documentdb/documentdb_test)
+YB_TEST_TARGET_LINK_LIBRARIES(documentdb/documentdb_test pg_wrapper_test_base)
+
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
