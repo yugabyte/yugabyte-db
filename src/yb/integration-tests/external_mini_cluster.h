@@ -316,11 +316,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<size_t> GetTabletLeaderIndex(const yb::TabletId& tablet_id, bool require_lease = false);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
-  std::string GetMasterAddresses() const;
+  std::string GetMasterAddresses() const override;
 
   std::string GetTabletServerAddresses() const;
 
-  std::string GetTabletServerHTTPAddresses() const;
+  std::string GetTabletServerHTTPAddresses() const override;
 
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   Status PingMaster(const ExternalMaster* master) const;
@@ -413,6 +413,10 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Get table server host for ysql conn mgr or pg depending if test running with conn mgr.
   HostPort ysql_hostport(int node_index) const;
+
+  HostPort YsqlHostport() const override {
+    return ysql_hostport(0);
+  }
 
   size_t num_tablet_servers() const {
     return tablet_servers_.size();
