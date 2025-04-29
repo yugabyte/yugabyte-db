@@ -210,7 +210,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status ProcessLeaseUpdate(
       const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
   Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
-  bool YSQLLeaseEnabled() const;
+  Status RestartPG() const override;
+
+  static bool YSQLLeaseEnabled();
   tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
   bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 
@@ -361,6 +363,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
+
+  void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
+
+  Status StartYSQLLeaseRefresher();
 
   TserverXClusterContextIf& GetXClusterContext() const;
 
@@ -582,6 +588,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
+  std::function<Status(void)> pg_restarter_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;

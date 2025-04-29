@@ -1812,20 +1812,18 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
   }
 
   void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
-    std::vector<SessionInfoPtr> sessions;
-    {
-      std::lock_guard lock(mutex_);
-      last_lease_refresh_time_ = time;
-      if (lease_refresh_info.new_lease()) {
-        LOG(INFO) << Format(
-            "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
-            lease_refresh_info.lease_epoch());
-        lease_epoch_ = lease_refresh_info.lease_epoch();
-        sessions.assign(sessions_.begin(), sessions_.end());
-        sessions_.clear();
+    std::lock_guard lock(mutex_);
+    last_lease_refresh_time_ = time;
+    if (lease_refresh_info.new_lease()) {
+      LOG(INFO) << Format(
+          "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
+          lease_refresh_info.lease_epoch());
+      lease_epoch_ = lease_refresh_info.lease_epoch();
+      auto s = tablet_server_.RestartPG();
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed to restart PG postmaster: " << s;
       }
     }
-    CleanupSessions(std::move(sessions), CoarseMonoClock::now());
   }
 
   YSQLLeaseInfo GetYSQLLeaseInfo() {

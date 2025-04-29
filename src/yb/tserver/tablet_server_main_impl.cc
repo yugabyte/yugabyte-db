@@ -294,7 +294,11 @@ int TabletServerMain(int argc, char** argv) {
               << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
 
     pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
+    // If the ysql lease feature is enabled, we don't want to accept pg connections until the
+    // tserver acquires a lease from the master leader.
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(
+        pg_supervisor->Start(/* run_process */ !TabletServer::YSQLLeaseEnabled()));
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->StartYSQLLeaseRefresher());
   }
 
   std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor> ysql_conn_mgr_supervisor;

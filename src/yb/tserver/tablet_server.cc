@@ -729,7 +729,6 @@ Status TabletServer::Start() {
   RETURN_NOT_OK(tablet_manager_->Start());
 
   RETURN_NOT_OK(heartbeater_->Start());
-  RETURN_NOT_OK(ysql_lease_poller_->Start());
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
@@ -831,7 +830,14 @@ Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
   return resp;
 }
 
-bool TabletServer::YSQLLeaseEnabled() const {
+Status TabletServer::RestartPG() const {
+  if (pg_restarter_) {
+    return pg_restarter_();
+  }
+  return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
+}
+
+bool TabletServer::YSQLLeaseEnabled() {
   return GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
          GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease);
 }
@@ -1732,6 +1738,14 @@ std::string TabletServer::GetCertificateDetails() {
 
 void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
   certificate_reloaders_.push_back(std::move(reloader));
+}
+
+void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restarter) {
+  pg_restarter_ = std::move(restarter);
+}
+
+Status TabletServer::StartYSQLLeaseRefresher() {
+  return ysql_lease_poller_->Start();
 }
 
 Status TabletServer::SetCDCServiceEnabled() {

@@ -110,6 +110,14 @@ void AppendCsvFlagValue(
     std::vector<std::string>& flag_list, const std::string& flag_name,
     const std::string& value_to_add);
 
+struct ExternalClusterPGConnectionOptions {
+  std::string db_name = "yugabyte";
+  std::string user = "postgres";
+  std::optional<size_t> tserver_index;
+  bool simple_query_protocol = false;
+  std::optional<size_t> timeout_secs;
+};
+
 struct ExternalMiniClusterOptions {
 
   // Number of masters to start.
@@ -138,6 +146,7 @@ struct ExternalMiniClusterOptions {
   bool enable_ysql = false;
   bool enable_ysql_auth = false;
   bool enable_ysql_conn_mgr = false;
+  bool wait_for_tservers_to_accept_ysql_connections = false;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -590,8 +599,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Create a PG connection to the given database. If node_index is not set, a random node is
   // chosen.
   Result<pgwrapper::PGConn> ConnectToDB(
-      const std::string& db_name = "yugabyte", std::optional<size_t> node_index = std::nullopt,
+      const std::string& db_name = "yugabyte", std::optional<size_t> tserver_index = std::nullopt,
       bool simple_query_protocol = false, const std::string& user = "postgres");
+
+  Result<pgwrapper::PGConn> ConnectToDB(ExternalClusterPGConnectionOptions&& options);
 
   Status MoveTabletLeader(
       const TabletId& tablet_id, std::optional<size_t> new_leader_idx = std::nullopt,
