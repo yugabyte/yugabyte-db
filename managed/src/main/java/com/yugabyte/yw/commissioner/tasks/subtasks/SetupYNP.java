@@ -9,10 +9,12 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
@@ -31,6 +33,7 @@ public class SetupYNP extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
+  private final RuntimeConfGetter confGetter;
   private ShellProcessContext shellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
 
@@ -38,10 +41,12 @@ public class SetupYNP extends AbstractTaskBase {
   protected SetupYNP(
       BaseTaskDependencies baseTaskDependencies,
       NodeUniverseManager nodeUniverseManager,
-      NodeAgentManager nodeAgentManager) {
+      NodeAgentManager nodeAgentManager,
+      RuntimeConfGetter confGetter) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeAgentManager = nodeAgentManager;
+    this.confGetter = confGetter;
   }
 
   public static class Params extends NodeTaskParams {
@@ -92,7 +97,11 @@ public class SetupYNP extends AbstractTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
 
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
     Path targetPackagePath = ynpStagingDir.resolve(Paths.get("release", "node-agent.tgz"));
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);

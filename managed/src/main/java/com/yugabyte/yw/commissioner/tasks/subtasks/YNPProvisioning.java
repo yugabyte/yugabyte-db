@@ -17,7 +17,6 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.ImageBundle;
@@ -209,14 +208,15 @@ public class YNPProvisioning extends AbstractTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
         Paths.get(
                 customTmpDirectory, String.format("config_%d.json", Instant.now().getEpochSecond()))
             .toString();
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
     String tmpDirectory =
         fileHelperService.createTempFile(node.cloudInfo.private_ip + "-", ".json").toString();
     getProvisionArguments(universe, node, provider, tmpDirectory, nodeAgentHomePath);
