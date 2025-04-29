@@ -647,9 +647,10 @@ class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
             # Do all the basic checks here
             self.cloud.verify_certs(root_cert_path, cert_path, key_path, connect_options,
                                     verify_hostname, perform_extended_validation=True)
+            # Skip the CA checksum check for now till we move to fingerprint validation
             # Do the CA checksum check here since its unique to onprem + customCertHostPath certs
-            self.verify_custom_certificate_checksum(root_cert_path, yba_cert_checksum,
-                                                    connect_options)
+            # self.verify_custom_certificate_checksum(root_cert_path, yba_cert_checksum,
+            #                                         connect_options)
         except YBOpsRuntimeError as e:
             result_var = False
             results["{} certificate".format(cert_type)] = str(e)
