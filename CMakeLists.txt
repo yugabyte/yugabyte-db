@@ -897,6 +897,7 @@ set(YB_SUBDIR_NAMES
     fs
     gen_yrpc
     gutil
+    hnsw
     integration-tests
     master
     qlexpr
