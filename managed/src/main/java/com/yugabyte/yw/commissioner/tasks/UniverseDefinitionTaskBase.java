@@ -50,6 +50,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -3355,9 +3356,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param universe the universe to which the nodes belong.
    * @param nodes the nodes.
+   * @param shellContext the shell context to be used.
    * @return the subtask group.
    */
-  protected SubTaskGroup createRunEnableLinger(Universe universe, Collection<NodeDetails> nodes) {
+  protected SubTaskGroup createRunEnableLinger(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      @Nullable ShellProcessContext shellContext) {
     // Command is run in shell.
     List<String> command =
         ImmutableList.<String>builder()
@@ -3369,12 +3374,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .build();
     // Check only the exit code in shellProcessHandler.
     return createRunNodeCommandTask(
-            universe,
-            nodes,
-            command,
-            (n, r) -> r.processErrors("linger could not be enabled for yugabyte user"),
-            null /* shell context */)
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+        universe,
+        nodes,
+        command,
+        (n, r) -> r.processErrors("linger could not be enabled for yugabyte user"),
+        shellContext);
   }
 
   protected <X> void addParallelTasks(

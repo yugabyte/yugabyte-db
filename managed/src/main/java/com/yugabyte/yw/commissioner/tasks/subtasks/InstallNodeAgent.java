@@ -39,7 +39,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
-  private ShellProcessContext shellContext =
+  private final ShellProcessContext defaultShellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
   private final RuntimeConfGetter confGetter;
 
@@ -70,7 +70,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
     return (Params) taskParams;
   }
 
-  private NodeAgent createNodeAgent(Universe universe, NodeDetails node) {
+  private NodeAgent createNodeAgent(
+      Universe universe, NodeDetails node, ShellProcessContext shellContext) {
     String output =
         nodeUniverseManager
             .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
@@ -100,6 +101,10 @@ public class InstallNodeAgent extends AbstractTaskBase {
   public NodeAgent install() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
+    ShellProcessContext shellContext =
+        taskParams().sshUser == null
+            ? defaultShellContext
+            : defaultShellContext.toBuilder().sshUser(taskParams().sshUser).build();
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (optional.isPresent()) {
       NodeAgent nodeAgent = optional.get();
@@ -108,9 +113,6 @@ public class InstallNodeAgent extends AbstractTaskBase {
       }
       nodeAgentManager.purge(nodeAgent);
     }
-    if (taskParams().sshUser != null) {
-      shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
-    }
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
@@ -118,7 +120,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     Path stagingDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());
     Path nodeAgentSourcePath = stagingDir.resolve(NodeAgent.NODE_AGENT_DIR);
-    NodeAgent nodeAgent = createNodeAgent(universe, node);
+    NodeAgent nodeAgent = createNodeAgent(universe, node, shellContext);
     InstallerFiles installerFiles =
         nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath, false /* certsOnly */);
     Set<String> dirs =

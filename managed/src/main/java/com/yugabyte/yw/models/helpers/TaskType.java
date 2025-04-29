@@ -1066,7 +1066,9 @@ public enum TaskType {
 
   RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class),
 
-  MasterLeaderStepdown(com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown.class);
+  MasterLeaderStepdown(com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown.class),
+
+  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class);
 
   private final Class<? extends ITask> taskClass;
 
