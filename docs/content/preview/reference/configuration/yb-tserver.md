@@ -1404,7 +1404,7 @@ Each tablet replica generally requires 700 MiB of this memory.
 
 Default: `0` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
-### Raft and related consistency/timing flags
+### Raft and consistency/timing flags
 
 With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, `--evict_failed_followers`), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
@@ -1692,7 +1692,7 @@ Number of tablets used for the advisory locks table. It must be set before ysql_
 Default: 1
 
 
-### Advanced/other performance tuning options
+### Other performance tuning options
 
 ##### --allowed_preview_flags_csv
 
