@@ -2770,7 +2770,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -5387,7 +5388,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -8374,7 +8376,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -9144,7 +9147,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -10532,7 +10536,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -14641,7 +14646,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -15618,7 +15624,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -16419,7 +16426,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -17901,7 +17909,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -18434,7 +18443,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -18809,7 +18819,8 @@
               "MasterLeaderStepdown",
               "SetupYNP",
               "YNPProvisioning",
-              "ConfigureOOMServiceOnNode"
+              "ConfigureOOMServiceOnNode",
+              "CheckSshConnection"
             ],
             "type" : "string"
           },
@@ -19605,7 +19616,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -20671,7 +20683,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -21936,7 +21949,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -22580,7 +22594,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -23479,7 +23494,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -24087,7 +24103,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -24695,7 +24712,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -25705,7 +25723,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -26821,7 +26840,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
