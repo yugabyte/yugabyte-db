@@ -1454,8 +1454,8 @@ class PgClientServiceImpl::Impl {
   Status ValidatePlacement(
       const PgValidatePlacementRequestPB& req, PgValidatePlacementResponsePB* resp,
       rpc::RpcContext* context) {
-    master::ReplicationInfoPB replication_info;
-    master::PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
+    ReplicationInfoPB replication_info;
+    PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
 
     for (const auto& block : req.placement_infos()) {
       auto pb = live_replicas->add_placement_blocks();

@@ -83,7 +83,6 @@ namespace master {
 
 class TSRegistrationPB;
 class TSInformationPB;
-class ReplicationInfoPB;
 class TServerMetricsPB;
 
 typedef util::SharedPtrTuple<

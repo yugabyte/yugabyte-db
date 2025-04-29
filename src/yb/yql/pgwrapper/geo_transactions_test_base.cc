@@ -112,7 +112,7 @@ void GeoTransactionsTestBase::CreateTransactionTable(int region) {
   auto current_version = GetCurrentVersion();
 
   std::string name = strings::Substitute("transactions_region$0", region);
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   auto replicas = replication_info.mutable_live_replicas();
   replicas->set_num_replicas(1);
   auto pb = replicas->add_placement_blocks();
@@ -151,7 +151,7 @@ void GeoTransactionsTestBase::CreateMultiRegionTransactionTable() {
   auto current_version = GetCurrentVersion();
 
   std::string name = strings::Substitute("transactions_multiregion");
-  master::ReplicationInfoPB replication_info;
+  ReplicationInfoPB replication_info;
   auto replicas = replication_info.mutable_live_replicas();
   replicas->set_num_replicas(3);
   auto pb = replicas->add_placement_blocks();

@@ -264,6 +264,7 @@ ADD_YB_TEST(xcluster/xcluster-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-itest)
 ADD_YB_TEST(retryable_request-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
+ADD_YB_TEST(upgrade-tests/replication_info_upgrade-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)

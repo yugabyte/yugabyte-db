@@ -16,6 +16,7 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/common/common_net.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";

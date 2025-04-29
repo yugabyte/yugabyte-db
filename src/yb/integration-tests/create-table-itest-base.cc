@@ -38,7 +38,7 @@ using std::vector;
 namespace yb {
 
 Status CreateTableITestBase::CreateTableWithPlacement(
-    const master::ReplicationInfoPB& replication_info, const string& table_suffix,
+    const ReplicationInfoPB& replication_info, const string& table_suffix,
     const YBTableType table_type) {
   auto db_type = master::GetDatabaseTypeForTable(client::ClientToPBTableType(table_type));
   RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(), db_type));
@@ -86,7 +86,7 @@ Result<bool> CreateTableITestBase::VerifyTServerTablets(
 void CreateTableITestBase::PreparePlacementInfo(
     const std::unordered_map<string, int>& zone_to_replica_count,
     int num_replicas,
-    master::PlacementInfoPB* placement_info) {
+    PlacementInfoPB* placement_info) {
   placement_info->set_num_replicas(num_replicas);
   for (const auto& zone_and_count : zone_to_replica_count) {
     auto* pb = placement_info->add_placement_blocks();
