@@ -1176,7 +1176,9 @@ public enum TaskType {
   YNPProvisioning(com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning.class),
 
   ConfigureOOMServiceOnNode(
-      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode.class),
+
+  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class);
 
   private final Class<? extends ITask> taskClass;
 

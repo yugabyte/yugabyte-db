@@ -1052,6 +1052,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, XClusterConfigTaskParams.class);
         XClusterConfigTaskParams xClusterConfigTaskParams = (XClusterConfigTaskParams) taskParams;
         xClusterConfigTaskParams.refreshIfExists();
+        break;
       default:
         String errMsg =
             String.format(

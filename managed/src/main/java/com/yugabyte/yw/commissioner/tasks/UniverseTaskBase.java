@@ -31,107 +31,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupPreflightValidate;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYbc;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CleanUpPGUpgradeDataDir;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteKeyspace;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DropTable;
-import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.FinalizeYsqlMajorCatalogUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse;
-import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
-import com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric;
-import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
-import com.yugabyte.yw.commissioner.tasks.subtasks.MasterLeaderStepdown;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
-import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PodDisruptionBudgetPolicy;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestorePreflightValidate;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RollbackYsqlMajorVersionCatalogUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetBackupHiddenState;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeStatus;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreHiddenState;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreState;
-import com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
-import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateConsistencyCheck;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseFields;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgradeState;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDuration;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistCompletion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
@@ -2097,7 +1997,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
-      Universe universe, Collection<NodeDetails> nodes) {
+      Universe universe, Collection<NodeDetails> nodes, boolean includeOnPremManual) {
     NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
     return nodes.stream()
@@ -2114,7 +2014,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return false;
                       }
                       if (provider.getCloudCode() == CloudType.onprem) {
-                        return !provider.getDetails().skipProvisioning;
+                        return !provider.getDetails().skipProvisioning || includeOnPremManual;
                       }
                       if (provider.getCloudCode() != CloudType.aws
                           && provider.getCloudCode() != CloudType.azu
@@ -2152,6 +2052,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return Collections.emptySet();
   }
 
+  public SubTaskGroup createCheckSshConnectionTasks(Collection<NodeDetails> nodes) {
+    return doInPrecheckSubTaskGroup(
+        "CheckSshConnection",
+        subTaskGroup ->
+            nodes.forEach(
+                n -> {
+                  CheckSshConnection task = createTask(CheckSshConnection.class);
+                  NodeTaskParams params = new NodeTaskParams();
+                  params.setUniverseUUID(taskParams().getUniverseUUID());
+                  params.nodeName = n.nodeName;
+                  params.nodeName = n.nodeName;
+                  params.azUuid = n.azUuid;
+                  task.initialize(params);
+                  subTaskGroup.addSubTask(task);
+                }));
+  }
+
   public SubTaskGroup createInstallNodeAgentTasks(
       Universe universe, Collection<NodeDetails> nodes) {
     return createInstallNodeAgentTasks(universe, nodes, false);
@@ -2160,7 +2077,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createInstallNodeAgentTasks(
       Universe universe, Collection<NodeDetails> nodes, boolean reinstall) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
-    SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(InstallNodeAgent.class.getSimpleName(), SubTaskGroupType.Provisioning);
     String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
     if (!new File(installPath).isAbsolute()) {
       String errMsg = String.format("Node agent installation path %s is invalid", installPath);
@@ -2179,7 +2097,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     nodeAgentEnabler.cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
-    filterNodesForInstallNodeAgent(universe, nodes)
+    filterNodesForInstallNodeAgent(universe, nodes, reinstall /* includeOnPremManual */)
         .forEach(
             n -> {
               InstallNodeAgent.Params params = new InstallNodeAgent.Params();
@@ -2203,6 +2121,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               params.sudoAccess = true;
               if (StringUtils.isNotEmpty(n.sshUserOverride)) {
                 params.sshUser = n.sshUserOverride;
+              }
+              if (provider.getCloudCode() == CloudType.onprem
+                  && provider.getDetails().skipProvisioning) {
+                params.sshUser = ShellProcessContext.DEFAULT_REMOTE_USER;
+                params.sudoAccess = false;
+                params.nodeAgentInstallDir = provider.getYbHome();
               }
               InstallNodeAgent task = createTask(InstallNodeAgent.class);
               task.initialize(params);

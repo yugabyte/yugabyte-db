@@ -1733,7 +1733,6 @@ public class NodeManager extends DevopsBase {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
               ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName())
