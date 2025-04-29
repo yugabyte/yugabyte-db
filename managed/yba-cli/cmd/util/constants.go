@@ -297,6 +297,34 @@ const (
 	FailedXClusterState = "Failed"
 )
 
+// Allowed states for XCluster tables
+const (
+	// UnableToFetchXClusterTableState indicates the XCluster table state is unknown
+	UnableToFetchXClusterTableState = "UnableToFetch"
+	// UpdatingXClusterTableState indicates the XCluster table is updating
+	UpdatingXClusterTableState = "Updating"
+	// BootstrappingXClusterTableState indicates the XCluster table is bootstrapping
+	BootstrappingXClusterTableState = "Bootstrapping"
+	// ValidatingXClusterTableState indicates the XCluster table is validating
+	ValidatedXClusterTableState = "Validated"
+	// RunningXClusterTableState indicates the XCluster table is running
+	RunningXClusterTableState = "Running"
+	// FailedXClusterTableState indicates the XCluster table has failed
+	FailedXClusterTableState = "Failed"
+	// ErrorXClusterTableState indicates the XCluster table has encountered an error
+	ErrorXClusterTableState = "Error"
+	// WarningXClusterTableState indicates the XCluster table has a warning
+	WarningXClusterTableState = "Warning"
+	// DroppedFromSourceXClusterTableState indicates the XCluster table has been dropped from source
+	DroppedFromSourceXClusterTableState = "DroppedFromSource"
+	// DroppedFromTargetXClusterTableState indicates the XCluster table has been dropped from target
+	DroppedFromTargetXClusterTableState = "DroppedFromTarget"
+	// ExtraTableOnSourceXClusterTableState indicates the XCluster table is extra on source
+	ExtraTableOnSourceXClusterTableState = "ExtraTableOnSource"
+	// ExtraTableOnTargetXClusterTableState indicates the XCluster table is extra on target
+	ExtraTableOnTargetXClusterTableState = "ExtraTableOnTarget"
+)
+
 // Node operations allowed on universe
 const (
 	// AddNode operation
@@ -619,6 +647,22 @@ func ErrorReleaseResponseStates() []string {
 // IncompleteReleaseResponseStates return set of states for ongoing tasks
 func IncompleteReleaseResponseStates() []string {
 	return []string{RunningReleaseResponseState, WaitingReleaseResponseState}
+}
+
+// TableStatesInXClusterConfig returns set of states that are valid for tables in xcluster config
+func TableStatesInXClusterConfig() []string {
+	return []string{
+		RunningXClusterTableState,
+		BootstrappingXClusterTableState,
+		ValidatedXClusterTableState,
+		UpdatingXClusterTableState,
+		ErrorXClusterTableState,
+		WarningXClusterTableState,
+    FailedXClusterTableState,
+		UnableToFetchXClusterTableState,
+    DroppedFromSourceXClusterTableState,
+    DroppedFromTargetXClusterTableState,
+	}
 }
 
 // YugabyteDB Anywhere versions >= the minimum listed versions for operations
