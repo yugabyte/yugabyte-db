@@ -41,7 +41,7 @@ CREATE SCHEMA documentdb_data;
 
 /*
  * Region: geospatial
- */
+ * YB: postgis is not supported.
 #include "udfs/aggregation/bson_geonear_functions--0.18-0.sql"
 #include "udfs/query/bson_dollar_geospatial--0.10-0.sql"
 #include "operators/bson_geospatial_operators--0.16-0.sql"
@@ -50,7 +50,7 @@ CREATE SCHEMA documentdb_data;
 #include "operators/bson_gist_geospatial_op_classes--0.16-0.sql"
 #include "operators/bson_gist_geospatial_op_classes_members--0.16-0.sql"
 #include "operators/bson_gist_geospatial_op_classes_members--0.18-0.sql"
-
+ */
 
 /*
  * Region: Shard key and document
@@ -74,6 +74,8 @@ CREATE SCHEMA documentdb_data;
 #include "operators/bson_dollar_operators--0.16-0.sql"
 #include "operators/bson_dollar_negation_operators--0.16-0.sql"
 
+/*
+ * YB: rum is not supported.
 #include "udfs/rum/handler--0.10-0.sql"
 #include "schema/rum_access_method--0.10-0.sql"
 #include "schema/unique_shard_path_operator_class--0.24-0.sql"
@@ -92,6 +94,7 @@ CREATE SCHEMA documentdb_data;
 
 #include "schema/index_operator_classes_negation--0.16-0.sql"
 #include "schema/index_operator_classes_range--0.23-0.sql"
+ */
 
 /*
  * Region: Aggregation operators.
