@@ -16,6 +16,12 @@ type: docs
 
 Use Anomalies to monitor your cluster for anomalies in performance - whether with the database or applications.
 
+{{< note title="Tech Preview" >}}
+
+Anomalies is currently in Tech Preview. To try the feature, contact {{% support-cloud %}}.
+
+{{< /note >}}
+
 To view anomalies, click the cluster **Perf Advisor** tab and choose **Anomalies**.
 
 ![Anomalies](/images/yb-cloud/managed-monitor-anomalies.png)
