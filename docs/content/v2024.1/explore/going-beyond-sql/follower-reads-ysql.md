@@ -45,7 +45,7 @@ The following YSQL configuration parameters control the behavior of follower rea
 
   To monitor whether any reads are being redirected from a node to the leader, use the metric `consistent_prefix_failed_reads`. This shows the number of these requests that are redirected.
 
-- `ysql_follower_reads_avoid_waiting_for_safe_time` governs whether a stale read will wait at the follower, or be redirected to the leader immediately.
+In addition, the `ysql_follower_reads_avoid_waiting_for_safe_time` flag governs whether a stale read will wait at the follower, or be redirected to the leader immediately.
 
 ## Expected behavior
 
