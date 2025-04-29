@@ -4624,6 +4624,27 @@ yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args)
 	return 0;					/* return value does not matter */
 }
 
+int
+yb_errdetail_log_from_status(const char *fmt, const size_t nargs, const char **args)
+{
+	Assert(!IsMultiThreadedMode());
+
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, detail_log,
+									false /* appendval */ ,
+									true /* translateit */ , nargs, args);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
+	return 0;					/* return value does not matter */
+}
+
 /*
  * Set the given field to the given value (assumed to be palloc-d) or, if the
  * new value is null, pstrdup the existing value of the field to ensure that

@@ -159,7 +159,12 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
 
   void AbortTask(const Status& status);
 
-  virtual MonoTime ComputeDeadline();
+  // Theorethical max deadline, should be used as an upperbound deadline for a single attempt.
+  MonoTime UnresponsiveDeadline() const;
+
+  // A deadline for a single retry/attempt.
+  virtual MonoTime ComputeDeadline() const;
+
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
   void RpcCallback();
 
@@ -188,6 +193,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
                      const std::string& metric_type);
 
   MonoTime attempt_start_ts_;
+
+  // Task's overall deadline, which covers all retries/attempts.
   MonoTime deadline_;
 
   int attempt_ = 0;

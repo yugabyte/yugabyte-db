@@ -121,13 +121,25 @@ export const TaskFailedSoftwareUpgradeBanner: FC<TaskBannerCompProps> = ({
             <div className={classes.subText}>
               <div>{t('softwareUpgradeFailedText')}</div>
               <div className={classes.actions}>
-                <YBButton variant="secondary" onClick={() => viewDetails()}>
+                <YBButton
+                  variant="secondary"
+                  onClick={() => viewDetails()}
+                  data-testid="failed-software-upgrade-view-details"
+                >
                   {t('viewDetails', { keyPrefix: 'taskDetails.simple' })}
                 </YBButton>
-                <YBButton variant="secondary" onClick={() => setRollBackModal(true)}>
+                <YBButton
+                  variant="secondary"
+                  onClick={() => setRollBackModal(true)}
+                  data-testid="failed-software-upgrade-rollback"
+                >
                   {t('rollbackUpgrade')}
                 </YBButton>
-                <YBButton variant="primary" onClick={() => toggleRetryConfirmationModal(true)}>
+                <YBButton
+                  variant="primary"
+                  onClick={() => toggleRetryConfirmationModal(true)}
+                  data-testid="failed-software-upgrade-retry"
+                >
                   {t('retry', { keyPrefix: 'taskDetails.actions' })}
                 </YBButton>
               </div>

@@ -20,18 +20,8 @@ namespace yb {
 
 namespace {
 
-void ParentOnlyNoop() {
-  DCHECK_PARENT_PROCESS();
-}
-
-template<typename T, typename U>
-void Write(T&& x, U y) {
-  SHARED_MEMORY_STORE(x, y);
-}
-
-template<typename T>
-auto Read(T&& x) {
-  return SHARED_MEMORY_LOAD(x);
+void ParentGuard() {
+  ParentProcessGuard g;
 }
 
 } // namespace
@@ -39,25 +29,40 @@ auto Read(T&& x) {
 class SharedMemoryAnnotationsTest : public YBTest {};
 
 TEST_F(SharedMemoryAnnotationsTest, TestAnnotations) {
-#define ASSERT_CHILD_DEATH(expr) \
-    ASSERT_DEBUG_DEATH([&] { MarkChildProcess(); expr; }(), "Access from child process not allowed")
+  ASSERT_DEBUG_DEATH(
+      [&] { MarkChildProcess(); ParentGuard(); }(),
+      "Access from child process not allowed");
 
-#define ASSERT_CHILD_SUCCESS(expr) \
-    ASSERT_OK(ForkAndRunToCompletion([&] { MarkChildProcess(); expr; }));
+  ChildProcessForbidden<int> forbidden = 1;
+  ChildProcessRO<int> readonly = 1;
+  ChildProcessRW<int> readwrite = 1;
 
-  ASSERT_CHILD_DEATH(ParentOnlyNoop());
+  {
+    ParentProcessGuard g;
+    ASSERT_EQ(forbidden.Get(), 1);
+    forbidden.Get() = 2;
+    ASSERT_EQ(forbidden.Get(), 2);
+  }
 
-  ChildProcessForbidden<int> forbid{0};
-  ASSERT_CHILD_DEATH(Read(forbid));
-  ASSERT_CHILD_DEATH(Write(forbid, 1));
+  {
+    ParentProcessGuard g;
+    ASSERT_EQ(readonly.Get(), 1);
+    readonly.Get() = 2;
+    ASSERT_EQ(readonly.Get(), 2);
+    SHARED_MEMORY_STORE(readonly, 3);
+    ASSERT_EQ(readonly.Get(), 3);
+  }
+  ASSERT_EQ(SHARED_MEMORY_LOAD(readonly), 3);
 
-  ChildProcessRO<int> readonly{0};
-  ASSERT_CHILD_SUCCESS(Read(readonly));
-  ASSERT_CHILD_DEATH(Write(readonly, 1));
-
-  ChildProcessRW<int> readwrite{0};
-  ASSERT_CHILD_SUCCESS(Read(readwrite));
-  ASSERT_CHILD_SUCCESS(Write(readwrite, 1));
+  {
+    ParentProcessGuard g;
+    ASSERT_EQ(readwrite.Get(), 1);
+    SHARED_MEMORY_STORE(readwrite, 2);
+    ASSERT_EQ(readwrite.Get(), 2);
+  }
+  ASSERT_EQ(SHARED_MEMORY_LOAD(readwrite), 2);
+  SHARED_MEMORY_STORE(readwrite, 3);
+  ASSERT_EQ(SHARED_MEMORY_LOAD(readwrite), 3);
 }
 
 } // namespace yb

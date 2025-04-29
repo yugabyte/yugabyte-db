@@ -135,6 +135,7 @@ struct od_rule {
 	uint64_t server_lifetime_us;
 	int min_pool_size;
 	od_list_t link;
+	int yb_jitter_time;
 };
 
 struct od_rules {

@@ -103,10 +103,10 @@ class IntentAwareIteratorIf {
   virtual void SeekPrevDocKey(Slice encoded_doc_key) = 0;
 
   virtual const ReadHybridTime& read_time() const = 0;
-  virtual Result<HybridTime> RestartReadHt() const = 0;
+  virtual Result<ReadRestartData> GetReadRestartData() const = 0;
 
-  virtual EncodedDocHybridTime ObtainLastSeenHtCheckpoint() = 0;
-  virtual void RollbackLastSeenHt(EncodedDocHybridTime last_seen_ht) = 0;
+  virtual MaxSeenHtData ObtainMaxSeenHtCheckpoint() = 0;
+  virtual void RollbackMaxSeenHt(MaxSeenHtData checkpoint) = 0;
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.

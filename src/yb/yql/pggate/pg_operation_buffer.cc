@@ -36,6 +36,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/port.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/status.h"
 

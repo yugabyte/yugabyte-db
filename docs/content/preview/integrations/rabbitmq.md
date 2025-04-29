@@ -276,7 +276,7 @@ To run RabbitMQ with YugabyteDB, do the following:
      * @author Sumukh Phalgaonkar, Vaibhav Kushwaha (vkushwaha@yugabyte.com)
      */
     public class CmdLineOpts {
-      private final String connectorClass = "io.debezium.connector.yugabytedb.YugabyteDBConnector";
+      private final String connectorClass = "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector";
       public String masterAddresses;
       public String hostname;
       public String databasePort = "5433";

@@ -36,6 +36,7 @@ interface YBTableProps {
   noCellBottomBorder?: boolean;
   noHeaderBottomBorder?: boolean;
   alternateRowShading?: boolean;
+  hideHeader?: boolean;
 }
 
 interface ColumnMeta extends MUIDataTableCustomHeadRenderer {
@@ -216,6 +217,9 @@ const cHeadRender = (
   sort?: boolean,
   headerLabel?: (options: CustomHeadLabelRenderOptions) => string | React.ReactNode
 ) => {
+  if (header.hideHeader) {
+    return <TableCell key={header.name} style={{ display: 'none' }} />;
+  }
   let restProps = {};
   if (headerProps) {
     restProps = { ...headerProps(header) };
@@ -340,6 +344,7 @@ export const YBTable = ({
   noHeaderBottomBorder = false,
   cellBorder = false,
   alternateRowShading = false,
+  hideHeader = false,
   data,
   columns,
   options
@@ -360,78 +365,87 @@ export const YBTable = ({
   };
   const [subColumnSortIndex, setSubColumnSortIndex] = useState(0);
   const cols = columns.map((col) => {
-    if (col?.options) {
-      if (col.subColumns) {
-        // For rendering columns with subcolumns
-        col.options.customHeadRender = (
+    const updatedCol = { ...col };
+    if (hideHeader) {
+      updatedCol.options = {
+        ...updatedCol.options,
+        customHeadRender: (columnMeta: ColumnMeta) => (
+          <TableCell key={columnMeta.name} style={{ display: 'none' }} />
+        )
+      };
+    } else {
+      if (updatedCol?.options) {
+        if (updatedCol.subColumns) {
+          updatedCol.options.customHeadRender = (
             columnMeta: ColumnMeta,
             updateDirection: (arg0: number) => void,
             sortOrder: MUISortOptions
-        ) => cHeadRenderWithSubColumns(
+          ) => cHeadRenderWithSubColumns(
             columnMeta,
             updateDirection,
             sortOrder,
-            col.subColumns!,
+            updatedCol.subColumns!,
             subColumnSortIndex,
             setSubColumnSortIndex,
             classes,
-            col.options?.setCellHeaderProps,
-            col.options?.sort ?? true
-        );
-        col.options.customBodyRender = (
+            updatedCol.options?.setCellHeaderProps,
+            updatedCol.options?.sort ?? true
+          );
+          updatedCol.options.customBodyRender = (
             value: any,
             tableMeta: MUIDataTableMeta
-        ) => cBodyRenderWithSubColumns(
+          ) => cBodyRenderWithSubColumns(
             value,
             tableMeta,
-            col.subColumns!,
+            updatedCol.subColumns!,
             classes,
-            col.customColumnBodyRender
-        );
-        if (col.customColumnSort) {
-            col.options.sortCompare = (order) => (obj1, obj2) => {
-                return col.customColumnSort!(order)(
-                    obj1.data[subColumnSortIndex],
-                    obj2.data[subColumnSortIndex]
-                );
-            }
+            updatedCol.customColumnBodyRender
+          );
+          if (updatedCol.customColumnSort) {
+            updatedCol.options.sortCompare = (order) => (obj1, obj2) => {
+              return updatedCol.customColumnSort!(order)(
+                obj1.data[subColumnSortIndex],
+                obj2.data[subColumnSortIndex]
+              );
+            };
+          } else {
+            updatedCol.options.sortCompare = (order) => (obj1, obj2) => {
+              let val1 = 0;
+              let val2 = 0;
+              if (Array.isArray(obj1.data)) {
+                val1 = obj1.data[subColumnSortIndex];
+                val2 = obj2.data[subColumnSortIndex];
+              } else {
+                val1 = obj1.data;
+                val2 = obj2.data;
+              }
+              let compareResult = val2 < val1 ? 1 : -1;
+              if (val2 == val1) {
+                compareResult = 0;
+              }
+              return compareResult * (order === 'asc' ? 1 : -1);
+            };
+          }
         } else {
-            // This will be the default sortCompare function for columns that have subcolumns.
-            col.options.sortCompare = (order) => (obj1, obj2) => {
-                let val1 = 0;
-                let val2 = 0;
-                if (Array.isArray(obj1.data)) {
-                    val1 = obj1.data[subColumnSortIndex];
-                    val2 = obj2.data[subColumnSortIndex];
-                } else {
-                    val1 = obj1.data;
-                    val2 = obj2.data;
-                }
-                let compareResult = val2 < val1 ? 1 : -1;
-                if (val2 == val1) {
-                    compareResult = 0;
-                }
-                return compareResult * (order === 'asc' ? 1 : -1);
-            }
-        }
-      } else {
-        col.options.customHeadRender = (
+          updatedCol.options.customHeadRender = (
             columnMeta: ColumnMeta,
             updateDirection: (arg0: number) => void,
             sortOrder: MUISortOptions
-        ) => cHeadRender(columnMeta,
+          ) => cHeadRender(
+            columnMeta,
             updateDirection,
             sortOrder,
-            col.options?.setCellHeaderProps,
-            col.options?.sort ?? true,
-            col.options?.customHeadLabelRender
-        );
-        if (col.customColumnSort) {
-            col.options.sortCompare = col.customColumnSort;
+            updatedCol.options?.setCellHeaderProps,
+            updatedCol.options?.sort ?? true,
+            updatedCol.options?.customHeadLabelRender
+          );
+          if (updatedCol.customColumnSort) {
+            updatedCol.options.sortCompare = updatedCol.customColumnSort;
+          }
         }
       }
     }
-    return col;
+    return updatedCol;
   });
 
   var tableContainerDivClasses = [classes.root];

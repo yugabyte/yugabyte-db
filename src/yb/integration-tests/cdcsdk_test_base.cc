@@ -262,14 +262,20 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
 
     RETURN_NOT_OK(conn.ExecuteFormat(
         statement, schema_name, table_name, table_oid_string, colocated, num_tablets));
+  } else if (colocated) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0.$1($2 int $3, $4 $5) WITH ($6colocated = $7) ", schema_name,
+        table_name + enum_suffix, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "",
+        kValueColumnName,
+        enum_value ? (schema_name + "." + "coupon_discount_type" + enum_suffix) : "int",
+        table_oid_string, colocated));
   } else {
     RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE TABLE $0.$1($2 int $3, $4 $5) WITH ($6colocated = $7) "
-        "SPLIT INTO $8 TABLETS",
-        schema_name, table_name + enum_suffix, kKeyColumnName,
-        (add_primary_key) ? "PRIMARY KEY" : "", kValueColumnName,
+        "CREATE TABLE $0.$1($2 int $3, $4 $5) SPLIT INTO $6 TABLETS", schema_name,
+        table_name + enum_suffix, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "",
+        kValueColumnName,
         enum_value ? (schema_name + "." + "coupon_discount_type" + enum_suffix) : "int",
-        table_oid_string, colocated, num_tablets));
+        num_tablets));
   }
   return GetTable(cluster, namespace_name, table_name + enum_suffix);
 }

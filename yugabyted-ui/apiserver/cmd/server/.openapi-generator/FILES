@@ -52,6 +52,7 @@ models/model_metric_data.go
 models/model_metric_response.go
 models/model_migrate_schema_task_info.go
 models/model_migration_assessment_report.go
+models/model_namespaces_info.go
 models/model_node_data.go
 models/model_node_data_cloud_info.go
 models/model_node_data_metrics.go
@@ -77,6 +78,7 @@ models/model_sql_objects_details.go
 models/model_table_info.go
 models/model_table_info_table_replication_info.go
 models/model_table_replication_info.go
+models/model_table_replication_lag_details_outbound.go
 models/model_tablet_info.go
 models/model_target_cluster_recommendation_details.go
 models/model_target_cluster_spec.go
@@ -91,4 +93,10 @@ models/model_voyager_migration_details_source_db.go
 models/model_voyager_migration_details_target_cluster.go
 models/model_voyager_migration_details_voyager.go
 models/model_voyager_migrations_info.go
+models/model_x_cluster_inbound_group.go
+models/model_x_cluster_namespace_metrics.go
+models/model_x_cluster_outbound_group.go
+models/model_x_cluster_placement_location.go
+models/model_x_cluster_replication_groups.go
+models/model_x_cluster_table_info_inbound.go
 models/model_yb_api_enum.go

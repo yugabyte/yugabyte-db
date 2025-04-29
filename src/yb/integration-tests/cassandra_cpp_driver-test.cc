@@ -2624,7 +2624,6 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
       "Request timed out");
 
   std::thread write_thread([this, table, &stop] {
-    CDSAttacher attacher;
     auto session = CHECK_RESULT(driver_->CreateSession());
     auto prepared = ASSERT_RESULT(table.PrepareInsert(&session, 10s));
     int32_t key = 0;

@@ -31,6 +31,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/ysql_operation_lease.h"
+
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/debug/sanitizer_scopes.h"
@@ -358,6 +360,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
     "upgrade. For example, IN, ANY, ALL.");
 
 DECLARE_bool(enable_pg_cron);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 DEFINE_RUNTIME_PG_FLAG(
     bool, yb_query_diagnostics_disable_database_connection_bgworker, false,
@@ -1306,6 +1309,7 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
     : conf_(std::move(conf)), server_(server) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
+    server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
   }
 }
 
@@ -1331,6 +1335,7 @@ Status PgSupervisor::ReloadConfig() {
   }
   return Status::OK();
 }
+
 
 
 Status PgSupervisor::UpdateAndReloadConfig() {

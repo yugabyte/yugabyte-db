@@ -214,6 +214,10 @@ static bool yb_is_multi_statement_query = false;
 static long YbNumCatalogCacheRefreshes = 0;
 static long YbNumCatalogCacheDeltaRefreshes = 0;
 
+static long YbNumHintCacheRefreshes = 0;
+static long YbNumHintCacheHits = 0;
+static long YbNumHintCacheMisses = 0;
+
 /*
  * YB: String constants used for redacting text after the password token in
  * CREATE/ALTER ROLE commands.
@@ -7263,4 +7267,40 @@ long
 YbGetCatCacheDeltaRefreshes()
 {
 	return YbNumCatalogCacheDeltaRefreshes;
+}
+
+long
+YbGetHintCacheRefreshes()
+{
+	return YbNumHintCacheRefreshes;
+}
+
+long
+YbGetHintCacheHits()
+{
+	return YbNumHintCacheHits;
+}
+
+long
+YbGetHintCacheMisses()
+{
+	return YbNumHintCacheMisses;
+}
+
+void
+YbIncrementHintCacheRefreshes()
+{
+	YbNumHintCacheRefreshes++;
+}
+
+void
+YbIncrementHintCacheHits()
+{
+	YbNumHintCacheHits++;
+}
+
+void
+YbIncrementHintCacheMisses()
+{
+	YbNumHintCacheMisses++;
 }

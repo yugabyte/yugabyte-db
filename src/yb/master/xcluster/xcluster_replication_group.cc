@@ -216,7 +216,7 @@ Status HandleExtensionOnDropReplication(
               << "), switching yb_xcluster_ddl_replication extension role to Source.";
     Synchronizer sync;
     RETURN_NOT_OK(master::SetupDDLReplicationExtension(
-        catalog_manager, namespace_name, XClusterDDLReplicationRole::kSource,
+        catalog_manager, namespace_id, XClusterDDLReplicationRole::kSource,
         sync.AsStdStatusCallback()));
     return sync.Wait();
   }

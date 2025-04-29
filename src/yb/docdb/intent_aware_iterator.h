@@ -113,10 +113,10 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   Result<const FetchedEntry&> FetchNext();
 
   const ReadHybridTime& read_time() const override { return read_time_; }
-  Result<HybridTime> RestartReadHt() const override;
+  Result<ReadRestartData> GetReadRestartData() const override;
 
-  EncodedDocHybridTime ObtainLastSeenHtCheckpoint() override;
-  void RollbackLastSeenHt(EncodedDocHybridTime last_seen_ht) override;
+  MaxSeenHtData ObtainMaxSeenHtCheckpoint() override;
+  void RollbackMaxSeenHt(MaxSeenHtData checkpoint) override;
 
   HybridTime TEST_MaxSeenHt() const;
 
@@ -315,6 +315,8 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 #endif
   }
 
+  void UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice key);
+
   const ReadHybridTime read_time_;
   const EncodedReadHybridTime encoded_read_time_;
 
@@ -327,7 +329,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   rocksdb::KeyValueEntry regular_entry_;
 
   Status status_;
-  EncodedDocHybridTime max_seen_ht_{DocHybridTime::kMin};
+  MaxSeenHtData max_seen_ht_data_ = {};
 
   // Upperbound for seek. If we see regular or intent record past this bound, it will be ignored.
   Slice upperbound_;

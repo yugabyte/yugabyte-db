@@ -30,7 +30,7 @@
 # under the License.
 #
 
-cmake_minimum_required(VERSION 3.30.0)
+cmake_minimum_required(VERSION 3.31.0)
 
 project(YugabyteDB)
 
@@ -263,13 +263,6 @@ if(NOT INCLUDE_COMPILER_INFO_EARLY)
   message("Including the CompilerInfo module after we have considered building third-party "
           "dependencies.")
   include(CompilerInfo)
-endif()
-
-# libcds checks is_lock_free() to see if we have 128-bit atomic support. Unforunately, this
-# returns false on GCC/libstdc++, even with -mcx16 and even though the atomics are indeed lock-free.
-# Use boost::atomic instead, which does not have this problem.
-if (IS_GCC)
-  ADD_CXX_FLAGS("-DCDS_USE_BOOST_ATOMIC")
 endif()
 
 if(NOT DEFINED YB_LTO_ENABLED)

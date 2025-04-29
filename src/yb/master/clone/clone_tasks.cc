@@ -72,6 +72,7 @@ AsyncClonePgSchema::AsyncClonePgSchema(
       target_owner_(target_owner),
       restore_ht_(restore_ht),
       callback_(callback) {
+  // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = deadline;  // Time out according to earliest(deadline_,
                          // time of sending request + ysql_clone_pg_schema_rpc_timeout_ms).
 }
@@ -79,6 +80,7 @@ AsyncClonePgSchema::AsyncClonePgSchema(
 std::string AsyncClonePgSchema::description() const { return "Async Clone PG Schema RPC"; }
 
 void AsyncClonePgSchema::HandleResponse(int attempt) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "attempt: " << attempt;
   Status resp_status;
   if (resp_.has_error()) {
     resp_status = StatusFromPB(resp_.error().status());
@@ -106,7 +108,7 @@ bool AsyncClonePgSchema::SendRequest(int attempt) {
   return true;
 }
 
-MonoTime AsyncClonePgSchema::ComputeDeadline() { return deadline_; }
+MonoTime AsyncClonePgSchema::ComputeDeadline() const { return deadline_; }
 
 // ============================================================================
 //  Class AsyncClearMetacache.

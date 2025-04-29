@@ -123,6 +123,9 @@ static const uint32 PGSS_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
 									!IsA(n, PrepareStmt) && \
 									!IsA(n, DeallocateStmt))
 
+#define YB_NUM_COUNTERS_INT 60
+#define YB_NUM_COUNTERS_DBL 40
+
 /*
  * Extension version number, for supporting older extension versions' objects
  */
@@ -183,6 +186,15 @@ typedef struct pgssHashKey
 } pgssHashKey;
 
 /*
+ * Struct for YB-specific counters. Currently, all counters are unreserved.
+ */
+typedef struct YbCounters
+{
+	int64 counters[YB_NUM_COUNTERS_INT];
+	double counters_dbl[YB_NUM_COUNTERS_DBL];
+} YbCounters;
+
+/*
  * The actual stats counters kept within pgssEntry.
  */
 typedef struct Counters
@@ -229,6 +241,7 @@ typedef struct Counters
 	int64		jit_emission_count; /* number of times emission time has been
 									 * > 0 */
 	double		jit_emission_time;	/* total time to emit jit code */
+	YbCounters	yb_counters; /* YB specific counters */
 } Counters;
 
 /*

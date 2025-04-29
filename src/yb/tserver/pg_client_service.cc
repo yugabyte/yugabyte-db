@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <mutex>
 #include <queue>
-#include <regex>
 #include <unordered_set>
 #include <vector>
 
@@ -35,7 +34,6 @@
 #include "yb/client/schema.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
 #include "yb/client/table.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
@@ -45,28 +43,21 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/dockv/partition.h"
-
 #include "yb/master/master_admin.proxy.h"
-#include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
-#include "yb/rocksdb/db/db_impl.h"
-
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/scheduler.h"
-#include "yb/rpc/tasks_pool.h"
 
 #include "yb/server/server_base.h"
 
-#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/pg_client_service_util.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
@@ -75,7 +66,6 @@
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/tablet_server_interface.h"
-#include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -83,9 +73,7 @@
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
-#include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
-#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
@@ -440,7 +428,7 @@ class ApplyToValue {
   Extractor extractor_;
 };
 
-class PgClientServiceImpl::Impl {
+class PgClientServiceImpl::Impl : public LeaseEpochValidator {
  public:
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
@@ -521,6 +509,16 @@ class PgClientServiceImpl::Impl {
     }
   }
 
+  uint64_t lease_epoch() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return lease_epoch_;
+  }
+
+  bool IsLeaseValid(uint64_t lease_epoch) override EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return lease_epoch == lease_epoch_;
+  }
+
   Status Heartbeat(
       const PgHeartbeatRequestPB& req, PgHeartbeatResponsePB* resp, rpc::RpcContext* context) {
     if (req.session_id() == std::numeric_limits<uint64_t>::max()) {
@@ -532,15 +530,10 @@ class PgClientServiceImpl::Impl {
     }
 
     auto session_id = ++session_serial_no_;
-    uint64_t lease_epoch;
-    {
-      std::lock_guard lock(mutex_);
-      lease_epoch = lease_epoch_;
-    }
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
-        session_context_, session_id, lease_epoch, tablet_server_.ts_local_lock_manager(),
+        session_context_, session_id, lease_epoch(), this, tablet_server_.ts_local_lock_manager(),
         messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
@@ -578,7 +571,7 @@ class PgClientServiceImpl::Impl {
 
     std::lock_guard lock(mutex_);
     auto it = sessions_.insert(std::move(session_info)).first;
-    session_expiration_queue_.push({(**it).session().expiration(), session_id});
+    session_expiration_queue_.emplace((**it).session().expiration(), session_id);
     return Status::OK();
   }
 
@@ -594,7 +587,7 @@ class PgClientServiceImpl::Impl {
       return;
     }
     (**it).session().SetExpiration(now);
-    session_expiration_queue_.push({now, session_id});
+    session_expiration_queue_.emplace(now, session_id);
     ScheduleCheckExpiredSessions(now);
   }
 
@@ -787,6 +780,19 @@ class PgClientServiceImpl::Impl {
     uint64_t version;
     RETURN_NOT_OK(client().GetYsqlCatalogMasterVersion(&version));
     resp->set_version(version);
+    return Status::OK();
+  }
+
+  Status GetXClusterRole(
+      const PgGetXClusterRoleRequestPB& req, PgGetXClusterRoleResponsePB* resp,
+      rpc::RpcContext* context) {
+    NamespaceId namespace_id = GetPgsqlNamespaceId(req.db_oid());
+    const auto* xcluster_context = session_context_.xcluster_context;
+    int32_t role = XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+    if (xcluster_context) {
+      role = xcluster_context->GetXClusterRole(namespace_id);
+    }
+    resp->set_xcluster_role(role);
     return Status::OK();
   }
 
@@ -1806,20 +1812,18 @@ class PgClientServiceImpl::Impl {
   }
 
   void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
-    std::vector<SessionInfoPtr> sessions;
-    {
-      std::lock_guard lock(mutex_);
-      last_lease_refresh_time_ = time;
-      if (lease_refresh_info.new_lease()) {
-        LOG(INFO) << Format(
-            "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
-            lease_refresh_info.lease_epoch());
-        lease_epoch_ = lease_refresh_info.lease_epoch();
-        sessions.assign(sessions_.begin(), sessions_.end());
-        sessions_.clear();
+    std::lock_guard lock(mutex_);
+    last_lease_refresh_time_ = time;
+    if (lease_refresh_info.new_lease()) {
+      LOG(INFO) << Format(
+          "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
+          lease_refresh_info.lease_epoch());
+      lease_epoch_ = lease_refresh_info.lease_epoch();
+      auto s = tablet_server_.RestartPG();
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed to restart PG postmaster: " << s;
       }
     }
-    CleanupSessions(std::move(sessions), CoarseMonoClock::now());
   }
 
   YSQLLeaseInfo GetYSQLLeaseInfo() {
@@ -2219,7 +2223,7 @@ class PgClientServiceImpl::Impl {
         if (it != sessions_.end()) {
           auto current_expiration = (**it).session().expiration();
           if (current_expiration > now) {
-            session_expiration_queue_.push({current_expiration, id});
+            session_expiration_queue_.emplace(current_expiration, id);
           } else {
             expired_sessions.push_back(*it);
             sessions_.erase(it);

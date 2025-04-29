@@ -410,6 +410,16 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   } else {
     LOG(INFO) << "No need to start tablet servers";
   }
+  if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
+    auto ysql_connection_deadline = MonoTime::Now() + kTabletServerRegistrationTimeout;
+    LOG(INFO) << "Waiting for tservers to accept ysql connections.";
+    for (size_t i = 0; i < tablet_servers_.size(); ++i) {
+      RETURN_NOT_OK(Wait([this, i]() -> Result<bool> {
+          auto result = ConnectToDB("yugabyte", i);
+          return result.ok();
+          }, ysql_connection_deadline, "Waiting for tablet servers to accept ysql connections"));
+    }
+  }
 
   running_ = true;
   return Status::OK();
@@ -1588,31 +1598,27 @@ Status ExternalMiniCluster::AddYbControllerServer(const scoped_refptr<ExternalTa
     }
   }
 
-  size_t idx = yb_controller_servers_.size() + 1;
-  vector<string> extra_flags;
+  auto idx = yb_controller_servers_.size() + 1;
+  ExternalYbControllerOptions options = {
+    .idx = idx,
+    .log_dir = GetDataPath(Format("ybc-$0/logs", idx)),
+    .tmp_dir = GetDataPath(Format("ybc-$0/tmp", idx)),
+    .yb_tserver_address = ts->bind_host(),
+    .server_port = idx == 1 ? AllocateFreePort() : yb_controller_servers_[0]->GetServerPort(),
+    .yb_master_webserver_port = masters_[0]->http_port(),
+    .yb_tserver_webserver_port = ts->http_port(),
+    .server_address = ts->bind_host(),
+  };
+
   for (const auto& flag : opts_.extra_tserver_flags) {
     if (flag.find("certs_dir") != string::npos) {
-      extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
+      options.extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
     }
   }
 
-  // All yb controller servers need to be on the same port.
-  uint16_t server_port;
-  if (idx == 1) {
-    server_port = AllocateFreePort();
-  } else {
-    server_port = yb_controller_servers_[0]->GetServerPort();
-  }
-  const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", idx));
-  const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", idx));
-  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
-  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
-  scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-      idx, yb_controller_log_dir, yb_controller_tmp_dir, ts->bind_host(), GetToolPath("yb-admin"),
-      GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
-      GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
-      server_port, masters_[0]->http_port(), ts->http_port(), ts->bind_host(),
-      GetYbcToolPath("yb-controller-server"), extra_flags);
+  RETURN_NOT_OK(Env::Default()->CreateDirs(options.log_dir));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(options.tmp_dir));
+  auto yb_controller = make_scoped_refptr<ExternalYbController>(options);
 
   RETURN_NOT_OK_PREPEND(
       yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(idx));
@@ -2267,23 +2273,43 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
 }
 
 Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
-    const std::string& db_name, std::optional<size_t> node_index, bool simple_query_protocol,
+    const std::string& db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
     const std::string& user) {
-  if (!node_index) {
-    node_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
+  ExternalClusterPGConnectionOptions options;
+  options.db_name = db_name;
+  if (tserver_index) {
+    options.tserver_index = tserver_index;
   }
-  LOG(INFO) << "Connecting to PG database " << db_name << " on tserver " << *node_index;
+  options.simple_query_protocol = simple_query_protocol;
+  options.user = user;
+  return ConnectToDB(std::move(options));
+}
 
-  auto* ts = tablet_server(*node_index);
+Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
+    ExternalClusterPGConnectionOptions&& options) {
+  if (!options.tserver_index) {
+    options.tserver_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
+  }
+  LOG(INFO) << Format(
+      "Connecting to PG database $0 on tserver at index $1", options.db_name,
+      *options.tserver_index);
+
+  auto* ts = tablet_server(*options.tserver_index);
 
   auto settings = pgwrapper::PGConnSettings{
-      .host = ts->bind_host(), .port = ts->ysql_port(), .dbname = db_name, .user = user};
+      .host = ts->bind_host(),
+      .port = ts->ysql_port(),
+      .dbname = options.db_name,
+      .user = options.user};
+  if (options.timeout_secs) {
+    settings.connect_timeout = *options.timeout_secs;
+  }
 
   if (opts_.enable_ysql_auth) {
     settings.user = "yugabyte";
     settings.password = "yugabyte";
   }
-  return pgwrapper::PGConnBuilder(settings).Connect(simple_query_protocol);
+  return pgwrapper::PGConnBuilder(settings).Connect(options.simple_query_protocol);
 }
 
 namespace {

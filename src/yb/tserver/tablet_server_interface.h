@@ -144,6 +144,8 @@ class TabletServerIf : public LocalTabletServer {
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data) = 0;
 
   virtual Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const = 0;
+
+  virtual Status RestartPG() const = 0;
 };
 
 } // namespace tserver

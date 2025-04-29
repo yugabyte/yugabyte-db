@@ -26,7 +26,7 @@ func init() {
 	SupportBundleUniverseCmd.PersistentFlags().SortFlags = false
 
 	SupportBundleUniverseCmd.AddCommand(listSupportBundleComponentsUniverseCmd)
-	// SupportBundleUniverseCmd.AddCommand(createSupportBundleUniverseCmd)
+	SupportBundleUniverseCmd.AddCommand(createSupportBundleUniverseCmd)
 	SupportBundleUniverseCmd.AddCommand(deleteSupportBundleUniverseCmd)
 	SupportBundleUniverseCmd.AddCommand(downloadSupportBundleUniverseCmd)
 	SupportBundleUniverseCmd.AddCommand(describeSupportBundleUniverseCmd)

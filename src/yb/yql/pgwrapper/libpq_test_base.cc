@@ -369,5 +369,53 @@ std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metri
   return parsed_metrics;
 }
 
+// Helper function to get JSON metrics from the /metrics endpoint and parse them into YsqlMetrics.
+std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics() {
+  ExternalTabletServer* ts = cluster_->tablet_server(0);
+  auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+  EasyCurl c;
+  faststring buf;
+
+  auto json_metrics_url =
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+  EXPECT_OK(c.FetchURL(json_metrics_url, &buf));
+  return ParseJsonMetrics(buf.ToString());
+}
+
+// Helper function to get Prometheus metrics and parse them into YsqlMetrics.
+// Same as GetJsonMetrics, but gets the metrics from the /prometheus-metrics endpoint.
+std::vector<YsqlMetric> LibPqTestBase::GetPrometheusMetrics() {
+  ExternalTabletServer* ts = cluster_->tablet_server(0);
+  auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+  EasyCurl c;
+  faststring buf;
+
+  auto prometheus_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
+  EXPECT_OK(c.FetchURL(prometheus_metrics_url, &buf));
+  return ParsePrometheusMetrics(buf.ToString());
+}
+
+// Helper function to get specific metric value from a list of metrics.
+// Returns -1 if the metric is not found.
+int64_t LibPqTestBase::GetMetricValue(
+    const std::vector<YsqlMetric>& metrics, const std::string& metric_name) {
+  for (const auto& metric : metrics) {
+    if (metric.name.find(metric_name) != std::string::npos) {
+      return metric.value;
+    }
+  }
+  return -1;
+}
+
+void LibPqTestBase::WaitForCatalogVersionToPropagate() {
+  // This is an estimate that should exceed the tserver to master hearbeat interval.
+  // However because it is an estimate, this function may return before the catalog version is
+  // actually propagated.
+  constexpr int kSleepSeconds = 2;
+  LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
+  std::this_thread::sleep_for(kSleepSeconds * 1s);
+}
+
 } // namespace pgwrapper
 } // namespace yb

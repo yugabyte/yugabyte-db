@@ -39,11 +39,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
-namespace google {
-namespace protobuf {
+namespace google::protobuf {
 template <class T>
 class RepeatedPtrField;
-}
 }
 
 namespace yb {

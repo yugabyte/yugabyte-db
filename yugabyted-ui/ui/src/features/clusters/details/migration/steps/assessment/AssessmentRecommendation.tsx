@@ -10,6 +10,7 @@ import type {
 import { MigrationAssessmentRefactoring } from "./AssessmentRefactoring";
 import { RecommendedClusterSize } from "./AssessmentRecommendedClusterSize";
 import { RecommendedDataDistribution } from "./AssessmentRecommendedDataDistribution";
+import { RecommendedNotes } from "./AssessmentNotes";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -59,6 +60,7 @@ interface MigrationAssessmentRecommendationProps {
   assessmentIssues: AssessmentCategoryInfo[] | undefined;
   targetDBVersion: string | undefined;
   migrationComplexityExplanation: string | undefined;
+  notes?: string[] | undefined;
 }
 
 export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommendationProps> = ({
@@ -75,7 +77,8 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
   sqlObjects,
   assessmentIssues,
   targetDBVersion,
-  migrationComplexityExplanation
+  migrationComplexityExplanation,
+  notes
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -120,6 +123,11 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
             assessmentCategoryInfo={assessmentIssues}
             targetDBVersion={targetDBVersion}
             migrationComplexityExplanation={migrationComplexityExplanation}
+          />
+
+
+          <RecommendedNotes
+            notes={notes}
           />
 
         </Box>

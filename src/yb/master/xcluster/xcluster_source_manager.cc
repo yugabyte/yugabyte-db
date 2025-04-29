@@ -1345,8 +1345,6 @@ bool XClusterSourceManager::IsNamespaceInAutomaticDDLMode(const NamespaceId& nam
 
 Status XClusterSourceManager::SetupDDLReplicationExtension(
     const NamespaceId& namespace_id, StdStatusCallback callback) const {
-  auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
-
   bool is_switchover =
       catalog_manager_.GetXClusterManager()->IsNamespaceInAutomaticModeTarget(namespace_id);
   if (is_switchover) {
@@ -1359,7 +1357,7 @@ Status XClusterSourceManager::SetupDDLReplicationExtension(
   }
 
   return master::SetupDDLReplicationExtension(
-      catalog_manager_, namespace_name, XClusterDDLReplicationRole::kSource, std::move(callback));
+      catalog_manager_, namespace_id, XClusterDDLReplicationRole::kSource, std::move(callback));
 }
 
 Status XClusterSourceManager::DropDDLReplicationExtensionIfExists(

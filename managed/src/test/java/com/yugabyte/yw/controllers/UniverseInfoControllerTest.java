@@ -39,6 +39,7 @@ import com.google.common.net.HostAndPort;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -51,6 +52,7 @@ import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -351,6 +353,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
     when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
     Universe u = createUniverse(customer.getId());
+    Users newUser = ModelFactory.testUser(customer, "fake@user.com", Users.Role.ConnectOnly);
     when(mockRuntimeConfig.getBoolean("yb.rbac.use_new_authz")).thenReturn(true);
     String url =
         "/api/customers/"
@@ -359,7 +362,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             + u.getUniverseUUID()
             + "/slow_queries";
     Map<String, String> fakeRequestHeaders = new HashMap<>();
-    fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
+    fakeRequestHeaders.put("X-AUTH-TOKEN", newUser.createAuthToken());
 
     Result result = doRequestWithCustomHeaders("GET", url, fakeRequestHeaders);
     assertUnauthorizedNoException(result, "Unable to authorize user");
@@ -372,6 +375,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
     when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
     Universe u = createUniverse(customer.getId());
+    Users newUser = ModelFactory.testUser(customer, "fake@user.com", Users.Role.ConnectOnly);
     when(mockRuntimeConfig.getBoolean("yb.rbac.use_new_authz")).thenReturn(true);
     role =
         Role.create(
@@ -386,7 +390,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             .resourceUUIDSet(new HashSet<>(Arrays.asList(u.getUniverseUUID())))
             .build();
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
-    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    RoleBinding.create(newUser, RoleBindingType.Custom, role, rG);
     String url =
         "/api/customers/"
             + customer.getUuid()
@@ -394,7 +398,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             + u.getUniverseUUID()
             + "/slow_queries";
     Map<String, String> fakeRequestHeaders = new HashMap<>();
-    fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
+    fakeRequestHeaders.put("X-AUTH-TOKEN", newUser.createAuthToken());
 
     Result result = doRequestWithCustomHeaders("GET", url, fakeRequestHeaders);
     assertUnauthorizedNoException(result, "Unable to authorize user");

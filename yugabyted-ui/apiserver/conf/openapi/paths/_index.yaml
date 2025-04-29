@@ -1,3 +1,35 @@
+/xcluster_metrics:
+  get:
+    summary: Get list of all xCluster replication group ids
+    description: >-
+      Retrieve the list of databases on which restore is run in the YugabyteDB cluster.
+    operationId: getXclusterReplicationIDs
+    responses:
+      "200":
+        $ref: "../responses/_index.yaml#/xClusterResponse"
+      "400":
+        $ref: "../responses/_index.yaml#/ApiError"
+      "500":
+        $ref: "../responses/_index.yaml#/ApiError"
+/xcluster_namespace_details/{replication_id}:
+  get:
+    summary: Get list of all xCluster replication group namespace and table details
+    description: Retrieve namespaces and tables for the given replication ID.
+    operationId: getXclusterReplicationNamespacesInfo
+    parameters:
+      - name: replication_id
+        in: path
+        description: Unique identifier for the replication group
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        $ref: "../responses/_index.yaml#/xClusterNamespaceResponse"
+      "400":
+        $ref: "../responses/_index.yaml#/ApiError"
+      "500":
+        $ref: "../responses/_index.yaml#/ApiError"
 '/migrations':
   get:
     summary: Get the list of Voyager migrations

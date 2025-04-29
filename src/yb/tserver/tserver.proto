@@ -147,6 +147,9 @@ message WriteResponsePB {
   optional fixed64 local_limit_ht = 14;
 
   optional TabletConsensusInfoPB tablet_consensus_info = 15;
+
+  // key causing read restart. Present when restart_read_time is.
+  optional string restart_read_key = 16;
 }
 
 // A list tablets request
@@ -271,6 +274,9 @@ message ReadResponsePB {
   optional fixed64 local_limit_ht = 10;
 
   optional TabletConsensusInfoPB tablet_consensus_info = 11;
+
+  // key causing read restart. Present when restart_read_time is.
+  optional string restart_read_key = 12;
 }
 
 message GetTabletKeyRangesRequestPB {
@@ -456,6 +462,8 @@ message ReleaseObjectLockRequestPB {
   optional fixed64 propagated_hybrid_time = 6;
 
   optional DBCatalogVersionDataPB db_catalog_version_data = 7;
+  // Used for tracking in-progress DDL unlock requests at the master.
+  optional uint64 request_id = 8;
 }
 
 message ReleaseObjectLockResponsePB {

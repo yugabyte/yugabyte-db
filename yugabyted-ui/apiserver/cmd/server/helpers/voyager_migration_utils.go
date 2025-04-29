@@ -58,6 +58,9 @@ type AssessmentVisualisationMetadata struct {
     SourceSizeDetails               SourceDBSizeDetails          `json:"SourceSizeDetails"`
     TargetRecommendations           TargetSizingRecommendations  `json:"TargetRecommendations"`
     ConversionIssues                []Issue                      `json:"ConversionIssues"`
+    TableIndexStats                 []TableIndexStats           `json:"TableIndexStats"`
+    Notes                           []string                    `json:"Notes"`
+    Sizing                          SizingAssessmentReport      `json:"Sizing"`
 
     // Deprecated: AssessmentJsonReport is retained for backward compatibility.
     AssessmentJsonReport AssessmentReport `json:"AssessmentJsonReport"`
@@ -67,15 +70,12 @@ type AssessmentReport struct {
     VoyagerVersion             string                      `json:"VoyagerVersion"`
     MigrationComplexity        string                      `json:"MigrationComplexity"`
     SchemaSummary              SchemaSummary               `json:"SchemaSummary"`
-    Sizing                     SizingAssessmentReport      `json:"Sizing"`
     UnsupportedDataTypes       []TableColumnsDataTypes     `json:"UnsupportedDataTypes"`
     UnsupportedDataTypesDesc   string                      `json:"UnsupportedDataTypesDesc"`
     UnsupportedFeatures        []UnsupportedFeature        `json:"UnsupportedFeatures"`
     UnsupportedFeaturesDesc    string                      `json:"UnsupportedFeaturesDesc"`
     UnsupportedQueryConstructs []UnsupportedQueryConstruct `json:"UnsupportedQueryConstructs"`
     MigrationCaveats           []UnsupportedFeature        `json:"MigrationCaveats"`
-    TableIndexStats            []TableIndexStats           `json:"TableIndexStats"`
-    Notes                      []string                    `json:"Notes"`
 }
 
 type VoyagerAssessmentIssueInfo struct {
