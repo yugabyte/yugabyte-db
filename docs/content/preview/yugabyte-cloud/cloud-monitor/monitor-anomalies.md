@@ -16,6 +16,8 @@ type: docs
 
 Use Anomalies to monitor your cluster for anomalies in performance - whether with the database or applications.
 
+Anomalies is only available for clusters running v2024.2 and later.
+
 {{< note title="Tech Preview" >}}
 
 Anomalies is currently in Tech Preview. To try the feature, contact {{% support-cloud %}}.
@@ -44,7 +46,7 @@ Each bar shows the connections broken down by state.
 | WaitOnCondition |  |
 | Timeout | Waiting for `pgsleep()` function |
 | TServerWait | Waiting for TServer threads to complete |
-| Network |  |
+| Network | RPC waits |
 | Lock    | Waiting on a lock |
 | IO      | Reading or writing from storage, such as writing to WAL or reading tablets from storage |
 | CPU     | Query is running normally |
