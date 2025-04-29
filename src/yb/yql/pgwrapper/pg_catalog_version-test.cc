@@ -1736,6 +1736,15 @@ TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
   ASSERT_EQ(v3, v2 + 1);
 }
 
+TEST_F(PgCatalogVersionTest, SimulateDelayedHeartbeatResponse) {
+  RestartClusterWithDBCatalogVersionMode({"--TEST_delay_set_catalog_version_table_mode_count=30"});
+  auto status = ResultToStatus(Connect());
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "catalog_version_table mode not set in shared memory, "
+                      "tserver not ready to serve requests");
+}
+
 TEST_F(PgCatalogVersionTest, AlterDatabaseCatalogVersionIncrement) {
   PGConn conn = ASSERT_RESULT(Connect());
   // Create a test db and a test user.
