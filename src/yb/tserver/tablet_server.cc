@@ -248,6 +248,10 @@ DEFINE_NON_RUNTIME_int32(stateful_svc_default_queue_length, 50,
 DEFINE_RUNTIME_bool(tserver_heartbeat_add_replication_status, true,
     "Add replication status to heartbeats tserver sends to master");
 
+DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
+    "Delay set catalog version table mode by this many times of heartbeat responses "
+    "after tserver starts");
+
 namespace yb::tserver {
 
 namespace {
@@ -1009,9 +1013,13 @@ void TabletServer::SetYsqlDBCatalogVersions(
     if (ysql_db_catalog_version_map_.size() > 1) {
       if (!catalog_version_table_in_perdb_mode_.has_value() ||
           !catalog_version_table_in_perdb_mode_.value()) {
-        LOG(INFO) << "set pg_yb_catalog_version table in perdb mode";
-        catalog_version_table_in_perdb_mode_ = true;
-        shared_object().SetCatalogVersionTableInPerdbMode(true);
+        if (PREDICT_FALSE(FLAGS_TEST_delay_set_catalog_version_table_mode_count > 0)) {
+          --FLAGS_TEST_delay_set_catalog_version_table_mode_count;
+        } else {
+          LOG(INFO) << "set pg_yb_catalog_version table in perdb mode";
+          catalog_version_table_in_perdb_mode_ = true;
+          shared_object().SetCatalogVersionTableInPerdbMode(true);
+        }
       }
     } else {
       DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);

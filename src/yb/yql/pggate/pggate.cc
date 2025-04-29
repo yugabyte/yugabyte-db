@@ -1919,13 +1919,14 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
     // heartbeat response from yb-master that has set a value in
     // catalog_version_table_in_perdb_mode_ in the shared memory object
     // yet. Let's wait with 500ms interval until a value is set or until
-    // a 10-second timeout.
+    // a 20-second timeout.
     auto status = LoggedWaitFor(
         [this]() -> Result<bool> {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
-        10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set in shared memory",
+        20s /* timeout */,
+        "catalog_version_table mode not set in shared memory, "
+        "tserver not ready to serve requests",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(
