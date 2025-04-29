@@ -1403,9 +1403,8 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  template <typename TableContainer>
   void SetTaskMetadataForColocatedTable(
-      const TableContainer& table_ids, AsyncTabletSnapshotOp* task) {
+      const std::vector<TableId>& table_ids, AsyncTabletSnapshotOp* task) {
     for (const auto& table_id : table_ids) {
       auto table_info_result = context_.GetTableById(table_id);
       // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
@@ -2058,8 +2057,8 @@ class MasterSnapshotCoordinator::Impl {
         // from external backups where we don't need to restore the sys catalog.
         auto restoration = std::make_unique<RestorationState>(
             &context_, restoration_id, &snapshot, restore_at,
-            (snapshot.schedule_id().IsNil() ? IsSysCatalogRestored::kTrue :
-                                              IsSysCatalogRestored::kFalse),
+            snapshot.schedule_id().IsNil() ? IsSysCatalogRestored::kTrue :
+                                             IsSysCatalogRestored::kFalse,
             GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
                         FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
         restoration_ptr = restorations_.emplace(std::move(restoration)).first->get();

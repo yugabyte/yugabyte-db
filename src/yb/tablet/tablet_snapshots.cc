@@ -110,7 +110,7 @@ struct TabletSnapshots::ColocatedTableMetadata {
   boost::optional<Schema> schema;
   boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
-  std::string table_id;
+  TableId table_id;
 };
 
 TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}

@@ -101,15 +101,16 @@ DEFINE_NON_RUNTIME_bool(mini_cluster_reuse_data, false, "Reuse data of mini clus
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
 
-DECLARE_string(fs_data_dirs);
-DECLARE_int32(memstore_size_mb);
-DECLARE_int32(replication_factor);
-DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
-DECLARE_string(use_private_ip);
-DECLARE_int32(load_balancer_initial_delay_secs);
-DECLARE_int32(transaction_table_num_tablets);
 DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(TEST_use_custom_varz);
+DECLARE_int32(load_balancer_initial_delay_secs);
+DECLARE_int32(memstore_size_mb);
+DECLARE_int32(replication_factor);
+DECLARE_int32(transaction_table_num_tablets);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
+DECLARE_string(fs_data_dirs);
+DECLARE_string(use_private_ip);
 
 namespace yb {
 
@@ -263,13 +264,17 @@ Status MiniCluster::StartAsync(
 }
 
 Status MiniCluster::StartYbControllerServers() {
-  for (auto ts : mini_tablet_servers_) {
+  SCHECK(
+      FLAGS_TEST_use_custom_varz, IllegalState,
+      "It is necessary to set TEST_use_custom_varz to true in order to make ybcontroller work "
+          "correctly");
+  for (const auto& ts : mini_tablet_servers_) {
     RETURN_NOT_OK(AddYbControllerServer(ts));
   }
   return Status::OK();
 }
 
-Status MiniCluster::AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer> ts) {
+Status MiniCluster::AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer>& ts) {
   // Return if we already have a Yb Controller for the given ts
   for (auto ybController : yb_controller_servers_) {
     if (ybController->GetServerAddress() == ts->bound_http_addr().address().to_string()) {
@@ -278,27 +283,20 @@ Status MiniCluster::AddYbControllerServer(const std::shared_ptr<tserver::MiniTab
   }
 
   size_t idx = yb_controller_servers_.size() + 1;
+  ExternalYbControllerOptions options = {
+    .idx = idx,
+    .log_dir = JoinPathSegments(GetYbControllerServerFsRoot(idx), "logs"),
+    .tmp_dir = JoinPathSegments(GetYbControllerServerFsRoot(idx), "tmp"),
+    .yb_tserver_address = ts->bound_http_addr().address().to_string(),
+    .server_port = idx == 1 ? AllocateFreePort() : yb_controller_servers_[0]->GetServerPort(),
+    .yb_master_webserver_port = master_web_ports_[0],
+    .yb_tserver_webserver_port = tserver_web_ports_[idx - 1],
+    .server_address = ts->bound_http_addr().address().to_string(),
+  };
 
-  // All yb controller servers need to be on the same port.
-  uint16_t server_port;
-  if (idx == 1) {
-    server_port = port_picker_.AllocateFreePort();
-  } else {
-    server_port = yb_controller_servers_[0]->GetServerPort();
-  }
-
-  const auto yb_controller_log_dir = JoinPathSegments(GetYbControllerServerFsRoot(idx), "logs");
-  const auto yb_controller_tmp_dir = JoinPathSegments(GetYbControllerServerFsRoot(idx), "tmp");
-  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
-  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
-  const auto server_address = ts->bound_http_addr().address().to_string();
-  scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-      idx, yb_controller_log_dir, yb_controller_tmp_dir, server_address, GetToolPath("yb-admin"),
-      GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
-      GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
-      server_port, master_web_ports_[0], tserver_web_ports_[idx - 1], server_address,
-      GetYbcToolPath("yb-controller-server"),
-      /*extra_flags*/ {});
+  RETURN_NOT_OK(Env::Default()->CreateDirs(options.log_dir));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(options.tmp_dir));
+  auto yb_controller = make_scoped_refptr<ExternalYbController>(options);
 
   RETURN_NOT_OK_PREPEND(
       yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(idx));
@@ -906,6 +904,17 @@ Status MiniCluster::WaitForLoadBalancerToStabilize(MonoDelta timeout) {
         return master_leader->catalog_manager_impl()->IsLoadBalancerIdle(&req, &resp).ok();
       },
       deadline, "IsLoadBalancerIdle");
+}
+
+std::string MiniCluster::GetTabletServerHTTPAddresses() const {
+  std::string result;
+  for (const auto& ts : mini_tablet_servers_) {
+    if (!result.empty()) {
+      result += ",";
+    }
+    result += ts->bound_http_addr_str();
+  }
+  return result;
 }
 
 server::SkewedClockDeltaChanger JumpClock(

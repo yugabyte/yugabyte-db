@@ -4084,7 +4084,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Assign column-ids that have just been computed and assigned to "index_info".
     if (is_vector_index) {
-      index_info.mutable_vector_idx_options()->set_id(Uuid::Generate().ToString());
+      index_info.mutable_vector_idx_options()->set_id(
+          AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
