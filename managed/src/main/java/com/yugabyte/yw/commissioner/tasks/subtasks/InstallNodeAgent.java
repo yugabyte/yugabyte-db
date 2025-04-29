@@ -10,11 +10,13 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.YBAError;
@@ -39,15 +41,18 @@ public class InstallNodeAgent extends AbstractTaskBase {
   private final NodeAgentManager nodeAgentManager;
   private ShellProcessContext shellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   protected InstallNodeAgent(
       BaseTaskDependencies baseTaskDependencies,
       NodeUniverseManager nodeUniverseManager,
-      NodeAgentManager nodeAgentManager) {
+      NodeAgentManager nodeAgentManager,
+      RuntimeConfGetter confGetter) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeAgentManager = nodeAgentManager;
+    this.confGetter = confGetter;
   }
 
   public static class Params extends NodeTaskParams {
@@ -106,7 +111,11 @@ public class InstallNodeAgent extends AbstractTaskBase {
     if (taskParams().sshUser != null) {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     Path stagingDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());
     Path nodeAgentSourcePath = stagingDir.resolve(NodeAgent.NODE_AGENT_DIR);
     NodeAgent nodeAgent = createNodeAgent(universe, node);
