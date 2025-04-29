@@ -3,7 +3,7 @@ title: Point-in-time recovery in YugabyteDB Aeon
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Using Point-in-time recovery in YugabyteDB Aeon
-headContent: Restore to a point in time
+headContent: Create a database clone for recovery or testing
 menu:
   preview_yugabyte-cloud:
     identifier: aeon-pitr
@@ -12,18 +12,21 @@ menu:
 type: docs
 ---
 
-To prevent data loss, YugabyteDB Aeon supports point-in-time recovery (PITR) of cluster data. When enabled for a database or keyspace, YugabyteDB takes a snapshot of the data once a day. Each snapshot maintains a continuous change history. You can then recover to a specific point in time in a snapshot.
+To prevent data loss, YugabyteDB Aeon supports point-in-time recovery (PITR) of cluster data. When enabled for a database or keyspace, YugabyteDB takes a snapshot of the data once a day. Each snapshot maintains a continuous change history. You can then create a database clone at a specific point in time in a snapshot.
 
-PITR is particularly applicable to the following:
+The clone a zero-copy, independent writable clone of your database that you can use for the following:
 
-- DDL errors, such as an accidental table removal.
-- DML errors, such as execution of an incorrect update statement against one of the tables.
+- Data recovery. To recover from data loss due to user error (for example, accidentally dropping a table) or application error (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data from the clone, and import it back to the original database.
+
+- Development and testing. Because the two databases are completely isolated, you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original or affecting its performance.
 
 You can change the retention period for snapshots. The default is seven days, which gives you a rolling history of seven snapshots (one a day), with the oldest snapshot being deleted automatically as the most recent one is added.
 
 For more information on PITR in YugabyteDB, refer to [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/).
 
-To configure point in time recovery, and restore to a point in time, go to the cluster **Backups** tab and choose **Point in time Recovery**.
+For more information on database cloning, refer to [Instant database cloning](../../../manage/backup-restore/instant-db-cloning/).
+
+To configure point in time recovery, and create a clone at a point in time, go to the cluster **Backups** tab and choose **Point in time Recovery**.
 
 ## Create a PITR configuration
 
