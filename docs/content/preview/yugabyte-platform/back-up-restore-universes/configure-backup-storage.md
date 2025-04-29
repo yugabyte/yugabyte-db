@@ -26,11 +26,13 @@ You can configure AWS S3 and S3-compatible storage as your backup target.
 By default, the option to use S3 path style access is not available. To ensure that you can use this feature, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enablePathStyleAccess** option.
 {{< /note >}}
 
+### Create an AWS backup configuration
+
 To configure S3 storage, do the following:
 
 1. Navigate to **Integrations** > **Backup** > **Amazon S3**.
 
-1. Click **Create S3 Backup** to access the configuration form shown in the following illustration:
+1. Click **Create S3 Backup**.
 
     ![S3 Backup](/images/yp/cloud-provider-configuration-backup-aws.png)
 
@@ -104,9 +106,9 @@ To create a GCP backup configuration, do the following:
 
 1. Enter the URI of your GCS bucket in the **GCS Bucket** field. For example, `gs://gcp-bucket/test_backups`.
 
-1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
+1. Select **Use GCP IAM** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the GCS backup.
 
-1. Enter the credentials for your account in JSON format in the **GCS Credentials** field.
+1. If **Use GCP IAM** is disabled, enter the credentials for your account in JSON format in the **GCS Credentials** field.
 
 1. Click **Save**.
 

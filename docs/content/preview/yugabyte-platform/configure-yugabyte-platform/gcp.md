@@ -77,8 +77,6 @@ To create a GCP provider:
 
 The create provider process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
-Now you are ready to create a YugabyteDB universe on GCP.
-
 ### View and edit providers
 
 To view a provider, select it in the list of GCP Configs to display the **Overview**.

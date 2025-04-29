@@ -48,6 +48,10 @@ type: docs
 
 For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters, you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
 
+{{<tip>}}
+If you can't provide YBA with the necessary permissions, you can still deploy to GCP using an [on-premises provider](../cloud-permissions-nodes/).
+{{</tip>}}
+
 ## GCP
 
 The [Compute Admin role](https://cloud.google.com/compute/docs/access/iam#compute.admin) permission is required on the GCP service account where you will deploy:
@@ -63,7 +67,7 @@ To grant the required access, you must do the following:
 
 Then use one of the following methods:
 
-- Obtain a file containing a JSON that describes the service account credentials. You will need to provide this file later to YBA.
+- Obtain a file containing a JSON that describes the service account credentials. You will need to provide this file later when creating the GCP provider configuration.
 - [Attach the service account](https://cloud.google.com/compute/docs/access/create-enable-service-accounts-for-instances#using) to the GCP VM that will run YBA.
 
 | Save for later | To configure |
