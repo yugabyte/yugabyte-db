@@ -53,7 +53,7 @@ YugabyteDB monitors the health of your clusters based on [cluster alert](#cluste
 | Status | Alert | Level |
 | :----- | :---- | :---- |
 | Healthy | No alerts<br/>[Disk throughput](#fix-throughput-alerts)<br/>[Disk IOPS](#fix-iops-alerts)<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Warning<br/>Warning<br/>Info |
-| Needs Attention | [Tablet peers](#fix-storage-alerts)<br/>[Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe |
+| Needs Attention | [Tablet peers](#fix-tablet-peer-alerts)<br/>[Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe |
 | Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[CMK unavailable](#fix-cmk-unavailable-alerts)  | Severe<br/>Warning |
 
 To see the alert conditions that caused the current health condition, click the cluster health icon.
@@ -108,6 +108,8 @@ You can also drop tables. There may be a lag in clearing the associated tablets.
 For Sandbox clusters, if you reach the tablet peer limit, you cannot create any more tables, and table splitting is stopped.
 
 For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+For information on tablets in YugabyteDB, refer to [Tablet splitting](../../../architecture/docdb-sharding/tablet-splitting/).
 
 Currently, this alert is only available for Sandbox clusters running v2024.1 or later.
 

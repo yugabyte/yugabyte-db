@@ -80,3 +80,5 @@ Enabling PITR impacts both disk consumption and performance. Keep in mind the fo
 - If you notice an impact on performance, refer to [Operational considerations](../../../manage/backup-restore/point-in-time-recovery/#operational-considerations) for guidance about further tuning.
 
     In addition to the snapshot retention period, YugabyteDB allows you to adjust the snapshot interval, which in YugabyteDB Aeon is fixed at 24 hours.
+
+Database clones do not initially use added disk space, but they do create an independent set of logical tablets. If you are at or have exceeded the [tablet peer limit](../cloud-monitor/cloud-alerts/#fix-tablet-peer-alerts), you cannot create clones. If you hit or exceed the limit due to tablets that a clone is creating, then operations on the clone will fail.
