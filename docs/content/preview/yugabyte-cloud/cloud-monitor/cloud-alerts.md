@@ -96,7 +96,9 @@ If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/cre
 
 #### Fix tablet peer alerts
 
-YugabyteDB Aeon sends a notification when the number of [tablet peers](../../../architecture/docdb-replication/replication/#tablet-peers) in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon automatically enforces [tablet peer](../../../architecture/docdb-replication/replication/#tablet-peers) limits for clusters.
+
+If a cluster exceeds the limit, YugabyteDB Aeon sends a notification as follows:
 
 - Number of tablet peers is 85% of the cluster limit (Warning).
 - Number of tablet peers is 100% of the cluster limit (Severe).
@@ -109,7 +111,7 @@ For Sandbox clusters, if you reach the tablet peer limit, you cannot create any 
 
 For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
-For information on tablets in YugabyteDB, refer to [Tablet splitting](../../../architecture/docdb-sharding/tablet-splitting/).
+For information on tablet limits in YugabyteDB, refer to [Memory and tablet limits](../../../deploy/checklist/#memory-and-tablet-limits).
 
 Currently, this alert is only available for Sandbox clusters running v2024.1 or later.
 
