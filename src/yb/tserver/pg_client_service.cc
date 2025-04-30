@@ -1454,39 +1454,7 @@ class PgClientServiceImpl::Impl {
   Status ValidatePlacement(
       const PgValidatePlacementRequestPB& req, PgValidatePlacementResponsePB* resp,
       rpc::RpcContext* context) {
-    ReplicationInfoPB replication_info;
-    PlacementInfoPB* live_replicas = replication_info.mutable_live_replicas();
-
-    for (const auto& block : req.placement_infos()) {
-      auto pb = live_replicas->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud(block.cloud());
-      pb->mutable_cloud_info()->set_placement_region(block.region());
-      pb->mutable_cloud_info()->set_placement_zone(block.zone());
-      pb->set_min_num_replicas(block.min_num_replicas());
-
-      if (block.leader_preference() < 0) {
-        return STATUS(InvalidArgument, "leader_preference cannot be negative");
-      } else if (block.leader_preference() > req.placement_infos_size()) {
-        return STATUS(
-            InvalidArgument,
-            "Priority value cannot be more than the number of zones in the preferred list since "
-            "each priority should be associated with at least one zone from the list");
-      } else if (block.leader_preference() > 0) {
-        while (replication_info.multi_affinitized_leaders_size() < block.leader_preference()) {
-          replication_info.add_multi_affinitized_leaders();
-        }
-
-        auto zone_set =
-            replication_info.mutable_multi_affinitized_leaders(block.leader_preference() - 1);
-        auto ci = zone_set->add_zones();
-        ci->set_placement_cloud(block.cloud());
-        ci->set_placement_region(block.region());
-        ci->set_placement_zone(block.zone());
-      }
-    }
-    live_replicas->set_num_replicas(req.num_replicas());
-
-    return client().ValidateReplicationInfo(replication_info);
+    return client().ValidateReplicationInfo(req.replication_info());
   }
 
   Status GetTableDiskSize(

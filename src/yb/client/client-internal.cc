@@ -56,7 +56,7 @@
 #include "yb/qlexpr/index.h"
 #include "yb/common/common_util.h"
 #include "yb/common/redis_constants_common.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 

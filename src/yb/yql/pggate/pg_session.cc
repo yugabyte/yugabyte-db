@@ -23,7 +23,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
@@ -927,32 +927,18 @@ void PgSession::SetDdlHasSyscatalogChanges() {
   pg_txn_manager_->SetDdlHasSyscatalogChanges();
 }
 
-Status PgSession::ValidatePlacement(const std::string& placement_info) {
-  tserver::PgValidatePlacementRequestPB req;
-
-  Result<PlacementInfoConverter::Placement> result =
-      PlacementInfoConverter::FromString(placement_info);
-
+Status PgSession::ValidatePlacement(const std::string& placement_info, bool check_satisfiable) {
   // For validation, if there is no replica_placement option, we default to the
-  // cluster configuration which the user is responsible for maintaining
-  if (!result.ok() && result.status().IsInvalidArgument()) {
-    return Status::OK();
+  // cluster configuration which the user is responsible for maintaining.
+  if (placement_info.empty()) return Status::OK();
+
+  ReplicationInfoPB replication_info = VERIFY_RESULT(TablespaceParser::FromString(placement_info));
+  if (check_satisfiable) {
+    tserver::PgValidatePlacementRequestPB req;
+    *req.mutable_replication_info() = std::move(replication_info);
+    return pg_client_.ValidatePlacement(&req);
   }
-
-  RETURN_NOT_OK(result);
-
-  PlacementInfoConverter::Placement placement = result.get();
-  for (const auto& block : placement.placement_infos) {
-    auto pb = req.add_placement_infos();
-    pb->set_cloud(block.cloud);
-    pb->set_region(block.region);
-    pb->set_zone(block.zone);
-    pb->set_min_num_replicas(block.min_num_replicas);
-    pb->set_leader_preference(block.leader_preference);
-  }
-  req.set_num_replicas(placement.num_replicas);
-
-  return pg_client_.ValidatePlacement(&req);
+  return Status::OK();
 }
 
 template<class Generator>

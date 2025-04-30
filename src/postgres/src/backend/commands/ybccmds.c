@@ -1993,9 +1993,9 @@ YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel, AttrNumb
 /* ------------------------------------------------------------------------- */
 /*  System validation. */
 void
-YBCValidatePlacement(const char *placement_info)
+YBCValidatePlacement(const char *placement_info, bool check_satisfiable)
 {
-	HandleYBStatus(YBCPgValidatePlacement(placement_info));
+	HandleYBStatus(YBCPgValidatePlacement(placement_info, check_satisfiable));
 }
 
 /* ------------------------------------------------------------------------- */

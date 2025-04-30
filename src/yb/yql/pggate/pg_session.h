@@ -234,7 +234,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  Status ValidatePlacement(const std::string& placement_info);
+  Status ValidatePlacement(const std::string& placement_info, bool check_satisfiable);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 

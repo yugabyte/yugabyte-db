@@ -1997,8 +1997,8 @@ bool YBCPgIsDdlMode() {
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------
-YBCStatus YBCPgValidatePlacement(const char *placement_info) {
-  return ToYBCStatus(pgapi->ValidatePlacement(placement_info));
+YBCStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable) {
+  return ToYBCStatus(pgapi->ValidatePlacement(placement_info, check_satisfiable));
 }
 
 // Referential Integrity Caching

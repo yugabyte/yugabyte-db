@@ -319,7 +319,7 @@ bool RemoteTabletServer::IsLocalRegion() const {
 
 LocalityLevel RemoteTabletServer::LocalityLevelWith(const CloudInfoPB& cloud_info) const {
   SharedLock lock(mutex_);
-  return PlacementInfoConverter::GetLocalityLevel(cloud_info_pb_, cloud_info);
+  return TablespaceParser::GetLocalityLevel(cloud_info_pb_, cloud_info);
 }
 
 HostPortPB RemoteTabletServer::DesiredHostPort(const CloudInfoPB& cloud_info) const {

@@ -2223,8 +2223,8 @@ Status PgApiImpl::GetIndexBackfillProgress(std::vector<PgObjectId> oids,
   return pg_session_->GetIndexBackfillProgress(oids, backfill_statuses);
 }
 
-Status PgApiImpl::ValidatePlacement(const char *placement_info) {
-  return pg_session_->ValidatePlacement(placement_info);
+Status PgApiImpl::ValidatePlacement(const char *placement_info, bool check_satisfiable) {
+  return pg_session_->ValidatePlacement(placement_info, check_satisfiable);
 }
 
 void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {

@@ -33,7 +33,8 @@
 #include <string>
 #include <gtest/gtest.h>
 
-#include "yb/common/placement_info.h"
+#include "yb/common/tablespace_parser.h"
+
 #include "yb/util/test_macros.h"
 
 using std::string;
@@ -42,7 +43,7 @@ using std::vector;
 namespace yb {
 
 // Test the tablespace info parsing.
-TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
+TEST(TablespaceParserTest, TestTablespaceJsonProcessing) {
   // Variables to be used throughout the test.
   const string& valid_json =
       "{\"num_replicas\":3,\"placement_blocks\":"
@@ -56,30 +57,30 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
 
   // Negative tests.
   // 1. Empty input.
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 2. Invalid number of options.
   options.push_back(option);
   options.push_back(invalid_option);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 3. Invalid option name.
   options.clear();
   options.push_back(invalid_option);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 4. Empty json.
   options.clear();
   auto opt_empty_value = "replica_placement=[{}]";
   options.emplace_back(opt_empty_value);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 5. Missing num_replicas field.
   options.clear();
   auto invalid_json_option = "replica_placement={\"placement_blocks\":"
       "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}";
   options.emplace_back(invalid_json_option);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 6. Invalid value for num_replicas field.
   options.clear();
@@ -87,13 +88,13 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
       "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
       "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":3}]}";
   options.emplace_back(invalid_json_option);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 7. Missing placement blocks field.
   options.clear();
   invalid_json_option = "replica_placement={\"num_replicas\":3}";
   options.emplace_back(invalid_json_option);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 8. Missing keys in placement blocks.
   options.clear();
@@ -101,7 +102,7 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
       "replica_placement={\"num_replicas\":\"abc\",\"placement_blocks\":"
       "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\"}]}";
   options.emplace_back(invalid_json_option);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 9. Invalid format for "min_num_replicas".
   options.clear();
@@ -109,41 +110,40 @@ TEST(PlacementInfoTest, TestTablespaceJsonProcessing) {
       "replica_placement={\"num_replicas\":3,\"placement_blocks\":"
       "[{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_num_replicas\":\"abc\"}]}";
   options.emplace_back(invalid_json_option);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 10. Invalid json.
   options.clear();
   invalid_json_option = "replica_placement=["
       "{\"cloud\":\"c1\",\"region\":\"r1\",\"zone\":\"z1\",\"min_number_of_replica";
   options.emplace_back(invalid_json_option);
-  ASSERT_NOK(PlacementInfoConverter::FromQLValue(options));
+  ASSERT_NOK(TablespaceParser::FromQLValue(options));
 
   // 11. Test whether total replication factor is populated correctly.
   options.clear();
   options.push_back(option);
-  PlacementInfoConverter::Placement result = EXPECT_RESULT(
-      PlacementInfoConverter::FromQLValue(options));
-  const auto placement_infos = result.placement_infos;
-  ASSERT_EQ(result.num_replicas, 3);
+  auto replication_info = ASSERT_RESULT(TablespaceParser::FromQLValue(options));
+  ASSERT_EQ(replication_info.live_replicas().num_replicas(), 3);
 
   // 12. Test whether the cloud/region/zone information has been populated correctly.
+  auto& placement_infos = replication_info.live_replicas().placement_blocks();
   ASSERT_EQ(placement_infos.size(), 2);
   for (auto& placement_block : placement_infos) {
-    if (placement_block.cloud == "c1") {
-      ASSERT_EQ(placement_block.region, "r1");
-      ASSERT_EQ(placement_block.zone, "z1");
-      ASSERT_EQ(placement_block.min_num_replicas, 2);
+    if (placement_block.cloud_info().placement_cloud() == "c1") {
+      ASSERT_EQ(placement_block.cloud_info().placement_region(), "r1");
+      ASSERT_EQ(placement_block.cloud_info().placement_zone(), "z1");
+      ASSERT_EQ(placement_block.min_num_replicas(), 2);
       continue;
     }
-    ASSERT_EQ(placement_block.cloud, "c2");
-    ASSERT_EQ(placement_block.region, "r2");
-    ASSERT_EQ(placement_block.zone, "z2");
-    ASSERT_EQ(placement_block.min_num_replicas, 1);
+    ASSERT_EQ(placement_block.cloud_info().placement_cloud(), "c2");
+    ASSERT_EQ(placement_block.cloud_info().placement_region(), "r2");
+    ASSERT_EQ(placement_block.cloud_info().placement_zone(), "z2");
+    ASSERT_EQ(placement_block.min_num_replicas(), 1);
   }
 }
 
 // Test the tablespace preferred zone info parsing.
-TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
+TEST(TablespaceParserTest, TestPreferredZoneJsonProcessing) {
   // Variables to be used throughout the test.
   const string& zone1 = R"#("cloud":"c1","region":"r1","zone":"z1","min_num_replicas":1)#";
   const string& zone2 = R"#("cloud":"c1","region":"r1","zone":"z2","min_num_replicas":1)#";
@@ -154,32 +154,30 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
   // Valid option with no preferred zones.
   {
     auto no_preferred_zone = strings::Substitute(format, zone1, zone2, zone3);
-    PlacementInfoConverter::Placement result =
-        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{no_preferred_zone}));
-    for (auto& info : result.placement_infos) {
-      ASSERT_EQ(info.leader_preference, 0);
-    }
+    auto replication_info =
+        ASSERT_RESULT(TablespaceParser::FromQLValue(vector<std::string>{no_preferred_zone}));
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 0);
   }
 
   // Negative priority.
   {
     auto negative_priority =
         strings::Substitute(format, zone1 + R"#(,"leader_preference":-1)#", zone2, zone3);
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{negative_priority}));
+    ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{negative_priority}));
   }
 
   // Zero priority.
   {
     auto zero_priority =
         strings::Substitute(format, zone1 + R"#(,"leader_preference":0)#", zone2, zone3);
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{zero_priority}));
+    ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{zero_priority}));
   }
 
   // No priority 1.
   {
     auto no_priority_1 =
         strings::Substitute(format, zone1 + R"#(,"leader_preference":2)#", zone2, zone3);
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{no_priority_1}));
+    ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{no_priority_1}));
   }
 
   // Non contiguous priority.
@@ -189,7 +187,7 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":1)#",
         zone3 + R"#(,"leader_preference":3)#");
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{non_cont_priority_1}));
+    ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{non_cont_priority_1}));
   }
 
   // Non contiguous priority3.
@@ -200,18 +198,18 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
         zone2 + R"#(,"leader_preference":3)#",
         zone3 + R"#(,"leader_preference":3)#");
 
-    ASSERT_NOK(PlacementInfoConverter::FromQLValue(vector<std::string>{non_cont_priority_3}));
+    ASSERT_NOK(TablespaceParser::FromQLValue(vector<std::string>{non_cont_priority_3}));
   }
 
   // Only 1 zone has priority
   {
     auto one_zone_priority =
         strings::Substitute(format, zone1 + R"#(,"leader_preference":1)#", zone2, zone3);
-    auto result =
-        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{one_zone_priority}));
-    for (auto& info : result.placement_infos) {
-      ASSERT_EQ(info.leader_preference, info.zone == "z1" ? 1 : 0);
-    }
+    auto replication_info =
+        ASSERT_RESULT(TablespaceParser::FromQLValue(vector<std::string>{one_zone_priority}));
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(0).placement_zone(), "z1");
   }
 
   // Two zones have priority 1
@@ -221,11 +219,12 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":1)#",
         zone3);
-    auto result =
-        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{two_zone_priority}));
-    for (auto& info : result.placement_infos) {
-      ASSERT_EQ(info.leader_preference, info.zone == "z3" ? 0 : 1);
-    }
+    auto replication_info =
+        ASSERT_RESULT(TablespaceParser::FromQLValue(vector<std::string>{two_zone_priority}));
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones_size(), 2);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(0).placement_zone(), "z1");
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(1).placement_zone(), "z2");
   }
 
   // All unique priority
@@ -235,11 +234,15 @@ TEST(PlacementInfoTest, TestPreferredZoneJsonProcessing) {
         zone1 + R"#(,"leader_preference":1)#",
         zone2 + R"#(,"leader_preference":2)#",
         zone3 + R"#(,"leader_preference":3)#");
-    auto result =
-        ASSERT_RESULT(PlacementInfoConverter::FromQLValue(vector<std::string>{teo_zone_priority}));
-    for (auto& info : result.placement_infos) {
-      ASSERT_EQ(info.leader_preference, info.zone[1] - '0');
-    }
+    auto replication_info =
+        ASSERT_RESULT(TablespaceParser::FromQLValue(vector<std::string>{teo_zone_priority}));
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 3);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(0).placement_zone(), "z1");
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(1).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(1).zones(0).placement_zone(), "z2");
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(2).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(2).zones(0).placement_zone(), "z3");
   }
 }
 
