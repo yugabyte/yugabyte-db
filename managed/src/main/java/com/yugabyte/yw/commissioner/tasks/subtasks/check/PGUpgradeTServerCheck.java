@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -54,7 +55,6 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   private final LocalNodeManager localNodeManager;
   private final AuditService auditService;
 
-  private final int PG_UPGRADE_CHECK_TIMEOUT = 300;
   private static final String PG_UPGRADE_CHECK_LOG_FILE = "pg_upgrade_check.log";
 
   public static class Params extends ServerSubTaskParams {
@@ -85,7 +85,6 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    NodeDetails node = universe.getTServersInPrimaryCluster().stream().findAny().get();
     boolean isK8sUniverse =
         universe
             .getUniverseDetails()
@@ -93,6 +92,15 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
             .userIntent
             .providerType
             .equals(CloudType.kubernetes);
+    boolean isDedicatedNodeUniverse =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes;
+    // For K8s and dedicated node universe, we can run the check on any node in the primary cluster.
+    // For other universe types, we run the check on the master leader node as pg_catalog is present
+    // on the master leader node.
+    NodeDetails node =
+        isK8sUniverse || isDedicatedNodeUniverse
+            ? universe.getTServersInPrimaryCluster().stream().findAny().get()
+            : universe.getMasterLeaderNode();
 
     try {
       // Clean up the downloaded package from the node.
@@ -319,7 +327,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(true)
-            .timeoutSecs(PG_UPGRADE_CHECK_TIMEOUT)
+            .timeoutSecs(
+                confGetter.getConfForScope(universe, UniverseConfKeys.pgUpgradeCheckTimeoutSec))
             .build();
 
     log.info("Running PG15 upgrade check on node: {} with command: {}", node.nodeName, command);
