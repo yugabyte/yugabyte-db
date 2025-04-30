@@ -1259,6 +1259,41 @@ class SharedMemoryPerformListener : public PgTablesQueryListener {
   CountDownLatch latch_{1};
 };
 
+void ReleaseWithRetries(
+    yb::client::YBClient& client, LeaseEpochValidator& lease_validator,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req,
+    int attempt = 1) {
+  // Practically speaking, if the TServer cannot reach the master/leader for the ysql lease
+  // interval it can safely give up. The Master is responsible for cleaning up the locks for any
+  // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
+  // used here defaults to 60s, which is much larger than the default lease interval of 15s.
+  auto timeout = MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+  if (!lease_validator.IsLeaseValid(release_req->lease_epoch())) {
+    LOG(INFO) << "Lease epoch " << release_req->lease_epoch() << " is not valid. Will not retry "
+              << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+    return;
+  } else if (attempt > GetAtomicFlag(&FLAGS_ysql_max_retries_for_release_object_lock_requests)) {
+    LOG(ERROR) << "Release global locks failing completely after " << attempt
+               << " attempts. No more retries. req " << release_req->ShortDebugString();
+    return;
+  }
+  client.ReleaseObjectLocksGlobalAsync(
+      *release_req,
+      [&client, &lease_validator, release_req, attempt](const Status& s) {
+        if (s.ok()) {
+          VLOG(1) << "Release global request done. "
+                  << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+          return;
+        } else {
+          VLOG_WITH_FUNC(1) << "Release global locks failed. Will retry."
+                            << " status " << s
+                            << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+          ReleaseWithRetries(client, lease_validator, release_req, attempt + 1);
+        }
+      },
+      timeout);
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -3158,41 +3193,8 @@ class PgClientSession::Impl {
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_id, subtxn_id, lease_epoch_, context_.clock.get()));
-    ReleaseWithRetries(release_req);
+    ReleaseWithRetries(client_, *lease_validator_, release_req);
     return Status::OK();
-  }
-
-  void ReleaseWithRetries(
-      std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB> release_req, int attempt = 1) {
-    // Practically speaking, if the TServer cannot reach the master/leader for the ysql lease
-    // interval it can safely give up. The Master is responsible for cleaning up the locks for any
-    // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
-    // used here defaults to 60s, which is much larger than the default lease interval of 15s.
-    auto timeout = MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
-    if (!lease_validator_->IsLeaseValid(lease_epoch_)) {
-      LOG(INFO) << "Lease epoch " << lease_epoch_ << " is not valid. Will not retry "
-                << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-      return;
-    } else if (attempt > GetAtomicFlag(&FLAGS_ysql_max_retries_for_release_object_lock_requests)) {
-      LOG(ERROR) << "Release global locks failing completely after " << attempt
-                 << " attempts. No more retries. req " << release_req->ShortDebugString();
-      return;
-    }
-    client_.ReleaseObjectLocksGlobalAsync(
-        *release_req,
-        [this, release_req, attempt](const Status& s) {
-          if (s.ok()) {
-            VLOG(1) << "Release global request done. "
-                    << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-            return;
-          } else {
-            VLOG_WITH_PREFIX(1) << "Release global locks failed. Will retry."
-                                << " status " << s
-                                << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-            ReleaseWithRetries(release_req, attempt + 1);
-          }
-        },
-        timeout);
   }
 
   UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result,
