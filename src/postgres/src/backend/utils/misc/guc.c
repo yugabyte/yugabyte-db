@@ -7052,6 +7052,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_make_next_ddl_statement_nonbreaking",
 	"yb_make_next_ddl_statement_nonincrementing",
 	"yb_tcmalloc_sample_period",
+	"yb_binary_restore",
 };
 
 

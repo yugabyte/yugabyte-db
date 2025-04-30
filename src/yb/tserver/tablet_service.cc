@@ -1274,6 +1274,10 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
 
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+  }
+
   if (req->state().status() == TransactionStatus::CREATED &&
       RandomActWithProbability(TEST_delay_create_transaction_probability)) {
     std::this_thread::sleep_for(
@@ -1407,6 +1411,10 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
                                          AbortTransactionResponsePB* resp,
                                          rpc::RpcContext context) {
   TRACE("AbortTransaction");
+
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+  }
 
   UpdateClock(*req, server_->Clock());
 
@@ -2562,9 +2570,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_ash_metadata()) {
-    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
   }
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
@@ -2597,9 +2604,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_ash_metadata()) {
-    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
   }
   PerformRead(server_, this, req, resp, std::move(context));
 }
@@ -3072,7 +3078,9 @@ void TabletServiceImpl::Publish(
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
                                     rpc::RpcContext context) {
-  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers(
+      /*tablet_ptrs=*/ nullptr,
+      UserTabletsOnly(req->include_user_tablets_only()));
   RepeatedPtrField<StatusAndSchemaPB>* peer_status = resp->mutable_status_and_schema();
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();

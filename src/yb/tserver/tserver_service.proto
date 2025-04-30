@@ -281,6 +281,8 @@ message UpdateTransactionRequestPB {
   // Reserved for xcluster deprecated field is_external.
   reserved 4;
   optional fixed64 start_time = 5;
+
+  optional AshMetadataPB ash_metadata = 6;
 }
 
 message UpdateTransactionResponsePB {
@@ -484,6 +486,8 @@ message AbortTransactionRequestPB {
 
   // Status containing deadlock info if the transaction is being aborted due to deadlock.
   optional AppStatusPB deadlock_reason = 4;
+
+  optional AshMetadataPB ash_metadata = 5;
 }
 
 message AbortTransactionResponsePB {

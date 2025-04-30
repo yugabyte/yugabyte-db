@@ -457,7 +457,8 @@ Status RemoveServer(const TServerDetails* leader,
 // Get the list of tablets from the remote server.
 Status ListTablets(const TServerDetails* ts,
                    const MonoDelta& timeout,
-                   std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets);
+                   std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets,
+                   bool user_tablets_only = true);
 
 // Get the list of RUNNING tablet ids from the remote server.
 Status ListRunningTabletIds(const TServerDetails* ts,

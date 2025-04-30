@@ -109,6 +109,10 @@ class HnswlibIndex :
     return hnsw_->getInternalParameters().max_elements;
   }
 
+  size_t Dimensions() const override {
+    return options_.dimensions;
+  }
+
   Status DoSaveToFile(const std::string& path) {
     try {
       hnsw_->saveIndex(path);

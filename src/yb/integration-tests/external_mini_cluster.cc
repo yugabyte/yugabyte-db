@@ -1598,31 +1598,27 @@ Status ExternalMiniCluster::AddYbControllerServer(const scoped_refptr<ExternalTa
     }
   }
 
-  size_t idx = yb_controller_servers_.size() + 1;
-  vector<string> extra_flags;
+  auto idx = yb_controller_servers_.size() + 1;
+  ExternalYbControllerOptions options = {
+    .idx = idx,
+    .log_dir = GetDataPath(Format("ybc-$0/logs", idx)),
+    .tmp_dir = GetDataPath(Format("ybc-$0/tmp", idx)),
+    .yb_tserver_address = ts->bind_host(),
+    .server_port = idx == 1 ? AllocateFreePort() : yb_controller_servers_[0]->GetServerPort(),
+    .yb_master_webserver_port = masters_[0]->http_port(),
+    .yb_tserver_webserver_port = ts->http_port(),
+    .server_address = ts->bind_host(),
+  };
+
   for (const auto& flag : opts_.extra_tserver_flags) {
     if (flag.find("certs_dir") != string::npos) {
-      extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
+      options.extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
     }
   }
 
-  // All yb controller servers need to be on the same port.
-  uint16_t server_port;
-  if (idx == 1) {
-    server_port = AllocateFreePort();
-  } else {
-    server_port = yb_controller_servers_[0]->GetServerPort();
-  }
-  const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", idx));
-  const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", idx));
-  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
-  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
-  scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-      idx, yb_controller_log_dir, yb_controller_tmp_dir, ts->bind_host(), GetToolPath("yb-admin"),
-      GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
-      GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
-      server_port, masters_[0]->http_port(), ts->http_port(), ts->bind_host(),
-      GetYbcToolPath("yb-controller-server"), extra_flags);
+  RETURN_NOT_OK(Env::Default()->CreateDirs(options.log_dir));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(options.tmp_dir));
+  auto yb_controller = make_scoped_refptr<ExternalYbController>(options);
 
   RETURN_NOT_OK_PREPEND(
       yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(idx));
@@ -1881,9 +1877,11 @@ Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
   return ts_admin_service_proxy->FlushTablets(req, &resp, &controller);
 }
 
-Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(ExternalTabletServer* ts) {
+Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(
+    ExternalTabletServer* ts, bool user_tablets_only) {
   rpc::RpcController rpc;
   ListTabletsRequestPB req;
+  req.set_include_user_tablets_only(user_tablets_only);
   ListTabletsResponsePB resp;
   rpc.set_timeout(opts_.timeout);
   TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());

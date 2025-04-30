@@ -75,8 +75,6 @@ import org.yb.util.BuildTypeUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
 import org.yb.util.SystemUtil;
 import org.yb.util.ThrowingRunnable;
-import org.yb.util.YBBackupException;
-import org.yb.util.YBBackupUtil;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -375,13 +373,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
         warmupMode.toString().toLowerCase());
     }
-  }
-
-  @Before
-  public void initYBBackupUtil() throws Exception {
-    YBBackupUtil.setMasterAddresses(masterAddresses);
-    YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
-    YBBackupUtil.maybeStartYbControllers(miniCluster);
   }
 
   @Before
@@ -965,13 +956,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getServerMetric(getTSMetricSources(), metricName);
   }
 
-  protected List<String> getTabletsForTable(
+  protected List<String> getTabletsForYsqlTable(
     String database, String tableName) throws Exception {
-    try {
-      return YBBackupUtil.getTabletsForTable("ysql." + database, tableName);
-    } catch (YBBackupException e) {
-      return new ArrayList<>();
-    }
+    return BaseMiniClusterTest.getTabletsForTable("ysql." + database, tableName);
   }
 
   protected String getOwnerForTable(Statement stmt, String tableName) throws Exception {

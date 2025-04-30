@@ -1707,7 +1707,8 @@ Status Tablet::WriteTransactionalBatch(
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
   auto prepare_batch_data = VERIFY_RESULT(transaction_participant()->PrepareBatchData(
-      transaction_id, batch_idx, &encoded_replicated_batch_idx_set));
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set,
+      !put_batch.write_pairs().empty()));
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.

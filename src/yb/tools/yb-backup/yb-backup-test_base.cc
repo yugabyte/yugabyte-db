@@ -39,10 +39,9 @@
 
 using namespace std::chrono_literals;
 
-namespace yb {
-namespace tools {
+namespace yb::tools {
 
-namespace helpers {
+namespace {
 
 Status RedisGet(std::shared_ptr<client::YBSession> session,
                 const std::shared_ptr<client::YBTable> table,
@@ -75,21 +74,41 @@ Status RedisSet(std::shared_ptr<client::YBSession> session,
   return Status::OK();
 }
 
-} // namespace helpers
+const std::string kBackupDir = "backup";
 
+} // namespace
 
 string YBBackupTestBase::GetTempDir(const string& subdir) {
   return tmp_dir_ / subdir;
 }
 
-Status YBBackupTestBase::RunBackupCommand(const vector<string>& args, auto *cluster) {
+Status RunBackupCommand(
+    auto& cluster, const std::string& temp_dir, const std::vector<std::string>& args) {
   if (UseYbController()) {
-    return tools::RunYbControllerCommand(cluster, *tmp_dir_, args);
+    return tools::RunYbControllerCommand(&cluster, temp_dir, args);
   }
 
   return tools::RunBackupCommand(
-      cluster->ysql_hostport(0), cluster->GetMasterAddresses(),
-      cluster->GetTabletServerHTTPAddresses(), *tmp_dir_, args);
+      cluster.YsqlHostport(), cluster.GetMasterAddresses(),
+      cluster.GetTabletServerHTTPAddresses(), temp_dir, args);
+}
+
+Status YBBackupTestBase::RunBackupCommand(const vector<string>& args, auto *cluster) {
+  return tools::RunBackupCommand(*cluster, *tmp_dir_, args);
+}
+
+Status CreateBackup(
+    MiniClusterBase& cluster, TmpDirProvider& provider, const std::string& keyspace) {
+  return RunBackupCommand(
+      cluster, *provider,
+      {"--backup_location", provider / kBackupDir, "--keyspace", keyspace, "create"});
+}
+
+Status RestoreBackup(
+    MiniClusterBase& cluster, TmpDirProvider& provider, const std::string& keyspace) {
+  return RunBackupCommand(
+      cluster, *provider,
+      {"--backup_location", provider / kBackupDir, "--keyspace", keyspace, "restore"});
 }
 
 // Explicit instantiation.
@@ -310,7 +329,7 @@ void YBBackupTest::DoTestYEDISBackup(helpers::TableOp tableOp) {
   auto table = table_->shared_from_this();
 
   // Insert abc -> 123.
-  ASSERT_OK(helpers::RedisSet(session, table, "abc", "123"));
+  ASSERT_OK(RedisSet(session, table, "abc", "123"));
 
   // Backup.
   const string backup_dir = GetTempDir("backup");
@@ -322,8 +341,8 @@ void YBBackupTest::DoTestYEDISBackup(helpers::TableOp tableOp) {
 
   if (tableOp == helpers::TableOp::kKeepTable) {
     // Insert abc -> 456.
-    ASSERT_OK(helpers::RedisSet(session, table, "abc", "456"));
-    ASSERT_OK(helpers::RedisGet(session, table, "abc", "456"));
+    ASSERT_OK(RedisSet(session, table, "abc", "456"));
+    ASSERT_OK(RedisGet(session, table, "abc", "456"));
   } else {
     ASSERT_EQ(tableOp, helpers::TableOp::kDropTable);
     // Delete table.
@@ -342,7 +361,7 @@ void YBBackupTest::DoTestYEDISBackup(helpers::TableOp tableOp) {
 
   // Validate abc -> 123.
   ASSERT_TRUE(ASSERT_RESULT(client_->TableExists(table_name)));
-  ASSERT_OK(helpers::RedisGet(session, table, "abc", "123"));
+  ASSERT_OK(RedisGet(session, table, "abc", "123"));
 }
 
 void YBBackupTest::DoTestYSQLKeyspaceBackup() {
@@ -626,5 +645,4 @@ void YBBackupTest::DoTestYSQLRestoreBackup(
   ));
 }
 
-} // namespace tools
-} // namespace yb
+} // namespace yb::tools
