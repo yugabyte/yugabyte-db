@@ -14,7 +14,7 @@ type: docs
 
 This section describes how DDL statements work in YSQL and documents the difference in YugabyteDB behavior from PostgreSQL.
 
-## Concurrent DML during DDL operations
+## Concurrent DML during a DDL operation
 
 In YugabyteDB, DML is allowed to execute while a DDL statement modifies the schema that is accessed by the DML statement. For example, an `ALTER TABLE <table> .. ADD COLUMN` DDL statement may add a new column while a `SELECT * from <table>` executes concurrently on the same relation. In PostgreSQL, this is typically not allowed because such DDL statements take a table-level exclusive lock that prevents concurrent DML from executing (support for similar behavior in YugabyteDB is being tracked in [github issue])
 
@@ -22,4 +22,9 @@ In YugabyteDB, DML that run concurrently with a DDL may see one of the following
 1. Operate with the old schema prior to the DDL.
 2. Operate with the new schema after the DDL completes.
 3. Encounter temporary errors such as `schema mismatch errors` or `catalog version mismatch`. It is recommended for the client to retry such operations whenever possible.
-4. 
+
+Most DDL statements complete quickly, so this is typically not a significant issue in practice. However, [some specific DDL statements](../the-sql-language/statements/ddl_alter_table.md#alter-type-with-table-rewrite) can take a long time to execute, so it is important to be aware of this limitation in this case.  
+
+## Concurrent DDL during a DDL operation
+
+TODO: add details
