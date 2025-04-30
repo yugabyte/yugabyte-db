@@ -387,6 +387,7 @@ The following alter table operations involve making a full copy of the underlyin
    1. TODO: links
 4. Changing the type of a column 
    1. TODO: links to above
+  
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
