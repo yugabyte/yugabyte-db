@@ -1032,7 +1032,9 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
     Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
     if (!s.ok()) {
-      LOG(DFATAL) << "Error updating table " << table_->ToString() << ": " << s;
+      auto started_hiding_or_deleting = table_->LockForRead()->started_hiding_or_deleting();
+      (started_hiding_or_deleting ? LOG(WARNING) : LOG(DFATAL))
+          << "Error updating table " << table_->ToString() << ": " << s;
       TransitionToFailedState(MonitoredTaskState::kRunning, s);
       return;
     }
