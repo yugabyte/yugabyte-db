@@ -152,6 +152,12 @@ message ChangeMetadataRequestPB {
   // [schema_version - 1], and then reinsert the current packing schema with [schema_version].
   // Schema version must be bumped by 2 before this call is made.
   optional bool insert_packed_schema = 20;
+
+  // If present, holds the first column ID that may be provisional.  Columns with this ID or later
+  // may be rolled back then possibly rolled forward with different types.
+  //
+  // If missing, then all existing columns may safely be treated as non-provisional.
+  optional int32 first_provisional_column_id = 21;
 }
 
 message SplitTabletRequestPB {

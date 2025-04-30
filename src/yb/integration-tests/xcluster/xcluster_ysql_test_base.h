@@ -200,6 +200,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status VerifyDDLExtensionTablesDeletion(const NamespaceName& db_name, bool only_source = false);
 
   Status EnablePITROnClusters();
+  Status PerformPITROnConsumerCluster(HybridTime time);
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
