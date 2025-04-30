@@ -31,7 +31,9 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.14 | 1.9.5.y.3 |
 | 2.16 | 1.9.5.y.24 |
 | 2.18.2 | 1.9.5.y.33.2 |
-| 2.20 | 1.9.5.y.220.2 |
+| 2.20 | 1.9.5.y.220.4 |
+| 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
+| 2024.2 | dz.1.9.5.yb.grpc.2024.2.2 |
 
 In addition, the connector supports the following:
 
@@ -40,12 +42,19 @@ In addition, the connector supports the following:
 
 {{< note title="Note" >}}
 
-Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme _major.y.minor_, as follows:
+Starting with YugabyteDB v2024.1, the naming convention for releases of the connector uses the scheme _dz.debeziumRelease.yb.grpc.yugabyteVersion.optionalPatch_, as follows:
 
-* major - Debezium release the connector is based on
-* minor - version of YugabyteDB the connector works with
+* debeziumRelease - Debezium release the connector is based on
+* yugabyteVersion - version of YugabyteDB the connector works with
+* optionalPatch - patch release version, if applicable
 
-The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
+The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise. For usage with latest YugabyteDB preview version, use the latest available connector.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+Starting with YugabyteDB v2024.1, the name of the connector class has been changed from `io.debezium.connector.yugabytedb.YugabyteDBConnector` to `io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`. New deployments using connector version `dz.1.9.5.yb.grpc.2024.1` onwards will need to use the new connector class.
 
 {{< /note >}}
 
