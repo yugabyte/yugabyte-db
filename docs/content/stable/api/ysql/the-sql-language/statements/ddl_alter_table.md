@@ -48,9 +48,7 @@ These variants are useful only when at least one other table inherits `t`. But a
 
 {{< note >}}
 
-Most ALTER TABLE statements only involve a schema modification and complete quickly. However, certain specific ALTER TABLE statements require a new copy of the underlying table to be made (similar to PostgreSQL) and can potentially take a long time, depending on the sizes of the tables and indexes involved. This is typically referred to as a "table rewrite". ALTER TABLE statements that involve a table rewrite are called out specifically in [this section](#alter-type-with-table-rewrite). Note that, in addition to the longer execution time, it is also note safe to execute concurrent DML during a table rewrite. For more details and possible workarounds, see [../../ddl-limitations.md] 
-
-{{< /note >}}
+Most ALTER TABLE statements only involve a schema modification and complete quickly. However, certain specific ALTER TABLE statements require a new copy of the underlying table to be made (similar to PostgreSQL) and can potentially take a long time, depending on the sizes of the tables and indexes involved. This is typically referred to as a "table rewrite". . Note that, in addition to the longer execution time, it is also note safe to execute concurrent DML during a table rewrite. For more details and possible workarounds, see [../../ddl-limitations.md]. ALTER TABLE statements that involve a table rewrite are called out specifically in the section [#alter-table-rewrite-list].
 
 ### *alter_table_action*
 
@@ -59,6 +57,8 @@ Specify one of the following actions.
 #### ADD [ COLUMN ] [ IF NOT EXISTS ] *column_name* *data_type* [*constraint*](#constraints)
 
 Add the specified column with the specified data type and constraint.
+
+TODO: add details on volatile column
 
 #### RENAME TO *table_name*
 
@@ -253,6 +253,7 @@ Change the type of an existing column. The following semantics apply:
 
 If the change doesn't require data on disk to change, concurrent DMLs to the table can be safely performed as shown in the following example:
 
+TODO: add specific list
 
 ```sql
 CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
@@ -264,6 +265,8 @@ ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
 If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
 - The action creates an entirely new table under the hood, and concurrent DMLs may not be reflected in the new table which can lead to correctness issues.
 - The operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
+
+TODO: add specific list
 
 Following is an example of alter type with table rewrite:
 
@@ -374,6 +377,16 @@ Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row with
 
 Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
 
+## Alter table operations that involve a table rewrite.
+
+The following alter table operations involve making a full copy of the underlying table and associated index tables.
+1. Changing the primary key of a table
+   1. [#add-primary-key]
+   2. [#drop-primary-key]
+2. Adding a column with a (volatile) default value
+   1. TODO: links
+4. Changing the type of a column 
+   1. TODO: links to above
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
