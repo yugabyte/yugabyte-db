@@ -46,15 +46,12 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.18.2 | 1.9.5.y.33.2 |
 | 2.20 | 1.9.5.y.220.4 |
 
-{{< note title="Note" >}}
-
 Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme _major.y.minor_, as follows:
 
 * major - Debezium release the connector is based on
 * minor - version of YugabyteDB the connector works with
-The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
 
-{{< /note >}}
+The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
 
 ## How the connector works
 

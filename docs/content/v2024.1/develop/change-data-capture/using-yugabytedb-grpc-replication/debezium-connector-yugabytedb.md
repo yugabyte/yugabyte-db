@@ -27,26 +27,31 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.20 | 1.9.5.y.220.4 |
 | 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
 
-In addition, the connector supports the following:
+Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
 
-* Kafka Connect v2.x and later.
-* YugabyteDB v2.14 and later.
+```output
+dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
+```
 
-{{< note title="Note" >}}
+* Debezium Release - Debezium release the connector is based on
+* YugabyteDB Version - version of YugabyteDB the connector works with
+* Patch - patch release version, if applicable
 
-Starting with YugabyteDB v2024.1, the naming convention for releases of the connector uses the scheme _dz.debeziumRelease.yb.grpc.yugabyteVersion.optionalPatch_, as follows:
+The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise. For the latest YugabyteDB preview version, use the latest available connector.
 
-* debeziumRelease - Debezium release the connector is based on
-* yugabyteVersion - version of YugabyteDB the connector works with
-* optionalPatch - patch release version, if applicable
+In addition, the connector supports Kafka Connect v2.x and later.
 
-The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise. For usage with latest YugabyteDB preview version, use the latest available connector.
+{{< note title="Connector Class Name" >}}
 
-{{< /note >}}
+Starting with YugabyteDB v2024.1, the name of the connector class has been changed from
 
-{{< note title="Note" >}}
+`io.debezium.connector.yugabytedb.YugabyteDBConnector`
 
-Starting with YugabyteDB v2024.1, the name of the connector class has been changed from `io.debezium.connector.yugabytedb.YugabyteDBConnector` to `io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`. New deployments using connector version `dz.1.9.5.yb.grpc.2024.1` onwards will need to use the new connector class.
+to
+
+`io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`
+
+New deployments using connector version dz.1.9.5.yb.grpc.2024.1 and later need to use the new connector class.
 
 {{< /note >}}
 
