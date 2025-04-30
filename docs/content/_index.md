@@ -45,6 +45,9 @@ Built using a combination of high-performance document store, per-shard distribu
     linkUrl2="/preview/explore/fault-tolerance/"
     linkText3="Scalability"
     linkUrl3="/preview/explore/linear-scalability/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="/preview/explore/"
   >}}
   {{< sections/3-box-card
     title="Develop"
@@ -55,6 +58,9 @@ Built using a combination of high-performance document store, per-shard distribu
     linkUrl2="/preview/develop/multi-cloud/"
     linkText3="Drivers and ORMs"
     linkUrl3="/preview/drivers-orms/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="/preview/develop/"
   >}}
   {{< sections/3-box-card
     title="Under the hood"
@@ -65,6 +71,9 @@ Built using a combination of high-performance document store, per-shard distribu
     linkUrl2="/preview/architecture/docdb/"
     linkText3="Transactions"
     linkUrl3="/preview/architecture/transactions/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="/preview/architecture/"
   >}}
 {{< /sections/3-boxes >}}
 
