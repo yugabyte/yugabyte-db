@@ -7004,7 +7004,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Stop yb-controller processes on nodes
     if (universe.isYbcEnabled()) {
       createStopServerTasks(
-              tserverNodes, ServerType.CONTROLLER, params -> params.skipStopForPausedVM = true)
+              Sets.union(masterNodes, tserverNodes),
+              ServerType.CONTROLLER,
+              params -> params.skipStopForPausedVM = true)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
     }
 
