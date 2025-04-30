@@ -834,6 +834,7 @@ YBCExecuteDelete(Relation rel,
 				 errmsg("missing column ybctid in DELETE request")));
 	}
 
+	TABLETUPLE_YBCTID(planSlot) = ybctid;
 	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 	/* Bind ybctid to identify the current row. */
@@ -1061,6 +1062,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
 				 errmsg("missing column ybctid in UPDATE request")));
 
+	TABLETUPLE_YBCTID(slot) = ybctid;
 	YBCBindTupleId(update_stmt, ybctid);
 
 	/* Assign new values to the updated columns for the current row. */
@@ -1342,7 +1344,7 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	 */
 	slot = MakeSingleTupleTableSlot(inputTupleDesc, &TTSOpsHeapTuple);
 	ExecStoreHeapTuple(tuple, slot, false);
-	ybctid = YBCComputeYBTupleIdFromSlot(rel, slot);
+	ybctid = TABLETUPLE_YBCTID(slot) = YBCComputeYBTupleIdFromSlot(rel, slot);
 	ExecDropSingleTupleTableSlot(slot);
 
 	if (ybctid == 0)
