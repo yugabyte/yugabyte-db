@@ -703,7 +703,7 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
       std::vector<TableId> remove_table_ids;
       for (const auto& table : verifier_state->tables) {
         table_ids.push_back(table->id());
-        const auto& pb_txn_id = table->LockForRead()->pb_transaction_id();
+        auto pb_txn_id = table->LockForRead()->pb_transaction_id();
         if (pb_txn_id.empty()) {
           // The table involved in ddl transaction txn_id has already finalized
           // with a new schema version, but verifier_state for txn_id isn't
