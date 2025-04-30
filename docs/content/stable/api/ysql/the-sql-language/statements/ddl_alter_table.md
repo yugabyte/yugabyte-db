@@ -46,6 +46,12 @@ These variants are useful only when at least one other table inherits `t`. But a
 
 ## Semantics
 
+{{< note >}}
+
+Most ALTER TABLE statements only involve a schema modification and complete quickly. However, certain specific ALTER TABLE statements require a new copy of the underlying table to be made (similar to PostgreSQL) and can potentially take a long time, depending on the sizes of the tables and indexes involved. This is typically referred to as a "table rewrite". ALTER TABLE statements that involve a table rewrite are called out specifically in [this section](#alter-type-with-table-rewrite). Note that, in addition to the longer execution time, it is also note safe to execute concurrent DML during a table rewrite. For more details and possible workarounds, see [../../ddl-limitations.md] 
+
+{{< /note >}}
+
 ### *alter_table_action*
 
 Specify one of the following actions.
