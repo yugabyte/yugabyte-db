@@ -144,11 +144,13 @@ body {
     }
   }
 
-	.card-link {
-		.arrow-btn {
-			font-size: 13px;
-		}
-	}
+  .card-link {
+    .arrow-btn {
+      &.more {
+        font-size: 13px;
+      }
+    }
+  }
 
   .arrow-btn {
     color: #507ce1;
