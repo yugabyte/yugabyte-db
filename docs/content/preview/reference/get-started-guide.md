@@ -43,7 +43,7 @@ Find resources for getting started, migrating existing databases, using your dat
 ## Introducing YugabyteDB
 
 [Distributed SQL 101](https://www.yugabyte.com/distributed-sql/)
-: Distributed SQL is a new database architecture for relational databases that can distribute both compute and data to achieve higher availability, scalability, and replication.
+: Learn how a distributed SQL architecture achieves higher availability, scalability, and replication.
 
 [How to Scale a Single-Server Database: A Guide to Distributed PostgreSQL](https://www.yugabyte.com/postgresql/distributed-postgresql/)
 : Enable seamless scalability, high availability, and global data distribution while preserving PostgreSQL compatibility
@@ -108,7 +108,7 @@ Find resources for getting started, migrating existing databases, using your dat
 ## Database operations
 
 [Seven Multi-Region Deployment Best Practices](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/)
-: Learn how to reduce latencies and improve performance in a multi-region deployment.
+: Best practices for reducing latencies and improving performance in a multi-region deployment.
 
 [Rapid Data Recovery](https://www.yugabyte.com/blog/rapid-data-recovery-database-amazon-s3/)
 : Learn how YugabyteDB performs swift data recovery.
@@ -124,10 +124,10 @@ Find resources for getting started, migrating existing databases, using your dat
 [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)
 : Build a scalable and fault-tolerant movie recommendation service.
 
-[Best practices](../drivers-orms/)
+[Best practices](../../develop/best-practices-ysql/)
 : Tips and tricks to build applications for high performance and availability.
 
-[Drivers and ORMs](../drivers-orms/)
+[Drivers and ORMs](../../drivers-orms/)
 : Connect applications with your database.
 
 ### Hotspots
