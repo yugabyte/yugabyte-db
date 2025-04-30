@@ -57,6 +57,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Two-Phase Commit](#two-phase-commit)
 - [DDL operations within the Transaction](#ddl-operations-within-the-transaction)
 - [Hotspots with range-sharded timestamp/date indexes](#hotspots-with-range-sharded-timestamp-date-indexes)
+- [Redundant indexes](#redundant-indexes)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -1600,4 +1601,31 @@ CREATE TABLE orders (
 CREATE INDEX idx_orders_created ON orders(shard_id HASH, created_at DESC);
 
 SELECT * FROM orders WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
+```
+
+### Redundant indexes
+
+**Description**: Redundant indexes are those that are fully covered by a stronger index, one that includes the same leading key columns in the same order and may also contain additional columns. The presence of such a stronger index makes the redundant one unnecessary, as it serves the same purpose and more. 
+
+**Workaround**: Remove the redundant index from the schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    product_id int,
+    ...
+);
+
+CREATE INDEX idx_orders_order_id on orders(order_id);
+CREATE INDEX idx_orders_order_id_product_id on orders(order_id, product_id);
+```
+
+Suggested change to the schema is to remove this redundant index `idx_orders_order_id` as another stronger index is present `idx_orders_order_id_product_id`:
+
+```sql
+CREATE INDEX idx_orders_order_id on orders(order_id);
 ```
