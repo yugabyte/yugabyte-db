@@ -51,7 +51,7 @@ In addition, the connector supports Kafka Connect v2.x and later.
 
 {{< note title="Connector Class Name" >}}
 
-Starting with YugabyteDB v2024.1, the name of the connector class has been changed from
+Starting with YugabyteDB v2024.1, the name of the connector class changed from
 
 `io.debezium.connector.yugabytedb.YugabyteDBConnector`
 
