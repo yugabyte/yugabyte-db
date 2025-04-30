@@ -62,10 +62,16 @@ DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid
 DEFINE_test_flag(bool, index_read_multiple_partitions, false,
       "Test flag used to simulate tablet spliting by joining tables' partitions.");
 
-DEFINE_UNKNOWN_int32(ysql_output_buffer_size, 262144,
+DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, 262144,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
+
+DEFINE_NON_RUNTIME_int32(ysql_output_flush_size, 8192,
+    "Size of a single flush in YSQL output buffer, in bytes. "
+    "This is different from ysql_output_buffer_size to decouple the amount of data sent in a "
+    "single flush. This is done to match postgres behavior of flushing 8192 bytes.");
+TAG_FLAG(ysql_output_flush_size, advanced);
 
 DEPRECATE_FLAG(bool, ysql_enable_update_batching, "10_2022");
 

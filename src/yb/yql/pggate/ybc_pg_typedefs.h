@@ -389,6 +389,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
+  const int32_t*  ysql_output_flush_size;
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
