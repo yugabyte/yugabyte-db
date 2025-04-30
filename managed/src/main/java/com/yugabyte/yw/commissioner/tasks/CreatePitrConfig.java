@@ -162,7 +162,9 @@ public class CreatePitrConfig extends UniverseTaskBase {
               throw new RuntimeException(e);
             }
           });
-      Date currentDate = new Date();
+      // Adding 1s to the snapshot creation time to take care of loss of precision when converted
+      // from micros to millis.
+      Date currentDate = new Date(snapshotInfoAtomicRef.get().getSnapshotTime() + 1000L);
       pitrConfig.setCreateTime(currentDate);
       pitrConfig.setUpdateTime(currentDate);
       pitrConfig.save();

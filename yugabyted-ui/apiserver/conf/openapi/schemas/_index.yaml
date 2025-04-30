@@ -1069,6 +1069,10 @@ MigrationAssessmentReport:
       type: array
       items:
         $ref: '#/AssessmentCategoryInfo'
+    notes:
+      type: array
+      items:
+        type: string
 AssessmentCategoryInfo:
   title: Assessment Issue Info
   description: Assessment Issues aggrageted based on Issue Category (migration caveat,datatype,etc)

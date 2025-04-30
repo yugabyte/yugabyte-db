@@ -81,8 +81,9 @@ public class TestPgRegressTabletSplit extends BasePgRegressTest {
   private boolean runSelectTillTabletsSplit(String table, int expectedRowCount) throws Exception {
     long startTime = System.currentTimeMillis();
     while (System.currentTimeMillis() - startTime < TEST_TIMEOUT) {
-      LOG.info("num tablets for table: " + getTabletsForTable(database, table).size());
-      if (getTabletsForTable(database, table).size() > 1) {
+      int numTablets = getTabletsForYsqlTable(database, table).size();
+      LOG.info("num tablets for table: " + numTablets);
+      if (numTablets > 1) {
         return true;
       }
       try (Statement statement = connection.createStatement()) {
@@ -156,6 +157,6 @@ public class TestPgRegressTabletSplit extends BasePgRegressTest {
     // Yugabyte does not abort DDLs within transactions. Hence the table will be created and at
     // least one tablet will be created. However since the subsequent inserts are aborted, tablets
     // will not be split further.
-    assert getTabletsForTable(database, table).size() == 1;
+    assert getTabletsForYsqlTable(database, table).size() == 1;
   }
 }

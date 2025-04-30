@@ -1082,10 +1082,14 @@
               "size": "Size",
               "sharded": "Sharded"
             },
+            "notes": {
+              "heading": "Notes"
+            },
             "schemaChanges": {
               "heading": "Recommended Changes",
               "objectType": "Object Type",
               "objectTypeColon": "Object Type : ",
+              "description": "Description",
               "automaticDDLImportTooltip": "SQL objects that can be imported into YugabyteDB without DDL changes.",
               "manualRefactoringTooltip": "Number of DDL statements requiring manual refactoring.",
               "invalidObjectCountTooltip": "Invalid object count requiring manual refactoring.",
@@ -1144,11 +1148,14 @@
             "details": {
               "heading": "Unsupported Data Type: {{datatype}}",
               "search": "Search",
+              "key": "Key",
+              "value": "Value",
               "searchPlaceholder": "Search DDL",
               "acknowledged": "Acknowledged",
               "any": "Any",
               "issueType": "Issue Type",
               "suggestion": "Suggestion",
+              "minVersionsFixedIn": "Minimum Versions Fixed In",
               "sqlStatement": "SQL Statement",
               "fileName": "File Name",
               "searchBy": "SEARCH BY",

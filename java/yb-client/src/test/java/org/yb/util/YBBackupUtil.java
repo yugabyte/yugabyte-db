@@ -21,11 +21,10 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
+import org.yb.util.ProcessUtil;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -81,53 +80,6 @@ public final class YBBackupUtil {
     verboseMode = true;
   }
 
-  public static String runProcess(List<String> args, int timeoutSeconds) throws Exception {
-    return runProcess(args, timeoutSeconds, new HashMap<>());
-  }
-
-  public static String runProcess(List<String> args,
-      int timeoutSeconds, Map<String, String> env) throws Exception {
-    String processStr = "";
-    for (String arg : args) {
-      processStr += (processStr.isEmpty() ? "" : " ") + arg;
-    }
-    LOG.info("RUN:" + processStr);
-
-    ProcessBuilder processBuilder = new ProcessBuilder(args);
-    processBuilder.environment().putAll(env);
-    final Process process = processBuilder.start();
-    String line = null;
-
-    final BufferedReader stderrReader =
-        new BufferedReader(new InputStreamReader(process.getErrorStream()));
-    while ((line = stderrReader.readLine()) != null) {
-      LOG.info("STDERR: " + line);
-    }
-
-    final BufferedReader stdoutReader =
-        new BufferedReader(new InputStreamReader(process.getInputStream()));
-    StringBuilder stdout = new StringBuilder();
-    while ((line = stdoutReader.readLine()) != null) {
-      stdout.append(line + "\n");
-    }
-
-    if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-      throw new YBBackupException(
-          "Timeout of process run (" + timeoutSeconds + " seconds): [" + processStr + "]");
-    }
-
-    final int exitCode = process.exitValue();
-    LOG.info("Process [" + processStr + "] exit code: " + exitCode);
-
-    if (exitCode != 0) {
-      LOG.info("STDOUT:\n" + stdout.toString());
-      throw new YBBackupException(
-          "Failed process with exit code " + exitCode + ": [" + processStr + "]");
-    }
-
-    return stdout.toString();
-  }
-
   public static String runYbBackup(List<String> args) throws Exception {
     checkArgument(args.contains("create") || args.contains("restore")
     || args.contains("delete"), "argument create/restore/delete is missing");
@@ -174,7 +126,7 @@ public final class YBBackupUtil {
     }
 
     processCommand.addAll(args);
-    final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
+    final String output = ProcessUtil.runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
     LOG.info("yb_backup output: " + output);
 
     JSONObject json = new JSONObject(output);
@@ -243,7 +195,8 @@ public final class YBBackupUtil {
 
     LOG.info("Run YB Controller CLI: " + processCommand.toString());
 
-    final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds, env);
+    final String output = ProcessUtil.runProcess(processCommand, defaultYbBackupTimeoutInSeconds,
+                                                 env);
     LOG.info("YB Controller " + backup_command + " output: " + output);
 
     if (!output.contains("Final Status: OK")) {
@@ -301,28 +254,5 @@ public final class YBBackupUtil {
 
   public static void runYbBackupDelete(String backupDir) throws Exception {
     runYbBackupCommand("delete", backupDir, new ArrayList<String>());
-  }
-
-  public static String runYbAdmin(String... args) throws Exception {
-    final String ybAdminPath = TestUtils.findBinary("yb-admin");
-    List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        ybAdminPath,
-        "--master_addresses", masterAddresses
-    ));
-
-    processCommand.addAll(Arrays.asList(args));
-    final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
-    LOG.info("yb-admin output: " + output);
-    return output;
-  }
-
-  // Returns list of tablet uuids for a given table.
-  public static List<String> getTabletsForTable(String namespace, String tableName)
-      throws Exception {
-    String output = runYbAdmin("list_tablets", namespace, tableName);
-    return Arrays.stream(output.split(System.lineSeparator()))
-                 .filter(line -> !line.startsWith("Tablet-UUID"))
-                 .map(line -> line.split(" ")[0])
-                 .collect(Collectors.toList());
   }
 }

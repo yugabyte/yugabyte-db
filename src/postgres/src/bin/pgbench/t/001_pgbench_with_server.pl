@@ -158,7 +158,7 @@ $node->pgbench(
 	'pgbench simple update');
 
 $node->pgbench(
-	'-t 100 -c 7 -M prepared -b se --debug all',
+	'-t 100 -c 7 -M prepared -b se --debug',
 	0,
 	[
 		qr{builtin: select only},
@@ -991,11 +991,7 @@ my @errors = (
 \set i 0
 SELECT LEAST(} . join(', ', (':i') x 256) . q{)}
 	],
-	[   'sql division by zero', 0, [qr{ERROR:  division by zero}],
-		q{-- SQL division by zero
-SELECT 1 / 0;
-}
-	],
+
 	# SHELL
 	[
 		'shell bad command',                    2,
@@ -1162,17 +1158,6 @@ SELECT 1 / 0;
 		[qr{unrecognized time unit}], q{\sleep 1 week}
 	],
 
-	# CONDITIONAL BLOCKS
-	[   'if elif failed conditions', 0,
-		[qr{division by zero}],
-		q{-- failed conditions
-\if 1 / 0
-\elif 1 / 0
-\else
-\endif
-}
-	],
-
 	# MISC
 	[
 		'misc invalid backslash command',         1,
@@ -1236,32 +1221,13 @@ for my $e (@errors)
 	$node->pgbench(
 		'-n -t 1 -Dfoo=bla -Dnull=null -Dtrue=true -Done=1 -Dzero=0.0 -Dbadtrue=trueXXX'
 		  . ' -Dmaxint=9223372036854775807 -Dminint=-9223372036854775808'
-		  . ($no_prepare ? ' -d fails' : ' -M prepared -d fails'),
+		  . ($no_prepare ? '' : ' -M prepared'),
 		$status,
-		($status ?
-		 [ qr{^$} ] :
-		 [ qr{processed: 0/1}, qr{number of errors: 1 \(100.000%\)},
-		   qr{^((?!number of retried)(.|\n))*$} ]),
+		[ $status == 1 ? qr{^$} : qr{processed: 0/1} ],
 		$re,
 		'pgbench script error: ' . $name,
 		{ $n => $script });
 }
-
-# reset client variables in case of failure
-pgbench(
-	'-n -t 2 -d fails', 0,
-	[ qr{processed: 0/2}, qr{number of errors: 2 \(100.000%\)},
-	  qr{^((?!number of retried)(.|\n))*$} ],
-	[ qr{(client 0 got a failure in command 1 \(SQL\) of script 0; ERROR:  syntax error at or near ":"(.|\n)*){2}} ],
-	'pgbench reset client variables in case of failure',
-	{	'001_pgbench_reset_client_variables' => q{
-BEGIN;
--- select an unassigned variable
-SELECT :unassigned_var;
-\set unassigned_var 1
-END;
-}
-	});
 
 # throttling
 $node->pgbench(

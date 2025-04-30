@@ -328,7 +328,8 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
         backfill_table_(backfill_table),
         tablet_(tablet),
         min_cutoff_(min_cutoff) {
-    deadline_ = MonoTime::Max();  // Never time out.
+    // No deadline for the task, refer to ComputeDeadline() for a single attempt deadline.
+    deadline_ = MonoTime::Max();
   }
 
   Status Launch();
@@ -377,7 +378,7 @@ class BackfillChunk : public RetryingTSRpcTaskWithTable {
 
   std::string description() const override;
 
-  MonoTime ComputeDeadline() override;
+  MonoTime ComputeDeadline() const override;
 
  private:
   TabletId tablet_id() const override { return backfill_tablet_->tablet()->id(); }

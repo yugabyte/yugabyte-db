@@ -233,6 +233,7 @@ class Master : public tserver::DbServerBase {
   const std::string& permanent_uuid() const override;
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
+  void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override {}
 
  protected:
   Status RegisterServices();

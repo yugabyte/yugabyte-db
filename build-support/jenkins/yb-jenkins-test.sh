@@ -120,8 +120,6 @@ prep_ybc_testing
 if [[ -d "$YB_SRC_ROOT/build/ybc" ]]; then
   export YB_TEST_YB_CONTROLLER=${YB_TEST_YB_CONTROLLER:-1}
   log "Setting YB_TEST_YB_CONTROLLER=$YB_TEST_YB_CONTROLLER"
-  export YB_DISABLE_MINICLUSTER_BACKUP_TESTS=1
-  log "Setting YB_DISABLE_MINICLUSTER_BACKUP_TESTS=$YB_DISABLE_MINICLUSTER_BACKUP_TESTS"
 else
   log "Did not find YBC binaries. Not setting YB_TEST_YB_CONTROLLER."
 fi

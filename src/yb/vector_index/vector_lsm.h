@@ -17,6 +17,7 @@
 #include <future>
 #include <map>
 
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/metadata.h"
 
@@ -52,15 +53,19 @@ struct VectorLSMInsertContext {
   const rocksdb::UserFrontiers* frontiers = nullptr;
 };
 
+class VectorLSMMergeFilter {
+ public:
+  virtual ~VectorLSMMergeFilter() = default;
+  virtual rocksdb::FilterDecision Filter(VectorId vector_id) = 0;
+};
+using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
+
 template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions {
   using VectorIndexFactory = vector_index::VectorIndexFactory<Vector, DistanceResult>;
-  using VectorIndexPtr     = vector_index::VectorIndexIfPtr<Vector, DistanceResult>;
-  using VectorIndexPtrs    = std::vector<VectorIndexPtr>;
-  using VectorIndexMerger  = std::function<Status(VectorIndexPtr&, const VectorIndexPtrs&)>;
-
-  using FrontiersFactory = std::function<rocksdb::UserFrontiersPtr()>;
+  using MergeFilterFactory = std::function<VectorLSMMergeFilterPtr()>;
+  using FrontiersFactory   = std::function<rocksdb::UserFrontiersPtr()>;
 
   std::string log_prefix;
   std::string storage_dir;
@@ -68,7 +73,7 @@ struct VectorLSMOptions {
   size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   FrontiersFactory frontiers_factory;
-  VectorIndexMerger vector_index_merger;
+  MergeFilterFactory vector_merge_filter_factory;
 };
 
 template<IndexableVectorType VectorType,
@@ -114,7 +119,6 @@ class VectorLSM {
 
   void StartShutdown();
   void CompleteShutdown();
-  bool IsShuttingDown() const;
 
   size_t num_immutable_chunks() const;
 
@@ -141,6 +145,9 @@ class VectorLSM {
   const std::string& LogPrefix() const {
     return options_.log_prefix;
   }
+
+  // Utility method to correctly prepare Status instance in case of shutting down.
+  Status DoCheckRunning(const char* file_name, int line_number) const EXCLUDES(mutex_);
 
   // Saves the current mutable chunk to disk and creates a new one.
   Status RollChunk(size_t min_vectors) REQUIRES(mutex_);

@@ -55,12 +55,14 @@ interface MigrationRefactoringIssueSidePanel {
   open: boolean;
   onClose: () => void;
   issue: UnsupportedObjectData | undefined;
+  description?: string
 }
 
 export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSidePanel> = ({
   open,
   onClose,
   issue,
+  description
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -114,6 +116,18 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
                   </Typography>
                   <Typography variant="body2" className={classes.value}>
                     {issue?.count}
+                  </Typography>
+                </Grid>
+              )}
+
+              {description && (
+                <Grid item xs={4}>
+                  <Typography variant="subtitle2" className={classes.label}>
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+                      "description")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {description}
                   </Typography>
                 </Grid>
               )}

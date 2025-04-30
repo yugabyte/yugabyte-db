@@ -949,7 +949,7 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
       state_(kConstructed),
       load_balance_policy_(std::make_unique<ClusterLoadBalancer>(this)),
       tablegroup_manager_(std::make_unique<YsqlTablegroupManager>()),
-      object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(master_, this)),
+      object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(*master_, *this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
@@ -4084,7 +4084,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Assign column-ids that have just been computed and assigned to "index_info".
     if (is_vector_index) {
-      index_info.mutable_vector_idx_options()->set_id(Uuid::Generate().ToString());
+      index_info.mutable_vector_idx_options()->set_id(
+          AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
@@ -6345,7 +6346,7 @@ void CatalogManager::AcquireObjectLocksGlobal(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->LockObject(*req, resp, std::move(rpc));
+  object_lock_info_manager_->LockObject(*req, *resp, std::move(rpc));
 }
 
 void CatalogManager::ReleaseObjectLocksGlobal(
@@ -6357,7 +6358,7 @@ void CatalogManager::ReleaseObjectLocksGlobal(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->UnlockObject(*req, resp, std::move(rpc));
+  object_lock_info_manager_->UnlockObject(*req, *resp, std::move(rpc));
 }
 
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
