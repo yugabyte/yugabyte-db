@@ -3797,11 +3797,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     if (universe.isYbcEnabled()) {
-      createStartYbcTasks(tserverNodeList)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      List<NodeDetails> nodesList =
+          Sets.union(new HashSet<>(tserverNodeList), new HashSet<>(masterNodeList)).stream()
+              .collect(Collectors.toList());
+      createStartYbcTasks(nodesList).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(new HashSet<>(tserverNodeList))
+      createWaitForYbcServerTask(new HashSet<>(nodesList))
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
