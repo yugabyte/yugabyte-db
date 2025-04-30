@@ -171,7 +171,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [Covering Indexes](https://dev.to/yugabyte/covering-index-nuances-which-columns-to-cover-where-order-by-limit-select-1f4m)
 : Optimize index creation by covering the right columns.
 
-[Secondary Indexes in YugabyteDB](../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/)
+[Secondary Indexes in YugabyteDB](../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/)
 : Explore secondary indexes in YugabyteDB using YSQL.
 
 [Range indexes for LIKE queries in YugabyteDB](https://dev.to/yugabyte/range-indexes-for-like-queries-in-yugabytedb-10kd)
