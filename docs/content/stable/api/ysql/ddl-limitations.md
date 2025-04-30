@@ -23,7 +23,7 @@ In YugabyteDB, DML that run concurrently with a DDL may see one of the following
 2. Operate with the new schema after the DDL completes.
 3. Encounter temporary errors such as `schema mismatch errors` or `catalog version mismatch`. It is recommended for the client to retry such operations whenever possible.
 
-Most DDL statements complete quickly, so this is typically not a significant issue in practice. However, [certain kinds of ALTER TABLE DDL statements](../the-sql-language/statements/ddl_alter_table.md#alter-type-with-table-rewrite) involve making a full copy of the table(s) whose schema is being modified. For these operations, it is not recommended to run any concurrent DML statements during the `ALTER TABLE` as the effect of the DML may not be reflected in the copied table after the DDL is complete.
+Most DDL statements complete quickly, so this is typically not a significant issue in practice. However, [certain kinds of ALTER TABLE DDL statements](../the-sql-language/statements/ddl_alter_table.md/#alter-type-with-table-rewrite) involve making a full copy of the table(s) whose schema is being modified. For these operations, it is not recommended to run any concurrent DML statements during the `ALTER TABLE` as the effect of the DML may not be reflected in the copied table after the DDL is complete.
 
 ## Concurrent DDL during a DDL operation
 
