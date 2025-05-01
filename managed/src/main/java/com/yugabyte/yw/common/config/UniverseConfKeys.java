@@ -1522,6 +1522,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Wait Attempts for major catalog upgrade",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pgUpgradeCheckTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.upgrade.pg_upgrade_check_timeout_secs",
+          ScopeType.UNIVERSE,
+          "PG Upgrade Check Timeout",
+          "Timeout for pg_upgrade check in seconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowDisableDBApis =
       new ConfKeyInfo<>(
           "yb.configure_db_api.allow_disable",

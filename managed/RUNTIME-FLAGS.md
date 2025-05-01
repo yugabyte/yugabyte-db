@@ -311,6 +311,7 @@
 | "Common Name Required for Certificates" | "yb.tls.cert_manager.common_name_required" | "UNIVERSE" | "If true, YBA will add commonName to the CertificateRequest sent to cert manager." | "Boolean" |
 | "Skip OpenTelemetry Operator Check" | "yb.universe.skip_otel_operator_check" | "UNIVERSE" | "If true, YBA will skip checking for Opentelemetry operator installation on the cluster." | "Boolean" |
 | "Wait Attempts for major catalog upgrade" | "yb.upgrade.wait_attempts_for_major_catalog_upgrade" | "UNIVERSE" | "Wait Attempts for major catalog upgrade" | "Integer" |
+| "PG Upgrade Check Timeout" | "yb.upgrade.pg_upgrade_check_timeout_secs" | "UNIVERSE" | "Timeout for pg_upgrade check in seconds" | "Integer" |
 | "Allow users to disable DB APIs" | "yb.configure_db_api.allow_disable" | "UNIVERSE" | "Allow users to disable DB APIs" | "Boolean" |
 | "Enable Clockbound synchronization check" | "yb.checks.clockbound.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Clockbound synchronization check timeout" | "yb.checks.clockbound.timeout" | "UNIVERSE" | "Clockbound synchronization check timeout" | "Duration" |
