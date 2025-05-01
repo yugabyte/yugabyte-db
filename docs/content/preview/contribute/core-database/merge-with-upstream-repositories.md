@@ -57,7 +57,7 @@ Note: as of today, there is no foolproof linter check that the CSV is updated pr
 Orthogonally, there is the matter of how external repositories are embedded into YugabyteDB.
 Historically, this has been via squash merge, committing everything as one large commit.
 There had also been usage of git submodules in the past, but that was scrapped primarily because developers accidentally reverted the submodules to older commits.
-That is not a strong reason considering there could be checks to counter that; however, submodules often do not make much sense when they do not compile standalone because of strong dependencies with YugabyteDB itself.
+That is not a strong reason considering checks could be added to counter that; however, submodules often do not make much sense when they do not compile standalone because of strong dependencies with YugabyteDB itself.
 
 So a second strategy for embedding external repositories was introduced, namely git subtrees.
 Several external repositories have been converted into this format, and some new repositories have been added using this format.
@@ -178,9 +178,15 @@ At the time of writing, YugabyteDB is based off PG 15.12.
    If cherry-picking commits, use `-x`.
    For merge conflicts, resolve and amend them to the same commit, describing resolutions within the commit messages themselves.
    The procedure here is very much like the first two steps of [doing point-imports](#squash-point-imports).
-1. TODO(jason)
+1. Do the same steps as in [direct-descendant merge](#squash-direct-descendant-merge), starting from "Apply those changes to the `yugabyte/yugabyte-db` repo."
+   A difference is that this merge may be so much larger that the initial merge is incomplete and potentially based off an old commit on `yugabyte/yugabyte-db`.
+   This initial merge commit and further development to close the gaps can be done in a separate `pg18` branch on `yugabyte/yugabyte-db`.
+   This is what was done for the PG 15 merge, from `yugabyte/yugabyte-db` [55782d561e55ef972f2470a4ae887dd791bb4a97](https://github.com/yugabyte/yugabyte-db/commit/55782d561e55ef972f2470a4ae887dd791bb4a97) to [eac5ed5d186b492702a0b546bf82ed162da506b0]((https://github.com/yugabyte/yugabyte-db/commit/eac5ed5d186b492702a0b546bf82ed162da506b0).
 
 ### Embedded via subtree
+
+The steps that follow will use pgaudit as an example.
+At the time of writing, pgaudit uses the subtree embedding strategy.
 
 #### Subtree point-imports
 
