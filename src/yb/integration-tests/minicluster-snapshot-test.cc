@@ -93,6 +93,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
+DECLARE_uint32(TEST_pg_clone_schema_delay_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
@@ -932,15 +933,20 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
 }
 
 TEST_F(PgCloneTest, CloneTimeoutExceeded) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_clone_schema_delay_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 10;
   auto status = source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
   ASSERT_NOK(status);
 
-  // The clone should be aborted, and the error message should mention that it timed out.
-  auto row = ASSERT_RESULT((source_conn_->FetchRowAsString(
-      "SELECT db_name, parent_db_name, state FROM yb_database_clones()")));
-  ASSERT_EQ(row, Format("$0, $1, ABORTED", kTargetNamespaceName1, kSourceNamespaceName));
+  // We have to wait here because the client uses FLAGS_ysql_clone_pg_schema_rpc_timeout_ms as its
+  // timeout too, so if it times out before the clone does, the clone will not be in the ABORTED
+  // state when we check.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto row = VERIFY_RESULT(source_conn_->FetchRowAsString(
+        "SELECT db_name, parent_db_name, state FROM yb_database_clones()"));
+    return row == Format("$0, $1, ABORTED", kTargetNamespaceName1, kSourceNamespaceName);
+  }, 10s, "Wait for clone to be aborted"));
   auto error_msg = ASSERT_RESULT((source_conn_->FetchRowAsString(
       "SELECT failure_reason FROM yb_database_clones()")));
   ASSERT_STR_CONTAINS(error_msg, "timed out");

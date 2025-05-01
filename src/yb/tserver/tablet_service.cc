@@ -274,6 +274,9 @@ DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
     "Fail setting retention barrier on newly created tablets");
 
+DEFINE_test_flag(uint32, pg_clone_schema_delay_ms, 0,
+    "Delay before processing PgCloneSchema request.");
+
 DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
     "Used in tests to pause FlushTablet RPC for the specified number of milliseconds");
 
@@ -2207,6 +2210,8 @@ void TabletServiceAdminImpl::ClonePgSchema(
 
 Status TabletServiceAdminImpl::DoClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp) {
+  AtomicFlagSleepMs(&FLAGS_TEST_pg_clone_schema_delay_ms);
+
   // Run ysql_dump to generate the schema of the clone database as of restore time.
   const std::string& target_db_name = req->target_db_name();
 
