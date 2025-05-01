@@ -24,12 +24,9 @@ ERROR:  Invalid or missing "num_replicas" field in the placement policy: {"num_r
 -- Invalid value for min_num_replicas.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}');
 ERROR:  Invalid type/value for some key in placement block. Placement policy: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}
--- Invalid keys in the placement policy.
-CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"invalid_key":"invalid_value"}]}');
-ERROR:  Unexpected key (invalid_key) in placement block. Placement policy: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"invalid_key":"invalid_value"}]}
 -- Sum of min_num_replicas greater than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
-ERROR:  Sum of min_num_replicas fields exceeds the total replication factor in the placement policy: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}
+ERROR:  Sum of min_num_replicas fields (4) exceeds the total replication factor in the placement policy (3)
 -- Positive cases
 -- Tablespace without replica_placement option.
 CREATE TABLESPACE x LOCATION '/data';
@@ -63,6 +60,8 @@ DROP TABLEGROUP grp;
 -- Should succeed, empty now
 DROP TABLESPACE x;
 DROP TABLESPACE y;
+-- Ensure that we ignore extra keys for potential downgrade scenarios.
+CREATE TABLESPACE extra_keys WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"extra_key":"extra_value"}]}');
 -- create a tablespace using WITH clause
 CREATE TABLESPACE regress_tblspacewith WITH (some_nonexistent_parameter = true); -- fail
 ERROR:  unrecognized parameter "some_nonexistent_parameter"
@@ -703,13 +702,13 @@ CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_bloc
 ERROR:  Invalid type/value for leader_preference option (must be >0): {"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":0}]}
 -- No leader_preference 1
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":2}]}');
-ERROR:  Values for leader_preference is non-contiguous in option: {"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":2}]}
+ERROR:  Empty affinitized leader zone set found in replication info (leader preferences must be contiguous from 1..N): live_replicas { num_replicas: 1 placement_blocks { cloud_info { placement_cloud: "cloud1" placement_region: "region1" placement_zone: "zone1" } min_num_replicas: 1 } } multi_affinitized_leaders { } multi_affinitized_leaders { zones { placement_cloud: "cloud1" placement_region: "region1" placement_zone: "zone1" } }
 -- No leader_preference 2
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}');
-ERROR:  Values for leader_preference is non-contiguous in option: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}
+ERROR:  Empty affinitized leader zone set found in replication info (leader preferences must be contiguous from 1..N): live_replicas { num_replicas: 3 placement_blocks { cloud_info { placement_cloud: "cloud1" placement_region: "r1" placement_zone: "z1" } min_num_replicas: 1 } placement_blocks { cloud_info { placement_cloud: "cloud2" placement_region: "r2" placement_zone: "z2" } min_num_replicas: 1 } placement_blocks { cloud_info { placement_cloud: "cloud2" placement_region: "r2" placement_zone: "z3" } min_num_replicas: 1 } } multi_affinitized_leaders { zones { placement_cloud: "cloud1" placement_region: "r1" placement_zone: "z1" } zones { placement_cloud: "cloud2" placement_region: "r2" placement_zone: "z2" } } multi_affinitized_leaders { } multi_affinitized_leaders { zones { placement_cloud: "cloud2" placement_region: "r2" placement_zone: "z3" } }
 -- No leader_preference 2 and no preference set
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}');
-ERROR:  Values for leader_preference is non-contiguous in option: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}
+ERROR:  Empty affinitized leader zone set found in replication info (leader preferences must be contiguous from 1..N): live_replicas { num_replicas: 3 placement_blocks { cloud_info { placement_cloud: "cloud1" placement_region: "r1" placement_zone: "z1" } min_num_replicas: 1 } placement_blocks { cloud_info { placement_cloud: "cloud2" placement_region: "r2" placement_zone: "z2" } min_num_replicas: 1 } placement_blocks { cloud_info { placement_cloud: "cloud2" placement_region: "r2" placement_zone: "z3" } min_num_replicas: 1 } } multi_affinitized_leaders { zones { placement_cloud: "cloud1" placement_region: "r1" placement_zone: "z1" } } multi_affinitized_leaders { } multi_affinitized_leaders { zones { placement_cloud: "cloud2" placement_region: "r2" placement_zone: "z3" } }
 -- Positive case
 -- Some zones with no leader_preference set
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1}]}');

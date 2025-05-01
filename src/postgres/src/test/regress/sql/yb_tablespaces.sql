@@ -19,9 +19,6 @@ CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":"three", "placement
 -- Invalid value for min_num_replicas.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}');
 
--- Invalid keys in the placement policy.
-CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"invalid_key":"invalid_value"}]}');
-
 -- Sum of min_num_replicas greater than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
 
@@ -47,6 +44,9 @@ DROP TABLEGROUP grp;
 -- Should succeed, empty now
 DROP TABLESPACE x;
 DROP TABLESPACE y;
+
+-- Ensure that we ignore extra keys for potential downgrade scenarios.
+CREATE TABLESPACE extra_keys WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3,"extra_key":"extra_value"}]}');
 
 -- create a tablespace using WITH clause
 CREATE TABLESPACE regress_tblspacewith WITH (some_nonexistent_parameter = true); -- fail
