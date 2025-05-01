@@ -20,8 +20,6 @@ Use yugabyted to launch and manage YugabyteDB universes locally on your laptop, 
 
 {{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
 
-The yugabyted executable file is located in the YugabyteDB home `bin` directory.
-
 For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
 {{<note title="Production deployments">}}
@@ -33,6 +31,27 @@ You can use yugabyted for production deployments. You can also administer [YB-TS
 Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
 
 {{% /note %}}
+
+## Installation
+
+The yugabyted executable file is packaged with YugabytDB and located in the YugabyteDB home `bin` directory.
+
+If you want to use [backup](#backup) and [restore](#restore), you also need to install YB Controller. YB Controller is included in the `yugabyte-{{< yb-version version="preview" >}}/share` directory of your YugabyteDB installation.
+
+Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `yugabytedb/ybc` folder as follows:
+
+```sh
+cd yugabyte-{{< yb-version version="preview" >}}
+mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+```
+
+When creating nodes, run the [yugabyted start](#start) command with `--backup_daemon=true`:
+
+```sh
+./bin/yugabyted start --backup_daemon=true
+```
+
+Note that YB Controller is not supported on macOS.
 
 ## Syntax
 
@@ -685,7 +704,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster for run
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 
-If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent. You also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} release directory.
+If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent YB Controller. (YB Controller must be installed; refer to [Installation](#installation).)
 
 #### Syntax
 
@@ -767,7 +786,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 --backup_daemon *backup-daemon-process*
 : Enable or disable the backup daemon with yugabyted start. Default: `false`
-: If you start a cluster using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} release directory.
+: Using the `--backup_daemon` flag requires YB Controller; see [Installation](#installation).
 
 --enable_pg_parity_early_access *PostgreSQL-compatibilty*
 : Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
