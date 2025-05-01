@@ -2417,6 +2417,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs);
 
+  Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
+
  private:
   friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
