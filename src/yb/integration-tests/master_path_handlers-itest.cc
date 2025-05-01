@@ -229,13 +229,14 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     const std::regex table_regex(
         Format("<table[^>]*id='$0'[^>]*>([^]*?)</table>", html_table_tag_id));
     const std::regex row_regex(Format("<tr>([^]*?)</tr>"));
-    const std::regex col_regex(Format("<td>([^]*?)</td>"));
+    const std::regex col_regex(Format("<td[^>]*>([^]*?)</td>"));
 
     std::smatch match;
     std::regex_search(webpage, match, table_regex);
 
     // [0] is the full match.
     if (match.size() < 1) {
+      LOG(INFO) << "Full webpage: " << webpage;
       return STATUS_FORMAT(NotFound, "Table with id $0 not found", html_table_tag_id);
     }
     // Match[1] is the first capture group, and contains everything inside the <table> tags.
@@ -1831,6 +1832,20 @@ TEST_F(MasterPathHandlersItest, StatefulServices) {
     ASSERT_TRUE(services.Begin()->HasMember("service_name"));
     ASSERT_EQ(services.Begin()->FindMember("service_name")->value.GetString(), service_name);
   }
+}
+
+TEST_F(MasterPathHandlersItest, HeapSnapshot) {
+#if YB_TCMALLOC_ENABLED
+  // tcmalloc_profile-test.cc contains the actual functionality tests. This just tests that a table
+  // gets generated.
+  ASSERT_RESULT(GetHtmlTableRows("/pprof/heap_snapshot", "heap_profile"));
+#endif
+}
+
+TEST_F(MasterPathHandlersItest, HeapProfile) {
+#if YB_GOOGLE_TCMALLOC
+  ASSERT_RESULT(GetHtmlTableRows("/pprof/heap", "heap_profile"));
+#endif
 }
 
 }  // namespace master
