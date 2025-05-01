@@ -1178,6 +1178,25 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) {
+    tserver::PgSetTserverCatalogMessageListRequestPB req;
+    tserver::PgSetTserverCatalogMessageListResponsePB resp;
+    req.set_db_oid(db_oid);
+    req.set_is_breaking_change(is_breaking_change);
+    req.set_new_catalog_version(new_catalog_version);
+    if (message_list.has_value()) {
+      req.mutable_message_list()->set_message_list(message_list.value());
+    }
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::SetTserverCatalogMessageList,
+        req, resp, ash::PggateRPC::kSetTserverCatalogMessageList));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp;
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -1777,6 +1796,13 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
 Result<tserver::PgGetTserverCatalogMessageListsResponsePB> PgClient::GetTserverCatalogMessageLists(
     uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
   return impl_->GetTserverCatalogMessageLists(db_oid, ysql_catalog_version, num_catalog_versions);
+}
+
+Result<tserver::PgSetTserverCatalogMessageListResponsePB> PgClient::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change,
+    uint64_t new_catalog_version, const std::optional<std::string>& message_list) {
+  return impl_->SetTserverCatalogMessageList(db_oid, is_breaking_change,
+                                             new_catalog_version, message_list);
 }
 
 Status PgClient::EnumerateActiveTransactions(

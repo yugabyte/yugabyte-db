@@ -170,6 +170,13 @@ Status MasterTabletServer::GetTserverCatalogMessageLists(
   return master_->GetTserverCatalogMessageLists(req, resp);
 }
 
+Status MasterTabletServer::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const std::optional<std::string>& message_list) {
+  return master_->SetTserverCatalogMessageList(db_oid, is_breaking_change,
+                                               new_catalog_version, message_list);
+}
+
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
   return master_->client_future();
 }

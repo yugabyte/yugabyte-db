@@ -70,6 +70,7 @@ class TserverXClusterContextIf;
     (GetTableDiskSize) \
     (GetTablePartitionList) \
     (GetTserverCatalogMessageLists) \
+    (SetTserverCatalogMessageList) \
     (GetTserverCatalogVersionInfo) \
     (GetXClusterRole) \
     (Heartbeat) \

@@ -182,17 +182,24 @@ MaybeLogNewSQLIncrementCatalogVersion(bool success,
 	{
 		bool log_ysql_catalog_versions =
 			*YBCGetGFlags()->log_ysql_catalog_versions;
-		char tmpbuf[60] = " failed";
+		char tmpbuf1[20] = "";
+		char tmpbuf2[60] = " failed";
+
+		/* Log MyDatabaseId to if it differs from db_oid. */
+		if (db_oid != MyDatabaseId)
+			snprintf(tmpbuf1, sizeof(tmpbuf1), " from %u", MyDatabaseId);
 		if (success)
-			snprintf(tmpbuf, sizeof(tmpbuf),
+			snprintf(tmpbuf2, sizeof(tmpbuf2),
 					 ", new version for database %u is %" PRIu64,
 					 db_oid, new_version);
+
 		char *action = is_global_ddl ? "all master db catalog versions"
 									 : "master db catalog version";
 		ereport(LOG,
 				(errmsg("%s: incrementing %s "
-						"(%sbreaking) with inval messages%s",
-						__func__, action, is_breaking_change ? "" : "non", tmpbuf),
+						"(%sbreaking) with inval messages%s%s",
+						__func__, action, is_breaking_change ? "" : "non",
+						tmpbuf1, tmpbuf2),
 				errdetail("Local version: %" PRIu64 ", node tag: %s.",
 						  YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
 				errhidestmt(!log_ysql_catalog_versions),
