@@ -40,7 +40,7 @@ If you want to use [backup](#backup) and [restore](#restore), you also need to i
 1. Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `yugabytedb/ybc` folder as follows:
 
     ```sh
-    cd yugabyte-{{< yb-version version="preview" >}}
+    cd yugabyte-{{< yb-version version="v2024.1" >}}
     mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
     ```
 
