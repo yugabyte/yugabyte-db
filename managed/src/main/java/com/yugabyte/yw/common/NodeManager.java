@@ -1041,8 +1041,10 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + taskParam.ybSoftwareVersion);
         }
-        subcommand.add("--package");
-        subcommand.add(ybServerPackage);
+        if (!taskParam.skipDownloadSoftware) {
+          subcommand.add("--package");
+          subcommand.add(ybServerPackage);
+        }
         if (taskParam.isEnableYbc()) {
           subcommand.add("--ybc_flags");
           subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -1085,8 +1087,10 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException(
                 "Unable to fetch yugabyte release for version: " + taskParam.ybSoftwareVersion);
           }
-          subcommand.add("--package");
-          subcommand.add(ybServerPackage);
+          if (!taskParam.skipDownloadSoftware) {
+            subcommand.add("--package");
+            subcommand.add(ybServerPackage);
+          }
 
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
@@ -1400,8 +1404,10 @@ public class NodeManager extends DevopsBase {
         }
         break;
       case YbcGFlags:
-        subcommand.add("--package");
-        subcommand.add(ybServerPackage);
+        if (!taskParam.skipDownloadSoftware) {
+          subcommand.add("--package");
+          subcommand.add(ybServerPackage);
+        }
         subcommand.add("--ybc_package");
         subcommand.add(ybcPackage);
         subcommand.add("--ybc_flags");

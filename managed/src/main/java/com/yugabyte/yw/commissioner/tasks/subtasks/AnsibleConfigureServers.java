@@ -13,17 +13,28 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
+import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -31,10 +42,14 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -43,10 +58,102 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
+  private final ReleaseManager releaseManager;
 
   @Inject
-  protected AnsibleConfigureServers(BaseTaskDependencies baseTaskDependencies) {
+  protected AnsibleConfigureServers(
+      BaseTaskDependencies baseTaskDependencies, ReleaseManager releaseManager) {
     super(baseTaskDependencies);
+    this.releaseManager = releaseManager;
+  }
+
+  private InstallSoftwareInput.Builder fillYbReleaseMetadata(
+      Universe universe,
+      Provider provider,
+      NodeDetails node,
+      String ybSoftwareVersion,
+      Region region,
+      Architecture arch,
+      InstallSoftwareInput.Builder installSoftwareInputBuilder,
+      NodeAgent nodeAgent,
+      String customTmpDirectory) {
+    Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(provider);
+    String ybServerPackage = null;
+    ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (release != null) {
+      if (arch != null) {
+        ybServerPackage = release.getFilePath(arch);
+      } else {
+        ybServerPackage = release.getFilePath(region);
+      }
+    }
+    installSoftwareInputBuilder.setYbPackage(ybServerPackage);
+    if (release.isS3Download(ybServerPackage)) {
+      installSoftwareInputBuilder.setS3RemoteDownload(true);
+      installSoftwareInputBuilder.setAwsAccessKey(envConfig.get("AWS_ACCESS_KEY_ID"));
+      installSoftwareInputBuilder.setAwsSecretKey(envConfig.get("AWS_SECRET_ACCESS_KEY"));
+    } else if (release.isGcsDownload(ybServerPackage)) {
+      installSoftwareInputBuilder.setGcsRemoteDownload(true);
+      // Upload the Credential json to the remote host.
+      nodeAgentClient.uploadFile(
+          nodeAgent,
+          envConfig.get(GCPCloudImpl.GCE_PROJECT_PROPERTY),
+          customTmpDirectory
+              + "/"
+              + Paths.get(envConfig.get(GCPCloudImpl.GCE_PROJECT_PROPERTY))
+                  .getFileName()
+                  .toString(),
+          "yugabyte",
+          0,
+          null);
+      installSoftwareInputBuilder.setGcsCredentialsJson(
+          customTmpDirectory
+              + "/"
+              + Paths.get(envConfig.get(GCPCloudImpl.GCE_PROJECT_PROPERTY))
+                  .getFileName()
+                  .toString());
+    } else if (release.isHttpDownload(ybServerPackage)) {
+      installSoftwareInputBuilder.setHttpRemoteDownload(true);
+      if (StringUtils.isNotBlank(release.getHttpChecksum())) {
+        installSoftwareInputBuilder.setHttpPackageChecksum(release.getHttpChecksum().toLowerCase());
+      }
+    } else if (release.hasLocalRelease()) {
+      // Upload the release to the node.
+      nodeAgentClient.uploadFile(
+          nodeAgent,
+          ybServerPackage,
+          customTmpDirectory + "/" + Paths.get(ybServerPackage).getFileName().toString(),
+          "yugabyte",
+          0,
+          null);
+      installSoftwareInputBuilder.setYbPackage(
+          customTmpDirectory + "/" + Paths.get(ybServerPackage).getFileName().toString());
+    }
+    installSoftwareInputBuilder.setRemoteTmp(customTmpDirectory);
+    installSoftwareInputBuilder.setYbHomeDir(provider.getYbHome());
+    return installSoftwareInputBuilder;
+  }
+
+  private InstallSoftwareInput setupInstallSoftwareBits(
+      Universe universe, NodeDetails nodeDetails, Params taskParams, NodeAgent nodeAgent) {
+    InstallSoftwareInput.Builder installSoftwareInputBuilder = InstallSoftwareInput.newBuilder();
+    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    installSoftwareInputBuilder =
+        fillYbReleaseMetadata(
+            universe,
+            provider,
+            nodeDetails,
+            taskParams.ybSoftwareVersion,
+            taskParams.getRegion(),
+            universe.getUniverseDetails().arch,
+            installSoftwareInputBuilder,
+            nodeAgent,
+            customTmpDirectory);
+
+    return installSoftwareInputBuilder.build();
   }
 
   public static class Params extends NodeTaskParams {
@@ -104,6 +211,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean overrideNodePorts = false;
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
     public int cgroupSize = 0;
+    // If configured will skip install-package role in ansible and use node-agent rpc instead.
+    public boolean skipDownloadSoftware = false;
     // Supplier for master addresses override which is invoked only when the subtask starts
     // execution.
     @JsonIgnore @Nullable public Supplier<String> masterAddrsOverride;
@@ -133,17 +242,18 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     String processType = taskParams().getProperty("processType");
     boolean resetMasterState = false;
+    NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
     if (taskParams().resetMasterState
         && taskParams().isMasterInShellMode
         && ServerType.MASTER.toString().equalsIgnoreCase(processType)) {
       // The check for flag isMasterInShellMode also makes sure that this node is intended
       // to join an existing cluster.
-      NodeDetails node = universe.getNode(taskParams().nodeName);
-      if (node.masterState != MasterState.Configured) {
+      if (nodeDetails.masterState != MasterState.Configured) {
         // Reset may be set only if node is not a master.
         // Once isMaster is set, it can be tied to a cluster.
         resetMasterState =
-            isChangeMasterConfigDone(universe, node, false, node.cloudInfo.private_ip);
+            isChangeMasterConfigDone(
+                universe, nodeDetails, false, nodeDetails.cloudInfo.private_ip);
       }
     }
 
@@ -153,11 +263,28 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         universe.getUniverseUUID(),
         taskParams().resetMasterState);
     taskParams().resetMasterState = resetMasterState;
+    Optional<NodeAgent> optional =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)
+            ? nodeUniverseManager.maybeGetNodeAgent(
+                getUniverse(), nodeDetails, true /*check feature flag*/)
+            : Optional.empty();
+    if (optional.isPresent()) {
+      taskParams().skipDownloadSoftware = true;
+    }
     // Execute the ansible command.
     ShellResponse response =
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
+    if (optional.isPresent()
+        && (taskParams().type == UpgradeTaskType.Everything
+            || taskParams().type == UpgradeTaskType.Software
+            || taskParams().type == UpgradeTaskType.YbcGFlags)) {
+      nodeAgentClient.runInstallSoftware(
+          optional.get(),
+          setupInstallSoftwareBits(universe, nodeDetails, taskParams(), optional.get()),
+          "yugabyte");
+    }
 
     if (taskParams().type == UpgradeTaskType.Everything && !taskParams().updateMasterAddrsOnly) {
       // Check cronjob status if installing software.

@@ -292,6 +292,17 @@ func (server *RPCServer) SubmitTask(
 		}
 		return res, nil
 	}
+	installSoftwareInput := req.GetInstallSoftwareInput()
+	if installSoftwareInput != nil {
+		installSoftwareHandler := task.NewInstallSoftwareHandler(installSoftwareInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, installSoftwareHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running install software - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	serverControlInput := req.GetServerControlInput()
 	if serverControlInput != nil {
 		// Handle server control RPC.
