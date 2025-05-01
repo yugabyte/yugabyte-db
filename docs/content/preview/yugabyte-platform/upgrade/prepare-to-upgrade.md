@@ -29,7 +29,7 @@ YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.12. If you are runni
 
 cron and root-level systemd have been deprecated in favor of user-level systemd with node agent for management of universe nodes.
 
-In particular, cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
+In particular, cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
 
 However, on-premises cron-based universes must be upgraded manually. To do this, in YugabyteDB Anywhere v2024.2.2 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**.
 
@@ -37,7 +37,7 @@ However, on-premises cron-based universes must be upgraded manually. To do this,
 
 [Legacy provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) workflows have been deprecated. Provision nodes for on-premises universes using the `node-agent-provision.sh` script. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
-YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
+YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
 
 To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions>Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
 
