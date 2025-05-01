@@ -645,6 +645,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void UpdateCompactFlushRateLimitBytesPerSec();
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
+  PriorityThreadPool* VectorIndexPriorityThreadPool(tablet::VectorIndexPriorityThreadPoolType type);
 
   const CoarseTimePoint start_time_;
 

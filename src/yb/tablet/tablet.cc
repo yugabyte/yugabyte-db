@@ -735,7 +735,9 @@ Tablet::Tablet(const TabletInitData& data)
 
   snapshots_ = std::make_unique<TabletSnapshots>(this);
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
-      this, data.vector_index_thread_pool_provider);
+      this,
+      data.vector_index_thread_pool_provider,
+      data.vector_index_priority_thread_pool_provider);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 

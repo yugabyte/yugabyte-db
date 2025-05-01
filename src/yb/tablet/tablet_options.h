@@ -66,9 +66,12 @@ struct TabletOptions {
 
 using TransactionManagerProvider = std::function<client::TransactionManager&()>;
 
-YB_DEFINE_ENUM(VectorIndexThreadPoolType, (kInsert)(kBackfill));
+YB_DEFINE_ENUM(VectorIndexThreadPoolType, (kBackground)(kBackfill)(kInsert));
+YB_DEFINE_ENUM(VectorIndexPriorityThreadPoolType, (kCompaction));
 
 using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*(VectorIndexThreadPoolType)>;
+using VectorIndexPriorityThreadPoolProvider =
+    std::function<PriorityThreadPool*(VectorIndexPriorityThreadPoolType)>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
@@ -100,6 +103,7 @@ struct TabletInitData {
       get_min_xcluster_schema_version = nullptr;
   rpc::Messenger* messenger = nullptr;
   VectorIndexThreadPoolProvider vector_index_thread_pool_provider = {};
+  VectorIndexPriorityThreadPoolProvider vector_index_priority_thread_pool_provider = {};
 };
 
 } // namespace tablet
