@@ -28,6 +28,12 @@
 
 #include "yb/vector_index/vector_index_fwd.h"
 
+namespace yb {
+
+class PriorityThreadPool;
+
+} // namespace yb
+
 namespace yb::docdb {
 
 using EncodedDistance = uint64_t;
@@ -81,10 +87,23 @@ class DocVectorIndex {
   std::atomic<bool> backfill_done_cache_{false};
 };
 
+struct DocVectorIndexThreadPools {
+  // Used for other tasks (for example some background cleaning up).
+  rpc::ThreadPool* thread_pool;
+
+  // Used for inserts/flushes.
+  rpc::ThreadPool* insert_thread_pool;
+
+  // Used for compactions.
+  PriorityThreadPool* compaction_thread_pool;
+};
+
+using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
+
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
     const std::string& data_root_dir,
-    rpc::ThreadPool& thread_pool,
+    const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,

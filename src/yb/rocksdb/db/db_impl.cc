@@ -145,22 +145,22 @@ DEFINE_RUNTIME_bool(use_priority_thread_pool_for_compactions, true,
     "When true priority thread pool will be used for compactions, otherwise "
     "Env thread pool with Priority::LOW will be used.");
 
-DEFINE_UNKNOWN_int32(compaction_priority_start_bound, 10,
-             "Compaction task of DB that has number of SST files less than specified will have "
-             "priority 0.");
+DEFINE_RUNTIME_int32(compaction_priority_start_bound, 10,
+    "Compaction task of DB that has number of SST files less than specified will have "
+    "priority 0.");
 
-DEFINE_UNKNOWN_int32(compaction_priority_step_size, 5,
-             "Compaction task of DB that has number of SST files greater that "
-             "compaction_priority_start_bound will get 1 extra priority per every "
-             "compaction_priority_step_size files.");
+DEFINE_RUNTIME_int32(compaction_priority_step_size, 5,
+    "Compaction task of DB that has number of SST files greater that "
+    "compaction_priority_start_bound will get 1 extra priority per every "
+    "compaction_priority_step_size files.");
 
-DEFINE_UNKNOWN_int32(small_compaction_extra_priority, 1,
-             "Small compaction will get small_compaction_extra_priority extra priority.");
+DEFINE_RUNTIME_int32(small_compaction_extra_priority, 1,
+    "Small compaction will get small_compaction_extra_priority extra priority.");
 
-DEFINE_UNKNOWN_int32(automatic_compaction_extra_priority, 50,
-             "Assigns automatic compactions extra priority when automatic tablet splits are "
-             "enabled. This deprioritizes manual compactions including those induced by the "
-             "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
+DEFINE_RUNTIME_int32(automatic_compaction_extra_priority, 50,
+    "Assigns automatic compactions extra priority when automatic tablet splits are "
+    "enabled. This deprioritizes manual compactions including those induced by the "
+    "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
@@ -263,9 +263,7 @@ class DBImpl::ThreadPoolTask : public yb::PriorityThreadPoolTask {
 };
 
 constexpr int kNoDiskPriority = 0;
-constexpr int kTopDiskCompactionPriority = 100;
 constexpr int kTopDiskFlushPriority = 200;
-constexpr int kShuttingDownPriority = 200;
 constexpr int kFlushPriority = 100;
 constexpr int kNoJobId = -1;
 
@@ -531,7 +529,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    return kTopDiskCompactionPriority - active_tasks;
+    return internal::kTopDiskCompactionPriority - active_tasks;
   }
 
   ColumnFamilyData* column_family_data() const {
@@ -581,17 +579,18 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     db_impl_->mutex_.AssertHeld();
 
     if (db_impl_->IsShuttingDown()) {
-      return kShuttingDownPriority;
+      return internal::kShuttingDownPriority;
     }
 
     auto* current_version = cfd_->GetSuperVersion()->current;
     auto num_files = current_version->storage_info()->l0_delay_trigger_count();
 
+    const auto compaction_priority_start_bound = FLAGS_compaction_priority_start_bound;
     int result = 0;
-    if (num_files >= FLAGS_compaction_priority_start_bound) {
+    if (num_files >= compaction_priority_start_bound) {
       result =
           1 +
-          (num_files - FLAGS_compaction_priority_start_bound) / FLAGS_compaction_priority_step_size;
+          (num_files - compaction_priority_start_bound) / FLAGS_compaction_priority_step_size;
     }
 
     if (compaction_size_kind_ == CompactionSizeKind::kSmall) {

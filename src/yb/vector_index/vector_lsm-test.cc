@@ -20,6 +20,7 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/priority_thread_pool.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
 
@@ -147,7 +148,8 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
       : thread_pool_(rpc::ThreadPoolOptions {
           .name = "Insert Thread Pool",
           .max_workers = 10,
-        }) {
+        }),
+        priority_thread_pool_(/* max_running_tasks = */ 2) {
   }
 
   Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
@@ -170,6 +172,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   void TestBootstrap(bool flush);
 
   rpc::ThreadPool thread_pool_;
+  PriorityThreadPool priority_thread_pool_;
   SimpleVectorLSMKeyValueStorage key_value_storage_;
   FloatVectorLSM::InsertEntries  inserted_entries_;
 };
@@ -261,6 +264,8 @@ Status VectorLSMTest::OpenVectorLSM(
     },
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
+    .insert_thread_pool = &thread_pool_,
+    .compaction_thread_pool = &priority_thread_pool_,
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
     .vector_merge_filter_factory = [] {
       struct DummyFilter : public VectorLSMMergeFilter {

@@ -53,8 +53,13 @@ class VectorIndexList {
 
 class TabletVectorIndexes : public TabletComponent {
  public:
-  TabletVectorIndexes(Tablet* tablet, const VectorIndexThreadPoolProvider& thread_pool_provider)
-      : TabletComponent(tablet), thread_pool_provider_(thread_pool_provider) {}
+  TabletVectorIndexes(
+      Tablet* tablet,
+      const VectorIndexThreadPoolProvider& thread_pool_provider,
+      const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider)
+      : TabletComponent(tablet),
+        thread_pool_provider_(thread_pool_provider),
+        priority_thread_pool_provider_(priority_thread_pool_provider) {}
 
   Status Open();
   // Creates vector index for specified index and indexed tables.
@@ -110,6 +115,7 @@ class TabletVectorIndexes : public TabletComponent {
       REQUIRES(vector_indexes_mutex_);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
+  const VectorIndexPriorityThreadPoolProvider priority_thread_pool_provider_;
 
   std::atomic<bool> has_vector_indexes_{false};
   mutable std::shared_mutex vector_indexes_mutex_;
