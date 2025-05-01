@@ -115,6 +115,8 @@ Use the `yugabyted backup` command to take a backup of a YugabyteDB database int
 
 To use `backup`, the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. See the [start](#start) command.
 
+Note that backup and restore are not supported on macOS.
+
 #### Syntax
 
 ```text
@@ -638,6 +640,8 @@ yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 Use the `yugabyted restore` command to restore a database in the YugabyteDB cluster from a network file storage directory or from public cloud object storage.
 
 To use `restore`, the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. See the [start](#start) command.
+
+Note that backup and restore are not supported on macOS.
 
 #### Syntax
 
