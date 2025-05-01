@@ -2316,12 +2316,23 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_debug_report_error_stacktrace", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Append stacktrace information for error messages."),
+		{"yb_debug_log_docdb_error_backtrace", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Append stacktrace information to errors received from DocDB."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_debug_report_error_stacktrace,
+		&yb_debug_log_docdb_error_backtrace,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_debug_original_backtrace_format", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Use original Postgres functions to create and format the stacktrace"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_debug_original_backtrace_format,
 		false,
 		NULL, NULL, NULL
 	},

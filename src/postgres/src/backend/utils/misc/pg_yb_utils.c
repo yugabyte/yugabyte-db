@@ -1907,20 +1907,6 @@ YBShouldRestartAllChildrenIfOneCrashes()
 	return YBCIsEnvVarTrueWithDefault("FLAGS_yb_pg_terminate_child_backend", true);
 }
 
-bool
-YBShouldLogStackTraceOnError()
-{
-	static int	cached_value = -1;
-
-	if (cached_value != -1)
-	{
-		return cached_value;
-	}
-
-	cached_value = YBCIsEnvVarTrue("YB_PG_STACK_TRACE_ON_ERROR");
-	return cached_value;
-}
-
 const char *
 YBPgErrorLevelToString(int elevel)
 {
@@ -2130,7 +2116,9 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
  *------------------------------------------------------------------------------
  */
 
-bool		yb_debug_report_error_stacktrace = false;
+bool		yb_debug_log_docdb_error_backtrace = false;
+
+bool		yb_debug_original_backtrace_format = false;
 
 bool		yb_debug_log_internal_restarts = false;
 

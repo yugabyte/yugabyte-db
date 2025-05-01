@@ -401,11 +401,6 @@ void		YbSetConnectedToTemplateDb();
 bool		YbIsConnectedToTemplateDb();
 
 /*
- * Whether every ereport of the ERROR level and higher should log a stack trace.
- */
-bool		YBShouldLogStackTraceOnError();
-
-/*
  * Converts the PostgreSQL error level as listed in elog.h to a string. Always
  * returns a static const char string.
  */
@@ -608,13 +603,16 @@ extern int	StatementTimeout;
 
 /**
  * YSQL guc variables that can be used to toggle yugabyte debug features.
- * e.g. 'SET yb_debug_report_error_stacktrace=true' and
- *      'RESET yb_debug_report_error_stacktrace'.
+ * e.g. 'SET yb_debug_log_docdb_error_backtrace=true' and
+ *      'RESET yb_debug_log_docdb_error_backtrace'.
  * See also the corresponding entries in guc.c.
  */
 
-/* Add stacktrace information to every YSQL error. */
-extern bool yb_debug_report_error_stacktrace;
+/* Add stacktrace information to errors received from DocDB/PgGate. */
+extern bool yb_debug_log_docdb_error_backtrace;
+
+/* Use Postgres or Yugabyte stacktrace formatting. */
+extern bool yb_debug_original_backtrace_format;
 
 /*
  * Log automatic statement (or transaction) restarts such as read-restarts and
@@ -1220,7 +1218,7 @@ YbOptSplit *YbGetSplitOptions(Relation rel);
 			YBCFreeStatus(_status); \
 			if (errstart(adjusted_elevel, TEXTDOMAIN)) \
 			{ \
-				Assert(msg_buf); \
+				AssertMacro(msg_buf); \
 				yb_errmsg_from_status(msg_buf, msg_nargs, msg_args); \
 				if (detail_buf) \
 					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
@@ -1228,12 +1226,12 @@ YbOptSplit *YbGetSplitOptions(Relation rel);
 					yb_errdetail_log_from_status(detail_log_buf, \
 												 detail_log_nargs, \
 												 detail_log_args); \
-				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
 				errhidecontext(true); \
-				errfinish(NULL, \
-						  lineno > 0 ? lineno : __LINE__, \
-						  NULL); \
+				if (yb_debug_log_docdb_error_backtrace) \
+					errbacktrace(); \
+				yb_errlocation_from_status(filename, lineno, funcname); \
+				errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
 				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 					pg_unreachable(); \
 			} \
