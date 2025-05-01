@@ -1822,6 +1822,18 @@ PgApiImpl::GetTserverCatalogMessageLists(
       db_oid, ysql_catalog_version, num_catalog_versions);
 }
 
+Result<tserver::PgSetTserverCatalogMessageListResponsePB>
+PgApiImpl::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list) {
+  std::optional<std::string> messages;
+  if (message_list->message_list) {
+    messages.emplace(message_list->message_list, message_list->num_bytes);
+  }
+  return pg_client_.SetTserverCatalogMessageList(
+      db_oid, is_breaking_change, new_catalog_version, messages);
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }

@@ -264,6 +264,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
       EXCLUDES(lock_);
   void ResetCatalogVersionsFingerprint() EXCLUDES(lock_);
+  void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
   uint32_t get_oid_cache_invalidations_count() const override {
     return oid_cache_invalidations_count_.load();
@@ -321,6 +322,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status GetTserverCatalogMessageLists(
       const tserver::GetTserverCatalogMessageListsRequestPB& req,
       tserver::GetTserverCatalogMessageListsResponsePB* resp) const override;
+
+  Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 

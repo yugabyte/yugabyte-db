@@ -251,6 +251,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kIsObjectPartOfXRepl)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
+  (kSetTserverCatalogMessageList)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)

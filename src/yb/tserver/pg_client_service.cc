@@ -1867,6 +1867,21 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     return Status::OK();
   }
 
+  Status SetTserverCatalogMessageList(
+      const PgSetTserverCatalogMessageListRequestPB& req,
+      PgSetTserverCatalogMessageListResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto db_oid = req.db_oid();
+    const auto is_breaking_change = req.is_breaking_change();
+    const auto new_catalog_version = req.new_catalog_version();
+    std::optional<std::string> message_list;
+    if (req.message_list().has_message_list()) {
+      message_list = req.message_list().message_list();
+    }
+    return const_cast<TabletServerIf&>(tablet_server_).SetTserverCatalogMessageList(
+        db_oid, is_breaking_change, new_catalog_version, message_list);
+  }
+
   Status IsObjectPartOfXRepl(
     const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
     rpc::RpcContext* context) {
