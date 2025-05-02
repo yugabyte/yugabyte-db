@@ -62,8 +62,289 @@ That is not a strong reason considering checks could be added to counter that; h
 So a second strategy for embedding external repositories was introduced, namely git subtrees.
 Several external repositories have been converted into this format, and some new repositories have been added using this format.
 However, YugabyteDB has not yet taken a strong stance on whether this strategy should be adopted.
-The pros and cons are detailed in a different section.
-TODO(jason): reference that section.
+See the pros and cons in the following section.
+
+## Git subtrees
+
+### Pros and cons
+
+Pros of using git subtrees over squash merge:
+
+- Get all upstream commit history.
+  This makes git blame lookup more convenient.
+- Direct merge commits.
+  Not only is performing the merge easier and less prone to error, but the history it leaves behind is clearer and easier to review.
+
+Cons of using git subtrees over squash merge:
+
+- Get all upstream commit history.
+  This is listed as both a pro and con, the con being it can bloat the `yugabyte/yugabyte-db` repository.
+- More complex process which involves more steps.
+- `git subtree` is not built into `git` by default.
+- Git commands using paths do not work well with subtrees.
+  For example, with the squash merge embedding strategy, `git log -- src/postgres/third-party-extensions/postgresql-hll` lists all commits touching that path.
+  However, with the subtree embedding strategy, `git log -- src/postgres/third-party-extensions/documentdb` does not list such commits.
+  And instead, `git log -- documentdb_errors.csv` lists those commits.
+  Which is to say, the paths of all these upstream repositories are mapped to the same base.
+  So common paths such as `git log -- .gitignore` show a mix of all `.gitignore` changes across the upstream repositories using subtrees.
+
+There is currently no strong preference for one over the other, though currently, upstream repositories have only migrated from squash merge to subtree, never the other way around.
+
+### Adding a new upstream repository as subtree
+
+When trying to introduce a new upstream repository using the subtree embedding strategy, it is pretty straightforward.
+
+The following steps details what has already happened with adding DocumentDB.
+
+1. Find an appropriate upstream repository commit to target.
+   Normally, this would correspond to a Git tag as an official release for stability.
+1. Fetch that tag to `yugabyte/yugabyte-db`.
+
+   ```sh
+   git remote add documentdb https://github.com/microsoft/documentdb.git
+   git fetch documentdb tags/v0.102-0:tags/v0.102-0 --no-tags
+   ```
+
+   In case of a conflict with existing tags, there are many workarounds, one of which is to delete the existing tag first then re-run the fetch.
+1. Find an appropriate location to embed the repository.
+   The common case is PostgreSQL extensions, which belong in `src/postgres/third-party-extensions/<extension_name>`.
+1. Add the subtree.
+   You may want to switch to a new feature branch first, based off the latest `yugabyte/yugabyte-db` `master` branch.
+
+   ```sh
+   git fetch origin master:master
+   git switch -c add-documentdb-subtree master
+   git subtree add --prefix=src/postgres/third-party-extensions/documentdb documentdb v0.102-0 --no-squash
+   ```
+
+   If `git subtree` does not work, you may need to install it.
+   There may be an alternative method to do this using `git merge -s subtree`, but that has not been tested as of yet.
+   In any case, `git subtree` adds some useful metadata to the commit message, so using that is preferred.
+
+   There should be no merge conflicts since this is a brand new upstream repository in a brand new directory.
+   Any modifications to integrate this upstream repository to YugabyteDB should be done as a followup after this whole process.
+   In this example, this was done by commit [f8e9b50f83a4561b1314057297e3ba3236c7703c](https://github.com/yugabyte/yugabyte-db/commit/f8e9b50f83a4561b1314057297e3ba3236c7703c).
+1. Add the upstream repository details into `src/lint/upstream_repositories.csv`.
+   Commit this single change as one commit on top of the subtree merge commit.
+   In this example, this was done by commit [3201d6f146c957b39ce23f3c59e76ca31ffa1a0c](https://github.com/yugabyte/yugabyte-db/commit/3201d6f146c957b39ce23f3c59e76ca31ffa1a0c).
+1. Submit this feature branch as reference for review.
+   Phorge is not sufficient since it strips Git metadata.
+   One example of a place to submit this is a personal GitHub fork of `yugabyte/yugabyte-db`.
+   The reviewer should make sure the subtree merge is done properly and that exactly one commit is added after that concerning `src/lint/upstream_repositories.csv`.
+1. Create a Phorge revision of this feature branch for official review.
+   Make sure lint is not skipped to make sure `src/lint/upstream_repositories.csv` is valid.
+   The reviewer should make sure the latest commit hash of both submissions are exactly equal.
+1. Request permission from @buildteam in the internal slack #eng-infra channel to land a merge commit of this revision.
+1. Land the change using the merge strategy:
+
+   ```sh
+   arc land --strategy merge --revision D...... --onto master
+   ```
+
+   Append `--hold` if it is your first time and you are afraid of making mistakes.
+   After [checking the structure looks good](#subtree-illustrations) using a command such as `git log --oneline --graph`, push the change using the sample command provided at the end of the `arc land --hold` output.
+   In this example, this was done by commit [b01e29bafa6fb8bfb899f0b3ac6e98363340c8e7](https://github.com/yugabyte/yugabyte-db/commit/b01e29bafa6fb8bfb899f0b3ac6e98363340c8e7).
+
+### Converting a squash embedded upstream repository to subtree
+
+Working with an existing squash embedded repositories to the subtree strategy is a lot more complicated.
+This is primarily because of the hoops one has to jump through to make `git blame` point to the subtree rather than the old squash commits.
+
+You might be trying to update the upstream repository at the same time.
+In that case, it is strongly recommended to first convert the repository to the subtree embedding strategy at the existing version, then [update it to the new version](#updating-a-subtree).
+This is less prone to mistakes and easier to review.
+
+The following steps details what has already happened with updating pgaudit.
+Note that this was done on the `pg15` branch at the time rather than `master`.
+
+1. Subtree merge the existing version.
+
+   ```sh
+   git remote add pgaudit https://github.com/pgaudit/pgaudit
+   git fetch pgaudit tags/v1.3.2:tags/v1.3.2 --no-tags
+
+   git fetch origin pg15:pg15
+   git switch -c convert-pgaudit-to-subtree pg15
+   git merge -s subtree -Xsubtree=src/postgres/third-party-extensions/pgaudit 1.3.2 --allow-unrelated-histories
+   git commit-tree -p 'HEAD^2' -p 'HEAD^1' 'HEAD^{tree}'
+   ```
+
+   The merge might have conflicts.
+   Make sure to resolve such conflicts and detail them in the commit message.
+
+   Note the last command swaps the left and right parents so that the subtree's commits are prioritized.
+   This does not work perfectly, especially when files are unchanged by this re-merge.
+   It is still better to try, though.
+
+   All conflicts should be resolved, and build should work after this single subtree merge commit.
+   In this example, that commit is [329515ec6111daf5fe1f7d169de3a437273ad2c3](https://github.com/yugabyte/yugabyte-db/commit/329515ec6111daf5fe1f7d169de3a437273ad2c3), and build did not necessarily work since this was during the unstable situation of PG 15 merge.
+   At least the example commit message can be used as reference.
+1. At this point, if you plan to update to a newer version, there's nothing stopping you from directly doing that next.
+   However, in this example, it was done step by step.
+   The rest of the steps in this section are related if you want to do it step-by-step.
+   Otherwise, skip to the next section.
+1. The remaining steps are equivalent to [before](#adding-a-new-upstream-repository-as-subtree), starting from adding repository details to `src/lint/upstream_repositories.csv`.
+   There is no example commit for the `upstream_repositories.csv` change since it did not exist at the time.
+   There is an example commit for the Phorge revision that was merge landed: [2349d7c2df5a519677b80a8eae902a816f34f95b](https://github.com/yugabyte/yugabyte-db/commit/2349d7c2df5a519677b80a8eae902a816f34f95b).
+
+For updating to the new version, the steps follow in the next section.
+
+### Updating a subtree
+
+If the repository was embedded as subtree from the very beginning, this again becomes easier.
+Otherwise, some merge commit parent swapping is suggested to continually improve the number of files that swap to using the subtree for `git blame`.
+
+1. Subtree merge the new version.
+
+   ```sh
+   git remote add pgaudit https://github.com/pgaudit/pgaudit
+   git fetch pgaudit tags/v1.7.0:tags/v1.7.0 --no-tags
+
+   git fetch origin pg15:pg15
+   git switch -c convert-pgaudit-to-subtree pg15
+   git merge -s subtree -Xsubtree=src/postgres/third-party-extensions/pgaudit 1.7.0
+   git commit-tree -p 'HEAD^2' -p 'HEAD^1' 'HEAD^{tree}'
+   ```
+
+   If directly following up from a previous subtree merge, skip the `git switch` step.
+
+   Notice that, unlike [converting to a subtree for the first time](#converting-a-squash-embedded-upstream-repository-to-subtree), this merge does not need `--allow-unrelated-histories`.
+
+   In case of subtrees that were created as such from the very beginning, the `git commit-tree` should be omitted since there are likely no `git blame` issues.
+   Also, there is likely a cleaner way to do the merge using `git subtree` command(s) directly.
+   Experimenting with that can be left as a followup.
+
+   All conflicts should be resolved, and build should work after this single subtree merge commit.
+   In this example, that commit is [180a1f7613457bc84021f3c8c186adadc92ba626](https://github.com/yugabyte/yugabyte-db/commit/180a1f7613457bc84021f3c8c186adadc92ba626).
+1. The remaining steps are equivalent to [before](#adding-a-new-upstream-repository-as-subtree), starting from adding repository details to `src/lint/upstream_repositories.csv`.
+   There is no example commit for the `upstream_repositories.csv` change since it did not exist at the time.
+   There is an example commit for the Phorge revision that was merge landed: [dd24929b2c26f282221fe4e31d2b93ce60f5dfba](https://github.com/yugabyte/yugabyte-db/commit/dd24929b2c26f282221fe4e31d2b93ce60f5dfba).
+
+### Subtree illustrations
+
+The example of documentdb [subtree addition](#adding-a-new-upstream-repository-as-subtree) can be visualized with `git log --oneline --graph b01e29bafa6fb8bfb899f0b3ac6e98363340c8e7`:
+
+```
+*   b01e29bafa [#26749] OpenDocDB: Import documentdb extension v0.102-0
+|\
+| * 3201d6f146 Update upstream_repositories with documentdb extension
+| *   f8e9b50f83 Add 'src/postgres/third-party-extensions/documentdb/' from commit 'f31e0b6cadda66c3cc7f7087365e996c212cfffe'
+| |\
+| | * f31e0b6cad Merged PR 1615832: Support for pushdown of in to PFE indexes
+| | * 80df5a1509 Merged PR 1604750: [perf][creation_time] Alter creation time : part 1
+| | * 0c77472a67 Merged PR 1614124: [Infra] adding support for documentdb_distributed extension in start_oss_server
+| | * 5a8db3494c Merged PR 1614043: [Operator] Support extended $getfield for 8.0
+| | * 86ce366053 Merged PR 1556142: DateFromString part-2: Add more functionalities to $dateFromString and make JS tests pass
+| | * 399e01d954 Merged PR 1539417: [Operator] $toUUID in Mongo 8.0
+| | * 3a369bf6a3 Fix handling of explicit `maxTimeMS` zero values (#41) (#111)
+...
+| | * 03c69f703d Merged PR 1249283: [Index Truncation] Add more tests and allow per index registration of truncation
+| | * 628c576d6f Merged PR 1250361: Modify more references for OSS
+| | * d6b2c3aab4 Merged PR 1248408: [OSS] Fix listIndexes and listCollections command
+| | * 9839f0610e Merged PR 1249793: Changing extension name to helio in all OSS files
+| | * e56a5f6edb Merged PR 1216978: Add Index details in CurrentOp for CREATE INDEX
+| | * cd6050eb08 Merged PR 1245028: [pgmongo][Geospatial] - enable Geospatial for Tests
+| | * ffa180741a Merged PR 1205625: Migrate drop_collection to C
+| | * 4c6b6d1fde [Infra] Add devcontainer for build time setup to HelioDB (#4)
+| | *   4aea8125e4 Merge pull request #3 from microsoft/visridha/intial_helio_commit
+| | |\
+| | | * d8671eb379 Initial commit for HelioDB
+| | |/
+| | *   9876da1a14 Merge pull request #1 from microsoft/users/GitHubPolicyService/6beb23d4-53ad-46b8-bce4-dd7d94d42d34
+| | |\
+| | | * 89d98ead6d Microsoft mandatory file
+| | * | 54147c75a4 SECURITY.md committed
+| | * | fd4f59322c README.md updated to template
+| | * | cded62f618 SUPPORT.md committed
+| | * | 0962f9119c LICENSE updated to template
+| | * | cfc3e2086b CODE_OF_CONDUCT.md committed
+| | |/
+| | * cc150f8608 README.md: Setup instructions
+| | * c4234ea994 Initial commit
+* | 7ae4c354b8 [PLAT-17251]: Fix Backup deletion metrics labels
+* | 3c9922199c [PLAT-17214] YB Instance Tags are not saved during "Resize Node changes"
+* | 03d9aaf29f [#25710] YSQL: Fix path->rows set by yb_cost_bitmap_table_scan
+* | 2132441a27 [#26632] YSQL: Skip ModulesDummySeclabel test with conn mgr
+* | 3d73cd1a6b [PLAT-17261] Fix date conversion bug in get jwt endpoint
+* | a665c196d9 (tag: 2.25.2.0-b301) [#26680] Docdb: Table Locks : Improve debuggability/logging
+* | f80c0b0621 (tag: 2.25.2.0-b300) [PLAT-17139] Change the default node_agent log to UTC
+* | e99df6f4d9 [#26746] YSQL: merge PG 15.12
+* | 558b6cb51b [doc] Standardize icons (#26747)
+|/
+* bc7ef0969c (tag: 2.25.2.0-b299) [PLAT-17222]  Revamped check cluster consistency to handle dual nics
+```
+
+The example of pgaudit [subtree conversion](#converting-a-squash-embedded-upstream-repository-to-subtree) and [subtree update](#updating-a-subtree) can be visualized with `git log --oneline --graph dd24929b2c26f282221fe4e31d2b93ce60f5dfba`:
+
+```
+*   dd24929b2c [pg15] merge: pgaudit tag '1.7.0' into pg15
+|\
+| *   180a1f7613 Merge pg15 into pgaudit tag '1.7.0'
+| |\
+| * | 8349710fbb Add caveat about auditing superusers.
+| * | ee1c3f5d04 PostgreSQL 15 support.
+| * | 1930790e4b Documentation updates missed in PostgreSQL 14 release.
+| * | 02d3dfd91b Add explanation why `CREATE EXTENSION` is required.
+| * | 6a3ab20747 Explicitly grant permissions on public schema in expect script.
+| * | 959f0652ea Reorder container scripts for more efficient builds across versions.
+| * | 605aa9dad1 Fix typo in pgaudit.role help.
+| * | 267eb83a14 Stamp 1.6.2.
+| * | 6460d9fec7 Skip logging script statements for create/alter extension.
+| * | 52d3ff4f13 Update copyright end year.
+| * | 881c617084 Add security definer and search_path to event trigger functions.
+| * | 4c3a5023f8 Guard against search-path based attacks.
+| * | 6afeae52d8 Remove remaining references to Vagrant.
+| * | bd6a261f72 Fix logic to properly classify SELECT FOR UPDATE as SELECT.
+| * | bb816445df Add RHEL test container.
+| * | e8cded51a4 Add pgaudit.log_rows setting.
+| * | ed6975c522 Add container remove to test command.
+| * | 70b30d4379 Update for ProcessUtility_hook_type changes for 14beta2.
+| * | 002f2c3c3b PostgreSQL 14 support.
+| * | e3d79b03ee Run make clean for each test.
+| * | 6b56031e87 Remove Vagrantfile.
+| * | e2e5a69c4d Add automated testing using Github Actions.
+| * | c6d958bb4d Revert "PostgreSQL 14 support."
+| * | b045fb9b90 PostgreSQL 14 support.
+| * | 5b0a3a6c1b Add .editorconfig.
+| * | 8831cef691 Add pgaudit.log_statement setting.
+| * | 28faa197d3 Update copyright end year.
+| * | 94a2ae8c20 Remove PostgreSQL 13 repository used for pre-release testing.
+| * | fd4319f7c8 Improve compile and install instructions.
+| * | 7169e84e1a Remove make check from compile and install section of README.md
+| * | 5096e75f1a Update version in README.md to PostgreSQL 13.
+| * | 33248d2222 Suppress logging for internally generated foreign-key queries.
+| * | 437a537345 Fix "pgaudit stack is not empty" error.
+| * | c07aa8254d Fix misclassification of partitioned tables/indexes.
+| * | 2fcf4f5460 Update copyright end year.
+| * | 7053d0a0f3 Use syscache to get relation namespace/name.
+| * | 387db257f1 Update to PostgreSQL 13.
+| * | e1b2d890a3 Update version, documentation, and tests for PostgreSQL 12.
+| * | 8c76e69de9 Update master to PostgreSQL 12.
+| * | dff82bc137 Update copyright end year.
+| * | 778d9efb35 Update Vagrantfile with new box version and PostgreSQL repository.
+| * | b1d81db598 Add new logging class MISC_SET.
+| * | 4dab520da7 Add SET to documented list of commands in the MISC class.
+| * | 142f4e9460 Document that <none> or <not logged> may be logged in audit entries.
+| * | 94cad8c8cb Add [%p] to suggested log_line_prefix.
+| * | 9fd8f04b22 Remove extraneous escapes in log prefix example.
+| * | 330c2177c8 Add ALL to the list of logging classes.
+| * | 1f65fe9c98 Fix DO example syntax.
+| * | b2040b6e6c Deep copy queryDesc->params into the audit stack.
+* | | a0c0bda6b3 [pg15] test: fix shell tests failing on query id
+| |/
+|/|
+* |   2349d7c2df [pg15] merge: pgaudit tag '1.3.2' into pg15
+|\ \
+| * \   329515ec61 Merge pg15 into pgaudit tag '1.3.2'
+| |\ \
+| |/ /
+|/| |
+* | | a4cd9c7136 [pg15] test: fix output order issue in yb_pg15
+```
+
+### Historical attempts using subtree split
+
+TODO
 
 ## Types of merges
 
