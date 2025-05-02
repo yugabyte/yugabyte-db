@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
@@ -934,6 +935,31 @@ Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {
 void XClusterManager::UnRegisterMonitoredTask(server::MonitoredTaskPtr task) {
   std::lock_guard l(monitored_tasks_mutex_);
   monitored_tasks_.erase(task);
+}
+
+Status XClusterManager::ValidateCreateTableRequest(const CreateTableRequestPB& req) {
+  TableId table_id;
+  std::string error_str;
+  if (!req.old_rewrite_table_id().empty()) {
+    table_id = req.old_rewrite_table_id();
+    error_str = "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.";
+  } else if (IsIndex(req) && req.skip_index_backfill()) {
+    table_id = req.indexed_table_id();
+    error_str =
+        "Cannot create nonconcurrent index on a table that is a part of non-automatic mode "
+        "XCluster replication.";
+  } else {
+    return Status::OK();
+  }
+
+  const auto namespace_id =
+      VERIFY_RESULT(catalog_manager_.GetTableById(table_id))->LockForRead()->namespace_id();
+
+  SCHECK(
+      !IsTableReplicated(table_id), NotSupported,
+      error_str);
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

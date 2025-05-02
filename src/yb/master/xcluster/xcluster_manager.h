@@ -280,6 +280,8 @@ class XClusterManager : public XClusterManagerIf,
   Status RegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
   void UnRegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
 
+  Status ValidateCreateTableRequest(const CreateTableRequestPB& req);
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
