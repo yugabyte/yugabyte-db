@@ -243,79 +243,99 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 	text *tsp_options_json = cstring_to_text((const char *)
 								(spc->opts.yb_opts + 1));
 
-	text *placement_array = json_get_value(tsp_options_json,
-											"placement_blocks");
-	const int length = get_json_array_length(placement_array);
-
-	static char *cloudKey = "cloud";
-	static char *regionKey = "region";
-	static char *zoneKey = "zone";
-	static char *leaderPrefKey = "leader_preference";
-
+	text	   *placement_array = json_get_value(tsp_options_json,
+												 "placement_blocks");
 	GeolocationDistance farthest = ZONE_LOCAL;
-	bool leader_pref_exists = false;
-
-	for (size_t i = 0; i < length; i++)
+	if (placement_array != NULL)
 	{
-		text *json_element = get_json_array_element(placement_array, i);
-		text *pref = json_get_denormalized_value(json_element, leaderPrefKey);
-		bool preferred = (pref != NULL) && (atoi(text_to_cstring(pref)) == 1);
+		const int	length = get_json_array_length(placement_array);
 
-		/*
-		 * YB: If we've seen a preferred placement,
-		 * skip all non-preferred ones.
-		 */
-		if (!preferred && leader_pref_exists)
-			continue;
+		static char *cloudKey = "cloud";
+		static char *regionKey = "region";
+		static char *zoneKey = "zone";
+		static char *leaderPrefKey = "leader_preference";
 
-		GeolocationDistance current_dist;
-		const char *tsp_cloud = text_to_cstring(
-			json_get_denormalized_value(json_element, cloudKey));
-		const char *tsp_region = text_to_cstring(
-			json_get_denormalized_value(json_element, regionKey));
-		const char *tsp_zone = text_to_cstring(
-			json_get_denormalized_value(json_element, zoneKey));
+		bool		leader_pref_exists = false;
 
-
-		/* are the current cloud and the given cloud the same */
-		if (strcmp(tsp_cloud, current_cloud) == 0)
+		for (size_t i = 0; i < length; i++)
 		{
-			/* are the current region and the given region the same */
-			if (strcmp(tsp_region, current_region) == 0)
+			text	   *json_element = get_json_array_element(placement_array, i);
+			text	   *pref = json_get_denormalized_value(json_element, leaderPrefKey);
+			bool		preferred = (pref != NULL) && (atoi(text_to_cstring(pref)) == 1);
+
+			/*
+			 * YB: If we've seen a preferred placement,
+			 * skip all non-preferred ones.
+			 */
+			if (!preferred && leader_pref_exists)
+				continue;
+
+			GeolocationDistance current_dist;
+
+			const text *tsp_cloud_text = json_get_denormalized_value(json_element,
+				cloudKey);
+			const char *tsp_cloud = (tsp_cloud_text != NULL) ?
+				text_to_cstring(tsp_cloud_text) : NULL;
+
+			const text *tsp_region_text = json_get_denormalized_value(json_element,
+				regionKey);
+			const char *tsp_region = (tsp_region_text != NULL) ?
+				text_to_cstring(tsp_region_text) : NULL;
+
+			const text *tsp_zone_text = json_get_denormalized_value(json_element,
+				zoneKey);
+			const char *tsp_zone = (tsp_zone_text != NULL) ?
+				text_to_cstring(tsp_zone_text) : NULL;
+
+			/* The region/zone values may be set to the wildcard value '*' */
+			/* In this case, it is not considered as matching any of existing  */
+			/* region/zone values because the actual value may change over time */
+			/* E.g. 'cloud.region.*' will be treated as REGION_LOCAL to cloud.region.zone */
+			/* even if the current placement zone is indeed zone. */
+			if (tsp_cloud != NULL && strcmp(tsp_cloud, current_cloud) == 0)
 			{
-				/* are the current cloud and the given zone the same */
-				if (strcmp(tsp_zone, current_zone) == 0)
+				/* are the current region and the given region the same */
+				if (tsp_region != NULL && strcmp(tsp_region, current_region) == 0)
 				{
-					current_dist = ZONE_LOCAL;
+					/* are the current cloud and the given zone the same */
+					if (tsp_zone != NULL && strcmp(tsp_zone, current_zone) == 0)
+					{
+						current_dist = ZONE_LOCAL;
+					}
+					else
+					{
+						current_dist = REGION_LOCAL;
+					}
 				}
 				else
 				{
-					current_dist = REGION_LOCAL;
+					current_dist = CLOUD_LOCAL;
 				}
 			}
 			else
 			{
-				current_dist = CLOUD_LOCAL;
+				current_dist = INTER_CLOUD;
+			}
+
+			/*
+			 * YB: If this is the first preferred placement we find,
+			 * disregard all previous placements.
+			 */
+			if (preferred && !leader_pref_exists)
+			{
+				leader_pref_exists = true;
+				farthest = current_dist;
+			}
+			else
+			{
+				farthest = current_dist > farthest ? current_dist : farthest;
 			}
 		}
-		else
-		{
-			current_dist = INTER_CLOUD;
-		}
-
-		/*
-		 * YB: If this is the first preferred placement we find,
-		 * disregard all previous placements.
-		 */
-		if (preferred && !leader_pref_exists)
-		{
-			leader_pref_exists = true;
-			farthest = current_dist;
-		}
-		else
-		{
-			farthest = current_dist > farthest ? current_dist : farthest;
-		}
+	}
+	else
+	{
+		/* No placement blocks so the tablets could go anywhere */
+		farthest = UNKNOWN_DISTANCE;
 	}
 	MemoryContextSwitchTo(oldContext);
 	MemoryContextDelete(tablespaceDistanceContext);

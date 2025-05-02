@@ -58,6 +58,7 @@
 #include "yb/common/json_util.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
@@ -2073,10 +2074,17 @@ Status ClusterAdminClient::FillPlacementInfo(
   placement_info_pb->clear_placement_blocks();
 
   std::vector<std::string> placement_info_splits = strings::Split(
-      placement_str, ",", strings::AllowEmpty());
+      placement_str, ",");
+  // It is possible that placement_info_splits is empty, that is ok.
+  // It just means we have no placement constraints on the total num replicas.
 
   std::unordered_map<std::string, int> placement_to_min_replicas;
   for (auto& placement_info_split : placement_info_splits) {
+    StripWhiteSpace(&placement_info_split);
+    if (placement_info_split.empty()) {
+      continue;
+    }
+
     std::vector<std::string> placement_block_split =
         strings::Split(placement_info_split, ":", strings::AllowEmpty());
 
@@ -2098,15 +2106,37 @@ Status ClusterAdminClient::FillPlacementInfo(
     std::vector<std::string> blocks = strings::Split(placement_block, ".",
                                                     strings::AllowEmpty());
     auto* pb = placement_info_pb->add_placement_blocks();
-    if (blocks.size() > 0 && !blocks[0].empty()) {
-      pb->mutable_cloud_info()->set_placement_cloud(blocks[0]);
+
+    const std::string kDeprecationWarning = yb::Format(
+      "All fields cloud/region/zone of the placement should be specified. "
+      "To indicate that any region/zone is acceptable, use the wildcard "
+      "placement $0. Omitting region/zone fields to indicate wildcard "
+      "placement is deprecated and will not be supported in the future.",
+      TablespaceParser::kWildcardPlacement
+    );
+
+    LOG_IF(WARNING, blocks.size() < 3) << kDeprecationWarning;
+
+    if (blocks.empty() || blocks[0].empty() || blocks[0] == TablespaceParser::kWildcardPlacement) {
+        return STATUS(InvalidCommand,
+        "Cloud placement cannot be empty or wildcard. "
+        "Invalid placement block: " + placement_block);
     }
 
-    if (blocks.size() > 1 && !blocks[1].empty()) {
+    pb->mutable_cloud_info()->set_placement_cloud(blocks[0]);
+
+    if (blocks.size() <= 1 || blocks[1].empty() ||
+          blocks.size() <= 2 || blocks[2].empty()) {
+      LOG(WARNING) << kDeprecationWarning << ". Placement block: " << placement_block;
+    }
+
+    if (blocks.size() > 1 && !blocks[1].empty() &&
+          blocks[1] != TablespaceParser::kWildcardPlacement ) {
       pb->mutable_cloud_info()->set_placement_region(blocks[1]);
     }
 
-    if (blocks.size() > 2 && !blocks[2].empty()) {
+    if (blocks.size() > 2 && !blocks[2].empty() &&
+          blocks[2] != TablespaceParser::kWildcardPlacement) {
       pb->mutable_cloud_info()->set_placement_zone(blocks[2]);
     }
 
