@@ -14,6 +14,7 @@ import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.Rota
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -119,11 +120,13 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       }
 
       if (universe.isYbcEnabled()) {
-        createStartYbcTasks(tserverNodeList)
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        List<NodeDetails> nodesList =
+            Sets.union(new HashSet<>(tserverNodeList), new HashSet<>(masterNodeList)).stream()
+                .collect(Collectors.toList());
+        createStartYbcTasks(nodesList).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Wait for yb-controller to be responsive on each node.
-        createWaitForYbcServerTask(new HashSet<>(tserverNodeList))
+        createWaitForYbcServerTask(new HashSet<>(nodesList))
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
