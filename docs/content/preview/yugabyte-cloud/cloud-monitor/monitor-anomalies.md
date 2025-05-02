@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Use Anomalies to monitor your cluster for anomalies in performance - whether with the database or applications.
+Use Anomalies to monitor your cluster for performance anomalies - whether with the database or applications.
 
 Anomalies is only available for clusters running v2024.2 and later.
 
@@ -126,7 +126,7 @@ Solutions:
 
 #### Uneven IO
 
-The read and write distribution is is unbalanced across the nodes. Triggered when a node has >10% skew in read/write ops or query activity.
+The read and write distribution is unbalanced across the nodes. Triggered when a node has >10% skew in read/write ops or query activity.
 
 Often caused by hash distribution issues or application connection imbalance.
 
@@ -155,17 +155,17 @@ Investigation steps:
 
 #### Catalog Reads
 
-Triggered when >50% of wait time is due to Catalog Read waits.
+Triggered when more than 50% of wait time is due to Catalog Read waits.
 
 Causes:
 
-- High new connection churn (each new connection triggers CatalogReads)
+- High new connection churn (each new connection triggers Catalog Reads)
 - Cache misses on table/index metadata
 
 Solutions:
 
 - Use a connection pool or manager
-- Pre-cache target tables using ysql_catalog_preload_additional_table_list
+- Pre-cache target tables using `ysql_catalog_preload_additional_table_list`
 - Enable prepared statements for repeated queries
 
 #### Locks
