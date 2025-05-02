@@ -414,11 +414,12 @@ Status HandleOperationResponse(uint64_t session_id,
   return status;
 }
 
-Status GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr* table) {
+template <class TableProvider>
+Status GetTable(const TableId& table_id, TableProvider& provider, client::YBTablePtr* table) {
   if (*table && (**table).id() == table_id) {
     return Status::OK();
   }
-  *table = VERIFY_RESULT(cache->Get(table_id));
+  *table = VERIFY_RESULT(provider.Get(table_id));
   return Status::OK();
 }
 
@@ -603,7 +604,7 @@ using VectorIndexQueryPtr = std::shared_ptr<VectorIndexQuery>;
 
 Result<PgClientSessionOperations> PrepareOperations(
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
-    PgTableCache* table_cache, VectorIndexQueryPtr& vector_index_query) {
+    const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query) {
   auto write_time = HybridTime::FromPB(req->write_time());
   PgClientSessionOperations ops;
   ops.reserve(req->ops().size());
@@ -618,7 +619,7 @@ Result<PgClientSessionOperations> PrepareOperations(
   for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
       auto& read = *op.mutable_read();
-      RETURN_NOT_OK(GetTable(read.table_id(), table_cache, &table));
+      RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
       if (read.index_request().has_vector_idx_options()) {
         if (req->ops_size() != 1) {
           auto status = STATUS_FORMAT(
@@ -644,7 +645,7 @@ Result<PgClientSessionOperations> PrepareOperations(
       }
     } else {
       auto& write = *op.mutable_write();
-      RETURN_NOT_OK(GetTable(write.table_id(), table_cache, &table));
+      RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, *sidecars, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
@@ -1233,6 +1234,25 @@ Request ReleaseRequestFor(
   return req;
 }
 
+class SharedMemoryPerformListener : public PgTablesQueryListener {
+ public:
+  SharedMemoryPerformListener() = default;
+
+  Status Wait(CoarseTimePoint deadline) {
+    if (latch_.WaitUntil(deadline)) {
+      return Status::OK();
+    }
+    return STATUS_FORMAT(TimedOut, "Timeout waiting for tables");
+  }
+
+ private:
+  void Ready() override {
+    latch_.CountDown();
+  }
+
+  CountDownLatch latch_{1};
+};
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -1241,7 +1261,7 @@ class PgClientSession::Impl {
       TransactionBuilder&& transaction_builder, std::shared_ptr<PgClientSession> shared_this,
       client::YBClient& client, const PgClientSessionContext& context, uint64_t id,
       uint64_t lease_epoch, LeaseEpochValidator* lease_validator,
-      tserver::TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
+      TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
       : client_(client),
         context_(context),
         shared_this_(std::move(shared_this)),
@@ -1392,7 +1412,7 @@ class PgClientSession::Impl {
 
     if (req.has_replica_identity()) {
       client::YBTablePtr yb_table;
-      RETURN_NOT_OK(GetTable(table_id, &table_cache(), &yb_table));
+      RETURN_NOT_OK(GetTable(table_id, table_cache(), &yb_table));
       auto table_properties = yb_table->schema().table_properties();
       auto replica_identity = VERIFY_RESULT(GetReplicaIdentityEnumValue(
           req.replica_identity().replica_identity()));
@@ -1693,10 +1713,11 @@ class PgClientSession::Impl {
   }
 
   Status Perform(
-      PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+      PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
+      const PgTablesQueryResult& tables) {
     VLOG(5) << "Perform rpc: " << req->ShortDebugString();
     auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache(), req, resp, context);
-    auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context);
+    auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context, tables);
     if (!status.ok()) {
       *context = std::move(data->context);
       return status;
@@ -2111,10 +2132,16 @@ class PgClientSession::Impl {
         wait_state->UpdateAuxInfo({.method = "Perform"});
         ash::SharedMemoryPgPerformTracker().Track(wait_state);
       }
-      status = DoPerform(data, data->deadline, nullptr);
-      if (wait_state) {
-        ash::SharedMemoryPgPerformTracker().Untrack(wait_state);
+      auto listener = std::make_shared<SharedMemoryPerformListener>();
+      boost::container::small_vector<TableId, 4> table_ids;
+      PreparePgTablesQuery(data->req, table_ids);
+      PgTablesQueryResult result;
+      table_cache().GetTables(table_ids, {}, result, listener);
+      status = listener->Wait(data->deadline);
+      if (status.ok()) {
+        status = DoPerform(data, data->deadline, nullptr, result);
       }
+      ash::SharedMemoryPgPerformTracker().Untrack(wait_state);
     }
     if (!status.ok()) {
       StatusToPB(status, data->resp.mutable_status());
@@ -2382,7 +2409,8 @@ class PgClientSession::Impl {
   }
 
   template <class DataPtr>
-  Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context) {
+  Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context,
+                   const PgTablesQueryResult& tables) {
     auto& options = *data->req.mutable_options();
     TryUpdateAshWaitState(options);
     if (!(options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed()) &&
@@ -2400,8 +2428,8 @@ class PgClientSession::Impl {
     }
 
     if (options.has_caching_info()) {
-      VLOG_WITH_PREFIX(3) << "Executing read from response cache for session "
-      << data->req.session_id();
+      VLOG_WITH_PREFIX(3)
+          << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
           options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
       if (!data->cache_setter) {
@@ -2438,7 +2466,7 @@ class PgClientSession::Impl {
     data->subtxn_id = options.active_sub_transaction_id();
 
     data->ops = VERIFY_RESULT(PrepareOperations(
-        &data->req, session, &data->sidecars, &table_cache(), vector_index_query_data_));
+        &data->req, session, &data->sidecars, tables, vector_index_query_data_));
     data->vector_index_query = vector_index_query_data_;
     TracePtr trace(Trace::CurrentTrace());
     session->FlushAsync([this, data, trace](client::FlushStatus* flush_status) {
@@ -3222,8 +3250,9 @@ uint64_t PgClientSession::id() const {
 }
 
 Status PgClientSession::Perform(
-    PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-  return impl_->Perform(req, resp, context);
+    PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
+    const PgTablesQueryResult& tables) {
+  return impl_->Perform(req, resp, context, tables);
 }
 
 void PgClientSession::ProcessSharedRequest(size_t size, SharedExchange* exchange) {
@@ -3276,5 +3305,13 @@ BOOST_PP_SEQ_FOR_EACH(
     PG_CLIENT_SESSION_METHOD_DEFINE, (Status, rpc::RpcContext*), PG_CLIENT_SESSION_METHODS);
 BOOST_PP_SEQ_FOR_EACH(
     PG_CLIENT_SESSION_METHOD_DEFINE, (void, rpc::RpcContext), PG_CLIENT_SESSION_ASYNC_METHODS);
+
+void PreparePgTablesQuery(
+    const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids) {
+  for (const auto& op : req.ops()) {
+    const auto& table_id = op.has_read() ? op.read().table_id() : op.write().table_id();
+    AddTableIdIfMissing(table_id, table_ids);
+  }
+}
 
 }  // namespace yb::tserver

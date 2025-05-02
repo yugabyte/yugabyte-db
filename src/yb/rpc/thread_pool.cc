@@ -267,8 +267,7 @@ class ThreadPool::Impl {
     }
     --share_.num_workers;
 
-    bool added = share_.task_queue.push(task);
-    DCHECK(added); // BasketQueue always succeed.
+    share_.task_queue.Push(task);
     --adding_;
     NotifyWorker(nullptr);
     return true;
