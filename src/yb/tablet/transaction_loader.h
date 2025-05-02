@@ -95,6 +95,7 @@ class TransactionLoader {
   }
 
   Status WaitLoaded(const TransactionId& id);
+  Status WaitLoaded(const TransactionIdSet& txns);
   Status WaitAllLoaded();
 
   std::optional<ApplyStateWithCommitHt> GetPendingApply(const TransactionId& id) const

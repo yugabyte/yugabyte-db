@@ -741,6 +741,7 @@ class TransactionParticipant::Impl
   }
 
   Status Cleanup(TransactionIdSet&& set, TransactionStatusManager* status_manager) {
+    RETURN_NOT_OK(loader_.WaitLoaded(set));
     {
       std::lock_guard lock(mutex_);
       const OpId& cdcsdk_checkpoint_op_id = GetLatestCheckPoint();
