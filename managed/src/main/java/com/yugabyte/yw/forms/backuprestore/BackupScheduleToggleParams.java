@@ -17,6 +17,13 @@ public class BackupScheduleToggleParams {
   @NotNull
   public State status;
 
+  @ApiModelProperty(
+      value =
+          "Run a full or incremental backup if required when resuming a stopped schedule. When"
+              + " false (default), the full backup will instead run at its normally scheduled"
+              + " time.")
+  public boolean runImmediateBackupOnResume = false;
+
   public void verifyScheduleToggle(Schedule.State currentScheduleState) {
     if (currentScheduleState == this.status) {
       throw new PlatformServiceException(

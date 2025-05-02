@@ -2525,6 +2525,10 @@
     },
     "BackupScheduleToggleParams" : {
       "properties" : {
+        "runImmediateBackupOnResume" : {
+          "description" : "Run a full or incremental backup if required when resuming a stopped schedule. When false (default), the full backup will instead run at its normally scheduled time.",
+          "type" : "boolean"
+        },
         "status" : {
           "description" : "State of the schedule",
           "enum" : [ "Deleting", "Error", "Active", "Creating", "Paused", "Stopped", "Editing" ],
@@ -5346,6 +5350,10 @@
           "description" : "TimeUnit for incremental Backup Schedule frequency",
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
           "type" : "string"
+        },
+        "runImmediateBackupOnResume" : {
+          "description" : "Run a full or incremental backup if the schedule is expired when resuming a stopped schedule",
+          "type" : "boolean"
         },
         "status" : {
           "description" : "State of the schedule",

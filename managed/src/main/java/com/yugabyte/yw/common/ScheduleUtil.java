@@ -97,6 +97,10 @@ public class ScheduleUtil {
 
     Date nextScheduleTaskTime = schedule.getNextScheduleTaskTime();
     if (Objects.isNull(nextScheduleTaskTime)) {
+      LOG.debug(
+          "No next schedule increment task time found for schedule {}. Starting in {} from now",
+          schedule.getScheduleUUID(),
+          incrementFrequency);
       long newIncrementScheduleTaskTime = (new Date()).getTime() + incrementFrequency;
       return new Date(newIncrementScheduleTaskTime);
     }
