@@ -696,6 +696,7 @@ class TransactionParticipant::Impl
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
+    VLOG_WITH_PREFIX(2) << "Abort transaction: " << id;
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator_result = LockAndFind(

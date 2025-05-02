@@ -312,6 +312,11 @@ Status PgTxnManager::SetReadOnlyStmt(bool read_only_stmt) {
 }
 
 uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requirement) {
+  VLOG(1) << "txn_priority_requirement: " << txn_priority_requirement
+          << " txn_priority_highpri_lower_bound: " << txn_priority_highpri_lower_bound
+          << " txn_priority_highpri_upper_bound: " << txn_priority_highpri_upper_bound
+          << " txn_priority_regular_lower_bound: " << txn_priority_regular_lower_bound
+          << " txn_priority_regular_upper_bound: " << txn_priority_regular_upper_bound;
   if (txn_priority_requirement == kHighestPriority) {
     return yb::kHighPriTxnUpperBound;
   }
@@ -330,6 +335,8 @@ Status PgTxnManager::CalculateIsolation(
   if (FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction()
                                                        : IsDdlMode()) {
     VLOG_TXN_STATE(2);
+    if (!priority_.has_value())
+      priority_ = NewPriority(txn_priority_requirement);
     return Status::OK();
   }
 
@@ -407,13 +414,13 @@ Status PgTxnManager::CalculateIsolation(
           << "Unexpected DDL state found in plain transaction";
     }
 
-    if (!use_saved_priority_) {
+    if (!use_saved_priority_ && !priority_.has_value()) {
       priority_ = NewPriority(txn_priority_requirement);
     }
     isolation_level_ = docdb_isolation;
 
     VLOG_TXN_STATE(2) << "effective isolation level: " << IsolationLevel_Name(docdb_isolation)
-                      << " priority_: " << priority_
+                      << " priority_: " << (priority_ ? std::to_string(*priority_) : "nullopt")
                       << "; transaction started successfully.";
   }
 
@@ -540,7 +547,7 @@ Status PgTxnManager::FinishPlainTransaction(
 void PgTxnManager::ResetTxnAndSession() {
   txn_in_progress_ = false;
   isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
-  priority_ = 0;
+  priority_ = std::nullopt;
   IncTxnSerialNo();
 
   enable_follower_reads_ = false;
@@ -672,8 +679,8 @@ Status PgTxnManager::SetupPerformOptions(
 
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);
-  } else {
-    options->set_priority(priority_);
+  } else if (priority_) {
+    options->set_priority(*priority_);
   }
   if (need_restart_) {
     options->set_restart_transaction(true);
@@ -719,22 +726,26 @@ Status PgTxnManager::SetupPerformOptions(
 }
 
 double PgTxnManager::GetTransactionPriority() const {
-  if (priority_ <= yb::kRegularTxnUpperBound) {
-    return ToTxnPriority(priority_,
+  if (!priority_.has_value()) {
+    return 0.0;
+  }
+
+  if (*priority_ <= yb::kRegularTxnUpperBound) {
+    return ToTxnPriority(*priority_,
                          yb::kRegularTxnLowerBound,
                          yb::kRegularTxnUpperBound);
   }
 
-  return ToTxnPriority(priority_,
+  return ToTxnPriority(*priority_,
                        yb::kHighPriTxnLowerBound,
                        yb::kHighPriTxnUpperBound);
 }
 
 YbcTxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
-  if (priority_ <= yb::kRegularTxnUpperBound) {
+  if (!priority_.has_value() || (*priority_ <= yb::kRegularTxnUpperBound)) {
     return kLowerPriorityRange;
   }
-  if (priority_ < yb::kHighPriTxnUpperBound) {
+  if (*priority_ < yb::kHighPriTxnUpperBound) {
     return kHigherPriorityRange;
   }
   return kHighestPriority;

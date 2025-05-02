@@ -3394,6 +3394,37 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_use_internal_auto_analyze_service_conn", PGC_USERSET, AUTOVACUUM,
+			gettext_noop("[Internal Only GUC] - Help a backend identify that this is a connection from "
+						 "the internal Auto-Analyze service"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_use_internal_auto_analyze_service_conn,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_force_early_ddl_serialization", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("If object locking is off (i.e., "
+						 "TEST_enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
+						 "conflict error on the catalog version increment at the end after doing all the work. "
+						 "Setting this flag enables a fail-fast strategy by locking the catalog version at the "
+						 "start of DDLs, causing conflict errors to occur before useful work is done. This "
+						 "flag is only applicable without object locking. If object locking is enabled, it "
+						 "ensures that concurrent DDLs block on each other for serialization. Also, this flag "
+						 "is valid only if ysql_enable_db_catalog_version_mode and "
+						 "yb_enable_invalidation_messages are enabled."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_force_early_ddl_serialization,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
