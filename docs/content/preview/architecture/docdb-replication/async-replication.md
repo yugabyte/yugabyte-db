@@ -285,7 +285,20 @@ Limitations specific to each scenario and mode are listed below:
 
 ### Transactional
 
-- No writes are allowed in the target universe.
+- By default, no writes are allowed in the target universe.
+
+  You can allow writes to the target on an exception basis, overriding the default read-only behavior by setting the following YSQL configuration parameter before executing a DML operation:
+
+  ```sql
+  SET yb_non_ddl_txn_for_sys_tables_allowed = true
+  ```
+
+  This is intended strictly for specialized use cases, such as enabling tools like Flyway to update maintenance tables (for example, schema version trackers) on the replica.
+
+  {{< warning title="Important" >}}
+Improper use can compromise replication consistency and lead to data divergence. Use this setting only when absolutely necessary and with a clear understanding of its implications.
+  {{< /warning >}}
+
 - YCQL is not yet supported.
 - In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
 
