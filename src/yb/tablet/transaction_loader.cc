@@ -427,6 +427,17 @@ Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_A
   return load_status_;
 }
 
+Status TransactionLoader::WaitLoaded(const TransactionIdApplyOpIdMap& txns) {
+  if (txns.empty() || RSTATUS_DCHECK_RESULT(Completed())) {
+    return Status::OK();
+  }
+  const auto& max_txn = std::max_element(
+      txns.begin(), txns.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.first < rhs.first;
+      });
+  return WaitLoaded(max_txn->first);
+}
+
 // Disable thread safety analysis because std::unique_lock is used.
 Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
   // WaitAllLoaded is only invoked when opening a tablet.
