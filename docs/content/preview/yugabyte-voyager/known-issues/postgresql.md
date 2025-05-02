@@ -1605,7 +1605,7 @@ SELECT * FROM orders WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) A
 
 ### Redundant indexes
 
-**Description**: Redundant indexes are those that are fully covered by a stronger index, one that includes the same leading key columns in the same order and may also contain additional columns. The presence of such a stronger index makes the redundant one unnecessary, as it serves the same purpose and more. 
+**Description**: A redundant index is an index that duplicates the functionality of another index or is unnecessary because the database can use an existing index to achieve the same result. This happens when multiple indexes cover the same columns or when a subset of columns in one index is already covered by another. 
 
 **Workaround**: Remove the redundant index from the schema.
 
