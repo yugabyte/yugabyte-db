@@ -344,7 +344,17 @@ The example of pgaudit [subtree conversion](#converting-a-squash-embedded-upstre
 
 ### Historical attempts using subtree split
 
-TODO
+When first evaluating different embedding strategies, we decided to go with a manual subtree approach.
+This works by adding a commit that manually moves all of the upstream repository's files under the new prefix.
+That preserves upstream commit hashes and is a lot simpler to reason about.
+
+But after some time, we discovered that it causes excessive merge conflicts, for example on the `.gitignore` between YugabyteDB and the upstream repository.
+So these changes were forcibly erased from the repository history and replaced with real subtrees.
+
+At that point in time, the subtree conversion of squash merged repositories was done using `git subtree split`, which duplicates some YugabyteDB commits.
+Only later was it discovered that there is a way to do the conversion without creating those by duplicate commits using `git merge -s subtree`.
+Unlike before, this time, the old changes were not erased from the repository history and still remain today.
+The latest such change is commit [700f5fb13993201d1ac0652d731a8bfc2eb86331](https://github.com/yugabyte/yugabyte-db/commit/700f5fb13993201d1ac0652d731a8bfc2eb86331).
 
 ## Types of merges
 
