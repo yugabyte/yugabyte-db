@@ -161,7 +161,7 @@ Status CaptureMonitoring(stringstream* output) {
 void GetCategories(stringstream* output) {
   vector<string> groups;
   yb::debug::TraceLog::GetInstance()->GetKnownCategoryGroups(&groups);
-  JsonWriter j(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter j(output, JsonWriter::COMPACT);
   j.StartArray();
   for (const string& g : groups) {
     j.String(g);
@@ -176,7 +176,7 @@ void GetMonitoringStatus(stringstream* output) {
   int options = static_cast<int>(tl->trace_options());
 
   stringstream json_out;
-  JsonWriter j(&json_out, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter j(&json_out, JsonWriter::COMPACT);
   j.StartObject();
 
   j.String("isMonitoring");
