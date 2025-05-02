@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <stdbool.h>  // Needed for bool in C.
 #include <stdint.h>
 
 #ifdef __cplusplus

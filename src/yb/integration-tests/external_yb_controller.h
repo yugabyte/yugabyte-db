@@ -22,15 +22,22 @@
 #include "yb/util/subprocess.h"
 
 namespace yb {
+
+struct ExternalYbControllerOptions {
+  size_t idx;
+  std::string log_dir;
+  std::string tmp_dir;
+  std::string yb_tserver_address;
+  uint16_t server_port;
+  uint16_t yb_master_webserver_port;
+  uint16_t yb_tserver_webserver_port;
+  std::string server_address;
+  std::vector<std::string> extra_flags{};
+};
+
 class ExternalYbController : public RefCountedThreadSafe<ExternalYbController> {
  public:
-  ExternalYbController(
-      const size_t idx, const std::string& log_dir, const std::string& tmp_dir,
-      const std::string& yb_tserver_address, const std::string& yb_admin, const std::string& yb_ctl,
-      const std::string& ycqlsh, const std::string& ysql_dump, const std::string& ysql_dumpall,
-      const std::string& ysqlsh, uint16_t server_port, uint16_t yb_master_webserver_port,
-      uint16_t yb_tserver_webserver_port, const std::string& server_address, const std::string& exe,
-      const std::vector<std::string>& extra_flags);
+  explicit ExternalYbController(const ExternalYbControllerOptions& options);
 
   Status Start();
 
@@ -43,9 +50,9 @@ class ExternalYbController : public RefCountedThreadSafe<ExternalYbController> {
 
   Status Restart();
 
-  std::string GetServerAddress() const { return server_address_; }
+  std::string GetServerAddress() const { return options_.server_address; }
 
-  uint16_t GetServerPort() const { return server_port_; }
+  uint16_t GetServerPort() const { return options_.server_port; }
 
   // Gracefully shutsdown the server.
   // Sends SIGKILL if unsuccessful.
@@ -59,24 +66,10 @@ class ExternalYbController : public RefCountedThreadSafe<ExternalYbController> {
   ~ExternalYbController();
 
  private:
+  const ExternalYbControllerOptions options_;
   std::unique_ptr<Subprocess> process_;
-  const size_t idx_;
-  const std::string exe_;
-  const std::string log_dir_;
-  const std::string tmp_dir_;
-  const std::string server_address_;
-  const std::string yb_tserver_address_;
-  const std::string yb_admin_;
-  const std::string yb_ctl_;
-  const std::string ycqlsh_;
-  const std::string ysql_dump_;
-  const std::string ysql_dumpall_;
-  const std::string ysqlsh_;
-  const uint16_t server_port_;
-  const uint16_t yb_master_webserver_port_;
-  const uint16_t yb_tserver_webserver_port_;
-  const std::vector<std::string> extra_flags_;
 
-  std::unique_ptr<ExternalDaemon::LogTailerThread> stdout_tailer_thread_, stderr_tailer_thread_;
+  std::unique_ptr<ExternalDaemon::LogTailerThread> stdout_tailer_thread_;
+  std::unique_ptr<ExternalDaemon::LogTailerThread> stderr_tailer_thread_;
 };
 }  // namespace yb

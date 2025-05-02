@@ -18,45 +18,62 @@
 
 #include "postgres.h"
 
-#include "access/xact.h"
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
 #include "executor/spi.h"
 #include "extension_util.h"
 #include "json_util.h"
 #include "nodes/pg_list.h"
-#include "pg_yb_utils.h"
 #include "source_ddl_end_handler.h"
+#include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
 
 PG_MODULE_MAGIC;
 
-/* Extension variables. */
-typedef enum YbClusterReplicationRole
+
+/*
+ * Extension variables.
+ */
+
+static bool enable_manual_ddl_replication = false;
+char *ddl_queue_primary_key_ddl_end_time = NULL;
+char *ddl_queue_primary_key_queue_id = NULL;
+
+typedef enum YbXClusterReplicationRole
 {
-	REPLICATION_ROLE_DISABLED,
-	REPLICATION_ROLE_SOURCE,
-	REPLICATION_ROLE_TARGET,
-	REPLICATION_ROLE_BIDIRECTIONAL,
-} YbClusterReplicationRole;
+	/*
+	 * Taken from XClusterNamespaceInfoPB.XClusterRole in
+	 * yb/common/common_types.proto.
+	 */
+	UNSPECIFIED = 0,
+	UNAVAILABLE = 1,
+	NOT_AUTOMATIC_MODE = 2,
+	AUTOMATIC_SOURCE = 3,
+	AUTOMATIC_TARGET = 4,
+} YbXClusterReplicationRole;
 
-static const struct config_enum_entry replication_roles[] = {
-	{"DISABLED", REPLICATION_ROLE_DISABLED, false},
-	{"SOURCE", REPLICATION_ROLE_SOURCE, false},
-	{"TARGET", REPLICATION_ROLE_TARGET, false},
-	{"BIDIRECTIONAL", REPLICATION_ROLE_BIDIRECTIONAL, /* hidden */ true},
-	{NULL, 0, false},
-};
+/*
+ * Call FetchReplicationRole() at the start of every DDL to fill this variable
+ * in before using it.
+ */
+static int replication_role = UNAVAILABLE;
+static bool role_override_present = false;
+/*
+ * If role_override_present, then this overrides the value of replication_role
+ * fetched from the TServer.
+ */
+static int replication_role_override = UNSPECIFIED;
 
-static int	ReplicationRole = REPLICATION_ROLE_DISABLED;
-static bool EnableManualDDLReplication = false;
-char	   *DDLQueuePrimaryKeyDDLEndTime = NULL;
-char	   *DDLQueuePrimaryKeyQueryId = NULL;
+/*
+ * Util functions.
+ */
 
-/* Util functions. */
 static bool IsInIgnoreList(EventTriggerData *trig_data);
 
-/* Per DDL Variables. */
+
+/*
+ * Per DDL Variables.
+ */
 
 /*
  * This is updated as the DDL triggers run, ending up with the decision of
@@ -65,6 +82,7 @@ static bool IsInIgnoreList(EventTriggerData *trig_data);
  * Once this becomes true, it remains true for the rest of the DDL.
  */
 static bool yb_should_replicate_ddl = false;
+
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -75,23 +93,12 @@ _PG_init(void)
 	if (IsBinaryUpgrade)
 		return;
 
-	DefineCustomEnumVariable("yb_xcluster_ddl_replication.replication_role",
-							 gettext_noop("xCluster Replication role per database. "
-										  "NOTE: Manually changing this can lead to replication errors."),
-							 NULL,
-							 &ReplicationRole,
-							 REPLICATION_ROLE_DISABLED,
-							 replication_roles,
-							 PGC_SUSET,
-							 0,
-							 NULL, NULL, NULL);
-
 	DefineCustomBoolVariable("yb_xcluster_ddl_replication.enable_manual_ddl_replication",
 							 gettext_noop("Temporarily disable automatic xCluster DDL replication - DDLs will have "
 										  "to be manually executed on the target."),
 							 gettext_noop("DDL strings will still be captured and replicated, but will be marked "
 										  "with a 'manual_replication' flag."),
-							 &EnableManualDDLReplication,
+							 &enable_manual_ddl_replication,
 							 false,
 							 PGC_USERSET,
 							 0,
@@ -100,7 +107,7 @@ _PG_init(void)
 	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_ddl_end_time",
 							   gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
 							   NULL,
-							   &DDLQueuePrimaryKeyDDLEndTime,
+							   &ddl_queue_primary_key_ddl_end_time,
 							   "",
 							   PGC_SUSET,
 							   0,
@@ -109,25 +116,111 @@ _PG_init(void)
 	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_query_id",
 							   gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
 							   NULL,
-							   &DDLQueuePrimaryKeyQueryId,
+							   &ddl_queue_primary_key_queue_id,
 							   "",
 							   PGC_SUSET,
 							   0,
 							   NULL, NULL, NULL);
 }
 
+void
+FetchReplicationRole()
+{
+	if (role_override_present)
+		replication_role = replication_role_override;
+	else
+		replication_role = YBCGetXClusterRole(MyDatabaseId);
+
+	if (replication_role == UNAVAILABLE)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_YB_ERROR),
+				 errmsg("unable to fetch replication role")));
+	}
+}
+
+bool
+IsDisabled()
+{
+	return (replication_role != AUTOMATIC_SOURCE &&
+			replication_role != AUTOMATIC_TARGET);
+}
+
 bool
 IsReplicationSource()
 {
-	return (ReplicationRole == REPLICATION_ROLE_SOURCE ||
-			ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL);
+	return (replication_role == AUTOMATIC_SOURCE);
 }
 
 bool
 IsReplicationTarget()
 {
-	return (ReplicationRole == REPLICATION_ROLE_TARGET ||
-			ReplicationRole == REPLICATION_ROLE_BIDIRECTIONAL);
+	return (replication_role == AUTOMATIC_TARGET);
+}
+
+PG_FUNCTION_INFO_V1(get_replication_role);
+Datum
+get_replication_role(PG_FUNCTION_ARGS)
+{
+	FetchReplicationRole();
+	char *role_name;
+	switch (replication_role)
+	{
+		case UNSPECIFIED:
+			role_name = "unspecified";
+			break;
+		case UNAVAILABLE:
+			role_name = "unavailable";
+			break;
+		case NOT_AUTOMATIC_MODE:
+			role_name = "not_automatic_mode";
+			break;
+		case AUTOMATIC_SOURCE:
+			role_name = "source";
+			break;
+		case AUTOMATIC_TARGET:
+			role_name = "target";
+			break;
+		default:
+			role_name = "unknown";
+			break;
+	}
+	PG_RETURN_TEXT_P(cstring_to_text(role_name));
+}
+
+PG_FUNCTION_INFO_V1(TEST_override_replication_role);
+Datum
+TEST_override_replication_role(PG_FUNCTION_ARGS)
+{
+	text       *role_text = PG_GETARG_TEXT_PP(0);
+	char       *role_name = text_to_cstring(role_text);
+
+	if (pg_strcasecmp(role_name, "no_override") == 0 ||
+		pg_strcasecmp(role_name, "") == 0)
+	{
+		role_override_present = false;
+		PG_RETURN_VOID();
+	}
+
+	if (pg_strcasecmp(role_name, "unspecified") == 0)
+		replication_role_override = UNSPECIFIED;
+	else if (pg_strcasecmp(role_name, "unavailable") == 0)
+		replication_role_override = UNAVAILABLE;
+	else if (pg_strcasecmp(role_name, "not_automatic_mode") == 0)
+		replication_role_override = NOT_AUTOMATIC_MODE;
+	else if (pg_strcasecmp(role_name, "source") == 0 ||
+			 pg_strcasecmp(role_name, "automatic_source") == 0)
+		replication_role_override = AUTOMATIC_SOURCE;
+	else if (pg_strcasecmp(role_name, "target") == 0 ||
+			 pg_strcasecmp(role_name, "automatic_target") == 0)
+		replication_role_override = AUTOMATIC_TARGET;
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid replication role: '%s'", role_name)));
+
+	role_override_present = true;
+	PG_RETURN_VOID();
 }
 
 void
@@ -319,7 +412,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	if (cur_schema)
 		(void) AddStringJsonEntry(state, "schema", cur_schema);
 
-	if (EnableManualDDLReplication)
+	if (enable_manual_ddl_replication)
 	{
 		(void) AddBoolJsonEntry(state, "manual_replication", true);
 	}
@@ -352,19 +445,16 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 
 		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
 
-		if (ReplicationRole == REPLICATION_ROLE_SOURCE)
-		{
-			/*
-			 * Also insert into the replicated_ddls table to handle switchovers.
-			 *
-			 * During switchover, we have a middle state with A target <-> B target.
-			 * In this state, A is polling from B, and so ddl_queue on A could try to
-			 * process its ddl_queue entries. But since we write to replicated_ddls on
-			 * A, the ddl_queue handler will see that all DDLs in the queue have been
-			 * processed.
-			 */
-			InsertIntoReplicatedDDLs(epoch_time, query_id);
-		}
+		/*
+		 * Also insert into the replicated_ddls table to handle switchovers.
+		 *
+		 * During switchover, we have a middle state with A target <-> B
+		 * target.  In this state, A is polling from B, and so ddl_queue on A
+		 * could try to process its ddl_queue entries. But since we write to
+		 * replicated_ddls on A, the ddl_queue handler will see that all DDLs
+		 * in the queue have been processed.
+		 */
+		InsertIntoReplicatedDDLs(epoch_time, query_id);
 	}
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
@@ -374,15 +464,15 @@ void
 HandleTargetDDLEnd(EventTriggerData *trig_data)
 {
 	/* Manual DDLs are not captured at all on the target. */
-	if (EnableManualDDLReplication)
+	if (enable_manual_ddl_replication)
 		return;
 	/*
 	 * We expect ddl_queue_primary_key_* variables to have been set earlier in
 	 * the transaction by the ddl_queue handler.
 	 */
-	int64		pkey_ddl_end_time = GetInt64FromVariable(DDLQueuePrimaryKeyDDLEndTime,
+	int64		pkey_ddl_end_time = GetInt64FromVariable(ddl_queue_primary_key_ddl_end_time,
 															 "ddl_queue_primary_key_ddl_end_time");
-	int64		pkey_query_id = GetInt64FromVariable(DDLQueuePrimaryKeyQueryId,
+	int64		pkey_query_id = GetInt64FromVariable(ddl_queue_primary_key_queue_id,
 													 "ddl_queue_primary_key_query_id");
 
 	InsertIntoReplicatedDDLs(pkey_ddl_end_time, pkey_query_id);
@@ -391,7 +481,7 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 void
 HandleSourceSQLDrop(EventTriggerData *trig_data)
 {
-	if (EnableManualDDLReplication)
+	if (enable_manual_ddl_replication)
 		return;
 
 	/* Create memory context for handling query execution. */
@@ -410,7 +500,7 @@ HandleSourceSQLDrop(EventTriggerData *trig_data)
 void
 HandleSourceTableRewrite(EventTriggerData *trig_data)
 {
-	if (EnableManualDDLReplication)
+	if (enable_manual_ddl_replication)
 		return;
 
 	/* Create memory context for handling query execution. */
@@ -431,7 +521,7 @@ HandleSourceDDLStart(EventTriggerData *trig_data)
 {
 	/* By default we don't replicate. */
 	yb_should_replicate_ddl = false;
-	if (EnableManualDDLReplication)
+	if (enable_manual_ddl_replication)
 	{
 		/*
 		 * Always replicate manual DDLs regardless of what they are.
@@ -455,7 +545,8 @@ handle_ddl_start(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+	FetchReplicationRole();
+	if (IsDisabled())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
@@ -478,7 +569,7 @@ handle_ddl_end(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+	if (IsDisabled())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
@@ -512,7 +603,7 @@ handle_sql_drop(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+	if (IsDisabled())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
@@ -537,7 +628,7 @@ handle_table_rewrite(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (ReplicationRole == REPLICATION_ROLE_DISABLED)
+	if (IsDisabled())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;

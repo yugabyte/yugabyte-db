@@ -22,9 +22,6 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/casts.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -189,6 +186,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     // Wait states related to YBClient
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
+    (kYBClient_WaitingOnMaster)
 );
 
 // We also want to track background operations such as, log-append
@@ -270,6 +268,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kImportTxnSnapshot)
   (kClearExportedTxnSnapshots)
   (kPollVectorIndexReady)
+  (kGetXClusterRole)
 );
 
 struct WaitStatesDescription {
@@ -462,6 +461,13 @@ class WaitStateInfo {
   }
 
   template <class PB>
+  static void CurrentMetadataToPB(PB* pb) {
+    if (const auto& wait_state = CurrentWaitState()) {
+      wait_state->MetadataToPB(pb);
+    }
+  }
+
+  template <class PB>
   void ToPB(PB* pb, bool export_wait_state_names) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
@@ -486,7 +492,7 @@ class WaitStateInfo {
   }
 
   virtual void VTrace(int level, GStringPiece data) {
-    VTraceTo(nullptr, level, data);
+    VTraceTo(/*trace=*/nullptr, level, data);
   }
 
   virtual std::string DumpTraceToString() {

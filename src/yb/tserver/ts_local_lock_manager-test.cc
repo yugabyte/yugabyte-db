@@ -313,10 +313,10 @@ TEST_F(TSLocalLockManagerTest, TestLockAgainstDifferentDbsDontConflict) {
 TEST_F(TSLocalLockManagerTest, TestDowngradeDespiteExclusiveLockWaiter) {
   for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
     auto lock_type_1 = TableLockType(l1);
-    const auto& entries1 = docdb::GetEntriesForLockType(lock_type_1);
+    auto entries1 = docdb::GetEntriesForLockType(lock_type_1);
     for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
       auto lock_type_2 = TableLockType(l2);
-      const auto& entries2 = docdb::GetEntriesForLockType(lock_type_2);
+      auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
       const auto is_conflicting = ASSERT_RESULT(
           docdb::DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
 

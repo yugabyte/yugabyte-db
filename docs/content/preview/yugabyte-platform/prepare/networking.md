@@ -12,6 +12,11 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Port Requirements" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../reference/configuration/default-ports/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+{{< /page-finder/head >}}
+
 YugabyteDB Anywhere (YBA) needs to be able to access nodes that will be used to create universes, and the nodes that make up universes need to be accessible to each other and to applications.
 
 ## Global port requirements
@@ -53,6 +58,8 @@ sudo firewall-cmd --reload
 ### Networking for xCluster
 
 When two database clusters are connected via [xCluster replication](../../manage-deployments/xcluster-replication/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters. If nodes use DNS addresses, those addresses must be resolvable on all nodes.
+
+In addition, YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
 
 ### Overriding default port assignments
 

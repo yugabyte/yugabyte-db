@@ -127,6 +127,7 @@ Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port, size_t 
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  cluster_->SetYsqlHostport(pg_host_port());
 
   return pg_process_conf;
 }

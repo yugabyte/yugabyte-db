@@ -274,6 +274,12 @@ DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
     "Fail setting retention barrier on newly created tablets");
 
+DEFINE_test_flag(uint32, pg_clone_schema_delay_ms, 0,
+    "Delay before processing PgCloneSchema request.");
+
+DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
+    "Used in tests to pause FlushTablet RPC for the specified number of milliseconds");
+
 #if defined ADDRESS_SANITIZER
 // ASAN tests run on machines with limited disk space, so disable disk full checks.
 constexpr bool kRejectWritesWhenDiskFullDefault = false;
@@ -1271,6 +1277,10 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
 
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+  }
+
   if (req->state().status() == TransactionStatus::CREATED &&
       RandomActWithProbability(TEST_delay_create_transaction_probability)) {
     std::this_thread::sleep_for(
@@ -1404,6 +1414,10 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
                                          AbortTransactionResponsePB* resp,
                                          rpc::RpcContext context) {
   TRACE("AbortTransaction");
+
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+  }
 
   UpdateClock(*req, server_->Clock());
 
@@ -1959,6 +1973,13 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     return;
   }
 
+  if (FLAGS_TEST_pause_tablet_compact_flush_ms) {
+    const auto pause_ms = FLAGS_TEST_pause_tablet_compact_flush_ms;
+    LOG_WITH_FUNC(INFO) << "Pausing flush tablets request for " << pause_ms << " ms";
+    SleepFor(MonoDelta::FromMilliseconds(pause_ms));
+    LOG_WITH_FUNC(INFO) << "Resuming flush tablets request";
+  }
+
   if (!req->all_tablets() && req->tablet_ids_size() == 0) {
     const Status s = STATUS(InvalidArgument, "No tablet ids");
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
@@ -2142,6 +2163,7 @@ void TabletServiceAdminImpl::CloneTablet(
   }
   PerformAtLeader(req, resp, &context, server_, "CloneTablet",
       [req, resp, &context, this](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+    LOG_WITH_FUNC(INFO) << "CloneTablet, req: " << AsString(*req);
     const auto consensus_result = leader_tablet_peer.peer->GetConsensus();
     if (!consensus_result) {
       return consensus_result.status().CloneAndAddErrorCode(
@@ -2176,7 +2198,9 @@ Result<HostPort> TabletServiceAdminImpl::GetLocalPgHostPort() {
 
 void TabletServiceAdminImpl::ClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp, rpc::RpcContext context) {
+  LOG_WITH_FUNC(INFO) << "req: " << AsString(*req);
   auto status = DoClonePgSchema(req, resp);
+  LOG_WITH_FUNC(INFO) << "resp: " << AsString(*resp) << ", status: " << status;
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
   } else {
@@ -2186,6 +2210,8 @@ void TabletServiceAdminImpl::ClonePgSchema(
 
 Status TabletServiceAdminImpl::DoClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp) {
+  AtomicFlagSleepMs(&FLAGS_TEST_pg_clone_schema_delay_ms);
+
   // Run ysql_dump to generate the schema of the clone database as of restore time.
   const std::string& target_db_name = req->target_db_name();
 
@@ -2549,9 +2575,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_ash_metadata()) {
-    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
   }
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
@@ -2584,9 +2609,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_ash_metadata()) {
-    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
   }
   PerformRead(server_, this, req, resp, std::move(context));
 }
@@ -3059,7 +3083,9 @@ void TabletServiceImpl::Publish(
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
                                     rpc::RpcContext context) {
-  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers(
+      /*tablet_ptrs=*/ nullptr,
+      UserTabletsOnly(req->include_user_tablets_only()));
   RepeatedPtrField<StatusAndSchemaPB>* peer_status = resp->mutable_status_and_schema();
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();

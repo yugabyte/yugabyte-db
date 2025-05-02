@@ -1223,7 +1223,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         log.debug("Persisting gflags checksum");
       }
     }
-    getRunnableTask().setTaskParams(Json.toJson(taskParams()));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
   }
 
   private void createCheckNodeSafeToDeleteTasks(

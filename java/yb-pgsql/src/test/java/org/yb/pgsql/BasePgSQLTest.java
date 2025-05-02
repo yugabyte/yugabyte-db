@@ -75,8 +75,6 @@ import org.yb.util.BuildTypeUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
 import org.yb.util.SystemUtil;
 import org.yb.util.ThrowingRunnable;
-import org.yb.util.YBBackupException;
-import org.yb.util.YBBackupUtil;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -187,6 +185,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "Skipping this test with Connection Manager enabled. Connection Manager replays session " +
         "variables at the beginning of transaction boundaries, causing erroneous results in " +
         "the test, leading to failure.";
+
+  protected static final String GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT =
+      "Skipping this test with Connection Manager enabled. Connection Manager replays " +
+        "session variables at the transaction boundaries, which causes an extra statement to " +
+        "appear in stats or monitoring/observability methods. Since the client is unaware of " +
+        "this  statement, the test fails.";
+
+  protected static final String DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY =
+      "Skipping this test with Connection Manager enabled. In pg_stat_activity table, the " +
+        "backend type column shows 'yb-conn-mgr worker connection' instead of 'client-backend'." +
+        "Additionally, there is no guarantee that each logical connection will create a unique " +
+        "backend with Connection Manager, so the expected number of rows in the table may not " +
+        "match the number of connections created. Furthermore, the query column in the table " +
+        "typically displays a RESET ALL statement if the backend is used to execute any query " +
+        "with Connection Manager. Since this test heavily relies on the output of " +
+        "pg_stat_activity, we are skipping it.";
 
   protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
       "Skipping this test with Connection Manager enabled. The connections may not be in the " +
@@ -375,13 +389,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
         warmupMode.toString().toLowerCase());
     }
-  }
-
-  @Before
-  public void initYBBackupUtil() throws Exception {
-    YBBackupUtil.setMasterAddresses(masterAddresses);
-    YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
-    YBBackupUtil.maybeStartYbControllers(miniCluster);
   }
 
   @Before
@@ -965,13 +972,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getServerMetric(getTSMetricSources(), metricName);
   }
 
-  protected List<String> getTabletsForTable(
+  protected List<String> getTabletsForYsqlTable(
     String database, String tableName) throws Exception {
-    try {
-      return YBBackupUtil.getTabletsForTable("ysql." + database, tableName);
-    } catch (YBBackupException e) {
-      return new ArrayList<>();
-    }
+    return BaseMiniClusterTest.getTabletsForTable("ysql." + database, tableName);
   }
 
   protected String getOwnerForTable(Statement stmt, String tableName) throws Exception {

@@ -249,6 +249,12 @@ extern long *YbGetCatCacheIdMisses();
 extern long *YbGetCatCacheTableMisses();
 extern long YbGetCatCacheRefreshes();
 extern long YbGetCatCacheDeltaRefreshes();
+extern long YbGetHintCacheRefreshes();
+extern long YbGetHintCacheHits();
+extern long YbGetHintCacheMisses();
+extern void YbIncrementHintCacheRefreshes();
+extern void YbIncrementHintCacheHits();
+extern void YbIncrementHintCacheMisses();
 
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);

@@ -293,6 +293,7 @@ public class CloudBootstrap extends CloudTaskBase {
   public void run() {
     Provider p = Provider.getOrBadRequest(taskParams().providerUUID);
     p.setUsabilityState(Provider.UsabilityState.UPDATING);
+    p.setUpdateSource(Provider.UpdateSource.USER);
     p.save();
     Common.CloudType cloudType = Common.CloudType.valueOf(p.getCode());
     try {

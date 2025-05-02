@@ -590,6 +590,11 @@ Status ObjectLockLoader::Visit(const std::string& host_uuid, const SysObjectLock
     info->Load(pb);
     catalog_manager_->object_lock_info_manager_->UpdateObjectLocks(host_uuid, info);
   }
+  state_->AddPostLoadTask(
+      std::bind(
+          &ObjectLockInfoManager::RelaunchInProgressRequests,
+          catalog_manager_->object_lock_info_manager_.get(), state_->epoch, host_uuid),
+      yb::Format("Relaunch in-progress ReleaseObjectLock requests for $0", host_uuid));
   LOG(INFO) << "Loaded metadata for type " << info->ToString();
   VLOG(1) << "Metadata for type " << info->ToString() << ": " << pb.ShortDebugString();
   return Status::OK();

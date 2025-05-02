@@ -155,6 +155,7 @@ Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped
   if (start_pg_) {
     RETURN_NOT_OK(start_pg_());
   }
+  RETURN_NOT_OK(server_->StartYSQLLeaseRefresher());
   return Status::OK();
 }
 

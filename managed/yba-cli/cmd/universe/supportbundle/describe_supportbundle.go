@@ -33,7 +33,7 @@ var describeSupportBundleUniverseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, _, err := universeutil.Validations(cmd, util.UpgradeOperation)
+			_, _, err := universeutil.Validations(cmd, util.SupportBundleOperation)
 			if err != nil {
 				logrus.Fatalf(
 					formatter.Colorize(err.Error()+"\n", formatter.RedColor),

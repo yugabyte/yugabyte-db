@@ -1,11 +1,20 @@
 -- Initial test setup.
 CREATE EXTENSION yb_xcluster_ddl_replication;
-ALTER DATABASE :DBNAME SET yb_xcluster_ddl_replication.replication_role = SOURCE;
+
+-- workaround for lack of CREATE ROLE IF NOT EXISTS
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'testuser') THEN
+    CREATE ROLE testuser LOGIN;
+  END IF;
+END
+$$;
 
 -- Setup function, to be called at the top of each test file.
 CREATE PROCEDURE TEST_reset()
   LANGUAGE SQL AS
 $$
+  CALL yb_xcluster_ddl_replication.TEST_override_replication_role('source');
   DELETE FROM yb_xcluster_ddl_replication.ddl_queue;
   DELETE FROM yb_xcluster_ddl_replication.replicated_ddls;
 $$;

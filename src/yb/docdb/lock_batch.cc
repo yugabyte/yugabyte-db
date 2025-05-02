@@ -81,11 +81,6 @@ void LockBatch::MoveFrom(LockBatch* other) {
   other->data_.key_to_type.clear();
 }
 
-template <typename LockManager>
-std::string LockBatchEntry<LockManager>::ToString() const {
-  return YB_STRUCT_TO_STRING(key, intent_types, existing_state);
-}
-
 UnlockedBatch::UnlockedBatch(
     LockBatchEntries<SharedLockManager>&& key_to_type,
     SharedLockManager* shared_lock_manager):
@@ -107,9 +102,6 @@ void UnlockedBatch::MoveFrom(UnlockedBatch* other) {
   shared_lock_manager_ = other->shared_lock_manager_;
   other->shared_lock_manager_ = nullptr;
 }
-
-template struct LockBatchEntry<SharedLockManager>;
-template struct LockBatchEntry<ObjectLockManager>;
 
 }  // namespace docdb
 }  // namespace yb

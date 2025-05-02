@@ -214,8 +214,8 @@ class XClusterDRTest : public XClusterYsqlTestBase {
         LOG(INFO) << "Copying snapshot from " << source_path << " to " << target_path;
 
         RETURN_NOT_OK(CopyDirectory(
-            target_tservers->fs_manager().env(), source_path, target_path, UseHardLinks::kFalse,
-            CreateIfMissing::kTrue, RecursiveCopy::kTrue));
+            target_tservers->fs_manager().env(), source_path, target_path,
+            CopyOption::kCreateIfMissing, CopyOption::kRecursive));
       }
     }
 

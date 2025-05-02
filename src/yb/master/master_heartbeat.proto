@@ -20,13 +20,13 @@ import "yb/cdc/cdc_consumer.proto";
 import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
-import "yb/consensus/metadata.proto";
 import "yb/consensus/consensus_types.proto";
+import "yb/consensus/metadata.proto";
 import "yb/encryption/encryption.proto";
 import "yb/master/master_types.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tserver/tserver.proto";
-import "yb/rpc/service.proto";
 
 // Common information sent with every request from the tablet server
 // to the master.
@@ -323,7 +323,7 @@ message TSHeartbeatResponsePB {
   // Specify whether or not the cluster is a producer of a valid replication stream.
   optional bool xcluster_enabled_on_producer = 19;
 
-  // Map[Local NamespaceId]: xCluester safe read HybridTime
+  // Map[Local NamespaceId]: xCluster safe read HybridTime
   map<string, fixed64> xcluster_namespace_to_safe_time = 21;
 
   optional AutoFlagsConfigPB auto_flags_config = 22;
@@ -339,6 +339,12 @@ message TSHeartbeatResponsePB {
   optional bool is_fatal_error = 27;
 
   optional uint32 oid_cache_invalidations_count = 29;
+
+  message XClusterHeartbeatInfo {
+    // Local NamespaceId -> xCluster info for that namespace.
+    map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 1;
+  }
+  optional XClusterHeartbeatInfo xcluster_heartbeat_info = 30;
 }
 
 service MasterHeartbeat {

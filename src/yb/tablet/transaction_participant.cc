@@ -462,7 +462,8 @@ class TransactionParticipant::Impl
 
   Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+      bool has_write_pairs) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
@@ -475,6 +476,9 @@ class TransactionParticipant::Impl
     }
     auto& transaction = lock_and_iterator.transaction();
     transaction.AddReplicatedBatch(batch_idx, encoded_replicated_batches);
+    if (has_write_pairs) {
+      transaction.MarkHasRetryableRequestsReplicated();
+    }
     return std::make_pair(transaction.metadata().isolation, transaction.last_batch_data());
   }
 
@@ -804,6 +808,10 @@ class TransactionParticipant::Impl
   }
 
   Status Cleanup(TransactionIdApplyOpIdMap&& txns, TransactionStatusManager* status_manager) {
+    DEBUG_ONLY_TEST_SYNC_POINT("TransactionParticipant::Impl::Cleanup");
+    // Execute WaitLoaded outside of this->mutex_, else there's possibility of a deadlock since
+    // the loader needs this->mutex_ in TransactionLoaderContext::LoadTransaction to finish load.
+    RETURN_NOT_OK(loader_.WaitLoaded(txns));
     TransactionIdSet set;
     {
       std::lock_guard lock(mutex_);
@@ -811,8 +819,6 @@ class TransactionParticipant::Impl
 
       if (cdcsdk_checkpoint_op_id != OpId::Max()) {
         for (const auto& [transaction_id, apply_op_id] : txns) {
-          RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
-
           const OpId* apply_record_op_id = &apply_op_id;
           if (!apply_op_id.valid()) {
             // Apply op id is unknown -- may be from before upgrade to version that writes
@@ -1132,6 +1138,9 @@ class TransactionParticipant::Impl
     return min_replay_txn_start_ht_.load(std::memory_order_acquire);
   }
 
+  // Returns the minimum start time among all running transactions.
+  // Returns kInvalid if loading of transactions is not completed.
+  // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
@@ -1952,6 +1961,9 @@ class TransactionParticipant::Impl
     if (GetLatestCheckPointUnlocked() != OpId::Max()) {
       txn->SetTxnLoadedWithCDC();
     }
+    if (last_batch_data.hybrid_time) {
+      txn->MarkHasRetryableRequestsReplicated();
+    }
     transactions_.insert(txn);
     mem_tracker_->Consume(kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
@@ -1986,7 +1998,13 @@ class TransactionParticipant::Impl
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
-    AddRecentlyAppliedTransaction(transaction.start_ht(), transaction.GetApplyOpId());
+    if (transaction.HasRetryableRequestsReplicated()) {
+      AddRecentlyAppliedTransaction(transaction.start_ht(), transaction.GetApplyOpId());
+    } else {
+      VLOG_WITH_PREFIX(2)
+          << "Transaction " << transaction.id() << " has no write pairs, not adding to recently "
+          << "applied transactions map";
+    }
     transactions_.erase(it);
     mem_tracker_->Release(kRunningTransactionSize);
     TransactionsModifiedUnlocked(min_running_notifier);
@@ -2576,8 +2594,9 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
 Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>>
     TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
-    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
-  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches);
+    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+    bool has_write_pairs) {
+  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches, has_write_pairs);
 }
 
 void TransactionParticipant::BatchReplicated(

@@ -657,6 +657,7 @@
       "last12hours": "Last 12 Hours",
       "last24hours": "Last 24 Hours",
       "last7days": "Last 7 Days",
+      "xCluster": "xCluster",
       "charts": {
         "operations": "Operations/Sec",
         "read": "Read",
@@ -1081,10 +1082,14 @@
               "size": "Size",
               "sharded": "Sharded"
             },
+            "notes": {
+              "heading": "Notes"
+            },
             "schemaChanges": {
               "heading": "Recommended Changes",
               "objectType": "Object Type",
               "objectTypeColon": "Object Type : ",
+              "description": "Description",
               "automaticDDLImportTooltip": "SQL objects that can be imported into YugabyteDB without DDL changes.",
               "manualRefactoringTooltip": "Number of DDL statements requiring manual refactoring.",
               "invalidObjectCountTooltip": "Invalid object count requiring manual refactoring.",
@@ -1143,11 +1148,14 @@
             "details": {
               "heading": "Unsupported Data Type: {{datatype}}",
               "search": "Search",
+              "key": "Key",
+              "value": "Value",
               "searchPlaceholder": "Search DDL",
               "acknowledged": "Acknowledged",
               "any": "Any",
               "issueType": "Issue Type",
               "suggestion": "Suggestion",
+              "minVersionsFixedIn": "Minimum Versions Fixed In",
               "sqlStatement": "SQL Statement",
               "fileName": "File Name",
               "searchBy": "SEARCH BY",
@@ -1754,7 +1762,37 @@
           "name": "Name"
         }
       },
-      "noShellForVpc": "Cloud Shell is not available for clusters with VPC peering at this time."
+      "noShellForVpc": "Cloud Shell is not available for clusters with VPC peering at this time.",
+      "xcluster": {
+        "xcluster": "xCluster",
+        "xclusterReplications": "xCluster Replications",
+        "outboundReplications": "Outbound Replications",
+        "inboundReplications": "Inbound Replications",
+        "noInboundFound": "No inbound replication groups found",
+        "targetClusterNodeIPS": "Target Universe IPs",
+        "kibps": "KiBps",
+        "sourceClusterNodeIPS": "Source Universe IPs",
+        "tablesInvolvedInReplication": "Tables Involved In Replication",
+        "noOutboundFound": "No outbound replication groups found",
+        "tableUUID": "Table UUID",
+        "tableName": "Table Name",
+        "database": "Database",
+        "isCheckpointing": "Is Checkpointing?",
+        "is_part_of_initial_bootstrap": "Is Part of Initial Bootstrap?",
+        "async_replication_committed_lag_micros": "Committed Replication Lag (µs)",
+        "async_replication_sent_lag_micros": "Sent Replication Lag (µs)",
+        "replicationGroupId": "Replication Group ID",
+        "currentClusterLeaderIPAddress": "Current Leader IP",
+        "state": "State",
+        "sourceLeaderHost": "Source Leader Host",
+        "targetUniverseUUID": "Target Universe UUID",
+        "streamID": "Stream ID",
+        "noTablesInNamespace": "No Tables Found in this Namespace",
+        "sourceUniverseUUID": "Source Universe UUID",
+        "targetCluster": "Target Cluster",
+        "sourceCluster": "Source Cluster",
+        "replicationList": "Replication List"
+      }
     },
     "clusters": {
       "addClusterCopy": "Add Cluster",

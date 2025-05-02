@@ -55,8 +55,6 @@
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <cds/init.h>
-#include "yb/util/logging.h"
 #include <squeasel.h>
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -71,6 +69,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -212,9 +211,6 @@ class Webserver::Impl {
   // Renders a common Bootstrap-styled footer. Must be used in conjunction with
   // BootstrapPageHeader.
   void BootstrapPageFooter(std::stringstream* output);
-
-  static int EnterWorkerThreadCallbackStatic();
-  static void LeaveWorkerThreadCallbackStatic();
 
   // Dispatch point for all incoming requests.
   // Static so that it can act as a function pointer, and then call the next method
@@ -439,8 +435,6 @@ Status Webserver::Impl::Start() {
   memset(&callbacks, 0, sizeof(callbacks));
   callbacks.begin_request = &Webserver::Impl::BeginRequestCallbackStatic;
   callbacks.log_message = &Webserver::Impl::LogMessageCallbackStatic;
-  callbacks.enter_worker_thread = &Webserver::Impl::EnterWorkerThreadCallbackStatic;
-  callbacks.leave_worker_thread = &Webserver::Impl::LeaveWorkerThreadCallbackStatic;
 
   // To work around not being able to pass member functions as C callbacks, we store a
   // pointer to this server in the per-server state, and register a static method as the
@@ -837,21 +831,6 @@ void Webserver::Impl::BootstrapPageFooter(stringstream* output) {
     *output << "</div></footer>";
   }
   *output << "</body></html>\n";
-}
-
-int Webserver::Impl::EnterWorkerThreadCallbackStatic() {
-  try {
-    cds::Initialize();
-    cds::threading::Manager::attachThread();
-  } catch (const std::system_error&) {
-    return 1;
-  }
-  return 0;
-}
-
-void Webserver::Impl::LeaveWorkerThreadCallbackStatic() {
-  cds::threading::Manager::detachThread();
-  cds::Terminate();
 }
 
 Webserver::Webserver(const WebserverOptions& opts, const std::string& server_name)

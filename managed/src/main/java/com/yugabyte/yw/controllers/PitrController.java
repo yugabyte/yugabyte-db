@@ -40,6 +40,7 @@ import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
@@ -562,6 +563,11 @@ public class PitrController extends AuthenticatedController {
 
     if (scheduleInfoList == null || scheduleInfoList.size() != 1) {
       throw new PlatformServiceException(BAD_REQUEST, "Snapshot schedule is invalid");
+    }
+
+    if (StringUtils.isBlank(taskParams.targetKeyspaceName)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Name of the cloned database must not be empty.");
     }
 
     long currentTimeMillis = System.currentTimeMillis();

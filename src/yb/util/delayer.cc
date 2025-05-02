@@ -15,8 +15,6 @@
 
 #include <vector>
 
-#include <cds/init.h>
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"

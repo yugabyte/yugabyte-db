@@ -56,6 +56,7 @@ message SubmitTaskRequest {
         PreflightCheckInput preflightCheckInput = 4;
         ServerControlInput serverControlInput = 5;
         ConfigureServiceInput configureServiceInput = 6;
+        InstallSoftwareInput installSoftwareInput = 7;
     }
 }
 
@@ -75,6 +76,7 @@ message DescribeTaskResponse {
         PreflightCheckOutput preflightCheckOutput = 4;
         ServerControlOutput serverControlOutput = 5;
         ConfigureServiceOutput configureServiceOutput = 6;
+        InstallSoftwareOutput installSoftwareOutput = 7;
     }
 }
 

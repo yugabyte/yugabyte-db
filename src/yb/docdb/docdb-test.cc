@@ -282,10 +282,10 @@ TEST_F(DocDBTableLocksConflictMatrixTest, TableConflictMatrix) {
 
   for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
     auto lock1 = TableLockType(l1);
-    const auto& entries1 = GetEntriesForLockType(lock1);
+    auto entries1 = GetEntriesForLockType(lock1);
     for (auto l2 = l1; l2 <= TableLockType_MAX; l2++) {
       auto lock2 = TableLockType(l2);
-      const auto& entries2 = GetEntriesForLockType(lock2);
+      auto entries2 = GetEntriesForLockType(lock2);
       auto has_conflict = ASSERT_RESULT(ObjectLocksConflict(entries1, entries2));
       ASSERT_EQ(has_conflict, conflicts.find({lock1, lock2}) != conflicts.end())
           << Format("Expected $0 to $1have conflicted with $2", TableLockType_Name(lock1),

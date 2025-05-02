@@ -1,4 +1,5 @@
 CALL TEST_reset();
+SELECT yb_xcluster_ddl_replication.get_replication_role();
 
 -- Verify that temporary objects are not captured.
 CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);

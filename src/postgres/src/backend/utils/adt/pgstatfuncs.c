@@ -1363,6 +1363,59 @@ yb_pg_stat_get_backend_catalog_version(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 }
 
+/*
+ * Returns a record of (datid, local_catalog_version) about the backend
+ * with the specified process ID if the backend has both a valid datid
+ * (OidIsValid) and a local_catalog_version (> 0), or one record for each
+ * such valid backend in the system if NULL is specified.
+ */
+Datum
+yb_pg_stat_get_backend_local_catalog_version(PG_FUNCTION_ARGS)
+{
+	int         pid = PG_ARGISNULL(0) ? InvalidPid : PG_GETARG_INT32(0);
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	int			num_backends = pgstat_fetch_stat_numbackends();
+	int         i;
+
+	InitMaterializedSRF(fcinfo, 0);
+
+	/* 1-based index */
+	for (i = 1; i <= num_backends; i++)
+	{
+		PgBackendStatus *beentry;
+		LocalPgBackendStatus *local_beentry = pgstat_fetch_stat_local_beentry(i);
+		if (!local_beentry)
+			continue;
+
+		beentry = &local_beentry->backendStatus;
+		if (pid != InvalidPid && beentry->st_procpid != pid)
+			continue;
+
+		/*
+		 * ash has version but also has STATE_UNDEFINED, we do not want to
+		 * have a PG background worker to hold off garbage collection of
+		 * tserver invalidation messages.
+		 */
+		if (beentry->st_state == STATE_UNDEFINED)
+			continue;
+
+		/* datid and local_catalog_version are available to all callers */
+		if (beentry->st_databaseid == InvalidOid ||
+			beentry->yb_st_catalog_version.version == 0)
+			continue;
+
+		/* for each row */
+		Datum		values[2];
+		bool		nulls[2];
+
+		values[0] = ObjectIdGetDatum(beentry->st_databaseid);
+		values[1] = UInt64GetDatum(beentry->yb_st_catalog_version.version);
+		nulls[0] = false;
+		nulls[1] = false;
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+	}
+	return (Datum) 0;
+}
 
 Datum
 pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)

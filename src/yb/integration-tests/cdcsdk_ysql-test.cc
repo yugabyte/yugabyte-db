@@ -2724,6 +2724,62 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
   ASSERT_EQ(final_record_size, 0);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionDoesntDeadlockWithTxnLoader)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_save_index_into_wal_segments) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 10 /* end */, &test_cluster_, true));
+  ASSERT_OK(WriteRowsHelper(10 /* start */, 20 /* end */, &test_cluster_, true));
+  ASSERT_OK(FlushTable(table.table_id()));
+
+  GetChangesResponsePB change_resp_1;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 20));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+
+  ASSERT_OK(FlushTable(table.table_id()));
+  auto* tablet_server = test_cluster()->mini_tablet_server(0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"TransactionParticipant::Impl::Cleanup", "TransactionLoader::Executor::Start"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+  ASSERT_OK(tablet_server->Restart());
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    return tablet_server->CompactTablets(docdb::SkipFlush::kFalse);
+  });
+
+  // Compaction shouldn't deadlock with the txn loader thread.
+  CHECK_OK(
+      WaitFor([&]() {
+        return status_future.wait_for(0s) == std::future_status::ready;
+      },
+      15s * kTimeMultiplier,
+      "Compaction taking longer, probably deadlocked with txn load."));
+  ASSERT_OK(status_future.get());
+}
+
 // https://github.com/yugabyte/yugabyte-db/issues/19385
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCForNewTablesAddedAfterCreateStream)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 100000;
@@ -4822,7 +4878,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithAct
   ASSERT_OK(SetUpWithParams(1, 1, true));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, num_tablets, true /* add_pk */,
+      true /* colocated */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -7825,8 +7883,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
 TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
-  const auto errstr =
-      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
+  const auto errstr = "Cannot rewrite a table that is a part of CDC.";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
@@ -11893,6 +11950,45 @@ TEST_F(CDCSDKYsqlTest, TestCDCFlushLagMetricWithgRPCModel) {
 
   // Assert that cdcsdk_flush_lag value remains zero.
   ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
+}
+
+TEST_F(CDCSDKYsqlTest, TestDropIndexWithColocatedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Add a column and create index on that column.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_test_table_value_2 ON test_table(value_2)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(1,100), 10, 11)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(101,200), 11, 12)"));
+
+  // Add another column, drop the previous index and create index on the newly added column.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_3 int"));
+  ASSERT_OK(conn.Execute("DROP INDEX idx_test_table_value_2"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_test_table_value_3 ON test_table(value_3)"));
+
+  // Restart the test cluster to clear the caches.
+  ASSERT_OK(test_cluster()->RestartSync());
+  LOG(INFO) << "All nodes restarted";
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 }
 
 }  // namespace cdc

@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.fail;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -37,6 +39,7 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.BuildTypeUtil;
+import org.yb.util.ProcessUtil;
 import org.yb.util.Timeouts;
 
 import com.google.common.net.HostAndPort;
@@ -448,6 +451,29 @@ public class BaseMiniClusterTest extends BaseYBTest {
       }
     }
     return metrics;
+  }
+
+  public static String runYbAdmin(String... args) throws Exception {
+    final String ybAdminPath = TestUtils.findBinary("yb-admin");
+    List<String> processCommand = new ArrayList<String>(Arrays.asList(
+        ybAdminPath,
+        "--master_addresses", masterAddresses
+    ));
+
+    processCommand.addAll(Arrays.asList(args));
+    final String output = ProcessUtil.runProcess(processCommand, 60 /* timeoutSeconds */);
+    LOG.info("yb-admin output: " + output);
+    return output;
+  }
+
+  // Returns list of tablet uuids for a given table.
+  public static List<String> getTabletsForTable(String namespace, String tableName)
+      throws Exception {
+    String output = runYbAdmin("list_tablets", namespace, tableName);
+    return Arrays.stream(output.split(System.lineSeparator()))
+                 .filter(line -> !line.startsWith("Tablet-UUID"))
+                 .map(line -> line.split(" ")[0])
+                 .collect(Collectors.toList());
   }
 
 

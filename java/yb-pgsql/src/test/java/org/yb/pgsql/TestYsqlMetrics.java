@@ -113,7 +113,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     // Set session variable in transaction block.
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
-    verifyStatementMetric(statement, "SET yb_debug_report_error_stacktrace=true;",
+    verifyStatementMetric(statement, "SET yb_debug_log_docdb_error_backtrace=true;",
                           OTHER_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "COMMIT",
                           COMMIT_STMT_METRIC, 1, 0, 1, true);

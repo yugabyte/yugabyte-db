@@ -14,13 +14,16 @@
 #pragma once
 
 #include <array>
-#include <vector>
+#include <span>
 #include <tuple>
+#include <vector>
 
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/lock_batch.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/lock_manager_traits.h"
 #include "yb/docdb/object_lock_data.h"
 
+#include "yb/dockv/intent.h"
 #include "yb/dockv/value.h"
 
 #include "yb/util/ref_cnt_buffer.h"
@@ -30,6 +33,25 @@ namespace yb::docdb {
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
 using dockv::KeyEntryTypeAsChar;
+
+template <typename LockManager>
+struct LockBatchEntry {
+  typename LockManagerTraits<LockManager>::KeyType key;
+  dockv::IntentTypeSet intent_types;
+
+  // For private use by LockManager.
+  typename LockManagerTraits<LockManager>::LockedBatchEntry* locked = nullptr;
+
+  // In context of object locking, we need to ignore conflicts with self when obtaining another
+  // mode of lock on an object. The field is set to the transaction's current lock state on the
+  // object and we subtract the same when checking conflicts with the exisitng lock state of the
+  // object.
+  LockState existing_state = 0;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(key, intent_types, existing_state);
+  }
+};
 
 // The following three arrays are indexed by the integer representation of the IntentTypeSet which
 // the value at that index corresponds to. For example, an IntentTypeSet with the 0th and 2nd
@@ -132,7 +154,7 @@ void FilterKeysToLock(LockBatchEntries<T> *keys_locked) {
 // KeyEntryType values and associate a list of <KeyEntryType, IntentTypeSet> to each table lock.
 // Since our conflict detection mechanism checks conflicts against each key, we indirectly achieve
 // the exact same conflict matrix. Refer comments on the function definition for more details.
-const std::vector<std::pair<dockv::KeyEntryType, dockv::IntentTypeSet>>&
+std::span<const std::pair<dockv::KeyEntryType, dockv::IntentTypeSet>>
     GetEntriesForLockType(TableLockType lock);
 
 // Returns DetermineKeysToLockResult<ObjectLockManager> which can further be passed to

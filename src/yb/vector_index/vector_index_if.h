@@ -81,6 +81,9 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
   using VectorType = Vector;
   using DistanceResultType = DistanceResult;
 
+  // Returns the number of dimensions per vector;
+  virtual size_t Dimensions() const = 0;
+
   // Saves index to the file, switching it to immutable state.
   // Implementation could partially unload index and load it on demand from this file.
   virtual Status SaveToFile(const std::string& path) = 0;

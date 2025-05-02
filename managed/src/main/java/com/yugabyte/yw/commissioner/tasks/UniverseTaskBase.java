@@ -3150,7 +3150,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createWaitForServersTasks(
-      Collection<NodeDetails> nodes, ServerType type, Universe currentUniverseState) {
+      Collection<NodeDetails> nodes, ServerType type, @Nullable Universe currentUniverseState) {
     return createWaitForServersTasks(
         nodes,
         type,
@@ -3837,9 +3837,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (!forXCluster) {
         // Save backupUUID to taskInfo of the CreateBackup task.
         try {
-          TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
-          taskInfo.setTaskParams(mapper.valueToTree(backupRequestParams));
-          taskInfo.save();
+          TaskInfo.updateInTxn(
+              getUserTaskUUID(), tf -> tf.setTaskParams(mapper.valueToTree(backupRequestParams)));
         } catch (Exception ex) {
           log.error(ex.getMessage());
         }
@@ -6946,7 +6945,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // End of Schedule backup methods
 
   public SubTaskGroup createUpdateUniverseFieldsTask(Consumer<Universe> fieldModifer) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseFields");
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UpdateUniverseFields", SubTaskGroupType.ConfigureUniverse);
     UpdateUniverseFields.Params params = new UpdateUniverseFields.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.fieldModifier = fieldModifer;
@@ -7004,7 +7004,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Stop yb-controller processes on nodes
     if (universe.isYbcEnabled()) {
       createStopServerTasks(
-              tserverNodes, ServerType.CONTROLLER, params -> params.skipStopForPausedVM = true)
+              Sets.union(masterNodes, tserverNodes),
+              ServerType.CONTROLLER,
+              params -> params.skipStopForPausedVM = true)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
     }
 

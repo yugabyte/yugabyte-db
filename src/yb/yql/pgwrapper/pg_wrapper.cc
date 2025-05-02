@@ -31,6 +31,8 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/ysql_operation_lease.h"
+
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/debug/sanitizer_scopes.h"
@@ -357,7 +359,10 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
     "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
     "upgrade. For example, IN, ANY, ALL.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
+
 DECLARE_bool(enable_pg_cron);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 DEFINE_RUNTIME_PG_FLAG(
     bool, yb_query_diagnostics_disable_database_connection_bgworker, false,
@@ -503,6 +508,20 @@ DEFINE_validator(ysql_pg_conf_csv, &ValidateConfCsv);
 DEFINE_validator(ysql_hba_conf_csv, &ValidateConfCsv);
 DEFINE_validator(ysql_ident_conf_csv, &ValidateConfCsv);
 
+static bool ValidateDocumentDB(const char* flag_name, bool value) {
+#ifndef YB_ENABLE_YSQL_DOCUMENTDB_EXT
+  if (value) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "DocumentDB YSQL extension is not available in this build type";
+    return false;
+  }
+#endif
+
+  return true;
+}
+
+DEFINE_validator(ysql_enable_documentdb, &ValidateDocumentDB);
+
 namespace {
 // Append any Pg gFlag with non default value, or non-promoted AutoFlag
 void AppendPgGFlags(vector<string>* lines) {
@@ -578,6 +597,11 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 
   if (FLAGS_enable_pg_anonymizer) {
     metricsLibs.push_back("anon");
+  }
+
+  if (FLAGS_ysql_enable_documentdb) {
+    metricsLibs.push_back("pg_documentdb_core");
+    metricsLibs.push_back("pg_documentdb");
   }
 
   vector<string> lines;
@@ -1306,6 +1330,7 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
     : conf_(std::move(conf)), server_(server) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
+    server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
   }
 }
 
@@ -1331,6 +1356,7 @@ Status PgSupervisor::ReloadConfig() {
   }
   return Status::OK();
 }
+
 
 
 Status PgSupervisor::UpdateAndReloadConfig() {

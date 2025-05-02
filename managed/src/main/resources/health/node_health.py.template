@@ -35,7 +35,6 @@ import json
 import logging
 import os
 import re
-import shlex
 import subprocess
 import sys
 import time
@@ -65,6 +64,7 @@ OTEL_COLLECTOR_HEALTH_ENDPOINT = "http://localhost:13133/health"
 YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
 CONNECTION_POOLING_MANAGER = "odyssey"
+EARLYOOM = "earlyoom"
 TOTAL = "total"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
@@ -269,6 +269,9 @@ YB_NODE_UNEXPECTED_MASTER_RUNNING = MetricDefinition(
 YB_NODE_CLOCKBOUND_STATUS = MetricDefinition(
     "yb_node_clockbound_status",
     "Check whether clockbound is synchronized")
+YB_EARLYOOM_KILLS_COUNT = MetricDefinition(
+    "yb_earlyoom_kills_count",
+    "Number of process kills initiated by earlyoom during last hour")
 
 ###################################################################################################
 # Reporting
@@ -560,7 +563,8 @@ class NodeChecker():
                  master_http_port, tserver_http_port, ysql_server_http_port, node_version,
                  is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
-                 master_rpc_port, tserver_rpc_port, verbose, clock_service_required):
+                 master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
+                 enable_earlyoom):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -597,6 +601,7 @@ class NodeChecker():
         self.temp_output_file = temp_output_file
         self.ddl_atomicity_check = ddl_atomicity_check
         self.master_leader_url = master_leader_url
+        self.enable_earlyoom = enable_earlyoom
         self.verbose = verbose
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
@@ -609,8 +614,8 @@ class NodeChecker():
                     return js
                 self.verbose_log("skipping prev stats because of version")
                 return {}
-        except IOError as ie:
-            logging.info("Failed to load prev process results")
+        except Exception as ie:
+            logging.error("Failed to load prev per process results: {}".format(str(ie)))
             return {}
 
     def _dump_per_process_results(self):
@@ -618,7 +623,7 @@ class NodeChecker():
             with open(self.temp_output_file, 'w') as f:
                 self.current_process_results['version'] = PER_PROCESS_VERSION
                 json.dump(self.current_process_results, f)
-         except IOError as ie:
+         except Exception as ie:
             logging.error("Failed to write current per process results: {}".format(str(ie)))
 
     def _new_entry(self, message, process=None):
@@ -2214,6 +2219,41 @@ class NodeChecker():
         metric.add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
+    def count_earlyoom_kills(self):
+        e = self._new_metric_entry("Earlyoom kills count")
+        try:
+            cmd = ('journalctl --since "1 hour ago" --user -u earlyoom | '
+                   'grep -E "sending SIG(TERM|KILL) to process" | wc -l')
+            res = self._check_output(cmd).strip()
+            count = 0
+            if res.isdigit():
+                count = int(res)
+            metric = Metric.from_definition(YB_EARLYOOM_KILLS_COUNT) \
+                .add_value(count)
+            return e.fill_and_return_entry([count], has_error=False, metrics=[metric])
+        except Exception as ex:
+            message = str(ex)
+            return e.fill_and_return_entry([message], has_error=True)
+
+    def check_earlyoom(self, enable_earlyoom):
+        e = self._new_entry("Earlyoom service status")
+        # if ssl_installed is not None and not ssl_installed:
+        #     return e.fill_and_return_warning_entry(["OpenSSL is not installed, skipped"])
+        pid = self.get_process_pid_by_name(EARLYOOM)
+        if enable_earlyoom:
+            if pid is None:
+                return e.fill_and_return_entry(["No process running"], has_error=True)
+            cmd = "cat /proc/{}/status | grep VmLck".format(pid)
+            output = self._check_output(cmd)
+            if output.find("VmLck") == -1:
+                return e.fill_and_return_warning_entry(
+                    ["Unable to do mlock (required for better performance)"])
+        else:
+            if pid is not None:
+                return e.fill_and_return_entry(
+                    ["Found running process: {}, should be disabled".format(pid)], has_error=True)
+        return e.fill_and_return_entry([], has_error=False)
+
     def verbose_log(self, message):
         if self.verbose:
             logging.info(message)
@@ -2501,6 +2541,7 @@ class NodeInfo:
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
         self.otel_enabled = data["otelCollectorEnabled"]
+        self.enable_earlyoom = data["earlyoomEnabled"]
         self.clockSyncServiceRequired = data.get("clockSyncServiceRequired", True)
         self.clockbound_enabled = data["clockboundEnabled"]
 
@@ -2551,10 +2592,13 @@ def main():
         n.master_http_port, n.tserver_http_port, n.ysql_server_http_port, n.yb_version,
         n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
-        n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired)
+        n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
+        n.enable_earlyoom)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
-
+    coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
+    if n.enable_earlyoom:
+        coordinator.add_check(checker, "count_earlyoom_kills")
     coordinator.add_check(checker, "check_node_metrics_collection")
     coordinator.add_check(checker, "check_disk_utilization")
     coordinator.add_check(checker, "check_for_core_files")

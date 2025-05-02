@@ -946,8 +946,7 @@ TEST_F(TabletSplitITest, TestLogCopySetsCloseTimestampInFooter) {
       /* expected_non_split_tablets = */ 2, /* expected_split_tablets = */ 1,
       /* num_replicas_online = */ 3));
 
-  auto peers = ListTabletPeers(
-      cluster_.get(), ListPeersFilter::kAll, IncludeTransactionStatusTablets::kFalse);
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
     log::SegmentSequence segments;
     ASSERT_OK(peer->log()->GetLogReader()->GetSegmentsSnapshot(&segments));

@@ -49,6 +49,7 @@ service PgClientService {
   rpc FinishTransaction(PgFinishTransactionRequestPB) returns (PgFinishTransactionResponsePB);
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
+  rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
@@ -448,6 +449,11 @@ message PgDropTablegroupResponsePB {
 message PgGetCatalogMasterVersionRequestPB {
 }
 
+message PgGetXClusterRoleRequestPB {
+  uint32 db_oid = 1;
+  AshMetadataPB ash_metadata = 2;
+}
+
 message PgFinishTransactionRequestPB {
   message DdlModePB {
     // This transaction contains changes to the DocDB schema protobufs.
@@ -474,6 +480,11 @@ message PgFinishTransactionResponsePB {
 message PgGetCatalogMasterVersionResponsePB {
   AppStatusPB status = 1;
   uint64 version = 2;
+}
+
+message PgGetXClusterRoleResponsePB {
+  AppStatusPB status = 1;
+  uint32 xcluster_role = 2;  // Really XClusterNamespaceInfoPB.XClusterRole.
 }
 
 message PgGetDatabaseInfoRequestPB {

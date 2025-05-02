@@ -146,6 +146,8 @@ Status TabletVectorIndexes::DoCreateIndex(
     LOG(DFATAL) << "Vector index for " << index_table.table_id << " already exists";
     return Status::OK();
   }
+  RSTATUS_DCHECK_EQ(index_table.table_id, index_table.index_info->table_id(), InvalidArgument,
+                    "Wrong table id in index");
   auto& thread_pool = *thread_pool_provider_(VectorIndexThreadPoolType::kInsert);
   auto vector_index = VERIFY_RESULT(docdb::CreateDocVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),

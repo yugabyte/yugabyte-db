@@ -47,22 +47,18 @@
 
 #include "yb/dockv/partition.h"
 
-#include "yb/gutil/map-util.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master_util.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/format.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
-#include "yb/util/flags/auto_flags.h"
 
 using std::string;
 
@@ -620,7 +616,8 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
     dockv::Partition::FromPB(metadata->pb.partition(), &partition);
     auto result = dockv::PartitionSchema::SplitHashPartitionForStatusTablet(partition);
     if (result) {
-      return TabletWithSplitPartitions{tablet, result->first, result->second};
+      return TabletWithSplitPartitions{
+          .tablet = tablet, .left = result->first, .right = result->second};
     }
   }
 
