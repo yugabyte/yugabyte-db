@@ -1274,6 +1274,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AssessmentCategoryInfo'
+        notes:
+          type: array
+          items:
+            type: string
     SqlObjectCount:
       title: Count of specific Sql Object type in the source DB
       description: Count of specific Sql Object type in the source DB
