@@ -2740,4 +2740,21 @@ TEST_P(PgIndexBackfillTest, VectorIndex) {
   writer.Verify(*conn_);
 }
 
+class PgSerializeBackfillTest : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_default_transaction_isolation='serializable'");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgSerializeBackfillTest, ::testing::Bool());
+
+TEST_P(PgSerializeBackfillTest, BackfillRead) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (i int)"));
+  // Run backfill.
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t(i)"));
+}
+
 } // namespace yb::pgwrapper

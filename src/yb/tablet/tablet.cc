@@ -3004,10 +3004,13 @@ Status Tablet::BackfillIndexesForYsql(
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
-  auto conn = VERIFY_RESULT(pgwrapper::CreateInternalPGConnBuilder(
-                                pgsql_proxy_bind_address, database_name, postgres_auth_key,
-                                backfill_params.modified_deadline)
-                                .Connect());
+  auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
+                          pgsql_proxy_bind_address, database_name, postgres_auth_key,
+                          backfill_params.modified_deadline)
+                          .Connect();
+  // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
+  auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
+      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
 
   // Construct query string.
   std::string index_oids;
