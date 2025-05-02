@@ -32,11 +32,17 @@ Running YugabyteDB on macOS requires additional settings. For more information, 
 
 ## Installation
 
-The yugabyted executable file is packaged with YugabytDB and located in the YugabyteDB home `bin` directory.
+The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-If you want to use [backup](#backup) and [restore](#restore), you also need to install YB Controller:
+If you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. Do the following:
 
-1. Download the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz).
+1. Download the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the `share` folder of your YugabyteDB installation.
+
+    ```sh
+    cd yugabyte-{{< yb-version version="stable" >}}/share
+    wget https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz
+    ```
+
 1. Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `yugabytedb/ybc` folder as follows:
 
     ```sh
@@ -44,7 +50,7 @@ If you want to use [backup](#backup) and [restore](#restore), you also need to i
     mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
     ```
 
-When creating nodes, run the [yugabyted start](#start) command with `--backup_daemon=true`:
+To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
 
 ```sh
 ./bin/yugabyted start --backup_daemon=true
