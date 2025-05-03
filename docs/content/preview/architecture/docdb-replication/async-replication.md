@@ -53,8 +53,8 @@ To better understand how xCluster replication works in practice, check out [xClu
 
 Because there is a useful trade-off between how much consistency is lost and what transactions are allowed, YugabyteDB provides two different modes of asynchronous replication:
 
-- Non-transactional replication: Writes are allowed on the target universe, but reads of recently replicated data can be inconsistent.
-- Transactional replication: Consistency of reads is preserved on the target universe, but writes are not allowed.
+- Non-transactional replication. Writes are allowed on the target universe, but reads of recently replicated data can be inconsistent.
+- Transactional replication. Consistency of reads is preserved on the target universe, but writes are not allowed.
 
 ### Non-transactional replication
 
@@ -198,11 +198,11 @@ xCluster currently supports active-active single-master and active-active multi-
 
 ### Active-active single-master
 
-In this setup, replication is unidirectional from a source universe to a target universe, typically located in different data centers or regions. The source universe can handle both reads and writes, while the target universe is read-only. Since only the source universe can accept writes, this mode is referred to as single-master. Note that within the source universe, all nodes can serve writes.
+In this setup, replication is unidirectional from a source universe to a target universe, typically located in different data centers or regions. The source universe can handle both reads and writes, while the target universe is read-only. Because only the source universe can accept writes, this mode is referred to as single-master. Note that in the source universe, all nodes can serve writes.
 
 These deployments are typically used for serving low-latency reads from the target universes and for disaster recovery purposes. When the primary purpose is disaster recovery, these deployments are referred to as active-standby, as the target universe is on standby to take over if the source universe fails.
 
-Transactional mode is generally preferred here because it ensures consistency even if the source universe is lost. However, non-transactional mode can also be used depending on the specific requirements and trade-offs.
+Transactional mode is generally preferred for this deployment because it ensures consistency even if the source universe is lost. However, non-transactional mode can also be used depending on the specific requirements and trade-offs.
 
 {{<lead link="https://youtu.be/6rmrcVQqb0o?si=4CuiByQGLaNzhdn_">}}
 To learn more, watch [Disaster Recovery in YugabyteDB](https://youtu.be/6rmrcVQqb0o?si=4CuiByQGLaNzhdn_)
@@ -216,7 +216,7 @@ The following diagram shows an example of this deployment:
 
 In a multi-master deployment, data replication is bidirectional between two universes, allowing both universes to perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. This mode implements last-writer-wins, where if the same key is updated in both universes around the same time, the write with the larger timestamp overrides the other one. This deployment mode is called multi-master because both universes serve writes.
 
-The multi-master deployment utilizes bidirectional replication, which involves two unidirectional replication streams operating in non-transactional mode. Special measures are taken to assign timestamps that ensure last-writer-wins semantics, and data received from the replication stream is not re-replicated.
+The multi-master deployment uses bidirectional replication, which involves two unidirectional replication streams operating in non-transactional mode. Special measures are taken to assign timestamps that ensure last-writer-wins semantics, and data received from the replication stream is not re-replicated.
 
 The following diagram illustrates this deployment:
 
