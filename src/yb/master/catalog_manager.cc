@@ -585,6 +585,10 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
+DEFINE_test_flag(int32, system_table_num_tablets, -1,
+    "Number of tablets to use when creating the system tables. "
+    "If -1, the number of tablets will follow the value provided in the CreateTable request.");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
@@ -11677,6 +11681,10 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
 Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
     const CreateTableRequestPB& request, const Schema& schema,
     const PlacementInfoPB& placement_info) {
+  if (PREDICT_FALSE(FLAGS_TEST_system_table_num_tablets >= 0 &&
+                    request.namespace_().name() == kSystemNamespaceName)) {
+    return FLAGS_TEST_system_table_num_tablets;
+  }
   // Calculate number of tablets to be used. Priorities:
   //   1. Use Internally specified value from 'CreateTableRequestPB::num_tablets'.
   //   2. Use User specified value from
