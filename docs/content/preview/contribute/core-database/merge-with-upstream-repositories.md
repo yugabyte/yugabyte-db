@@ -378,10 +378,9 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    See [here](#find-postgresql-back-patch-commits) for suggestions on how to do this.
 1. On latest `yugabyte/postgres` repo `yb-pg<version>` branch, **do `git cherry-pick -x <commit>` for each commit being imported**.
    Notice the `-x` to record the commit hash being cherry-picked.
+   [Make sure tests pass](#testing-postgresql).
    For any merge conflicts, resolve and amend them to that same commit, describing resolutions within the commit messages themselves.
    This includes logical merge conflicts which can be found via compilation failure or test failure.
-   See TESTING.
-   TODO(jason): where is TESTING?
    At the end, you should be n commits ahead of `yb-pg<version>,` where n is the number of commits you are point-importing.
    Make a GitHub PR for this for review.
 1. On `yugabyte/yugabyte-db` repo, import the commits that are part of the `yugabyte/postgres` repo PR.
@@ -418,9 +417,10 @@ A direct-descendant merge for PostgreSQL is typically a minor version upgrade.
 An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd531080239c350528da38268ac0fa0e](https://github.com/yugabyte/postgres/commit/12398eddbd531080239c350528da38268ac0fa0e) and [`yugabyte/yugabyte-db` e99df6f4d97e5c002d3c4b89c74a778ad0ac0932](https://github.com/yugabyte/yugabyte-db/commit/e99df6f4d97e5c002d3c4b89c74a778ad0ac0932).
 
 1. On latest `yugabyte/postgres` repo, `git merge <commit>`.
+   [Make sure tests pass](#testing-postgresql).
    Record merge resolutions into the merge commit message.
    There should only be the merge commit and no other extraneous commits on top of it.
-   Make a GitHub PR for this for review.
+   Make a GitHub PR of this for review.
 1. Apply those changes to the `yugabyte/yugabyte-db` repo.
    See [cross-repository patch][cross-repo-patch] for details.
    Update `src/lint/upstream_repositories.csv`, and create a Phorge revision listing all the merge conflict details.
@@ -489,6 +489,30 @@ At the time of writing, pgaudit uses the subtree embedding strategy.
 
 MERGE:
 - port regress tests
+
+### Testing PostgreSQL
+
+When doing a point-import or merge of upstream PostgreSQL, often that leads to creating a commit in `yugabyte/postgres` repo.
+One should make sure that tests pass after that commit to catch logical merge conflicts.
+
+There are many tests scattered around different Makefiles, generally run using `make check`.
+Ideally, all should pass, but here are a few that one should pay special attention to since `yugabyte/yugabyte-db` also partially uses them:
+
+```sh
+./configure
+make check
+( cd contrib; make check )
+( cd src/test/isolation; make check )
+( cd src/test/modules; make check )
+```
+
+There are also `pg_dump` tests.
+They are not run in `yugabyte/yugabyte-db`, but it is still good to make sure they pass:
+
+```sh
+./configure --enable-tap-tests
+( cd src/bin/pg_dump; make check )
+```
 
 ### Find PostgreSQL back-patch commits
 
