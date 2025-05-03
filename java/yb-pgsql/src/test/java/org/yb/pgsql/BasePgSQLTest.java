@@ -190,7 +190,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "Skipping this test with Connection Manager enabled. Connection Manager replays " +
         "session variables at the transaction boundaries, which causes an extra statement to " +
         "appear in stats or monitoring/observability methods. Since the client is unaware of " +
-        "this  statement, the test fails.";
+        "this statement, the test fails.";
 
   protected static final String DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY =
       "Skipping this test with Connection Manager enabled. In pg_stat_activity table, the " +
