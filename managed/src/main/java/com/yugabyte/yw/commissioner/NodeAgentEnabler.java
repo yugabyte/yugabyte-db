@@ -544,8 +544,11 @@ public class NodeAgentEnabler {
           customerNodeAgentInstallers.remove(customer.getUuid());
         }
       }
-    } catch (Exception e) {
-      log.error("Error encountered in scanning universes to enable node agents", e);
+    } catch (Throwable t) {
+      log.error("Error encountered in scanning universes to enable node agents", t);
+      if (t instanceof Error) {
+        throw (Error) t;
+      }
     }
   }
 
