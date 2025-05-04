@@ -439,7 +439,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values include ysql and ycql.
+* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to compact.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
@@ -491,8 +491,8 @@ Modifies the placement information (cloud, region, and zone) for a table.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    modify_table_placement_info <keyspace> <table_name> <placement_info> <replication_factor> \
-    [ <placement_id> ]
+    modify_table_placement_info <keyspace> <table-name> <placement-info> <replication-factor> \
+    [ <placement-id> ]
 ```
 
 or alternatively:
@@ -501,7 +501,7 @@ or alternatively:
 yb-admin \
     -master_addresses <master-addresses> \
     modify_table_placement_info tableid.<table-id> <placement-info> <replication-factor> \
-    [ <placement_id> ]
+    [ <placement-id> ]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
@@ -615,7 +615,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values include ysql and ycql.
+* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default is `20`.
