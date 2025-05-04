@@ -231,7 +231,7 @@ public class NodeManager extends DevopsBase {
     return imageBundle.getDetails().useIMDSv2;
   }
 
-  private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
+  public UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
       Iterator<NodeDetails> nodeIter = universe.getUniverseDetails().nodeDetailsSet.iterator();
@@ -850,7 +850,7 @@ public class NodeManager extends DevopsBase {
     return subcommandStrings;
   }
 
-  private void processGFlags(
+  public void processGFlags(
       Config config,
       Universe universe,
       NodeDetails node,
@@ -1196,7 +1196,6 @@ public class NodeManager extends DevopsBase {
             }
           }
           sensitiveData.put("--gflags", Json.stringify(Json.toJson(gflags)));
-
           subcommand.add("--tags");
           subcommand.add("override_gflags");
           if (taskParam.resetMasterState) {

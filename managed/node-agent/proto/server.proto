@@ -57,6 +57,7 @@ message SubmitTaskRequest {
         ServerControlInput serverControlInput = 5;
         ConfigureServiceInput configureServiceInput = 6;
         InstallSoftwareInput installSoftwareInput = 7;
+        ServerGFlagsInput serverGFlagsInput = 8;
     }
 }
 
@@ -77,6 +78,7 @@ message DescribeTaskResponse {
         ServerControlOutput serverControlOutput = 5;
         ConfigureServiceOutput configureServiceOutput = 6;
         InstallSoftwareOutput installSoftwareOutput = 7;
+        ServerGFlagsOutput serverGFlagsOutput = 8;
     }
 }
 

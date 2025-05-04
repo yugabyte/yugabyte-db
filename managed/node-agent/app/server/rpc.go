@@ -338,6 +338,18 @@ func (server *RPCServer) SubmitTask(
 			)
 		}
 	}
+	serverGFlagsInput := req.GetServerGFlagsInput()
+	if serverGFlagsInput != nil {
+		// Handle server gflags RPC.
+		serverGFlagsHandler := task.NewServerGflagsHandler(serverGFlagsInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, serverGFlagsHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running server gflags - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, status.Error(codes.Unimplemented, "Unknown task")
 }
 

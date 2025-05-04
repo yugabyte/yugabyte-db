@@ -46,6 +46,8 @@ import com.yugabyte.yw.nodeagent.PreflightCheckInput;
 import com.yugabyte.yw.nodeagent.PreflightCheckOutput;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlOutput;
+import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
+import com.yugabyte.yw.nodeagent.ServerGFlagsOutput;
 import com.yugabyte.yw.nodeagent.SubmitTaskRequest;
 import com.yugabyte.yw.nodeagent.SubmitTaskResponse;
 import com.yugabyte.yw.nodeagent.UpdateRequest;
@@ -921,6 +923,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), InstallSoftwareOutput.class);
+  }
+
+  public ServerGFlagsOutput runServerGFlags(
+      NodeAgent nodeAgent, ServerGFlagsInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setServerGFlagsInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ServerGFlagsOutput.class);
   }
 
   public synchronized void cleanupCachedClients() {
