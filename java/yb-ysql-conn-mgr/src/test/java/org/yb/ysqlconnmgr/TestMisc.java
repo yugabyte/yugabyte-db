@@ -404,11 +404,13 @@ public class TestMisc extends BaseYsqlConnMgr {
 
   @Test
   public void testCurrvalErrorOut() throws Exception {
+    disableWarmupModeAndRestartCluster();
     testSequenceFunctions("SELECT currval('my_seq')");
   }
 
   @Test
   public void testLastvalErrorOut() throws Exception {
+    disableWarmupModeAndRestartCluster();
     testSequenceFunctions("SELECT lastval()");
   }
 
