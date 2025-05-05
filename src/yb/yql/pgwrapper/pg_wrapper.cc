@@ -1004,6 +1004,10 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
     args.push_back(param.old_version_pg_address);
   }
 
+  if (param.no_statistics) {
+    args.push_back("--no-statistics");
+  }
+
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
   RETURN_NOT_OK_PREPEND(
       Subprocess::Call(args, /*log_stdout_and_stderr=*/true),

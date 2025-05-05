@@ -105,6 +105,7 @@ class PgWrapper : public ProcessWrapper {
     uint16_t old_version_pg_port;
     std::string new_version_socket_dir;
     uint16_t new_version_pg_port;
+    bool no_statistics;
   };
 
   static Status RunPgUpgrade(const PgUpgradeParams& param);
