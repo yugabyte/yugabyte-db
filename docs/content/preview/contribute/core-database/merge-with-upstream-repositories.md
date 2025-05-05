@@ -376,14 +376,14 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
 1. Find the appropriate upstream postgres commits.
    For example, if this import is for `yugabyte/yugabyte-db` repo `2025.1` branch based on PG 15.x, then prioritize using upstream postgres commits on `REL_15_STABLE` over those on `master` because they would have resolved conflicts for us.
    See [here](#find-postgresql-back-patch-commits) for suggestions on how to do this.
-1. On latest `yugabyte/postgres` repo `yb-pg<version>` branch, **do `git cherry-pick -x <commit>` for each commit being imported**.
+1. On latest `yugabyte/postgres` repo `yb-pg<version>` branch, do `git cherry-pick -x <commit>` for each commit being imported.
    Notice the `-x` to record the commit hash being cherry-picked.
    [Make sure tests pass](#testing-postgresql).
    For any merge conflicts, resolve and amend them to that same commit, describing resolutions within the commit messages themselves.
    This includes logical merge conflicts which can be found via compilation failure or test failure.
    At the end, you should be n commits ahead of `yb-pg<version>,` where n is the number of commits you are point-importing.
-   Make a GitHub PR for this for review.
-1. On `yugabyte/yugabyte-db` repo, import the commits that are part of the `yugabyte/postgres` repo PR.
+   Make a GitHub PR of this for review.
+1. On the `yugabyte/yugabyte-db` repo, import the commits that are part of the `yugabyte/postgres` repo PR.
    This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository patch][cross-repo-patch] for advice.
    TODO(jason): another alternative is to apply the giant patch to yugabyte-db.
    For any merge-related changes, keep track of resolution details in some temporary place.
@@ -454,7 +454,7 @@ The steps below detail a hypothetical merge of PG 15.12 to PG 18.1.
 At the time of writing, YugabyteDB is based off PG 15.12.
 
 1. Ensure PG 15.12 to PG 18.1 satisfies the prerequisite mentioned above.
-1. On `yugabyte/postgres` repo, identify the point-imports or custom changes on `yb-pg15` that need to be carried over to PG 18.1.
+1. On the `yugabyte/postgres` repo, identify the point-imports or custom changes on `yb-pg15` that need to be carried over to PG 18.1.
    The total list of point-imports and custom changes can be found using `git log --first-parent --oneline yb-pg15`, ignoring merge commits and excluding anything before the first target minor version for this major version, which is REL_15_2.
 
    - For each point-import commit, determine whether it is already contained in the target version, `REL_18_1`.
