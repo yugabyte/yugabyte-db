@@ -134,6 +134,7 @@ METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
 METRIC_DECLARE_histogram(handler_latency_outbound_transfer);
 METRIC_DECLARE_gauge_int64(rpc_busy_reactors);
+METRIC_DECLARE_gauge_uint64(wal_replayable_applied_transactions);
 
 namespace yb::pgwrapper {
 namespace {
@@ -2514,6 +2515,151 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   conn1 = ASSERT_RESULT(Connect());
   auto res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test"));
   ASSERT_EQ(res, 1);
+}
+
+TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
+  constexpr size_t kIters = 100;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Creating tables";
+  ASSERT_OK(conn.Execute("CREATE TABLE test1(a int primary key) SPLIT INTO 1 TABLETS"));
+
+  tablet::TabletPeerPtr test1_peer = nullptr;
+  {
+    const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (auto peer : peers) {
+      if (peer->shared_tablet()->regular_db()) {
+        test1_peer = peer;
+        break;
+      }
+    }
+    ASSERT_NE(test1_peer, nullptr);
+  }
+  std::string test1_tablet_id = test1_peer->shared_tablet()->tablet_id();
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test1(a) VALUES (0)"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(test1_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(test1_peer->FlushBootstrapState());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test2(a int references test1(a)) SPLIT INTO 1 TABLETS"));
+  for (size_t i = 0; i < kIters; ++i) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.Execute("INSERT INTO test2(a) VALUES (0)"));
+    ASSERT_OK(conn.CommitTransaction());
+  }
+
+  ASSERT_EQ(
+      GetMetricOpt<AtomicGauge<uint64_t>>(
+          *test1_peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value(),
+      1);
+
+  LOG(INFO) << "Restarting cluster";
+  ASSERT_OK(RestartCluster());
+
+  for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    if (!peer->shared_tablet()->regular_db()) {
+      continue;
+    }
+    auto metric_value = GetMetricOpt<AtomicGauge<uint64_t>>(
+        *peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value();
+    if (peer->shared_tablet()->tablet_id() == test1_tablet_id) {
+      ASSERT_EQ(metric_value, 1);
+    } else {
+      ASSERT_EQ(metric_value, kIters);
+    }
+  }
+
+  conn = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM test1"));
+  ASSERT_EQ(res, 1);
+  res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM test2"));
+  ASSERT_EQ(res, kIters);
+}
+
+TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
+  const auto kApplyWait = 5s * kTimeMultiplier;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto conn3 = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Creating table";
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(a int) SPLIT INTO 1 TABLETS"));
+
+  const auto& pg_ts_uuid = cluster_->mini_tablet_server(0)->server()->permanent_uuid();
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders)) {
+    if (peer->shared_tablet()->regular_db() && peer->permanent_uuid() != pg_ts_uuid) {
+      tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  tserver::MiniTabletServer* tablet_server = nullptr;
+  for (size_t i = 0; i < NumTabletServers(); ++i) {
+    auto* ts = cluster_->mini_tablet_server(i);
+    if (ts->server()->permanent_uuid() == tablet_peer->permanent_uuid()) {
+      tablet_server = ts;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_server, nullptr);
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("INSERT INTO test(a) VALUES (0)"));
+  ASSERT_OK(conn1.CommitTransaction());
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("INSERT INTO test(a) VALUES (1)"));
+
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("INSERT INTO test(a) VALUES (2)"));
+  ASSERT_OK(conn2.FetchRow<PGUint32>("SELECT a FROM test WHERE a = 0 FOR KEY SHARE"));
+
+  ASSERT_OK(conn3.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn3.FetchRow<PGUint32>("SELECT a FROM test WHERE a = 0 FOR KEY SHARE"));
+
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_OK(tablet_server->WaitStarted());
+
+  ASSERT_OK(conn1.CommitTransaction());
+  ASSERT_OK(conn2.CommitTransaction());
+  ASSERT_OK(conn3.CommitTransaction());
+
+  // Wait for apply.
+  SleepFor(kApplyWait);
+
+  std::unordered_map<std::string, uint64_t> metric_values;
+  for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    if (peer->shared_tablet()->regular_db()) {
+      metric_values[peer->permanent_uuid()] = GetMetricOpt<AtomicGauge<uint64_t>>(
+          *peer->shared_tablet(), METRIC_wal_replayable_applied_transactions)->value();
+    }
+  }
+
+  // Expecting metric value to be 3 on all peers: the intial insert + conn1/conn2 transactions.
+  // conn3 transaction is readonly and not added to map.
+  LOG(INFO) << "Metric values: " << CollectionToString(metric_values);
+  for (const auto& [_, value] : metric_values) {
+    ASSERT_EQ(value, 3);
+  }
 }
 
 Status MockAbortFailure(
