@@ -58,7 +58,5 @@ public class TestPgRegressIsolation extends BasePgRegressTest {
                             Collections.singletonMap("TEST_inject_sleep_before_applying_intents_ms",
                                                      "100"));
     runIsolationRegressTest();
-    // Revert back to old set of flags for other test methods
-    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 }
