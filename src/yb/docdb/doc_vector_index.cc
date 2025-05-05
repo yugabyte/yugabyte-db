@@ -215,6 +215,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
               const std::string& data_root_dir,
               rpc::ThreadPool& thread_pool,
               const PgVectorIdxOptionsPB& idx_options) {
+    index_id_ = idx_options.id();
     name_ = RemoveLogPrefixColon(log_prefix);
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
