@@ -34,7 +34,7 @@ For information on installing YugabyteDB, see [Use a local cluster](/preview/tut
 
 After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
-Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
+For example, if you installed {{< yb-version version="preview" >}}, extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
 ```sh
 cd yugabyte-{{< yb-version version="preview" >}}
