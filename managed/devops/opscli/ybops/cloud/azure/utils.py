@@ -73,6 +73,16 @@ VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
 PRIVATE_DNS_ZONE_ID_REGEX = re.compile(
     "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
     "/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
+VNET_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/virtualNetworks/(?P<vnet_name>[^/]*)")
+SUBNET_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/virtualNetworks/(?P<vnet_name>[^/]*)"
+    "/subnets/(?P<subnet_name>[^/]*)")
+SECURITY_GROUP_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/networkSecurityGroups/(?P<security_group_name>[^/]*)")
 CLOUDINIT_EPHEMERAL_MNTPOINT = {
     "mounts": [
         ["ephemeral0", "/mnt/resource"]
@@ -804,12 +814,24 @@ class AzureCloudAdmin():
         logging.info("[app] Sucessfully destroyed instance {}".format(vm_name))
 
     def get_subnet_id(self, vnet, subnet):
+        # subnet URN can be used directly
+        if SUBNET_ID_REGEX.match(subnet):
+            return subnet
+        # vnet URN, subnet name
+        vnet_match = VNET_ID_REGEX.match(vnet)
+        if vnet_match:
+            return SUBNET_ID_FORMAT_STRING.format(vnet_match.group('subscription_id'),
+                                                  vnet_match.group('resource_group'),
+                                                  vnet_match.group('vnet_name'), subnet)
+        # vnet name, subnet name
         return SUBNET_ID_FORMAT_STRING.format(
             NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, vnet, subnet
         )
 
     def get_nsg_id(self, nsg):
         if nsg:
+            if SECURITY_GROUP_ID_REGEX.match(nsg):
+                return nsg
             return NSG_ID_FORMAT_STRING.format(
                 NETWORK_SUBSCRIPTION_ID, NETWORK_RESOURCE_GROUP, nsg
             )
