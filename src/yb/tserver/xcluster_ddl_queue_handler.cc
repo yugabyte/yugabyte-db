@@ -482,10 +482,9 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   if (pg_conn_ && FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     return Status::OK();
   }
-  auto se = ScopeExit([this] { pg_conn_.reset(); });
   // Create pg connection if it doesn't exist.
   CoarseTimePoint deadline = CoarseMonoClock::Now() + local_client_->default_rpc_timeout();
-  pg_conn_ = std::make_unique<pgwrapper::PGConn>(
+  auto pg_conn = std::make_unique<pgwrapper::PGConn>(
       VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline)));
 
   std::stringstream query;
@@ -505,9 +504,9 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
         << xcluster::kDDLQueueDDLEndTimeColumn << " = $1 AND " << xcluster::kDDLQueueQueryIdColumn
         << " = $2);";
 
-  RETURN_NOT_OK(pg_conn_->Execute(query.str()));
+  RETURN_NOT_OK(pg_conn->Execute(query.str()));
 
-  se.Cancel();
+  pg_conn_ = std::move(pg_conn);
   return Status::OK();
 }
 
