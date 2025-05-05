@@ -24,31 +24,20 @@ For examples of using yugabyted to deploy single- and multi-node clusters, see [
 You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
 
-{{% note title="Running on macOS" %}}
-
-Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
-
-{{% /note %}}
-
 ## Installation
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-If you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. Do the following:
+For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
 
-1. Download the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the `share` folder of your YugabyteDB installation.
+After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
-    ```sh
-    cd yugabyte-{{< yb-version version="stable" >}}/share
-    wget https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz
-    ```
+Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
-1. Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `yugabytedb/ybc` folder as follows:
-
-    ```sh
-    cd yugabyte-{{< yb-version version="stable" >}}
-    mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
-    ```
+```sh
+cd yugabyte-{{< yb-version version="preview" >}}
+mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+```
 
 To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
 
@@ -56,7 +45,12 @@ To use the service, when creating nodes run the [yugabyted start](#start) comman
 ./bin/yugabyted start --backup_daemon=true
 ```
 
+{{% note title="Running on macOS" %}}
+
+Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
+
 Note that YB Controller is not supported on macOS.
+{{% /note %}}
 
 ## Syntax
 
@@ -1265,6 +1259,8 @@ The following are combinations of environment variables and their uses:
 To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
 
 ### Running on macOS
+
+YB Controller (and by extension, backup and restore commands) is not supported on macOS.
 
 #### Port conflicts
 

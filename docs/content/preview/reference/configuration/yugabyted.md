@@ -26,17 +26,13 @@ For examples of using yugabyted to deploy single- and multi-node clusters, see [
 You can use yugabyted for production deployments. You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
 
-{{% note title="Running on macOS" %}}
-
-Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
-
-{{% /note %}}
-
 ## Installation
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-If you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
+For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+
+After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
 Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
@@ -51,7 +47,12 @@ To use the service, when creating nodes run the [yugabyted start](#start) comman
 ./bin/yugabyted start --backup_daemon=true
 ```
 
+{{% note title="Running on macOS" %}}
+
+Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
+
 Note that YB Controller is not supported on macOS.
+{{% /note %}}
 
 ## Syntax
 
@@ -1355,6 +1356,8 @@ The following are combinations of environment variables and their uses:
 To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
 
 ### Running on macOS
+
+YB Controller (and by extension, backup and restore commands) is not supported on macOS.
 
 #### Port conflicts
 
