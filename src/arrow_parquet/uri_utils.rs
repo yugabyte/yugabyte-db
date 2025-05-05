@@ -167,8 +167,6 @@ pub(crate) fn parquet_schema_from_uri(uri_info: &ParsedUriInfo) -> SchemaDescrip
 }
 
 pub(crate) fn parquet_metadata_from_uri(uri_info: &ParsedUriInfo) -> Arc<ParquetMetaData> {
-    let uri = uri_info.uri.clone();
-
     let copy_from = true;
     let (parquet_object_store, location) = get_or_create_object_store(uri_info, copy_from);
 
@@ -177,11 +175,14 @@ pub(crate) fn parquet_metadata_from_uri(uri_info: &ParsedUriInfo) -> Arc<Parquet
             .head(&location)
             .await
             .unwrap_or_else(|e| {
-                panic!("failed to get object store metadata for uri {}: {}", uri, e)
+                panic!(
+                    "failed to get object store metadata for uri {}: {}",
+                    uri_info.uri, e
+                )
             });
 
-        let parquet_object_reader =
-            ParquetObjectReader::new(parquet_object_store, object_store_meta);
+        let parquet_object_reader = ParquetObjectReader::new(parquet_object_store, location)
+            .with_file_size(object_store_meta.size);
 
         let builder = ParquetRecordBatchStreamBuilder::new(parquet_object_reader)
             .await
@@ -197,8 +198,6 @@ pub(crate) const RECORD_BATCH_SIZE: i64 = 1024;
 pub(crate) fn parquet_reader_from_uri(
     uri_info: &ParsedUriInfo,
 ) -> ParquetRecordBatchStream<ParquetObjectReader> {
-    let uri = uri_info.uri.clone();
-
     let copy_from = true;
     let (parquet_object_store, location) = get_or_create_object_store(uri_info, copy_from);
 
@@ -207,11 +206,14 @@ pub(crate) fn parquet_reader_from_uri(
             .head(&location)
             .await
             .unwrap_or_else(|e| {
-                panic!("failed to get object store metadata for uri {}: {}", uri, e)
+                panic!(
+                    "failed to get object store metadata for uri {}: {}",
+                    uri_info.uri, e
+                )
             });
 
-        let parquet_object_reader =
-            ParquetObjectReader::new(parquet_object_store, object_store_meta);
+        let parquet_object_reader = ParquetObjectReader::new(parquet_object_store, location)
+            .with_file_size(object_store_meta.size);
 
         let builder = ParquetRecordBatchStreamBuilder::new(parquet_object_reader)
             .await

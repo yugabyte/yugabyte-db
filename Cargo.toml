@@ -20,17 +20,17 @@ pg14 = ["pgrx/pg14", "pgrx-tests/pg14"]
 pg_test = []
 
 [dependencies]
-arrow = {version = "54", default-features = false}
-arrow-cast = {version = "54", default-features = false}
-arrow-schema = {version = "54", default-features = false, features = ["canonical_extension_types"]}
-aws-config = { version = "1", default-features = false, features = ["rustls","rt-tokio"] }
-aws-credential-types = {version = "1", default-features = false}
+arrow = {version = "55", default-features = false}
+arrow-cast = {version = "55", default-features = false}
+arrow-schema = {version = "55", default-features = false, features = ["canonical_extension_types"]}
+aws-config = { version = "=1.5.18", default-features = false, features = ["rustls","rt-tokio"] }
+aws-credential-types = {version = "=1.2.1", default-features = false}
 azure_storage = {version = "0.21", default-features = false}
 futures = "0.3"
 home = "0.5"
-object_store = {version = "0.11", default-features = false, features = ["aws", "azure", "gcp", "http"]}
+object_store = {version = "0.12", default-features = false, features = ["aws", "azure", "fs", "gcp", "http"]}
 once_cell = "1"
-parquet = {version = "54", default-features = false, features = [
+parquet = {version = "55", default-features = false, features = [
     "arrow",
     "snap",
     "brotli",
@@ -40,7 +40,7 @@ parquet = {version = "54", default-features = false, features = [
     "object_store",
     "arrow_canonical_extension_types",
 ]}
-pgrx = "=0.13.1"
+pgrx = "=0.14.1"
 rust-ini = "0.21"
 serde = "1"
 serde_json = "1"
@@ -48,7 +48,7 @@ tokio = {version = "1", default-features = false, features = ["rt", "time", "mac
 url = "2"
 
 [dev-dependencies]
-pgrx-tests = "=0.13.1"
+pgrx-tests = "=0.14.1"
 
 [profile.dev]
 panic = "unwind"

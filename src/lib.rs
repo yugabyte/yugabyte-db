@@ -34,7 +34,7 @@ pub(crate) static PG_BACKEND_TOKIO_RUNTIME: LazyLock<Runtime> = LazyLock::new(||
 });
 
 #[pg_guard]
-pub extern "C" fn _PG_init() {
+pub extern "C-unwind" fn _PG_init() {
     GucRegistry::define_bool_guc(
         "pg_parquet.enable_copy_hooks",
         "Enable parquet copy hooks",

@@ -69,7 +69,7 @@ pub(crate) fn push_parquet_reader_context(reader_ctx: ParquetReaderContext) {
 // This function is called by the COPY FROM command to read data from the parquet file
 // into output buffer passed by the executor.
 #[pg_guard]
-extern "C" fn copy_parquet_data_to_buffer(
+extern "C-unwind" fn copy_parquet_data_to_buffer(
     outbuf: void_mut_ptr,
     _minread: i32,
     maxread: i32,

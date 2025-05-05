@@ -174,7 +174,7 @@ impl CopyToParquetDestReceiver {
 }
 
 #[pg_guard]
-pub(crate) extern "C" fn copy_startup(
+pub(crate) extern "C-unwind" fn copy_startup(
     dest: *mut DestReceiver,
     _operation: i32,
     tupledesc: TupleDesc,
@@ -241,7 +241,10 @@ pub(crate) extern "C" fn copy_startup(
 }
 
 #[pg_guard]
-pub(crate) extern "C" fn copy_receive(slot: *mut TupleTableSlot, dest: *mut DestReceiver) -> bool {
+pub(crate) extern "C-unwind" fn copy_receive(
+    slot: *mut TupleTableSlot,
+    dest: *mut DestReceiver,
+) -> bool {
     let parquet_dest = unsafe {
         (dest as *mut CopyToParquetDestReceiver)
             .as_mut()
@@ -293,7 +296,7 @@ pub(crate) extern "C" fn copy_receive(slot: *mut TupleTableSlot, dest: *mut Dest
 }
 
 #[pg_guard]
-pub(crate) extern "C" fn copy_shutdown(dest: *mut DestReceiver) {
+pub(crate) extern "C-unwind" fn copy_shutdown(dest: *mut DestReceiver) {
     let parquet_dest = unsafe {
         (dest as *mut CopyToParquetDestReceiver)
             .as_mut()
@@ -310,7 +313,7 @@ pub(crate) extern "C" fn copy_shutdown(dest: *mut DestReceiver) {
 }
 
 #[pg_guard]
-pub(crate) extern "C" fn copy_destroy(_dest: *mut DestReceiver) {}
+pub(crate) extern "C-unwind" fn copy_destroy(_dest: *mut DestReceiver) {}
 
 fn tuple_column_sizes(tuple_datums: &[Option<Datum>], tupledesc: &PgTupleDesc) -> Vec<i32> {
     let mut column_sizes = vec![];
@@ -354,7 +357,7 @@ fn tuple_column_sizes(tuple_datums: &[Option<Datum>], tupledesc: &PgTupleDesc) -
 // used as a destination receiver for COPY TO command. All arguments, except "uri", are optional
 // and have default values if not provided.
 #[pg_guard]
-pub(crate) fn create_copy_to_parquet_dest_receiver(
+pub(crate) extern "C-unwind" fn create_copy_to_parquet_dest_receiver(
     uri: *const c_char,
     is_to_stdout: bool,
     options: CopyToParquetOptions,

@@ -142,7 +142,11 @@ impl CopyToParquetSplitDestReceiver {
 }
 
 #[pg_guard]
-extern "C" fn copy_split_startup(dest: *mut DestReceiver, operation: i32, tupledesc: TupleDesc) {
+extern "C-unwind" fn copy_split_startup(
+    dest: *mut DestReceiver,
+    operation: i32,
+    tupledesc: TupleDesc,
+) {
     let split_parquet_dest = unsafe {
         (dest as *mut CopyToParquetSplitDestReceiver)
             .as_mut()
@@ -156,7 +160,10 @@ extern "C" fn copy_split_startup(dest: *mut DestReceiver, operation: i32, tupled
 }
 
 #[pg_guard]
-extern "C" fn copy_split_receive(slot: *mut TupleTableSlot, dest: *mut DestReceiver) -> bool {
+extern "C-unwind" fn copy_split_receive(
+    slot: *mut TupleTableSlot,
+    dest: *mut DestReceiver,
+) -> bool {
     let split_parquet_dest = unsafe {
         (dest as *mut CopyToParquetSplitDestReceiver)
             .as_mut()
@@ -177,7 +184,7 @@ extern "C" fn copy_split_receive(slot: *mut TupleTableSlot, dest: *mut DestRecei
 }
 
 #[pg_guard]
-extern "C" fn copy_split_shutdown(dest: *mut DestReceiver) {
+extern "C-unwind" fn copy_split_shutdown(dest: *mut DestReceiver) {
     let split_parquet_dest = unsafe {
         (dest as *mut CopyToParquetSplitDestReceiver)
             .as_mut()
@@ -188,7 +195,7 @@ extern "C" fn copy_split_shutdown(dest: *mut DestReceiver) {
 }
 
 #[pg_guard]
-extern "C" fn copy_split_destroy(_dest: *mut DestReceiver) {}
+extern "C-unwind" fn copy_split_destroy(_dest: *mut DestReceiver) {}
 
 // create_copy_to_parquet_split_dest_receiver creates a new CopyToParquetSplitDestReceiver that can be
 // used as a destination receiver for COPY TO command. All arguments, except "uri", are optional
@@ -196,7 +203,7 @@ extern "C" fn copy_split_destroy(_dest: *mut DestReceiver) {}
 #[pg_guard]
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
-pub extern "C" fn create_copy_to_parquet_split_dest_receiver(
+pub extern "C-unwind" fn create_copy_to_parquet_split_dest_receiver(
     uri: *const c_char,
     is_to_stdout: bool,
     file_size_bytes: *const i64,

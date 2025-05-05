@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "valid compression range 0..=10 exceeded")]
+    #[should_panic(expected = "valid compression range 0..=9 exceeded")]
     fn test_invalid_gzip_compression_level() {
         let mut copy_options = HashMap::new();
         copy_options.insert(

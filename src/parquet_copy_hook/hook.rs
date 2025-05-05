@@ -34,7 +34,7 @@ static mut PREV_PROCESS_UTILITY_HOOK: ProcessUtility_hook_type = None;
 
 #[pg_guard]
 #[no_mangle]
-pub(crate) extern "C" fn init_parquet_copy_hook() {
+pub(crate) extern "C-unwind" fn init_parquet_copy_hook() {
     #[allow(static_mut_refs)]
     unsafe {
         if ProcessUtility_hook.is_some() {
@@ -124,7 +124,7 @@ fn process_copy_from_parquet(
 
 #[pg_guard]
 #[allow(clippy::too_many_arguments)]
-extern "C" fn parquet_copy_hook(
+extern "C-unwind" fn parquet_copy_hook(
     p_stmt: *mut PlannedStmt,
     query_string: *const c_char,
     read_only_tree: bool,

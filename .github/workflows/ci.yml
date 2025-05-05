@@ -41,7 +41,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.85.0
+          toolchain: 1.86.0
           target: x86_64-unknown-linux-gnu
           components: rustfmt, clippy, llvm-tools-preview
 
@@ -94,7 +94,7 @@ jobs:
 
       - name: Install and configure pgrx
         run: |
-          cargo install --locked cargo-pgrx@0.13.1
+          cargo install --locked cargo-pgrx@0.14.1
           cargo pgrx init --pg${{ env.PG_MAJOR }} /usr/lib/postgresql/${{ env.PG_MAJOR }}/bin/pg_config \
                           --base-testing-port $PGRX_TEST_PG_BASE_PORT
 

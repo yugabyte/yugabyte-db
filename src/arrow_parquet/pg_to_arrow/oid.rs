@@ -12,7 +12,7 @@ impl PgTypeToArrowArray<Oid> for Vec<Option<Oid>> {
     fn to_arrow_array(self, _context: &PgToArrowAttributeContext) -> ArrayRef {
         let oids = self
             .into_iter()
-            .map(|oid| oid.map(|oid| oid.as_u32()))
+            .map(|oid| oid.map(|oid| oid.to_u32()))
             .collect::<Vec<_>>();
         let oid_array = UInt32Array::from(oids);
         Arc::new(oid_array)
@@ -29,7 +29,7 @@ impl PgTypeToArrowArray<Oid> for Vec<Option<Vec<Option<Oid>>>> {
             .into_iter()
             .flatten()
             .flatten()
-            .map(|oid| oid.map(|oid| oid.as_u32()))
+            .map(|oid| oid.map(|oid| oid.to_u32()))
             .collect::<Vec<_>>();
 
         let oid_array = UInt32Array::from(pg_array);

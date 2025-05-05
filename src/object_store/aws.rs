@@ -124,11 +124,8 @@ impl AwsS3Config {
         };
 
         // first tries environment variables and then the config files
-        let sdk_config = PG_BACKEND_TOKIO_RUNTIME.block_on(async {
-            aws_config::defaults(BehaviorVersion::v2024_03_28())
-                .load()
-                .await
-        });
+        let sdk_config = PG_BACKEND_TOKIO_RUNTIME
+            .block_on(async { aws_config::defaults(BehaviorVersion::latest()).load().await });
 
         let mut access_key_id = None;
         let mut secret_access_key = None;
@@ -136,13 +133,19 @@ impl AwsS3Config {
         let mut expire_at = None;
 
         if let Some(credential_provider) = sdk_config.credentials_provider() {
-            if let Ok(credentials) = PG_BACKEND_TOKIO_RUNTIME
-                .block_on(async { credential_provider.provide_credentials().await })
-            {
+            let cred_res = PG_BACKEND_TOKIO_RUNTIME
+                .block_on(async { credential_provider.provide_credentials().await });
+
+            if let Ok(credentials) = cred_res {
                 access_key_id = Some(credentials.access_key_id().to_string());
                 secret_access_key = Some(credentials.secret_access_key().to_string());
                 session_token = credentials.session_token().map(|t| t.to_string());
                 expire_at = credentials.expiry();
+            } else {
+                pgrx::error!(
+                    "failed to load aws credentials: {:?}",
+                    cred_res.unwrap_err()
+                );
             }
         }
 
