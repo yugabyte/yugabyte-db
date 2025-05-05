@@ -527,6 +527,36 @@ public class Universe extends Model {
   }
 
   /**
+   * Update a universe in mutual exclusion with universe lock. It does not update
+   * 'updateInProgress'. Instead, tryLock is used to provide provide mutual exclusion between the
+   * callback and the lock update for universe by an incoming task.
+   *
+   * <p>Note: Ensure that the callback finishes quickly.
+   */
+  public static void doIfUnlocked(UUID universeUuid, Consumer<Universe> callback) {
+    if (UNIVERSE_KEY_LOCK.tryLock(universeUuid)) {
+      try {
+        Universe.maybeGet(universeUuid)
+            .ifPresent(
+                u -> {
+                  if (u.getUniverseDetails().updateInProgress) {
+                    LOG.debug(
+                        "Universe {}({}) is already being updated",
+                        u.getName(),
+                        u.getUniverseUUID());
+                  } else {
+                    callback.accept(u);
+                  }
+                });
+      } finally {
+        UNIVERSE_KEY_LOCK.releaseLock(universeUuid);
+      }
+    } else {
+      LOG.info("Could not acquire key lock for universe {}", universeUuid);
+    }
+  }
+
+  /**
    * Deletes the universe entry with the given UUID.
    *
    * @param universeUUID : uuid of the universe.
