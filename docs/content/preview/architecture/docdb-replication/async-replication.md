@@ -38,7 +38,7 @@ However, asynchronous replication can be beneficial in certain scenarios:
 
 - **Low write latency**: With synchronous replication, each write must reach a consensus across a majority of data centers. This can add tens or even hundreds of milliseconds of extra latency for writes in a multi-region deployment. xCluster reduces this latency by eliminating the need for immediate consensus across regions.
 - **Only two data centers needed**: With synchronous replication, to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. Therefore, to survive the loss of one data center, a minimum of three data centers is required, which can increase operational costs. For more details, see [fault tolerance](../replication/#fault-tolerance). With xCluster, you can achieve multi-region deployments with only two data centers.
-- **Disaster recovery**: xCluster utilizes independent YugabyteDB universes in each region that can function independently of each other. This setup allows for quick failover with minimal data loss in the event of a regional outage caused by hardware or software issues.
+- **Disaster recovery**: xCluster uses independent YugabyteDB universes in each region that can function independently of each other. This setup allows for quick failover with minimal data loss in the event of a regional outage caused by hardware or software issues.
 
 Asynchronous xCluster replication has the following drawbacks:
 
@@ -233,7 +233,6 @@ The following deployment scenarios are not yet supported:
 - _Daisy chaining_: This involves connecting a series of universes, for example: `A -> B -> C`
 
 - _Star_: This involves connecting all universes to each other, for example: `A <-> B <-> C <-> A`
-
 
 ## Limitations
 

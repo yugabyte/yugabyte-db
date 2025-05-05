@@ -28,7 +28,7 @@ To understand the difference between xCluster, Geo-Partitioning, and Read Replic
 
 ## Synchronous versus asynchronous replication
 
-YugabyteDB's [synchronous replication](../replication/) can be used to tolerate losing entire data centers or regions.  It replicates data in a single universe spread across multiple (three or more) data centers so that the loss of one data center does not impact availability, durability, or strong consistency courtesy of the Raft consensus algorithm.
+YugabyteDB's [synchronous replication](../replication/) can be used to tolerate losing entire data centers or regions. It replicates data in a single universe spread across multiple (three or more) data centers so that the loss of one data center does not impact availability, durability, or strong consistency enabled by the Raft consensus algorithm.
 
 However, asynchronous replication can be beneficial in certain scenarios:
 
@@ -76,28 +76,47 @@ For YSQL deployments, transactional mode is preferred because it provides the ne
 
 ### Transactional replication
 
-This mode is an extension of the previous one.  In order to restore consistency, we additionally disallow writes on the target universe and cause reads to read as of a time far enough in the past (typically 250 ms) that all the relevant data from the source universe has already been replicated.
+In this mode, reads occur at a time sufficiently in the past (typically 1-2 seconds) to ensure that all relevant data from the source universe has already been replicated. Additionally, writes to the target universe are not allowed.
 
-In particular, we pick the time to read as of, _T_, so that all the writes from all the source transactions that will commit at or before time _T_ have been replicated to the target universe.  Put another way, we read as of a time far enough in the past that there cannot be new incoming source commits at or before that time.  This restores consistent reads and ensures source universe transaction results become visible atomically.  Note that we do _not_ wait for any current in flight source-universe transactions.
+Reads occur as of the _xCluster safe time_, ensuring that all writes from all source transactions that will commit at or before the _xCluster safe time_ have been replicated to the target universe. This means we read as of a time far enough in the past that there cannot be new incoming commits at or before that time. This guarantees consistent reads and ensures source universe transactions become visible atomically. Note that the _xCluster safe time_ is not blocked by any in-flight or long-running source-universe transactions.
 
-In order to know when to read as of, we maintain an analog of safe time called _xCluster safe time_, which is the latest time it is currently safe to read as of with xCluster transactional replication in order to guarantee consistency and atomicity.  xCluster safe time advances as replication proceeds but lags behind real-time by the current replication lag.  This means, for example, if we write at 2 PM in the source universe and read at 2:01 PM in the target universe and replication lag is say five minutes then the read will read as of 1:56 PM and will not see the write.  We won't be able to see the write until 2:06 PM in the target universe assuming the replication lag remains at five minutes.
+_xCluster safe time_ advances as replication proceeds but lags behind real-time by the current replication lag. This means, for example, if we write at 2:00:00 PM in the source universe and read at 2:00:01 PM in the target universe and replication lag is, say, five seconds, then the read may read as of 1:59:56 PM and will not see the write. We may not be able to see the write until 2:00:06 PM in the target universe, assuming the replication lag remains at five seconds.
 
-If the source universe dies, then we can discard all the incomplete information in the target universe by rewinding it to the latest xCluster safe time (1:56 PM in the example) using YugabyteDB's [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/) feature.  The result will be the fully consistent database that results from applying a prefix of the source universe's transactions, namely exactly those that committed at or before the xCluster safe time.  Unlike with non-transactional replication, there is thus no need to handle torn transactions.
+![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
 
-It is unclear how to best support writes in the target universe using this strategy of maintaining consistency by reading only at a safe time in the past: A target update transaction would appear to need to read from the past but write in the present; it would thus have to wait for at least the replication lag to make sure no interfering writes from the source universe occurred during that interval.  Such transactions would thus be slow and prone to aborting.
+If the source universe fails, we can discard all incomplete information in the target universe by rewinding it to the latest _xCluster safe time_ (1:59:56 PM in the example) using YugabyteDB's [Point-in-Time Recovery (PITR)](../../../manage/backup-restore/point-in-time-recovery/) feature. The result will be a consistent database that includes only the transactions from the source universe that committed at or before the _xCluster safe time_. Unlike with non-transactional replication, there is no need to handle torn transactions.
 
-Accordingly, target writes are not currently permitted when using xCluster transactional replication.  This means that the transactional replication mode cannot support bidirectional replication.
+Target universe read-only transactions run at serializable isolation level on a single consistent snapshot as of the _xCluster safe time_.
 
-Target-universe read-only transactions are still permitted; they run at serializable isolation level on a single consistent snapshot taken in the past.
+In xCluster transactional replication mode, writes to the target universe are not allowed. Consequently, this mode does not support bidirectional replication.
 
+Transactional replication is currently only available for YSQL deployments.
+
+Transactional replication comes in the following modes:
+
+#### Semi-automatic mode
+
+Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes. This is the recommended mode for new deployments.
+
+{{<lead link="https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p">}}
+To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p)
+{{</lead>}}
+
+#### Manual mode
+
+This mode requires manual intervention for schema changes and is more complex to set up and manage.
 
 ## High-level implementation details
 
-At a high level, xCluster replication is implemented by having _pollers_ in the target universe that poll the source universe tablet servers for recent changes.  Each poller works independently and polls one source tablet, distributing the received changes among a set of target tablets.
+xCluster replicates WAL records from source universe tablets to target universe tablets. It is implemented by having _pollers_ in the target universe that poll the source universe tablet servers for WAL records. Each poller works independently and polls one source tablet, distributing the received changes among one or more target tablets. This allows xCluster to scale horizontally as more nodes are added.
 
-The polled tablets examine only their Raft logs to determine what changes have occurred recently rather than looking at their RocksDB instances.  The incoming poll request specifies the Raft log entry ID to start gathering changes from and the response includes a batch of changes and the Raft log entry ID to continue with next time.
+The polled tablets examine only the WAL to determine recent changes rather than looking at their RocksDB instances. The incoming poll request specifies the WAL OpId to start gathering changes from, and the response includes a batch of changes and the WAL OpId to continue with next time.
 
-Pollers occasionally checkpoint the continue-with Raft ID of the last batch of changes they have processed; this ensures each change is processed at least once.
+The source universe periodically saves the OpId that the target universe has confirmed as processed. This information is stored in the `cdc_state` table.
+
+{{<lead link="https://youtu.be/9TF3xPDDJ30?si=foKnj1CvDYidHqmx">}}
+To learn more, watch [xCluster Replication](https://youtu.be/9TF3xPDDJ30?si=foKnj1CvDYidHqmx)
+{{</lead>}}
 
 ### The mapping between source and target tablets
 
@@ -107,7 +126,7 @@ This means that each target tablet may require changes from multiple source tabl
 
 The following illustration shows an example of this setup for a single table:
 
-![distribution of pollers and where they pull data from and send it to](/images/architecture/replication/distribution-of-pollers-new.png)
+![distribution of pollers to tablets](/images/architecture/replication/distribution-of-pollers-new.png)
 
 In the illustration, the source universe is depicted on the left with three TServers (white boxes), each containing one tablet of the table (boxes inside) with specified ranges. The target universe is on the right, featuring one fewer TServer and tablet. The data from the top source tablet is distributed among both target tablets by the poller in the top target TServer. Meanwhile, the data from the remaining source tablets is replicated to the second target tablet by the pollers in the other target TServer. For simplicity, only the tablet leaders are shown, as pollers operate at and poll from leaders only.
 
@@ -115,52 +134,51 @@ Tablet splitting generates WAL records, which are replicated to the target side.
 
 ### Single-shard transactions
 
-These are straightforward: when one of these transaction commits, a single Raft log entry is produced containing all of that transaction's writes and its commit time.  This entry in turn is used to generate part of a batch of changes when the poller requests changes.
+When a single-shard transaction commits, a single WAL record is generated that includes all the writes and the commit time for that transaction. This WAL record is then included in a batch of changes when the poller requests updates. Single-shard transactions only modify a single tablet.
 
-Upon receiving the changes, the poller examines each write to see what key it writes to in order to determine which target tablet covers that part of the table.  The poller then forwards the writes to the appropriate tablets. The commit times of the writes are preserved and the writes are marked as _external_, which prevents them from being further replicated by xCluster, whether onward to an additional cluster or back to the cluster they came from in bidirectional cases.
+Upon receiving the changes, the poller examines each write to determine the key it writes to and identifies the corresponding target tablet. The poller then forwards the writes to the appropriate tablets. The commit times of the writes are preserved, and the writes are marked as _external_. This marking prevents them from being further replicated by xCluster, whether onward to another cluster or back to the original cluster in bidirectional replication scenarios.
 
 ### Distributed transactions
 
-These are more complicated because they involve multiple Raft records and the transaction status table.  Simplifying somewhat, each time one of these transactions makes a provisional write, a Raft entry is made on the appropriate tablet and after the transaction commits, a Raft entry is made on all the involved tablets to _apply the transaction_. Applying a transaction here means converting its writes from provisional writes to regular writes.
+Distributed transactions involve multiple WAL records and the transaction status tablet. Writes generate provisional records (intents) and corresponding WAL records linked to a transaction on the involved user tablets. The state of the transaction is tracked by one transaction status tablet. The transaction is committed by updating the transaction state in the transaction status tablet, which produces a WAL record. After the commit is made durable, all involved tablets are asynchronously informed to apply the transaction. This process converts provisional writes into regular writes and generates a further WAL record. The provisional records are made available for reads immediately after the commit, even if the apply has not occurred yet.
 
-Provisional writes are handled similarly to the normal writes in the single-shard transaction case but are written as provisional records instead of normal writes.  A special inert format is used that differs from the usual provisional records format.  This both saves space as the original locking information, which is not needed on the target side, is omitted and prevents the provisional records from interacting with the target read or locking pathways.  This ensures the transaction will not affect transactions on the target side yet.
+On the target universe, xCluster generates a special inert format for provisional records. This format omits the original row locking information and an additional index on the key in the intents DB, as these are unnecessary on the target side.
 
-The apply Raft entries also generate changes received by the pollers.  When a poller receives an apply entry, it sends instructions to all the target tablets it handles to apply the given transaction.  Transaction application on the target tablets is similar to that on the source universe but differs among other things due to the different provisional record format.  It converts the provisional writes into regular writes, again at the same commit time as on the source universe and with them being marked as external.  At this point the writes of the transaction to this tablet become visible to reads.
+When a poller receives an apply WAL record, it distributes it to all the target tablets it manages. The transaction application on the target tablets mirrors that of the source universe. It converts the provisional writes into regular writes, maintaining the same commit time as on the source universe and marking them as external. At this stage, the transaction's writes to this tablet become visible for reads.
 
-Because pollers operate independently and the writes/applies to multiple tablets are not done as a set atomically, writes from a single transaction &mdash; even a single-shard one &mdash; to multiple tablets can become visible at different times.
+Because pollers operate independently and the writes to multiple tablets are not applied atomically, writes from a single transaction affecting multiple tablets can become visible at different times.
 
-When a source transaction commits, it is applied to the relevant tablets lazily.  This means that even though transaction _X_ commits before transaction _Y_, _X_'s application Raft entry may occur after _Y_'s application Raft entry on some tablets.  If this happens, the writes from _X_ can become visible in the target universe after _Y_'s.  This is why non-transactional&ndash;mode reads are only eventually consistent and not timeline consistent.
+When a source transaction commits, it is applied to the relevant tablets lazily. This means that even though transaction _X_ commits before transaction _Y_, _X_'s apply WAL record may occur after _Y_'s apply WAL record on some tablets. If this happens, the writes from _X_ can become visible in the target universe after _Y_'s. This is why non-transactional mode reads are only eventually consistent and not timeline consistent.
 
 ### Transactional mode
 
-xCluster safe time is computed for each database by the target-universe master leader as the minimum _xCluster application time_ any tablet in that database has reached.  Pollers determine this time using information from the source tablet servers of the form "once you have fully applied all the changes before this one, your xCluster application time for this tablet will be _T_".
+Transactional mode addresses these issues by selecting an appropriate xCluster safe time.
 
-A source tablet server sends such information when it determines that no active transaction involving that tablet can commit before _T_ and that all transactions involving that tablet that committed before _T_ have application Raft entries that have been previously sent as changes.  It also periodically (currently 250 ms) checks for committed transactions that are missing apply Raft entries and generates such entries for them; this helps xCluster safe time advance faster.
+The xCluster safe time for each database on the target universe is calculated as the minimum _xCluster apply safe time_ reached by any tablet in that database. Pollers use information from the source tablet leaders to determine their _xCluster apply safe time_. This time ensures that all transactions committed before it have been applied on the target tablets.
+
+A source tablet leader determines the _xCluster apply safe time_ that the target poller can advance to based on the state of the apply operations of committed transactions. It periodically (every 250 ms) checks the state of in-flight transactions and generates apply WAL records for committed transactions. This ensures that the _xCluster apply safe time_ can keep advancing even when there are long-running transactions in the system.
+
+{{<lead link="https://youtu.be/lI6gw7ncBs8?si=gAioZ_NgOyl2dsM5">}}
+To learn more, watch [Transactional xCluster](https://youtu.be/lI6gw7ncBs8?si=gAioZ_NgOyl2dsM5)
+{{</lead>}}
 
 ## Schema differences
 
-xCluster replication does not support replicating between two copies of a table with different schemas.  For example, you cannot replicate a table to a version of that table missing a column or with a column having a different type.
+xCluster replication requires that the source and target tables have identical schemas. This means that you cannot replicate data between tables if there are differences in their schemas, such as missing columns or columns with different data types. Ensuring schema consistency is crucial for the replication process to function correctly.
 
-More subtly, this restriction extends to hidden schema metadata like the assignment of column IDs to columns.  Just because two tables show the same schema in YSQL does not mean their schemas are actually identical.  Because of this, in practice the target table schema needs to be copied from that of the source table; see [replication bootstrapping](#replication-bootstrapping) for how this is done.
+Additionally, this restriction includes hidden schema metadata, such as the assignment of column IDs. Even if two tables appear to have the same schema in YSQL, their schemas might not be identical. Therefore, in practice, the target table schema should be copied from the source table schema. For more details, refer to [replication bootstrapping](#replication-bootstrapping).
 
-Because of this restriction, xCluster does not need to do a deep translation of row contents (for example, dropping columns or translating column IDs inside of keys and values) as rows are replicated between universes.  Avoiding deep translation simplifies the code and reduces the cost of replication.
+Because of this restriction, xCluster does not need to perform deep translations of row contents (such as dropping columns or translating column IDs within keys and values) when replicating rows between universes. This avoidance of deep translation reduces the replication cost and improves throughput.
 
-### Supporting schema changes
-
-Currently, this is a manual process where the exact same schema change must be manually made on first one side then the other.  Replication of the given table automatically pauses while schema differences are detected and resumes after the schemas are the same again.
-
-Ongoing work, [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537), will make this automatic: schema changes made on the source universe will automatically be replicated to the target universe and made, allowing replication to continue running without operator intervention.
-
+Schema changes must be manually applied first to the source universe and then to the target universe. During this process, replication for the affected table is automatically paused when schema differences are detected and resumes once the schemas are identical.
 
 ## Replication bootstrapping
 
-xCluster replication copies changes made on the source universe to the target universe.  This is fine if the source universe starts empty but what if we want to start replicating a universe that already contains data?
+xCluster replicates the source WAL records to the target universe. WAL is garbage collected over time to conserve disk space. When setting up a new replication flow, the source universe may have already deleted some of the WAL records needed for an empty target universe to catch up. This is especially likely if the source universe has been running for a while and has accumulated a lot of WAL.
 
-In that case, we need to bootstrap the replication process by first copying the source universe to the target universe.
+In this case, you need to bootstrap the target universe.
 
-Today, this is done by backing up the source universe and restoring it to the target universe.  In addition to copying all the data, this copies the table schemas so they are identical on both sides.  Before the backup is done, the current Raft log IDs are saved so the replication can be started after the restore from a time before the backup was done.  This ensures any data written to the source universe during the backup is replicated.
-
-Ongoing work, [#17862](https://github.com/yugabyte/yugabyte-db/issues/17862), will replace using backup and restore here with directly copying RocksDB files between the source and target universes.  This will be more performant and flexible and remove the need for external storage like S3 to set up replication.
+This process involves checkpointing the source universe to ensure that any new WAL records are preserved for xCluster. Following this, a [distributed backup](../../../manage/backup-restore/snapshot-ysql/#move-a-snapshot-to-external-storage) is performed and restored to the target universe. This not only copies all the data but also ensures that the table schemas are identical on both sides.
 
 ## Deployment scenarios
 
@@ -204,38 +222,53 @@ The following deployment scenarios are not yet supported:
 
 - _Star_: This involves connecting all universes to each other, for example: `A <-> B <-> C <-> A`
 
-
 ## Limitations
 
-There are a number of limitations in the current xCluster implementation besides what deployments are possible.
+The following limitations apply to all xCluster modes and deployment scenarios:
 
-### Database triggers do not fire for replicated data
+- Materialized views
 
-Because xCluster replication bypasses the query layer, any database triggers are not fired on the target side for replicated records, which can result in unexpected behavior.
+  [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
 
-### Constraints cannot be enforced in active-active multi-master
+- Backups
 
-Similarly, there is no way to check for violations of unique constraints in active-active multiple-master setups. It is possible, for example, to have two conflicting writes in separate universes that together would violate a unique constraint and cause the main table to contain both rows, yet the index to contain only one row, resulting in an inconsistent state.
+  Backups are supported on both universes. However, for backups on target clusters, if there is an active workload, the consistency of the latest data is not guaranteed. This applies even to transactional modes. Therefore, it is recommended to take backups on the source universe only.
 
-Because of this applications using active-active multi-master should avoid `UNIQUE` indexes and constraints as well as serial columns in primary keys: Because both universes generate the same sequence numbers, this can result in conflicting rows. It is recommended to use UUIDs instead.
+- Change Data Capture
 
-In the future, it may be possible to detect such unsafe constraints and issue a warning, potentially by default.  This is tracked in [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
+  CDC [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
 
-Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key then you will end up with two rows with the same data. This is the expected PostgreSQL behavior &mdash; tables without primary keys can have multiple rows with the same data.
+- Modifications of Types
 
-### Materialized views
+  When xCluster is active, composite user types, array types whose base types are row types, domains, and other non-primitive types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via bootstrap. [#24078](https://github.com/yugabyte/yugabyte-db/issues/24078), [#24079](https://github.com/yugabyte/yugabyte-db/issues/24079)
 
-[Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
+Limitations specific to each scenario and mode are listed below:
 
 ### Non-transactional
 
-When interacting with data replicated from another universe using non-transactional mode:
+- Consistency issues
 
-- Reads are only eventually consistent
-- Last writer wins for writes
-- Transactions are limited to isolation level SQL-92 READ COMMITTED
+  Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
 
-After losing one universe, the other universe may be left with torn transactions.
+- Enum types
+
+  When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
+
+#### Multi-master asynchronous replication
+
+- Triggers
+
+  Because xCluster replication operates at the DocDB layer, it bypasses the query layer. So, only the database triggers on the source universe are fired, and the ones on the target side are not fired. It is recommended to avoid using the same triggers on both universes to avoid any confusion.
+
+- Indexes and Constraints
+
+  In active-active multi-master setups, unique constraints cannot be guaranteed. When conflicting writes to the same key occur from separate universes simultaneously, they can violate unique constraints or result in inconsistent indexes. For example, two conflicting writes might result in both rows being present in the main table, but only one row in the index.
+
+  Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key, you will end up with two rows with the same data. This is the expected PostgreSQL behavior — tables without primary keys can have multiple rows with the same data.
+
+- Sequences and Serial columns
+
+  Sequence data is not replicated by xCluster. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
 
 ### Transactional
 
@@ -255,46 +288,12 @@ Transactional mode has the following limitations:
 Improper use can compromise replication consistency and lead to data divergence. Use this setting only when absolutely necessary and with a clear understanding of its implications.
   {{< /warning >}}
 
-- Active-active multi-master is not supported
-- YCQL is not yet supported
-
-When the source universe is lost, an explicit decision must be made to switch over to the standby universe and point-in-time recovery must run; this is expected to increase recovery time by a minute or so.
-
-### Bootstrapping replication
-
-- Currently, it is your responsibility to ensure that a target universe has sufficiently recent updates so that replication can safely resume (for instructions, refer to [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/async-deployment/#bootstrap-a-target-universe)). In the future, bootstrapping the target universe will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
-- Bootstrap currently relies on the underlying backup and restore (BAR) mechanism of YugabyteDB.  This means it also inherits all of the limitations of BAR.  For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level.  This implies that when you bootstrap a target universe, you automatically bring any tables from the source database to the target database, even the ones that you might not plan to actually configure replication on.  This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
-
-### DDL changes
-
-- Currently, DDL changes are not automatically replicated.  Applying commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to the target universes is your responsibility.
-- `DROP TABLE` is not supported in YCQL.  You must first disable replication for this table.
-- `TRUNCATE TABLE` is not supported.  This is an underlying limitation, due to the level at which the two features operate.  That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
-- In the future, it will be possible to propagate DDL changes safely to other universes.  This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
+- YCQL is not yet supported.
+- In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
+- All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
+- When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Consider setting up these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
 ### Kubernetes
 
 - xCluster replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly set up amongst themselves.
 - Having two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported. See [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422) for details.
-
-### Backups
-
-Backups are supported. However for backups on target clusters, if there is an active workload, consistency of the latest data is not guaranteed.
-
-## Cross-feature interactions
-
-A number of interactions across features are supported.
-
-### Supported
-
-- TLS is supported for both client and internal RPC traffic.  Universes can also be configured with different certificates.
-- RPC compression is supported.  Note that both universes must be on a version that supports compression before a compression algorithm is enabled.
-- Encryption at rest is supported.  Note that the universes can technically use different Key Management Service (KMS) configurations.  However, for bootstrapping a target universe, the reliance is on the backup and restore flow.  As such, a limitation from that is inherited, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken.  This means both the source and the target must have access to the same KMS configurations.
-- YSQL colocation is supported.
-- YSQL geo-partitioning is supported.  Note that you must configure replication on all new partitions manually as DDL changes are not replicated automatically.
-- Source and target universes can have different numbers of tablets.
-- Tablet splitting is supported on both source and target universes.
-
-{{< tip title="Explore" >}}
-To better understand how xCluster replication works in practice, see [xCluster deployment](../../../deploy/multi-dc/async-replication/) and [Transactional xCluster deployment](../../../deploy/multi-dc/async-replication/async-replication-transactional/) in Launch and Manage.
-{{< /tip >}}
