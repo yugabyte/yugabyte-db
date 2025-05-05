@@ -685,10 +685,10 @@ func TableStatesInXClusterConfig() []string {
 		UpdatingXClusterTableState,
 		ErrorXClusterTableState,
 		WarningXClusterTableState,
-    FailedXClusterTableState,
+		FailedXClusterTableState,
 		UnableToFetchXClusterTableState,
-    DroppedFromSourceXClusterTableState,
-    DroppedFromTargetXClusterTableState,
+		DroppedFromSourceXClusterTableState,
+		DroppedFromTargetXClusterTableState,
 	}
 }
 
