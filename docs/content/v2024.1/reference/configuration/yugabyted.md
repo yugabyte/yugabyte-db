@@ -30,14 +30,14 @@ The yugabyted executable file is packaged with YugabyteDB and located in the Yug
 
 For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
 
-After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
+After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install YB Controller:
 
-Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
+1. Download the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz).
+1. Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `yugabytedb/ybc` folder as follows:
 
-```sh
-cd yugabyte-{{< yb-version version="v2024.1" >}}
-mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
-```
+    ```sh
+    cd yugabyte-{{< yb-version version="v2024.1" >}}
+    mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
 
 To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
 
