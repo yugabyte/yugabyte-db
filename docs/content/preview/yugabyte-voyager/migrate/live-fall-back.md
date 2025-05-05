@@ -583,6 +583,12 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 ## Prepare the target database
 
+{{< note title ="Note" >}}
+
+The TServer (9100) and Master (7100) ports on the target YugabyteDB cluster are required during the `export data from target` phase after the `cutover to target` step. These ports are needed to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
+
+{{</note>}}
+
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
 {{<note title="Important">}}
