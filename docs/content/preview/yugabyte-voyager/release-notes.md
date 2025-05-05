@@ -13,6 +13,24 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8.17 - May 6, 2025
+
+### New Feature
+
+- New Command: `finalize-schema-post-data-import`
+  - Introduces a new command `finalize-schema-post-data-import` in Voyager as an alias for the existing `import schema --post-snapshot-import true`.
+  - Flags such as `--post-snapshot-import` and `--refresh-mviews` are now deprecated in the `import-schema` command and should be used with the new command going forward.
+
+### Enhancements
+
+- Sizing Recommendations in Assessment Reports
+  - Provides estimated data load times based on the `target-db-version` specified during the `assess-migration` command.
+  - Removed `Parallel jobs` recommendations as the Adaptive Parallelism feature now dynamically adjusts parallelism based on cluster load.
+- Schema Recommendations in Assessment and Schema Analysis Reports
+  - The assessment and schema analysis reports now include recommendations for performance optimization by identifying and suggesting the removal of Redundant indexes present in the source schema.
+- Improved Assessment HTML Report UI
+  - The HTML report generated during the `assess-migration` command now features a cleaner, more user-friendly design for better readability and usability.
+
 ## v1.8.16 - April 22, 2025
 
 ### New Features

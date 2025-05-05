@@ -40,8 +40,8 @@ The valid *arguments* for import schema are described in the following table:
 | -h, --help | Command line help. |
 | --ignore-exist | Ignore if an object already exists on the target database. <br>Default: false<br>Example: `yb-voyager import schema ... --ignore-exist true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --object-type-list, <br> --exclude-object-type-list  | Comma-separated list of objects to import (--object-type-list) or not (--exclude-object-type-list). You can provide only one of the arguments at a time. <br> Example: `yb-voyager import schema …. -object-type-list "TABLE,FUNCTION,VIEW"` <br> Accepted parameters: <ul><li>Oracle: TYPE, SEQUENCE, TABLE, PARTITION, INDEX, PACKAGE, TRIGGER, FUNCTION, PROCEDURE, MVIEW, SYNONYM </li><li>PostgreSQL: SCHEMA, COLLATION, EXTENSION, TYPE, DOMAIN, SEQUENCE, TABLE, INDEX, FUNCTION, AGGREGATE, PROCEDURE, VIEW, TRIGGER, MVIEW, RULE, COMMENT</li><li>MySQL: TABLE, PARTITION, INDEX, VIEW, TRIGGER, FUNCTION, PROCEDURE</li></ul> |
-| --post-snapshot-import | Perform schema related tasks on the target YugabyteDB after data import is complete. Use --refresh-mviews along with this flag to refresh materialized views. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --post-snapshot-import | **[Deprecated]** Perform schema related tasks on the target YugabyteDB after data import is complete. Use --refresh-mviews along with this flag to refresh materialized views. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --refresh-mviews |**[Deprecated]** Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --start-clean | Starts a fresh schema import on the target YugabyteDB database for the schema present in the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --straight-order | Imports the schema objects in the order specified via the `--object-type-list` flag. <br>Default: false<br> Example: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
@@ -82,3 +82,7 @@ yb-voyager import schema --export-dir /dir/export-dir \
         --post-snapshot-import true \
         --refresh-mviews true
 ```
+
+{{< note title ="Note" >}}
+The --post-import-data and --refresh-mviews flags are now deprecated in the import schema command. In their place, a new command has been introduced: [finalize-schema-post-data-import](../finalize-schema-post-data-import/)
+{{< /note >}}
