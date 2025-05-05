@@ -152,6 +152,7 @@ typedef enum {
 	OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL,
 	OD_YB_ENABLE_MULTI_ROUTE_POOL,
 	OD_YB_YSQL_MAX_CONNECTIONS,
+	OD_YB_OPTIMIZED_SESSION_PARAMETERS,
 	OD_YB_MAX_POOLS,
 	OD_YB_JITTER_TIME,
 } od_lexeme_t;
@@ -331,6 +332,8 @@ static od_keyword_t od_config_keywords[] = {
 		   OD_YB_OPTIMIZED_EXTENDED_QUERY_PROTOCOL),
 	od_keyword("yb_enable_multi_route_pool", OD_YB_ENABLE_MULTI_ROUTE_POOL),
 	od_keyword("yb_ysql_max_connections", OD_YB_YSQL_MAX_CONNECTIONS),
+	od_keyword("yb_optimized_session_parameters",
+		   OD_YB_OPTIMIZED_SESSION_PARAMETERS),
 	od_keyword("yb_max_pools", OD_YB_MAX_POOLS),
 	od_keyword("yb_jitter_time", OD_YB_JITTER_TIME),
 
@@ -2455,6 +2458,13 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 		case OD_YB_YSQL_MAX_CONNECTIONS:
 			if (!od_config_reader_number(reader,
 						     &config->yb_ysql_max_connections)) {
+				goto error;
+			}
+			continue;
+		/* yb_optimized_session_parameters */
+		case OD_YB_OPTIMIZED_SESSION_PARAMETERS:
+			if (!od_config_reader_yes_no(reader,
+				    &config->yb_optimized_session_parameters)) {
 				goto error;
 			}
 			continue;
