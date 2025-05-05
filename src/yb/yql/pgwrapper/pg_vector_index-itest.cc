@@ -173,11 +173,8 @@ TEST_F_EX(PgVectorIndexITest, Backfill, PgVectorIndexBackfillITest) {
   TestThreadHolder thread_holder;
   VectorIndexWriter writer;
   for (int i = 0; i != 8; ++i) {
-    thread_holder.AddThreadFunctor(
-        [this, &stop_flag = thread_holder.stop_flag(), &writer] {
-      auto se = ScopeExit([&writer] {
-        writer.failure = true;
-      });
+    thread_holder.AddThreadFunctor([this, &stop_flag = thread_holder.stop_flag(), &writer] {
+      CancelableScopeExit se([&writer] { writer.failure = true; });
       auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load()) {
         ASSERT_NO_FATALS(writer.Perform(conn));

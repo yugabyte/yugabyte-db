@@ -974,7 +974,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
 
   stream_id = GenerateNewXreplStreamId();
-  auto se_recover_stream_id = ScopeExit([&stream_id, this] { RecoverXreplStreamId(stream_id); });
+  auto se_recover_stream_id = CancelableScopeExit(
+      [&stream_id, this] { RecoverXreplStreamId(stream_id); });
 
   stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
   stream->mutable_metadata()->StartMutation();

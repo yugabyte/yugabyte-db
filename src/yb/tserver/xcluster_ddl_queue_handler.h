@@ -13,6 +13,12 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
+
 #include <rapidjson/document.h>
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/hybrid_time.h"
