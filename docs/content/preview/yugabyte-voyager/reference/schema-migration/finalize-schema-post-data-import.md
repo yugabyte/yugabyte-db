@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-[Finalize the schema](../../../migrate/migrate-steps/#post-snapshot-import) (change the link accordingly)  post the import of data into YugabyteDB database
+[Finalize the schema](../../../migrate/migrate-steps/#finalize-schema-post-data-import) post the import of data into YugabyteDB database
 
 Create indexes and triggers in the target schema, and refresh the materialized views. Must be done after [import data](../../../migrate/migrate-steps/#import-data) is complete
 
