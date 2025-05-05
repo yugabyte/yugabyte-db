@@ -779,10 +779,36 @@ class CDCServiceImpl::Impl {
     }
   }
 
+  TableSchemaPackingStorage GetSchemaPackingStorages(
+      const std::vector<TableId>& table_ids, const TableType& table_type) {
+    std::lock_guard l(mutex_);
+    TableSchemaPackingStorage result;
+
+    for (const auto& table_id : table_ids) {
+      auto it = table_to_schema_packing_storage_.find(table_id);
+      if (it != table_to_schema_packing_storage_.end()) {
+        result.emplace(table_id, it->second);
+      } else {
+        result.emplace(table_id, dockv::SchemaPackingStorage(table_type));
+      }
+    }
+
+    return result;
+  }
+
+  void UpdateSchemaPackingStorages(const TableSchemaPackingStorage& schema_packing_storages) {
+    std::lock_guard l(mutex_);
+
+    for (const auto& [table_id, schema_packing_storage] : schema_packing_storages) {
+      table_to_schema_packing_storage_.insert_or_assign(table_id, schema_packing_storage);
+    }
+  }
+
   void ClearCaches() {
     std::lock_guard l(mutex_);
     tablet_checkpoints_.clear();
     cdc_state_metadata_.clear();
+    table_to_schema_packing_storage_.clear();
   }
 
   // this will be used for the std::call_once call while caching the client
@@ -794,6 +820,8 @@ class CDCServiceImpl::Impl {
   TabletCheckpoints tablet_checkpoints_ GUARDED_BY(mutex_);
 
   CDCStateMetadata cdc_state_metadata_ GUARDED_BY(mutex_);
+
+  TableSchemaPackingStorage table_to_schema_packing_storage_ GUARDED_BY(mutex_);
 };
 
 CDCServiceImpl::CDCServiceImpl(
@@ -1766,6 +1794,8 @@ void CDCServiceImpl::GetChanges(
         tablet_peer->shared_tablet_safe(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
         context);
 
+    auto schema_packing_storages = impl_->GetSchemaPackingStorages(
+        tablet_peer->tablet_metadata()->GetAllColocatedTables(), tablet_ptr->table_type());
     auto namespace_name = tablet_ptr->metadata()->namespace_name();
     auto last_sent_checkpoint = impl_->GetLastStreamedOpId(producer_tablet);
     // If from_op_id is more than the last sent op_id, it indicates a potential stale schema entry.
@@ -1794,10 +1824,10 @@ void CDCServiceImpl::GetChanges(
     status = GetChangesForCDCSDK(
         stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker, enum_map,
         composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
-        &commit_timestamp, &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
-        consistent_snapshot_time, req->wal_segment_index(), &last_readable_index,
-        tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline,
-        getchanges_resp_max_size_bytes, &throughput_metrics);
+        &commit_timestamp, &cached_schema_details, &schema_packing_storages, &last_streamed_op_id,
+        req->safe_hybrid_time(), consistent_snapshot_time, req->wal_segment_index(),
+        &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
+        get_changes_deadline, getchanges_resp_max_size_bytes, &throughput_metrics);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
     // out of date, hence we need to repopulate.
     if (status.IsCacheMissError()) {
@@ -1830,10 +1860,10 @@ void CDCServiceImpl::GetChanges(
       status = GetChangesForCDCSDK(
           stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
-          &commit_timestamp, &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
-          consistent_snapshot_time, req->wal_segment_index(), &last_readable_index,
-          tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline,
-          getchanges_resp_max_size_bytes, &throughput_metrics);
+          &commit_timestamp, &cached_schema_details, &schema_packing_storages, &last_streamed_op_id,
+          req->safe_hybrid_time(), consistent_snapshot_time, req->wal_segment_index(),
+          &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
+          get_changes_deadline, getchanges_resp_max_size_bytes, &throughput_metrics);
     }
     // This specific error indicates that a tablet split occured on the tablet.
     if (status.IsTabletSplit()) {
@@ -1848,6 +1878,7 @@ void CDCServiceImpl::GetChanges(
     impl_->UpdateCDCStateMetadata(
         producer_tablet, commit_timestamp, cached_schema_details,
         OpId::FromPB(resp->cdc_sdk_checkpoint()));
+    impl_->UpdateSchemaPackingStorages(schema_packing_storages);
   }
 
   if (FLAGS_enable_xcluster_stat_collection) {
