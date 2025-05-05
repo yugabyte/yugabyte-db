@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -101,7 +102,6 @@ public class NodeAgentEnabler {
     }
     enable();
     // Mark the eligible universes on init.
-    // TODO we may not want to run this everytime on startup. Will be fixed in subsequent tasks.
     markUniverses();
     universeInstallerExecutor =
         platformExecutorFactory.createExecutor(
@@ -156,6 +156,62 @@ public class NodeAgentEnabler {
                                           || !supplier.get().contains(n.cloudInfo.private_ip)))
                   .forEach(u -> markUniverse(u.getUniverseUUID()));
             });
+  }
+
+  // Check node agents for all universes.
+  private void updateMissingNodeAgents() {
+    Customer.getAll()
+        .forEach(
+            c -> c.getUniverseUUIDs().forEach(uuid -> updateMissingNodeAgents(c.getUuid(), uuid)));
+  }
+
+  // Check node agents for all nodes in the universe and update the field in the universe details
+  // accordingly.
+  @VisibleForTesting
+  void updateMissingNodeAgents(UUID customerUuid, UUID universeUuid) {
+    Universe.doIfUnlocked(
+        universeUuid,
+        universe -> {
+          Set<String> nodeIps =
+              universe.getNodes().stream()
+                  .filter(n -> n.state == NodeState.Live)
+                  .filter(n -> n.cloudInfo != null && n.cloudInfo.private_ip != null)
+                  .map(n -> n.cloudInfo.private_ip)
+                  .collect(Collectors.toSet());
+          if (nodeIps.size() == 0) {
+            return;
+          }
+          int nodeAgentCount = NodeAgent.count(customerUuid, nodeIps, NodeAgent.State.READY);
+          log.trace(
+              "Total {} node agents out of {} Live nodes for universe {}({})",
+              nodeAgentCount,
+              nodeIps,
+              universe.getName(),
+              universe.getUniverseUUID());
+          boolean nodeAgentMissing = nodeAgentCount != nodeIps.size();
+          if (nodeAgentMissing == universe.getUniverseDetails().nodeAgentMissing) {
+            // No change.
+            return;
+          }
+          log.info(
+              "Updating nodeAgentMissing for universe {}({}) to {}",
+              universe.getName(),
+              universe.getUniverseUUID(),
+              nodeAgentMissing);
+          // Do real DB update in transaction.
+          Universe.saveUniverseDetails(
+              universeUuid,
+              null /* version increment CB */,
+              u -> {
+                UniverseDefinitionTaskParams details = u.getUniverseDetails();
+                if (details.updateInProgress) {
+                  log.debug(
+                      "Universe {}({}) is already being updated", u.getName(), u.getUniverseUUID());
+                  return;
+                }
+                details.nodeAgentMissing = nodeAgentMissing;
+              });
+        });
   }
 
   /**
@@ -355,6 +411,15 @@ public class NodeAgentEnabler {
   @VisibleForTesting
   void scanUniverses() {
     try {
+      try {
+        // Update the field irrespective of the installer flag.
+        updateMissingNodeAgents();
+      } catch (Throwable t) {
+        log.error("Error in updating missing node agent field in universes - {}", t.getMessage());
+        if (t instanceof Error) {
+          throw (Error) t;
+        }
+      }
       boolean processNextUniverse =
           confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnablerRunInstaller);
       if (!processNextUniverse) {

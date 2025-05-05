@@ -34,6 +34,9 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.OSType;
+import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -106,6 +109,21 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     if (executorService != null) {
       executorService.shutdownNow();
     }
+  }
+
+  private NodeAgent createNodeAgent(UUID customerUuid, NodeDetails node) {
+    // Output is like Linux x86_64.
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setIp(node.cloudInfo.private_ip);
+    nodeAgent.setName(node.nodeName);
+    nodeAgent.setCustomerUuid(customerUuid);
+    nodeAgent.setOsType(OSType.LINUX);
+    nodeAgent.setArchType(ArchType.AMD64);
+    nodeAgent.setState(State.READY);
+    nodeAgent.setVersion("2024.2.4.0");
+    nodeAgent.setHome("/home/yugabyte/node-agent");
+    nodeAgent.save();
+    return nodeAgent;
   }
 
   private static class TestUniverseTaskBase extends UniverseTaskBase {
@@ -661,5 +679,25 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     // Field installNodeAgent must still be set.
     assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(true, universe2.getUniverseDetails().installNodeAgent);
+  }
+
+  @Test
+  public void testUpdateMissingNodeAgents() {
+    Universe universe = Universe.getOrBadRequest(universeUuid1);
+    List<NodeDetails> nodes = new ArrayList<>(universe.getNodes());
+    assertEquals(3, nodes.size());
+    createNodeAgent(customer1.getUuid(), nodes.get(0));
+    createNodeAgent(customer1.getUuid(), nodes.get(1));
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(true, universe.getUniverseDetails().nodeAgentMissing);
+    NodeAgent nodeAgent = createNodeAgent(customer1.getUuid(), nodes.get(2));
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(false, universe.getUniverseDetails().nodeAgentMissing);
+    nodeAgent.delete();
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(true, universe.getUniverseDetails().nodeAgentMissing);
   }
 }
