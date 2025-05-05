@@ -31,8 +31,6 @@ import { StyledContent, StyledHeader, StyledPanel } from '../../components/Defau
 
 const CONTROL_WIDTH = '480px';
 
-
-
 export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [{ generalSettings }, { moveToNextPage, saveGeneralSettings }] = (useContext(
     CreateUniverseContext
@@ -53,7 +51,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
           moveToNextPage();
         })();
       },
-      onPrev: () => { }
+      onPrev: () => {}
     }),
     []
   );

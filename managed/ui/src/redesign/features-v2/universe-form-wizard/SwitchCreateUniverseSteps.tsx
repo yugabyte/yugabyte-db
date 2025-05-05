@@ -17,6 +17,7 @@ import {
 } from './CreateUniverseContext';
 import { GeneralSettings } from './steps/general-settings';
 import { ResilienceAndRegions } from './steps/resilence-regions/ResilienceAndRegions';
+import { DatabaseSettings } from './steps/database-settings/DatabaseSettings';
 
 const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
   const [{ activeStep }] = (useContext(
@@ -26,7 +27,10 @@ const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
   const currentComponentRef = useRef<StepsRef>(null);
   const [, { get }] = useMap<Record<number, JSX.Element>>({
     [CreateUniverseSteps.GENERAL_SETTINGS]: <GeneralSettings ref={currentComponentRef} />,
-    [CreateUniverseSteps.RESILIENCE_AND_REGIONS]: <ResilienceAndRegions ref={currentComponentRef} />
+    [CreateUniverseSteps.RESILIENCE_AND_REGIONS]: (
+      <ResilienceAndRegions ref={currentComponentRef} />
+    ),
+    [CreateUniverseSteps.DATABASE]: <DatabaseSettings />
   });
   useImperativeHandle(forwardRef, () => currentComponentRef.current, [
     currentComponentRef.current,
