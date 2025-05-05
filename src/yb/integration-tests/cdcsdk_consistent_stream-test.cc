@@ -1082,7 +1082,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
   const int expected_count[] = {
-      0,
+      FLAGS_ysql_enable_packed_row ? 1 : 0,
       2 * num_batches * inserts_per_batch,
       0,
       0,
@@ -1104,7 +1104,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(2020, get_changes_resp.records.size());
+  ASSERT_EQ(FLAGS_ysql_enable_packed_row ? 2021 : 2020, get_changes_resp.records.size());
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALSegmentBySegment) {

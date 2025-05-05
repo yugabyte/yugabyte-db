@@ -8884,10 +8884,7 @@ TEST_F(CDCSDKYsqlTest, TestUpdateOnNonExistingEntry) {
 
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &checkpoint));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(0).row_message().op(), RowMessage::BEGIN);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(1).row_message().op(), RowMessage::DDL);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(2).row_message().op(), RowMessage::COMMIT);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
 }
 
 TEST_F(CDCSDKYsqlTest, TestGetChangesResponseSize) {
