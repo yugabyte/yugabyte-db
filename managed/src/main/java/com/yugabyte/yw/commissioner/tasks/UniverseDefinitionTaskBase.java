@@ -2512,6 +2512,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
+              createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
               if (userIntent.providerType != CloudType.local && !isUniverseManuallyProvisioned) {
                 createSetupYNPTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -2524,7 +2525,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-              createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
               if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
                 createSetupServerTasks(filteredNodes, setupParamsCustomizer)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
