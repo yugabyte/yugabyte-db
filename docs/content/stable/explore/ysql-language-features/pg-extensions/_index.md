@@ -50,6 +50,7 @@ YugabyteDB supports the following additional extensions, some of which you must 
 
 | Extension | Status | Description |
 | :-------- | :----- | :---------- |
+| [Anonymizer](extension-pganon/) {{<tags/feature/ea idea="1497">}}| Pre-bundled | Mask or replace personally identifiable information (PII) or commercially sensitive data in a database. |
 | [HypoPG](extension-hypopg/) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries without consuming any actual resources. |
 | Orafce | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB.<br/>For more information, see the [Orafce](https://github.com/orafce/orafce) documentation. |
 | [PGAudit](../../../secure/audit-logging/audit-logging-ysql/) | Pre-bundled | The PostgreSQL Audit Extension (pgaudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. |
