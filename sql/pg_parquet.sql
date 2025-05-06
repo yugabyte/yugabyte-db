@@ -73,6 +73,7 @@ AS 'MODULE_PATHNAME', 'file_metadata_wrapper';
 
 CREATE SCHEMA IF NOT EXISTS parquet;
 
+-- parquet schema function
 CREATE  FUNCTION parquet."schema"(
 	"uri" TEXT
 ) RETURNS TABLE (
@@ -91,3 +92,15 @@ CREATE  FUNCTION parquet."schema"(
 STRICT
 LANGUAGE c
 AS 'MODULE_PATHNAME', 'schema_wrapper';
+
+-- parquet stats function
+CREATE FUNCTION parquet."column_stats"("uri" TEXT) RETURNS TABLE (
+	"column_id" INT,
+	"field_id" INT,
+	"stats_min" TEXT,
+	"stats_max" TEXT,
+	"stats_null_count" BIGINT,
+	"stats_distinct_count" BIGINT
+) STRICT
+LANGUAGE c
+AS 'MODULE_PATHNAME', 'column_stats_wrapper';
