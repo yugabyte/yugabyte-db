@@ -199,15 +199,15 @@ RESET constraint_exclusion;
 CREATE TABLE agg (a int2, b float4);
 -- YB note: Enable when ALTER TABLE INHERIT from #1124 is supported
 ALTER FOREIGN TABLE agg_csv INHERIT agg;
---SELECT tableoid::regclass, * FROM agg;
---SELECT tableoid::regclass, * FROM agg_csv;
---SELECT tableoid::regclass, * FROM ONLY agg;
----- updates aren't supported
---UPDATE agg SET a = 1;
---DELETE FROM agg WHERE a = 100;
----- but this should be allowed
---SELECT tableoid::regclass, * FROM agg FOR UPDATE;
---ALTER FOREIGN TABLE agg_csv NO INHERIT agg;
+SELECT tableoid::regclass, * FROM agg;
+SELECT tableoid::regclass, * FROM agg_csv;
+SELECT tableoid::regclass, * FROM ONLY agg;
+-- updates aren't supported
+UPDATE agg SET a = 1;
+DELETE FROM agg WHERE a = 100;
+-- but this should be allowed
+--SELECT tableoid::regclass, * FROM agg FOR UPDATE;  -- YB: triggers a crash #27105
+ALTER FOREIGN TABLE agg_csv NO INHERIT agg;
 DROP TABLE agg;
 
 -- declarative partitioning tests

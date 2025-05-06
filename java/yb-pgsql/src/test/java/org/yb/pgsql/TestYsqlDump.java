@@ -82,7 +82,6 @@ public class TestYsqlDump extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Turn off sequence cache.
     flagMap.put("ysql_sequence_cache_minval", "0");
-    flagMap.put("ysql_enable_inheritance", "true");
     return flagMap;
   }
 

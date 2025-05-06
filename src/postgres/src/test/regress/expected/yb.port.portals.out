@@ -777,8 +777,7 @@ SELECT * FROM uctest;
 
 -- Check UPDATE WHERE CURRENT; this time use FOR UPDATE
 BEGIN;
--- Disable 'FOR UPDATE' due to github #9915
--- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+-- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE; -- YB: Disable 'FOR UPDATE' due to github #27149
 DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH c1;
  f1 | f2  
@@ -859,8 +858,7 @@ SELECT * FROM uctest;
 (3 rows)
 
 BEGIN;
--- Disable 'FOR UPDATE' due to github #9915
--- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+-- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE; -- YB: Disable 'FOR UPDATE' due to github #27149
 DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH c1;
  f1 | f2  
@@ -916,25 +914,18 @@ SELECT * FROM uctest;
 
 -- Check inheritance cases
 CREATE TEMP TABLE ucchild () inherits (uctest);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TEMP TABLE ucchild () inherits (uctest);
-                                     ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 INSERT INTO ucchild values(100, 'hundred');
-ERROR:  relation "ucchild" does not exist
-LINE 1: INSERT INTO ucchild values(100, 'hundred');
-                    ^
 SELECT * FROM uctest;
- f1 |  f2   
-----+-------
-  1 | one
-  2 | two
-  3 | three
-(3 rows)
+ f1  |   f2    
+-----+---------
+   1 | one
+   2 | two
+   3 | three
+ 100 | hundred
+(4 rows)
 
 BEGIN;
--- Disable 'FOR UPDATE' due to github #9915
--- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+-- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE; -- YB: Disable 'FOR UPDATE' due to #27149
 DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH 1 FROM c1;
  f1 | f2  
@@ -942,35 +933,36 @@ FETCH 1 FROM c1;
   1 | one
 (1 row)
 
-UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-                                       ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
+-- UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1; -- YB: CURRENT OF is not supported #737
 FETCH 1 FROM c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
-UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-                                       ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
+ f1 | f2  
+----+-----
+  2 | two
+(1 row)
+
+-- UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1; -- YB: CURRENT OF is not supported #737
 FETCH 1 FROM c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
-UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-                                       ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
-FETCH 1 FROM c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
-COMMIT;
-SELECT * FROM uctest;
  f1 |  f2   
 ----+-------
-  1 | one
-  2 | two
   3 | three
-(3 rows)
+(1 row)
+
+-- UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1; -- YB: CURRENT OF is not supported #737
+FETCH 1 FROM c1;
+ f1  |   f2    
+-----+---------
+ 100 | hundred
+(1 row)
+
+COMMIT;
+SELECT * FROM uctest;
+ f1  |   f2    
+-----+---------
+   1 | one
+   2 | two
+   3 | three
+ 100 | hundred
+(4 rows)
 
 -- Can update from a self-join, but only if FOR UPDATE says which to use
 BEGIN;
@@ -987,8 +979,7 @@ LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
--- Disable 'FOR UPDATE' due to github #9915
--- DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR UPDATE;
+-- DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR UPDATE;  -- YB: Disable 'FOR UPDATE' due to github #27149
 DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5;
 FETCH 1 FROM c1;
  f1 | f2 | f1 | f2 
@@ -1069,8 +1060,8 @@ LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
 ROLLBACK;
 BEGIN;
--- DISABLE 'FOR UPDATE' due to github #9915
--- DECLARE c1 CURSOR FOR SELECT MIN(f1) FROM uctest FOR UPDATE;
+-- DECLARE c1 CURSOR FOR SELECT MIN(f1) FROM uctest FOR UPDATE;  -- YB: Disable 'FOR UPDATE' due to github #27149
+DECLARE c1 CURSOR FOR SELECT MIN(f1) FROM uctest;
 ROLLBACK;
 -- WHERE CURRENT OF may someday work with views, but today is not that day.
 -- For now, just make sure it errors out cleanly.
@@ -1121,39 +1112,45 @@ ROLLBACK;
 BEGIN;
 CREATE TABLE current_check (currentid int, payload text);
 CREATE TABLE current_check_1 () INHERITS (current_check);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE current_check_1 () INHERITS (current_check);
-                                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 CREATE TABLE current_check_2 () INHERITS (current_check);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE current_check_2 () INHERITS (current_check);
-                                        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 INSERT INTO current_check_1 SELECT i, 'p' || i FROM generate_series(1,9) i;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 INSERT INTO current_check_2 SELECT i, 'P' || i FROM generate_series(10,19) i;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 DECLARE c1 SCROLL CURSOR FOR SELECT * FROM current_check;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+/* YB: FETCH ABSOLUTE, DELETE .. WHERE CURRENT OF not supported #737 #6514
 -- This tests the fetch-backwards code path
--- FETCH ABSOLUTE 12 FROM c1;
--- FETCH ABSOLUTE 8 FROM c1;
+FETCH ABSOLUTE 12 FROM c1;
+FETCH ABSOLUTE 8 FROM c1;
 DELETE FROM current_check WHERE CURRENT OF c1 RETURNING *;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: DELETE FROM current_check WHERE CURRENT OF c1 RETURNING *;
-                                  ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
+
 -- This tests the ExecutorRewind code path
--- FETCH ABSOLUTE 13 FROM c1;
--- FETCH ABSOLUTE 1 FROM c1;
+FETCH ABSOLUTE 13 FROM c1;
+FETCH ABSOLUTE 1 FROM c1;
 DELETE FROM current_check WHERE CURRENT OF c1 RETURNING *;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: DELETE FROM current_check WHERE CURRENT OF c1 RETURNING *;
-                                  ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
-SELECT * FROM current_check;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+*/ -- YB
+SELECT * FROM current_check ORDER BY currentid; -- YB: make order match PG results
+ currentid | payload 
+-----------+---------
+         1 | p1
+         2 | p2
+         3 | p3
+         4 | p4
+         5 | p5
+         6 | p6
+         7 | p7
+         8 | p8
+         9 | p9
+        10 | P10
+        11 | P11
+        12 | P12
+        13 | P13
+        14 | P14
+        15 | P15
+        16 | P16
+        17 | P17
+        18 | P18
+        19 | P19
+(19 rows)
+
 ROLLBACK;
 -- Make sure snapshot management works okay, per bug report in
 -- 235395b90909301035v7228ce63q392931f15aa74b31@mail.gmail.com
@@ -1161,8 +1158,7 @@ ROLLBACK;
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE cursor (a int);
 INSERT INTO cursor VALUES (1);
--- DISABLE 'FOR UPDATE' due to github #9915
--- DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM cursor FOR UPDATE;
+-- DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM cursor FOR UPDATE;  -- YB: github #27149
 -- UPDATE cursor SET a = 2;
 FETCH ALL FROM c1;
 ERROR:  cursor "c1" does not exist

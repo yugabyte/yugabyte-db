@@ -167,7 +167,6 @@ DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_inheritance);
 
 DECLARE_bool(use_fast_backward_scan);
 
@@ -2270,8 +2269,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
-      .ysql_enable_inheritance =
-          &FLAGS_ysql_enable_inheritance,
       .TEST_enable_object_locking_for_table_locks =
           &FLAGS_TEST_enable_object_locking_for_table_locks
   };

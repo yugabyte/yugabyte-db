@@ -9385,7 +9385,7 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 				}
 				else
 				{
-					if (IsYugaByteEnabled() && *YBCGetGFlags()->ysql_enable_inheritance)
+					if (IsYugaByteEnabled())
 						elog(ERROR, "Dropping a locally defined child col from the parent is not supported in YB."
 												" Please report at #26094."
 												" As a workaround, temporarily disable inheritance on the child, drop col from parent, "

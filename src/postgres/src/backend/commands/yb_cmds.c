@@ -1648,53 +1648,44 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				/*
 				 * For drop foreign key case, assigning the primary key table
 				 * as dependent relation.
+				 * For partition and inheritance children, we do not need to identify foreign
+				 * key dependent relations separately. For partition children, the foreign key
+				 * dependent relation is the same as the parent. For inheritance, foreign key
+				 * constraints do not recurse down to children.
 				 */
-				else if (cmd->subtype == AT_DropConstraintRecurse)
+				else if (cmd->subtype == AT_DropConstraintRecurse && !isPartitionOfAlteredTable)
 				{
-					HeapTuple	reltup = SearchSysCache1(RELOID,
-														 ObjectIdGetDatum(relationId));
+					Oid			constraint_oid = get_relation_constraint_oid(relationId,
+																				cmd->name,
+																				cmd->missing_ok);
 
-					if (!HeapTupleIsValid(reltup))
-						elog(ERROR,
-							 "cache lookup failed for relation %u",
-							 relationId);
-					Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
-
-					ReleaseSysCache(reltup);
-					if (!relform->relispartition)
+					/*
+					 * If the constraint doesn't exists and IF EXISTS is specified,
+					 * A NOTICE will be reported later in ATExecDropConstraint.
+					 */
+					if (!OidIsValid(constraint_oid))
 					{
-						Oid			constraint_oid = get_relation_constraint_oid(relationId,
-																				 cmd->name,
-																				 cmd->missing_ok);
+						return handles;
+					}
+					HeapTuple	tuple = SearchSysCache1(CONSTROID,
+														ObjectIdGetDatum(constraint_oid));
 
-						/*
-						 * If the constraint doesn't exists and IF EXISTS is specified,
-						 * A NOTICE will be reported later in ATExecDropConstraint.
-						 */
-						if (!OidIsValid(constraint_oid))
-						{
-							return handles;
-						}
-						HeapTuple	tuple = SearchSysCache1(CONSTROID,
-															ObjectIdGetDatum(constraint_oid));
+					if (!HeapTupleIsValid(tuple))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_SYSTEM_ERROR),
+									errmsg("cache lookup failed for constraint %u",
+										constraint_oid)));
+					}
+					Form_pg_constraint con =
+					(Form_pg_constraint) GETSTRUCT(tuple);
 
-						if (!HeapTupleIsValid(tuple))
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_SYSTEM_ERROR),
-									 errmsg("cache lookup failed for constraint %u",
-											constraint_oid)));
-						}
-						Form_pg_constraint con =
-						(Form_pg_constraint) GETSTRUCT(tuple);
-
-						ReleaseSysCache(tuple);
-						if (con->contype == CONSTRAINT_FOREIGN &&
-							relationId != con->confrelid)
-						{
-							dependent_rels = lappend(dependent_rels,
-													 table_open(con->confrelid, AccessExclusiveLock));
-						}
+					ReleaseSysCache(tuple);
+					if (con->contype == CONSTRAINT_FOREIGN &&
+						relationId != con->confrelid)
+					{
+						dependent_rels = lappend(dependent_rels,
+													table_open(con->confrelid, AccessExclusiveLock));
 					}
 				}
 				/*

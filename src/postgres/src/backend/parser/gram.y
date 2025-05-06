@@ -2916,10 +2916,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -2930,10 +2926,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -4553,10 +4545,6 @@ ConstraintElem:
 
 opt_no_inherit:	NO INHERIT
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = true;
 				}
@@ -4741,10 +4729,6 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = $3;
 				}
