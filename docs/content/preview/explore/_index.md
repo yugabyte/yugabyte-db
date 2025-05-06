@@ -19,23 +19,44 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
     title="SQL features"
-    description="PostgreSQL-compatible YSQL language features."
-    buttonText="YSQL"
-    buttonUrl="ysql-language-features/"
+    description="Explore YugabyteDB's PostgreSQL-compatible API."
+    linkText1="JSON support"
+    linkUrl1="ysql-language-features/jsonb-ysql/"
+    linkText2="Indexes"
+    linkUrl2="ysql-language-features/indexes-constraints/"
+    linkText3="Advanced features"
+    linkUrl3="ysql-language-features/advanced-features/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="ysql-language-features/"
   >}}
 
   {{< sections/3-box-card
     title="Going beyond SQL"
-    description="YugabyteDB exclusive features."
-    buttonText="Connect"
-    buttonUrl="going-beyond-sql/"
+    description="Advanced features for cloud-native applications."
+    linkText1="Cluster-aware client drivers"
+    linkUrl1="going-beyond-sql/cluster-aware-drivers/"
+    linkText2="Built-in connection pooling"
+    linkUrl2="going-beyond-sql/connection-mgr-ysql/"
+    linkText3="Geopartitioning"
+    linkUrl3="going-beyond-sql/tablespaces/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="going-beyond-sql/"
   >}}
 
   {{< sections/3-box-card
     title="YCQL features"
-    description="Apache Cassandra-compatible YCQL language features."
-    buttonText="YCQL"
-    buttonUrl="ycql-language/"
+    description="Explore YugabyteDB's Cassandra-compatible YCQL API."
+    linkText1="Keyspaces and tables"
+    linkUrl1="ycql-language/keyspaces-tables/"
+    linkText2="Data types"
+    linkUrl2="ycql-language/data-types/"
+    linkText3="Indexes and constraints"
+    linkUrl3="ycql-language/indexes-constraints/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="ycql-language/"
   >}}
 
 {{< /sections/3-boxes >}}
@@ -45,21 +66,21 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
     title="Resiliency"
-    description="Zero downtime when a node fails."
-    buttonText="YSQL"
+    description="Learn how YugabyteDB survives and recovers from outages with zero downtime."
+    buttonText="Resiliency"
     buttonUrl="fault-tolerance/"
   >}}
 
   {{< sections/3-box-card
     title="Horizontal scalability"
-    description="Dynamically add and remove nodes."
-    buttonText="Connect"
+    description="Learn about YugabyteDB's operationally simple and completely transparent scaling."
+    buttonText="Scale"
     buttonUrl="linear-scalability/"
   >}}
   {{< sections/3-box-card
-    title="Transactions"
-    description="Distributed transactions and isolation levels."
-    buttonText="YSQL"
+    title="Distributed transactions"
+    description="Learn how distributed transactions work and about YugabyteDB's isolation levels."
+    buttonText="Transactions"
     buttonUrl="transactions/"
   >}}
 
@@ -85,7 +106,7 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 
   {{< sections/3-box-card
     title="Security"
-    description="Authentication, authorization (RBAC), encryption, and more."
+    description="YugabyteDB supports authentication, authorization (RBAC), encryption, and more."
     buttonText="Security"
     buttonUrl="security/security/"
   >}}
@@ -106,16 +127,16 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 
   {{< sections/3-box-card
     title="Change data capture"
-    description="Support for streaming data to Kafka."
+    description="Stream data to Kafka using PostgreSQL logical replication."
     buttonText="Change data capture"
     buttonUrl="change-data-capture/"
   >}}
 
   {{< sections/3-box-card
-    title="Cluster management"
-    description="Using point-in-time recovery."
-    buttonText="Cluster management"
-    buttonUrl="cluster-management/"
+    title="Point-in-time recovery"
+    description="Recover your database at a specific point in time."
+    buttonText="PITR"
+    buttonUrl="cluster-management/point-in-time-recovery-ysql/"
   >}}
 
 {{< /sections/3-boxes >}}

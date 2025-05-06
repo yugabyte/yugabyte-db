@@ -1,9 +1,9 @@
 ---
 title: Set up clusters for running Explore examples
 headerTitle: Run the examples
-linkTitle: Setup
+linkTitle: Run the examples
 description: Set up clusters to run Explore examples.
-headcontent: Set up clusters to run Explore examples
+headcontent: Set up YugabyteDB to run Explore examples
 menu:
   preview:
     identifier: cluster-setup-3-anywhere
