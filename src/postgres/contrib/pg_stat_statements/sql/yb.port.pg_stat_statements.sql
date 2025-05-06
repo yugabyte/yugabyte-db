@@ -400,7 +400,6 @@ $$ LANGUAGE plpgsql;
 SELECT query, toplevel, plans, calls FROM pg_stat_statements WHERE query LIKE '%DELETE%' ORDER BY query COLLATE "C", toplevel;
 
 -- FROM [ONLY]
--- YB note: ERROR:  INHERITS not supported yet, re-enable when fixed, see issue #5956
 CREATE TABLE tbl_inh(id integer);
 CREATE TABLE tbl_inh_1() INHERITS (tbl_inh);
 INSERT INTO tbl_inh_1 SELECT 1;

@@ -33,13 +33,9 @@ public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
                      "yb_pg_schedule");
   }
 
-  /* TODO: this is necessary because the ysql_enable_inheritance can leak into other tests and cause
-   * failures. This test should use BasePgRegressTestPorted, and this flag can be removed.
-   */
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_enable_inheritance", "false");
     return flagMap;
   }
 }

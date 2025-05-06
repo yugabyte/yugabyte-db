@@ -62,7 +62,6 @@ DROP TABLE testpub_tbl2;
 DROP PUBLICATION testpub_foralltables;
 
 CREATE TABLE testpub_tbl3 (a int);
--- YB Note: Errors out since YSQL does not support `INHERITS` yet.
 CREATE TABLE testpub_tbl3a (b text) INHERITS (testpub_tbl3);
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub3 FOR TABLE testpub_tbl3;
@@ -72,12 +71,9 @@ RESET client_min_messages;
 \dRp+ testpub4
 
 DROP TABLE testpub_tbl3, testpub_tbl3a;
--- YB Note: We do not try to drop table testpub_tbl3a since it fails during
--- creation step.
-DROP TABLE testpub_tbl3;
 DROP PUBLICATION testpub3, testpub4;
 -- YB Note: Drop publications one by one to ensure cleanup.
--- These will fail now but will pass once we support inherits and streaming
+-- These will fail now but will pass once we support streaming
 -- tables without pk.
 DROP PUBLICATION testpub3;
 DROP PUBLICATION testpub4;

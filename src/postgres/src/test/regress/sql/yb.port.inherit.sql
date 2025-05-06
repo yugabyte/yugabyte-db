@@ -421,11 +421,9 @@ CREATE TABLE test_foreign_constraints(id1 int REFERENCES test_primary_constraint
 CREATE TABLE test_foreign_constraints_inh () INHERITS (test_foreign_constraints);
 \d+ test_primary_constraints
 \d+ test_foreign_constraints
-/* YB: pending issue with inherits #26216 should not attempt to propagate to child in this case
 ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id1_fkey;
 \d+ test_foreign_constraints
 \d+ test_foreign_constraints_inh
-*/ -- YB
 DROP TABLE test_foreign_constraints_inh;
 DROP TABLE test_foreign_constraints;
 DROP TABLE test_primary_constraints;

@@ -1,4 +1,4 @@
-// Copyright (c) YugabyteDB, Inc.
+// Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,20 +16,13 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-/**
- * Runs the pg_regress test suite on YB code.
- */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressPgTable extends BasePgRegressTestPorted {
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return 1800;
-  }
+@RunWith(value=YBTestRunner.class)
+public class TestPgRegressPgInherit extends BasePgRegressTestPorted {
 
   @Test
-  public void schedule() throws Exception {
-    runPgRegressTest("yb_pg_table_schedule");
+  public void testPgRegressInherit() throws Exception {
+    runPgRegressTest("yb_pg_inherit_schedule");
   }
 }

@@ -426,7 +426,6 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
   const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
-  const bool*     ysql_enable_inheritance;
   const bool*     TEST_enable_object_locking_for_table_locks;
 } YbcPgGFlagsAccessor;
 
