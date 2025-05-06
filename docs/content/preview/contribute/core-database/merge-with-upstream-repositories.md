@@ -382,7 +382,7 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    [Make sure tests pass](#testing-postgresql).
    For any merge conflicts, resolve and amend them to that same commit, describing resolutions within the commit messages themselves.
    This includes logical merge conflicts which can be found via compilation failure or test failure.
-   At the end, you should be n commits ahead of `yb-pg<version>,` where n is the number of commits you are point-importing.
+   At the end, you should be n commits ahead of `yb-pg<version>`, where n is the number of commits you are point-importing.
    Make a GitHub PR of this through your fork for review.
 1. On the `yugabyte/yugabyte-db` repo, import the commits that are part of the `yugabyte/postgres` repo PR.
    This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository patch][cross-repo-patch] for advice.
