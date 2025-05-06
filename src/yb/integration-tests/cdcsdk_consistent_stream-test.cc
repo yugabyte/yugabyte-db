@@ -1232,6 +1232,9 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
   auto tablet = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet.begin()->tablet_id()));
+
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -1259,6 +1262,13 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
   ASSERT_EQ(get_change_resp.cdc_sdk_proto_records_size(), 5);
 
   ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto tablet_safe = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+        return tablet_safe->GetMinStartHTRunningTxnsForCDCProducer() == HybridTime::kMax;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the commit of running txn."));
 
   // Now that there are no running transactions we can ship all the records from all the
   // transactions.
