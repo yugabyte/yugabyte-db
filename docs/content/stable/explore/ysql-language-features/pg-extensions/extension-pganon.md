@@ -21,7 +21,7 @@ YugabyteDB uses v1.3.1 of PostgreSQL Anonymizer.
 
 ## Enable Anonymizer
 
-While in early access, to enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using yugabted, you would do the following:
+While in early access, to enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../../reference/configuration/yugabyted/), you would do the following:
 
 ```sh
 ./bin/yugabyted start --tserver_flags="enable_pg_anonymizer=true"
