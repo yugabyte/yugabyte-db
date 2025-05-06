@@ -788,7 +788,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
-    The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to target phase` continues and completes by importing all the exported events into the target YugabyteDB database.
+    The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to target` phase continues and completes by importing all the exported events into the target YugabyteDB database.
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
