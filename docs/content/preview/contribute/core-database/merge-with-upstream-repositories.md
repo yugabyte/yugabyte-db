@@ -376,13 +376,14 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
 1. Find the appropriate upstream postgres commits.
    For example, if this import is for `yugabyte/yugabyte-db` repo `2025.1` branch based on PG 15.x, then prioritize using upstream postgres commits on `REL_15_STABLE` over those on `master` because they would have resolved conflicts for us.
    See [here](#find-postgresql-back-patch-commits) for suggestions on how to do this.
-1. On latest `yugabyte/postgres` repo `yb-pg<version>` branch, do `git cherry-pick -x <commit>` for each commit being imported.
+1. Switch to a feature branch off the latest `yugabyte/postgres` repo `yb-pg<version>` branch: `git switch -c import-abc yb-pg<version>`.
+1. Do `git cherry-pick -x <commit>` for each commit being imported.
    Notice the `-x` to record the commit hash being cherry-picked.
    [Make sure tests pass](#testing-postgresql).
    For any merge conflicts, resolve and amend them to that same commit, describing resolutions within the commit messages themselves.
    This includes logical merge conflicts which can be found via compilation failure or test failure.
    At the end, you should be n commits ahead of `yb-pg<version>,` where n is the number of commits you are point-importing.
-   Make a GitHub PR of this for review.
+   Make a GitHub PR of this through your fork for review.
 1. On the `yugabyte/yugabyte-db` repo, import the commits that are part of the `yugabyte/postgres` repo PR.
    This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository patch][cross-repo-patch] for advice.
    TODO(jason): another alternative is to apply the giant patch to yugabyte-db.
@@ -405,7 +406,7 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    **If there is a merge conflict on `src/lint/upstream_repositories.csv`, then redo the whole process.**
    It means someone else updated `yb-pg<version>` branch, so `yugabyte/postgres` cherry-picks need to be rebased on latest `yb-pg<version>`, compilation/testing needs to be re-done, and since the commit hashes change, `src/lint/upstream_repositories.csv` needs a new commit hash.
    Plus, it's safest to re-run tests on `yugabyte/yugabyte-db` after all this adjustment.
-1. Land the `yugabyte/postgres` commits directly onto `yb-pg<version>`.
+1. Push the `yugabyte/postgres` commits directly onto `yb-pg<version>`: `git push <remote> import-abc:yb-pg<version>`.
    **Do not use the GitHub PR UI to merge because that changes commit hashes.**
    This should not run into any conflicts; there should be no need for force push.
    This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
@@ -416,11 +417,12 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
 A direct-descendant merge for PostgreSQL is typically a minor version upgrade.
 An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd531080239c350528da38268ac0fa0e](https://github.com/yugabyte/postgres/commit/12398eddbd531080239c350528da38268ac0fa0e) and [`yugabyte/yugabyte-db` e99df6f4d97e5c002d3c4b89c74a778ad0ac0932](https://github.com/yugabyte/yugabyte-db/commit/e99df6f4d97e5c002d3c4b89c74a778ad0ac0932).
 
-1. On latest `yugabyte/postgres` repo, `git merge <commit>`.
+1. Switch to a feature branch off the latest `yugabyte/postgres` repo `yb-pg<version>` branch: `git switch -c merge-pg yb-pg<version>`.
+1. Do `git merge <commit>`.
    [Make sure tests pass](#testing-postgresql).
    Record merge resolutions into the merge commit message.
    There should only be the merge commit and no other extraneous commits on top of it.
-   Make a GitHub PR of this for review.
+   Make a GitHub PR of this through your fork for review.
 1. Apply those changes to the `yugabyte/yugabyte-db` repo.
    See [cross-repository patch][cross-repo-patch] for details.
    Update `src/lint/upstream_repositories.csv`, and create a Phorge revision listing all the merge conflict details.
@@ -431,7 +433,7 @@ An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd5310802
    **If there is a merge conflict on `src/lint/upstream_repositories.csv`, then redo the whole process.**
    It means someone else updated `yb-pg<version>` branch, so `yugabyte/postgres` merge need to be redone on latest `yb-pg<version>`, compilation/testing needs to be re-done, and since the commit hashes change, `src/lint/upstream_repositories.csv` needs a new commit hash.
    Plus, it's safest to re-run tests on `yugabyte/yugabyte-db` after all this adjustment.
-1. Land the `yugabyte/postgres` merge directly onto `yb-pg<version>`.
+1. Push the `yugabyte/postgres` merge directly onto `yb-pg<version>`: `git push <remote> merge-pg:yb-pg<version>`.
    **Do not use the GitHub PR UI to merge because that changes commit hashes.**
    This should not run into any conflicts; there should be no need for force push.
    This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
@@ -468,7 +470,7 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 1. Create a new branch `yb-pg18` on `REL_18_1`, then apply each change recorded above.
    If cherry-picking commits, use `-x`.
    For merge conflicts, resolve and amend them to the same commit, describing resolutions within the commit messages themselves.
-   The procedure here is very much like the first two steps of [doing point-imports](#squash-point-imports).
+   The procedure here is very much like the first three steps of [doing point-imports](#squash-point-imports).
 1. Do the same steps as in [direct-descendant merge](#squash-direct-descendant-merge), starting from "Apply those changes to the `yugabyte/yugabyte-db` repo."
    A difference is that this merge may be so much larger that the initial merge is incomplete and potentially based off an old commit on `yugabyte/yugabyte-db`.
    This initial merge commit and further development to close the gaps can be done in a separate `pg18` branch on `yugabyte/yugabyte-db`.
