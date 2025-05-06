@@ -46,9 +46,6 @@ These variants are useful only when at least one other table inherits `t`. But a
 
 ## Semantics
 
-{{< note title="Table rewrites during an ALTER TABLE" >}}
-Most ALTER TABLE statements only involve a schema modification and complete quickly. However, certain specific ALTER TABLE statements require a new copy of the underlying table to be made (similar to PostgreSQL) and can potentially take a long time, depending on the sizes of the tables and indexes involved. This is typically referred to as a "table rewrite". . Note that, in addition to the longer execution time, it is also note safe to execute concurrent DML during a table rewrite. For more details and possible workarounds, see [../../ddl-limitations.md]. ALTER TABLE statements that involve a table rewrite are called out specifically in the section [#alter-table-operations-that-involve-a-table-rewrite].
-{{< /note >}}
 
 ### *alter_table_action*
 
@@ -58,7 +55,19 @@ Specify one of the following actions.
 
 Add the specified column with the specified data type and constraint.
 
-TODO: add details on volatile column
+##### Table rewrites
+
+ADD COLUMN … DEFAULT statements require a [table rewrite](#alter-table-operations-that-involve-a-table-rewrite) when the default value uses *volatile* functions. [Volatile functions](https://www.postgresql.org/docs/current/xfunc-volatility.html#XFUNC-VOLATILITY) can return different results for different rows, so a table rewrite is required to fill in values for existing rows. For non-volatile functions, no table rewrite is required.
+  
+Examples of volatile expressions
+
+- ALTER TABLE … ADD COLUMN v1 INT DEFAULT random() 
+- ALTER TABLE .. ADD COLUMN v2 UUID DEFAULT gen_random_uuid();
+  
+Examples of non-volatile expressions (no table rewrite) 
+
+- ALTER TABLE … ADD COLUMN nv1 INT DEFAULT 5
+- ALTER TABLE … ADD COLUMN nv2 timestamp DEFAULT now() -- uses the same timestamp now() for all existing rows
 
 #### RENAME TO *table_name*
 
@@ -228,20 +237,16 @@ It quietly succeeds. Now `\d children` shows that the foreign key constraint `ch
 
 Add the specified constraint to the table.
 
+##### Table rewrites
 
-{{< warning >}}
-Adding a `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table.
-This happens because of the clustered storage by primary key that YugabyteDB uses to store rows and indexes.
-Tables without a `PRIMARY KEY` have a hidden one underneath and rows are stored clustered on it. The secondary indexes of the table
-link to this hidden `PRIMARY KEY`.
-While the tables and indexes are being rewritten, you may lose any modifications made to the table.
-For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
-{{< /warning >}}
+Adding a `PRIMARY KEY` constraint results in a full table rewrite of the main table and all associated indexes, which can be a potentially expensive operation. For more details about [table rewrites, see this section](#alter-table-operations-that-involve-a-table-rewrite).
+
+The reason for the table rewrite is the clustered storage by primary key that YugabyteDB uses to store rows and indexes. Tables without a `PRIMARY KEY` have a hidden one underneath and rows are stored clustered on it. These rows need to be rewritten to use the newly added primary key column. 
+
 
 #### ALTER [ COLUMN ] *column_name* [ SET DATA ] TYPE *data_type* [ COLLATE *collation* ] [ USING *expression* ]
 
 Change the type of an existing column. The following semantics apply:
-- If data on disk is required to change, a full table rewrite is needed.
 - If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
 - If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
 - A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
@@ -249,50 +254,51 @@ Change the type of an existing column. The following semantics apply:
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with CDC streams, or xCluster replication when it requires data on disk to change. See [#16625](https://github.com/yugabyte/yugabyte-db/issues/16625).
 
-##### Alter type without table-rewrite
+##### Table rewrites
 
-If the change doesn't require data on disk to change, concurrent DMLs to the table can be safely performed as shown in the following example:
+Altering a column’s type requires a [full table rewrite](#alter-table-operations-that-involve-a-table-rewrite) of the table and any indexes that contain this column when the underlying storage format changes or if the data changes.
 
-TODO: add specific list
+The following type changes are common cases where we require a table rewrite:
 
-```sql
-CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
-ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
-```
+|     From         |  To               | Reason for table rewrite                                       |
+| ------------ | -------------- | --------------------------------------------------------------------- |
+| INTEGER      | TEXT           | Different storage formats.                                            |
+| TEXT         | INTEGER        | Needs parsing and validation.                                         |
+| JSON         | JSONB          | Different internal representation.                                    |
+| UUID         | TEXT           | Different binary format.                                              |
+| BYTEA        | TEXT           | Different encoding.                                                   |
+| TIMESTAMP    | DATE           | Loses time info; storage changes.                                     |
+| BOOLEAN      | INTEGER        | Different sizes and encoding.                                         |
+| REAL         | NUMERIC        | Different precision and format.                                       |
+| NUMERIC(p,s) | NUMERIC(p2,s2) | Requires data changes if scale is changed or if precision is smaller. |
 
-##### Alter type with table rewrite
+The following type changes do not require a table rewrite:
 
-If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
-- The action creates an entirely new table under the hood, and concurrent DMLs may not be reflected in the new table which can lead to correctness issues.
-- The operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
+| From              |  To                   | Notes                  |
+| ------------ | ------------------ | ------------------------------------------------------ |
+| VARCHAR(n)   | VARCHAR(m) (m > n) | Length increase is compatible.                         |
+| VARCHAR(n)   | TEXT               | Always compatible.                                     |
+| SERIAL       | INTEGER            | Underlying type is INTEGER; usually OK.                |
+| NUMERIC(p,s) | NUMERIC(p2,s2)     | If new precision is larger and scale remains the same. |
+| CHAR(n)      | CHAR(m) (m > n)    | PG stores it as padded TEXT, so often fine.            |
+| Domain types | Their base type    | Compatible, unless additional constraints exist.       |
 
-TODO: add specific list
+Altering a column with a (non-trivial) USING clause always requires a rewrite.
 
-Following is an example of alter type with table rewrite:
+The table rewrite operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
 
-```sql
-CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
-INSERT INTO test(a) VALUES ('1234555');
-ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(40);
--- try to change type to BIGINT
-ALTER TABLE test ALTER COLUMN a TYPE BIGINT;
-ERROR:  column "a" cannot be cast automatically to type bigint
-HINT:  You might need to specify "USING a::bigint".
--- use USING clause to cast the values
-ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT;
-```
+Examples of ALTER TYPE that cause a table rewrite
 
-Another option is to use a custom function as follows:
+- ALTER TABLE foo
+    ALTER COLUMN foo_timestamp TYPE timestamp with time zone
+    USING
+        timestamp with time zone 'epoch' + foo_timestamp * interval '1 second';
+- ALTER TABLE t ALTER COLUMN t_num1 TYPE NUMERIC(9,5) -- from NUMERIC(6,1);
+- ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT; -- from INT
 
-```sql
-CREATE OR REPLACE FUNCTION myfunc(text) RETURNS BIGINT
-    AS 'select $1::BIGINT;'
-    LANGUAGE SQL
-    IMMUTABLE
-    RETURNS NULL ON NULL INPUT;
+Examples of ALTER TYPE that do not cause a table rewrite
 
-ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING myfunc(a);
-```
+- ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51); -- from VARCHAR(50)
 
 
 #### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
@@ -302,12 +308,9 @@ Drop the named constraint from the table.
 - `RESTRICT` — Remove only the specified constraint.
 - `CASCADE` — Remove the specified constraint and any dependent objects.
 
-{{< warning >}}
-Dropping the `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table.
-This happens because of the clustered storage by primary key that YugabyteDB uses to store rows and indexes.
-While the tables and indexes are being rewritten, you may lose any modifications made to the table.
-For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
-{{< /warning >}}
+##### Table rewrites
+
+Dropping the `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table, which is a potentially expensive operation. More details and common limitations of table rewrites  [are described in this section](#alter-table-operations-that-involve-a-table-rewrite).
 
 
 #### RENAME [ COLUMN ] *column_name* TO *column_name*
@@ -377,16 +380,34 @@ Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row with
 
 Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
 
-## Alter table operations that involve a table rewrite.
+## Alter table operations that involve a table rewrite
+
+Most ALTER TABLE statements only involve a schema modification and complete quickly. However, certain specific ALTER TABLE statements require a new copy of the underlying table (and associated index tables, in some cases) to be made and can potentially take a long time, depending on the sizes of the tables and indexes involved. This is typically referred to as a "table rewrite". This behavior is [similar to PostgreSQL](https://www.crunchydata.com/blog/when-does-alter-table-require-a-rewrite), though the exact scenarios when a rewrite is triggered may differ between PostgreSQL and YugabyteDB.
+
+It is not safe to execute concurrent DML on the table during a table rewrite because the results of any concurrent DML are not guaranteed to be reflected in the copy of the table being made. This behavior is also similar to PostgreSQL, where a table lock typically excludes concurrent DML on the table during the rewrite.
+
+When such expensive rewrites have to be performed, it is recommended to combine them into a single ALTER TABLE as shown below to avoid multiple expensive rewrites.
+
+```
+ALTER TABLE t ADD COLUMN c6 UUID DEFAULT gen_random_uuid(), ALTER COLUMN c8 TYPE TEXT
+```
+
+ ALTER TABLE statements that involve a table rewrite are called out specifically in the following sections.
 
 The following alter table operations involve making a full copy of the underlying table and associated index tables.
 1. Changing the primary key of a table
-   1. [#add-primary-key]
-   2. [#drop-primary-key]
-2. Adding a column with a (volatile) default value
-   1. TODO: links
-4. Changing the type of a column 
-   1. TODO: links to above
+   2. [#add-primary-key]
+   3. [#drop-primary-key]
+4. Adding a column with a (volatile) default value
+   5. TODO: links
+6. Changing the type of a column 
+   7. TODO: links to above
+   8. 
+
+The following alter table operations involve making a full copy of the underlying table (and possibly associated index tables).
+1. [Adding](#add-alter-table-constraint-constraints) or [dropping](#drop-constraint-constraint-name-restrict-cascade) the primary key of a table.
+2. [Adding a column with a (volatile) default value](#add-column-if-not-exists-column-name-data-type-constraint-constraints).
+4. [Changing the type of a column](#alter-column-column-name-set-data-type-data-type-collate-collation-using-expression).
   
 ## See also
 
