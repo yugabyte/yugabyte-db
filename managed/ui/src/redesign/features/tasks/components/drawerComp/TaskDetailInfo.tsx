@@ -159,12 +159,12 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
 
   if (isGFLAGTask) {
     const isLoading = isSubTaskDetailsLoading || isAuditQueryLoading;
-    taskInfo.push(
-      {
-        label: t('upgradeMethod'),
-        value: isLoading ? '-' : (auditData?.payload as any)?.upgradeOption
-      },
-      {
+    taskInfo.push({
+      label: t('upgradeMethod'),
+      value: isLoading ? '-' : (auditData?.payload as any)?.upgradeOption
+    });
+    if ((auditData?.payload as any)?.upgradeOption === 'Rolling') {
+      taskInfo.push({
         label: t('delay'),
         value: isLoading
           ? '-'
@@ -172,8 +172,8 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
               delay: (auditData?.payload as any)?.sleepAfterMasterRestartMillis / 1000
             }),
         className: classes.rollingRestart
-      }
-    );
+      });
+    }
   }
 
   if (currentTask.type === TaskType.SOFTWARE_UPGRADE) {

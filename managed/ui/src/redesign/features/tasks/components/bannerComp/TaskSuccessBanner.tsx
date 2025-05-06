@@ -47,6 +47,7 @@ export const TaskSuccessBanner: FC<TaskBannerCompProps> = ({
               variant="secondary"
               size="small"
               onClick={() => viewDetails()}
+              data-testid="task-success-banner-view-details"
             >
               {t('viewDetails')}
             </YBButton>

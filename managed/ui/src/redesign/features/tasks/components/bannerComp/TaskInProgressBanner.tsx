@@ -71,6 +71,7 @@ export const TaskInProgressBanner: FC<TaskBannerCompProps> = ({ currentTask, vie
               variant="secondary"
               size="small"
               onClick={() => viewDetails()}
+              data-testid="task-in-progress-banner-view-details"
             >
               {t('viewDetails')}
             </YBButton>

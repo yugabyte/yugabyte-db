@@ -129,7 +129,11 @@ const DiffCard = forwardRef<DiffCardRef, React.PropsWithChildren<DiffCardProps>>
     };
 
     return (
-      <Accordion expanded={expandAccordion} onChange={() => setExpandAccordion(!expandAccordion)}>
+      <Accordion
+        expanded={expandAccordion}
+        onChange={() => setExpandAccordion(!expandAccordion)}
+        data-testid={`diff-card-${attribute.title}`}
+      >
         <AccordionSummary
           expandIcon={<ArrowDropDown className={classes.expandMore} />}
           className={classes.accordionSummary}
