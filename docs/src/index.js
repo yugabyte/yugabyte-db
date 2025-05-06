@@ -330,22 +330,22 @@ $(document).ready(() => {
    */
   (() => {
     const headingLinks = document.querySelectorAll('.td-heading-self-link');
-    if (headingLinks) {
-      headingLinks.forEach((link) => {
-        link.addEventListener('click', (event) => {
-          const url = window.location.origin + window.location.pathname + event.target.getAttribute('href');
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(url).then(() => {
-              link.classList.add('copied');
-
-              setTimeout(() => {
-                link.classList.remove('copied');
-              }, 1500);
-            });
-          }
-        })
-      });
+    if (!headingLinks || !navigator.clipboard) {
+      return;
     }
+
+    headingLinks.forEach((link) => {
+      link.addEventListener('click', (event) => {
+        const url = window.location.origin + window.location.pathname + event.target.getAttribute('href');
+        navigator.clipboard.writeText(url).then(() => {
+          link.classList.add('copied');
+
+          setTimeout(() => {
+            link.classList.remove('copied');
+          }, 1500);
+        });
+      });
+    });
   })();
 
   /**
