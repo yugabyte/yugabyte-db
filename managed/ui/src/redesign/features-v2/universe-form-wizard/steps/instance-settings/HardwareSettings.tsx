@@ -14,21 +14,20 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
-import { ResilienceAndRegionsProps } from './dtos';
+import { HardwareSettingProps } from './dtos';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { useTranslation } from 'react-i18next';
-import { ResilienceTypeField } from '../../fields/resilience-type/ResilienceType';
+// import { useTranslation } from 'react-i18next';
 
-export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
+export const HardwareSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const { t } = useTranslation('translation', {
-    keyPrefix: 'createUniverseV2.resilienceAndRegions'
-  });
+  //   const { t } = useTranslation('translation', {
+  //     keyPrefix: 'createUniverseV2.resilienceAndRegions'
+  //   });
 
-  const methods = useForm<ResilienceAndRegionsProps>({});
+  const methods = useForm<HardwareSettingProps>({});
 
   useImperativeHandle(
     forwardRef,
@@ -45,13 +44,10 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
 
   return (
     <FormProvider {...methods}>
-      <ResilienceTypeField<ResilienceAndRegionsProps> name="resilienceType" />
       <StyledPanel>
-        <StyledHeader>{t('title')}</StyledHeader>
-        <StyledContent></StyledContent>
+        <StyledHeader>Cluster Instance</StyledHeader>
+        <StyledContent>Work In progress</StyledContent>
       </StyledPanel>
     </FormProvider>
   );
 });
-
-ResilienceAndRegions.displayName = 'ResilienceAndRegions';

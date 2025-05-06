@@ -14,12 +14,11 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
-import { ResilienceAndRegionsProps } from './dtos';
+import { NodesAvailabilityProps } from './dtos';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { useTranslation } from 'react-i18next';
-import { ResilienceTypeField } from '../../fields/resilience-type/ResilienceType';
 
-export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
+export const NodesAvailabilty = forwardRef<StepsRef>((_, forwardRef) => {
   const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
@@ -28,7 +27,7 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
     keyPrefix: 'createUniverseV2.resilienceAndRegions'
   });
 
-  const methods = useForm<ResilienceAndRegionsProps>({});
+  const methods = useForm<NodesAvailabilityProps>({});
 
   useImperativeHandle(
     forwardRef,
@@ -45,13 +44,10 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
 
   return (
     <FormProvider {...methods}>
-      <ResilienceTypeField<ResilienceAndRegionsProps> name="resilienceType" />
       <StyledPanel>
-        <StyledHeader>{t('title')}</StyledHeader>
-        <StyledContent></StyledContent>
+        <StyledHeader>Nodes and Availability</StyledHeader>
+        <StyledContent>Work In progress</StyledContent>
       </StyledPanel>
     </FormProvider>
   );
 });
-
-ResilienceAndRegions.displayName = 'ResilienceAndRegions';

@@ -27,7 +27,7 @@ export type createUniverseFormProps = {
 };
 
 export const initialCreateUniverseFormState: createUniverseFormProps = {
-  activeStep: CreateUniverseSteps.DATABASE
+  activeStep: CreateUniverseSteps.GENERAL_SETTINGS
 };
 
 export const CreateUniverseContext = createContext<createUniverseFormProps>(

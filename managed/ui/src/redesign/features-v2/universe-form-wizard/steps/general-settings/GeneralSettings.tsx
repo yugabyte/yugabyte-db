@@ -19,7 +19,6 @@ import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { GeneralSettingsValidationSchema } from './ValidationSchema';
 import { useTranslation } from 'react-i18next';
-import { styled, Typography } from '@material-ui/core';
 import { ProviderConfigurationField } from '../../fields/provider-configuration/ProviderConfiguration';
 import { DatabaseVersionField } from '../../fields/database-version/DatabaseVersion';
 import { CloudField } from '../../fields/provider/ProviderSelect';
