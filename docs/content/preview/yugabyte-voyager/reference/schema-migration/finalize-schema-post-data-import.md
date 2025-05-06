@@ -27,10 +27,10 @@ The valid *arguments* for finalize-schema-post-data-import are described in the 
 
 | <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
-| --continue-on-error | Continue to import all the exported schema even if there are errors, and output all the erroneous DDLs to the `failed.sql` file in the `export-dir/schema` directory. <br>Default: false <br> Example: `yb-voyager import schema ... --continue-on-error true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --continue-on-error | Continue to import all the exported schema even if there are errors, and output all the erroneous DDLs to the `failed.sql` file in the `export-dir/schema` directory. <br>Default: false <br> Example: `yb-voyager finalize-schema-post-data-import ... --continue-on-error true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
-| --ignore-exist | Ignore if an object already exists on the target database. <br>Default: false<br>Example: `yb-voyager import schema ... --ignore-exist true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --ignore-exist | Ignore if an object already exists on the target database. <br>Default: false<br>Example: `yb-voyager finalize-schema-post-data-import ... --ignore-exist true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --run-guardrails-checks | Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
