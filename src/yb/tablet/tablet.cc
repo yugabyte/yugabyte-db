@@ -3482,6 +3482,10 @@ Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
     rocksdb::FrontierModificationMode mode,
     FlushFlags flags) {
+  // We should always flush RocksDBs before modifying their frontiers, otherwise if we crash between
+  // frontier is modified and regular DB is flushed we can lose data because of skipping ops replay
+  // during local bootstrap.
+  RETURN_NOT_OK(Flush(FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents));
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
@@ -3536,7 +3540,7 @@ Status Tablet::ModifyFlushedFrontier(
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
   }
 
-  return Flush(FlushMode::kAsync, flags);
+  return Status::OK();
 }
 
 Status Tablet::Truncate(TruncateOperation* operation) {
