@@ -1974,7 +1974,7 @@ RelationBuildTriggers(Relation relation, const YbTupleCache *yb_pg_trigger_cache
 	tgrel = table_open(TriggerRelationId, AccessShareLock);
 
 	/*
-	 * TODO(kfranz): since we scan the triggers using TriggerRelidNameIndexId, we will
+	 * Note: since we scan the triggers using TriggerRelidNameIndexId, we will
 	 * be reading the triggers in name order, except possibly during
 	 * emergency-recovery operations (ie, IgnoreSystemIndexes). This in turn
 	 * ensures that triggers will be fired in name order.
@@ -2088,8 +2088,8 @@ RelationBuildTriggers(Relation relation, const YbTupleCache *yb_pg_trigger_cache
 		YbTupleCacheIteratorEnd(iter);
 
 		/*
-		 * Vanilla PG would have loaded the triggers in name order because it
-		 * does a partial scan on pg_trigger_tgrelid_tgname_index using
+		 * YB: Vanilla PG would have loaded the triggers in name order because
+		 * it does a partial scan on pg_trigger_tgrelid_tgname_index using
 		 * tgrelid. We aren't using that index so we need to sort the triggers
 		 * by name here.
 		 */
@@ -2438,7 +2438,7 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 					Instrumentation *instr,
 					MemoryContext per_tuple_context)
 {
-	FunctionCallInfoBaseData fcinfo;
+	LOCAL_FCINFO(fcinfo, 0);
 	PgStat_FunctionCallUsage fcusage;
 	Datum		result;
 	MemoryContext oldContext;
@@ -2483,15 +2483,15 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 	/*
 	 * Call the function, passing no arguments but setting a context.
 	 */
-	InitFunctionCallInfoData(fcinfo, finfo, 0,
+	InitFunctionCallInfoData(*fcinfo, finfo, 0,
 							 InvalidOid, (Node *) trigdata, NULL);
 
-	pgstat_init_function_usage(&fcinfo, &fcusage);
+	pgstat_init_function_usage(fcinfo, &fcusage);
 
 	MyTriggerDepth++;
 	PG_TRY();
 	{
-		result = FunctionCallInvoke(&fcinfo);
+		result = FunctionCallInvoke(fcinfo);
 	}
 	PG_FINALLY();
 	{
@@ -2507,11 +2507,11 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 	 * Trigger protocol allows function to return a null pointer, but NOT to
 	 * set the isnull result flag.
 	 */
-	if (fcinfo.isnull)
+	if (fcinfo->isnull)
 		ereport(ERROR,
 				(errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
 				 errmsg("trigger function %u returned null value",
-						fcinfo.flinfo->fn_oid)));
+						fcinfo->flinfo->fn_oid)));
 
 	/*
 	 * If doing EXPLAIN ANALYZE, stop charging time to this trigger, and count
@@ -4079,8 +4079,9 @@ static SetConstraintState SetConstraintStateAddItem(SetConstraintState state,
 													Oid tgoid, bool tgisdeferred);
 static void cancel_prior_stmt_triggers(Oid relid, CmdType cmdType, int tgevent);
 
-
+/* YB declerations */
 static bool afterTriggerCheckState(AfterTriggerShared evtshared);
+
 
 /*
  * Get the FDW tuplestore for the current trigger query level, creating it
@@ -4089,7 +4090,9 @@ static bool afterTriggerCheckState(AfterTriggerShared evtshared);
 static Tuplestorestate *
 GetCurrentFDWTuplestore(AfterTriggerShared evtshared)
 {
-	/* Check trigger has transaction level tuplestore (deferred trigger). */
+	/*
+	 * YB: Check trigger has transaction level tuplestore (deferred trigger).
+	 */
 	if (evtshared->ybc_txn_fdw_tuplestore)
 		return evtshared->ybc_txn_fdw_tuplestore;
 
@@ -4305,15 +4308,17 @@ afterTriggerAddEvent(AfterTriggerEventList *events,
 		 newshared--)
 	{
 		/*
-		 * Deferred event migrates from one AfterTriggerEventList to another.
-		 * Tuple is written into tuplestore when event is stored in one list, and read when
-		 * event is migrated to another. This list may already have same AfterTriggerShared data,
-		 * but with different ybc_txn_fdw_tuplestore.
-		 * So ybc_txn_fdw_tuplestore must be checked before reuse existing AfterTriggerShared data,
-		 * in other case tuple will be read from wrong tuplestore.
+		 * YB: Deferred event migrates from one AfterTriggerEventList to
+		 * another. Tuple is written into tuplestore when event is stored in
+		 * one list, and read when event is migrated to another. This list may
+		 * already have same AfterTriggerShared data, but with different
+		 * ybc_txn_fdw_tuplestore. So ybc_txn_fdw_tuplestore must be checked
+		 * before reuse existing AfterTriggerShared data, in other case tuple
+		 * will be read from wrong tuplestore.
 		 *
-		 * Due to checking of the ybc_txn_fdw_tuplestore field postgres in YB mode will reuse
-		 * AfterTriggerShared objects less often than vanilla postgres.
+		 * Due to checking of the ybc_txn_fdw_tuplestore field postgres in YB
+		 * mode will reuse AfterTriggerShared objects less often than vanilla
+		 * postgres.
 		 */
 		/* compare fields roughly by probability of them being different */
 		if (newshared->ats_tgoid == evtshared->ats_tgoid &&
@@ -4542,6 +4547,7 @@ AfterTriggerExecute(EState *estate,
 											 trig_tuple_slot2))
 					elog(ERROR, "failed to fetch tuple2 for AFTER trigger");
 			}
+			/* fall through */
 			yb_switch_fallthrough();
 		case AFTER_TRIGGER_FDW_REUSE:
 
@@ -6747,9 +6753,10 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 	 * minimal tuples, so this loses any system columns.  The executor lost
 	 * those columns before us, for an unrelated reason, so this is fine.
 	 *
-	 * In case table has more than one trigger one can be deferred and another non-deferred.
-	 * In this case both fdw_tuplestore and ybc_txn_fdw_tuplestore will be non NULL.
-	 * Value should be written into both tuplestores.
+	 * YB: In case table has more than one trigger one can be deferred and
+	 * another non-deferred. In this case both fdw_tuplestore and
+	 * ybc_txn_fdw_tuplestore will be non NULL. Value should be written into
+	 * both tuplestores.
 	 */
 	if (IsYBBackedRelation(rel))
 	{

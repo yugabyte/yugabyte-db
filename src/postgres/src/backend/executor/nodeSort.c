@@ -92,7 +92,7 @@ ExecSort(PlanState *pstate)
 		estate->es_direction = ForwardScanDirection;
 
 		/*
-		 * Use default prefetch limit when ORDER BY is present.
+		 * YB: Use default prefetch limit when ORDER BY is present.
 		 * YugaByte doesn't sort the row, but Postgres layer does. YB has to do full scan and let
 		 * Postgres engine sort and limit the rows.
 		 */

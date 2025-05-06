@@ -26,6 +26,7 @@ namespace yb::vector_index {
 
 struct SearchOptions {
   size_t max_num_results;
+  size_t ef;
   VectorFilter filter = [](const auto&) { return true; };
 };
 
@@ -79,6 +80,9 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
  public:
   using VectorType = Vector;
   using DistanceResultType = DistanceResult;
+
+  // Returns the number of dimensions per vector;
+  virtual size_t Dimensions() const = 0;
 
   // Saves index to the file, switching it to immutable state.
   // Implementation could partially unload index and load it on demand from this file.

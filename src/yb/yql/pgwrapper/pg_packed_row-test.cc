@@ -516,7 +516,7 @@ TEST_P(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentColocatedCompaction)) 
   static const auto kRetryableErrors = {
       "Try again",
       "Snapshot too old",
-      "Restart read required at"
+      "Restart read required"
   };
   const auto retry_until_success = [&](PGConn& conn, const std::string& stmt) {
     while (true) {

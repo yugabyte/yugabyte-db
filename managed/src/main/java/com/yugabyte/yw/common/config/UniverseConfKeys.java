@@ -1522,6 +1522,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Wait Attempts for major catalog upgrade",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pgUpgradeCheckTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.upgrade.pg_upgrade_check_timeout_secs",
+          ScopeType.UNIVERSE,
+          "PG Upgrade Check Timeout",
+          "Timeout for pg_upgrade check in seconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowDisableDBApis =
       new ConfKeyInfo<>(
           "yb.configure_db_api.allow_disable",
@@ -1589,4 +1597,29 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Check if process has correct gflag on start",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableNfsBackupPrecheck =
+      new ConfKeyInfo<>(
+          "yb.backup.enable_nfs_precheck",
+          ScopeType.UNIVERSE,
+          "Enable NFS Backup precheck",
+          "Enable/disable check which verifies free space on NFS mount before backup.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> nfsPrecheckBufferSpace =
+      new ConfKeyInfo<>(
+          "yb.backup.nfs_precheck_buffer_kb",
+          ScopeType.UNIVERSE,
+          "NFS precheck buffer space",
+          "Amount of space (in KB) we want as buffer for NFS precheck",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> rollingOpsWaitAfterEachPodMs =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms",
+          ScopeType.UNIVERSE,
+          "Wait after each pod restart in rolling operations",
+          "Time to wait after each pod restart before restarting the next pod in rolling"
+              + " operations",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

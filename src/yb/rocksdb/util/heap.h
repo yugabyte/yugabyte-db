@@ -25,6 +25,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/util/logging.h"
+
 namespace rocksdb {
 
 // Binary heap implementation optimized for use in multi-way merge sort.
@@ -54,9 +56,8 @@ namespace rocksdb {
 // std::priority_queue: the comparison operator is expected to provide the
 // less-than relation, but top() will return the maximum.
 
-// The container is optimized for small types, that could be freely copied.
-// So only scalar types are allowed.
-template<typename T, typename Compare = std::less<T>> requires (std::is_scalar_v<T>)
+template<typename T, typename Compare = std::less<T>,
+         typename Collection = boost::container::small_vector<T, 8>>
 class BinaryHeap {
  public:
   BinaryHeap() { }
@@ -96,6 +97,10 @@ class BinaryHeap {
 
   void clear() {
     data_.clear();
+  }
+
+  void rebuild() {
+    std::make_heap(data_.begin(), data_.end(), cmp_);
   }
 
   bool empty() const {
@@ -173,13 +178,17 @@ class BinaryHeap {
     return {0, nullptr};
   }
 
+  Collection& data() {
+    return data_;
+  }
+
  private:
   static inline size_t get_root() { return 0; }
   static inline size_t get_left(size_t index) { return 2 * index + 1; }
   static inline size_t get_right(size_t index) { return 2 * index + 2; }
 
   Compare cmp_;
-  boost::container::small_vector<T, 8> data_;
+  Collection data_;
 };
 
 }  // namespace rocksdb

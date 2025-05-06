@@ -752,6 +752,7 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 			break;
 		case MinCommandIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
+
 			/*
 			 * cmin and cmax are now both aliases for the same field, which
 			 * can in fact also be a combo command id.  XXX perhaps we should

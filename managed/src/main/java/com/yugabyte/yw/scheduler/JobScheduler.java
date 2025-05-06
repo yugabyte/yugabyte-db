@@ -378,8 +378,11 @@ public class JobScheduler {
               });
       int deletedCount = JobInstance.deleteExpired(jobInstanceRecordTtl);
       log.debug("Expired {} job instances", deletedCount);
-    } catch (Exception e) {
-      log.error("Exception occurred in scanning schedules - {}", e.getMessage());
+    } catch (Throwable t) {
+      log.error("Exception occurred in scanning schedules - {}", t.getMessage());
+      if (t instanceof Error) {
+        throw (Error) t;
+      }
     }
   }
 

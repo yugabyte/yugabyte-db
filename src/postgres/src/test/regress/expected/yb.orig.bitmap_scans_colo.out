@@ -88,15 +88,13 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;
          ->  BitmapOr (actual rows=3 loops=1)
                ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                      Index Cond: (ind_a = 2)
-                     Storage Table Rows Scanned: 1
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 1
                ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=3 loops=1)
                      Index Cond: (ind_b < 10)
-                     Storage Table Rows Scanned: 3
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 3
-(16 rows)
+(14 rows)
 
 /*+ BitmapScan(simple) */
 SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR ind_b < 10;
@@ -116,15 +114,13 @@ SELECT * FROM simple WHERE ind_a = 2 OR ind_b < 10;
    ->  BitmapOr (actual rows=3 loops=1)
          ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                Index Cond: (ind_a = 2)
-               Storage Table Rows Scanned: 1
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 1
          ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=3 loops=1)
                Index Cond: (ind_b < 10)
-               Storage Table Rows Scanned: 3
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 3
-(14 rows)
+(12 rows)
 
 -- this query has a recheck condition, so we need to fetch the rows
 /*+ BitmapScan(simple) Set(yb_enable_expression_pushdown false) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
@@ -140,15 +136,13 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
          ->  BitmapOr (actual rows=3 loops=1)
                ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                      Index Cond: (ind_a = 2)
-                     Storage Table Rows Scanned: 1
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 1
                ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=3 loops=1)
                      Index Cond: (ind_b < 10)
-                     Storage Table Rows Scanned: 3
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 3
-(17 rows)
+(15 rows)
 
 /*+ BitmapScan(test_skip) Set(yb_enable_expression_pushdown false) */
 SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
@@ -171,16 +165,14 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
          ->  BitmapOr (actual rows=2 loops=1)
                ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                      Index Cond: (ind_a = 2)
-                     Storage Table Rows Scanned: 1
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 1
                ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=1 loops=1)
                      Index Cond: (ind_b < 10)
                      Storage Index Filter: ((ind_b % 2) = 0)
-                     Storage Table Rows Scanned: 3
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 3
-(17 rows)
+(15 rows)
 
 /*+ BitmapScan(simple) */
 SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
@@ -202,16 +194,14 @@ SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
          ->  BitmapOr (actual rows=2 loops=1)
                ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                      Index Cond: (ind_a = 2)
-                     Storage Table Rows Scanned: 1
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 1
                ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=1 loops=1)
                      Index Cond: (ind_b < 10)
                      Storage Index Filter: ((ind_b % 2) = 0)
-                     Storage Table Rows Scanned: 3
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 3
-(17 rows)
+(15 rows)
 
 /*+ BitmapScan(simple) */
 SELECT SUM(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
@@ -232,16 +222,14 @@ SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
          ->  BitmapOr (actual rows=2 loops=1)
                ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                      Index Cond: (ind_a = 2)
-                     Storage Table Rows Scanned: 1
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 1
                ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=1 loops=1)
                      Index Cond: (ind_b < 10)
                      Storage Index Filter: ((ind_b % 2) = 0)
-                     Storage Table Rows Scanned: 3
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 3
-(17 rows)
+(15 rows)
 
 /*+ BitmapScan(simple) */
 SELECT MAX(ind_a) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
@@ -261,16 +249,14 @@ SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
    ->  BitmapOr (actual rows=2 loops=1)
          ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                Index Cond: (ind_a = 2)
-               Storage Table Rows Scanned: 1
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 1
          ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=1 loops=1)
                Index Cond: (ind_b < 10)
                Storage Index Filter: ((ind_b % 2) = 0)
-               Storage Table Rows Scanned: 3
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 3
-(15 rows)
+(13 rows)
 
 /*+ BitmapScan(simple) */
 SELECT 1 FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
@@ -290,16 +276,14 @@ SELECT random() FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
    ->  BitmapOr (actual rows=2 loops=1)
          ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                Index Cond: (ind_a = 2)
-               Storage Table Rows Scanned: 1
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 1
          ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=1 loops=1)
                Index Cond: (ind_b < 10)
                Storage Index Filter: ((ind_b % 2) = 0)
-               Storage Table Rows Scanned: 3
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 3
-(15 rows)
+(13 rows)
 
 --
 -- test primary key queries
@@ -318,10 +302,9 @@ SELECT * FROM simple WHERE k = 1 OR ind_a = 2;
                Storage Table Rows Scanned: 1
          ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                Index Cond: (ind_a = 2)
-               Storage Table Rows Scanned: 1
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 1
-(13 rows)
+(12 rows)
 
 /*+ BitmapScan(simple) */
 SELECT * FROM simple WHERE k = 1 OR ind_a = 2;
@@ -347,10 +330,9 @@ SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;
                      Storage Table Rows Scanned: 2
                ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=2 loops=1)
                      Index Cond: (ind_a = ANY ('{4,6}'::integer[]))
-                     Storage Table Rows Scanned: 2
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 2
-(16 rows)
+(15 rows)
 
 /*+ BitmapScan(simple) */
 SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;
@@ -382,15 +364,13 @@ SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
                      Storage Table Rows Scanned: 1
                ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                      Index Cond: (ind_a = 4)
-                     Storage Table Rows Scanned: 1
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 1
                ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                      Index Cond: (ind_a = 6)
-                     Storage Table Rows Scanned: 1
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 1
-(25 rows)
+(23 rows)
 
 /*+ BitmapScan(simple) */
 SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
@@ -470,10 +450,9 @@ SELECT * FROM simple WHERE (ind_a <= 1 AND ind_a = 2);
    Storage Table Rows Scanned: 1
    ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
          Index Cond: ((ind_a <= 1) AND (ind_a = 2))
-         Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
          Storage Index Rows Scanned: 1
-(9 rows)
+(8 rows)
 
 /*+ BitmapScan(simple) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
 SELECT * FROM simple WHERE (ind_a = 2 AND ind_a = 2) OR ind_b = 0;
@@ -486,13 +465,12 @@ SELECT * FROM simple WHERE (ind_a = 2 AND ind_a = 2) OR ind_b = 0;
    ->  BitmapOr (actual rows=1 loops=1)
          ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
                Index Cond: ((ind_a = 2) AND (ind_a = 2))
-               Storage Table Rows Scanned: 1
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 1
          ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=0 loops=1)
                Index Cond: (ind_b = 0)
                Storage Index Read Requests: 1
-(13 rows)
+(12 rows)
 
 --
 -- #21793: test row compare expressions
@@ -529,13 +507,14 @@ SELECT * FROM simple AS tbl_1 JOIN simple AS tbl_2 ON tbl_1.ind_a = tbl_2.ind_a 
    ->  Seq Scan on simple tbl_1
    ->  YB Bitmap Table Scan on simple tbl_2
          Storage Filter: ((tbl_1.ind_a = ind_a) OR ((tbl_1.ind_b = ind_a) AND (tbl_1.ind_a = 2)))
+         Recheck Cond: ((ind_a = tbl_1.ind_a) OR (ind_a = tbl_1.ind_b))
          ->  BitmapOr
                ->  Bitmap Index Scan on simple_ind_a_idx
                      Index Cond: (ind_a = tbl_1.ind_a)
                ->  Bitmap Index Scan on simple_ind_a_idx
                      Index Cond: (ind_a = tbl_1.ind_b)
                      Storage Index Filter: ((tbl_1.ind_a = ind_a) OR ((tbl_1.ind_b = ind_a) AND (tbl_1.ind_a = 2)))
-(10 rows)
+(11 rows)
 
 --
 -- #22065: test pushdowns on Subplans
@@ -723,10 +702,9 @@ SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
          ->  Bitmap Index Scan on multi_c_a_idx (actual rows=2 loops=1)
                Index Cond: ((c >= 10) AND (c <= 15))
                Storage Index Filter: (a < 30)
-               Storage Table Rows Scanned: 2
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 2
-(12 rows)
+(11 rows)
 
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE c BETWEEN 10 AND 15 AND a < 30 ORDER BY a;
@@ -757,15 +735,13 @@ SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8 ORDE
                      Storage Table Rows Scanned: 2
                ->  Bitmap Index Scan on multi_c_a_idx (actual rows=2 loops=1)
                      Index Cond: ((c >= 10) AND (c <= 15))
-                     Storage Table Rows Scanned: 2
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 2
                ->  Bitmap Index Scan on multi_h_a_idx (actual rows=1 loops=1)
                      Index Cond: (h = 8)
-                     Storage Table Rows Scanned: 1
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 1
-(25 rows)
+(23 rows)
 
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE a < 2 OR b > 1997 OR c BETWEEN 10 AND 15 OR h = 8  ORDER BY a;
@@ -1161,10 +1137,9 @@ SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
          ->  Bitmap Index Scan on multi_b_c_idx (actual rows=2 loops=1)
                Index Cond: (b < 10)
                Storage Index Filter: ((b % 4) = 0)
-               Storage Table Rows Scanned: 4
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 4
-(12 rows)
+(11 rows)
 
 /*+ BitmapScan(multi multi_b_c_idx) */
 SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
@@ -1188,10 +1163,9 @@ SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
          Storage Table Rows Scanned: 4
          ->  Bitmap Index Scan on multi_b_c_idx (actual rows=4 loops=1)
                Index Cond: (b < 10)
-               Storage Table Rows Scanned: 4
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 4
-(13 rows)
+(12 rows)
 
 /*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */
 SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
@@ -1220,10 +1194,9 @@ SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER
                ->  Bitmap Index Scan on multi_c_a_idx (actual rows=1 loops=1)
                      Index Cond: (c <= 10)
                      Storage Index Filter: (((a % 3) = 0) AND (((a < 5) AND ((a % 2) = 0)) OR ((c <= 10) AND ((a % 3) = 0))))
-                     Storage Table Rows Scanned: 3
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 3
-(18 rows)
+(17 rows)
 
 /*+ BitmapScan(multi) */
 SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
@@ -1253,10 +1226,9 @@ SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER
                      Storage Table Rows Scanned: 4
                ->  Bitmap Index Scan on multi_c_a_idx (actual rows=3 loops=1)
                      Index Cond: (c <= 10)
-                     Storage Table Rows Scanned: 3
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 3
-(18 rows)
+(17 rows)
 
 /*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */
 SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
@@ -1295,10 +1267,9 @@ SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
    Storage Table Rows Scanned: 1
    ->  Bitmap Index Scan on recheck_test_text_col_idx (actual rows=1 loops=1)
          Index Cond: ((text_col < 'j'::text) AND (text_col = 'i'::text))
-         Storage Table Rows Scanned: 1
          Storage Index Read Requests: 1
          Storage Index Rows Scanned: 1
-(9 rows)
+(8 rows)
 
 /*+ BitmapScan(t) */
 SELECT text_col FROM recheck_test AS t WHERE text_col = 'i' AND text_col < 'j';
@@ -1649,14 +1620,13 @@ SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
    ->  BitmapOr (actual rows=1 loops=1)
          ->  Bitmap Index Scan on pk_text_v_int_idx (actual rows=1 loops=1)
                Index Cond: (v_int = 12)
-               Storage Table Rows Scanned: 1
                Storage Index Read Requests: 1
                Storage Index Rows Scanned: 1
          ->  Bitmap Index Scan on pk_text_pkey (actual rows=1 loops=1)
                Index Cond: ((k_text)::text = '12'::text)
                Storage Table Read Requests: 1
                Storage Table Rows Scanned: 1
-(13 rows)
+(12 rows)
 
 /*+ BitmapScan(pk_text) */
 SELECT * FROM pk_text WHERE v_int = 12 OR k_text = '12';
@@ -1680,14 +1650,13 @@ SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%
                ->  Bitmap Index Scan on pk_text_v_int_idx (actual rows=5 loops=1)
                      Index Cond: (v_int < 10)
                      Storage Index Filter: ((v_int % 2) = 1)
-                     Storage Table Rows Scanned: 9
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 9
                ->  Bitmap Index Scan on pk_text_pkey (actual rows=0 loops=1)
                      Index Cond: (((k_text)::text >= '999'::text) AND ((k_text)::text < '99:'::text))
                      Storage Index Filter: ((k_text)::text ~~ '%5'::text)
                      Storage Table Read Requests: 1
-(18 rows)
+(17 rows)
 
 /*+ BitmapScan(pk_text) */
 SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
@@ -1713,14 +1682,13 @@ SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
          ->  BitmapOr (actual rows=6 loops=1)
                ->  Bitmap Index Scan on pk_text_v_int_idx (actual rows=4 loops=1)
                      Index Cond: (v_int < 5)
-                     Storage Table Rows Scanned: 4
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 4
                ->  Bitmap Index Scan on pk_text_pkey (actual rows=3 loops=1)
                      Index Cond: ((k_text)::text < '11'::text)
                      Storage Table Read Requests: 1
                      Storage Table Rows Scanned: 3
-(16 rows)
+(15 rows)
 
 /*+ BitmapScan(pk_text) */
 SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
@@ -1747,14 +1715,13 @@ SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY
          ->  BitmapOr (actual rows=3 loops=1)
                ->  Bitmap Index Scan on pk_text_v_int_idx (actual rows=2 loops=1)
                      Index Cond: (v_int = ANY ('{12,13}'::integer[]))
-                     Storage Table Rows Scanned: 2
                      Storage Index Read Requests: 1
                      Storage Index Rows Scanned: 2
                ->  Bitmap Index Scan on pk_text_pkey (actual rows=2 loops=1)
                      Index Cond: ((k_text)::text = ANY ('{11,12}'::text[]))
                      Storage Table Read Requests: 1
                      Storage Table Rows Scanned: 2
-(16 rows)
+(15 rows)
 
 /*+ BitmapScan(pk_text) */
 SELECT * FROM pk_text WHERE v_int IN (12, 13) OR k_text IN ('11', '12') ORDER BY v_int;

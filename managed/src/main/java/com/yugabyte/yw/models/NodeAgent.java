@@ -20,7 +20,7 @@ import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
-import com.yugabyte.yw.nodeagent.Server.ServerInfo;
+import com.yugabyte.yw.nodeagent.ServerInfo;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;

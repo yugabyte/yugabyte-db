@@ -3438,6 +3438,8 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 				 * Otherwise, fall through to DTK_NUMBER case, which can
 				 * handle signed float numbers and signed year-month values.
 				 */
+
+				/* FALLTHROUGH */
 				yb_switch_fallthrough();
 
 			case DTK_DATE:
@@ -3838,6 +3840,7 @@ DecodeISO8601Interval(char *str,
 						continue;
 					}
 					/* Else fall through to extended alternative format */
+					/* FALLTHROUGH */
 					yb_switch_fallthrough();
 				case '-':		/* ISO 8601 4.4.3.3 Alternative Format,
 								 * Extended */
@@ -3921,6 +3924,7 @@ DecodeISO8601Interval(char *str,
 						return 0;
 					}
 					/* Else fall through to extended alternative format */
+					/* FALLTHROUGH */
 					yb_switch_fallthrough();
 				case ':':		/* ISO 8601 4.4.3.3 Alternative Format,
 								 * Extended */

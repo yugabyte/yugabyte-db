@@ -1467,6 +1467,9 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	}
 	else
 	{
+		/*
+		 * If we already have a PPI for this parameterization, just return it
+		 */
 		if ((ppi = find_param_path_info(baserel, required_outer)))
 			return ppi;
 	}
@@ -1484,9 +1487,7 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 		if (join_clause_is_movable_into(rinfo,
 										baserel->relids,
 										joinrelids))
-		{
 			pclauses = lappend(pclauses, rinfo);
-		}
 	}
 
 	/*
@@ -1599,7 +1600,7 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 
 	Assert(!bms_overlap(joinrel->relids, required_outer));
 
-	/* Compute batched and unbatched relids. */
+	/* YB: Compute batched and unbatched relids. */
 	Relids		req_batchedids = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
 										   YB_PATH_REQ_OUTER_BATCHED(inner_path));
 

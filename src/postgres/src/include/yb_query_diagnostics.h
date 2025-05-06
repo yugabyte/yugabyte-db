@@ -43,11 +43,15 @@
 #define YB_QD_MAX_SCHEMA_OIDS 10
 #define YB_QD_MAX_CONSTANTS 100
 
-/* Status codes for query diagnostics bundles in yb_query_diagnostics view */
-#define YB_DIAGNOSTICS_SUCCESS			 0
-#define YB_DIAGNOSTICS_IN_PROGRESS		 1
-#define YB_DIAGNOSTICS_ERROR			 2
-#define YB_DIAGNOSTICS_CANCELLED		 3
+/* Status codes for query diagnostics bundles in yb_query_diagnostics_status view */
+typedef enum YbQueryDiagnosticsStatusType
+{
+	YB_DIAGNOSTICS_SUCCESS = 0,		/* Bundle completed successfully */
+	YB_DIAGNOSTICS_IN_PROGRESS = 1, /* Bundle is currently running */
+	YB_DIAGNOSTICS_ERROR = 2,		/* Bundle encountered an error */
+	YB_DIAGNOSTICS_CANCELLED = 3,	/* Bundle was cancelled */
+	YB_DIAGNOSTICS_POSTMASTER_SHUTDOWN = 4 /* Bundle encountered a postmaster shutdown */
+} YbQueryDiagnosticsStatusType;
 
 /*
  * Currently, if the explain plan is larger than 16KB, we truncate it.
@@ -59,6 +63,7 @@
 extern bool yb_enable_query_diagnostics;
 extern int	yb_query_diagnostics_bg_worker_interval_ms;
 extern int	yb_query_diagnostics_circular_buffer_size;
+extern bool	yb_query_diagnostics_disable_database_connection_bgworker;
 
 /*
  * Enum to distinguish between planning and execution statistics for pg_stat_statements.

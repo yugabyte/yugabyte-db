@@ -57,6 +57,8 @@ void YBCRestorePgSessionState(const YbcPgSessionState* session_data);
 
 YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade);
 
+void YBCPgIncrementIndexRecheckCount();
+
 uint64_t YBCPgGetSessionID();
 
 // Initialize YBCPgMemCtx.
@@ -140,6 +142,8 @@ YbcStatus YBCFetchFromUrl(const char *url, char **buf);
 bool YBCIsCronLeader();
 YbcStatus YBCSetCronLastMinute(int64_t last_minute);
 YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
+
+int YBCGetXClusterRole(uint32_t db_oid);
 
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
@@ -850,6 +854,10 @@ void YBCPgResetCurrentMemCtxThreadLocalVars();
 void* YBCPgGetThreadLocalStrTokPtr();
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
+
+int YBCPgGetThreadLocalYbExpressionVersion();
+
+void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version);
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
 

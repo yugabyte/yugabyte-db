@@ -218,6 +218,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	switch (queryDesc->operation)
 	{
 		case CMD_SELECT:
+
 			/*
 			 * SELECT FOR [KEY] UPDATE/SHARE and modifying CTEs need to mark
 			 * tuples
@@ -440,7 +441,9 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	if (!(estate->es_top_eflags & EXEC_FLAG_SKIP_TRIGGERS))
 		AfterTriggerEndQuery(estate);
 
-	/* Flush buffered operations straight before elapsed time calculation. */
+	/*
+	 * YB: Flush buffered operations straight before elapsed time calculation.
+	 */
 	if (IsYugaByteEnabled())
 		YBEndOperationsBuffering();
 
@@ -682,7 +685,10 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 
 			while ((col = bms_next_member(rte->selectedCols, col)) >= 0)
 			{
-				/* Add appropriate offset to get attribute # from column # */
+				/* bit #s are offset by FirstLowInvalidHeapAttributeNumber */
+				/*
+				 * YB: use YBGetFirstLowInvalidAttributeNumberFromOid instead
+				 */
 				AttrNumber	attno = col + YBGetFirstLowInvalidAttributeNumberFromOid(relOid);
 
 				if (attno == InvalidAttrNumber)
@@ -745,7 +751,8 @@ ExecCheckRTEPermsModified(Oid relOid, Oid userid, Bitmapset *modifiedCols,
 
 	while ((col = bms_next_member(modifiedCols, col)) >= 0)
 	{
-		/* Add appropriate offset to get attribute # from column # */
+		/* bit #s are offset by FirstLowInvalidHeapAttributeNumber */
+		/* YB: use YBGetFirstLowInvalidAttributeNumberFromOid instead */
 		AttrNumber	attno = col + YBGetFirstLowInvalidAttributeNumberFromOid(relOid);
 
 		if (attno == InvalidAttrNumber)
@@ -1940,8 +1947,7 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
  */
 void
 ExecConstraints(ResultRelInfo *resultRelInfo,
-				TupleTableSlot *slot,
-				EState *estate,
+				TupleTableSlot *slot, EState *estate,
 				ModifyTableState *mtstate)
 {
 	Relation	rel = resultRelInfo->ri_RelationDesc;
@@ -1961,9 +1967,9 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 			Form_pg_attribute att = TupleDescAttr(tupdesc, attrChk - 1);
 
 			/*
-			 * Below we check if attribute belongs to the modified columns for
-			 * the NOT NULL constraint and if so, performs single-row updates.
-			 * Thus modified columns must be calculated beforehand.
+			 * YB: Below we check if attribute belongs to the modified columns
+			 * for the NOT NULL constraint and if so, performs single-row
+			 * updates. Thus modified columns must be calculated beforehand.
 			 */
 			if (resultRelInfo->ri_RootResultRelInfo)
 			{

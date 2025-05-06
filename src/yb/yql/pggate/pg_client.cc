@@ -36,19 +36,16 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/util/debug-util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
-#include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
-#include "yb/util/flags.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
@@ -56,7 +53,8 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
 
 DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
-    "Pg client heartbeat interval in ms.");
+    "Pg client heartbeat interval in ms. Needs to be greater than 1000ms.");
+DEFINE_validator(pg_client_heartbeat_interval_ms, FLAG_GT_VALUE_VALIDATOR(1000));
 
 DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
@@ -260,7 +258,7 @@ struct PerformData : public FetchBigDataCallback {
     }
   }
 
-  void BigDataFetched(Result<rpc::CallData>* call_data) {
+  void BigDataFetched(Result<rpc::CallData>* call_data) override {
     std::lock_guard lock(exchange_mutex);
     if (!call_data->ok()) {
       exchange_result = call_data->status();
@@ -360,6 +358,25 @@ client::VersionedTablePartitionList BuildTablePartitionList(
 }
 
 } // namespace
+
+// List of additional RPCs that are logged by
+// yb_debug_log_docdb_requests
+static ash::PggateRPC kDebugLogRPCs[] = {
+  ash::PggateRPC::kOpenTable,
+  ash::PggateRPC::kAlterTable,
+  ash::PggateRPC::kCreateDatabase,
+  ash::PggateRPC::kBackfillIndex,
+  ash::PggateRPC::kAlterDatabase,
+  ash::PggateRPC::kCreateTable,
+  ash::PggateRPC::kCreateTablegroup,
+  ash::PggateRPC::kDropDatabase,
+  ash::PggateRPC::kDropTable,
+  ash::PggateRPC::kDropTablegroup,
+  ash::PggateRPC::kAcquireAdvisoryLock,
+  ash::PggateRPC::kReleaseAdvisoryLock,
+  ash::PggateRPC::kAcquireObjectLock,
+  ash::PggateRPC::kTruncateTable
+};
 
 class PgClient::Impl : public BigDataFetcher {
  public:
@@ -887,6 +904,18 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.version();
   }
 
+  Result<uint32_t> GetXClusterRole(uint32_t db_oid) {
+    tserver::PgGetXClusterRoleRequestPB req;
+    tserver::PgGetXClusterRoleResponsePB resp;
+
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(DoSyncRPC(
+        &tserver::PgClientServiceProxy::GetXClusterRole, req, resp,
+        ash::PggateRPC::kGetXClusterRole));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.xcluster_role();
+  }
+
   Status CreateSequencesDataTable() {
     tserver::PgCreateSequencesDataTableRequestPB req;
     tserver::PgCreateSequencesDataTableResponsePB resp;
@@ -1282,7 +1311,7 @@ class PgClient::Impl : public BigDataFetcher {
     }
 
     if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
-      if (slot_hash_range != NULL) {
+      if (slot_hash_range != nullptr) {
         VLOG(1) << "Setting hash ranges in InitVirtualVWAL request - start_range: "
                 << slot_hash_range->start_range << ", end_range: " << slot_hash_range->end_range;
         auto req_slot_range = req.mutable_slot_hash_range();
@@ -1432,6 +1461,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   rpc::RpcController* PrepareHeartbeatController() {
     heartbeat_controller_.Reset();
+    // Should update the flag validator if the 1s grace period is changed.
     heartbeat_controller_.set_timeout(FLAGS_pg_client_heartbeat_interval_ms * 1ms - 1s);
     return &heartbeat_controller_;
   }
@@ -1475,8 +1505,29 @@ class PgClient::Impl : public BigDataFetcher {
       SyncRPCFunc<Req, Resp> func, Req& req, Resp& resp,
       ash::PggateRPC rpc_enum, rpc::RpcController* controller) {
     AshMetadataToPB(req);
+
+    bool log_detail = false;
+    if (yb_debug_log_docdb_requests) {
+      for (const auto kLogEnum : kDebugLogRPCs) {
+        if (kLogEnum == rpc_enum) {
+          log_detail = true;
+          break;
+        }
+      }
+    }
+
+    if (log_detail)
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.DebugString();
+
     auto watcher = wait_event_watcher_(ash::WaitStateCode::kWaitingOnTServer, rpc_enum);
-    return (proxy_.get()->*func)(req, &resp, controller);
+    Status s = (proxy_.get()->*func)(req, &resp, controller);
+
+    if (log_detail)
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Resp>() << " response:\n "
+    << "status " << s.ToString()
+    << resp.DebugString();
+
+    return s;
   }
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
@@ -1587,6 +1638,10 @@ Result<bool> PgClient::IsInitDbDone() {
 
 Result<uint64_t> PgClient::GetCatalogMasterVersion() {
   return impl_->GetCatalogMasterVersion();
+}
+
+Result<uint32_t> PgClient::GetXClusterRole(uint32_t db_oid) {
+  return impl_->GetXClusterRole(db_oid);
 }
 
 Status PgClient::CreateSequencesDataTable() {

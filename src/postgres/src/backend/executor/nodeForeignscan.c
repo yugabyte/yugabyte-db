@@ -77,9 +77,7 @@ ForeignNext(ForeignScanState *node)
 	 * column.
 	 */
 	if (plan->fsSystemCol && !TupIsNull(slot))
-	{
 		slot->tts_tableOid = RelationGetRelid(node->ss.ss_currentRelation);
-	}
 
 	return slot;
 }

@@ -22,4 +22,6 @@ type MigrationAssessmentReport struct {
     RecommendedRefactoring []RefactoringCount `json:"recommended_refactoring"`
 
     AssessmentIssues []AssessmentCategoryInfo `json:"assessment_issues"`
+
+    Notes []string `json:"notes"`
 }

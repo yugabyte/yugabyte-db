@@ -149,6 +149,9 @@ public class AppInit {
           threadDumpPublisher.start();
         }
 
+        // RBAC is on by default so sync roles for all customers.
+        R__Sync_System_Roles.syncSystemRoles();
+
         // Check if we have provider data, if not, we need to seed the database
         if (Customer.find.query().where().findCount() == 0 && config.getBoolean("yb.seedData")) {
           log.debug("Seed the Yugaware DB");
@@ -160,7 +163,7 @@ public class AppInit {
           alertDestinationService.createDefaultDestination(customer.getUuid());
           alertConfigurationService.createDefaultConfigs(customer);
           // Create system roles for the newly created customer.
-          R__Sync_System_Roles.syncSystemRoles();
+          R__Sync_System_Roles.syncSystemRoles(customer.getUuid());
           // Principal entry and role bindings for newly created users.
           for (Users user : Users.find.all()) {
             Principal principal = Principal.get(user.getUuid());
@@ -323,8 +326,11 @@ public class AppInit {
         nodeAgentPoller.init();
         pitrConfigPoller.start();
         autoMasterFailoverScheduler.init();
-        // Update the provider metadata in case YBA updates the managed AMIs.
-        updateProviderMetadata.start();
+        if (!HighAvailabilityConfig.isFollower()) {
+          updateProviderMetadata.resetUpdatingProviders();
+          // Update the provider metadata in case YBA updates the managed AMIs.
+          updateProviderMetadata.start();
+        }
         xClusterScheduler.start();
 
         ybcUpgrade.start();

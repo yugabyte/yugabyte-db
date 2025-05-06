@@ -58,6 +58,7 @@
 
 int			yb_bnl_batch_size = 1;
 
+
 /*
  * Select a PARAM_EXEC number to identify the given Var as a parameter for
  * the current subquery.  (It might already have one.)

@@ -29,11 +29,9 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -71,7 +69,6 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
@@ -162,7 +159,7 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params, bool is_region_local) {
-  if (params && (params->index_only_scan || YBCIsNonembeddedYbctidsOnlyFetch(params))) {
+  if (params && params->index_only_scan) {
     return PgSelectIndex::Make(pg_session, index_id, is_region_local);
   }
   return PgSelect::Make(
@@ -1592,6 +1589,10 @@ Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exe
   return select.Exec(exec_params);
 }
 
+void PgApiImpl::IncrementIndexRecheckCount() {
+  pg_session_->metrics().RecordRowRemovedByIndexRecheck();
+}
+
 
 //--------------------------------------------------------------------------------------------------
 // Functions.
@@ -1797,13 +1798,14 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
     // heartbeat response from yb-master that has set a value in
     // catalog_version_table_in_perdb_mode_ in the shared memory object
     // yet. Let's wait with 500ms interval until a value is set or until
-    // a 10-second timeout.
+    // a 20-second timeout.
     auto status = LoggedWaitFor(
         [this]() -> Result<bool> {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
-        10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set in shared memory",
+        20s /* timeout */,
+        "catalog_version_table mode not set in shared memory, "
+        "tserver not ready to serve requests",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(
@@ -1830,6 +1832,10 @@ const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
 
 pid_t PgApiImpl::GetLocalTServerPid() const {
   return tserver_shared_object_->pid();
+}
+
+Result<int> PgApiImpl::GetXClusterRole(uint32_t db_oid) {
+  return pg_session_->GetXClusterRole(db_oid);
 }
 
 // Tuple Expression -----------------------------------------------------------------------------

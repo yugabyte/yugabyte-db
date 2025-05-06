@@ -133,6 +133,8 @@ func init() {
 	describeUniverseCmd.MarkFlagRequired("name")
 
 	describeUniverseCmd.Flags().StringP("output", "o", formatter.TableFormatKey,
-		"Select the desired output format. Allowed values: table, json, pretty, cli-flag, cli-json, cli-yaml.")
+		"[Optional] Select the desired output format. \"cli-\" outputs"+
+			" can be used directly in \"yba universe create\" command. "+
+			"Allowed values: table, json, pretty, cli-flag, cli-json, cli-yaml.")
 
 }

@@ -507,6 +507,7 @@ TEST_F(PgOpBufferingTest, BulkLoadForColocatedUseDistributedTxnTest) {
   generateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 3);
   auto conn = ASSERT_RESULT(CreateColocatedDB("colo_db"));
   ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
+  ASSERT_OK(conn.Execute("SET yb_fast_path_for_colocated_copy=true"));
 
   CheckBulkLoadForColocatedFK(&conn, table_name + "_fk", csv_filename, num_rows,
       write_rpc_watcher_);
@@ -528,6 +529,7 @@ TEST_F(PgOpBufferingTest, BulkLoadForNonColocatedTest) {
   const std::string table_name = kTable;
   ASSERT_OK(CreateTableWithIndex(&conn, table_name, /* num_indices = */ 1));
   ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
+  ASSERT_OK(conn.Execute("SET yb_fast_path_for_colocated_copy=true"));
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn.ExecuteFormat(
@@ -539,4 +541,91 @@ TEST_F(PgOpBufferingTest, BulkLoadForNonColocatedTest) {
   ASSERT_GE(write_rpc_count, 2);
 }
 
+// For check constraint on the colocated table, fast-path transaction will be used.
+void CheckBulkLoadForColocatedCheckConstraint(
+    PGConn* conn, const std::string& table_name,
+    const std::string& csv_filename,
+    std::optional<SingleMetricWatcher>& write_rpc_watcher) {
+  ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 0));
+
+  // add a check which will not lead to violation.
+  std::string check_constraint_sql_1 =
+       "ALTER TABLE " + table_name + " ADD CONSTRAINT check_constraint_test CHECK (v0 < 1000)";
+  ASSERT_OK(conn->ExecuteFormat(check_constraint_sql_1));
+  auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
+      [&conn, &csv_filename, &table_name](){
+         return conn->ExecuteFormat(
+             "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+             table_name, csv_filename);
+      }));
+  // The buffer size will be adjusted so the number of rpc should be 1.
+  ASSERT_EQ(write_rpc_count, 1);
+
+  // add a check which will lead to violation, so copy should fail with consistent state.
+  ASSERT_OK(conn->ExecuteFormat("DROP TABLE " + table_name));
+  ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 0));
+  std::string check_constraint_sql_2 =
+      "ALTER TABLE " + table_name + " ADD CONSTRAINT check_constraint_test CHECK (v0 < 99)";
+  ASSERT_OK(conn->ExecuteFormat(check_constraint_sql_2));
+  const auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+      table_name, csv_filename);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "violates check constraint");
+  auto ret = conn->FetchRowAsString("select * from " + table_name);
+  const auto table_row_count = ASSERT_RESULT(
+      conn->FetchRow<int64_t>("SELECT COUNT(*) FROM " + table_name));
+  ASSERT_EQ(table_row_count, 0);
+}
+
+// If there is an unique index on the colocated table, fast-path transaction will be used.
+void CheckBulkLoadForColocatedUniqueIndex(PGConn* conn, const std::string& table_name,
+                                          const std::string& csv_filename, int num_rows,
+                                          std::optional<SingleMetricWatcher>& write_rpc_watcher) {
+  ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 0));
+  std::string unique_index_sql = "CREATE UNIQUE INDEX unique_index_test on " + table_name + " (v0)";
+  ASSERT_OK(conn->ExecuteFormat(unique_index_sql));
+
+  // the data in cvs file doesn't violate unique constraint.
+  auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
+      [&conn, &csv_filename, &table_name](){
+        return conn->ExecuteFormat(
+            "copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
+            table_name, csv_filename);
+      }));
+  // The buffer size will be adjusted so the number of rpc should be 1.
+  ASSERT_EQ(write_rpc_count, 1);
+
+  // the data in cvs file violates unique constraint.
+  std::ofstream temp_file(csv_filename, std::ios::app);
+  temp_file << num_rows << ",0";
+  temp_file.close();
+  std::string truncate_table_sql = "TRUNCATE TABLE " + table_name;
+  ASSERT_OK(conn->ExecuteFormat(truncate_table_sql));
+  ASSERT_OK(SetMaxBatchSize(conn, 20000));
+  auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
+                                    table_name, csv_filename);
+  LOG(INFO) << "copy status: " << status;
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
+  auto ret = conn->FetchRowAsString("select * from " + table_name);
+  const auto table_row_count = ASSERT_RESULT(
+      conn->FetchRow<int64_t>("SELECT COUNT(*) FROM " + table_name));
+  ASSERT_EQ(table_row_count, 0);
+}
+
+// Test the cases which should always use fast-path transaction on colocated table.
+TEST_F(PgOpBufferingTest, BulkLoadForColocatedUseFastPathTxnTest) {
+  std::string csv_filename = "/tmp/PgOpBufferingTest_copy_test.tmp";
+  const int num_rows = 100;
+  const std::string table_name = kTable;
+  generateCSVFileForCopy(csv_filename, num_rows, /* num_columns = */ 2);
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colo_db"));
+  ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
+  ASSERT_OK(conn.Execute("SET yb_fast_path_for_colocated_copy=true"));
+
+  CheckBulkLoadForColocatedCheckConstraint(&conn, table_name + "_check", csv_filename,
+      write_rpc_watcher_);
+  CheckBulkLoadForColocatedUniqueIndex(&conn, table_name + "_unique_index", csv_filename, num_rows,
+      write_rpc_watcher_);
+}
 } // namespace yb::pgwrapper

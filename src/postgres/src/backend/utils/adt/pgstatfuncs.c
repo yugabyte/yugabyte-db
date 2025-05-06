@@ -492,8 +492,6 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		cmdtype = PROGRESS_COMMAND_BASEBACKUP;
 	else if (pg_strcasecmp(cmd, "COPY") == 0)
 		cmdtype = PROGRESS_COMMAND_COPY;
-	else if (pg_strcasecmp(cmd, "CREATE INDEX") == 0)
-		cmdtype = PROGRESS_COMMAND_CREATE_INDEX;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -502,7 +500,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	InitMaterializedSRF(fcinfo, 0);
 
 	/*
-	 * Fetch stats for in-progress concurrent create indexes that aren't
+	 * YB: Fetch stats for in-progress concurrent create indexes that aren't
 	 * captured in the local backend entry from master. We avoid reading these
 	 * stats while constructing the local backend entry in
 	 * pg_read_current_stats() in order to avoid extraneous RPCs to master
@@ -544,6 +542,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		/*
 		 * Report values for only those backends which are running the given
 		 * command.
+		 *
+		 * YB: for COPY, report even if the command finished.
 		 */
 		if (!beentry || (beentry->st_progress_command != cmdtype &&
 						 beentry->st_progress_command != PROGRESS_COMMAND_COPY))
@@ -592,7 +592,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		}
 
 		/*
-		 * Set the columns of pg_stat_progress_create_index that are unused
+		 * YB: Set the columns of pg_stat_progress_create_index that are unused
 		 * in YB to null.
 		 */
 		if (IsYugaByteEnabled() && cmdtype == PROGRESS_COMMAND_CREATE_INDEX)
@@ -624,6 +624,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 	}
 
+	/* YB */
 	if (index_progress)
 		pfree(index_progress);
 
@@ -1039,7 +1040,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		nulls[YB_BACKEND_XID_COL] = true;
 
 		/*
-		 * The activity_start_timestamp is updated at the start of every
+		 * YB: The activity_start_timestamp is updated at the start of every
 		 * query. When the query start timestamp is later (greater) than the
 		 * timestamp of the RPC above, this indicates that the data in the RPC
 		 * is out-of-date. In such cases, we skip printing the transaction ID.
@@ -1362,6 +1363,59 @@ yb_pg_stat_get_backend_catalog_version(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 }
 
+/*
+ * Returns a record of (datid, local_catalog_version) about the backend
+ * with the specified process ID if the backend has both a valid datid
+ * (OidIsValid) and a local_catalog_version (> 0), or one record for each
+ * such valid backend in the system if NULL is specified.
+ */
+Datum
+yb_pg_stat_get_backend_local_catalog_version(PG_FUNCTION_ARGS)
+{
+	int         pid = PG_ARGISNULL(0) ? InvalidPid : PG_GETARG_INT32(0);
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	int			num_backends = pgstat_fetch_stat_numbackends();
+	int         i;
+
+	InitMaterializedSRF(fcinfo, 0);
+
+	/* 1-based index */
+	for (i = 1; i <= num_backends; i++)
+	{
+		PgBackendStatus *beentry;
+		LocalPgBackendStatus *local_beentry = pgstat_fetch_stat_local_beentry(i);
+		if (!local_beentry)
+			continue;
+
+		beentry = &local_beentry->backendStatus;
+		if (pid != InvalidPid && beentry->st_procpid != pid)
+			continue;
+
+		/*
+		 * ash has version but also has STATE_UNDEFINED, we do not want to
+		 * have a PG background worker to hold off garbage collection of
+		 * tserver invalidation messages.
+		 */
+		if (beentry->st_state == STATE_UNDEFINED)
+			continue;
+
+		/* datid and local_catalog_version are available to all callers */
+		if (beentry->st_databaseid == InvalidOid ||
+			beentry->yb_st_catalog_version.version == 0)
+			continue;
+
+		/* for each row */
+		Datum		values[2];
+		bool		nulls[2];
+
+		values[0] = ObjectIdGetDatum(beentry->st_databaseid);
+		values[1] = UInt64GetDatum(beentry->yb_st_catalog_version.version);
+		nulls[0] = false;
+		nulls[1] = false;
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+	}
+	return (Datum) 0;
+}
 
 Datum
 pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)

@@ -57,7 +57,14 @@ var updateXClusterCmd = &cobra.Command{
 				"Update - Get XCluster")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
-		xClusterTables := rXCluster.GetTables()
+		validStatesForConfig := util.TableStatesInXClusterConfig()
+		xClusterTables := make([]string, 0)
+		tableDetails := rXCluster.GetTableDetails()
+		for _, table := range tableDetails {
+			if slices.Contains(validStatesForConfig, table.GetStatus()) {
+				xClusterTables = append(xClusterTables, table.GetTableId())
+			}
+		}
 
 		name := rXCluster.GetName()
 
@@ -128,6 +135,8 @@ var updateXClusterCmd = &cobra.Command{
 			// In case add is empty, this list is sent for xCluster
 			logrus.Debug("Removing tables from XCluster")
 			req.SetTables(formTableUUIDs)
+		} else {
+			formTableUUIDs = xClusterTables
 		}
 
 		allowBoostrap := false
@@ -146,13 +155,14 @@ var updateXClusterCmd = &cobra.Command{
 			if len(tableNeedBootstrapUUIDsString) != 0 {
 				tableNeedBootstrapUUIDs = strings.Split(tableNeedBootstrapUUIDsString, ",")
 			} else {
+				tableNeedBootstrapUUIDs = addTableUUIDs
 				allowBoostrap = true
 			}
 
 			if len(tableNeedBootstrapUUIDs) > 0 || allowBoostrap {
 				logrus.Debug("Updating tables needing bootstrap\n")
 				bootstrapParams := ybaclient.BootstrapParams{
-					Tables: tableNeedBootstrapUUIDs,
+					Tables: util.StringSliceFromString(tableNeedBootstrapUUIDs),
 				}
 
 				if allowBoostrap {
@@ -348,7 +358,7 @@ func init() {
 		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
 
 	updateXClusterCmd.Flags().Bool("allow-bootstrap", false,
-		"Allow full copy on all the tables being added to the replication. "+
+		"[Optional] Allow full copy on all the tables being added to the replication. "+
 			"The same as passing the same set passed to table-uuids to tables-need-full-copy-uuids."+
 			" (default false)")
 

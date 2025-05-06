@@ -30,11 +30,13 @@ typedef struct
 	bool		retset;			/* T if function returns a set */
 	const char *funcName;		/* C name of the function */
 	PGFunction	func;			/* pointer to compiled function */
+
+	/* YB */
 	void	   *alt_func;		/* alternative function implementation for
 								 * special cases */
 } FmgrBuiltin;
 
-extern PGDLLIMPORT FmgrBuiltin fmgr_builtins[];
+extern PGDLLIMPORT FmgrBuiltin fmgr_builtins[];	/* YB: remove const */
 
 extern PGDLLIMPORT const int fmgr_nbuiltins;	/* number of entries in table */
 

@@ -45,6 +45,22 @@ int yb_set_client_id(od_client_t *client, od_server_t *server)
 	return 1;
 }
 
+int yb_send_reset_query(od_server_t *server)
+{
+	char query_reset[] = "RESET ALL";
+	/* YB: use od_backend_query to wait for server response */
+	int rc = od_backend_query(server, "reset-resetall", query_reset,
+			      NULL, sizeof(query_reset), yb_wait_timeout, 1);
+	if (rc == -1)
+		return -1;
+	/* reset timeout */
+	if (rc == -2) {
+		server->reset_timeout = true;
+		return -1;
+	}
+	return rc;
+}
+
 int od_deploy(od_client_t *client, char *context)
 {
 	od_instance_t *instance = client->global->instance;
@@ -55,6 +71,21 @@ int od_deploy(od_client_t *client, char *context)
 	/* compare and set options which are differs from server */
 	int query_count;
 	query_count = 0;
+
+	int rc;
+	int yb_reset = 0;
+	/*
+	 * YB: Optimized support for session parameters combines the reset and
+	 * deploy phases to happen subsequently after one another. Check if we require
+	 * a reset phase due to difference in server and client GUCs.
+	 */
+	if (instance->config.yb_optimized_session_parameters &&
+		yb_check_reset_needed(&client->vars, &server->vars)) {
+		od_debug(&instance->logger, context, client, server,
+			 "deploy: RESET ALL");
+		yb_send_reset_query(server);
+		yb_reset = 1;
+	}
 
 	char *query = malloc(yb_max_query_size + 1);
 	if (query == NULL) {
@@ -75,7 +106,6 @@ int od_deploy(od_client_t *client, char *context)
 			return -1;
 		}
 
-		int rc;
 		rc = od_write(&server->io, msg);
 		if (rc == -1) {
 			free(query);
@@ -87,12 +117,13 @@ int od_deploy(od_client_t *client, char *context)
 
 		od_debug(&instance->logger, context, client, server,
 			 "deploy: %s", query);
-		free(query);
-	} else {
+	} else if (!yb_reset) { /* YB: server and client already have GUC sync */
+		od_debug(&instance->logger, context, client, server,
+			 "deploy: nothing to do");
 		client->server->synced_settings = true;
-		free(query);
 	}
 
+	free(query);
 	return query_count;
 
 #else

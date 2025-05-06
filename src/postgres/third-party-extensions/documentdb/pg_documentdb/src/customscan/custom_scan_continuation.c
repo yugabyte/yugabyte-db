@@ -35,6 +35,9 @@
 #include "customscan/bson_custom_scan_private.h"
 #include "api_hooks.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 #if (PG_VERSION_NUM >= 150000)
 
 /* require_col_privs = true by default */
@@ -675,9 +678,15 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 			}
 		}
 
+		/*
+		 * YB: The extension only supports the RUM index which performs a bitmap 
+		 * scan, and the default tid based seq scan, wheres in yugabyte the LSM
+		 * based index scan is used. 
+		 */
 		if (inputPath->pathtype != T_BitmapHeapScan &&
 			inputPath->pathtype != T_TidScan &&
 			inputPath->pathtype != T_TidRangeScan &&
+			(!IsYugaByteEnabled() || inputPath->pathtype != T_IndexScan) &&
 			!IsValidScanPath(inputPath))
 		{
 			/* For now just break if it's not a seq scan or bitmap scan */

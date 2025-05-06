@@ -38,7 +38,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Policies on users in source require manual user creation](#policies-on-users-in-source-require-manual-user-creation)
 - [VIEW WITH CHECK OPTION is not supported](#view-with-check-option-is-not-supported)
 - [UNLOGGED table is not supported](#unlogged-table-is-not-supported)
-- [Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans](#index-on-timestamp-column-should-be-imported-as-asc-range-index-to-avoid-sequential-scans)
+- [Hash-sharding with indexes on the timestamp/date columns](#hash-sharding-with-indexes-on-the-timestamp-date-columns)
 - [Exporting data with names for tables/functions/procedures using special characters/whitespaces fails](#exporting-data-with-names-for-tables-functions-procedures-using-special-characters-whitespaces-fails)
 - [Importing with case-sensitive schema names](#importing-with-case-sensitive-schema-names)
 - [Unsupported datatypes by YugabyteDB](#unsupported-datatypes-by-yugabytedb)
@@ -56,6 +56,8 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Events Listen / Notify](#events-listen-notify)
 - [Two-Phase Commit](#two-phase-commit)
 - [DDL operations within the Transaction](#ddl-operations-within-the-transaction)
+- [Hotspots with range-sharded timestamp/date indexes](#hotspots-with-range-sharded-timestamp-date-indexes)
+- [Redundant indexes](#redundant-indexes)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -936,26 +938,33 @@ CREATE TABLE tbl_unlogged (
 
 ---
 
-### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+### Hash-sharding with indexes on the timestamp/date columns
 
-**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
+**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)  
+**Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, by default, indexes in YugabyteDB are hash-sharded, which is not optimal for range predicates and can impact query performance.
 
-**Description**: If there is an index on a timestamp column, the index should be imported as a range index automatically, as most queries relying on timestamp columns use range predicates. This avoids sequential scans and makes indexed scans accessible.
+Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../develop/postgresql-compatibility/) in YugabyteDB.
 
-**Workaround**: Manually add the ASC (range) clause to the exported files.
+**Workaround**: Explicitly configure the index to use range sharding. This ensures efficient data access with range-based queries.
 
 **Example**
 
 An example schema on the source database is as follows:
 
 ```sql
-CREATE INDEX ON timestamp_demo (ts);
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...
+    created_at timestamp
+);
+
+CREATE INDEX idx_orders_created ON orders(created_at);
 ```
 
-Suggested change to the schema is to add the `ASC` clause as follows:
+Suggested change to the schema is to add the ASC/DESC clause as follows:
 
 ```sql
-CREATE INDEX ON timestamp_demo (ts ASC);
+CREATE INDEX idx_orders_created ON orders(created_at DESC);
 ```
 
 ---
@@ -1332,6 +1341,8 @@ CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
     FOR EACH ROW EXECUTE FUNCTION lo_manage(raster);
 ```
 
+---
+
 ### PostgreSQL 12 and later features
 
 **GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
@@ -1361,6 +1372,8 @@ Apart from these, the following issues are supported in YugabyteDB [v2.25](/prev
 - [Deterministic attribute](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC) in COLLATION objects.
 - [SQL Body in Create function](https://www.postgresql.org/docs/15/sql-createfunction.html#:~:text=a%20new%20session.-,sql_body,-The%20body%20of).
 - [Common Table Expressions (With queries) with MATERIALIZED clause](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-CTE-MATERIALIZATION).
+
+---
 
 ### MERGE command
 
@@ -1428,6 +1441,8 @@ END;
 $$ LANGUAGE plpgsql;
 ```
 
+---
+
 ### JSONB subscripting
 
 **GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
@@ -1468,6 +1483,8 @@ CREATE TABLE test_jsonb_chk (
 );
 ```
 
+---
+
 ### Events Listen / Notify
 
 **GitHub**: Issue [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872)
@@ -1488,6 +1505,8 @@ INSERT INTO my_table (name) VALUES ('Charlie');
 NOTIFY my_table_changes, 'New row added with name: Charlie';
 ```
 
+---
+
 ### Two-Phase Commit
 
 **GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
@@ -1499,6 +1518,8 @@ ERROR:  PREPARE TRANSACTION not supported yet
 ```
 
 **Workaround**: Currently, there is no workaround.
+
+---
 
 ### DDL operations within the Transaction
 
@@ -1531,4 +1552,80 @@ yugabyte=# \d test
 --------+---------+-----------+----------+---------
  id     | integer |           |          | 
  val    | text    |           |          | 
+```
+
+---
+
+### Hotspots with range-sharded timestamp/date indexes
+
+**Description**: Range-sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, due to the way these values increment. For example, take a column of values `created_at timestamp`. As new values are inserted, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. Then, after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
+
+Note that if the table is colocated, this hotspot concern can safely be ignored, as all the data resides on a single tablet, and the distribution is no longer relevant.
+
+**Workaround**: To address this issue and improve query performance, application-level sharding is recommended. This approach involves adding an additional column to the table and creating a multi-column index including both the new column and the timestamp/date column. The additional column distributes data using a hash-based strategy, effectively spreading the load across multiple nodes.
+
+Implementing this solution requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, the new sharding column should be included in the query filters to benefit from distributed execution.
+
+Ensure that the index on the column is configured to be range-sharded.
+
+References: [How to Avoid Hotspots on Range-based Indexes in Distributed Databases](https://www.yugabyte.com/blog/distributed-databases-hotspots-range-based-indexes/), [[YFTT] Avoiding Hot-Spots on Timestamp Based Index](https://www.youtube.com/watch?v=tiYZn0U1wzY)
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...
+    created_at timestamp
+);
+
+CREATE INDEX idx_orders_created ON orders(created_at DESC);
+
+SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
+```
+
+Suggested change to the schema is to add the column `shard_id` with a default value as an integer between 0 and the number of shards required for the use case. In addition, you add this column to the index columns with hash sharding. In this way the data is distributed by `shard_id` and ordered based on `created_at`.
+
+This also requires modifying the range queries to include the `shard_id` in the filter to help the optimizer. In this example, you specify the shard IDs in the IN clause.
+
+```sql
+CREATE TABLE orders (
+	order_id int PRIMARY,
+	...,
+	shard_id int DEFAULT (floor(random() * 100)::int % 16),
+	created_at timestamp
+);
+
+CREATE INDEX idx_orders_created ON orders(shard_id HASH, created_at DESC);
+
+SELECT * FROM orders WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
+```
+
+### Redundant indexes
+
+**Description**: A redundant index is an index that duplicates the functionality of another index or is unnecessary because the database can use an existing index to achieve the same result. This happens when multiple indexes cover the same columns or when a subset of columns in one index is already covered by another. 
+
+**Workaround**: Remove the redundant index from the schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    product_id int,
+    ...
+);
+
+CREATE INDEX idx_orders_order_id on orders(order_id);
+CREATE INDEX idx_orders_order_id_product_id on orders(order_id, product_id);
+```
+
+Suggested change to the schema is to remove this redundant index `idx_orders_order_id` as another stronger index is present `idx_orders_order_id_product_id`:
+
+```sql
+CREATE INDEX idx_orders_order_id on orders(order_id);
 ```

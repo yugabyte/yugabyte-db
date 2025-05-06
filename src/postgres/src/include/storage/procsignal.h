@@ -74,6 +74,7 @@ extern void ProcessProcSignalBarrier(void);
 
 extern void procsignal_sigusr1_handler(SIGNAL_ARGS);
 
+/* YB */
 extern void CleanupProcSignalStateForProc(PGPROC *proc);
 
 #endif							/* PROCSIGNAL_H */

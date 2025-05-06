@@ -17,10 +17,9 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "yb/client/tablet_server.h"
 
@@ -36,14 +35,12 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/server_base_options.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/mem_tracker.h"
-#include "yb/util/memory/arena.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/uuid.h"
@@ -166,6 +163,7 @@ class PgApiImpl {
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
+  Result<int> GetXClusterRole(uint32_t db_oid);
 
   Status NewTupleExpr(
     YbcPgStatement stmt, const YbcPgTypeEntity *tuple_type_entity,
@@ -609,6 +607,7 @@ class PgApiImpl {
 
   Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
 
+  void IncrementIndexRecheckCount();
 
   //------------------------------------------------------------------------------------------------
   // Functions.

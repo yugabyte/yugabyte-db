@@ -520,10 +520,10 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 	partrel = table_open(partOid, RowExclusiveLock);
 
 	/*
-	 * The result relation's range table index passed into InitResultRelInfo
-	 * later gets used in the YB code-path to fetch range table entry
-	 * during YBExecUpdateAct(). The actual nominalRelation value needs to be
-	 * passed on in order to correctly fetch the entry.
+	 * YB: The result relation's range table index passed into
+	 * InitResultRelInfo later gets used in the YB code-path to fetch range
+	 * table entry during YBExecUpdateAct(). The actual nominalRelation value
+	 * needs to be passed on in order to correctly fetch the entry.
 	 */
 	int			resultRelationIndex = ((!IsYBRelation(firstResultRel) ||
 										partrel->rd_rel->relkind == RELKIND_FOREIGN_TABLE) ?
@@ -799,7 +799,6 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 				 * target relation (firstVarno).
 				 */
 				onconflset = copyObject(node->onConflictSet);
-
 				if (part_attmap == NULL)
 					part_attmap =
 						build_attrmap_by_name(RelationGetDescr(partrel),

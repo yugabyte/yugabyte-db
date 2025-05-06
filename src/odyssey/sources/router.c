@@ -236,6 +236,7 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 	od_list_t *expire_list = argv[0];
 	int *count = argv[1];
 	uint64_t *now_us = argv[2];
+	int jitter = route->rule->yb_jitter_time == 0 ? 0 : rand() % route->rule->yb_jitter_time;
 
 	uint64_t lifetime = route->rule->server_lifetime_us;
 	uint64_t server_life = *now_us - server->init_time_us;
@@ -251,7 +252,7 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 
 		/* advance idle time for 1 sec */
 		if (server_life < lifetime &&
-		    server->idle_time < route->rule->pool->ttl) {
+		    server->idle_time < route->rule->pool->ttl + jitter) {
 			/* YB NOTE: the server is within the pool's ttl. */
 			server->idle_time++;
 			return 0;

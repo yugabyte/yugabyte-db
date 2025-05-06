@@ -24,8 +24,7 @@ DEPRECATE_FLAG(bool, ysql_yb_ash_enable_infra, "2024_12");
 
 DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_ash, true,
     "Enable Active Session History for sampling and instrumenting YSQL and YCQL queries, "
-    "and various background activities. This does nothing if "
-    "ysql_yb_enable_ash_infra is disabled.");
+    "and various background activities.");
 
 DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 0,
     "Size (in KiBs) of ASH circular buffer that stores the samples");
@@ -190,9 +189,11 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kYCQL_Execute:
       return "YCQL is executing a query.";
     case WaitStateCode::kYBClient_WaitingOnDocDB:
-      return "YB Client is waiting on DocDB to return a response.";
+      return "YB client is waiting on DocDB to return a response.";
     case WaitStateCode::kYBClient_LookingUpTablet:
-      return "YB Client is looking up tablet information from the master.";
+      return "YB client is looking up tablet information from the master.";
+    case WaitStateCode::kYBClient_WaitingOnMaster:
+      return "YB client is waiting on an RPC sent to the master.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -577,6 +578,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kYBClient_WaitingOnDocDB:
     case WaitStateCode::kYBClient_LookingUpTablet:
+    case WaitStateCode::kYBClient_WaitingOnMaster:
       return WaitStateType::kNetwork;
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);

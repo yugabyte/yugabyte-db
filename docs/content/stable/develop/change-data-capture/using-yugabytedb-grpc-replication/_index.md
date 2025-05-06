@@ -58,6 +58,9 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 * CDC is not supported on tables (both source and target) for xCluster replication. Issues [25371](https://github.com/yugabyte/yugabyte-db/issues/25371) and [15534](https://github.com/yugabyte/yugabyte-db/issues/15534).
 * Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
+* If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
+
+    To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
 
 In addition, CDC support for the following features will be added in upcoming releases:
 

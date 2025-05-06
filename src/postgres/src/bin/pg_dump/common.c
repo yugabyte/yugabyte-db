@@ -176,6 +176,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	pg_log_info("reading user-defined access methods");
 	getAccessMethods(fout, &numAccessMethods);
 
+	/* YB */
 	pg_log_info("reading user-defined tablegroups");
 	(void) getTablegroups(fout, &numTablegroups);
 

@@ -936,11 +936,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   // Create the read request.
   YBqlReadOpPtr select_op(table->NewQLSelect());
   QLReadRequestPB *req = select_op->mutable_request();
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->MetadataToPB(req->mutable_ash_metadata());
-  } else {
-    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
-  }
+  ash::WaitStateInfo::CurrentMetadataToPB(req->mutable_ash_metadata());
 
   // Where clause - Hash, range, and regular columns.
   req->set_is_aggregate(tnode->is_aggregate());

@@ -25,7 +25,7 @@ create table Room (
     comment	text
 );
 create unique index Room_rno on Room using btree (roomno bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table WSlot (
     slotname	char(20),
     roomno	char(8),
@@ -33,13 +33,13 @@ create table WSlot (
     backlink	char(20)
 );
 create unique index WSlot_name on WSlot using btree (slotname bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table PField (
     name	text,
     comment	text
 );
 create unique index PField_name on PField using btree (name text_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table PSlot (
     slotname	char(20),
     pfname	text,
@@ -47,7 +47,7 @@ create table PSlot (
     backlink	char(20)
 );
 create unique index PSlot_name on PSlot using btree (slotname bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table PLine (
     slotname	char(20),
     phonenumber	char(20),
@@ -55,14 +55,14 @@ create table PLine (
     backlink	char(20)
 );
 create unique index PLine_name on PLine using btree (slotname bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table Hub (
     name	char(14),
     comment	text,
     nslots	integer
 );
 create unique index Hub_name on Hub using btree (name bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table HSlot (
     slotname	char(20),
     hubname	char(14),
@@ -70,15 +70,15 @@ create table HSlot (
     slotlink	char(20)
 );
 create unique index HSlot_name on HSlot using btree (slotname bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create index HSlot_hubname on HSlot using btree (hubname bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table System (
     name	text,
     comment	text
 );
 create unique index System_name on System using btree (name text_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table IFace (
     slotname	char(20),
     sysname	text,
@@ -86,14 +86,14 @@ create table IFace (
     slotlink	char(20)
 );
 create unique index IFace_name on IFace using btree (slotname bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 create table PHone (
     slotname	char(20),
     comment	text,
     slotlink	char(20)
 );
 create unique index PHone_name on PHone using btree (slotname bpchar_ops);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 -- ************************************************************
 -- *
 -- * Trigger procedures and functions for the patchfield

@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
 import { AlertVariant, YBAlert, YBButton } from '../../../../components';
 import { YBProgress, YBProgressBarState } from '../../../../components/YBProgress/YBLinearProgress';
-import { getTaskTitle } from '../../TaskUtils';
+import { getErrorTaskTitle } from '../../TaskUtils';
 import { TaskBannerCompProps } from './dtos';
 import { useBannerCommonStyles } from './BannerStyles';
 import ErrorIcon from '../../../../assets/error.svg';
@@ -51,7 +51,7 @@ export const TaskFailedBanner: FC<TaskBannerCompProps> = ({
         text={
           <div className={clsx(commonStyles.flex)}>
             <div className={commonStyles.flex}>
-              <Typography variant="body1">{getTaskTitle(currentTask)}</Typography>
+              <Typography variant="body1">{getErrorTaskTitle(currentTask)}</Typography>
             </div>
             <div className={commonStyles.flex}>
               <Typography variant="body1">
@@ -69,6 +69,7 @@ export const TaskFailedBanner: FC<TaskBannerCompProps> = ({
               variant="secondary"
               size="small"
               onClick={() => viewDetails()}
+              data-testid="task-failed-view-details-button"
             >
               {t('viewDetails')}
             </YBButton>

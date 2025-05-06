@@ -20,7 +20,7 @@ The [YugabyteDB Anywhere (YBA) Command Line Interface](https://github.com/yugaby
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is in [Tech Preview](/preview/releases/versioning/#feature-availability). Commands and options may change before {{<tags/feature/ga>}}.
+The CLI is {{<tags/feature/tp idea="1879">}}. Commands and options may change before {{<tags/feature/ga>}}.
 
 ## Install CLI
 

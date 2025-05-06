@@ -60,23 +60,6 @@ DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_reads, 0,
     "Max number of concurrent reads on vector index chunk. 0 - use number of CPUs for it");
 
 
-#define SHUTDOWN_MESSAGE "Shutdown is in progress"
-
-#define RETURN_ON_SHUTTING_DOWN do { \
-  if (IsShuttingDown()) { \
-    LOG_WITH_PREFIX(INFO) << SHUTDOWN_MESSAGE; \
-    return; \
-  }} while (false)
-
-
-#define RETURN_STATUS_ON_SHUTTING_DOWN do { \
-  if (IsShuttingDown()) { \
-    auto status = STATUS(ShutdownInProgress, SHUTDOWN_MESSAGE); \
-    LOG_WITH_PREFIX(INFO) << status; \
-    return status; \
-  }} while (false)
-
-
 namespace yb::vector_index {
 
 namespace bi = boost::intrusive;
@@ -102,6 +85,7 @@ size_t MaxConcurrentReads() {
 } // namespace
 
 MonoDelta TEST_sleep_during_flush;
+MonoDelta TEST_sleep_on_merged_chunk_populated;
 
 class VectorLSMFileMetaData final {
  public:
@@ -431,10 +415,21 @@ VectorLSM<Vector, DistanceResult>::~VectorLSM() {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-bool VectorLSM<Vector, DistanceResult>::IsShuttingDown() const {
-  SharedLock lock(mutex_);
-  return stopping_;
+Status VectorLSM<Vector, DistanceResult>::DoCheckRunning(
+    const char* file_name, int line_number) const {
+  {
+    SharedLock lock(mutex_);
+    if (!stopping_) {
+      return Status::OK();
+    }
+  }
+
+  auto status = Status(Status::kShutdownInProgress,
+                       file_name, line_number, "Vector LSM is shutting down");
+  LOG_WITH_PREFIX(INFO) << status;
+  return status;
 }
+#define RUNNING_STATUS() DoCheckRunning(__FILE__, __LINE__)
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::StartShutdown() {
@@ -444,6 +439,8 @@ void VectorLSM<Vector, DistanceResult>::StartShutdown() {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
+  LOG_IF_WITH_PREFIX(DFATAL, RUNNING_STATUS().ok()) << "Vector LSM is not shutting down";
+
   if (!insert_registry_) {
     return; // Was not opened.
   }
@@ -570,6 +567,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   LOG_WITH_PREFIX(INFO) << "Loaded " << immutable_chunks_.size() << " chunks, "
                         << "last serial no: " << last_serial_no_ << ", "
                         << "next manifest no: " << next_manifest_file_no_;
+  VLOG_WITH_PREFIX(4) << "Loaded " << AsString(immutable_chunks_);
 
   return Status::OK();
 }
@@ -954,7 +952,7 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk) {
   if (TEST_sleep_during_flush && chunk->order_no) {
-    std::this_thread::sleep_for(TEST_sleep_during_flush.ToSteadyDuration());
+    SleepFor(TEST_sleep_during_flush);
   }
   auto status = DoSaveChunk(chunk);
   if (status.ok()) {
@@ -1038,19 +1036,21 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(size_t min_vecto
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "wait: " << wait;
+
   if (TEST_sleep_during_flush) {
-    std::this_thread::sleep_for(TEST_sleep_during_flush.ToSteadyDuration());
+    SleepFor(TEST_sleep_during_flush);
   }
+
+  RETURN_NOT_OK(RUNNING_STATUS());
+
   std::promise<Status> promise;
   {
     std::lock_guard lock(mutex_);
-    if (stopping_) {
-      return STATUS(ShutdownInProgress, "Vector LSM is shutting down");
-    }
     if (!mutable_chunk_) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Noting to flush";
       return Status::OK();
     }
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Flushing " << mutable_chunk_->num_entries << " entries";
     RETURN_NOT_OK(DoFlush(wait ? &promise : nullptr));
     mutable_chunk_ = nullptr;
   }
@@ -1171,7 +1171,9 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ScheduleObsoleteChunksCleanup() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
-  RETURN_ON_SHUTTING_DOWN;
+  if (!RUNNING_STATUS().ok()) {
+    return;
+  }
 
   // The variable obsolete_files_cleanup_in_progress_ is unset in DeleteObsoleteChunks().
   bool in_progress = false;
@@ -1198,7 +1200,9 @@ void VectorLSM<Vector, DistanceResult>::DeleteObsoleteChunks() {
     DoDeleteObsoleteChunks();
     obsolete_files_cleanup_in_progress_ = false;
 
-    RETURN_ON_SHUTTING_DOWN;
+    if (!RUNNING_STATUS().ok()) {
+      return;
+    }
 
     // Check if new obsolete files got added.
     {
@@ -1256,7 +1260,9 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ObsoleteFile(
     std::unique_ptr<VectorLSMFileMetaData>&& file) {
   // Let's not queue a file for deletion if vector index is being shutdown.
-  RETURN_ON_SHUTTING_DOWN;
+  if (!RUNNING_STATUS().ok()) {
+    return;
+  }
 
   // Sanity check, only obsolete files should be passed.
   DCHECK(file->IsObsolete());
@@ -1322,14 +1328,49 @@ VectorLSM<Vector, DistanceResult>::DoCompaction(const ImmutableChunkPtrs& input_
   VectorIndexPtr merged_index;
   if (!indexes.empty()) {
     merged_index = VERIFY_RESULT(CreateVectorIndex(input_size));
-    RETURN_NOT_OK(options_.vector_index_merger(merged_index, indexes));
-    LOG_WITH_PREFIX(INFO) << "Compaction done [vectors: " << merged_index->Size() << "]";
+
+    RSTATUS_DCHECK(options_.vector_merge_filter_factory,
+                   IllegalState, "Vector merge filter factory must be specified");
+    auto merge_filter = options_.vector_merge_filter_factory();
+
+    // Let's be more conservative and don't check shutdown status on every inserted vector.
+    const size_t min_iterations_to_check_shutdown =
+        std::min<size_t>(2, 200000 / merged_index->Dimensions());
+    size_t num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
+
+    // The only available way to merge vector indexes at the moment is to add all the vectors
+    // to a new vector index, filtering outdated vectors out.
+    for (const auto& index : indexes) {
+      for (const auto& [vector_id, vector] : *index) {
+        if (merge_filter->Filter(vector_id) == rocksdb::FilterDecision::kKeep) {
+          RETURN_NOT_OK(merged_index->Insert(vector_id, vector));
+        }
+
+        if (--num_iterations_to_check_shutdown == 0) {
+          RETURN_NOT_OK(RUNNING_STATUS());
+          num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
+        }
+      }
+    }
+
+    if (TEST_sleep_on_merged_chunk_populated) {
+      SleepFor(TEST_sleep_on_merged_chunk_populated);
+      num_iterations_to_check_shutdown = 1; // To force checking shutting down status.
+    }
+
+    // Check shutting down in progress before saving new vector index on disk.
+    if (num_iterations_to_check_shutdown) {
+      RETURN_NOT_OK(RUNNING_STATUS());
+    }
+
+    LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: " << merged_index->Size() << "]";
 
     // Save new index to disk.
     merged_index_file = CreateVectorLSMFileMetaData(*merged_index, NextSerialNo());
     const auto chunk_path = GetChunkPath(options_.storage_dir, merged_index_file->serial_no());
     RETURN_NOT_OK(merged_index->SaveToFile(chunk_path));
-    LOG_WITH_PREFIX(INFO) << "New chunk " << merged_index_file->ToString() << " saved to disk";
+    LOG_WITH_PREFIX(INFO)
+        << "Compaction done, new chunk" << merged_index_file->ToString() << " saved to disk";
   }
 
   // Create new immutable chunk for further processing.
@@ -1342,10 +1383,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoFullCompaction() {
   LOG_WITH_PREFIX(INFO) << "Vector index full compaction requested";
 
-  RETURN_STATUS_ON_SHUTTING_DOWN;
-
-  RSTATUS_DCHECK(options_.vector_index_merger,
-                 IllegalState, "Vector index merger is not specified");
+  RETURN_NOT_OK(RUNNING_STATUS());
 
   auto input_chunks = PickChunksForFullCompaction();
   if (input_chunks.empty()) {
@@ -1422,7 +1460,7 @@ Status VectorLSM<Vector, DistanceResult>::DoFullCompaction() {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::ScheduleFullCompaction(StdStatusCallback callback) {
-  RETURN_STATUS_ON_SHUTTING_DOWN;
+  RETURN_NOT_OK(RUNNING_STATUS());
 
   bool in_progress = false;
   if (!full_compaction_in_progress_.compare_exchange_strong(in_progress, true)) {
@@ -1434,6 +1472,9 @@ Status VectorLSM<Vector, DistanceResult>::ScheduleFullCompaction(StdStatusCallba
     full_compaction_in_progress_ = false;
     if (callback) {
       callback(status);
+    } else if (!status.ok()) {
+      // TODO(vector_index): think on how to report failed async compactions.
+      LOG_WITH_PREFIX(WARNING) << "Full compaction failed: " << status;
     }
   });
 

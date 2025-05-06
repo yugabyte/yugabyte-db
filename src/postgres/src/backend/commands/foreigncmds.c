@@ -52,6 +52,9 @@ typedef struct
 /* Internal functions */
 static void import_error_callback(void *arg);
 
+/* YB functions */
+static void yb_validate_server_options(ForeignDataWrapper *fdw, Datum options, Datum old_options);
+
 
 /*
  * Convert a DefElem list to the text array format that is used in
@@ -837,7 +840,7 @@ AlterForeignDataWrapper(ParseState *pstate, AlterFdwStmt *stmt)
 	return myself;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Drop foreign-data wrapper by OID
  */
@@ -944,6 +947,8 @@ CreateForeignServer(CreateForeignServerStmt *stmt)
 										 stmt->options,
 										 fdw->fdwvalidator);
 
+	yb_validate_server_options(fdw, srvoptions, (Datum) 0 /* old_options */ );
+
 	if (PointerIsValid(DatumGetPointer(srvoptions)))
 		values[Anum_pg_foreign_server_srvoptions - 1] = srvoptions;
 	else
@@ -1036,21 +1041,24 @@ AlterForeignServer(AlterForeignServerStmt *stmt)
 	{
 		ForeignDataWrapper *fdw = GetForeignDataWrapper(srvForm->srvfdw);
 		Datum		datum;
+		Datum		yb_old_options;
 		bool		isnull;
 
 		/* Extract the current srvoptions */
-		datum = SysCacheGetAttr(FOREIGNSERVEROID,
-								tp,
-								Anum_pg_foreign_server_srvoptions,
-								&isnull);
+		yb_old_options = SysCacheGetAttr(FOREIGNSERVEROID,
+										 tp,
+										 Anum_pg_foreign_server_srvoptions,
+										 &isnull);
 		if (isnull)
-			datum = PointerGetDatum(NULL);
+			yb_old_options = PointerGetDatum(NULL);
 
 		/* Prepare the options array */
 		datum = transformGenericOptions(ForeignServerRelationId,
-										datum,
+										yb_old_options,
 										stmt->options,
 										fdw->fdwvalidator);
+
+		yb_validate_server_options(fdw, datum, yb_old_options);
 
 		if (PointerIsValid(DatumGetPointer(datum)))
 			repl_val[Anum_pg_foreign_server_srvoptions - 1] = datum;
@@ -1077,7 +1085,7 @@ AlterForeignServer(AlterForeignServerStmt *stmt)
 	return address;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Drop foreign server by OID
  */
@@ -1412,7 +1420,7 @@ RemoveUserMapping(DropUserMappingStmt *stmt)
 	return umId;
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*
  * Drop user mapping by OID.  This is called to clean up dependencies.
  */
@@ -1636,4 +1644,80 @@ import_error_callback(void *arg)
 	if (callback_arg->tablename)
 		errcontext("importing foreign table \"%s\"",
 				   callback_arg->tablename);
+}
+
+static void
+yb_validate_postgres_fdw(Datum options, Datum old_options)
+{
+	List	   *new_options_list = untransformRelOptions(options);
+	List	   *old_options_list = untransformRelOptions(old_options);
+	ListCell   *cell;
+	const char *new_server_type = NULL;
+	const char *old_server_type = NULL;
+
+	foreach(cell, new_options_list)
+	{
+		DefElem    *defel = (DefElem *) lfirst(cell);
+
+		if (strcmp(defel->defname, "server_type") == 0)
+			new_server_type = defGetString(defel);
+	}
+
+	foreach(cell, old_options_list)
+	{
+		DefElem    *defel = (DefElem *) lfirst(cell);
+
+		if (strcmp(defel->defname, "server_type") == 0)
+			old_server_type = defGetString(defel);
+	}
+
+	/*
+	 * We know that the new server_type is valid. Allow users to configure
+	 * server_type as a one-time operation.
+	 */
+	if (!old_server_type && new_server_type)
+		return;
+
+	if (!new_server_type && !old_server_type)
+	{
+		ereport(NOTICE,
+				(errmsg("no server_type specified. Defaulting to PostgreSQL."),
+				 errhint("Use \"ALTER SERVER ... OPTIONS (ADD server_type \'<type>\')\" to explicitly set server_type.")));
+		return;
+	}
+
+	if (old_server_type && !new_server_type)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("dropping server_type is not supported.")));
+		return;
+	}
+
+	if (strcmp(old_server_type, new_server_type) != 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("changing server_type is not supported."),
+				 errhint("Use \"DROP SERVER <name>\" followed by \"CREATE SERVER <name> ... OPTIONS (server_type \'%s\')\" to change server_type.", new_server_type)));
+		return;
+	}
+}
+
+/*
+ * This function performs additional, context-specific validation of foreign
+ * server options after the values have been checked by the FDW validator.
+ * The FDW validator framework assumes that all options supplied to CREATE
+ * SERVER and ALTER SERVER statements are stateless: that is, they do not depend
+ * on the previous value of the option.
+ * Note: The cleanest way to implement this would be to allow FDWs to register
+ * a callback function similar to fdwvalidator, but with the signature similar
+ * to the one below.
+ * TODO: Consider doing this when more FDWs require this.
+ */
+static void
+yb_validate_server_options(ForeignDataWrapper *fdw, Datum options, Datum old_options)
+{
+	if (strcmp(fdw->fdwname, "postgres_fdw") == 0)
+		yb_validate_postgres_fdw(options, old_options);
 }

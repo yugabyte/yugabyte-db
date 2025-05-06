@@ -148,6 +148,10 @@ message PgVectorIdxOptionsPB {
 
   reserved 5, 6;
   optional PgHnswIndexOptionsPB hnsw = 7;
+
+  // Permanent index id. It should be unique for tablet, but when tablet is cloned,
+  // index id in new tablet remains the same.
+  optional string id = 8;
 }
 
 message PgHnswReadOptionsPB {
@@ -157,6 +161,7 @@ message PgHnswReadOptionsPB {
 message PgVectorReadOptionsPB {
   required QLValuePB vector = 1;
   required int32 prefetch_size = 2;
+  optional uint64 num_top_vectors_to_remove = 4;
   oneof index_params {
     PgHnswReadOptionsPB hnsw_options = 3;
   }

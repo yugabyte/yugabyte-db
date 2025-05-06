@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -212,6 +213,10 @@ func ProcessTServerGFlagsFromString(input string, data interface{}) error {
 func ProcessTServerGFlagsFromConfig(input map[string]interface{}) map[string]map[string]string {
 	data := make(map[string]map[string]string, 0)
 	for k, v := range input {
+		if reflect.TypeOf(v).Kind() != reflect.Map {
+			logrus.Fatalf(formatter.Colorize(
+				fmt.Sprintf("Invalid map entry for tserver key %s\n", k), formatter.RedColor))
+		}
 		data[k] = *util.StringMap(v.(map[string]interface{}))
 	}
 	return data

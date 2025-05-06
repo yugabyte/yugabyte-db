@@ -620,7 +620,7 @@ main(int argc, char *argv[])
 	}
 
 	if (!globals_only && !roles_only && !tablespaces_only)
-		/* Dump one DB only with '--dump-single-database'. */
+		/* YB: Dump one DB only with '--dump-single-database'. */
 		dumpDatabases(conn, dump_single_database ? pgdb : NULL);
 
 	PQfinish(conn);
@@ -996,6 +996,7 @@ dumpRoles(PGconn *conn)
 			appendPQExpBuffer(buf, " CONNECTION LIMIT %s",
 							  PQgetvalue(res, i, i_rolconnlimit));
 
+
 		if (!PQgetisnull(res, i, i_rolpassword) && !no_role_passwords)
 		{
 			appendPQExpBufferStr(buf, " PASSWORD ");
@@ -1238,7 +1239,8 @@ dumpTablespaces(PGconn *conn)
 					   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
 					   "pg_catalog.pg_tablespace_location(oid), "
 					   "spcacl, acldefault('t', spcowner) AS acldefault, "
-					   "spcoptions,"
+					   "spcoptions,"	/* YB: processing is done later in
+										   ybProcessTablespaceSpcOptions */
 					   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 					   "FROM pg_catalog.pg_tablespace "
 					   "WHERE spcname !~ '^pg_' "

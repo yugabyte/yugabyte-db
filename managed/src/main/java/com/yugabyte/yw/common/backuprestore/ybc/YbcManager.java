@@ -876,21 +876,21 @@ public class YbcManager {
 
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
       List<String> nodeIps, int ybcPort, String certFile) {
-    Optional<Pair<YbcClient, String>> clientIpPair =
-        nodeIps.stream()
-            .map(
-                ip -> {
-                  YbcClient ybcClient = ybcClientService.getNewClient(ip, ybcPort, certFile);
-                  return ybcPingCheck(ybcClient)
-                      ? new Pair<YbcClient, String>(ybcClient, ip)
-                      : null;
-                })
-            .filter(Objects::nonNull)
-            .findFirst();
-    if (!clientIpPair.isPresent()) {
-      throw new RuntimeException("YB-Controller servers unavailable");
+    for (String nodeIp : nodeIps) {
+      YbcClient ybcClient = null;
+      try {
+        ybcClient = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+        if (ybcPingCheck(ybcClient)) {
+          return new Pair<YbcClient, String>(ybcClient, nodeIp);
+        }
+        ybcClient.close();
+      } catch (Exception e) {
+        if (ybcClient != null) {
+          ybcClient.close();
+        }
+      }
     }
-    return clientIpPair.get();
+    throw new RuntimeException("YB-Controller servers unavailable");
   }
 
   public static List<String> getPreferenceBasedYBCNodeIPsList(Universe universe) {

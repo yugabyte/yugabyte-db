@@ -40,11 +40,13 @@
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
 
-#define Generation_CONTEXTSZ	MAXALIGN(sizeof(GenerationContext))
+
 #define Generation_BLOCKHDRSZ	MAXALIGN(sizeof(GenerationBlock))
 #define Generation_CHUNKHDRSZ	sizeof(GenerationChunk)
 
 #define Generation_CHUNK_FRACTION	8
+
+#define Generation_CONTEXTSZ	MAXALIGN(sizeof(GenerationContext))
 
 typedef struct GenerationBlock GenerationBlock; /* forward reference */
 typedef struct GenerationChunk GenerationChunk;

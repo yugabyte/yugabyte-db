@@ -20,6 +20,7 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/vector_index/ann_methods.h"
@@ -35,6 +36,8 @@ DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 
 namespace yb::vector_index {
+
+extern MonoDelta TEST_sleep_on_merged_chunk_populated;
 
 using FloatVectorLSM = VectorLSM<std::vector<float>, float>;
 using TestUsearchIndexFactory = MakeVectorIndexFactory<UsearchIndexFactory, FloatVectorLSM>;
@@ -259,9 +262,13 @@ Status VectorLSMTest::OpenVectorLSM(
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
-    .vector_index_merger = [](auto& target, const auto& source) {
-      return vector_index::Merge(target, source, [](const VectorId&) {
-        return rocksdb::FilterDecision::kKeep; });
+    .vector_merge_filter_factory = [] {
+      struct DummyFilter : public VectorLSMMergeFilter {
+        rocksdb::FilterDecision Filter(VectorId vector_id) override {
+          return rocksdb::FilterDecision::kKeep;
+        }
+      };
+      return std::make_unique<DummyFilter>();
     },
   };
   return lsm.Open(std::move(options));
@@ -300,6 +307,7 @@ void VectorLSMTest::CheckQueryVector(
 
     SearchOptions options = {
       .max_num_results = max_num_results,
+      .ef = 0,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));
     LOG(INFO) << "Search result: " << AsString(search_result);
@@ -444,6 +452,35 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   ++compacted_idx;
   files = AsString(ASSERT_RESULT(GetFiles(lsm)));
   ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
+}
+
+TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
+  constexpr size_t kDimensions = 9;
+  constexpr size_t kChunkSize  = 2 * kDefaultChunkSize;
+  static_assert(GetNumEntriesByDimensions(kDimensions) > 2 * kChunkSize);
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
+  while (lsm.TEST_HasBackgroundInserts()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  ASSERT_GT(lsm.num_immutable_chunks(), 1);
+
+  // Pause Vector LSM compactions.
+  const auto merge_timeout = 5s * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(TEST_sleep_on_merged_chunk_populated) = merge_timeout;
+
+  // Spawn a separate thread and start shutting down
+  ThreadHolder threads;
+  threads.AddThreadFunctor([&lsm, merge_timeout] {
+    SleepFor(merge_timeout / 2);
+
+    // Compaction should be already started by this time (and paused).
+    lsm.StartShutdown();
+  });
+
+  auto status = lsm.Compact(/* wait = */ true);
+  ASSERT_TRUE(status.IsShutdownInProgress()) << status;
 }
 
 void VectorLSMTest::TestBootstrap(bool flush) {

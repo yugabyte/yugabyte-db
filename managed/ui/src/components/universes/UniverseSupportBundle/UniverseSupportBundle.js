@@ -4,10 +4,16 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { connect, useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
+import { useQueryClient } from 'react-query';
+
 import { FirstStep } from './FirstStep/FirstStep';
-import { SecondStep, updateOptions } from './SecondStep/SecondStep';
+import {
+  DEFAULT_PROMETHEUS_METRICS_PARAMS,
+  SecondStep,
+  updateOptions
+} from './SecondStep/SecondStep';
 import { ThirdStep } from './ThirdStep/ThirdStep';
-import { YBModal, YBButton } from '../../common/forms/fields';
+import { YBButton } from '../../common/forms/fields';
 import { ROOT_URL } from '../../../config';
 import { getSupportBundles } from '../../../selector/supportBundle';
 import { isEmptyObject } from '../../../utils/ObjectUtils';
@@ -16,14 +22,15 @@ import {
   listSupportBundle,
   setListSupportBundle
 } from '../../../actions/supportBundle';
-
-import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import './UniverseSupportBundle.scss';
 import { filterTypes } from '../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider';
 import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getUniverseStatus } from '../helpers/universeHelpers';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { YBModal } from '../../../redesign/components';
+
+import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import './UniverseSupportBundle.scss';
 
 const stepsObj = {
   firstStep: 'firstStep',
@@ -32,7 +39,6 @@ const stepsObj = {
 };
 
 const POLLING_INTERVAL = 10000; // ten seconds
-
 export const UniverseSupportBundle = (props) => {
   const {
     currentUniverse: { universeDetails },
@@ -44,14 +50,15 @@ export const UniverseSupportBundle = (props) => {
   const defaultOptions = updateOptions(
     filterTypes[0],
     [true, true, true, true, true, true, true, true, true, true, true],
-    () => {}
+    () => {},
+    {},
+    DEFAULT_PROMETHEUS_METRICS_PARAMS
   );
   const [payload, setPayload] = useState(defaultOptions);
-
   const isK8sUniverse = getIsKubernetesUniverse(props.currentUniverse);
-
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);
+  const queryClient = useQueryClient();
 
   const resetSteps = () => {
     if (supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
@@ -120,13 +127,13 @@ export const UniverseSupportBundle = (props) => {
     downloadSupportBundle(universeUUID, bundleUUID);
   };
 
-  const isSubmitDisabled = () => {
-    if (steps === stepsObj.secondStep) {
-      return payload?.components?.length === 0;
-    }
-    return false;
+  const onClose = () => {
+    queryClient.removeQueries('estimatedSupportBundleSize');
+    resetSteps();
+    closeModal();
   };
 
+  const isSubmitDisabled = steps === stepsObj.secondStep && payload?.components?.length === 0;
   return (
     <Fragment>
       {isEmptyObject(button) ? (
@@ -136,60 +143,61 @@ export const UniverseSupportBundle = (props) => {
       )}
       <YBModal
         className="universe-support-bundle"
-        title={'Support Bundle'}
-        visible={showModal && visibleModal === 'supportBundleModal'}
-        onHide={() => {
-          resetSteps();
-          closeModal();
-        }}
+        title="Support Bundle"
+        open={showModal && visibleModal === 'supportBundleModal'}
+        onClose={onClose}
+        overrideHeight="fit-content"
         cancelLabel="Close"
-        showCancelButton
         submitLabel={steps === stepsObj.secondStep ? 'Create Bundle' : undefined}
-        onFormSubmit={
+        onSubmit={
           steps === stepsObj.secondStep
             ? () => {
                 saveSupportBundle(universeDetails.universeUUID);
               }
             : undefined
         }
-        disableSubmit={isSubmitDisabled()}
+        buttonProps={{ primary: { disabled: isSubmitDisabled } }}
       >
-        {steps === stepsObj.firstStep && (
-          <FirstStep
-            onCreateSupportBundle={() => {
-              handleStepChange(stepsObj.secondStep);
-            }}
-            universeUUID={universeDetails.universeUUID}
-          />
-        )}
-        {steps === stepsObj.secondStep && (
-          <SecondStep
-            onOptionsChange={(selectedOptions) => {
-              if (selectedOptions) {
-                setPayload(selectedOptions);
-              } else {
-                setPayload(defaultOptions);
+        <div className="universe-support-bundle-body">
+          {steps === stepsObj.firstStep && (
+            <FirstStep
+              onCreateSupportBundle={() => {
+                handleStepChange(stepsObj.secondStep);
+              }}
+              universeUUID={universeDetails.universeUUID}
+            />
+          )}
+          {steps === stepsObj.secondStep && (
+            <SecondStep
+              onOptionsChange={(selectedOptions) => {
+                if (selectedOptions) {
+                  setPayload(selectedOptions);
+                } else {
+                  setPayload(defaultOptions);
+                }
+              }}
+              payload={payload}
+              universeUUID={universeDetails.universeUUID}
+              isK8sUniverse={isK8sUniverse}
+              universeStatus={getUniverseStatus(props.currentUniverse)}
+            />
+          )}
+          {steps === stepsObj.thirdStep && (
+            <ThirdStep
+              handleDownloadBundle={(bundleUUID) =>
+                handleDownloadBundle(universeDetails.universeUUID, bundleUUID)
               }
-            }}
-            isK8sUniverse={isK8sUniverse}
-            universeStatus={getUniverseStatus(props.currentUniverse)}
-          />
-        )}
-        {steps === stepsObj.thirdStep && (
-          <ThirdStep
-            handleDownloadBundle={(bundleUUID) =>
-              handleDownloadBundle(universeDetails.universeUUID, bundleUUID)
-            }
-            handleDeleteBundle={(bundleUUID) =>
-              handleDeleteBundle(universeDetails.universeUUID, bundleUUID)
-            }
-            supportBundles={supportBundles}
-            onCreateSupportBundle={() => {
-              handleStepChange(stepsObj.secondStep);
-            }}
-            universeUUID={universeDetails.universeUUID}
-          />
-        )}
+              handleDeleteBundle={(bundleUUID) =>
+                handleDeleteBundle(universeDetails.universeUUID, bundleUUID)
+              }
+              supportBundles={supportBundles}
+              onCreateSupportBundle={() => {
+                handleStepChange(stepsObj.secondStep);
+              }}
+              universeUUID={universeDetails.universeUUID}
+            />
+          )}
+        </div>
       </YBModal>
     </Fragment>
   );
@@ -220,6 +228,12 @@ export function downloadSupportBundle(universeUUID, supportBundleUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/support_bundle/${supportBundleUUID}/download`;
   window.open(endpoint, '_blank');
+}
+
+export function fetchEstimatedSupportBundleSize(universeUUID, supportBundle) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/support_bundle/estimate_size`;
+  return axios.post(endpoint, supportBundle).then((response) => response.data);
 }
 
 function mapStateToProps(state) {

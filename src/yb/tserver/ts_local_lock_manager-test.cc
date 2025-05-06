@@ -13,6 +13,8 @@
 
 #include "yb/tserver/ts_local_lock_manager.h"
 
+#include "yb/docdb/docdb-test.h"
+#include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
 
 #include "yb/rpc/thread_pool.h"
@@ -25,6 +27,7 @@
 #include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -34,7 +37,9 @@
 
 using namespace std::literals;
 
-namespace yb::docdb {
+using yb::docdb::ObjectLockOwner;
+
+namespace yb::tserver {
 
 auto kTxn1 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 auto kTxn2 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
@@ -43,7 +48,7 @@ constexpr auto kDatabase1 = 1;
 constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 
-class TSLocalLockManagerTest : public tserver::TabletServerTestBase {
+class TSLocalLockManagerTest : public TabletServerTestBase {
  protected:
   TSLocalLockManagerTest() {
     auto ts = TabletServerTestBase::CreateMiniTabletServer();
@@ -234,7 +239,7 @@ TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
   constexpr auto kObject2 = 2;
   ASSERT_OK(LockObjects(
       kTxn1, kDatabase1, {kObject1, kObject2},
-      {TableLockType::ACCESS_SHARE, TableLockType::ACCESS_EXCLUSIVE}));
+      {TableLockType::ACCESS_SHARE, TableLockType::SHARE_UPDATE_EXCLUSIVE}));
 
   ASSERT_OK(LockObject(kTxn2, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
   // Granted locks map would have the following keys
@@ -253,7 +258,7 @@ TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
     // txn2 + {2, kWeakObjectLock} -> would be granted
     // txn2 + {2, kStrongObjectLock} -> would end up waiting
     return LockObject(
-        kTxn2, kDatabase1, kObject2, TableLockType::ACCESS_EXCLUSIVE,
+        kTxn2, kDatabase1, kObject2, TableLockType::SHARE,
         CoarseMonoClock::Now() + 5s);
   });
   DEBUG_ONLY_TEST_SYNC_POINT("TestFailedLockRpcSemantics");
@@ -305,4 +310,51 @@ TEST_F(TSLocalLockManagerTest, TestLockAgainstDifferentDbsDontConflict) {
   ASSERT_OK(ReleaseAllLocksForTxn(kTxn2));
 }
 
-} // namespace yb::docdb
+TEST_F(TSLocalLockManagerTest, TestDowngradeDespiteExclusiveLockWaiter) {
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock_type_1 = TableLockType(l1);
+    auto entries1 = docdb::GetEntriesForLockType(lock_type_1);
+    for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
+      auto lock_type_2 = TableLockType(l2);
+      auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
+      const auto is_conflicting = ASSERT_RESULT(
+          docdb::DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
+
+      if (is_conflicting) {
+        SyncPoint::GetInstance()->LoadDependency(
+            {{"ObjectLockedBatchEntry::Lock", "TestDowngradeDespiteExclusiveLockWaiter"}});
+        SyncPoint::GetInstance()->ClearTrace();
+        SyncPoint::GetInstance()->EnableProcessing();
+
+        ASSERT_OK(LockObject(kTxn1, kDatabase1, kObject1, lock_type_1));
+        auto status_future = std::async(std::launch::async, [&]() {
+        // Queue a waiter waiting for a conflicting lock w.r.t lock_type_1.
+        return LockObject(
+            kTxn2, kDatabase1, kObject1, lock_type_2, CoarseMonoClock::Now() + 60s);
+        });
+        DEBUG_ONLY_TEST_SYNC_POINT("TestDowngradeDespiteExclusiveLockWaiter");
+
+        for (auto l3 = l1; l3 >= TableLockType_MIN + 1; l3--) {
+          // Despite a waiter waiting on a conflicting lock, the blocker should be able to
+          // downgrade its lock without being blocked.
+          const auto deadline = CoarseMonoClock::Now() + 2s * kTimeMultiplier;
+          const auto lock_type_3 = TableLockType(l3);
+          ASSERT_OK_PREPEND(
+              LockObject(kTxn1, kDatabase1, kObject1, lock_type_3, deadline),
+              Format("Couldn't acquire $0 despite already having $1 when waiter waiting on $2",
+                     TableLockType_Name(lock_type_3), TableLockType_Name(lock_type_1),
+                     TableLockType_Name(lock_type_2)));
+        }
+
+        ASSERT_OK(ReleaseAllLocksForTxn(kTxn1));
+        EXPECT_OK(WaitFor([&]() {
+          return status_future.wait_for(0s) == std::future_status::ready;
+        }, 2s * kTimeMultiplier, "Timed out waiting for unblocker waiter to acquire lock"));
+        ASSERT_OK(status_future.get());
+        ASSERT_OK(ReleaseAllLocksForTxn(kTxn2));
+      }
+    }
+  }
+}
+
+} // namespace yb::tserver

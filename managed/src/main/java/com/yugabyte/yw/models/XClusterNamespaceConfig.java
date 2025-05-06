@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSetter;
@@ -19,6 +20,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Transient;
 import java.io.Serializable;
+import java.util.Date;
 import java.util.UUID;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -74,6 +76,14 @@ public class XClusterNamespaceConfig extends Model {
       return this.status;
     }
   }
+
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value =
+          "Time of replication setup, ie, table added to the replication group "
+              + "on the target universe",
+      example = "2022-12-12T13:07:18Z")
+  private Date replicationSetupTime;
 
   @ApiModelProperty(value = "The backup config used to do bootstrapping for this table")
   @ManyToOne

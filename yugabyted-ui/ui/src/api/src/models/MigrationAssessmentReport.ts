@@ -92,6 +92,12 @@ export interface MigrationAssessmentReport  {
    * @memberof MigrationAssessmentReport
    */
   assessment_issues?: AssessmentCategoryInfo[];
+  /**
+   * 
+   * @type {string[]}
+   * @memberof MigrationAssessmentReport
+   */
+  notes?: string[];
 }
 
 

@@ -491,7 +491,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   latch.Wait();
   VerifyData(kTransactions);
   AssertNoRunningTransactions();
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll, UserTabletsOnly::kFalse);
   uint64_t max_active_segment_sequence_number = 0;
   for (const auto& peer : peers) {
     if (peer->TEST_table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
@@ -668,7 +668,6 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
 
   if (options.do_restarts) {
     restart_thread = std::thread([this, stop] {
-        CDSAttacher attacher;
         int it = 0;
         while (std::chrono::steady_clock::now() < stop) {
           std::this_thread::sleep_for(5s);
@@ -1087,7 +1086,6 @@ TEST_F_EX(QLTransactionTest, CorrectStatusRequestBatching, QLTransactionBigLogSe
     std::atomic<int32_t> value(0);
 
     std::thread write_thread([this, key, &stop, &value] {
-      CDSAttacher attacher;
       auto session = CreateSession();
       while (!stop) {
         auto txn = CreateTransaction();
@@ -1110,7 +1108,6 @@ TEST_F_EX(QLTransactionTest, CorrectStatusRequestBatching, QLTransactionBigLogSe
 
     for (size_t i = 0; i != kConcurrentReads; ++i) {
       read_threads.emplace_back([this, key, &stop, &value, &read = reads[i]] {
-        CDSAttacher attacher;
         auto session = CreateSession();
         StopOnFailure stop_on_failure(&stop);
         while (!stop) {
@@ -1439,7 +1436,6 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
   std::atomic<int> expirations{0};
   for (size_t i = 0; i != kThreads; ++i) {
     threads.emplace_back([this, i, &stopped, &successes, &expirations] {
-      CDSAttacher attacher;
       size_t idx = i;
       while (!stopped) {
         auto txn = CreateTransaction();
@@ -1581,7 +1577,6 @@ TEST_F_EX(QLTransactionTest, PickReadTimeAtServer, QLTransactionBigLogSegmentSiz
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
     threads.emplace_back([this, &stop] {
-      CDSAttacher attacher;
       StopOnFailure stop_on_failure(&stop);
       while (!stop.load(std::memory_order_acquire)) {
         auto txn = CreateTransaction();

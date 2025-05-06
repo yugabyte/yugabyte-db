@@ -818,10 +818,10 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		}
 
 		/*
-		 * We flush buffered ops here to ensure that any errors in the ops can
-		 * be caught by the PG_CATCH() and mark the portal failed. If some ops
-		 * are not flushed here and say flushed later at a place that doesn't
-		 * catch the error and mark the portal failed, it can result in
+		 * YB? We flush buffered ops here to ensure that any errors in the ops
+		 * can be caught by the PG_CATCH() and mark the portal failed. If some
+		 * ops are not flushed here and say flushed later at a place that
+		 * doesn't catch the error and mark the portal failed, it can result in
 		 * spurious WARNING messages (like "Snapshot reference leak") when
 		 * releasing the portal resources later (for example via a
 		 * CreatePortal() call that drops existing duplicate portal of an
@@ -1312,8 +1312,7 @@ PortalRunMulti(Portal portal,
 							 portal->sourceText,
 							 portal->portalParams,
 							 portal->queryEnv,
-							 altdest,
-							 NULL);
+							 altdest, NULL);
 			}
 
 			if (log_executor_stats)

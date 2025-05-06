@@ -14,9 +14,7 @@ import {
   MenuItem,
   OverlayTrigger,
   Popover,
-  Row,
-  Tooltip
-} from 'react-bootstrap';
+  Row} from 'react-bootstrap';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import cronstrue from 'cronstrue';
@@ -37,9 +35,9 @@ import {
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import {
   deleteBackupSchedule,
-  editBackupSchedule,
   getScheduledBackupList
 } from '../common/BackupScheduleAPI';
+import { toggleScheduledBackupPolicy } from '../../../redesign/features/backup/scheduled/api/api';
 import { AllowedTasks, TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { convertScheduleToFormValues, convertMsecToTimeFrame } from './ScheduledBackupUtils';
 import { IBackupSchedule, IBackupScheduleStatus } from '../common/IBackupSchedule';
@@ -245,7 +243,7 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
   const queryClient = useQueryClient();
   const [showDeleteModal, setShowDeleteModal] = useState('');
 
-  const toggleSchedule = useMutation((val: toogleScheduleProps) => editBackupSchedule(val), {
+  const toggleSchedule = useMutation((val: toogleScheduleProps) => toggleScheduledBackupPolicy(universeUUID, val), {
     onSuccess: (_, params) => {
       toast.success(`Schedule policy is now ${params.status}`);
       queryClient.invalidateQueries('scheduled_backup_list');
@@ -369,10 +367,8 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             >
               <MenuItem
                 onClick={() => {
-                  if (schedule.status !== IBackupScheduleStatus.ACTIVE) return;
                   doEditPolicy(schedule);
                 }}
-                disabled={schedule.status !== IBackupScheduleStatus.ACTIVE}
               >
                 <i className="fa fa-pencil"></i> Edit Policy
               </MenuItem>

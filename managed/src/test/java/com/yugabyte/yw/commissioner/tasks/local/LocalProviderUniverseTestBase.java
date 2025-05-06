@@ -1146,6 +1146,11 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         for (UniverseTaskBase.ServerType serverType : node.getAllProcesses()) {
           localNodeManager.dumpProcessOutput(u, node.getNodeName(), serverType);
         }
+        if (u.isYbcEnabled()) {
+          // Dump YBC logs as well.
+          localNodeManager.dumpProcessOutput(
+              u, node.getNodeName(), UniverseTaskBase.ServerType.CONTROLLER);
+        }
       }
     }
     Thread.sleep(1000);

@@ -7,7 +7,7 @@ menu:
   v2.20:
     identifier: yb-tserver
     parent: configuration
-    weight: 2440
+    weight: 2000
 type: docs
 ---
 
@@ -751,6 +751,12 @@ Default: `262144` (256kB, type: int32)
 See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 Default: 1
+
+##### --ysql_follower_reads_avoid_waiting_for_safe_time
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+Default: `true`
 
 ### YCQL
 

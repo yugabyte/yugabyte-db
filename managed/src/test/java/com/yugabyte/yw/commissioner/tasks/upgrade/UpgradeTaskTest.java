@@ -139,7 +139,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.UpdateClusterUserIntent,
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.WaitStartingFromTime);
+          TaskType.WaitStartingFromTime,
+          TaskType.UpdateUniverseFields);
 
   @Override
   @Before

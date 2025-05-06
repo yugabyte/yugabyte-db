@@ -47,7 +47,7 @@ SELECT pg_restore_relation_stats(
         17, '17'::integer);
 
 -- starting stats
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test_i'::regclass;
 
@@ -114,10 +114,9 @@ SELECT pg_restore_relation_stats(
         'version', 150000::integer,
         'relpages', '-17'::integer,
         'reltuples', 400::real,
-        'relallvisible', 4::integer,
-        'relallfrozen', 2::integer);
+        'relallvisible', 4::integer);
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
 
@@ -126,7 +125,7 @@ SELECT pg_restore_relation_stats(
         'relation', 'stats_import.test'::regclass,
         'relpages', '16'::integer);
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
 
@@ -135,7 +134,7 @@ SELECT pg_restore_relation_stats(
         'relation', 'stats_import.test'::regclass,
         'reltuples', '500'::real);
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
 
@@ -144,17 +143,7 @@ SELECT pg_restore_relation_stats(
         'relation', 'stats_import.test'::regclass,
         'relallvisible', 5::integer);
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
-FROM pg_class
-WHERE oid = 'stats_import.test'::regclass;
-
--- ok: just relallfrozen
-SELECT pg_restore_relation_stats(
-        'relation', 'stats_import.test'::regclass,
-        'version', 150000::integer,
-        'relallfrozen', 3::integer);
-
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
 
@@ -163,10 +152,9 @@ SELECT pg_restore_relation_stats(
         'relation', 'stats_import.test'::regclass,
         'relpages', 'nope'::text,
         'reltuples', 400.0::real,
-        'relallvisible', 4::integer,
-        'relallfrozen', 3::integer);
+        'relallvisible', 4::integer);
 
-SELECT relpages, reltuples, relallvisible, relallfrozen
+SELECT relpages, reltuples, relallvisible
 FROM pg_class
 WHERE oid = 'stats_import.test'::regclass;
 

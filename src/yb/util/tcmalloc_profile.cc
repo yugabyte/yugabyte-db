@@ -13,10 +13,13 @@
 #include "yb/util/tcmalloc_profile.h"
 
 #include <algorithm>
+#include <chrono>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "yb/util/tcmalloc_util.h"
 
 #if YB_ABSL_ENABLED
 #include "absl/debugging/symbolize.h"
@@ -35,6 +38,8 @@ DEFINE_RUNTIME_int32(dump_heap_snapshot_max_call_stacks, 10,
     " is called.");
 
 namespace yb {
+
+using namespace std::chrono_literals;
 
 #if YB_TCMALLOC_ENABLED
 namespace {
@@ -269,21 +274,29 @@ std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(
 #endif // YB_GPERFTOOLS_TCMALLOC
 
 #if YB_GOOGLE_TCMALLOC
-// Initialize to nullopt to indicate that we have not yet dumped a snapshot.
-static std::atomic<std::optional<yb::CoarseTimePoint>> last_heap_snapshot_dump_time(std::nullopt);
+// Initialize to a time much earlier than any reasonable value of
+// FLAGS_dump_heap_snapshot_min_interval_sec ago to ensure that we will dump the heap snapshot the
+// first time we hit the dump condition. The following approaches do not work:
+// 1. Initializing to CoarseTimePoint::min() leads to overflow when comparing with now().
+// 2. Initializing to now() causes tests to fail because the epoch is sometimes set to restart time
+//    on build workers, which is not far back enough to trigger a dump.
+// 3. Using std::atomic<std::optional<yb::CoarseTimePoint>> causes with compare_exchange_strong
+//    because std::optional<CoarseTimePoint> is too big to be atomically exchanged, but Clang does
+//    not seem to warn for that (and instead the comparison just silently fails).
+constexpr auto kInitLastDumpTime = 100000h;
+static std::atomic<yb::CoarseTimePoint> last_heap_snapshot_dump_time(
+    CoarseMonoClock::Now() - kInitLastDumpTime);
 #endif // YB_GOOGLE_TCMALLOC
 
 // Returns true if we attempted to dump the heap snapshot, false otherwise.
 bool DumpHeapSnapshotUnlessThrottled() {
 #if YB_GOOGLE_TCMALLOC
   auto orig_last_dump_time = last_heap_snapshot_dump_time.load();
-  if (orig_last_dump_time) {
-    auto time_since_last_log_sec = ToSeconds(CoarseMonoClock::Now() - *orig_last_dump_time);
-    if (time_since_last_log_sec <= FLAGS_dump_heap_snapshot_min_interval_sec) {
-      VLOG(3) << Format(
-          "Not dumping snapshot since it was last dumped $0 seconds ago", time_since_last_log_sec);
-      return false;
-    }
+  auto time_since_last_log_sec = ToSeconds(CoarseMonoClock::Now() - orig_last_dump_time);
+  if (time_since_last_log_sec <= FLAGS_dump_heap_snapshot_min_interval_sec) {
+    VLOG(3) << Format(
+        "Not dumping snapshot since it was last dumped $0 seconds ago", time_since_last_log_sec);
+    return false;
   }
 
   if (!last_heap_snapshot_dump_time.compare_exchange_strong(
@@ -303,7 +316,8 @@ bool DumpHeapSnapshotUnlessThrottled() {
 
   const int32 stacks_to_dump =
       std::min(FLAGS_dump_heap_snapshot_max_call_stacks, narrow_cast<int32>(result->size()));
-  LOG(INFO) << Format("Dumping top $0 stacks from heap snapshot", stacks_to_dump);
+  LOG(INFO) << Format("Dumping top $0 stacks from heap snapshot. Actual heap usage (excluding "
+      "TCMalloc internals): $1", stacks_to_dump, GetTCMallocCurrentAllocatedBytes());
   for (auto i = 0; i < stacks_to_dump; ++i) {
     const auto& [stack, sample_info] = (*result)[i];
     LOG(INFO) << Format(

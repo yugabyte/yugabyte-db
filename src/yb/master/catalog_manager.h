@@ -134,9 +134,9 @@ class YsqlManager;
 
 using PlacementId = std::string;
 
-typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
+using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 
-typedef std::unordered_map<TableId, std::vector<TabletInfoPtr>> TableToTabletInfos;
+using TableToTabletInfos = std::unordered_map<TableId, std::vector<TabletInfoPtr>>;
 
 YB_DEFINE_ENUM(
     CDCSDKStreamCreationState,
@@ -191,7 +191,7 @@ struct YsqlTableDdlTxnState;
 //
 // Thread-safe.
 class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContext {
-  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
+  using NamespaceInfoMap = std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo>>;
 
   class NamespaceNameMapper {
    public:
@@ -518,6 +518,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
+  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);
@@ -1435,8 +1436,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const std::function<Status(UniverseReplicationInfo&)>& add_historical_schema_fn);
 
   // Wait for replication to drain on CDC streams.
-  typedef std::pair<xrepl::StreamId, TabletId> StreamTabletIdPair;
-  typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
+  using StreamTabletIdPair = std::pair<xrepl::StreamId, TabletId>;
+  using StreamTabletIdHash = boost::hash<StreamTabletIdPair>;
   Status WaitForReplicationDrain(
       const WaitForReplicationDrainRequestPB* req,
       WaitForReplicationDrainResponsePB* resp,
@@ -1444,7 +1445,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::vector<SysUniverseReplicationEntryPB> GetAllXClusterUniverseReplicationInfos();
 
-  typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
+  using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr>>;
 
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
@@ -2253,7 +2254,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   UDTypeInfoByNameMap udtype_names_map_ GUARDED_BY(mutex_);
 
   // RedisConfig map: RedisConfigKey -> RedisConfigInfo
-  typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;
+  using RedisConfigInfoMap = std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>>;
   RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
@@ -2417,6 +2418,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs);
 
+  Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
+
  private:
   friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
@@ -2568,6 +2571,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UDTypeMap& type_map,
       const LeaderEpoch& epoch,
       bool is_clone,
+      bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data);
   Status ImportSnapshotCreateAndWaitForTables(
       const SnapshotInfoPB& snapshot_pb,
@@ -2575,12 +2579,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UDTypeMap& type_map,
       const LeaderEpoch& epoch,
       bool is_clone,
+      bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data,
       CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(
-      const SnapshotInfoPB& snapshot_pb,
+      const SnapshotInfoPB& snapshot_pb, bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data);
-  void ImportSnapshotRemoveInvalidIndexes(ExternalTableSnapshotDataMap* tables_data);
+  // Removes base and index tables that are invalid from the map. This includes DocDB tables that
+  // are uncommitted in pg layer.
+  void ImportSnapshotRemoveInvalidTables(
+      bool use_relfilenode, ExternalTableSnapshotDataMap* tables_data);
 
   void DeleteNewUDtype(
       const UDTypeId& udt_id, const std::unordered_set<UDTypeId>& type_ids_to_delete);
@@ -2611,26 +2619,42 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       bool is_clone,
       ExternalTableSnapshotData* table_data);
   Status RepartitionTable(
-      scoped_refptr<TableInfo> table,
+      const TableInfoPtr& table,
       ExternalTableSnapshotData* table_data,
       const LeaderEpoch& epoch,
       bool is_clone);
   Status ImportTableEntry(
       const NamespaceMap& namespace_map,
       const UDTypeMap& type_map,
-      const ExternalTableSnapshotDataMap& table_map,
+      const LeaderEpoch& epoch,
+      bool is_clone,
+      bool use_relfilenode,
+      ExternalTableSnapshotDataMap* table_map,
+      ExternalTableSnapshotData* table_data);
+  // Get the restore target table id and add it to table_data by using the backup source table id
+  // and name. Returns a bool whether the table is a colocated parent table. Used in ycql backups
+  // or older ysql backups formats where relfilenode is not preserved.
+  Result<bool> ImportTableEntryByName(
+      const NamespaceId& new_namespace_id,
+      const UDTypeMap& type_map,
+      ExternalTableSnapshotDataMap* table_map,
       const LeaderEpoch& epoch,
       bool is_clone,
       ExternalTableSnapshotData* table_data);
-
+  // Construct the colocation parent table id at restore side in case of the legacy 'colocated'
+  // database at backup side. This code can be deprecated once restoring old backups of legacy
+  // 'colocated' DBs is not supported.
+  Result<TableId> GetRestoreTargetParentTableForLegacyColocatedDb(
+      const NamespaceId& restore_target_namespace_id);
   // Update the colocated user table info to point to the new parent tablet. Add the colocated table
   // to the in-memory vector of table_ids_ of the parent tablet as the tablet is recreated in clone
   // and doesn't have table ids.
   Status UpdateColocatedUserTableInfoForClone(
-      scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
-      const LeaderEpoch& epoch);
+      const TableInfoPtr& table, const TableId& new_parent_table_id,
+      ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch);
   Status PreprocessTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
-  Status ImportTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
+  Status ImportTabletEntry(
+      const SysRowEntry& entry, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map);
 
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, CollectFlags flags);
@@ -2970,7 +2994,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     // The processed_tables is used to avoid duplicated processing. Currently it is the set of
     // tables for which delete table has already been called. For PITR, we cannot make duplicate
     // delete table calls.
-    std::vector<scoped_refptr<TableInfo>> tables;
+    std::vector<TableInfoPtr> tables;
     std::unordered_set<TableId> processed_tables;
     // Set of tables whose DocDB schema do not change.
     std::unordered_set<TableId> nochange_tables;
@@ -3041,16 +3065,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_map<ReplicationSlotName, xrepl::StreamId> cdcsdk_replication_slots_to_stream_map_
       GUARDED_BY(mutex_);
 
-  typedef std::unordered_map<xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>
-      UniverseReplicationInfoMap;
+  using UniverseReplicationInfoMap =
+      std::unordered_map<xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>;
   UniverseReplicationInfoMap universe_replication_map_ GUARDED_BY(mutex_);
 
   // List of universe ids to universes that must be deleted
   std::deque<xcluster::ReplicationGroupId> universes_to_clear_ GUARDED_BY(mutex_);
 
-  typedef std::unordered_map<
-      xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationBootstrapInfo>>
-      UniverseReplicationBootstrapInfoMap;
+  using UniverseReplicationBootstrapInfoMap = std::unordered_map<
+      xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationBootstrapInfo>>;
   UniverseReplicationBootstrapInfoMap universe_replication_bootstrap_map_ GUARDED_BY(mutex_);
 
   std::deque<xcluster::ReplicationGroupId> replication_bootstraps_to_clear_ GUARDED_BY(mutex_);

@@ -535,9 +535,82 @@ func MustGetFlagInt64(cmd *cobra.Command, name string) int64 {
 	return value
 }
 
+// MustGetFlagInt returns the value of the int flag with the given name
+func MustGetFlagInt(cmd *cobra.Command, name string) int {
+	value, err := cmd.Flags().GetInt(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
 // MustGetFlagBool returns the value of the bool flag with the given name
 func MustGetFlagBool(cmd *cobra.Command, name string) bool {
 	value, err := cmd.Flags().GetBool(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetFlagStringSlice returns the value of the string slice flag with the given name
+func MustGetFlagStringSlice(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringSlice(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	// Check if the slice is empty
+	if len(value) == 0 {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
+	}
+	return value
+}
+
+// MustGetStringArray returns the value of the string array flag with the given name
+// If the flag is set but empty, it returns an error
+func MustGetStringArray(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringArray(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	// Check if the array is empty
+	if len(value) == 0 {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagString returns the value of the string flag with the given name
+// If the flag is not set, it returns an empty string
+func MaybeGetFlagString(cmd *cobra.Command, name string) string {
+	value, err := cmd.Flags().GetString(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagStringSlice returns the value of the string slice flag with the given name
+// If the flag is not set, it returns an empty slice
+func MaybeGetFlagStringSlice(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringSlice(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
+// MaybeGetFlagStringArray returns the value of the string array flag with the given name
+func MaybeGetFlagStringArray(cmd *cobra.Command, name string) []string {
+	value, err := cmd.Flags().GetStringArray(name)
 	if err != nil {
 		logrus.Fatal(formatter.Colorize(
 			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
@@ -557,12 +630,26 @@ func MissingKeyFromStringDeclaration(key, flag string) {
 func GetCLIConfigDirectoryPath() (string, fs.FileMode, error) {
 	configFileUsed := viper.GetViper().ConfigFileUsed()
 	directory := filepath.Dir(configFileUsed)
+	permissions := GetDirectoryPermissions(directory)
+	return directory, permissions, nil
+}
 
-	info, err := os.Stat(directory)
+// GetDirectoryPermissions returns the directory permissions
+func GetDirectoryPermissions(path string) fs.FileMode {
+	info, err := os.Stat(path)
 	if err != nil {
-		return "", 0644, err
+		logrus.Warn(
+			formatter.Colorize(
+				fmt.Sprintf(
+					"Error getting permissions for %s: %s, setting default permissions to 0644\n",
+					path,
+					err,
+				),
+				formatter.YellowColor,
+			))
+		return 0644
 	}
-	return directory, info.Mode(), nil
+	return info.Mode()
 }
 
 // GetCLIOutputFormat returns the output format for the CLI
@@ -575,4 +662,36 @@ func GetCLIOutputFormat(outputType string) string {
 		outputFormat = "yaml"
 	}
 	return outputFormat
+}
+
+const (
+	// KB is the number of bytes in a kilobyte
+	KB = 1024
+	// MB is the number of bytes in a megabyte
+	MB = KB * 1024
+	// GB is the number of bytes in a gigabyte
+	GB = MB * 1024
+)
+
+// HumanReadableSize converts bytes to a human-readable format
+func HumanReadableSize(bytes float64) (float64, string) {
+	switch {
+	case bytes >= GB:
+		return float64(bytes) / float64(GB), "GB"
+	case bytes >= MB:
+		return float64(bytes) / float64(MB), "MB"
+	case bytes >= KB:
+		return float64(bytes) / float64(KB), "KB"
+	default:
+		return float64(bytes), "bytes"
+	}
+}
+
+// GetFlagValueAsStringIfSet checks if the flag is set and returns its value as a string
+// If the flag is not set, it returns an empty string
+func GetFlagValueAsStringIfSet(cmd *cobra.Command, flagName string) string {
+	if cmd.Flags().Changed(flagName) {
+		return cmd.Flag(flagName).Value.String()
+	}
+	return ""
 }

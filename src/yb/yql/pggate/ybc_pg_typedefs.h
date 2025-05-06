@@ -393,6 +393,7 @@ typedef struct {
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
+  const int32_t*  ysql_output_flush_size;
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
@@ -425,6 +426,7 @@ typedef struct {
   const bool*     ysql_enable_pg_export_snapshot;
   const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
   const bool*     ysql_enable_inheritance;
+  const bool*     TEST_enable_object_locking_for_table_locks;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -525,6 +527,8 @@ typedef struct {
   int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
   YbcPgExecEventMetric
       storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+
+  uint64_t rows_removed_by_recheck;
 } YbcPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.

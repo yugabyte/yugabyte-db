@@ -76,29 +76,53 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  private void freezeUniverseInTxn(Universe universe) {
-    // Fetch the task params from the DB to start from fresh on retry.
-    // Otherwise, some operations like name assignment can fail.
-    fetchTaskDetailsFromDB();
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      configureTaskParams(universe);
+    }
+  }
+
+  // This is invoked only on first try.
+  protected void configureTaskParams(Universe universe) {
     // Select master nodes and apply isMaster flags immediately.
     selectAndApplyMasters();
     // Set all the in-memory node names.
     setNodeNames(universe);
     // Set non on-prem node UUIDs.
     setCloudNodeUuids(universe);
-    // Update on-prem node UUIDs.
-    updateOnPremNodeUuidsOnTaskParams(true /* commit changes */);
+    // Update on-prem node UUIDs in task params but do not commit yet.
+    updateOnPremNodeUuidsOnTaskParams(false /* commit changes */);
+    // Set the communication ports to the node in the task params in memory to run prechecks.
     setCommunicationPortsForNodes(true);
-    // Set the prepared data to universe in-memory.
+    // Set the prepared data to universe in-memory required to run the prechecks.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
+    // Upsert the clusters to universe in-memory required to run the prechecks.
     for (Cluster cluster : taskParams().clusters) {
       universe
           .getUniverseDetails()
           .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
     }
-    // There is a rare possibility that this succeeds and
-    // saving the Universe fails. It is ok because the retry
-    // will just fail.
+    // Create preflight node check tasks for on-prem nodes.
+    createPreflightNodeCheckTasks(taskParams().clusters);
+    // Create certificate config check tasks for on-prem nodes.
+    createCheckCertificateConfigTask(universe, taskParams().clusters);
+  }
+
+  private void freezeUniverseInTxn(Universe universe) {
+    // Confirm the nodes on hold.
+    commitReservedNodes();
+    // Set the communication ports to the node for persisting in DB.
+    setCommunicationPortsForNodes(true);
+    // Set the prepared data to universe for persisting in DB.
+    updateUniverseNodesAndSettings(universe, taskParams(), false);
+    // Upsert the clusters to universe for persisting in DB.
+    for (Cluster cluster : taskParams().clusters) {
+      universe
+          .getUniverseDetails()
+          .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+    }
+    // Update task params.
     updateTaskDetailsInDB(taskParams());
   }
 
@@ -159,10 +183,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     log.info("Started {} task.", getName());
     // Cache the password before it is redacted.
     cachePasswordsIfNeeded();
-    Universe universe =
-        lockAndFreezeUniverseForUpdate(
-            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+    Universe universe = null;
     try {
+      universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
       Cluster primaryCluster = taskParams().getPrimaryCluster();
 
       boolean isYSQLEnabled = primaryCluster.userIntent.enableYSQL;
@@ -172,12 +197,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createPersistUseClockboundTask();
 
       createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
-
-      // Create preflight node check tasks for on-prem nodes.
-      createPreflightNodeCheckTasks(taskParams().clusters);
-
-      // Create certificate config check tasks for on-prem nodes.
-      createCheckCertificateConfigTask(universe, taskParams().clusters);
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
@@ -242,18 +261,21 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
-      // Mark the update of the universe as done. This will allow future edits/updates to the
-      // universe to happen.
-      log.debug("Unlocking universe {}", getUniverse().getUniverseUUID());
-      universe = unlockUniverseForUpdate();
-      if (universe != null && universe.getUniverseDetails().updateSucceeded) {
-        log.debug("Removing passwords for {}", universe.getUniverseUUID());
-        passwordStore.invalidate(universe.getUniverseUUID());
-        if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")
-            && taskParams().overridePrebuiltAmiDBVersion) {
-          universe.updateConfig(
-              ImmutableMap.of(Universe.USE_CUSTOM_IMAGE, Boolean.toString(false)));
-          universe.save();
+      releaseReservedNodes();
+      if (universe != null) {
+        // Mark the update of the universe as done. This will allow future edits/updates to the
+        // universe to happen.
+        log.debug("Unlocking universe {}", universe.getUniverseUUID());
+        universe = unlockUniverseForUpdate();
+        if (universe != null && universe.getUniverseDetails().updateSucceeded) {
+          log.debug("Removing passwords for {}", universe.getUniverseUUID());
+          passwordStore.invalidate(universe.getUniverseUUID());
+          if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")
+              && taskParams().overridePrebuiltAmiDBVersion) {
+            universe.updateConfig(
+                ImmutableMap.of(Universe.USE_CUSTOM_IMAGE, Boolean.toString(false)));
+            universe.save();
+          }
         }
       }
     }

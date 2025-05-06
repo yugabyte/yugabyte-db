@@ -190,6 +190,12 @@ Set up different pools with different load balancing policies as needed for your
 For more information, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
 {{</lead>}}
 
+### Database migrations and connection pools
+
+In some cases, connection pools may trigger unexpected errors while running a sequence of database migrations or other DDL operations.
+
+Because YugabyteDB is distributed, it can take a while for the result of a DDL to fully propagate to all caches on all nodes in a cluster. As a result, after a DDL statement completes, the next DDL statement that runs right afterwards on a different PostgreSQL connection may, in rare cases, see errors such as `duplicate key value violates unique constraint "pg_attribute_relid_attnum_index"` (see issue {{<issue 12449>}}). It is recommended to use a single connection while running a sequence of DDL operations, as is common with application migration scripts with tools such as Flyway or Active Record.
+
 ## Use YSQL Connection Manager
 
 YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/ea idea="1368">}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
@@ -250,7 +256,7 @@ YSQL also supports JSONB expression indexes, which can be used to speed up data 
 
 {{< /note >}}
 
-## Paralleling across tablets
+## Parallelizing across tablets
 
 For large or batch SELECT or DELETE that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
 
@@ -293,19 +299,15 @@ You can try one of the following methods to reduce the number of tablets:
 
 Note that multiple tablets can allow work to proceed in parallel so you may not want every table to have only one tablet.
 
-## Allowing for tablet replica overheads
+## Allow for tablet replica overheads
 
-For a universe with [RF3](../../architecture/key-concepts/#replication-factor-rf), 1000 tablets imply 3000 tablet replicas. If the universe has three nodes, then each node has on average 1000 tablet replicas. A six node universe would have on average 500 tablet replicas per-node and so on.
+Although you can manually provision the amount of memory each TServer uses using flags ([--memory_limit_hard_bytes](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [--default_memory_limit_to_ram_ratio](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio)), this can be tricky as you need to take into account how much memory the kernel needs, along with the PostgreSQL processes and any Master process that is going to be colocated with the TServer.
 
-Each 1000 tablet replicas on a node impose an overhead of 0.4 vCPUs for Raft heartbeats (assuming a 0.5 second heartbeat interval), 800 MiB of memory, and 128 GB of storage space for write-ahead logs (WALs).
+Accordingly, you should use the [--use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives good memory division settings for using YSQL, optimized for your node's size.
 
-The overhead is proportional to the number of tablet replicas so 500 tablet replicas would need half as much.
+If this flag is true, then the [memory division flag defaults](../../reference/configuration/yb-tserver/#memory-division-flags) change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
 
-Additional memory will be required for supporting caches and the like if the tablets are being actively used. We recommend provisioning an extra 6200 MiB of memory for each 1000 tablet replicas on a node to handle these cases; that is, a TServer should have 7000 MiB of RAM allocated to it for each 1000 tablet replicas it may be expected to support.
-
-Manually provisioning the amount of memory each TServer uses can be done using the [--memory_limit_hard_bytes](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [--default_memory_limit_to_ram_ratio](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flags.  Manually provisioning is a bit tricky as you need to take into account how much memory the kernel needs as well as the postgres and any master process that is going to be colocated with the TServer.
-
-Accordingly, it is recommended that you instead use the [--use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives you good memory division settings for using YSQL optimized for your node's size. Consult the table showing node RAM versus maximum tablet replicas to see how big of a node you will need based on how many tablet replicas per server you want supported.
+Note that although the default setting is false, when creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false.
 
 ## Settings for CI and CD integration tests
 

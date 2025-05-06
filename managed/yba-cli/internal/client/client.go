@@ -19,6 +19,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	ybav2client "github.com/yugabyte/platform-go-client/v2"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
@@ -32,6 +33,7 @@ var hostVersion = "0.1.0"
 type AuthAPIClient struct {
 	RestClient   *RestAPIClient
 	APIClient    *ybaclient.APIClient
+	APIv2Client  *ybav2client.APIClient
 	CustomerUUID string
 	ctx          context.Context
 	stop         context.CancelFunc
@@ -106,7 +108,6 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 		Client: &http.Client{Timeout: 30 * time.Second},
 		Host:   url.Host,
 	}
-
 	cfg.Host = url.Host
 	cfg.Scheme = url.Scheme
 	if url.Scheme == util.HTTPSURLScheme {
@@ -127,18 +128,41 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 		cfg.Scheme = util.HTTPURLScheme
 		restAPIClient.Scheme = util.HTTPURLScheme
 	}
-
 	cfg.DefaultHeader = map[string]string{
 		"X-AUTH-YW-API-TOKEN": apiToken,
 	}
 
+	cfgV2 := ybav2client.NewConfiguration()
+	cfgV2.Host = url.Host
+	cfgV2.Scheme = url.Scheme
+	if url.Scheme == util.HTTPSURLScheme {
+		cfgV2.Scheme = util.HTTPSURLScheme
+		tr, err := getConnectionTransport()
+		if err != nil {
+			return nil, err
+		}
+		cfgV2.HTTPClient = &http.Client{Transport: tr}
+	} else {
+		if !viper.GetBool("insecure") {
+			errMessage := "Invalid or missing value provided for 'insecure'. Setting it to 'true'.\n"
+			logrus.Error(formatter.Colorize(errMessage, formatter.YellowColor))
+			viper.Set("insecure", true)
+		}
+		cfgV2.Scheme = util.HTTPURLScheme
+	}
+	cfgV2.DefaultHeader = map[string]string{
+		"X-AUTH-YW-API-TOKEN": apiToken,
+	}
+
 	apiClient := ybaclient.NewAPIClient(cfg)
+	apiV2Client := ybav2client.NewAPIClient(cfgV2)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	return &AuthAPIClient{
 		restAPIClient,
 		apiClient,
+		apiV2Client,
 		"",
 		ctx,
 		stop,

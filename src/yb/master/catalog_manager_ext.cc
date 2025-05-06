@@ -101,6 +101,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
@@ -151,6 +152,15 @@ DEFINE_RUNTIME_uint32(default_snapshot_retention_hours, 24,
     "Number of hours for which to keep the snapshot around. Only used if no value was provided "
     "by the client when creating the snapshot.");
 
+DEFINE_RUNTIME_bool(
+    import_snapshot_using_table_name, false,
+    "Use the old workflow of import snapshot where table names in backup/restore sides are used to "
+    "build the mappings between tables in backup and restore side. This flag can be enabled as a "
+    "safety button in case restore using relfilenode fails.");
+
+DEFINE_RUNTIME_AUTO_bool(
+    enable_export_snapshot_using_relfilenode, kLocalVolatile, false, true,
+    "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
 namespace yb {
 
 using google::protobuf::RepeatedPtrField;
@@ -451,7 +461,11 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-    snapshot.set_format_version(2);
+    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode)
+                              ? kUseRelfilenodeFormatVersion
+                              : kUseBackupRowEntryFormatVersion;
+    snapshot.set_format_version(format_version);
+
     SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
     snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
 
@@ -553,12 +567,14 @@ Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRe
 Status CatalogManager::RestoreSnapshot(
     const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  LOG(INFO) << "Servicing RestoreSnapshot request: " << req->ShortDebugString();
   auto txn_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
   HybridTime ht;
   if (req->has_restore_ht()) {
     ht = HybridTime(req->restore_ht());
   }
+  LOG(INFO)
+      << "Servicing RestoreSnapshot request: " << txn_snapshot_id
+      << (ht ? Format(" to restore to time ", ht) : "");
   TxnSnapshotRestorationId id = VERIFY_RESULT(
       master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
   resp->set_restoration_id(id.data(), id.size());
@@ -670,9 +686,9 @@ Status CatalogManager::DoImportSnapshotMeta(
     }
   });
 
-  if (!snapshot_pb.has_format_version() || snapshot_pb.format_version() != 2) {
+  if (!snapshot_pb.has_format_version() || snapshot_pb.format_version() < 2) {
     return STATUS(
-        InternalError, "Expected snapshot data in format 2", snapshot_pb.ShortDebugString(),
+        InternalError, "Expected snapshot data in format > 2", snapshot_pb.ShortDebugString(),
         MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
 
@@ -683,7 +699,8 @@ Status CatalogManager::DoImportSnapshotMeta(
   }
 
   bool is_clone = clone_target_namespace_name.has_value();
-
+  bool use_relfilenode =
+      UseRelfilenodeForTableMatch(snapshot_pb) && !FLAGS_import_snapshot_using_table_name;
   // PHASE 1: Recreate namespaces, create type's & table's meta data.
   RETURN_NOT_OK(ImportSnapshotPreprocess(
       snapshot_pb, epoch, clone_target_namespace_name, namespace_map, type_map, tables_data));
@@ -693,16 +710,17 @@ Status CatalogManager::DoImportSnapshotMeta(
 
   // PHASE 3: Recreate ONLY tables.
   RETURN_NOT_OK(ImportSnapshotCreateAndWaitForTables(
-      snapshot_pb, *namespace_map, *type_map, epoch, is_clone, tables_data, deadline));
+      snapshot_pb, *namespace_map, *type_map, epoch, is_clone, use_relfilenode, tables_data,
+      deadline));
 
   // PHASE 4: Recreate ONLY indexes.
   RETURN_NOT_OK(ImportSnapshotCreateIndexes(
-      snapshot_pb, *namespace_map, *type_map, epoch, is_clone, tables_data));
+      snapshot_pb, *namespace_map, *type_map, epoch, is_clone, use_relfilenode, tables_data));
 
   // PHASE 5: Restore tablets.
-  RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, tables_data));
+  RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, use_relfilenode, tables_data));
 
-  ImportSnapshotRemoveInvalidIndexes(tables_data);
+  ImportSnapshotRemoveInvalidTables(use_relfilenode, tables_data);
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
@@ -859,6 +877,7 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
                                                    const UDTypeMap& type_map,
                                                    const LeaderEpoch& epoch,
                                                    bool is_clone,
+                                                   bool use_relfilenode,
                                                    ExternalTableSnapshotDataMap* tables_data) {
   // Create ONLY INDEXES.
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
@@ -870,15 +889,18 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
         // YSQL indices can be in an invalid state. In this state they are omitted by ysql_dump.
         // Assume this is an invalid index that wasn't part of the ysql_dump instead of failing the
         // import here.
-        auto s = ImportTableEntry(namespace_map, type_map, *tables_data, epoch, is_clone, &data);
+        auto s = ImportTableEntry(
+            namespace_map, type_map, epoch, is_clone, use_relfilenode, tables_data, &data);
         if (s.IsInvalidArgument() && MasterError(s) == MasterErrorPB::OBJECT_NOT_FOUND) {
-          // Defer the removal from the tables_data map until we go through all tablets, so we can
-          // verify that the only tablets missing tables belong to invalid indexes.
-          LOG(WARNING) << Format("Index $0 not found (might be backfilling, or in an invalid "
-              "state); omitting it from import.", entry.id());
-          continue;
+            // Defer the removal from the tables_data map until we go through all tablets, so we can
+            // verify that the only tablets missing tables belong to invalid indexes.
+            LOG(WARNING) << Format(
+                "Index $0 not found (might be backfilling, or in an invalid "
+                "state); omitting it from import.",
+                entry.id());
+            continue;
         } else if (!s.ok()) {
-          return s;
+            return s;
         }
       }
     }
@@ -888,8 +910,8 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
 }
 
 Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
-    const SnapshotInfoPB& snapshot_pb, const NamespaceMap& namespace_map,
-    const UDTypeMap& type_map, const LeaderEpoch& epoch, bool is_clone,
+    const SnapshotInfoPB& snapshot_pb, const NamespaceMap& namespace_map, const UDTypeMap& type_map,
+    const LeaderEpoch& epoch, bool is_clone, bool use_relfilenode,
     ExternalTableSnapshotDataMap* tables_data, CoarseTimePoint deadline) {
   std::queue<TableId> pending_creates;
   for (const auto& backup_entry : snapshot_pb.backup_entries()) {
@@ -907,12 +929,12 @@ Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
     if (data.is_index()) {
       continue;
     }
-
     if (is_clone) {
       // Do not use the concurrent create table limit for clone, since the tables are not actually
       // being created on the tservers.
       RETURN_NOT_OK(ImportTableEntry(
-          namespace_map, type_map, *tables_data, epoch, true /* is_clone */, &data));
+          namespace_map, type_map, epoch, true /* is_clone */, use_relfilenode, tables_data,
+          &data));
     } else {
       // If we are at the limit, wait for the oldest table to be created
       // so that we can send create request for the current table.
@@ -925,7 +947,8 @@ Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
       }
       // Ready to send request for this table now.
       RETURN_NOT_OK(ImportTableEntry(
-          namespace_map, type_map, *tables_data, epoch, false /* is_clone */, &data));
+          namespace_map, type_map, epoch, false /* is_clone */, use_relfilenode, tables_data,
+          &data));
       pending_creates.push(data.new_table_id);
     }
   }
@@ -941,23 +964,26 @@ Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
-                                                    ExternalTableSnapshotDataMap* tables_data) {
+Status CatalogManager::ImportSnapshotProcessTablets(
+    const SnapshotInfoPB& snapshot_pb, bool use_relfilenode,
+    ExternalTableSnapshotDataMap* tables_data) {
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntryType::TABLET) {
       // Create tablets IDs map.
-      RETURN_NOT_OK(ImportTabletEntry(entry, tables_data));
+      RETURN_NOT_OK(ImportTabletEntry(entry, use_relfilenode, tables_data));
     }
   }
 
   return Status::OK();
 }
 
-void CatalogManager::ImportSnapshotRemoveInvalidIndexes(
-    ExternalTableSnapshotDataMap* tables_data) {
-  std::erase_if(*tables_data, [](const auto& entry) {
-    return !entry.second.table_meta && entry.second.is_index();
+void CatalogManager::ImportSnapshotRemoveInvalidTables(
+    bool use_relfilenode, ExternalTableSnapshotDataMap* tables_data) {
+  // When using relfilenode matching, both base and index tables that are invalid must be removed.
+  // Otherwise, revert to the old workflow and only invalid indexes must be removed.
+  std::erase_if(*tables_data, [use_relfilenode](const auto& entry) {
+    return !entry.second.table_meta && (use_relfilenode || entry.second.is_index());
   });
 }
 
@@ -1718,7 +1744,7 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   return Status::OK();
 }
 
-Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
+Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
                                         ExternalTableSnapshotData* table_data,
                                         const LeaderEpoch& epoch,
                                         bool is_clone) {
@@ -1764,17 +1790,24 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
       // Create and mark new tablets for creation.
 
+      std::vector<TabletId> tablet_ids;
+      tablet_ids.reserve(table_data->old_tablets.size());
+      while (tablet_ids.size() < table_data->old_tablets.size()) {
+        tablet_ids.push_back(GenerateObjectId());
+      }
+
+      std::ranges::sort(tablet_ids);
+
       // Use partitions from external snapshot to create new tablets.
       // Clone tablets start in the CREATING state since they will be created by tservers.
       // Non-clone tablets start in the PREPARING state, and will start CREATING once they are
       // committed in memory.
+      auto tablet_id_it = tablet_ids.begin();
       for (const auto& [source_tablet_id, partition_pb] : table_data->old_tablets) {
-        TabletInfoPtr tablet;
+        auto state = is_clone ? SysTabletsEntryPB::CREATING : SysTabletsEntryPB::PREPARING;
+        auto tablet = CreateTabletInfo(table, partition_pb, state, *tablet_id_it++);
         if (is_clone) {
-          tablet = CreateTabletInfo(table, partition_pb, SysTabletsEntryPB::CREATING);
           tablet->mutable_metadata()->mutable_dirty()->pb.set_created_by_clone(true);
-        } else {
-          tablet = CreateTabletInfo(table, partition_pb, SysTabletsEntryPB::PREPARING);
         }
         tablet->mutable_metadata()->mutable_dirty()->pb.set_colocated(table->colocated());
         new_tablets.push_back(tablet);
@@ -1934,12 +1967,10 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
   return true;
 }
 
-Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
-                                        const UDTypeMap& type_map,
-                                        const ExternalTableSnapshotDataMap& table_map,
-                                        const LeaderEpoch& epoch,
-                                        bool is_clone,
-                                        ExternalTableSnapshotData* table_data) {
+Status CatalogManager::ImportTableEntry(
+    const NamespaceMap& namespace_map, const UDTypeMap& type_map, const LeaderEpoch& epoch,
+    bool is_clone, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map,
+    ExternalTableSnapshotData* table_data) {
   const SysTablesEntryPB& meta = DCHECK_NOTNULL(table_data)->table_entry_pb;
   bool is_parent_colocated_table = false;
 
@@ -1955,173 +1986,48 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(meta.schema(), &schema));
   scoped_refptr<TableInfo> table;
-
-  // First, check if namespace id and table id match. If, in addition, other properties match, we
-  // found the destination table.
-  if (new_namespace_id == table_data->old_namespace_id) {
+  if (use_relfilenode && meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
+    VLOG_WITH_FUNC(1) << "Using relfilenode to find Ysql table mapping";
+    if (meta.colocated() && IsTablegroupParentTableId(table_data->old_table_id)) {
+      table_data->new_table_id =
+          VERIFY_RESULT(GetRestoreTargetTablegroupId(new_namespace_id, table_data->old_table_id));
+      is_parent_colocated_table = true;
+    } else if (meta.colocated() && IsColocatedDbParentTableId(table_data->old_table_id)) {
+      table_data->new_table_id =
+          VERIFY_RESULT(GetRestoreTargetParentTableForLegacyColocatedDb(new_namespace_id));
+      is_parent_colocated_table = true;
+    } else {
+      table_data->new_table_id = VERIFY_RESULT(
+          GetRestoreTargetTableIdUsingRelfilenode(new_namespace_id, table_data->old_table_id));
+    }
+    // A table with new_table_id might not exist if the old table doesn't have a corresponding table
+    // at restore side. This can happen if the old table is not committed while the backup was taken
+    // during a DDL.
     TRACE("Looking up table");
     {
       SharedLock lock(mutex_);
-      table = tables_->FindTableOrNull(table_data->old_table_id);
+      table = tables_->FindTableOrNull(table_data->new_table_id);
     }
-
-    if (table != nullptr) {
-      VLOG_WITH_PREFIX(3) << "Begin first search";
-      // At this point, namespace id and table id match. Check other properties, like whether the
-      // table is active and whether table name matches.
-      SharedLock lock(mutex_);
-      if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
-        LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
-        if (meta.colocated() && IsColocationParentTableId(table_data->old_table_id)) {
-          // Parent colocated tables don't have partition info, so make sure to mark them.
-          is_parent_colocated_table = true;
-        }
-      } else {
-        // A property did not match, so this search by ids failed.
-        auto table_lock = table->LockForRead();
-        LOG_WITH_FUNC(WARNING) << "Existing table " << table->ToString() << " not suitable: "
-                               << table_lock->pb.ShortDebugString()
-                               << ", name: " << table->name() << " vs " << meta.name();
-        table.reset();
-      }
-    }
-  }
-
-  // Second, if we still didn't find a match...
-  if (table == nullptr) {
-    VLOG_WITH_PREFIX(3) << "Begin second search";
-    switch (meta.table_type()) {
-      case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
-      case TableType::REDIS_TABLE_TYPE: {
-        // For YCQL and YEDIS, simply create the missing table.
-        RETURN_NOT_OK(RecreateTable(
-            new_namespace_id, type_map, table_map, epoch, is_clone, table_data));
-        break;
-      }
-      case TableType::PGSQL_TABLE_TYPE: {
-        // For YSQL, the table must be created via external call. Therefore, continue the search for
-        // the table, this time checking for name matches rather than id matches.
-
-        if (meta.colocated() && IsColocatedDbParentTableId(table_data->old_table_id)) {
-          // For the parent colocated table we need to generate the new_table_id ourselves
-          // since the names will not match.
-          // For normal colocated tables, we are still able to follow the normal table flow, so no
-          // need to generate the new_table_id ourselves.
-          // Case 1: Legacy colocated database
-          // parent table id = <namespace_id>.colocated.parent.uuid
-          // Case 2: Migration to colocation database
-          // parent table id = <tablegroup_id>.colocation.parent.uuid
-          SharedLock lock(mutex_);
-          bool legacy_colocated_database =
-              colocated_db_tablets_map_.find(new_namespace_id) != colocated_db_tablets_map_.end();
-          if (legacy_colocated_database) {
-            table_data->new_table_id = GetColocatedDbParentTableId(new_namespace_id);
-          } else {
-            PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
-            PgOid default_tablegroup_oid =
-                VERIFY_RESULT(sys_catalog_->ReadPgYbTablegroupOid(database_oid,
-                                                                  kDefaultTablegroupName));
-            if (default_tablegroup_oid == kPgInvalidOid) {
-              // The default tablegroup doesn't exist in the restoring colocated database.
-              // This is a special case of colocation migration where only non-colocated tables
-              // exist in the database.
-              // We should already handle this case in ImportSnapshotPreprocess, such that we don't
-              // need to deal with it during the whole import snapshot process.
-              // If we get here, there must be something wrong and we should throw an error status.
-              // See ImportSnapshotPreprocess for more details.
-              const string msg = Format("Unexpected legacy colocated parent table during colocation"
-                                        " migration. We should skip processing it.");
-              LOG_WITH_FUNC(WARNING) << msg;
-              return STATUS(InternalError, msg, MasterError(MasterErrorPB::INTERNAL_ERROR));
-            } else {
-              table_data->new_table_id =
-                  GetColocationParentTableId(GetPgsqlTablegroupId(database_oid,
-                                                                  default_tablegroup_oid));
-            }
-          }
-          is_parent_colocated_table = true;
-        } else if (meta.colocated() && IsTablegroupParentTableId(table_data->old_table_id)) {
-          // Since we preserve tablegroup oid in ysql_dump, for the parent tablegroup table, if we
-          // didn't find a match by id in the previous step, then we need to generate the
-          // new_table_id ourselves because the namespace id of the namespace where this tablegroup
-          // was created changes.
-          PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
-          PgOid tablegroup_oid =
-              VERIFY_RESULT(GetPgsqlTablegroupOid(
-                  GetTablegroupIdFromParentTableId(table_data->old_table_id)));
-          if (IsColocatedDbTablegroupParentTableId(table_data->old_table_id)) {
-            // This tablegroup parent table is in a colocated database, and has string 'colocation'
-            // in its id.
-            table_data->new_table_id =
-                GetColocationParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
-          } else {
-            table_data->new_table_id =
-                GetTablegroupParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
-          }
-          is_parent_colocated_table = true;
-        } else {
-          if (!table_data->new_table_id.empty()) {
-            const string msg = Format(
-                "$0 expected empty new table id but $1 found", __func__, table_data->new_table_id);
-            LOG_WITH_FUNC(WARNING) << msg;
-            return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
-          }
-          SharedLock lock(mutex_);
-
-          for (const auto& table : tables_->GetAllTables()) {
-            if (new_namespace_id != table->namespace_id()) {
-              VLOG_WITH_FUNC(3) << "Namespace ids do not match: "
-                                << table->namespace_id() << " vs " << new_namespace_id
-                                << " for " << table->ToString();
-              continue;
-            }
-            if (!VERIFY_RESULT(CheckTableForImport(table, table_data))) {
-              // Some other check failed.
-              continue;
-            }
-            // Also check if table is user-created.
-            if (!table->IsUserCreated()) {
-              VLOG_WITH_FUNC(2) << "Table not user created: " << table->ToString();
-              continue;
-            }
-
-            // Found the new YSQL table by name.
-            if (table_data->new_table_id.empty()) {
-              LOG_WITH_FUNC(INFO) << "Found existing table " << table->id() << " for "
-                                  << new_namespace_id << "/" << meta.name() << " (old table "
-                                  << table_data->old_table_id << ") with schema "
-                                  << table_data->pg_schema_name;
-              table_data->new_table_id = table->id();
-            } else if (table_data->new_table_id != table->id()) {
-              const string msg = Format(
-                  "Found 2 YSQL tables with the same name: $0 - $1, $2",
-                  meta.name(), table_data->new_table_id, table->id());
-              LOG_WITH_FUNC(WARNING) << msg;
-              return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
-            }
-          }
-
-          if (table_data->new_table_id.empty()) {
-            const string msg = Format("YSQL table not found: $0", meta.name());
-            LOG_WITH_FUNC(WARNING) << msg;
-            table_data->table_meta = std::nullopt;
-            return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-          }
-        }
-        break;
-      }
-      case TableType::TRANSACTION_STATUS_TABLE_TYPE: {
-        return STATUS(
-            InvalidArgument,
-            Format("Unexpected table type: $0", TableType_Name(meta.table_type())),
-            MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
-      }
+    if (!table) {
+      LOG(INFO) << Format(
+          "Did not find a corresponding table at restore side for the table $0 from backup. "
+          "This mean that old table was not committed while taking the backup.",
+          table_data->old_table_id);
+      // Clear the table_meta as this is an uncommited table at backup time.
+      // This skips the following steps to import the table entry and doesn't add its TableMetaPB
+      // the import_snapshot response.
+      table_data->table_meta = std::nullopt;
+      return Status::OK();
+    } else {
+      LOG_WITH_FUNC(INFO) << "Found existing table " << table_data->new_table_id << " for "
+                          << new_namespace_id << "/" << meta.name() << " (old table "
+                          << table_data->old_table_id << ") with schema "
+                          << table_data->pg_schema_name;
     }
   } else {
-    table_data->new_table_id = table_data->old_table_id;
-    LOG_WITH_FUNC(INFO) << "Use existing table " << table_data->new_table_id;
+    is_parent_colocated_table = VERIFY_RESULT(
+        ImportTableEntryByName(new_namespace_id, type_map, table_map, epoch, is_clone, table_data));
   }
-
   // The destination table should be found or created by now.
   TRACE("Looking up new table");
   {
@@ -2143,11 +2049,13 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // Schema validation and repartitioning checks. TODO: Refactor this code path.
     Schema persisted_schema;
     size_t new_num_tablets = 0;
+    std::string parent_table_id;
     {
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
       persisted_schema = VERIFY_RESULT(table_lock->GetSchema());
       new_num_tablets = table->NumPartitions();
+      parent_table_id = table_lock->pb.parent_table_id();
     }
 
     // Ignore 'nullable' attribute - due to difference in implementation
@@ -2224,7 +2132,8 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       // For colocated tables that are not the parent table, update their info to point to the newly
       // recreated parent tablet.
       // TODO(mhaddad): Check necessary steps for vector indexes.
-      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(table, table_data, epoch));
+      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(
+          table, parent_table_id, table_data, epoch));
     }
 
     // Table schema update depending on different conditions.
@@ -2312,8 +2221,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     if (is_clone) {
       // The Source table should be found as we are cloning from it.
       TRACE("Looking up source table");
-      scoped_refptr<TableInfo> source_table =
-          VERIFY_RESULT(FindTableById(table_data->old_table_id));
+      TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
       auto source_table_lock = source_table->LockForRead();
       if (source_table_lock->table_type() == TableType::YQL_TABLE_TYPE &&
           source_table_lock->is_index()) {
@@ -2402,34 +2310,192 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   return Status::OK();
 }
 
+Result<bool> CatalogManager::ImportTableEntryByName(
+    const NamespaceId& new_namespace_id, const UDTypeMap& type_map,
+    ExternalTableSnapshotDataMap* table_map, const LeaderEpoch& epoch, bool is_clone,
+    ExternalTableSnapshotData* table_data) {
+  // First, check if namespace id and table id match. If, in addition, other properties match, we
+  // found the destination table.
+  scoped_refptr<TableInfo> table;
+  const SysTablesEntryPB& meta = DCHECK_NOTNULL(table_data)->table_entry_pb;
+  bool is_parent_colocated_table = false;
+  if (new_namespace_id == table_data->old_namespace_id) {
+    TRACE("Looking up table");
+    {
+        SharedLock lock(mutex_);
+        table = tables_->FindTableOrNull(table_data->old_table_id);
+    }
+
+    if (table != nullptr) {
+        VLOG_WITH_PREFIX(3) << "Begin first search";
+        // At this point, namespace id and table id match. Check other properties, like whether the
+        // table is active and whether table name matches.
+        SharedLock lock(mutex_);
+        if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
+        LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
+        if (meta.colocated() && IsColocationParentTableId(table_data->old_table_id)) {
+          // Parent colocated tables don't have partition info, so make sure to mark them.
+          is_parent_colocated_table = true;
+        }
+        } else {
+        // A property did not match, so this search by ids failed.
+        auto table_lock = table->LockForRead();
+        LOG_WITH_FUNC(WARNING) << "Existing table " << table->ToString()
+                               << " not suitable: " << table_lock->pb.ShortDebugString()
+                               << ", name: " << table->name() << " vs " << meta.name();
+        table.reset();
+        }
+    }
+  }
+
+  // Second, if we still didn't find a match...
+  if (table == nullptr) {
+    VLOG_WITH_PREFIX(3) << "Begin second search";
+    switch (meta.table_type()) {
+        case TableType::YQL_TABLE_TYPE:
+        FALLTHROUGH_INTENDED;
+        case TableType::REDIS_TABLE_TYPE: {
+        // For YCQL and YEDIS, simply create the missing table.
+        RETURN_NOT_OK(
+            RecreateTable(new_namespace_id, type_map, *table_map, epoch, is_clone, table_data));
+        break;
+        }
+        case TableType::PGSQL_TABLE_TYPE: {
+        // For YSQL, the table must be created via external call. Therefore, continue the search
+        // for the table, this time checking for name matches rather than id matches.
+
+        if (meta.colocated() && IsColocatedDbParentTableId(table_data->old_table_id)) {
+          table_data->new_table_id =
+              VERIFY_RESULT(GetRestoreTargetParentTableForLegacyColocatedDb(new_namespace_id));
+          is_parent_colocated_table = true;
+        } else if (meta.colocated() && IsTablegroupParentTableId(table_data->old_table_id)) {
+          table_data->new_table_id = VERIFY_RESULT(
+              GetRestoreTargetTablegroupId(new_namespace_id, table_data->old_table_id));
+          is_parent_colocated_table = true;
+        } else {
+          if (!table_data->new_table_id.empty()) {
+            const string msg = Format(
+                "$0 expected empty new table id but $1 found", __func__, table_data->new_table_id);
+            LOG_WITH_FUNC(WARNING) << msg;
+            return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+          }
+          SharedLock lock(mutex_);
+
+          for (const auto& table : tables_->GetAllTables()) {
+            if (new_namespace_id != table->namespace_id()) {
+                VLOG_WITH_FUNC(3) << "Namespace ids do not match: " << table->namespace_id()
+                                  << " vs " << new_namespace_id << " for " << table->ToString();
+                continue;
+            }
+            if (!VERIFY_RESULT(CheckTableForImport(table, table_data))) {
+                // Some other check failed.
+                continue;
+            }
+            // Also check if table is user-created.
+            if (!table->IsUserCreated()) {
+                VLOG_WITH_FUNC(2) << "Table not user created: " << table->ToString();
+                continue;
+            }
+
+            // Found the new YSQL table by name.
+            if (table_data->new_table_id.empty()) {
+                LOG_WITH_FUNC(INFO)
+                    << "Found existing table " << table->id() << " for " << new_namespace_id << "/"
+                    << meta.name() << " (old table " << table_data->old_table_id << ") with schema "
+                    << table_data->pg_schema_name;
+                table_data->new_table_id = table->id();
+            } else if (table_data->new_table_id != table->id()) {
+                const string msg = Format(
+                    "Found 2 YSQL tables with the same name: $0 - $1, $2", meta.name(),
+                    table_data->new_table_id, table->id());
+                LOG_WITH_FUNC(WARNING) << msg;
+                return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+            }
+          }
+
+          if (table_data->new_table_id.empty()) {
+            const string msg = Format("YSQL table not found: $0", meta.name());
+            LOG_WITH_FUNC(WARNING) << msg;
+            table_data->table_meta = std::nullopt;
+            return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+          }
+        }
+        break;
+        }
+        case TableType::TRANSACTION_STATUS_TABLE_TYPE: {
+        return STATUS(
+            InvalidArgument, Format("Unexpected table type: $0", TableType_Name(meta.table_type())),
+            MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+        }
+    }
+  } else {
+    table_data->new_table_id = table_data->old_table_id;
+    LOG_WITH_FUNC(INFO) << "Use existing table " << table_data->new_table_id;
+  }
+  return is_parent_colocated_table;
+}
+
 Status CatalogManager::UpdateColocatedUserTableInfoForClone(
-    scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
-    const LeaderEpoch& epoch) {
+    const TableInfoPtr& table, const TableId& new_parent_table_id,
+    ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch) {
   RSTATUS_DCHECK(
       table->IsSecondaryTable(), InvalidArgument,
       Format("table: $0 is not a colocated user table", table->id()));
   // Remove old colocated tablet from TableInfo.
-  auto old_tablet = VERIFY_RESULT(table->GetTablets())[0];
-  auto old_colocated_tablet_lock = old_tablet->LockForWrite();
-  RETURN_NOT_OK(table->RemoveTablet(old_tablet->tablet_id()));
+  table->ClearTabletMaps();
   // Add new colocated tablet to TableInfo.
-  TableInfoPtr parent_table =
-      VERIFY_RESULT(FindTableById(VERIFY_RESULT(GetParentTableIdForColocatedTable(table))));
-  auto tablets = VERIFY_RESULT(parent_table->GetTablets());
+  TableInfoPtr parent_table = VERIFY_RESULT(FindTableById(new_parent_table_id));
 
-  RSTATUS_DCHECK(
-      tablets.size() == 1, NotFound,
-      Format("Wrong number of parent tablet of colocated database:$1", tablets.size()));
-  auto new_tablet_lock = tablets[0]->LockForWrite();
-  RETURN_NOT_OK(table->AddTablet(tablets[0]));
-  VLOG(1) << Format(
-      "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
-      table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
-  tablets[0]->AddTableId(table_data->new_table_id);
+  for (auto tablet : VERIFY_RESULT(parent_table->GetTablets())) {
+    auto new_tablet_lock = tablet->LockForWrite();
+    RETURN_NOT_OK(table->AddTablet(tablet));
+    VLOG(1) << Format(
+        "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
+        table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
+    tablet->AddTableId(table_data->new_table_id);
 
-  new_tablet_lock.Commit();
-  old_colocated_tablet_lock.Commit();
+    new_tablet_lock.Commit();
+  }
+
   return Status::OK();
+}
+
+Result<TableId> CatalogManager::GetRestoreTargetParentTableForLegacyColocatedDb(
+    const NamespaceId& restore_target_namespace_id) {
+  // Since parent table name at backup and restore side will not be the same, we have to generate
+  // the parent table name ourselves. Since the backup source database is a legacy 'colocated'
+  // database, we have two cases of what the parent table id should be, depending on the version of
+  // the database at the restore target side:
+  // Case 1: Restored DB uses the legacy colocated database format:
+  // <namespace_id>.colocated.parent.uuid
+  // Case 2: Restored DB uses the new colocation database format:
+  // <tablegroup_id>.colocation.parent.uuid
+  SharedLock lock(mutex_);
+  bool legacy_colocated_database = colocated_db_tablets_map_.find(restore_target_namespace_id) !=
+                                   colocated_db_tablets_map_.end();
+  if (legacy_colocated_database) {
+    return GetColocatedDbParentTableId(restore_target_namespace_id);
+  } else {
+    PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(restore_target_namespace_id));
+    PgOid default_tablegroup_oid =
+        VERIFY_RESULT(sys_catalog_->ReadPgYbTablegroupOid(database_oid, kDefaultTablegroupName));
+    if (default_tablegroup_oid == kPgInvalidOid) {
+      // The default tablegroup doesn't exist in the restoring colocated database.
+      // This is a special case of colocation migration where only non-colocated tables
+      // exist in the database.
+      // We should already handle this case in ImportSnapshotPreprocess, such that we
+      // don't need to deal with it during the whole import snapshot process. If we get
+      // here, there must be something wrong and we should throw an error status. See
+      // ImportSnapshotPreprocess for more details.
+      const string msg = Format(
+          "Unexpected legacy colocated parent table during colocation"
+          " migration. We should skip processing it.");
+      LOG_WITH_FUNC(WARNING) << msg;
+      return STATUS(InternalError, msg, MasterError(MasterErrorPB::INTERNAL_ERROR));
+    } else {
+      return GetColocationParentTableId(GetPgsqlTablegroupId(database_oid, default_tablegroup_oid));
+    }
+  }
 }
 
 Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
@@ -2457,8 +2523,8 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
   return Status::OK();
 }
 
-Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
-                                         ExternalTableSnapshotDataMap* table_map) {
+Status CatalogManager::ImportTabletEntry(
+    const SysRowEntry& entry, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map) {
   LOG_IF(DFATAL, entry.type() != SysRowEntryType::TABLET)
       << "Unexpected entry type: " << entry.type();
 
@@ -2480,12 +2546,15 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   }
   ExternalTableSnapshotData& table_data = (*table_map)[meta.table_id()];
   if (!table_data.table_meta) {
-    if (table_data.is_index()) {
-      // The metadata for this index was not initialized in ImportTableEntry. We assume it was
-      // missing from the ysql_dump and is an invalid YSQL index. Ignore.
+    // The metadata for this relation was not initialized in ImportTableEntry.
+    // We assume it was missing from the ysql_dump and is an uncommitted YSQL relation in 2 cases:
+    // 1- Base table or index is uncommitted in ysql layer and relfilenode-matching is used.
+    // 2- The index is invalid and table name-matching is used.
+    if (use_relfilenode || table_data.is_index()) {
       return Status::OK();
     }
-    auto msg = Format("Missing metadata for table corresponding to snapshot table $0.$1, id $2",
+    auto msg = Format(
+        "Missing metadata for table corresponding to snapshot table $0.$1, id $2",
         table_data.table_entry_pb.namespace_name(), table_data.table_entry_pb.name(),
         table_data.old_table_id);
     DCHECK(false) << msg;

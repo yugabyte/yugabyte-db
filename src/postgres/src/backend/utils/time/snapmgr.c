@@ -657,10 +657,10 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 					 errdetail("The source transaction is not running anymore.")));
 	}
 	/*
-	 * ProcArrayInstallImportedXmin sets MyProc->xmin and also checks if exporting
-	 * snapshot is alive. In YugabyteDB, we do not need to set xmin and also
-	 * expiry of the exported snapshot has to be checked via an rpc to master.
-	 * So this step is skipped for YugabyteDB.
+	 * YB: ProcArrayInstallImportedXmin sets MyProc->xmin and also checks if
+	 * exporting snapshot is alive. In YugabyteDB, we do not need to set xmin
+	 * and also expiry of the exported snapshot has to be checked via an rpc to
+	 * master. So this step is skipped for YugabyteDB.
 	 */
 	else if (!IsYugaByteEnabled() &&
 			 !ProcArrayInstallImportedXmin(CurrentSnapshot->xmin, sourcevxid))

@@ -35,8 +35,9 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | PREPARE |[Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
 | | [Prepare&nbsp;source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
 | | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with necessary privileges. |
+| ASSESS | [Assess Migration](#assess-migration) | Assess the migration complexity, and get schema changes, data distribution, and cluster sizing recommendations using the `yb-voyager assess-migration` command. |
 | SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
-| | [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| | [Analyze](#analyze-schema) | Generate a _Schema&nbsp;Analysis&nbsp;Report_ using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
 | | [Import](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | LIVE&nbsp;MIGRATION | Start | Start the phases: export data first, followed by import data and archive changes simultaneously. |
@@ -381,17 +382,19 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-   ```sql
-   psql -h <host> \
-        -d <database> \
-        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
-        -v voyager_user='ybvoyager' \
-        -v schema_list='<comma_separated_schema_list>' \
-        -v is_live_migration=1 \
-        -v is_live_migration_fall_back=0 \
-        -v replication_group='<replication_group>' \
-        -f <path_to_the_script>
-   ```
+    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+
+    ```sql
+    psql -h <host> \
+          -d <database> \
+          -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
+          -v voyager_user='ybvoyager' \
+          -v schema_list='<comma_separated_schema_list>' \
+          -v is_live_migration=1 \
+          -v is_live_migration_fall_back=0 \
+          -v replication_group='<replication_group>' \
+          -f <path_to_the_script>
+    ```
 
     The `ybvoyager` user can now be used for migration.
 
@@ -417,17 +420,19 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-   ```sql
-   psql -h <host> \
-        -d <database> \
-        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
-        -v voyager_user='ybvoyager' \
-        -v schema_list='<comma_separated_schema_list>' \
-        -v is_live_migration=1 \
-        -v is_live_migration_fall_back=0 \
-        -v replication_group='<replication_group>' \
-        -f <path_to_the_script>
-   ```
+    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+
+    ```sql
+    psql -h <host> \
+          -d <database> \
+          -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
+          -v voyager_user='ybvoyager' \
+          -v schema_list='<comma_separated_schema_list>' \
+          -v is_live_migration=1 \
+          -v is_live_migration_fall_back=0 \
+          -v replication_group='<replication_group>' \
+          -f <path_to_the_script>
+    ```
 
     The `ybvoyager` user can now be used for migration.
 
@@ -495,7 +500,7 @@ If you want yb-voyager to connect to the target YugabyteDB database over SSL, re
 
 ## Create an export directory
 
-yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*.
+yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
 Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command in an environment variable.
 
@@ -506,11 +511,17 @@ export EXPORT_DIR=$HOME/export-dir
 
 The export directory has the following sub-directories and files:
 
-- `reports` directory contains the generated *Schema Analysis Report*.
+- `reports` directory contains the generated _Schema Analysis Report_.
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
 - `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
+
+## Assess migration
+
+This step is optional and only applicable to PostgreSQL and Oracle database migrations. Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
+
+Refer to [Migration assessment](../../migrate/assess-migration/) for details.
 
 ## Migrate your database to YugabyteDB
 
@@ -528,7 +539,7 @@ The `yb-voyager export schema` command extracts the schema from the source datab
 
 The `source_db_schema` argument specifies the schema of the source database.
 
-- For Oracle, `source-db-schema` can take only one schema name and you can migrate *only one* schema at a time.
+- For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
 
 {{< /note >}}
 
@@ -866,7 +877,8 @@ DROP USER ybvoyager;
 
 ## Limitations
 
-- Schema changes on the source Oracle database will not be recognized during the live migration.
+- Schema changes on the source database will not be recognized during the live migration.
+- Adding or deleting partitions of a partitioned table is not supported during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.

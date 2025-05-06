@@ -186,6 +186,11 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
   return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
+bool CatalogManager::HasDdlVerificationState(const TransactionId& txn) const {
+  LockGuard lock(ddl_txn_verifier_mutex_);
+  return ysql_ddl_txn_verfication_state_map_.contains(txn);
+}
+
 Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
                                                   const string& pb_txn_id,
                                                   std::optional<bool> is_committed,
@@ -699,11 +704,11 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
       } else if (verifier_state->txn_state == TxnState::kAborted) {
         is_committed = false;
       }
-      string pb_txn_id;
-      vector<TableId> table_ids;
+      std::vector<TableId> table_ids;
+      std::vector<TableId> remove_table_ids;
       for (const auto& table : verifier_state->tables) {
         table_ids.push_back(table->id());
-        pb_txn_id = table->LockForRead()->pb_transaction_id();
+        auto pb_txn_id = table->LockForRead()->pb_transaction_id();
         if (pb_txn_id.empty()) {
           // The table involved in ddl transaction txn_id has already finalized
           // with a new schema version, but verifier_state for txn_id isn't
@@ -734,7 +739,7 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
           LOG(WARNING) << "pb_txn_id " << txn_id << " on table "
                        << table->id() << " differs from txn.transaction_id "
                        << txn.transaction_id;
-          RemoveDdlTransactionStateUnlocked(table->id(), {txn.transaction_id});
+          remove_table_ids.push_back(table->id());
           continue;
         }
         return background_tasks_thread_pool_->SubmitFunc(
@@ -745,6 +750,9 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
                                  table->id()));
           }
         );
+      }
+      for (const auto& table_id : remove_table_ids) {
+        RemoveDdlTransactionStateUnlocked(table_id, {txn.transaction_id});
       }
       VLOG(3) << "All tables " << VectorToString(table_ids)
               << " in transaction " << txn << " have pb_txn_id cleared"

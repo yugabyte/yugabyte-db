@@ -140,7 +140,7 @@ typedef struct JHashState
 	JsonTokenType saved_token_type;
 } JHashState;
 
-/* State for json_validate_object_keys */
+/* YB: state for json_validate_object_keys */
 typedef struct YbValidateOkeysState
 {
 	JsonLexContext *lex;
@@ -370,18 +370,18 @@ static void okeys_object_field_start(void *state, char *fname, bool isnull);
 static void okeys_array_start(void *state);
 static void okeys_scalar(void *state, char *token, JsonTokenType tokentype);
 
-/* semantic action functions for json_validate_object_keys */
+/* YB: semantic action functions for json_validate_object_keys */
 
-/* Invoked whenever the parser encounters the start of a json object */
+/* YB: Invoked whenever the parser encounters the start of a json object */
 static void validate_okeys_object_field_start(void *state, char *fname, bool isnull);
 
-/* Invoked whenever the parser encounters a json array */
+/* YB: Invoked whenever the parser encounters a json array */
 static void validate_okeys_array_start(void *state);
 
-/* Invoked whenever a json scalar is encountered by the parser */
+/* YB: Invoked whenever a json scalar is encountered by the parser */
 static void validate_okeys_scalar(void *state, char *token, JsonTokenType tokentype);
 
-/* Invoked whenever a json object has been processed completely by the parser */
+/* YB: Invoked whenever a json object has been processed completely by the parser */
 static void validate_okeys_object_end(void *state);
 
 /* semantic action functions for json_get* functions */

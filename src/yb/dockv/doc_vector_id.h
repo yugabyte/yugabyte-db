@@ -34,8 +34,8 @@ struct EncodedDocVectorValue final {
 
 class DocVectorValue final {
  public:
-  explicit DocVectorValue(const QLValuePB& value, vector_index::VectorId&& id)
-      : value_(value), id_(std::move(id))
+  explicit DocVectorValue(const QLValuePB& value, const vector_index::VectorId& id)
+      : value_(value), id_(id)
   {}
 
   void EncodeTo(std::string* out) const;

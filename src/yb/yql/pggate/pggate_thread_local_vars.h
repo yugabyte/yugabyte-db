@@ -68,6 +68,16 @@ void* PgGetThreadLocalStrTokPtr();
 void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
 
 /*
+ * yb_expression_version (from readfuncs.c)
+ *
+ * Similar to the pg_strtok_ptr, this technically doesn't need to be a global,
+ * but passing this through to all the deserialization functions would be a
+ * large change that would make future merges difficult.
+ */
+int PgGetThreadLocalYbExpressionVersion();
+void PgSetThreadLocalYbExpressionVersion(int yb_expr_version);
+
+/*
  * CachedRegexpHolder (from regex/regex.c)
  * These are used to cache the compiled regexes
  */

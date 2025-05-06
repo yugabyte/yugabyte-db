@@ -7,7 +7,7 @@ menu:
   v2024.1:
     identifier: yb-tserver
     parent: configuration
-    weight: 2440
+    weight: 2100
 type: docs
 ---
 
@@ -888,6 +888,12 @@ Sets the size of a tuple batch that's taken from the outer side of a [batched ne
 See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 Default: 1024
+
+##### --ysql_follower_reads_avoid_waiting_for_safe_time
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+Default: `true`
 
 ### YCQL
 

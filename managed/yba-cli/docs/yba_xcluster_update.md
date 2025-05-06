@@ -29,7 +29,7 @@ yba xcluster update --uuid <uuid> \
       --storage-config-name string           [Optional] Storage config to be used for taking the backup for replication. Required when tables require bootstrapping.
       --tables-need-full-copy-uuids string   [Optional] Comma separated list of source universe table IDs/UUIDs that are allowed to be full-copied to the target universe. Must be a subset of table-uuids. If left empty, allow-bootstrap is set to true so full-copy can be done for all the tables passed in to be in replication. Run "yba xcluster needs-full-copy-tables --source-universe-name <source-universe-name> --target-universe-name <target-universe-name> --table-uuids <tables-from-table-uuids-flag>" to check the list of tables that need bootstrapping.
       --parallelism int                      [Optional] Number of concurrent commands to run on nodes over SSH via "yb_backup" script. (default 8)
-      --allow-bootstrap                      Allow full copy on all the tables being added to the replication. The same as passing the same set passed to table-uuids to tables-need-full-copy-uuids. (default false)
+      --allow-bootstrap                      [Optional] Allow full copy on all the tables being added to the replication. The same as passing the same set passed to table-uuids to tables-need-full-copy-uuids. (default false)
       --dry-run                              [Optional] Run the pre-checks without actually running the subtasks. (default false)
       --auto-include-index-tables            [Optional] Whether or not YBA should also include all index tables from any provided main tables. (default false)
   -h, --help                                 help for update

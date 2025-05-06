@@ -120,9 +120,10 @@ static List *sock_paths = NIL;
 /*
  * Buffers for low-level I/O.
  *
- * The receive buffer is fixed size.
- * Send buffer is controlled by ysql_output_buffer_size pggate gflag, but can be
+ * The receive buffer is fixed size. Send buffer is usually 8k, but can be
  * enlarged by pq_putmessage_noblock() if the message doesn't fit otherwise.
+ *
+ * YB: Send buffer is controlled by ysql_output_buffer_size pggate gflag.
  */
 
 #define PQ_RECV_BUFFER_SIZE 8192
@@ -1428,8 +1429,11 @@ internal_flush(void)
 	while (bufptr < bufend)
 	{
 		int			r;
+		/* YB: For compatibility reasons, cap at ysql_output_flush_size. */
+		int			yb_send_len = Min(bufend - bufptr,
+									  *YBCGetGFlags()->ysql_output_flush_size);
 
-		r = secure_write(MyProcPort, bufptr, bufend - bufptr);
+		r = secure_write(MyProcPort, bufptr, yb_send_len);
 
 		if (r <= 0)
 		{

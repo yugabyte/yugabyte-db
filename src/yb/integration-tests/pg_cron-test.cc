@@ -669,6 +669,11 @@ TEST_F(PgCronTest, KillRunningJob) {
 }
 
 TEST_F(PgCronTest, CancelJobOnLeaderChange) {
+  // Disable load balancing to prevent interference from new system tablets.
+  // When additional system tablets are added, the load balancer may move
+  // the tablet leader back to the original node after an explicit leader move,
+  // causing unexpected test failures.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
   // Start a job that will run for a long time.
   ASSERT_OK(ScheduleJob("Sleep Job", "1 second", "SELECT pg_sleep(1000)"));
   ASSERT_OK(Schedule1SecInsertJob());

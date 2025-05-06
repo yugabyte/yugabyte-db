@@ -12,10 +12,12 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth/ldap"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/customer"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/group"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
@@ -137,8 +139,8 @@ func init() {
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 	addGroupsCmd(rootCmd)
-
-	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd})
+	// Add commands to be marked as preview in the list below
+	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd, group.GroupsCmd, ldap.LdapCmd})
 
 }
 

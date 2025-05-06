@@ -420,6 +420,7 @@ retry_masked:
 				/* Set flag for EPIPE */
 				REMEMBER_EPIPE(spinfo, true);
 
+				/* FALL THRU */
 				yb_switch_fallthrough();
 
 			case ECONNRESET:

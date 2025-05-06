@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -55,6 +56,7 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
@@ -586,6 +588,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           false);
     }
 
+    int sleepAfterEachPodRestart =
+        confGetter.getConfForScope(universe, UniverseConfKeys.rollingOpsWaitAfterEachPodMs);
+    universeDetails.sleepAfterMasterRestartMillis = sleepAfterEachPodRestart;
+    universeDetails.sleepAfterTServerRestartMillis = sleepAfterEachPodRestart;
+
     UUID taskUUID = null;
     try {
       if (specificTaskTypeToRerun != null) {
@@ -616,7 +623,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 universe, k8ResourceDetails, TaskType.KubernetesOverridesUpgrade.name());
             taskUUID =
                 updateOverridesYbUniverse(
-                    universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
+                    universeDetails,
+                    cust,
+                    ybUniverse,
+                    incomingIntent.universeOverrides,
+                    true /* isRerun */);
             break;
           case GFlagsKubernetesUpgrade:
             if (checkAndHandleUniverseLock(
@@ -628,7 +639,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 universe, k8ResourceDetails, TaskType.GFlagsKubernetesUpgrade.name());
             taskUUID =
                 updateGflagsYbUniverse(
-                    universeDetails, cust, ybUniverse, incomingIntent.specificGFlags);
+                    universeDetails,
+                    cust,
+                    ybUniverse,
+                    incomingIntent.specificGFlags,
+                    true /* isRerun */);
             break;
           default:
             log.error("Unexpected task, this should not happen!");
@@ -692,7 +707,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
           taskUUID =
               updateOverridesYbUniverse(
-                  universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
+                  universeDetails,
+                  cust,
+                  ybUniverse,
+                  incomingIntent.universeOverrides,
+                  false /* isRerun */);
         } else if (operatorUtils.checkIfGFlagsChanged(
             universe, currentUserIntent.specificGFlags, incomingIntent.specificGFlags)) {
           log.info("Updating Gflags");
@@ -705,7 +724,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
           taskUUID =
               updateGflagsYbUniverse(
-                  universeDetails, cust, ybUniverse, incomingIntent.specificGFlags);
+                  universeDetails,
+                  cust,
+                  ybUniverse,
+                  incomingIntent.specificGFlags,
+                  false /* isRerun */);
         } else if (!currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion)) {
           log.info("Upgrading software");
           kubernetesStatusUpdater.createYBUniverseEventStatus(
@@ -753,7 +776,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       UniverseDefinitionTaskParams taskParams,
       Customer cust,
       YBUniverse ybUniverse,
-      String universeOverrides) {
+      String universeOverrides,
+      boolean isRerun) {
     KubernetesOverridesUpgradeParams requestParams = new KubernetesOverridesUpgradeParams();
 
     ObjectMapper mapper =
@@ -769,6 +793,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       log.error("Failed at creating upgrade software params", e);
     }
     requestParams.universeOverrides = universeOverrides;
+    requestParams.skipNodeChecks = isRerun;
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(
@@ -783,7 +808,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       UniverseDefinitionTaskParams taskParams,
       Customer cust,
       YBUniverse ybUniverse,
-      SpecificGFlags newGFlags) {
+      SpecificGFlags newGFlags,
+      boolean isRerun) {
     KubernetesGFlagsUpgradeParams requestParams = new KubernetesGFlagsUpgradeParams();
 
     ObjectMapper mapper =
@@ -799,6 +825,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     } catch (Exception e) {
       log.error("Failed at creating upgrade software params", e);
     }
+    requestParams.skipNodeChecks = isRerun;
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(
@@ -1177,6 +1204,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
     String storageClass = ybUniverse.getSpec().getDeviceInfo().getStorageClass();
     String kubeNamespace = ybUniverse.getMetadata().getNamespace();
+    String domainName =
+        maybeGetKubeDomainFromOverrides(ybUniverse.getSpec().getKubernetesOverrides());
     KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
     providerData.regionList =
         providerData.regionList.stream()
@@ -1197,6 +1226,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                                 HashMap<String, String> tempMap = new HashMap<>(z.config);
                                 if (StringUtils.isNotBlank(storageClass)) {
                                   tempMap.put("STORAGE_CLASS", storageClass);
+                                }
+                                if (StringUtils.isNotBlank(domainName)) {
+                                  tempMap.put("KUBE_DOMAIN", domainName);
                                 }
                                 tempMap.put("KUBENAMESPACE", kubeNamespace);
                                 z.config = tempMap;
@@ -1306,5 +1338,16 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     } catch (Exception e) {
       log.error("Error deleting release cr", e);
     }
+  }
+
+  private String maybeGetKubeDomainFromOverrides(KubernetesOverrides overrides) {
+    if (overrides != null && overrides.getAdditionalProperties() != null) {
+      for (Map.Entry<String, Object> entry : overrides.getAdditionalProperties().entrySet()) {
+        if (entry.getKey().equals("domainName")) {
+          return entry.getValue().toString();
+        }
+      }
+    }
+    return null;
   }
 }

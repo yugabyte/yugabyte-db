@@ -9,7 +9,6 @@ import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -33,7 +32,7 @@ public class FakeApiHelper {
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      user = Users.create("foo@bar.com", "password", Role.Admin, customer.getUuid(), false);
+      user = ModelFactory.testUser(customer, "foo@bar.com", Users.Role.Admin);
     }
     user = Users.find.query().where().eq("customer_uuid", customer.getUuid()).findOne();
     return user.createAuthToken();

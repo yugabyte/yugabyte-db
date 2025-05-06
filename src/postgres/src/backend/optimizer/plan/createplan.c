@@ -86,6 +86,7 @@
 #define CP_LABEL_TLIST		0x0004	/* tlist must contain sortgrouprefs */
 #define CP_IGNORE_TLIST		0x0008	/* caller will replace tlist */
 
+
 static Plan *create_plan_recurse(PlannerInfo *root, Path *best_path,
 								 int flags);
 static Plan *create_scan_plan(PlannerInfo *root, Path *best_path,
@@ -214,8 +215,8 @@ static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 								 List *yb_rel_pushdown_colrefs, List *yb_rel_pushdown_quals,
 								 List *yb_idx_pushdown_colrefs, List *yb_idx_pushdown_quals,
-								 Index scanrelid, Oid indexid,
-								 List *indexqual, List *indexqualorig,
+								 Index scanrelid,
+								 Oid indexid, List *indexqual, List *indexqualorig,
 								 List *indexorderby, List *indexorderbyorig,
 								 List *indexorderbyops, List *indextlist,
 								 ScanDirection indexscandir, YbPlanInfo yb_plan_info,
@@ -373,10 +374,12 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 									 List *mergeActionList, int epqParam);
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
+
 static void yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan);
 
 extern int	yb_bnl_batch_size;
 bool		yb_bnl_optimize_first_batch;
+
 
 /*
  * create_plan
@@ -720,7 +723,9 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 	switch (best_path->pathtype)
 	{
 		case T_SeqScan:
-			plan = (Plan *) create_seqscan_plan(root, best_path, tlist,
+			plan = (Plan *) create_seqscan_plan(root,
+												best_path,
+												tlist,
 												scan_clauses);
 			break;
 
@@ -1212,7 +1217,7 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 				{
 					int			attno = ((Var *) expr)->varattno;
 
-					attno -= (rel->min_attr - 1);
+					attno -= (rel->min_attr - 1);	/* YB modified */
 					if (bms_is_member(attno, sortgroupatts))
 						return false;
 					sortgroupatts = bms_add_member(sortgroupatts, attno);
@@ -4003,7 +4008,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
 	/*
-	 * TODO(kramanathan): Evaluate whether the equivalent of "is single row
+	 * YB: TODO(kramanathan): Evaluate whether the equivalent of "is single row
 	 * update" is need for ON CONFLICT DO UPDATE.
 	 */
 	if (YbIsUpdateOptimizationEnabled() &&
@@ -4233,107 +4238,6 @@ create_samplescan_plan(PlannerInfo *root, Path *best_path,
 	return scan_plan;
 }
 
-static inline bool
-YbIsHashCodeFunc(FuncExpr *func)
-{
-	return func->funcid == F_YB_HASH_CODE;
-}
-
-/*
- * This function changes attribute numbers for each yb_hash_code function
- * argument. Initially arguments use attribute numbers from relation.
- * After the change attribute numbers will be taken from index which is used
- * for the yb_hash_code pushdown.
- */
-static void
-YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
-{
-	Assert(YbIsHashCodeFunc(hash_code_func));
-	ListCell   *l;
-	int			indexcol = 0;
-
-	foreach(l, hash_code_func->args)
-	{
-		Var		   *arg_var = (Var *) lfirst(l);
-
-		/*
-		 * Sanity check. Planner should have already verified that function
-		 * arguments match the index.
-		 * Should it rather be an assertion?
-		 */
-		if (!IsA(arg_var, Var) ||
-			indexcol >= index->nkeycolumns ||
-			index->rel->relid != arg_var->varno ||
-			index->indexkeys[indexcol] != arg_var->varattno ||
-			index->opcintype[indexcol] != arg_var->vartype)
-			ereport(ERROR,
-					(errmsg("bad call of yb_hash_code"),
-					 errdetail("Function yb_hash_code is chosen as an index condition, "
-							   "but its arguments do not match hash keys of the index"),
-					 errcode(ERRCODE_INTERNAL_ERROR),
-					 hash_code_func->location != -1 ?
-					 errposition(hash_code_func->location) : 0));
-		/*
-		 * Note: In spite of the fact that YSQL will use secodary index for handling
-		 * the yb_hash_code pushdown the arg_var->varno field should not be changed
-		 * to INDEX_VAR as postgres does for its native functional indexes.
-		 * Because from the postgres's point of view neither the yb_hash_code
-		 * function itself not its arguments will not be converted into index
-		 * columns.
-		 */
-		arg_var->varattno = ++indexcol;
-	}
-}
-
-static bool
-YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo *indexinfo)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, FuncExpr))
-	{
-		FuncExpr   *func = (FuncExpr *) node;
-
-		if (YbIsHashCodeFunc(func))
-		{
-			YbFixHashCodeFuncArgs(func, indexinfo);
-			return false;
-		}
-	}
-	return expression_tree_walker(node, &YbFixHashCodeFuncArgsWalker,
-								  (void *) indexinfo);
-}
-
-static bool
-YbHasHashCodeFuncWalker(Node *node, void *context)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, FuncExpr) && YbIsHashCodeFunc((FuncExpr *) node))
-		return true;
-	return expression_tree_walker(node, YbHasHashCodeFuncWalker, context);
-}
-
-/*
- * In case indexquals has at least one yb_hash_code qual function makes
- * a copy of indexquals and alters yb_hash_code function args attrributes.
- * In other cases functions returns NIL.
- */
-static List *
-YbBuildIndexqualForRecheck(List *indexquals, IndexOptInfo *indexinfo)
-{
-	if (expression_tree_walker((Node *) indexquals, YbHasHashCodeFuncWalker,
-							   NULL))
-	{
-		List	   *result = copyObject(indexquals);
-
-		expression_tree_walker((Node *) result, YbFixHashCodeFuncArgsWalker,
-							   indexinfo);
-		return result;
-	}
-	return NIL;
-}
-
 /*
  * create_indexscan_plan
  *	  Returns an indexscan plan for the base relation scanned by 'best_path'
@@ -4426,6 +4330,11 @@ create_indexscan_plan(PlannerInfo *root,
 
 		if (rinfo->pseudoconstant)
 			continue;			/* we may drop pseudoconstants here */
+		/*
+		 * YB: Ignore if this clause was already contained in indexqualorig. It
+		 * is possible for a clause to be in indexqualorig/stripped_indexquals
+		 * but only have its batched version be in indexclauses.
+		 */
 		if (list_member_ptr(stripped_indexquals, rinfo->clause))
 			continue;
 		if (is_redundant_with_indexclauses(rinfo, indexclauses))
@@ -4583,8 +4492,6 @@ create_indexscan_plan(PlannerInfo *root,
 																 best_path->indexscandir,
 																 best_path->yb_plan_info);
 
-		index_only_scan_plan->yb_indexqual_for_recheck =
-			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
 
@@ -6121,11 +6028,12 @@ create_nestloop_plan(PlannerInfo *root,
 			replace_nestloop_params(root, (Node *) otherclauses);
 	}
 
-	nestParams = identify_current_nestloop_params(root, outerrelids);
 	/*
 	 * Identify any nestloop parameters that should be supplied by this join
 	 * node, and remove them from root->curOuterParams.
 	 */
+	nestParams = identify_current_nestloop_params(root, outerrelids);
+
 	if (yb_is_batched)
 	{
 		YbBatchedNestLoop *bnl_plan = make_YbBatchedNestLoop(tlist,

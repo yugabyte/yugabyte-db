@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -17,7 +18,7 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
@@ -92,6 +93,22 @@ public class YNPProvisioning extends AbstractTaskBase {
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+      AdditionalServicesStateData data = universe.getUniverseDetails().additionalServicesStateData;
+      if (data != null
+          && data.getEarlyoomConfig() != null
+          && data.getEarlyoomConfig().isEnabled()) {
+        ynpNode.put("earlyoom_enable", true);
+        ynpNode.put("earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
+      }
+      if (provider.getDetails().getNtpServers() != null
+          && !provider.getDetails().getNtpServers().isEmpty()) {
+        ArrayNode arrayNode = mapper.createArrayNode();
+        List<String> ntpServers = provider.getDetails().getNtpServers();
+        for (int i = 0; i < ntpServers.size(); i++) {
+          arrayNode.add(ntpServers.get(i));
+        }
+        ynpNode.set("chrony_servers", arrayNode);
+      }
       rootNode.set("ynp", ynpNode);
 
       // "extra" JSON Object
@@ -201,14 +218,15 @@ public class YNPProvisioning extends AbstractTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
         Paths.get(
                 customTmpDirectory, String.format("config_%d.json", Instant.now().getEpochSecond()))
             .toString();
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
     String tmpDirectory =
         fileHelperService.createTempFile(node.cloudInfo.private_ip + "-", ".json").toString();
     getProvisionArguments(universe, node, provider, tmpDirectory, nodeAgentHomePath);

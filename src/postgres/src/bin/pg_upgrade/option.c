@@ -142,11 +142,11 @@ parseCommandLine(int argc, char *argv[])
 				new_cluster.pgdata = pg_strdup(optarg);
 				break;
 
-			case 'h':
+			case 'h':	/* YB */
 				old_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
-			case 'H':
+			case 'H':	/* YB */
 				new_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
@@ -206,7 +206,7 @@ parseCommandLine(int argc, char *argv[])
 				old_cluster.sockdir = pg_strdup(optarg);
 				break;
 
-			case 'S':
+			case 'S':	/* YB */
 				new_cluster.sockdir = pg_strdup(optarg);
 				break;
 
@@ -333,10 +333,10 @@ usage(void)
 	printf(_("  -v, --verbose                 enable verbose internal logging\n"));
 	printf(_("  -V, --version                 display version information, then exit\n"));
 	printf(_("  --clone                       clone instead of copying files to new cluster\n"));
-	printf(_("  -h, --old-host=HOST           old cluster host address\n"));
-	printf(_("  -H, --new-host=HOST           new cluster host address\n"));
-	printf(_("  -s, --old-socketdir=DIR       old cluster socket directory\n"));
-	printf(_("  -S, --new-socketdir=DIR       new cluster socket directory\n"));
+	printf(_("  -h, --old-host=HOST           old cluster host address\n"));	/* YB */
+	printf(_("  -H, --new-host=HOST           new cluster host address\n"));	/* YB */
+	printf(_("  -s, --old-socketdir=DIR       old cluster socket directory\n"));	/* YB */
+	printf(_("  -S, --new-socketdir=DIR       new cluster socket directory\n"));	/* YB */
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
 			 "Before running pg_upgrade you must:\n"

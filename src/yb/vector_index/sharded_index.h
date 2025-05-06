@@ -57,6 +57,11 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
         [](size_t sum, const auto& index) { return sum + index->Capacity(); });
   }
 
+  size_t Dimensions() const override {
+    CHECK(!indexes_.empty());
+    return indexes_[0]->Dimensions();
+  }
+
   // Insert a vector into the current shard using round-robin.
   Status Insert(VectorId vector_id, const Vector& vector) override {
     size_t current_index = round_robin_counter_.fetch_add(1) % indexes_.size();

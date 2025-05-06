@@ -15,6 +15,7 @@
 // This file contains flag definitions that should be known to master, tserver, and pggate
 // (linked into postgres).
 
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
@@ -64,10 +65,16 @@ DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid
 DEFINE_test_flag(bool, index_read_multiple_partitions, false,
       "Test flag used to simulate tablet spliting by joining tables' partitions.");
 
-DEFINE_UNKNOWN_int32(ysql_output_buffer_size, 262144,
+DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, 262144,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
+
+DEFINE_NON_RUNTIME_int32(ysql_output_flush_size, 8192,
+    "Size of a single flush in YSQL output buffer, in bytes. "
+    "This is different from ysql_output_buffer_size to decouple the amount of data sent in a "
+    "single flush. This is done to match postgres behavior of flushing 8192 bytes.");
+TAG_FLAG(ysql_output_flush_size, advanced);
 
 DEPRECATE_FLAG(bool, ysql_enable_update_batching, "10_2022");
 
@@ -116,9 +123,10 @@ DEFINE_UNKNOWN_bool(ysql_serializable_isolation_for_ddl_txn, false,
             "By default, repeatable read isolation is used. "
             "This flag should go away once full transactional DDL is implemented.");
 
-DEFINE_UNKNOWN_int32(ysql_select_parallelism, -1,
-            "Number of read requests to issue in parallel to tablets of a table "
-            "for SELECT.");
+DEFINE_RUNTIME_int32(ysql_select_parallelism, -1,
+    "Number of read requests to issue in parallel to tablets of a table for SELECT."
+    "Positive values will be used as is. -1 will use max(16, tserver_count * 2).");
+DEFINE_validator(ysql_select_parallelism, FLAG_NE_VALUE_VALIDATOR(0));
 
 DEFINE_UNKNOWN_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");

@@ -147,20 +147,19 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   return (
     <div className={classes.root}>
       {failedTask && getFailedTaskData()}
-      {currentTask.status !== TaskStates.RUNNING && (
-        <div
-          className={classes.showLog}
-          onClick={() => {
-            window.open(
-              `/logs/?queryRegex=${currentTask.correlationId}&startDate=${currentTask.createTime}`,
-              '_blank'
-            );
-          }}
-        >
-          {t('showLog')}
-          <img src={LinkIcon} alt="link" />
-        </div>
-      )}
+      <div
+        className={classes.showLog}
+        onClick={() => {
+          window.open(
+            `/logs/?queryRegex=${currentTask.correlationId}&startDate=${currentTask.createTime}`,
+            '_blank'
+          );
+        }}
+        data-testid="show-log"
+      >
+        {t('showLog')}
+        <img src={LinkIcon} alt="link" />
+      </div>
 
       {isSubTaskLoading ? (
         <YBLoadingCircleIcon />

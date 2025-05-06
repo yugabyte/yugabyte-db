@@ -1901,8 +1901,8 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
   TServerDetails* ts = ts_map_[cluster_->tablet_server(ts_idx_to_bootstrap)->uuid()].get();
 
-  // Wait for 4 tablets - 3 transactions related and 1 user created colocated tablet.
-  ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 4, timeout, &tablets));
+  // 1 user created colocated tablet.
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 1, timeout, &tablets));
   vector<string> user_tablet_ids;
   for (auto tablet : tablets) {
     if (tablet.tablet_status().table_name().ends_with("parent.tablename")) {

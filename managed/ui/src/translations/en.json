@@ -30,6 +30,7 @@
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
       "back": "Back",
+      "next": "Next",
       "selectAll": "Select All",
       "selected": "Selected",
       "note": "Note :",
@@ -46,6 +47,7 @@
       "reset": "Reset",
       "expand": "Expand",
       "collapse": "Collapse",
+      "formFieldRequired": "Required.",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -305,6 +307,21 @@
         "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>",
         "overrideWarningRF3": "<strong>Note!</strong> Editing connection pooling ports requires a rolling restart of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "overrideWarningRF1": "<strong>Note!</strong> Editing connection pooling ports requires a restart of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart."
+      },
+      "supportBundle": {
+        "editCustomPrometheusQueriesModal": {
+          "title": "Custom Queries",
+          "infoText": "The provided PromQL expressions will be run and the result will be stored in the support bundle under the corresponding folder name.",
+          "addCustomQuery": "Add Custom Query",
+          "customQuery": "Custom Query",
+          "folderName": "Folder Name",
+          "prometheusQuery": "PromQL expression",
+          "validationError": {
+            "folderNameHasSpecialCharacters": "The folder name cannot contain any of these special characters: #%&{}\\<>*?/$!'\":@+`|=",
+            "folderNameMustBeUnique": "The folder name must be unique."
+          },
+          "submitLabel": "Confirm"
+        }
       }
     },
     "commonErrors": {
@@ -369,10 +386,10 @@
         "internalYsqlServerRpcPort": "Internal YSQL Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
         "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
         "enableConnectionPooling": "Enable Connection Pooling",
-        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of<br /> simultaneous connections to your database.",
+        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
         "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
         "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
         "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
@@ -511,6 +528,7 @@
         "azOverrides": "AZ Overrides",
         "forceApply": "Force Apply",
         "k8sOverrides": "Kubernetes Overrides",
+        "validateAndSaveSuccess": "Validated and Saved Successfully",
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
@@ -2949,6 +2967,51 @@
       "github": "GitHub",
       "freeTShirtAt": "Free t-shirt at",
       "yugabyteInc": "Yugabyte, Inc."
+    },
+    "createUniverseV2": {
+      "title": "Create Universe",
+      "steps": {
+        "general": "General",
+        "generalSettings": "General Settings",
+        "placement": "Placement",
+        "resilienceAndRegions": "Resilience and Regions",
+        "nodesAndAvailabilityZone": "Nodes and Availability Zones",
+        "hardware": "Hardware",
+        "instanceSettings": "Instance Settings",
+        "database": "Database",
+        "databaseSettings": "Database Settings",
+        "security": "Security",
+        "securitySettings": "Security Settings",
+        "advanced": "Advanced",
+        "proxySettings": "Proxy Settings",
+        "otherAdvancedSettings": "Other Advanced Settings",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost"
+      },
+      "generalSettings": {
+        "title": "General Settings",
+        "universeName": "Universe Name",
+        "universeNamePlaceholder": "Enter Universe Name",
+        "cloudProvider": "Cloud Provider",
+        "providerconfiguration": "Provider Configuration",
+        "providerConfigurationPlaceholder": "Select Provider Configuration",
+        "databaseVersion": "Database Version",
+        "databaseVersionPlaceholder": "Select Database Version",
+        "errMsg": {
+          "universeNameRequired": "Universe name is required",
+          "cloudProviderRequired": "Cloud provider is required",
+          "providerConfigurationRequired": "Provider configuration is required",
+          "databaseVersionRequired": "Database version is required"
+        }
+      },
+      "resilienceAndRegions": {
+        "title": "Resilience",
+        "resilienceType": {
+          "regular": "Regular Cluster",
+          "singleNode": "Single-Node Cluster",
+          "quickSetup": "Quick Setup"
+        }
+      }
     }
   }
 }

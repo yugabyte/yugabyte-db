@@ -505,7 +505,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
         data.doc_write_batch->pending_op());
     RETURN_NOT_OK(iterator.Init(spec));
     RETURN_NOT_OK(iterator.FetchNext(table_row));
-    data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+    data.read_restart_data->MakeAtLeast(VERIFY_RESULT(iterator.GetReadRestartData()));
   }
   if (pk_doc_key_) {
     DocQLScanSpec spec(doc_read_context_->schema(), *pk_doc_key_, request_.query_id());
@@ -527,7 +527,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
       // columns in the map to indicate the row does not exist.
       table_row->Clear();
     }
-    data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+    data.read_restart_data->MakeAtLeast(VERIFY_RESULT(iterator.GetReadRestartData()));
   }
 
   return Status::OK();
@@ -1242,7 +1242,7 @@ Status QLWriteOperation::ApplyDelete(
         }
       }
     }
-    data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+    data.read_restart_data->MakeAtLeast(VERIFY_RESULT(iterator.GetReadRestartData()));
   } else {
     // Otherwise, delete the referenced row (all columns).
     RETURN_NOT_OK(DeleteRow(DocPath(encoded_pk_doc_key_.as_slice()), data.doc_write_batch,
@@ -1698,7 +1698,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 const DocReadContext& doc_read_context,
                                 std::reference_wrapper<const ScopedRWOperation> pending_op,
                                 QLResultSet* resultset,
-                                HybridTime* restart_read_ht) {
+                                ReadRestartData* read_restart_data) {
   auto se = ScopeExit([resultset] {
     resultset->Complete();
   });
@@ -1856,8 +1856,8 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   RETURN_NOT_OK(SetPagingStateIfNecessary(
       iter.get(), resultset, row_count_limit, num_rows_skipped, read_operation_data.read_time));
 
-  // SetPagingStateIfNecessary could perform read, so we assign restart_read_ht after it.
-  *restart_read_ht = VERIFY_RESULT(iter->RestartReadHt());
+  // SetPagingStateIfNecessary could perform read, so we assign read_restart_data after it.
+  *read_restart_data = VERIFY_RESULT(iter->GetReadRestartData());
 
   return Status::OK();
 }

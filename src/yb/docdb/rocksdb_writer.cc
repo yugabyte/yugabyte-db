@@ -482,9 +482,12 @@ DocHybridTimeBuffer::DocHybridTimeBuffer() {
   buffer_[0] = KeyEntryTypeAsChar::kHybridTime;
 }
 
-IntentsWriterContext::IntentsWriterContext(const TransactionId& transaction_id)
+IntentsWriterContext::IntentsWriterContext(
+    const TransactionId& transaction_id, IgnoreMaxApplyLimit ignore_max_apply_limit)
     : transaction_id_(transaction_id),
-      left_records_(FLAGS_txn_max_apply_batch_records) {
+      left_records_(ignore_max_apply_limit
+          ? std::numeric_limits<decltype(left_records_)>::max()
+          : FLAGS_txn_max_apply_batch_records) {
 }
 
 IntentsWriter::IntentsWriter(const Slice& start_key,
@@ -580,7 +583,8 @@ ApplyIntentsContext::ApplyIntentsContext(
     rocksdb::DB* intents_db,
     const DocVectorIndexesPtr& vector_indexes,
     const docdb::StorageSet& apply_to_storages)
-    : IntentsWriterContext(transaction_id),
+      // TODO(vector_index) Add support for large transactions.
+    : IntentsWriterContext(transaction_id, IgnoreMaxApplyLimit(vector_indexes != nullptr)),
       FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       tablet_id_(tablet_id),
       apply_state_(apply_state),
@@ -953,7 +957,7 @@ void FrontierSchemaVersionUpdater::FlushSchemaVersion() {
 }
 
 RemoveIntentsContext::RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason)
-    : IntentsWriterContext(transaction_id), reason_(reason) {
+    : IntentsWriterContext(transaction_id, IgnoreMaxApplyLimit::kFalse), reason_(reason) {
 }
 
 Result<bool> RemoveIntentsContext::Entry(

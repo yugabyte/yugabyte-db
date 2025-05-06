@@ -23,6 +23,7 @@
 #include <boost/container/small_vector.hpp>
 
 #include "yb/common/constants.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
@@ -35,6 +36,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/port.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/status.h"
 
@@ -300,6 +302,32 @@ class PgOperationBuffer::Impl {
     return res;
   }
 
+  Status CheckDuplicateInsertForFastPathCopy(const PgTableDesc& table,
+                                             PgsqlWriteRequestPB::PgsqlStmtType stmt_type,
+                                             bool need_transaction) {
+    /**
+     * In case of fast-path COPY, if there is a duplicate INSERT to a unique index, instead of
+     * adding the operation to the next buffer (say B2), we want to error out the current
+     * buffer (say B1) too. This is because if we don't do so, the main table row with this
+     * duplicate unique index value would be committed as part of B1 without the unique index row.
+     * This would lead to index inconsistency. To avoid this, we error out early for INSERT
+     * operations that are not transactional. We use !need_transaction as a proxy for checking if
+     * we are in a fast-path COPY. This condition is not full-proof because in future we might have
+     * fast path operations that do a DELETE followed by an INSERT on the same key (think of an
+     * update of the index key columns) and throwing a duplicate key error would be incorrect in
+     * that case. However, currently, only fast-path COPY fits this condition, so it is okay to do
+     * so for now.
+     */
+    if (!need_transaction && stmt_type == PgsqlWriteRequestPB::PGSQL_INSERT) {
+      static const auto dk_status =
+        STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
+      auto status = dk_status.CloneAndAddErrorCode(RelationOid(table.pg_table_id().object_oid));
+      LOG(INFO) << "duplicate key error:=" << status;
+      return status;
+    }
+    return Status::OK();
+  }
+
   Status DoAdd(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
     // Check for buffered operation related to same row.
     // If multiple operations are performed in context of single RPC second operation will not
@@ -313,6 +341,8 @@ class PgOperationBuffer::Impl {
     DCHECK_EQ(buffering_settings_.max_batch_size % buffering_settings_.multiple, 0);
 
     const auto& write_request = op->write_request();
+    const auto stmt_type = write_request.stmt_type();
+    const bool need_transaction = op->need_transaction();
     const auto& packed_rows = write_request.packed_rows();
     const auto& table_relfilenode_id = table.relfilenode_id();
 
@@ -322,7 +352,7 @@ class PgOperationBuffer::Impl {
     if (keys_.size() % buffering_settings_.multiple == 0 &&
         total_bytes_in_buffer_ + payload >= max_size) {
       // The data size in buffer exceeds the limit, need to flush buffer.
-      // For copy on colocated tables that use fast-path transaction, we pefform the check only
+      // For copy on colocated tables that use fast-path transaction, we perform the check only
       // when the op comes from a row rather than an index. This makes the check very simple,
       // but it should be sufficient to catch common cases where the average row size is large,
       // causing the buffer size to exceed the RPC limit with the default batch size.
@@ -334,6 +364,7 @@ class PgOperationBuffer::Impl {
       bool has_conflict = false;
       for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
         if (PREDICT_FALSE(!keys_.insert(RowIdentifier(table_relfilenode_id, *it)).second)) {
+          RETURN_NOT_OK(CheckDuplicateInsertForFastPathCopy(table, stmt_type, need_transaction));
           while (it != packed_rows.begin()) {
             it -= 2;
             keys_.erase(RowIdentifier(table_relfilenode_id, *it));
@@ -353,6 +384,7 @@ class PgOperationBuffer::Impl {
     } else {
       RowIdentifier row_id(table_relfilenode_id, table.schema(), write_request);
       if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
+        RETURN_NOT_OK(CheckDuplicateInsertForFastPathCopy(table, stmt_type, need_transaction));
         RETURN_NOT_OK(Flush());
         keys_.insert(row_id);
       } else {

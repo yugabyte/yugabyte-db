@@ -18,6 +18,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -32,6 +33,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
@@ -48,6 +50,8 @@ namespace {
 
 YB_DEFINE_ENUM(LocksMapType, (kGranted)(kWaiting));
 
+using OwnerAsString = LWFunction<std::string(void)>;
+
 // TrackedLockEntry is used to keep track of the LockState of the transaction for a given key. Note
 // that a session can acquire multiple lock types repeatedly on a key.
 //
@@ -57,6 +61,10 @@ YB_DEFINE_ENUM(LocksMapType, (kGranted)(kWaiting));
 struct TrackedLockEntry {
   explicit TrackedLockEntry(ObjectLockedBatchEntry& locked_batch_entry_)
       : locked_batch_entry(locked_batch_entry_) {}
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(state, ref_count);
+  }
 
   // ObjectLockedBatchEntry object's memory is managed by ObjectLockManagerImpl.
   ObjectLockedBatchEntry& locked_batch_entry;
@@ -70,6 +78,12 @@ struct TrackedTransactionLockEntry {
       std::unordered_map<SubTransactionId,
                          std::unordered_map<ObjectLockPrefix, TrackedLockEntry>>;
 
+  TrackedTransactionLockEntry() = default;
+
+  TrackedTransactionLockEntry(TrackedTransactionLockEntry&& other)
+      : granted_locks(std::move(other.granted_locks)),
+        waiting_locks(std::move(other.waiting_locks)) {}
+
   mutable std::mutex mutex;
   LockEntryMap granted_locks GUARDED_BY(mutex);
   LockEntryMap waiting_locks GUARDED_BY(mutex);
@@ -78,8 +92,6 @@ struct TrackedTransactionLockEntry {
 } // namespace
 
 struct ObjectLockedBatchEntry {
-  explicit ObjectLockedBatchEntry(ObjectLockManagerImpl* tracker_) : tracker(tracker_) {}
-
   // Taken only for short duration, with no blocking wait.
   mutable std::mutex mutex;
   std::condition_variable cond_var;
@@ -92,18 +104,6 @@ struct ObjectLockedBatchEntry {
   std::atomic<LockState> num_holding{0};
 
   std::atomic<size_t> num_waiters{0};
-
-  ObjectLockManagerImpl* tracker;
-
-  MUST_USE_RESULT bool Lock(
-      const LockBatchEntry<ObjectLockManager>& lock_entry, CoarseTimePoint deadline,
-      const ObjectLockOwner& object_lock_owner, TrackedTransactionLockEntry& transaction_entry);
-
-  void Unlock(const LockBatchEntry<ObjectLockManager>& lock_entry,
-              const ObjectLockOwner& object_lock_owner,
-              TrackedTransactionLockEntry& transaction_entry);
-
-  void DoUnlock(LockState sub);
 
   std::string ToString() const {
     return Format("{ ref_count: $0 lock_state: $1 num_waiters: $2 }",
@@ -126,27 +126,31 @@ class ObjectLockManagerImpl {
   void DumpStatusHtml(std::ostream& out) EXCLUDES(global_mutex_);
 
   void AcquiredLock(const LockBatchEntry<ObjectLockManager>& lock_entry,
-                    const ObjectLockOwner& object_lock_owner,
-                    TrackedTransactionLockEntry& txn) {
-    AcquiredLock(lock_entry, object_lock_owner, txn, LocksMapType::kGranted);
+                    TrackedTransactionLockEntry& txn,
+                    SubTransactionId subtxn_id,
+                    const OwnerAsString& owner_as_string) {
+    AcquiredLock(lock_entry, txn, subtxn_id, owner_as_string, LocksMapType::kGranted);
   }
 
   void ReleasedLock(const LockBatchEntry<ObjectLockManager>& lock_entry,
-                    const ObjectLockOwner& object_lock_owner,
-                    TrackedTransactionLockEntry& txn) {
-    ReleasedLock(lock_entry, object_lock_owner, txn, LocksMapType::kGranted);
+                    TrackedTransactionLockEntry& txn,
+                    SubTransactionId subtxn_id,
+                    const OwnerAsString& owner_as_string) {
+    ReleasedLock(lock_entry, txn, subtxn_id, owner_as_string, LocksMapType::kGranted);
   }
 
   void WaitingOnLock(const LockBatchEntry<ObjectLockManager>& lock_entry,
-                     const ObjectLockOwner& object_lock_owner,
-                     TrackedTransactionLockEntry& txn) {
-    AcquiredLock(lock_entry, object_lock_owner, txn, LocksMapType::kWaiting);
+                     TrackedTransactionLockEntry& txn,
+                     SubTransactionId subtxn_id,
+                     const OwnerAsString& owner_as_string) {
+    AcquiredLock(lock_entry, txn, subtxn_id, owner_as_string, LocksMapType::kWaiting);
   }
 
   void FinishedWaitingOnLock(const LockBatchEntry<ObjectLockManager>& lock_entry,
-                             const ObjectLockOwner& object_lock_owner,
-                             TrackedTransactionLockEntry& txn) {
-    ReleasedLock(lock_entry, object_lock_owner, txn, LocksMapType::kWaiting);
+                             TrackedTransactionLockEntry& txn,
+                             SubTransactionId subtxn_id,
+                             const OwnerAsString& owner_as_string) {
+    ReleasedLock(lock_entry, txn, subtxn_id, owner_as_string, LocksMapType::kWaiting);
   }
 
   size_t TEST_LocksSize(LocksMapType locks_map) const;
@@ -154,19 +158,40 @@ class ObjectLockManagerImpl {
   size_t TEST_WaitingLocksSize() const;
 
  private:
+  MUST_USE_RESULT bool LockSingleEntry(
+      const LockBatchEntry<ObjectLockManager>& lock_entry, CoarseTimePoint deadline,
+      TrackedTransactionLockEntry& transaction_entry, SubTransactionId subtxn_id,
+      const OwnerAsString& owner_as_string) EXCLUDES(global_mutex_);
+
+  MUST_USE_RESULT bool DoLockSingleEntry(
+      const LockBatchEntry<ObjectLockManager>& lock_entry, CoarseTimePoint deadline,
+      TrackedTransactionLockEntry& transaction_entry, SubTransactionId subtxn_id,
+      const OwnerAsString& owner_as_string);
+
+  void DoUnlockAll(TrackedTransactionLockEntry& txn_entry) REQUIRES(global_mutex_);
+
+  void UnlockSingleEntry(
+      const LockBatchEntry<ObjectLockManager>& lock_entry,
+      TrackedTransactionLockEntry& transaction_entry, SubTransactionId subtxn_id,
+      const OwnerAsString& owner_as_string) EXCLUDES(global_mutex_);
+
+  void DoUnlockSingleEntry(
+      ObjectLockedBatchEntry& entry, const ObjectLockPrefix& object_id, LockState sub);
+
   // Make sure the entries exist in the locks_ map and return pointers so we can access
   // them without holding the global lock. Returns a vector with pointers in the same order
   // as the keys in the batch.
   TrackedTransactionLockEntry& Reserve(
-      LockBatchEntries<ObjectLockManager>& batch,
+      std::span<LockBatchEntry<ObjectLockManager>> batch,
       const ObjectLockOwner& object_lock_owner) EXCLUDES(global_mutex_);
+
+  void DoReserve(
+      std::span<LockBatchEntry<ObjectLockManager>> batch,
+      TrackedTransactionLockEntry& transaction_entry) REQUIRES(global_mutex_);
 
   // Update refcounts and maybe collect garbage.
   void Cleanup(const LockBatchEntries<ObjectLockManager>& key_to_intent_type)
       EXCLUDES(global_mutex_);
-
-  TrackedTransactionLockEntry& GetTransactionEntryUnlocked(const ObjectLockOwner& object_lock_owner)
-      REQUIRES(global_mutex_);
 
   LockState GetLockStateForKey(const TrackedTransactionLockEntry& txn, const ObjectLockPrefix& key);
 
@@ -177,12 +202,14 @@ class ObjectLockManagerImpl {
       REQUIRES(global_mutex_);
 
   void AcquiredLock(
-      const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
-      TrackedTransactionLockEntry& txn, LocksMapType locks_map);
+      const LockBatchEntry<ObjectLockManager>& lock_entry, TrackedTransactionLockEntry& txn,
+      SubTransactionId subtxn_id, const OwnerAsString& owner_as_string,
+      LocksMapType locks_map);
 
   void ReleasedLock(
-      const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
-      TrackedTransactionLockEntry& txn, LocksMapType locks_map);
+      const LockBatchEntry<ObjectLockManager>& lock_entry, TrackedTransactionLockEntry& txn,
+      SubTransactionId subtxn_id, const OwnerAsString& owner_as_string,
+      LocksMapType locks_map);
 
   // The global mutex should be taken only for very short duration, with no blocking wait.
   mutable std::mutex global_mutex_;
@@ -198,94 +225,25 @@ class ObjectLockManagerImpl {
       txn_locks_ GUARDED_BY(global_mutex_);
 };
 
-bool ObjectLockedBatchEntry::Lock(
-    const LockBatchEntry<ObjectLockManager>& lock_entry, CoarseTimePoint deadline,
-    const ObjectLockOwner& object_lock_owner, TrackedTransactionLockEntry& transaction_entry) {
-  TRACE_FUNC();
-  auto old_value = num_holding.load(std::memory_order_acquire);
-  auto add = IntentTypeSetAdd(lock_entry.intent_types);
-  auto conflicting_lock_state = IntentTypeSetConflict(lock_entry.intent_types);
-  for (;;) {
-    if (((old_value ^ lock_entry.existing_state) & conflicting_lock_state) == 0) {
-      auto new_value = old_value + add;
-      if (num_holding.compare_exchange_weak(old_value, new_value, std::memory_order_acq_rel)) {
-        tracker->AcquiredLock(lock_entry, object_lock_owner, transaction_entry);
-        return true;
-      }
-      continue;
-    }
-    tracker->WaitingOnLock(lock_entry, object_lock_owner, transaction_entry);
-    num_waiters.fetch_add(1, std::memory_order_release);
-    auto se = ScopeExit([this, &lock_entry, &object_lock_owner, &transaction_entry] {
-      tracker->FinishedWaitingOnLock(lock_entry, object_lock_owner, transaction_entry);
-      num_waiters.fetch_sub(1, std::memory_order_release);
-    });
-    LongOperationTracker long_operation_tracker("Waiting for object lock", 1s);
-    std::unique_lock<std::mutex> lock(mutex);
-    old_value = num_holding.load(std::memory_order_acquire);
-    if (((old_value ^ lock_entry.existing_state) & conflicting_lock_state) != 0) {
-      DEBUG_ONLY_TEST_SYNC_POINT("ObjectLockedBatchEntry::Lock");
-      SCOPED_WAIT_STATUS(LockedBatchEntry_Lock);
-      if (deadline != CoarseTimePoint::max()) {
-        // Note -- even if we wait here, we don't need to be aware for the purposes of deadlock
-        // detection since this eventually succeeds (in which case thread gets to queue) or times
-        // out (thereby eliminating any possibly untraced deadlock).
-        VLOG(4) << "Waiting to acquire lock for entry: " << lock_entry.ToString()
-                << " with num_holding: " << old_value << ", num_waiters: " << num_waiters
-                << " with deadline: " << AsString(deadline.time_since_epoch()) << " .";
-        if (cond_var.wait_until(lock, deadline) == std::cv_status::timeout) {
-          return false;
-        }
-      } else {
-        VLOG(4) << "Waiting to acquire lock for entry: " << lock_entry.ToString()
-                << " with num_holding: " << old_value << ", num_waiters: " << num_waiters
-                << " without deadline.";
-        // TODO(wait-queues): Hitting this branch with wait queues could cause deadlocks if
-        // we never reach the wait queue and register the "waiting for" relationship. We should add
-        // a DCHECK that wait queues are not enabled in this branch, or remove the branch.
-        cond_var.wait(lock);
-      }
-    }
-  }
-}
-
-void ObjectLockedBatchEntry::Unlock(
-    const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
-    TrackedTransactionLockEntry& transaction_entry) {
-  TRACE_FUNC();
-  tracker->ReleasedLock(lock_entry, object_lock_owner, transaction_entry);
-  DoUnlock(IntentTypeSetAdd(lock_entry.intent_types));
-}
-
-void ObjectLockedBatchEntry::DoUnlock(LockState sub) {
-  num_holding.fetch_sub(sub, std::memory_order_acq_rel);
-
-  if (!num_waiters.load(std::memory_order_acquire)) {
-    return;
-  }
-
-  {
-    // Lock/unlock mutex as a barrier for Lock.
-    // So we don't unlock and notify between check and wait in Lock.
-    std::lock_guard lock(mutex);
-  }
-
-  YB_PROFILE(cond_var.notify_all());
-}
-
 bool ObjectLockManagerImpl::Lock(
     LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline,
     const ObjectLockOwner& object_lock_owner) {
   TRACE("Locking a batch of $0 keys", key_to_intent_type.size());
   auto& transaction_entry = Reserve(key_to_intent_type, object_lock_owner);
+  auto owner_as_string = [&object_lock_owner] {
+    return AsString(object_lock_owner);
+  };
   for (auto it = key_to_intent_type.begin(); it != key_to_intent_type.end(); ++it) {
     const auto& intent_types = it->intent_types;
     VLOG(4) << "Locking " << AsString(intent_types) << ": "
             << AsString(it->key);
-    if (!it->locked->Lock(*it, deadline, object_lock_owner, transaction_entry)) {
+    if (!LockSingleEntry(
+        *it, deadline, transaction_entry, object_lock_owner.subtxn_id,
+        make_lw_function(owner_as_string))) {
       while (it != key_to_intent_type.begin()) {
         --it;
-        it->locked->Unlock(*it, object_lock_owner, transaction_entry);
+        UnlockSingleEntry(
+            *it, transaction_entry, object_lock_owner.subtxn_id, make_lw_function(owner_as_string));
       }
       Cleanup(key_to_intent_type);
       return false;
@@ -293,6 +251,70 @@ bool ObjectLockManagerImpl::Lock(
   }
   TRACE("Acquired a lock batch of $0 keys", key_to_intent_type.size());
   return true;
+}
+
+bool ObjectLockManagerImpl::LockSingleEntry(
+    const LockBatchEntry<ObjectLockManager>& lock_entry, CoarseTimePoint deadline,
+    TrackedTransactionLockEntry& transaction_entry, SubTransactionId subtxn_id,
+    const OwnerAsString& owner_as_string) {
+  TRACE_FUNC();
+  bool success = DoLockSingleEntry(
+      lock_entry, deadline, transaction_entry, subtxn_id, owner_as_string);
+  return success;
+}
+
+bool ObjectLockManagerImpl::DoLockSingleEntry(
+    const LockBatchEntry<ObjectLockManager>& lock_entry, CoarseTimePoint deadline,
+    TrackedTransactionLockEntry& transaction_entry, SubTransactionId subtxn_id,
+    const OwnerAsString& owner_as_string) {
+  TRACE_FUNC();
+  auto& entry = *lock_entry.locked;
+  auto old_value = entry.num_holding.load(std::memory_order_acquire);
+  auto add = IntentTypeSetAdd(lock_entry.intent_types);
+  auto conflicting_lock_state = IntentTypeSetConflict(lock_entry.intent_types);
+  for (;;) {
+    if (((old_value ^ lock_entry.existing_state) & conflicting_lock_state) == 0) {
+      auto new_value = old_value + add;
+      if (entry.num_holding.compare_exchange_weak(
+          old_value, new_value, std::memory_order_acq_rel)) {
+        AcquiredLock(lock_entry, transaction_entry, subtxn_id, owner_as_string);
+        return true;
+      }
+      continue;
+    }
+    WaitingOnLock(lock_entry, transaction_entry, subtxn_id, owner_as_string);
+    entry.num_waiters.fetch_add(1, std::memory_order_release);
+    auto se = ScopeExit([&] {
+      FinishedWaitingOnLock(lock_entry, transaction_entry, subtxn_id, owner_as_string);
+      entry.num_waiters.fetch_sub(1, std::memory_order_release);
+    });
+    LongOperationTracker long_operation_tracker("Waiting for object lock", 1s);
+    std::unique_lock lock(entry.mutex);
+    old_value = entry.num_holding.load(std::memory_order_acquire);
+    if (((old_value ^ lock_entry.existing_state) & conflicting_lock_state) != 0) {
+      DEBUG_ONLY_TEST_SYNC_POINT("ObjectLockedBatchEntry::Lock");
+      SCOPED_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
+      if (deadline != CoarseTimePoint::max()) {
+        // Note -- even if we wait here, we don't need to be aware for the purposes of deadlock
+        // detection since this eventually succeeds (in which case thread gets to queue) or times
+        // out (thereby eliminating any possibly untraced deadlock).
+        VLOG(4) << "Waiting to acquire lock for entry: " << lock_entry.ToString()
+                << " with num_holding: " << old_value << ", num_waiters: " << entry.num_waiters
+                << " with deadline: " << AsString(deadline.time_since_epoch()) << " .";
+        if (entry.cond_var.wait_until(lock, deadline) == std::cv_status::timeout) {
+          return false;
+        }
+      } else {
+        VLOG(4) << "Waiting to acquire lock for entry: " << lock_entry.ToString()
+                << " with num_holding: " << old_value << ", num_waiters: " << entry.num_waiters
+                << " without deadline.";
+        // TODO(wait-queues): Hitting this branch with wait queues could cause deadlocks if
+        // we never reach the wait queue and register the "waiting for" relationship. We should add
+        // a DCHECK that wait queues are not enabled in this branch, or remove the branch.
+        entry.cond_var.wait(lock);
+      }
+    }
+  }
 }
 
 void ObjectLockManagerImpl::Unlock(const std::vector<TrackedLockEntryKey>& lock_entry_keys) {
@@ -336,39 +358,76 @@ void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner) {
   }
   TrackedTransactionLockEntry& txn_entry = txn_itr->second;
 
-  {
-    std::lock_guard txn_lock(txn_entry.mutex);
-    if (object_lock_owner.subtxn_id) {
-      // Release locks corresponding to a particular subtxn. Could be invoked when a subtxn is
-      // aborted/rolled back.
-      auto subtxn_itr = txn_entry.granted_locks.find(object_lock_owner.subtxn_id);
-      if (subtxn_itr == txn_entry.granted_locks.end()) {
-        return;
-      }
-      const auto& subtxn_locks = subtxn_itr->second;
-      for (const auto& [object_id, entry] : subtxn_locks) {
-        DoReleaseTrackedLock(object_id, entry);
-      }
-      txn_entry.granted_locks.erase(subtxn_itr);
-      return;
-    }
-
-    // Release all locks tied to txn_id may be on commit/abort.
-    for (const auto& [subtxn_id, subtxn_locks] : txn_entry.granted_locks) {
-      for (const auto& [object_id, entry] : subtxn_locks) {
-        DoReleaseTrackedLock(object_id, entry);
-      }
-    }
+  if (!object_lock_owner.subtxn_id) {
+    DoUnlockAll(txn_entry);
+    txn_locks_.erase(txn_itr);
+    return;
   }
 
-  txn_locks_.erase(txn_itr);
+  std::lock_guard txn_lock(txn_entry.mutex);
+
+  // Release locks corresponding to a particular subtxn. Could be invoked when a subtxn is
+  // aborted/rolled back.
+  auto subtxn_itr = txn_entry.granted_locks.find(object_lock_owner.subtxn_id);
+  if (subtxn_itr == txn_entry.granted_locks.end()) {
+    return;
+  }
+  const auto& subtxn_locks = subtxn_itr->second;
+  for (const auto& [object_id, entry] : subtxn_locks) {
+    DoReleaseTrackedLock(object_id, entry);
+  }
+  txn_entry.granted_locks.erase(subtxn_itr);
+}
+
+void ObjectLockManagerImpl::DoUnlockAll(TrackedTransactionLockEntry& txn_entry) {
+  std::lock_guard txn_lock(txn_entry.mutex);
+  // Release all locks tied to txn_id may be on commit/abort.
+  for (const auto& [subtxn_id, subtxn_locks] : txn_entry.granted_locks) {
+    for (const auto& [object_id, entry] : subtxn_locks) {
+      DoReleaseTrackedLock(object_id, entry);
+    }
+  }
+}
+
+void ObjectLockManagerImpl::UnlockSingleEntry(
+    const LockBatchEntry<ObjectLockManager>& lock_entry,
+    TrackedTransactionLockEntry& transaction_entry, SubTransactionId subtxn_id,
+    const OwnerAsString& owner_as_string) {
+  TRACE_FUNC();
+  auto delta = IntentTypeSetAdd(lock_entry.intent_types);
+  ReleasedLock(lock_entry, transaction_entry, subtxn_id, owner_as_string);
+  DoUnlockSingleEntry(*lock_entry.locked, lock_entry.key, delta);
+}
+
+void ObjectLockManagerImpl::DoUnlockSingleEntry(
+    ObjectLockedBatchEntry& entry, const ObjectLockPrefix& object_id, LockState sub) {
+  entry.num_holding.fetch_sub(sub, std::memory_order_acq_rel);
+
+  if (!entry.num_waiters.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  {
+    // Lock/unlock mutex as a barrier for Lock.
+    // So we don't unlock and notify between check and wait in Lock.
+    std::lock_guard lock(entry.mutex);
+  }
+
+  YB_PROFILE(entry.cond_var.notify_all());
 }
 
 TrackedTransactionLockEntry& ObjectLockManagerImpl::Reserve(
-    LockBatchEntries<ObjectLockManager>& key_to_intent_type,
+    std::span<LockBatchEntry<ObjectLockManager>> key_to_intent_type,
     const ObjectLockOwner& object_lock_owner) {
   std::lock_guard lock(global_mutex_);
-  auto& transaction_entry = GetTransactionEntryUnlocked(object_lock_owner);
+  auto& transaction_entry = txn_locks_[object_lock_owner.txn_id];
+  DoReserve(key_to_intent_type, transaction_entry);
+  return transaction_entry;
+}
+
+void ObjectLockManagerImpl::DoReserve(
+    std::span<LockBatchEntry<ObjectLockManager>> key_to_intent_type,
+    TrackedTransactionLockEntry& transaction_entry) {
   for (auto& key_and_intent_type : key_to_intent_type) {
     auto& value = locks_[key_and_intent_type.key];
     if (!value) {
@@ -376,7 +435,7 @@ TrackedTransactionLockEntry& ObjectLockManagerImpl::Reserve(
         value = free_lock_entries_.back();
         free_lock_entries_.pop_back();
       } else {
-        lock_entries_.emplace_back(std::make_unique<ObjectLockedBatchEntry>(this));
+        lock_entries_.emplace_back(std::make_unique<ObjectLockedBatchEntry>());
         value = lock_entries_.back().get();
       }
     }
@@ -386,7 +445,6 @@ TrackedTransactionLockEntry& ObjectLockManagerImpl::Reserve(
     key_and_intent_type.existing_state =
         GetLockStateForKey(transaction_entry, key_and_intent_type.key);
   }
-  return transaction_entry;
 }
 
 void ObjectLockManagerImpl::Cleanup(const LockBatchEntries<ObjectLockManager>& key_to_intent_type) {
@@ -397,11 +455,6 @@ void ObjectLockManagerImpl::Cleanup(const LockBatchEntries<ObjectLockManager>& k
       free_lock_entries_.push_back(item.locked);
     }
   }
-}
-
-TrackedTransactionLockEntry& ObjectLockManagerImpl::GetTransactionEntryUnlocked(
-    const ObjectLockOwner& object_lock_owner) {
-  return txn_locks_[object_lock_owner.txn_id];
 }
 
 LockState ObjectLockManagerImpl::GetLockStateForKey(
@@ -443,7 +496,7 @@ void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
         <th>Lock Owner</th>
         <th>Object Id</th>
         <th>Num Holders</th>
-      </tr>\n)";
+      </tr>)";
   for (const auto& [txn, txn_entry] : txn_locks_) {
     std::lock_guard txn_lock(txn_entry.mutex);
     const auto& locks =
@@ -490,7 +543,8 @@ void ObjectLockManagerImpl::DoReleaseTrackedLock(
   // could request a conflicting lock mode. And since conflicts with self should be ignored, we
   // need to signal the cond variable on every release, else the lock release call from the other
   // transaction wouldn't unblock the waiter.
-  entry.locked_batch_entry.DoUnlock(entry.state);
+  DoUnlockSingleEntry(entry.locked_batch_entry, object_id, entry.state);
+
   entry.locked_batch_entry.ref_count -= entry.ref_count;
   if (entry.locked_batch_entry.ref_count == 0) {
     locks_.erase(object_id);
@@ -499,16 +553,17 @@ void ObjectLockManagerImpl::DoReleaseTrackedLock(
 }
 
 void ObjectLockManagerImpl::AcquiredLock(
-    const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
-    TrackedTransactionLockEntry& txn, LocksMapType locks_map) {
+    const LockBatchEntry<ObjectLockManager>& lock_entry, TrackedTransactionLockEntry& txn,
+    SubTransactionId subtxn_id, const OwnerAsString& owner_as_string,
+    LocksMapType locks_map) {
   TRACE_FUNC();
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
-                    << ", object_lock_owner: " << AsString(object_lock_owner);
+                    << ", owner: " << owner_as_string();
   auto delta = IntentTypeSetAdd(lock_entry.intent_types);
 
   std::lock_guard txn_lock(txn.mutex);
   auto& locks = locks_map == LocksMapType::kGranted ? txn.granted_locks : txn.waiting_locks;
-  auto& subtxn_locks = locks[object_lock_owner.subtxn_id];
+  auto& subtxn_locks = locks[subtxn_id];
   auto it = subtxn_locks.find(lock_entry.key);
   if (it == subtxn_locks.end()) {
     it = subtxn_locks.emplace(lock_entry.key, TrackedLockEntry(*lock_entry.locked)).first;
@@ -518,25 +573,26 @@ void ObjectLockManagerImpl::AcquiredLock(
 }
 
 void ObjectLockManagerImpl::ReleasedLock(
-    const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
-    TrackedTransactionLockEntry& txn, LocksMapType locks_map) {
+    const LockBatchEntry<ObjectLockManager>& lock_entry, TrackedTransactionLockEntry& txn,
+    SubTransactionId subtxn_id, const OwnerAsString& owner_as_string,
+    LocksMapType locks_map) {
   TRACE_FUNC();
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
-                    << ", object_lock_owner: " << AsString(object_lock_owner);
+                    << ", owner: " << owner_as_string();
   auto delta = IntentTypeSetAdd(lock_entry.intent_types);
 
   std::lock_guard txn_lock(txn.mutex);
   auto& locks = locks_map == LocksMapType::kGranted ? txn.granted_locks : txn.waiting_locks;
-  auto subtxn_itr = locks.find(object_lock_owner.subtxn_id);
+  auto subtxn_itr = locks.find(subtxn_id);
   if (subtxn_itr == locks.end()) {
-    LOG_WITH_FUNC(DFATAL) << "No locks found for " << AsString(object_lock_owner)
+    LOG_WITH_FUNC(DFATAL) << "No locks found for " << owner_as_string()
                           << ", cannot release lock on " << AsString(lock_entry.key);
     return;
   }
   auto& subtxn_locks = subtxn_itr->second;
   auto it = subtxn_locks.find(lock_entry.key);
   if (it == subtxn_locks.end()) {
-    LOG_WITH_FUNC(DFATAL) << "No lock found for " << AsString(object_lock_owner) << " on "
+    LOG_WITH_FUNC(DFATAL) << "No lock found for " << owner_as_string() << " on "
                           << AsString(lock_entry.key) << ", cannot release";
   }
   auto& entry = it->second;
@@ -556,8 +612,8 @@ ObjectLockManager::ObjectLockManager() : impl_(std::make_unique<ObjectLockManage
 ObjectLockManager::~ObjectLockManager() = default;
 
 bool ObjectLockManager::Lock(
-    const ObjectLockOwner& object_lock_owner,
-    LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline) {
+    LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline,
+    const ObjectLockOwner& object_lock_owner) {
   return impl_->Lock(key_to_intent_type, deadline, object_lock_owner);
 }
 

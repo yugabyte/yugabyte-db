@@ -75,8 +75,6 @@ import org.yb.util.BuildTypeUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
 import org.yb.util.SystemUtil;
 import org.yb.util.ThrowingRunnable;
-import org.yb.util.YBBackupException;
-import org.yb.util.YBBackupUtil;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -120,22 +118,26 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String DEADLOCK_DETECTED_PSQL_STATE = "40P01";
 
   // Metric names.
-  protected static final String METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
-  protected static final String SELECT_STMT_METRIC = METRIC_PREFIX + "SelectStmt";
-  protected static final String INSERT_STMT_METRIC = METRIC_PREFIX + "InsertStmt";
-  protected static final String DELETE_STMT_METRIC = METRIC_PREFIX + "DeleteStmt";
-  protected static final String UPDATE_STMT_METRIC = METRIC_PREFIX + "UpdateStmt";
-  protected static final String BEGIN_STMT_METRIC = METRIC_PREFIX + "BeginStmt";
-  protected static final String COMMIT_STMT_METRIC = METRIC_PREFIX + "CommitStmt";
-  protected static final String ROLLBACK_STMT_METRIC = METRIC_PREFIX + "RollbackStmt";
-  protected static final String OTHER_STMT_METRIC = METRIC_PREFIX + "OtherStmts";
-  protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC_DEPRECATED = METRIC_PREFIX
+  protected static final String LAT_METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
+  protected static final String METRIC_PREFIX = "yb_ysqlserver_";
+  protected static final String SELECT_STMT_METRIC = LAT_METRIC_PREFIX + "SelectStmt";
+  protected static final String INSERT_STMT_METRIC = LAT_METRIC_PREFIX + "InsertStmt";
+  protected static final String DELETE_STMT_METRIC = LAT_METRIC_PREFIX + "DeleteStmt";
+  protected static final String UPDATE_STMT_METRIC = LAT_METRIC_PREFIX + "UpdateStmt";
+  protected static final String BEGIN_STMT_METRIC = LAT_METRIC_PREFIX + "BeginStmt";
+  protected static final String COMMIT_STMT_METRIC = LAT_METRIC_PREFIX + "CommitStmt";
+  protected static final String ROLLBACK_STMT_METRIC = LAT_METRIC_PREFIX + "RollbackStmt";
+  protected static final String OTHER_STMT_METRIC = LAT_METRIC_PREFIX + "OtherStmts";
+  protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC_DEPRECATED = LAT_METRIC_PREFIX
       + "Single_Shard_Transactions";
   protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC =
-      METRIC_PREFIX + "SingleShardTransactions";
-  protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
-  protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
-  protected static final String CATALOG_CACHE_MISSES_METRICS = METRIC_PREFIX + "CatalogCacheMisses";
+      LAT_METRIC_PREFIX + "SingleShardTransactions";
+  protected static final String TRANSACTIONS_METRIC = LAT_METRIC_PREFIX + "Transactions";
+  protected static final String AGGREGATE_PUSHDOWNS_METRIC =
+    LAT_METRIC_PREFIX + "AggregatePushdowns";
+  // The prefix of the below metrics is now METRIC_PREFIX instead
+  protected static final String CATALOG_CACHE_MISSES_METRICS_DEPRECATED =
+    LAT_METRIC_PREFIX + "CatalogCacheMisses";
 
   // Some reasons why the test should not be run with connection manager
   protected static final String UNIQUE_PHYSICAL_CONNS_NEEDED =
@@ -183,6 +185,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "Skipping this test with Connection Manager enabled. Connection Manager replays session " +
         "variables at the beginning of transaction boundaries, causing erroneous results in " +
         "the test, leading to failure.";
+
+  protected static final String GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT =
+      "Skipping this test with Connection Manager enabled. Connection Manager replays " +
+        "session variables at the transaction boundaries, which causes an extra statement to " +
+        "appear in stats or monitoring/observability methods. Since the client is unaware of " +
+        "this statement, the test fails.";
+
+  protected static final String DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY =
+      "Skipping this test with Connection Manager enabled. In pg_stat_activity table, the " +
+        "backend type column shows 'yb-conn-mgr worker connection' instead of 'client-backend'." +
+        "Additionally, there is no guarantee that each logical connection will create a unique " +
+        "backend with Connection Manager, so the expected number of rows in the table may not " +
+        "match the number of connections created. Furthermore, the query column in the table " +
+        "typically displays a RESET ALL statement if the backend is used to execute any query " +
+        "with Connection Manager. Since this test heavily relies on the output of " +
+        "pg_stat_activity, we are skipping it.";
 
   protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
       "Skipping this test with Connection Manager enabled. The connections may not be in the " +
@@ -371,13 +389,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
         warmupMode.toString().toLowerCase());
     }
-  }
-
-  @Before
-  public void initYBBackupUtil() throws Exception {
-    YBBackupUtil.setMasterAddresses(masterAddresses);
-    YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
-    YBBackupUtil.maybeStartYbControllers(miniCluster);
   }
 
   @Before
@@ -901,6 +912,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       assertEquals(obj.get("type").getAsString(), "server");
       assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
       Metrics.YSQLMetric metric = new Metrics(obj).getYSQLMetric(metricName);
+      if (metric == null)
+        throw new RuntimeException("Could not find metric for " + metricName);
       value.count += metric.count;
       value.value += metric.sum;
       value.rows += metric.rows;
@@ -959,13 +972,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return getServerMetric(getTSMetricSources(), metricName);
   }
 
-  protected List<String> getTabletsForTable(
+  protected List<String> getTabletsForYsqlTable(
     String database, String tableName) throws Exception {
-    try {
-      return YBBackupUtil.getTabletsForTable("ysql." + database, tableName);
-    } catch (YBBackupException e) {
-      return new ArrayList<>();
-    }
+    return BaseMiniClusterTest.getTabletsForTable("ysql." + database, tableName);
   }
 
   protected String getOwnerForTable(Statement stmt, String tableName) throws Exception {

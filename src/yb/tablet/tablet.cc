@@ -289,6 +289,9 @@ DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
 DEFINE_test_flag(bool, skip_remove_intent, false,
                  "If true, remove intent will be skipped");
 
+DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
+                 "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
+
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
@@ -1202,23 +1205,18 @@ void Tablet::CleanupIntentFiles() {
 
 HybridTime Tablet::GetMinStartHTRunningTxnsForCDCProducer() const {
   HybridTime min_start_ht_running_txns = HybridTime::kInvalid;
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_load_txn_for_cdc)) {
+    LOG_WITH_FUNC(INFO) << "Returning " << min_start_ht_running_txns
+                        << " as TEST_simulate_load_txn is true";
+    return min_start_ht_running_txns;
+  }
+
   if (transaction_participant()) {
     min_start_ht_running_txns = transaction_participant()->MinRunningHybridTime();
     VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from txn participant: "
                         << min_start_ht_running_txns;
   }
 
-  if (min_start_ht_running_txns.is_valid() && min_start_ht_running_txns != HybridTime::kMax) {
-    VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns after parsing: " << min_start_ht_running_txns;
-    return min_start_ht_running_txns;
-  }
-
-  // For the following two cases, return kInvalid so that CDC Producer uses leader safe time for
-  // streaming.
-  // 1. If loading of transactions is not yet completed, identified by start_ht being kInvalid.
-  // 2. If there are no running transactions, identified by start_ht being kMax.
-  min_start_ht_running_txns = HybridTime::kInvalid;
-  VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns after parsing: " << min_start_ht_running_txns;
   return min_start_ht_running_txns;
 }
 
@@ -1709,7 +1707,8 @@ Status Tablet::WriteTransactionalBatch(
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
   auto prepare_batch_data = VERIFY_RESULT(transaction_participant()->PrepareBatchData(
-      transaction_id, batch_idx, &encoded_replicated_batch_idx_set));
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set,
+      !put_batch.write_pairs().empty()));
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.

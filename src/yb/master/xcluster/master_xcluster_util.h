@@ -61,7 +61,7 @@ bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info);
 YB_DEFINE_ENUM(XClusterDDLReplicationRole, (kSource)(kTarget));
 
 Status SetupDDLReplicationExtension(
-    CatalogManagerIf& catalog_manager, const std::string& database_name,
+    CatalogManagerIf& catalog_manager, const NamespaceId& namespace_id,
     XClusterDDLReplicationRole role, StdStatusCallback callback);
 
 Status DropDDLReplicationExtensionIfExists(

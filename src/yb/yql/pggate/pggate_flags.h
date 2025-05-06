@@ -28,6 +28,7 @@ DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 DECLARE_int64(TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_int32(ysql_output_buffer_size);
+DECLARE_int32(ysql_output_flush_size);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode);

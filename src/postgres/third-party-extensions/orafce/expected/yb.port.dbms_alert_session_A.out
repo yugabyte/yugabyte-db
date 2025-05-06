@@ -1,7 +1,4 @@
 \set ECHO none
-ERROR:  advisory locks feature is currently in preview
-HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_locks to true and add it to the list of allowed preview flags i.e. GFlag allowed_preview_flags_csv. If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.
-CONTEXT:  PL/pgSQL function inline_code_block line 4 at IF
 SELECT pg_sleep(3);
  pg_sleep 
 ----------

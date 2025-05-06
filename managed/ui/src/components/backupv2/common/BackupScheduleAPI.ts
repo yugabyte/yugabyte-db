@@ -37,16 +37,16 @@ export const getScheduledBackupList = (pageno: number, universeUUID: string) => 
 };
 
 export const editBackupSchedule = (
-  values: Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>
+  values: Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>,
+  currentUniverseUUID: string
 ) => {
   const cUUID = localStorage.getItem('customerId');
 
   if (values['cronExpression']) {
     delete values['frequency'];
   }
-
   return axios.put<IBackupSchedule[]>(
-    `${ROOT_URL}/customers/${cUUID}/schedules/${values['scheduleUUID']}`,
+    `${ROOT_URL}/customers/${cUUID}/universes/${currentUniverseUUID}/schedules/${values['scheduleUUID']}/edit_backup_schedule_async`,
     values
   );
 };

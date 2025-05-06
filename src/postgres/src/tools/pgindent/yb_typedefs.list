@@ -25,6 +25,7 @@ YBTableSpaceOpts
 YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
+YbAdditionalNegCacheIds
 YbAsh
 YbAshNestedQueryIdStack
 YbAshTrackNestedQueries
@@ -57,7 +58,6 @@ YbCatalogVersionType
 YbChangedSessionParametersList
 YbChildScan
 YbChildScanData
-YbClusterReplicationRole
 YbConcurrencyContext
 YbCounters
 YbCreateProfileStmt
@@ -204,6 +204,7 @@ YbUpdateEntity
 YbUpdateRelationCacheState
 YbValidateOkeysState
 YbVirtualWalRecord
+YbXClusterReplicationRole
 YbYsqlConnMgrShmemHeader
 YbcAdvisoryLockId
 YbcAdvisoryLockMode

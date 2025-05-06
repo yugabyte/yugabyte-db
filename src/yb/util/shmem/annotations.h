@@ -17,6 +17,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/util/debug.h"
 #include "yb/util/logging.h"
 
@@ -27,6 +29,22 @@ bool IsChildProcess();
 void MarkChildProcess();
 
 #define DCHECK_PARENT_PROCESS() DCHECK(!IsChildProcess()) << "Access from child process not allowed"
+
+class [[nodiscard]] SCOPED_CAPABILITY ParentProcessGuard { // NOLINT(whitespace/braces)
+ private:
+  struct CAPABILITY("parent process") ParentProcessCapability { };
+
+ public:
+  static ParentProcessCapability capability;
+
+  ParentProcessGuard() ACQUIRE_SHARED(capability) {
+    DCHECK_PARENT_PROCESS();
+  }
+
+  ~ParentProcessGuard() RELEASE() {}
+};
+
+#define PARENT_PROCESS_ONLY REQUIRES_SHARED(ParentProcessGuard::capability)
 
 template<typename T, bool AllowChildRead>
 class SharedMemoryAnnotatedObject {
@@ -39,29 +57,22 @@ class SharedMemoryAnnotatedObject {
   SharedMemoryAnnotatedObject(Args... args) // NOLINT(runtime/explicit)
       : object_(std::forward<Args>(args)...) {}
 
-  inline T* operator->() ATTRIBUTE_ALWAYS_INLINE { return &operator*(); }
-  inline const T* operator->() const ATTRIBUTE_ALWAYS_INLINE { return &operator*(); }
-
-  inline T& operator*() ATTRIBUTE_ALWAYS_INLINE {
-    DCHECK_PARENT_PROCESS();
+  inline T& Get() ATTRIBUTE_ALWAYS_INLINE PARENT_PROCESS_ONLY {
     return object_;
   }
 
-  inline const T& operator*() const ATTRIBUTE_ALWAYS_INLINE {
-    if constexpr (kIsDebug && !AllowChildRead) {
-      DCHECK_PARENT_PROCESS();
-    }
+  inline const T& Get()
+      const requires(!AllowChildRead) ATTRIBUTE_ALWAYS_INLINE PARENT_PROCESS_ONLY {
     return object_;
   }
 
-  inline operator T() const ATTRIBUTE_ALWAYS_INLINE {
-    return operator*();
+  inline const T& Get() const requires(AllowChildRead) ATTRIBUTE_ALWAYS_INLINE {
+    return object_;
   }
 
-  inline void SharedMemoryStore(const T& value) ATTRIBUTE_ALWAYS_INLINE {
+  inline void SharedMemoryStore(const T& value) ATTRIBUTE_ALWAYS_INLINE PARENT_PROCESS_ONLY {
     // This is only used on parent process, so no special handling needed. This is provided
     // to provide a uniform interface with ChildProcessRW.
-    DCHECK_PARENT_PROCESS();
     object_ = value;
   }
 
@@ -93,7 +104,7 @@ class ChildProcessRW {
  public:
   ChildProcessRW() = default;
 
-  ChildProcessRW(const ChildProcessRW& other) : object_(*other) {}
+  ChildProcessRW(const ChildProcessRW& other) : object_(other.Get()) {}
 
   // Not explicit in order to allow various constructs that work with unannotated fields, like
   // int_field_ = std::exchange(other.int_field_, 0).
@@ -102,18 +113,12 @@ class ChildProcessRW {
       : object_(std::forward<Args>(args)...) {}
 
   inline ChildProcessRW& operator=(const ChildProcessRW& other) ATTRIBUTE_ALWAYS_INLINE {
-    SharedMemoryStore(*other);
+    SharedMemoryStore(other.Get());
     return *this;
   }
 
-  inline T operator->() const ATTRIBUTE_ALWAYS_INLINE { return &operator*(); }
-
-  inline T operator*() const ATTRIBUTE_ALWAYS_INLINE {
+  inline T Get() const ATTRIBUTE_ALWAYS_INLINE {
     return object_.load(std::memory_order_relaxed);
-  }
-
-  inline operator T() const ATTRIBUTE_ALWAYS_INLINE {
-    return operator*();
   }
 
   inline void SharedMemoryStore(T value) ATTRIBUTE_ALWAYS_INLINE {
@@ -138,8 +143,8 @@ std::ostream& operator<<(std::ostream& os, const ChildProcessRW<T>& obj) {
 }
 
 // Stores to shared memory from code callable by PG processes should use these helpers. All stores
-// to shared memory should be either annotated with this, or be loaded in a function with
-// DCHECK_PARENT_PROCESS().
+// to shared memory should be either annotated with this, or be loaded in a function annotated with
+// PARENT_PROCESS_ONLY.
 //
 // These helpers add compiler barriers to avoid compiler reordering, which is dangerous if the
 // process may crash at any point, e.g. for a vector's emplace_back:
@@ -167,8 +172,8 @@ std::ostream& operator<<(std::ostream& os, const ChildProcessRW<T>& obj) {
 #define SHARED_MEMORY_STORE(destination, value) (destination).SharedMemoryStore(value)
 
 // Loads don't require any special handling, but this macro is provided to hide
-// the use of operator*() everywhere for the ChildProcess*<> wrappers, and to force use of
+// the use of Get() everywhere for the ChildProcess*<> wrappers, and to force use of
 // const overloads (since non-const access of ChildProcess*<> wrappers is treated as a write).
-#define SHARED_MEMORY_LOAD(value) (*std::as_const(value))
+#define SHARED_MEMORY_LOAD(value) std::as_const(value).Get()
 
 } // namespace yb

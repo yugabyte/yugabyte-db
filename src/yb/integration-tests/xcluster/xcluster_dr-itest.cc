@@ -36,6 +36,8 @@
 using std::string;
 using namespace std::chrono_literals;
 
+DECLARE_bool(import_snapshot_using_table_name);
+
 namespace yb {
 using OK = Status::OK;
 
@@ -70,7 +72,12 @@ class XClusterDRTest : public XClusterYsqlTestBase {
 
     consumer_snapshot_util_.SetProxy(&consumer_client()->proxy_cache());
     consumer_snapshot_util_.SetCluster(consumer_cluster());
-
+    // Use table name at import snapshot phase instead of relfilenode. This is because the DR tests
+    // are restoring over an existing database by dropping and recreating the table. This gives a
+    // different relfilenode in backup and restore side which break import snapshot.
+    // These tests should be fixed to drop the target database and follow the typical backup/restore
+    // flow.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_import_snapshot_using_table_name) = true;
     // Setup PITR on both clusters. This is required to restore the clusters to the xCluster safe
     // time on failover. Even though only target needs PITR, we setup on both clusters to keep them
     // consistent.
@@ -207,8 +214,8 @@ class XClusterDRTest : public XClusterYsqlTestBase {
         LOG(INFO) << "Copying snapshot from " << source_path << " to " << target_path;
 
         RETURN_NOT_OK(CopyDirectory(
-            target_tservers->fs_manager().env(), source_path, target_path, UseHardLinks::kFalse,
-            CreateIfMissing::kTrue, RecursiveCopy::kTrue));
+            target_tservers->fs_manager().env(), source_path, target_path,
+            CopyOption::kCreateIfMissing, CopyOption::kRecursive));
       }
     }
 

@@ -142,19 +142,15 @@ Status DocPgPrepareExpr(const std::string& expr_str,
                         YbgPreparedExpr *expr,
                         DocPgVarRef *ret_type,
                         const std::optional<int> version) {
+  int yb_expression_version = version.value_or(YbgGetPgVersion());
   char *expr_cstring = const_cast<char *>(expr_str.c_str());
-  VLOG(1) << "Deserialize expr with version " << version.value_or(YbgGetPgVersion())
-          << ": " << expr_cstring;
+  VLOG(1) << "Deserialize expr with version " << yb_expression_version << ": " << expr_cstring;
 
-  switch (version.value_or(YbgGetPgVersion())) {
-    case 15:
-    case 11:
-      // TODO(#24730): Allow for PG11 or PG15 serializations here, once we're able to handle them.
-      PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr));
-      break;
-    default:
-      return STATUS_FORMAT(InternalError, "Unsupported expression version: $0", version);
+  if (yb_expression_version != 11 && yb_expression_version != 15) {
+    return STATUS_FORMAT(InternalError, "Unsupported expression version: $0", version);
   }
+
+  PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr, yb_expression_version));
 
   if (ret_type != nullptr) {
     int32_t typid;

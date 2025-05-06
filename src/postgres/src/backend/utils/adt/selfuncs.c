@@ -3309,8 +3309,6 @@ add_unique_group_var(PlannerInfo *root, List *varinfos,
 	return varinfos;
 }
 
-
-
 /*
  * estimate_num_groups		- Estimate number of groups in a grouped query
  *
@@ -6992,6 +6990,7 @@ add_predicate_to_index_quals(IndexOptInfo *index, List *indexQuals)
 	}
 	return list_concat(predExtraQuals, indexQuals);
 }
+
 
 void
 btcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,

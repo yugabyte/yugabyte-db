@@ -690,6 +690,7 @@ pushJsonbValueScalar(JsonbParseState **pstate, JsonbIteratorToken seq,
 			break;
 		case WJB_END_OBJECT:
 			uniqueifyJsonbObject(&(*pstate)->contVal);
+			/* fall through! */
 			yb_switch_fallthrough();
 		case WJB_END_ARRAY:
 			/* Steps here common to WJB_END_OBJECT case */

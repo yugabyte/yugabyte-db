@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.helpers;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
@@ -654,6 +655,11 @@ public enum TaskType {
       CustomerTask.TaskType.CloneNamespace,
       CustomerTask.TargetType.Universe),
 
+  UpdateOOMServiceState(
+      UpdateOOMServiceState.class,
+      CustomerTask.TaskType.UpdateOOMServiceState,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -1167,7 +1173,12 @@ public enum TaskType {
 
   SetupYNP(com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP.class),
 
-  YNPProvisioning(com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning.class);
+  YNPProvisioning(com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning.class),
+
+  ConfigureOOMServiceOnNode(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode.class),
+
+  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class);
 
   private final Class<? extends ITask> taskClass;
 

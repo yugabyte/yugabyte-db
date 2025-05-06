@@ -411,6 +411,7 @@ public class CloudProviderHandler {
     Provider.UsabilityState state = provider.getUsabilityState();
     try {
       provider.setUsabilityState(Provider.UsabilityState.UPDATING);
+      provider.setUpdateSource(Provider.UpdateSource.USER);
       provider.save();
       editProviderReq.setVersion(provider.getVersion());
       CloudProviderEdit.Params taskParams = new CloudProviderEdit.Params();

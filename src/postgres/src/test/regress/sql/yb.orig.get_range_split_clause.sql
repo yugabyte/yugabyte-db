@@ -512,9 +512,28 @@ DROP INDEX test_idx;
 DROP TABLE test_tbl;
 
 -- Test partitioned table
--- Although using SPLIT AT VALUES clause with a partitioned table doesn't make
--- sense, we want to make sure yb_get_range_split_clause dones't break on a
--- partitioned table.
 CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a) SPLIT AT VALUES ((5), (10));
 SELECT yb_get_range_split_clause('test_part'::regclass);
+
+CREATE TABLE IF NOT EXISTS test_part2 (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a) SPLIT AT VALUES ((5), (10));
+SELECT yb_get_range_split_clause('test_part2'::regclass);
+DROP TABLE test_part2;
+
+CREATE TYPE test_type AS (a INT, b INT);
+CREATE TABLE test_part3 OF test_type (PRIMARY KEY(a ASC)) PARTITION BY RANGE (a) SPLIT AT VALUES ((5), (10));
+SELECT yb_get_range_split_clause('test_part3'::regclass);
+DROP TABLE test_part3;
+
+CREATE TABLE IF NOT EXISTS test_part4 OF test_type (PRIMARY KEY(a ASC)) PARTITION BY RANGE (a) SPLIT AT VALUES ((5), (10));
+SELECT yb_get_range_split_clause('test_part4'::regclass);
+DROP TABLE test_part4;
+DROP TYPE test_type;
+
+CREATE TABLE test_part5 PARTITION OF test_part FOR VALUES FROM (1) to (100) PARTITION BY RANGE (a) SPLIT AT VALUES ((5), (10));
+SELECT yb_get_range_split_clause('test_part5'::regclass);
+DROP TABLE test_part5;
+
+CREATE TABLE IF NOT EXISTS test_part6 PARTITION OF test_part FOR VALUES FROM (101) to (200) PARTITION BY RANGE (a) SPLIT AT VALUES ((105), (110));
+SELECT yb_get_range_split_clause('test_part6'::regclass);
+DROP TABLE test_part6;
 DROP TABLE test_part;

@@ -59,7 +59,8 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
       result = AwsEARServiceUtil.generateDataKey(configUUID, cmkId, algorithm, keySize);
     } catch (Exception e) {
       LOG.error(
-          String.format("Error generating universe key for universe %s", universeUUID.toString()));
+          String.format("Error generating universe key for universe %s: ", universeUUID.toString()),
+          e);
     }
     return result;
   }

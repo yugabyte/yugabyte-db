@@ -126,10 +126,13 @@ class PostApplyMetadataWriter : public rocksdb::DirectWriter {
   std::span<const PostApplyTransactionMetadata> metadatas_;
 };
 
+YB_STRONGLY_TYPED_BOOL(IgnoreMaxApplyLimit);
+
 // Base class used by IntentsWriter to handle found intents.
 class IntentsWriterContext {
  public:
-  explicit IntentsWriterContext(const TransactionId& transaction_id);
+  IntentsWriterContext(
+      const TransactionId& transaction_id, IgnoreMaxApplyLimit ignore_max_apply_limit);
 
   virtual ~IntentsWriterContext() = default;
 
@@ -296,7 +299,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
 
 class RemoveIntentsContext : public IntentsWriterContext {
  public:
-  explicit RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason);
+  RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason);
 
   Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,

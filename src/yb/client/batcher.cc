@@ -356,6 +356,7 @@ void Batcher::TabletLookupFinished(
 
 void Batcher::TransactionReady(ash::WaitStateInfoPtr wait_state, const Status& status) {
   ADOPT_WAIT_STATE(wait_state);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   if (status.ok()) {
     ExecuteOperations(Initial::kFalse);
   } else {

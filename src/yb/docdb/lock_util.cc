@@ -73,21 +73,18 @@ uint16_t LockStateIntentCount(LockState num_waiting, dockv::IntentType intent_ty
       & kFirstIntentTypeMask;
 }
 
-Status FormSharedLock(
-    ObjectLockPrefix&& key, dockv::IntentTypeSet intent_types,
-    LockBatchEntries<ObjectLockManager>* keys_locked) {
+Result<LockBatchEntry<ObjectLockManager>> FormSharedLock(
+    ObjectLockPrefix&& key, dockv::IntentTypeSet intent_types) {
   SCHECK(!intent_types.None(), InternalError, "Empty intent types is not allowed");
-  keys_locked->push_back(
-      LockBatchEntry<ObjectLockManager> {.key = std::move(key), .intent_types = intent_types});
-  return Status::OK();
+  return LockBatchEntry<ObjectLockManager>{.key = std::move(key), .intent_types = intent_types};
 }
 
 Status AddObjectsToLock(
     LockBatchEntries<ObjectLockManager>& lock_batch, uint64_t database_oid, uint64_t object_oid,
     TableLockType lock_type) {
   for (const auto& [lock_key, intent_types] : GetEntriesForLockType(lock_type)) {
-    RETURN_NOT_OK(FormSharedLock(
-        ObjectLockPrefix(database_oid, object_oid, lock_key), intent_types, &lock_batch));
+    lock_batch.push_back(VERIFY_RESULT(FormSharedLock(
+        ObjectLockPrefix(database_oid, object_oid, lock_key), intent_types)));
   }
   return Status::OK();
 }
@@ -133,15 +130,15 @@ std::string LockStateDebugString(LockState state) {
 // 1. 'ROW_SHARE' lock mode on object would lead to the following keys
 //    [<object/object hash/other prefix> kWeakObjectLock]   [kStrongRead]
 // 2. 'EXCLUSIVE' lock mode on the same object would lead to the following keys
-//    [<object/object hash/other prefix> kWeakObjectLock]   [kWeakWrite]
+//    [<object/object hash/other prefix> kWeakObjectLock]   [kStrongRead, kWeakWrite]
 //    [<object/object hash/other prefix> kStrongObjectLock] [kStrongRead, kStrongWrite]
 //
 // When checking conflicts for the same key, '[<object/object hash/other prefix> kWeakObjectLock]'
-// in this case, we see that the intents requested are [kStrongRead] and [kWeakWrite] for modes
-// 'ROW_SHARE' and 'EXCLUSIVE' respectively. And since the above intenttype sets conflict among
-// themselves, we successfully detect the conflict.
-const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForLockType(
-    TableLockType lock) {
+// in this case, we see that the intents requested are [kStrongRead] and [kStrongRead, kWeakWrite]
+// for modes 'ROW_SHARE' and 'EXCLUSIVE' respectively. And since the above intenttype sets conflict
+// among themselves, we successfully detect the conflict.
+std::span<const std::pair<KeyEntryType, dockv::IntentTypeSet>>
+GetEntriesForLockType(TableLockType lock) {
   static const std::array<
       std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>,
       TableLockType_ARRAYSIZE> lock_entries = {{
@@ -157,10 +154,12 @@ const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForL
     }},
     // ROW_EXCLUSIVE
     {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakRead}}
     }},
     // SHARE_UPDATE_EXCLUSIVE
     {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}
@@ -168,18 +167,22 @@ const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForL
     }},
     // SHARE
     {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongWrite}}
     }},
     // SHARE_ROW_EXCLUSIVE
     {{
+      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {
         KeyEntryType::kStrongObjectLock,
-        dockv::IntentTypeSet {dockv::IntentType::kWeakRead, dockv::IntentType::kStrongWrite}
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
       }
     }},
     // EXCLUSIVE
     {{
-      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakWrite}},
+      {
+        KeyEntryType::kWeakObjectLock,
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
@@ -187,7 +190,9 @@ const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForL
     }},
     // ACCESS_EXCLUSIVE
     {{
-      {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongWrite}},
+      {
+        KeyEntryType::kWeakObjectLock,
+        dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}

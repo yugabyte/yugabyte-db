@@ -717,7 +717,7 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 	return ReadBufferExtended(reln, MAIN_FORKNUM, blockNum, RBM_NORMAL, NULL);
 }
 
-/* Only here for sequence support */
+/* YB: Only here for sequence support */
 extern HeapTuple YBReadSequenceTuple(Relation seqrel);
 
 /*
@@ -778,7 +778,7 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot access temporary tables of other sessions")));
 
-	/* Special handling for sequences */
+	/* YB: Special handling for sequences */
 	if (IsYugaByteEnabled() && RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
 	{
 		/* Get a sequence tuple */

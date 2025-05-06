@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: yb-tserver
     parent: configuration
-    weight: 2440
+    weight: 2100
 type: docs
 ---
 
@@ -228,19 +228,18 @@ Default: `true`
 
 ## Memory division flags
 
-These flags are used to determine how the RAM of a node is split between
-the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including Postgres and a [master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
+These flags are used to determine how the RAM of a node is split between the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including the PostgreSQL processes and a [Master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
 
 {{< warning title="Warning" >}}
 
-Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and master if present leaves enough memory on the node for Postgres, and any required other processes like monitoring agents plus the memory needed by the kernel.
+Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and Master (if present) leaves enough memory on the node for PostgreSQL and any required other processes like monitoring agents, plus the memory needed by the kernel.
 
 {{< /warning >}}
 
 
 ### Flags controlling the defaults for the other memory division flags
 
-The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and master.
+The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and Master.
 
 ##### --use_memory_defaults_optimized_for_ysql
 
@@ -248,20 +247,20 @@ If true, the defaults for the memory division settings take into account the amo
 
 Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
-If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
+If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
 
-If these defaults are used for both TServer and master, then a node's available memory is partitioned as follows:
+If these defaults are used for both TServer and Master, then a node's available memory is partitioned as follows:
 
 | node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
 | :--- | ---: | ---: | ---: | ---: |
 | TServer %  | 45% | 48% | 57% | 60% |
-| master %   | 20% | 15% | 10% | 10% |
-| Postgres % | 25% | 27% | 28% | 27% |
+| Master %   | 20% | 15% | 10% | 10% |
+| PostgreSQL % | 25% | 27% | 28% | 27% |
 | other %    | 10% | 10% |  5% |  3% |
 
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
 
-For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
+For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
 
 The defaults for [flags controlling memory division in a TServer](#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
 
@@ -272,55 +271,36 @@ The defaults for [flags controlling memory division in a TServer](#flags-control
 
 The default value of [`--db_block_cache_size_percentage`](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
 
-Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [allowing for tablet replica overheads](../../../develop/best-practices-ysql#allowing-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
-
-| total node GiB | max number of tablet replicas | max number of Postgres connections |
-| ---: | ---: | ---: |
-|   4 |    240 |  30 |
-|   8 |    530 |  65 |
-|  16 |  1,250 | 130 |
-|  32 |  2,700 | 225 |
-|  64 |  5,500 | 370 |
-| 128 | 11,000 | 550 |
-| 256 | 22,100 | 730 |
-
-These values are approximate because different kernels use different amounts of memory, leaving different amounts of memory for the TServer and thus the per-tablet overhead TServer component.
-
-Also shown is an estimate of how many Postgres connections that node can handle assuming default Postgres flags and usage.  Unusually memory expensive queries or preloading Postgres catalog information will reduce the number of connections that can be supported.
-
-Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
-
-
 ### Flags controlling the split of memory among processes
 
-Note that in general these flags will have different values for TServer and master processes.
+Note that in general these flags will have different values for TServer and Master processes.
 
 ##### --memory_limit_hard_bytes
 
-Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
+Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
 Default: `0`
 
 ##### --default_memory_limit_to_ram_ratio
 
-The percentage of available RAM to use for this process if [`--memory_limit_hard_bytes`](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
-Default: `0.85` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `0.85` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 
 ### Flags controlling the split of memory within a TServer
 
 ##### --db_block_cache_size_bytes
 
-Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [`--db_block_cache_size_percentage`](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
 
 Default: `-1`
 
 ##### --db_block_cache_size_percentage
 
-Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
+Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [--db_block_cache_size_bytes](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
 
-Default: `50` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `50` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 ##### --tablet_overhead_size_percentage
 
@@ -328,11 +308,11 @@ Percentage of the process' hard memory limit to use for tablet-related overheads
 
 Each tablet replica generally requires 700 MiB of this memory.
 
-Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `0` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
+With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, `--evict_failed_followers`), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -340,7 +320,7 @@ The duration, in seconds, after which a follower is considered to be failed beca
 
 Default: `900` (15 minutes)
 
-The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
+The `--follower_unavailable_considered_failed_sec` value should match the value for [--log_min_seconds_to_retain](#log-min-seconds-to-retain).
 
 ##### --evict_failed_followers
 
@@ -350,7 +330,7 @@ Default: `true`
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
-The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
+The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [--raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
 For read replica clusters, set the value to `10` in all yb-tserver and yb-master configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
@@ -386,25 +366,25 @@ Ensure that values used for the write ahead log (WAL) in yb-tserver configuratio
 
 ##### --fs_wal_dirs
 
-The directory where the yb-tserver retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
+The directory where the yb-tserver retains WAL files. May be the same as one of the directories listed in [--fs_data_dirs](#fs-data-dirs), but not a subdirectory of a data directory.
 
 Default: The same as `--fs_data_dirs`
 
 ##### --durable_wal_write
 
-If set to `false`, the writes to the WAL are synchronized to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
+If set to `false`, the writes to the WAL are synchronized to disk every [interval_durable_wal_write_ms](#interval-durable-wal-write-ms) milliseconds (ms) or every [bytes_durable_wal_write_mb](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 Default: `false`
 
 ##### --interval_durable_wal_write_ms
 
-When [`--durable_wal_write`](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
+When [--durable_wal_write](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [--bytes_durable_wal_write_mb](#bytes-durable-wal-write-mb), whichever comes first.
 
 Default: `1000`
 
 ##### --bytes_durable_wal_write_mb
 
-When [`--durable_wal_write`](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
+When [--durable_wal_write](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
 Default: `1`
 
@@ -430,7 +410,7 @@ Default: `64`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
 ## Sharding flags
 
@@ -916,6 +896,12 @@ Sets the size of a tuple batch that's taken from the outer side of a [batched ne
 See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 Default: 1024
+
+##### --ysql_follower_reads_avoid_waiting_for_safe_time
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+Default: `true`
 
 ### YCQL
 
@@ -1775,7 +1761,7 @@ Default: `1GB`
 
 PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
 
-Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
+Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with `AND` or `OR` operators to create a final bitmap that is used to collect rows from the main table.
 
 Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
 

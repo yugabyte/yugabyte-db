@@ -124,6 +124,8 @@ typedef struct plperl_proc_desc
 	FmgrInfo   *arg_out_func;	/* output fns for arg types */
 	bool	   *arg_is_rowtype; /* is each arg composite? */
 	Oid		   *arg_arraytype;	/* InvalidOid if not an array */
+
+	/* YB */
 	uint64		yb_catalog_version; /* catalog version at function load time */
 } plperl_proc_desc;
 

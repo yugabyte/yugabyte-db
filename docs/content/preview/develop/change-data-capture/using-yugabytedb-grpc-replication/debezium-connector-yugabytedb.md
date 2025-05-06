@@ -31,21 +31,35 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.14 | 1.9.5.y.3 |
 | 2.16 | 1.9.5.y.24 |
 | 2.18.2 | 1.9.5.y.33.2 |
-| 2.20 | 1.9.5.y.220.2 |
+| 2.20 | 1.9.5.y.220.4 |
+| 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
+| 2024.2 | dz.1.9.5.yb.grpc.2024.2.2 |
 
-In addition, the connector supports the following:
+Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
 
-* Kafka Connect v2.x and later.
-* YugabyteDB v2.14 and later.
+```output
+dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
+```
 
-{{< note title="Note" >}}
+* Debezium Release - Debezium release the connector is based on
+* YugabyteDB Version - version of YugabyteDB the connector works with
+* Patch - patch release version, if applicable
 
-Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme _major.y.minor_, as follows:
+The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise. For the latest YugabyteDB preview version, use the latest available connector.
 
-* major - Debezium release the connector is based on
-* minor - version of YugabyteDB the connector works with
+In addition, the connector supports Kafka Connect v2.x and later.
 
-The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
+{{< note title="Connector Class Name" >}}
+
+Starting with YugabyteDB v2024.1, the name of the connector class changed from
+
+`io.debezium.connector.yugabytedb.YugabyteDBConnector`
+
+to
+
+`io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`
+
+New deployments using connector version dz.1.9.5.yb.grpc.2024.1 and later need to use the new connector class.
 
 {{< /note >}}
 
@@ -61,7 +75,7 @@ The connector is backward compatible with previous releases of YugabyteDB unless
 For each table, the connector streams all generated events to a separate Kafka topic. Client applications and services can consume these data change event records from their respective topics.
 
 * CDC (Change Data Capture) Service: The Debezium connector leverages the CDC service APIs to read the changes from YugabyteDB.
-* Event Production: For every row-level insert, update, and delete operation captured, the connector produces a corresponding change event and sends it to separate Kafka topics dedicated to each table.
+* Event Production: For every row-level insert, update, and delete operation captured, the connector produces a corresponding change event, and sends it to separate Kafka topics dedicated to each table.
 * Client Consumption: Applications read the Kafka topics corresponding to the database tables they are interested in and react to the row-level events received.
 
 ## Failure tolerance
@@ -98,7 +112,7 @@ Options for the `snapshot.mode` connector configuration property are as follows:
 
 | Option | Description |
 | :--- | :--- |
-| `never` | The connector never performs a snapshot. When a connector is configured in this way, the behaviour is as follows. If an offset is stored on the server, the connector will resume the streaming from that position. If no offset is stored on the server, the connector will bootstrap the tablets, meaning that it will stream data from that point onwards only, and then start streaming. The `never` snapshot mode is useful when you know that your data of interest will be coming after the point you have deployed your connector. |
+| `never` | The connector never performs a snapshot. When a connector is configured in this way, the behaviour is as follows. If an offset is stored on the server, the connector will resume the streaming from that position. If no offset is stored on the server, the connector will bootstrap the tablets, meaning that it will stream data from that point onward only, and then start streaming. The `never` snapshot mode is useful when you know that your data of interest will be coming after the point you have deployed your connector. |
 | `initial` | The connector performs a snapshot every time it starts. When a connector is configured this way, the behaviour is as follows. If the snapshot was stopped midway, the connector continues to take the snapshot from that position. If the snapshot was completed previously for the given stream ID, then the connector resumes streaming from the point checkpoints are stored on the server. |
 | `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector resumes the snapshot process from the point it stopped and stops when the snapshot completes. |
 
@@ -590,7 +604,7 @@ The fields in the create event are as follows:
 
 The value of a change event for an update in the sample `customers` table has the same schema as a create event for that table. Likewise, the event value's payload has the same structure. However, the event value payload contains different values in an update event.
 
-Note that updating the columns for a row's **primary/unique key** changes the value of the row's key. When a key changes, Debezium outputs three events: a DELETE event and a [tombstone event](#tombstone-events) with the old key for the row, followed by an event with the new key for the row. See [Primary key updates](#primary-key-updates) on this page for details.
+Note that updating the columns for a row's **primary/unique key** changes the value of the row's key. When a key changes, Debezium outputs three events: a DELETE event and a [tombstone event](#tombstone-events) with the old key for the row, followed by an event with the new key for the row. See [Primary key updates](#primary-key-updates) for details.
 
 The following example shows a change event value in an event that the connector generates for an update in the `customers` table:
 
@@ -831,7 +845,7 @@ YugabyteDB doesn't currently support the `decimal.handling.mode` property value 
 
 {{< /note >}}
 
-When the `decimal.handling.mode` property is set to `double`, the connector represents all DECIMAL, NUMERIC, and MONEY values as Java double values and encodes them as shown in the following table.
+When the `decimal.handling.mode` property is set to `double`, the connector represents all DECIMAL, NUMERIC, and MONEY values as Java double values, and encodes them as shown in the following table.
 
 The following table describes mappings when `decimal.handling.mode` is `double`.
 
@@ -948,7 +962,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 {
   "name": "ybconnector", --> 1
   "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector", --> 2
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector", --> 2
     "database.hostname": "127.0.0.1", --> 3
     "database.port": "5433", --> 4
     "database.master.addresses": "127.0.0.1:7100", --> 5
@@ -1017,7 +1031,7 @@ The following properties are _required_ unless a default value is available:
 
 | Property | Default value | Description |
 | :------- | :------------ | :---------- |
-| connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBConnector`. |
+| connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`. |
 | database.hostname | N/A | The IP address of the database host machine. For a distributed cluster, use the leader node's IP address. Alternatively, you can specify a comma-separated list of multiple host addresses and corresponding ports (for example,`ip1:port1,ip2:port2,ip3:port3`). This is useful for connection fail-over. |
 | database.port | N/A | The port at which the YSQL process is running. |
 | database.master.addresses | N/A | Comma-separated list of `host:port` values. |
@@ -1040,7 +1054,7 @@ The following properties are _required_ unless a default value is available:
 | column.exclude.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be excluded from change event record values. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. Do not also set the `column.include.list` property. |
 | column.truncate.to._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. In change event records, values in these columns are truncated if they are longer than the number of characters specified by _length_ in the property name. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer, for example, `column.truncate.to.20.chars`. |
 | column.mask.with._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. In change event records, the values in the specified table columns are replaced with _length_ number of asterisk (`*`) characters. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer or zero. When you specify zero, the connector replaces a value with an empty string. |
-| message.key.columns | _empty string_ | A list of expressions that specify the columns that the connector uses to form custom message keys for change event records that it publishes to the Kafka topics for specified tables. <br/> By default, Debezium uses the primary key column of a table as the message key for records that it emits. In place of the default, or to specify a key for tables that lack a primary key, you can configure custom message keys based on one or more columns. <br/><br/> To establish a custom message key for a table, list the table, followed by the columns to use as the message key. Each list entry takes the following format: <br/><br/> `<fully-qualified_tableName>:<keyColumn>,<keyColumn>`<br/><br/> To base a table key on multiple column names, insert commas between the column names. Each fully-qualified table name is a regular expression in the following format: <br/><br/> `<schemaName>.<tableName>` <br/><br/> The property can include entries for multiple tables. Use a semicolon to separate table entries in the list. The following example sets the message key for the tables `inventory.customers` and `purchase.orders`: <br/><br/> `inventory.customers:pk1,pk2;purchase.orders:pk3,pk4` <br/><br/> For the table `inventory.customers`, the columns `pk1` and `pk2` are specified as the message key. For the `purchase.orders` tables in any schema, the columns `pk3` and `pk4` server as the message key. <br/><br/> There is no limit to the number of columns that you use to create custom message keys. However, it's best to use the minimum number that are required to specify a unique key. |
+| message.key.columns | _empty string_ | A list of expressions that specify the columns that the connector uses to form custom message keys for change event records that it publishes to the Kafka topics for specified tables. <br/> By default, Debezium uses the primary key column of a table as the message key for records that it emits. In place of the default or to specify a key for tables that lack a primary key, you can configure custom message keys based on one or more columns. <br/><br/> To establish a custom message key for a table, list the table, followed by the columns to use as the message key. Each list entry takes the following format: <br/><br/> `<fully-qualified_tableName>:<keyColumn>,<keyColumn>`<br/><br/> To base a table key on multiple column names, insert commas between the column names. Each fully-qualified table name is a regular expression in the following format: <br/><br/> `<schemaName>.<tableName>` <br/><br/> The property can include entries for multiple tables. Use a semicolon to separate table entries in the list. The following example sets the message key for the tables `inventory.customers` and `purchase.orders`: <br/><br/> `inventory.customers:pk1,pk2;purchase.orders:pk3,pk4` <br/><br/> For the table `inventory.customers`, the columns `pk1` and `pk2` are specified as the message key. For the `purchase.orders` tables in any schema, the columns `pk3` and `pk4` server as the message key. <br/><br/> There is no limit to the number of columns that you use to create custom message keys. However, it's best to use the minimum number that are required to specify a unique key. |
 
 {{< note title="TLS v1.2 only" >}}
 
@@ -1080,7 +1094,7 @@ Advanced connector configuration properties:
 | max.queue.size.in.bytes | 0 | Long value for the maximum size in bytes of the blocking queue. The feature is disabled by default, it will be active if it's set with a positive long value. |
 | max.connector.retries | 5 | Positive integer value for the maximum number of times a retry can happen at the connector level itself. |
 | connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
-| ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception, the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
+| ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |

@@ -298,4 +298,27 @@ inline HybridTime operator "" _usec_ht(unsigned long long microseconds) { // NOL
 
 using hybrid_time_literals::operator"" _usec_ht;
 
+struct ReadRestartData {
+  HybridTime restart_time;
+  std::string key;
+
+  bool is_valid() const {
+    return restart_time.is_valid();
+  }
+
+  void MakeAtLeast(ReadRestartData rhs) {
+    if (!rhs.restart_time.is_valid()) {
+      return;
+    }
+    if (!restart_time.is_valid() || restart_time < rhs.restart_time) {
+      restart_time = rhs.restart_time;
+      key = rhs.key;
+    }
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(restart_time, key);
+  }
+};
+
 }  // namespace yb

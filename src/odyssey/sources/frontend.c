@@ -1150,6 +1150,34 @@ static inline machine_msg_t *od_frontend_rewrite_msg(char *data, int size,
 	return msg;
 }
 
+/*
+ * YB: Prepare the key using which we identify the index of the server hashmap to search.
+ * For optimized mode, the client_id_len parameter is set to 0.
+ */
+static char *yb_prepare_server_key(char *stmt_name, int stmt_name_len, char *query_string,
+								 int query_string_len, char *client_id, int client_id_len,
+								 int *server_key_len)
+{
+	*server_key_len = (stmt_name_len - 1) + query_string_len + client_id_len;
+	char *server_key = (char *)malloc(*server_key_len + 1);
+	if (server_key == NULL) {
+		return NULL;
+	}
+
+	/*
+	 * Prune \0 at the end of only stmt_name. It is possible that
+	 * the query_string contains information about parameters being used, so do
+	 * not prune it. Client ID length is sent via strlen(), so no need for
+	 * pruning it.
+	 */
+	memcpy(server_key, stmt_name, stmt_name_len - 1);
+	memcpy(server_key + stmt_name_len - 1 , query_string, query_string_len);
+	memcpy(server_key + stmt_name_len + query_string_len - 1, client_id, client_id_len);
+	server_key[*server_key_len] = '\0';
+
+	return server_key;
+}
+
 static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						      char *data, int size)
 {
@@ -1277,9 +1305,23 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			od_hash_t client_hash = od_murmur_hash(
 				client->id.id, strlen(client->id.id));
 
-			/* YB: prepare statement name based on optimization mode */
-			od_hash_t yb_stmt_hash = yb_prepare_stmt_hash(body_hash, keyhash, client_hash,
-										instance->config.yb_optimized_extended_query_protocol);
+			int server_key_len = 0;
+			char *server_key = yb_prepare_server_key(operator_name, operator_name_len,
+						desc->data, desc->len,
+						client->id.id,
+						instance->config.yb_optimized_extended_query_protocol ? 0 : strlen(client->id.id),
+						&server_key_len);
+
+			if (!server_key) {
+				od_error(&instance->logger, "describe", client,
+					 server, "failed to allocate memory");
+				return OD_EOOM;
+			}
+
+			od_hashmap_elt_t server_key_desc = {server_key, server_key_len};
+
+			od_hash_t yb_stmt_hash = od_murmur_hash(
+				server_key_desc.data, server_key_desc.len);
 
 			od_debug(&instance->logger, "rewrite describe", client,
 				 server, "statement: %.*s, hash: %08x",
@@ -1296,13 +1338,14 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			// send parse msg if needed
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
-					      desc, &value_ptr) == 0) {
+					      &server_key_desc, &value_ptr) == 0) {
 				od_debug(
 					&instance->logger,
 					"rewrite parse before describe", client,
 					server,
 					"deploy %.*s operator hash %u to server",
-					desc->len, desc->data, keyhash);
+					server_key_desc.len, server_key_desc.data, keyhash);
+				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
@@ -1335,6 +1378,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				int *refcnt;
 				refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
+				free(server_key_desc.data);
 			}
 
 			msg = kiwi_fe_write_describe(NULL, 'S', opname,
@@ -1425,10 +1469,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			od_hash_t client_hash = od_murmur_hash(
 				client->id.id, strlen(client->id.id));
 
-			/* YB: prepare statement name based on optimization mode */
-			od_hash_t yb_stmt_hash = yb_prepare_stmt_hash(body_hash, keyhash, client_hash,
-										instance->config.yb_optimized_extended_query_protocol);
-
 			assert(client->prep_stmt_ids);
 #ifndef YB_SUPPORT_FOUND
 			if (od_hashmap_insert(client->prep_stmt_ids, keyhash,
@@ -1504,6 +1544,23 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			 */
 			od_hashmap_insert(client->prep_stmt_ids, keyhash, &key, &value_ptr);
 
+			int server_key_len = 0;
+			char *server_key = yb_prepare_server_key(desc.operator_name, desc.operator_name_len,
+						desc.description, desc.description_len,
+						client->id.id,
+						instance->config.yb_optimized_extended_query_protocol ? 0 : strlen(client->id.id),
+						&server_key_len);
+
+			if (!server_key) {
+				od_error(&instance->logger, "parse", client,
+					 server, "failed to allocate memory");
+				return OD_EOOM;
+			}
+
+			od_hashmap_elt_t server_key_desc = {server_key, server_key_len};
+
+			od_hash_t yb_stmt_hash = od_murmur_hash(server_key_desc.data, server_key_desc.len);
+
 			char buf[OD_HASH_LEN];
 			od_snprintf(buf, OD_HASH_LEN, "%08x", yb_stmt_hash);
 
@@ -1517,13 +1574,14 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			value_ptr = &value;
 
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
-					      &key, &value_ptr) == 0) {
+					      &server_key_desc, &value_ptr) == 0) {
 				od_debug(
 					&instance->logger,
 					"rewrite parse initial deploy", client,
 					server,
 					"deploy %.*s operator hash %u to server",
-					key.len, key.data, keyhash);
+					server_key_desc.len, server_key_desc.data, keyhash);
+				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
@@ -1556,6 +1614,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			} else {
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
+				free(server_key_desc.data);
 
 				if (!instance->config.yb_optimized_extended_query_protocol) {
 					od_debug(&instance->logger, "parse",
@@ -1688,9 +1747,22 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				od_murmur_hash(client->id.id,
 					       strlen(client->id.id));
 
-			/* YB: prepare statement name based on optimization mode */
-			od_hash_t yb_stmt_hash = yb_prepare_stmt_hash(body_hash, keyhash, client_hash,
-										instance->config.yb_optimized_extended_query_protocol);
+			int server_key_len = 0;
+			char *server_key = yb_prepare_server_key(operator_name, operator_name_len,
+						desc->data, desc->len,
+						client->id.id,
+						instance->config.yb_optimized_extended_query_protocol ? 0 : strlen(client->id.id),
+						&server_key_len);
+
+			if (!server_key) {
+				od_error(&instance->logger, "bind", client,
+					 server, "failed to allocate memory");
+				return OD_EOOM;
+			}
+
+			od_hashmap_elt_t server_key_desc = {server_key, server_key_len};
+
+			od_hash_t yb_stmt_hash = od_murmur_hash(server_key_desc.data, server_key_desc.len);
 
 			od_debug(&instance->logger, "rewrite bind", client,
 				 server, "statement: %.*s, hash: %08x",
@@ -1706,13 +1778,14 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			od_snprintf(opname, OD_HASH_LEN, "%08x", yb_stmt_hash);
 
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
-					      desc, &value_ptr) == 0) {
+					      &server_key_desc, &value_ptr) == 0) {
 				od_debug(
 					&instance->logger,
 					"rewrite parse before bind", client,
 					server,
 					"deploy %.*s operator hash %u to server",
-					desc->len, desc->data, keyhash);
+					server_key_desc.len, server_key_desc.data, keyhash);
+				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
@@ -1745,6 +1818,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			} else {
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
+				free(server_key_desc.data);
 			}
 
 			msg = od_frontend_rewrite_msg(data, size,
@@ -2061,18 +2135,66 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 				break;
 
 			assert(server == NULL);
-			status = od_frontend_attach_and_deploy(client, "main");
+
+			/*
+			 * YB: Separate the attach and deploy phases around the initialization of the relay to
+			 * allow correct handling of the condition variables used to synchronize code flow around
+			 * IO operations. This should be done only if in optimized GUC support mode; it is safe
+			 * to initialize the relay after deploy phase without optimization of GUC support.
+			 * 
+			 * Here are the sequence of operations for each mode:
+			 * Without optimization: attach -> deploy -> relay_init -> relay_start
+			 * With optimization: attach -> relay_init -> deploy -> relay_start
+			 */
+			status = od_frontend_attach(client, "main", NULL);
 			if (status != OD_OK)
 				break;
 			server = client->server;
-			status = od_relay_start(
-				&server->relay, client->cond, OD_ESERVER_READ,
-				OD_ECLIENT_WRITE,
-				od_frontend_remote_server_on_read,
-				&route->stats, od_frontend_remote_server,
-				client, reserve_session_server_connection);
+
+			if (instance->config.yb_optimized_session_parameters) {
+				status = yb_od_relay_start_init(
+					&server->relay, client->cond, OD_ESERVER_READ,
+					OD_ECLIENT_WRITE,
+					od_frontend_remote_server_on_read,
+					&route->stats, od_frontend_remote_server,
+					client);
+				if (status != OD_OK)
+					break;
+			}
+
+			int rc;
+			rc = od_deploy(client, "main");
+			if (rc == -1)
+				status = OD_ESERVER_WRITE;
+
+			if (client->deploy_err)
+				status = YB_OD_DEPLOY_ERR;
+
+			/* set number of replies to discard */
+			client->server->deploy_sync = rc;
+
+			od_server_sync_request(server, server->deploy_sync);
+
 			if (status != OD_OK)
 				break;
+
+			if (!instance->config.yb_optimized_session_parameters) {
+				status = yb_od_relay_start_init(
+					&server->relay, client->cond, OD_ESERVER_READ,
+					OD_ECLIENT_WRITE,
+					od_frontend_remote_server_on_read,
+					&route->stats, od_frontend_remote_server,
+					client);
+				if (status != OD_OK)
+					break;
+			}
+
+			/*
+			 * YB: Start IO operations only after concluding deploy operations in optimized
+			 * GUC support mode. In unoptimized mode, we mimic upstream odyssey behavior of
+			 * calling od_frontend_attach_and_deploy(), followed by od_relay_start().
+			 */
+			yb_od_relay_start_io(&server->relay, reserve_session_server_connection);
 			od_relay_attach(&client->relay, &server->io);
 			od_relay_attach(&server->relay, &client->io);
 
@@ -2992,7 +3114,7 @@ int yb_auth_via_auth_backend(od_client_t *client)
 	rc = od_backend_connect(server, "auth backend", NULL,
 							control_conn_client);
 	/*Store the client's logical_client_version as auth backend's logical_client_version*/
-	od_debug(&instance->logger, "auth backend", client, server,
+	od_debug(&instance->logger, "auth backend", control_conn_client, server,
 		 "auth's backend logical client version = %d", server->logical_client_version);
 	client->logical_client_version = server->logical_client_version;
 

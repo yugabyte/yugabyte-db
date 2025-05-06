@@ -123,6 +123,9 @@ static const uint32 PGSS_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
 									!IsA(n, PrepareStmt) && \
 									!IsA(n, DeallocateStmt))
 
+#define YB_NUM_COUNTERS_INT 60
+#define YB_NUM_COUNTERS_DBL 40
+
 /*
  * Extension version number, for supporting older extension versions' objects
  */
@@ -150,16 +153,6 @@ typedef enum pgssVersion
  * only gets added to pg_stat_statements if api_version >= YB_PGSS_V1_4.
  */
 
-/*
- * Hashtable key that defines the identity of a hashtable entry.  We separate
- * queries by user and by database even if they are otherwise identical.
- *
- * If you add a new key to this struct, make sure to teach pgss_store() to
- * zero the padding bytes.  Otherwise, things will break, because pgss_hash is
- * created using HASH_BLOBS, and thus tag_hash is used to hash this.
-
- */
-
 typedef enum pgssStoreKind
 {
 	PGSS_INVALID = -1,
@@ -175,6 +168,15 @@ typedef enum pgssStoreKind
 	PGSS_NUMKIND				/* Must be last value of this enum */
 } pgssStoreKind;
 
+/*
+ * Hashtable key that defines the identity of a hashtable entry.  We separate
+ * queries by user and by database even if they are otherwise identical.
+ *
+ * If you add a new key to this struct, make sure to teach pgss_store() to
+ * zero the padding bytes.  Otherwise, things will break, because pgss_hash is
+ * created using HASH_BLOBS, and thus tag_hash is used to hash this.
+
+ */
 typedef struct pgssHashKey
 {
 	Oid			userid;			/* user OID */
@@ -182,6 +184,15 @@ typedef struct pgssHashKey
 	uint64		queryid;		/* query identifier */
 	bool		toplevel;		/* query executed at top level */
 } pgssHashKey;
+
+/*
+ * Struct for YB-specific counters. Currently, all counters are unreserved.
+ */
+typedef struct YbCounters
+{
+	int64 counters[YB_NUM_COUNTERS_INT];
+	double counters_dbl[YB_NUM_COUNTERS_DBL];
+} YbCounters;
 
 /*
  * The actual stats counters kept within pgssEntry.
@@ -230,6 +241,7 @@ typedef struct Counters
 	int64		jit_emission_count; /* number of times emission time has been
 									 * > 0 */
 	double		jit_emission_time;	/* total time to emit jit code */
+	YbCounters	yb_counters; /* YB specific counters */
 } Counters;
 
 /*
@@ -538,7 +550,7 @@ _PG_init(void)
 							 "Selects whether planning duration is tracked by pg_stat_statements.",
 							 NULL,
 							 &pgss_track_planning,
-							 true,
+							 true,	/* YB: change default */
 							 PGC_SUSET,
 							 0,
 							 NULL,
@@ -1742,7 +1754,7 @@ pgss_store(const char *query, uint64 queryId,
 	if (!pgss || !pgss_hash)
 		return;
 
-	if (yb_is_calling_internal_function_for_ddl)
+	if (yb_is_calling_internal_sql_for_ddl)
 		return;
 
 	/*
