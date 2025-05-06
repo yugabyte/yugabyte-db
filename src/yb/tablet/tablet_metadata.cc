@@ -2163,6 +2163,16 @@ RaftGroupMetadata::GetAllColocatedTablesWithColocationId() const {
   return table_colocation_id_map;
 }
 
+std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedTableInfos() const {
+  std::lock_guard lock(data_mutex_);
+  std::vector<TableInfoPtr> result;
+  result.reserve(kv_store_.tables.size());
+  for (const auto& [id, info] : kv_store_.tables) {
+    result.push_back(info);
+  }
+  return result;
+}
+
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
   auto data_state = metadata.tablet_data_state();
   if (!CanServeTabletData(data_state)) {

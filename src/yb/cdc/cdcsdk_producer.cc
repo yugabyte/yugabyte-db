@@ -1179,15 +1179,21 @@ Status PopulateCDCSDKIntentRecord(
 
 void FillBeginRecordForSingleShardTransaction(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, GetChangesResponsePB* resp,
-    const uint64_t& commit_timestamp) {
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    const uint64_t& commit_timestamp, const StreamMetadata& metadata) {
+  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
+    // We do not want to stream any transactional message if the table is not present in the stream
+    // metadata.
+    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
+      continue;
+    }
+
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
       LOG(WARNING) << tablet_result.status();
       continue;
     }
     auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
+    auto table_name = table_info->table_name;
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
         (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
@@ -1206,15 +1212,21 @@ void FillBeginRecordForSingleShardTransaction(
 
 void FillCommitRecordForSingleShardTransaction(
     const OpId& op_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    GetChangesResponsePB* resp, const uint64_t& commit_timestamp) {
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    GetChangesResponsePB* resp, const uint64_t& commit_timestamp, const StreamMetadata& metadata) {
+  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
+    // We do not want to stream any transactional message if the table is not present in the stream
+    // metadata.
+    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
+      continue;
+    }
+
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
       LOG(WARNING) << tablet_result.status();
       continue;
     }
     auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
+    auto table_name = table_info->table_name;
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
         (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
@@ -1247,7 +1259,8 @@ Status PopulateCDCSDKWriteRecord(
     GetChangesResponsePB* resp,
     client::YBClient* client) {
   if (FLAGS_cdc_populate_end_markers_transactions) {
-    FillBeginRecordForSingleShardTransaction(tablet_peer, resp, msg->hybrid_time());
+    FillBeginRecordForSingleShardTransaction(
+        tablet_peer, resp, msg->hybrid_time(), metadata);
   }
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
@@ -1562,7 +1575,8 @@ Status PopulateCDCSDKWriteRecord(
     }
 
     FillCommitRecordForSingleShardTransaction(
-        OpId(msg->id().term(), msg->id().index()), tablet_peer, resp, msg->hybrid_time());
+        OpId(msg->id().term(), msg->id().index()), tablet_peer, resp, msg->hybrid_time(),
+        metadata);
   }
 
   return Status::OK();
@@ -1680,15 +1694,21 @@ void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint)
 
 void FillBeginRecord(
     const TransactionId& transaction_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    GetChangesResponsePB* resp, const uint64_t& commit_timestamp) {
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    GetChangesResponsePB* resp, const uint64_t& commit_timestamp, const StreamMetadata& metadata) {
+  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
+    // We do not want to stream any transactional message if the table is not present in the stream
+    // metadata.
+    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
+      continue;
+    }
+
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
       LOG(WARNING) << tablet_result.status();
       continue;
     }
     auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
+    auto table_name = table_info->table_name;
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
         (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
@@ -1709,15 +1729,21 @@ void FillBeginRecord(
 void FillCommitRecord(
     const OpId& op_id, const TransactionId& transaction_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, CDCSDKCheckpointPB* checkpoint,
-    GetChangesResponsePB* resp, const uint64_t& commit_timestamp) {
-  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    GetChangesResponsePB* resp, const uint64_t& commit_timestamp, const StreamMetadata& metadata) {
+  for (auto const& table_info : tablet_peer->tablet_metadata()->GetAllColocatedTableInfos()) {
+    // We do not want to stream any transactional message if the table is not present in the stream
+    // metadata.
+    if (!IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
+      continue;
+    }
+
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
       LOG(WARNING) << tablet_result.status();
       continue;
     }
     auto tablet = *tablet_result;
-    auto table_name = tablet->metadata()->table_name(table_id);
+    auto table_name = table_info->table_name;
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
         (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
@@ -1759,7 +1785,7 @@ Status ProcessIntents(
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
-    FillBeginRecord(transaction_id, tablet_peer, resp, commit_time);
+    FillBeginRecord(transaction_id, tablet_peer, resp, commit_time, metadata);
   }
 
   RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
@@ -1806,7 +1832,8 @@ Status ProcessIntents(
 
   if (end_of_transaction) {
     if (FLAGS_cdc_populate_end_markers_transactions) {
-      FillCommitRecord(op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time);
+      FillCommitRecord(
+          op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time, metadata);
     }
   } else {
     SetKeyWriteId(reverse_index_key, write_id, checkpoint);
