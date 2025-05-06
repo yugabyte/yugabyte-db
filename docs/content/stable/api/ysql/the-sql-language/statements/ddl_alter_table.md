@@ -271,7 +271,7 @@ The following type changes are common cases where we require a table rewrite:
 | REAL         | NUMERIC        | Different precision and format.                                       |
 | NUMERIC(p,s) | NUMERIC(p2,s2) | Requires data changes if scale is changed or if precision is smaller. |
 
-The following type changes do not require a table rewrite:
+The following type changes do not require a rewrite when there is no associated index table on the column. When there is an associated index table on the column, a rewrite is performed on the index table alone but not on the main table.
 
 | From              |  To                   | Notes                  |
 | ------------ | ------------------ | ------------------------------------------------------ |
