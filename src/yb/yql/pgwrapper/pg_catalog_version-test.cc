@@ -107,22 +107,32 @@ class PgCatalogVersionTest : public LibPqTestBase {
     RestartClusterSetDBCatalogVersionMode(true, extra_tserver_flags);
   }
 
-  void RestartClusterWithInvalMessageEnabled(
+  void RestartClusterWithInvalMessageMode(
+      bool mode,
       const std::vector<string>& extra_tserver_flags = {}) {
-    LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=true";
+    const auto mode_str = mode ? "true" : "false";
+    LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=" << mode_str;
     cluster_->Shutdown();
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(
-          "--ysql_yb_enable_invalidation_messages=true");
+          Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(
-          "--ysql_yb_enable_invalidation_messages=true");
+          Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
       for (const auto& flag : extra_tserver_flags) {
         cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
       }
     }
     ASSERT_OK(cluster_->Restart());
+  }
+  void RestartClusterWithInvalMessageEnabled(
+      const std::vector<string>& extra_tserver_flags = {}) {
+    RestartClusterWithInvalMessageMode(true /* mode */, extra_tserver_flags);
+  }
+  void RestartClusterWithInvalMessageDisabled(
+      const std::vector<string>& extra_tserver_flags = {}) {
+    RestartClusterWithInvalMessageMode(false /* mode */, extra_tserver_flags);
   }
 
   // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
@@ -2518,6 +2528,73 @@ TEST_F(PgCatalogVersionTest, InvalMessageGarbageCollection) {
   RestartClusterWithInvalMessageEnabled(
       { "--check_lagging_catalog_versions_interval_secs=5" });
   InvalMessageLocalCatalogVersionHelper();
+}
+
+class PgCatalogVersionHasCatalogWriteTest
+    : public PgCatalogVersionTest,
+      public ::testing::WithParamInterface<bool> {
+};
+
+INSTANTIATE_TEST_CASE_P(PgCatalogVersionHasCatalogWriteTest,
+                        PgCatalogVersionHasCatalogWriteTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgCatalogVersionHasCatalogWriteTest, WriteUserTableInsideDdlEventTrigger) {
+  const bool enable_inval_messages = GetParam();
+  enable_inval_messages ? RestartClusterWithInvalMessageEnabled()
+                        : RestartClusterWithInvalMessageDisabled();
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  const string query =
+        R"#(
+-- Create a table to store DDL history
+-- this DDL does not increment catalog version
+CREATE TABLE ddl_history (
+    id SERIAL PRIMARY KEY,
+    ddl_date TIMESTAMP WITH TIME ZONE,
+    ddl_tag TEXT,
+    object_name TEXT
+);
+
+-- Create the log_ddl function (example)
+-- this DDL does not increment catalog version
+CREATE FUNCTION log_ddl()
+RETURNS event_trigger AS $$
+DECLARE
+    obj record;
+BEGIN
+    obj := pg_event_trigger_ddl_commands();
+    INSERT INTO ddl_history (ddl_date, ddl_tag, object_name)
+    VALUES (statement_timestamp(), tg_tag, obj.object_identity);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create an event trigger to execute log_ddl on DDL events
+-- this DDL does increment catalog version by 1
+CREATE EVENT TRIGGER ddl_event_log
+ON ddl_command_end
+EXECUTE PROCEDURE log_ddl();
+        )#";
+  ASSERT_OK(conn_yugabyte.Execute(query));
+  ASSERT_OK(conn_yugabyte.Execute("SET log_min_messages = DEBUG1"));
+  // The first GRANT statement even though could have been a no-op, it writes
+  // to pg_attribute table and updated a NULL value to {yugabyte=r/postgres}.
+  // So it indeed has written a catalog table. That's why the catalog version
+  // is incremented by 1, from 2 to 3.
+  ASSERT_OK(conn_yugabyte.Execute(
+      "GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER"));
+  auto v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  ASSERT_EQ(v, 3);
+  // The next GRANT statement is a no-op because it is identical to the first GRANT.
+  // However we used to increment the catalog version because of the INSERT inside
+  // function log_ddl() which is executed as part of the GRANT statement so the GRANT
+  // was detected to have made writes. This test ensures that we are now able to more
+  // acurately detect that the GRANT statement has not made any catalog table writes.
+  // Therefore the sys catalog has not changed and we do not need to increment the
+  // catalog version.
+  ASSERT_OK(conn_yugabyte.Execute(
+      "GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER"));
+  v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  ASSERT_EQ(v, 3);
 }
 
 } // namespace pgwrapper
