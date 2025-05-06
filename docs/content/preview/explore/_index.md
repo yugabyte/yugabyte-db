@@ -12,7 +12,7 @@ type: indexpage
 showRightNav: true
 ---
 
-Whether you're setting up your first YugabyteDB cluster, running a POC, or evaluating YugabyteDB for a deployment, Explore offers hands-on guidance to YugabyteDB's features, with examples. From core database operations to advanced features like distributed transactions, real-time data streaming, and robust security, Explore equips you with the tools and knowledge to harness YugabyteDB's cloud-native architecture and unlock its full potential for your mission-critical workloads.
+Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB for a deployment, or want to learn more about YugabyteDB, Explore offers hands-on guidance to YugabyteDB's features, with examples. From core database operations to advanced features like distributed transactions, real-time data streaming, and robust security, Explore equips you with the tools and knowledge to harness YugabyteDB's cloud-native architecture and unlock its full potential for your mission-critical workloads.
 
 ## API compatibility and data models
 
