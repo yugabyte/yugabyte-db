@@ -50,6 +50,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 using std::string;
 
@@ -1891,6 +1892,7 @@ Status ProcessIntents(
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
     FillBeginRecord(transaction_id, tablet_peer, resp, commit_time, metadata, throughput_metrics);
+    TEST_SYNC_POINT("AddBeginRecord::End");
   }
 
   RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
@@ -1938,6 +1940,7 @@ Status ProcessIntents(
 
   if (end_of_transaction) {
     if (FLAGS_cdc_populate_end_markers_transactions) {
+      TEST_SYNC_POINT("FillCommitRecord::Start");
       FillCommitRecord(
           op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time, metadata,
           throughput_metrics);
