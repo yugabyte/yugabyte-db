@@ -164,6 +164,9 @@ DEFINE_UNKNOWN_bool(rocksdb_use_logging_iterator, false,
 DEFINE_test_flag(int32, max_write_waiters, std::numeric_limits<int32_t>::max(),
                  "Max allowed number of write waiters per RocksDB instance in tests.");
 
+DEFINE_test_flag(double, simulated_crash_after_modify_flushed_frontier_probability, 0.0,
+                 "Probability of a simulated crash at the end of DBImpl::ModifyFlushedFrontier.");
+
 namespace rocksdb {
 
 namespace {
@@ -6158,7 +6161,9 @@ Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
 Status DBImpl::ModifyFlushedFrontier(UserFrontierPtr frontier, FrontierModificationMode mode) {
   VersionEdit edit;
   edit.ModifyFlushedFrontier(std::move(frontier), mode);
-  return ApplyVersionEdit(&edit);
+  RETURN_NOT_OK(ApplyVersionEdit(&edit));
+  MAYBE_FAULT(FLAGS_TEST_simulated_crash_after_modify_flushed_frontier_probability);
+  return Status::OK();
 }
 
 void DBImpl::GetColumnFamilyMetaData(
