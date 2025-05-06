@@ -351,7 +351,7 @@ Refer to [import data status](../../reference/data-migration/import-data/#import
 
 ### Finalize schema post data import
 
-If there are any NOT VALID constraints on the source, create them after the `import data` command is completed by using the `finalize-schema-post-data-import` command:
+If there are any NOT VALID constraints on the source, create them after the `import data` command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them by setting the `--refresh-mviews` flag to true.
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -361,19 +361,6 @@ yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-```
-
-If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them using the following command:
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-        --refresh-mviews true
 ```
 
 Refer to [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) for details about the arguments.
