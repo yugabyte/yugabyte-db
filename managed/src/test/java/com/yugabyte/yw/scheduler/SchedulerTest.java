@@ -3,6 +3,7 @@
 package com.yugabyte.yw.scheduler;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
@@ -37,6 +39,7 @@ import org.apache.commons.lang3.time.DateUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -204,6 +207,35 @@ public class SchedulerTest extends FakeDBApplication {
     s = Schedule.getOrBadRequest(s.getScheduleUUID());
     Date next = s.getNextScheduleTaskTime();
     assertTrue(next.before(DateUtils.addHours(new Date(), 1)));
+  }
+
+  @Test
+  public void testFullOverIncrementalIfExpired() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Map<String, String> updateConfigParams = new HashMap<String, String>();
+    updateConfigParams.put(Universe.TAKE_BACKUPS, "true");
+    universe.updateConfig(updateConfigParams);
+    universe.save();
+    Schedule s =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            universe.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    s.setFrequencyTimeUnit(TimeUnit.MINUTES);
+    // Schedule time expired
+    Date dt = new Date();
+    dt.setTime(-1000L);
+    // Also time for incremental
+    Date dtI = new Date();
+    s.updateNextScheduleTaskTime(dt);
+    s.updateNextIncrementScheduleTaskTime(dtI);
+    scheduler.scheduleRunner();
+    ArgumentCaptor<ITaskParams> ac = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner, times(1)).submit(any(), ac.capture());
+
+    BackupRequestParams params = (BackupRequestParams) ac.getValue();
+    assertNull(params.baseBackupUUID);
   }
 
   public static void setUniverseBackupInProgress(boolean value, Universe universe) {
