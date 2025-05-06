@@ -21,6 +21,10 @@ For Oracle migrations using YugabyteDB Voyager v1.1 or later, the Orafce extensi
 
 {{< /note >}}
 
+{{< note title ="Deprecated flags" >}}
+The `--post-import-data` and `--refresh-mviews` flags are deprecated. Use [finalize-schema-post-data-import](../finalize-schema-post-data-import/) instead.
+{{< /note >}}
+
 ## Syntax
 
 ```text
@@ -82,7 +86,3 @@ yb-voyager import schema --export-dir /dir/export-dir \
         --post-snapshot-import true \
         --refresh-mviews true
 ```
-
-{{< note title ="Deprecated flags" >}}
-The `--post-import-data` and `--refresh-mviews` flags are deprecated. Use [finalize-schema-post-data-import](../finalize-schema-post-data-import/) instead.
-{{< /note >}}
