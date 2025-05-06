@@ -972,7 +972,7 @@ The `export data from target` command may result in duplicated events if you res
     ```
 
     {{< note title ="Note" >}}
-Note: The `--post-snapshot-import` and `--refresh-mviews` flags are now deprecated in the `import schema` command. However, if you prefer to continue using these flags instead of the `finalize-schema-post-data-import command`, refer to the following [example](../../reference/schema-migration/import-schema/#examples).
+The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. However, if you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
     {{< /note >}}
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.

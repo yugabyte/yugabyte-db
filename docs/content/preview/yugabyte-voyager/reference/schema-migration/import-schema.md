@@ -83,6 +83,6 @@ yb-voyager import schema --export-dir /dir/export-dir \
         --refresh-mviews true
 ```
 
-{{< note title ="Note" >}}
-The `--post-import-data` and `--refresh-mviews` flags are now deprecated in the import schema command. In their place, a new command has been introduced: [finalize-schema-post-data-import](../finalize-schema-post-data-import/)
+{{< note title ="Deprecated flags" >}}
+The `--post-import-data` and `--refresh-mviews` flags are deprecated. Use [finalize-schema-post-data-import](../finalize-schema-post-data-import/) instead.
 {{< /note >}}
