@@ -36,6 +36,46 @@
         display: none;
       }
     }
+
+    .td-heading-self-link {
+      &::before {
+        content: "";
+        background: url(/icons/heading-link.svg) 50% no-repeat;
+        height: 15px;
+        width: 15px;
+        display: inline-block;
+      }
+
+      &::after {
+        content: "Copied";
+        background: #fff;
+        position: absolute;
+        color:#000;
+        opacity: 0;
+        visibility: visible;
+        font-size: 10px;
+        font-weight: 300;
+        box-shadow: 0 0 2px #959595;
+        line-height: normal;
+        margin: 7px 0 0 7px;
+        border-radius: 3px;
+        transition: opacity 250ms ease;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      &.copied {
+        &::after {
+          opacity: 1;
+          width: 46px;
+          height: 18px;
+        }
+      }
+    }
   }
 
   &.with-topbar {
@@ -186,14 +226,6 @@
       margin: 2rem 0 1rem 0;
     }
   }
-}
-
-.td-heading-self-link:before {
-  content: "";
-  background: url(/icons/heading-link.svg) 50% no-repeat;
-  height: 15px;
-  width: 15px;
-  display: inline-block;
 }
 
 @media (hover: none) and (pointer: coarse), (max-width: 576px) {
