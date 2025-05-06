@@ -46,7 +46,6 @@ These variants are useful only when at least one other table inherits `t`. But a
 
 ## Semantics
 
-
 ### *alter_table_action*
 
 Specify one of the following actions.
@@ -391,18 +390,6 @@ When such expensive rewrites have to be performed, it is recommended to combine 
 ```
 ALTER TABLE t ADD COLUMN c6 UUID DEFAULT gen_random_uuid(), ALTER COLUMN c8 TYPE TEXT
 ```
-
- ALTER TABLE statements that involve a table rewrite are called out specifically in the following sections.
-
-The following alter table operations involve making a full copy of the underlying table and associated index tables.
-1. Changing the primary key of a table
-   2. [#add-primary-key]
-   3. [#drop-primary-key]
-4. Adding a column with a (volatile) default value
-   5. TODO: links
-6. Changing the type of a column 
-   7. TODO: links to above
-   8. 
 
 The following alter table operations involve making a full copy of the underlying table (and possibly associated index tables).
 1. [Adding](#add-alter-table-constraint-constraints) or [dropping](#drop-constraint-constraint-name-restrict-cascade) the primary key of a table.
