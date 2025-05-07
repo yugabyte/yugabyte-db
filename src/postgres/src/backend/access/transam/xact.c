@@ -5018,6 +5018,28 @@ YbBeginInternalSubTransactionForReadCommittedStatement()
 	s->blockState = TBLOCK_SUBINPROGRESS;
 }
 
+bool
+YBTransactionContainsNonReadCommittedSavepoint(void)
+{
+	if (!IsTransactionBlock())
+		return false;
+
+	if (!IsSubTransaction())
+		return false;
+
+	TransactionState s = CurrentTransactionState;
+	while (s != NULL)
+	{
+		if (s->name != NULL &&
+			strcmp(s->name, YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) != 0)
+			return true;
+
+		s = s->parent;
+	}
+
+	return false;
+}
+
 /*
  * ReleaseCurrentSubTransaction
  *

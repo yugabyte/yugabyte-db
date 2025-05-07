@@ -3971,6 +3971,21 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 				YBIncrementDdlNestingLevel(ddl_mode.value);
 			else
 			{
+				/*
+				 * Disallow DDL if there is an active savepoint except the
+				 * implicit ones created for READ COMMITTED isolation.
+				 *
+				 * TODO(#26734): Remove once savepoint for DDL is
+				 * supported.
+				 */
+				if (YBTransactionContainsNonReadCommittedSavepoint())
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("interleaving SAVEPOINT & DDL in transaction"
+									" block not supported by YugaByte yet"),
+							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
+									 " React with thumbs up to raise its priority.")));
+
 				YBSetDdlState(ddl_mode.value);
 				YbMaybeLockMasterCatalogVersion(ddl_mode.value);
 			}
