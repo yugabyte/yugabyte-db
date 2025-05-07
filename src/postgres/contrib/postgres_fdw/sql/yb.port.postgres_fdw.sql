@@ -67,12 +67,10 @@ CREATE TABLE "S 1"."T 4" (
 
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 -- YB note: Currently, YugabyteDB doesn't run a background job like PostgreSQL's autovacuum to analyze the tables.
-/*
 ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
-*/ -- YB
 
 INSERT INTO "S 1"."T 1"
 	SELECT id,
@@ -109,10 +107,9 @@ ANALYZE "S 1"."T 4";
 -- ===================================================================
 -- create foreign tables
 -- ===================================================================
--- YB note: set schema_name, table_name, column_name directly here since ALTER TABLE not supported yet, see #1124
 CREATE FOREIGN TABLE ft1 (
 	c0 int,
-	c1 int OPTIONS (column_name 'C 1') NOT NULL, -- YB note: see above
+	c1 int NOT NULL,
 	c2 int NOT NULL,
 	c3 text,
 	c4 timestamptz,
@@ -120,11 +117,11 @@ CREATE FOREIGN TABLE ft1 (
 	c6 varchar(10),
 	c7 char(10) default 'ft1',
 	c8 user_enum
-) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 1'); -- YB note: see above
+) SERVER loopback;
 ALTER FOREIGN TABLE ft1 DROP COLUMN c0;
 
 CREATE FOREIGN TABLE ft2 (
-	c1 int OPTIONS (column_name 'C 1') NOT NULL, -- YB note: see above
+	c1 int NOT NULL,
 	c2 int NOT NULL,
 	cx int,
 	c3 text,
@@ -133,7 +130,7 @@ CREATE FOREIGN TABLE ft2 (
 	c6 varchar(10),
 	c7 char(10) default 'ft2',
 	c8 user_enum
-) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 1', use_remote_estimate 'true'); -- YB note: see above
+) SERVER loopback;
 ALTER FOREIGN TABLE ft2 DROP COLUMN cx;
 
 CREATE FOREIGN TABLE ft4 (
@@ -200,7 +197,6 @@ ALTER SERVER testserver1 OPTIONS (DROP extensions);
 ALTER USER MAPPING FOR public SERVER testserver1
 	OPTIONS (DROP user, DROP password);
 
--- YB note: ALTER TABLE not supported yet, see #1124
 ALTER FOREIGN TABLE ft1 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
@@ -782,7 +778,6 @@ select c2, least_agg(c1) from ft1 group by c2 order by c2;
 -- Add function and aggregate into extension
 alter extension postgres_fdw add function least_accum(anyelement, variadic anyarray);
 alter extension postgres_fdw add aggregate least_agg(variadic items anyarray);
--- YB note: option "extensions" not found, see issue #11421
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- Now aggregate will be pushed.  Aggregate will display VARIADIC argument.
@@ -793,7 +788,6 @@ select c2, least_agg(c1) from ft1 where c2 < 100 group by c2 order by c2;
 -- Remove function and aggregate from extension
 alter extension postgres_fdw drop function least_accum(anyelement, variadic anyarray);
 alter extension postgres_fdw drop aggregate least_agg(variadic items anyarray);
--- YB note: option "extensions" not found, see issue #11421
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- Not pushed down as we have dropped objects from extension.
@@ -852,7 +846,6 @@ alter extension postgres_fdw add operator family my_op_family using btree;
 alter extension postgres_fdw add operator public.<^(int, int);
 alter extension postgres_fdw add operator public.=^(int, int);
 alter extension postgres_fdw add operator public.>^(int, int);
--- YB note: option "extensions" not found, see issue #11421
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- Now this will be pushed as sort operator is part of the extension.
@@ -867,7 +860,6 @@ alter extension postgres_fdw drop operator family my_op_family using btree;
 alter extension postgres_fdw drop operator public.<^(int, int);
 alter extension postgres_fdw drop operator public.=^(int, int);
 alter extension postgres_fdw drop operator public.>^(int, int);
--- YB note: option "extensions" not found, see issue #11421
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- This will not be pushed as sort operator is now removed from the extension.
@@ -1026,28 +1018,24 @@ PREPARE st6 AS SELECT * FROM ft1 t1 WHERE t1.c1 = t1.c2;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 PREPARE st7 AS INSERT INTO ft1 (c1,c2,c3) VALUES (1001,101,'foo');
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
--- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
-/*
 ALTER TABLE "S 1"."T 1" RENAME TO "T 0";
 ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 0');
-*/ -- YB
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 EXECUTE st6;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
--- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
-/*
 ALTER TABLE "S 1"."T 0" RENAME TO "T 1";
 ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 1');
-*/ -- YB
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
 
 PREPARE st8 AS SELECT count(c3) FROM ft1 t1 WHERE t1.c1 === t1.c2;
-/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
 ALTER SERVER loopback OPTIONS (DROP extensions);
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
 EXECUTE st8;
 ALTER SERVER loopback OPTIONS (ADD extensions 'postgres_fdw');
-*/ -- YB
 
 -- cleanup
 DEALLOCATE st1;
@@ -1413,9 +1401,7 @@ DROP TABLE base_tbl;
 -- test serial columns (ie, sequence-based defaults)
 -- ===================================================================
 create table loc1 (f1 serial, f2 text);
-/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 alter table loc1 set (autovacuum_enabled = 'false');
-*/ -- YB
 create foreign table rem1 (f1 serial, f2 text)
   server loopback options(table_name 'loc1');
 select pg_catalog.setval('rem1_f1_seq', 10, false);
@@ -2420,10 +2406,8 @@ FROM pg_foreign_table
 WHERE ftrelid = 'table30000'::regclass
 AND ftoptions @> array['fetch_size=30000'];
 
--- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '60000');
 
-/* YB note: See above
 SELECT COUNT(*)
 FROM pg_foreign_table
 WHERE ftrelid = 'table30000'::regclass
@@ -2433,7 +2417,6 @@ SELECT COUNT(*)
 FROM pg_foreign_table
 WHERE ftrelid = 'table30000'::regclass
 AND ftoptions @> array['fetch_size=60000'];
-*/ -- YB
 
 ROLLBACK;
 
@@ -2445,10 +2428,8 @@ SET enable_partitionwise_join=on;
 CREATE TABLE fprt1 (a int, b int, c varchar) PARTITION BY RANGE(a);
 CREATE TABLE fprt1_p1 (LIKE fprt1);
 CREATE TABLE fprt1_p2 (LIKE fprt1);
-/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 ALTER TABLE fprt1_p1 SET (autovacuum_enabled = 'false');
 ALTER TABLE fprt1_p2 SET (autovacuum_enabled = 'false');
-*/ -- YB
 INSERT INTO fprt1_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 2) i;
 INSERT INTO fprt1_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 2) i;
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (0) TO (250)
@@ -2462,10 +2443,8 @@ ANALYZE fprt1_p2;
 CREATE TABLE fprt2 (a int, b int, c varchar) PARTITION BY RANGE(b);
 CREATE TABLE fprt2_p1 (LIKE fprt2);
 CREATE TABLE fprt2_p2 (LIKE fprt2);
-/* YB note: See above
 ALTER TABLE fprt2_p1 SET (autovacuum_enabled = 'false');
 ALTER TABLE fprt2_p2 SET (autovacuum_enabled = 'false');
-*/ -- YB
 INSERT INTO fprt2_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 3) i;
 INSERT INTO fprt2_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 3) i;
 CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
