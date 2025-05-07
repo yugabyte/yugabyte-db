@@ -51,7 +51,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
-DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 10 * 1000,
+DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 30 * 1000,
                       "The lifetime of ysql operation lease extensions. The ysql operation lease "
                       "allows tservers to host pg sessions and serve reads and writes to user data "
                       "through the YSQL API.");
@@ -860,7 +860,7 @@ void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
 Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
     const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
     const LeaderEpoch& epoch) {
-  if (!FLAGS_TEST_enable_ysql_operation_lease &&
+  if (!FLAGS_enable_ysql_operation_lease &&
       !FLAGS_TEST_enable_object_locking_for_table_locks) {
     return STATUS(NotSupported, "The ysql lease is currently a test feature.");
   }

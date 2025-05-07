@@ -428,13 +428,13 @@ class PgObjectLocksTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     opts->extra_tserver_flags.emplace_back("--TEST_enable_object_locking_for_table_locks=true");
-    opts->extra_tserver_flags.emplace_back("--TEST_enable_ysql_operation_lease=true");
+    opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
     opts->extra_master_flags.emplace_back("--TEST_enable_object_locking_for_table_locks=true");
-    opts->extra_master_flags.emplace_back("--TEST_enable_ysql_operation_lease=true");
+    opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
   }

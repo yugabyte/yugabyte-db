@@ -15,6 +15,8 @@
 
 #include "yb/tserver/ysql_lease_poller.h"
 
+#include "yb/common/ysql_operation_lease.h"
+
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_rpc.h"
 
@@ -107,7 +109,7 @@ YsqlLeasePoller::YsqlLeasePoller(TabletServer& server, MasterLeaderFinder& finde
     : server_(server), finder_(finder) {}
 
 Status YsqlLeasePoller::Poll() {
-  if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh || !server_.YSQLLeaseEnabled()) {
+  if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh || !IsYsqlLeaseEnabled()) {
     return Status::OK();
   }
 

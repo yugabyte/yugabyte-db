@@ -922,7 +922,7 @@ Status PgWrapper::SetYsqlConnManagerStatsShmKey(key_t key) {
 }
 
 Status PgWrapper::ReloadConfig() {
-  return proc_->Kill(SIGHUP);
+  return proc_->KillNoCheckIfRunning(SIGHUP);
 }
 
 Status PgWrapper::UpdateAndReloadConfig() {
@@ -1353,6 +1353,14 @@ void PgSupervisor::Stop() {
   }
 }
 
+Status PgSupervisor::StartAndMaybePause() {
+  if (IsYsqlLeaseEnabled()) {
+    return InitPaused();
+  } else {
+    return Start();
+  }
+}
+
 Status PgSupervisor::ReloadConfig() {
   std::lock_guard lock(mtx_);
   if (process_wrapper_) {
@@ -1360,8 +1368,6 @@ Status PgSupervisor::ReloadConfig() {
   }
   return Status::OK();
 }
-
-
 
 Status PgSupervisor::UpdateAndReloadConfig() {
   // See GHI #16055. TSAN detects that Start() and UpdateAndReloadConfig each acquire M0 and M1 in

@@ -212,7 +212,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override;
 
-  static bool YSQLLeaseEnabled();
+  static bool IsYsqlLeaseEnabled();
   tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
   bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 

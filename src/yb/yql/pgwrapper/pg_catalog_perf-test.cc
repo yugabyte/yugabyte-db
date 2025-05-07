@@ -19,6 +19,7 @@
 #include <unordered_map>
 
 #include "yb/common/json_util.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
@@ -152,8 +153,8 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
           *config.response_cache_size_bytes;
     }
     if (!config.preload_additional_catalog_list.empty()) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
-        std::string(config.preload_additional_catalog_list);
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
+          std::string(config.preload_additional_catalog_list);
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
     // When invalidation messages are used, this test does not use the tserver response
@@ -167,6 +168,10 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
 
   size_t NumTabletServers() override {
     return 1;
+  }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->wait_for_pg = false;
   }
 
   Result<uint64_t> CacheRefreshRPCCount() {
@@ -715,9 +720,9 @@ TEST_F_EX(PgCatalogPerfTest,
 
 // The test checks that response cache for specific DB is invalidated in case of closure of
 // connection with temp tables. Response cache for other DBs is not affected.
-TEST_F_EX(PgCatalogPerfTest,
-          ResponseCacheInvalidationOnConnectionWithTempTableClosure,
-          PgCatalogWithUnlimitedCachePerfTest) {
+TEST_F_EX(
+    PgCatalogPerfTest, ResponseCacheInvalidationOnConnectionWithTempTableClosure,
+    PgCatalogWithUnlimitedCachePerfTest) {
   constexpr auto* kDBName = "aux_db";
 
   {

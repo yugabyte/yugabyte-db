@@ -207,6 +207,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+  Status StartPostgres(Cluster* cluster);
+  void SetPGCallbacks(Cluster* cluster, uint16_t pg_port);
 
   Status WriteGenerateSeries(
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table);

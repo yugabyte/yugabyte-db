@@ -828,7 +828,7 @@ Status TabletServer::ProcessLeaseUpdate(
 
 
 Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
-  if (!YSQLLeaseEnabled()) {
+  if (!IsYsqlLeaseEnabled()) {
     return STATUS(NotSupported, "YSQL lease is not enabled");
   }
   auto pg_client_service = pg_client_service_.lock();
@@ -851,9 +851,9 @@ Status TabletServer::RestartPG() const {
   return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
 }
 
-bool TabletServer::YSQLLeaseEnabled() {
+bool TabletServer::IsYsqlLeaseEnabled() {
   return GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
-         GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease);
+         GetAtomicFlag(&FLAGS_enable_ysql_operation_lease);
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
