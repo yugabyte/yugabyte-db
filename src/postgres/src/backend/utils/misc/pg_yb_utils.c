@@ -1190,7 +1190,6 @@ typedef struct
 {
 	uint64_t	applied;
 	uint64_t	pending;
-
 } YbCatalogModificationAspects;
 
 typedef struct YbCatalogMessageList
@@ -2330,6 +2329,20 @@ YbMemCtxReset(MemoryContext context)
 }
 
 static void
+YBClearDdlTransactionState()
+{
+	if (ddl_transaction_state.altered_table_ids != NIL)
+	{
+		list_free(ddl_transaction_state.altered_table_ids);
+		ddl_transaction_state.altered_table_ids = NIL;
+	}
+
+	ddl_transaction_state = (YbDdlTransactionState)
+	{
+	};
+}
+
+static void
 YBResetDdlState()
 {
 	YbcStatus	status = NULL;
@@ -2355,20 +2368,8 @@ YBResetDdlState()
 		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
 
-	/*
-	 * Free up the altered_table_ids list which is allocated in the
-	 * TopTransactionContext.
-	 */
-	if (ddl_transaction_state.altered_table_ids != NIL)
-	{
-		list_free(ddl_transaction_state.altered_table_ids);
-		ddl_transaction_state.altered_table_ids = NIL;
-	}
-
 	bool use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
-	ddl_transaction_state = (YbDdlTransactionState)
-	{
-	};
+	YBClearDdlTransactionState();
 	YBResetEnableSpecialDDLMode();
 	/*
 	 * If the DDL uses the regular transaction block, then we are not in a
@@ -2906,9 +2907,7 @@ YBCommitTransactionContainingDDL()
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 	bool use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
 
-	ddl_transaction_state = (YbDdlTransactionState)
-	{
-	};
+	YBClearDdlTransactionState();
 
 	if (use_regular_txn_block)
 		HandleYBStatus(YBCPgCommitPlainTransactionContainingDDL(MyDatabaseId, is_silent_altering));
@@ -3663,21 +3662,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 		 */
 		if (ddl_transaction_state.nesting_level == 0 &&
 			!ddl_transaction_state.use_regular_txn_block)
-		{
-			/*
-			 * Free up the altered_table_ids list separately which is allocated
-			 * in the TopTransactionContext.
-			 */
-			if (ddl_transaction_state.altered_table_ids != NIL)
-			{
-				list_free(ddl_transaction_state.altered_table_ids);
-				ddl_transaction_state.altered_table_ids = NIL;
-			}
-
-			ddl_transaction_state = (YbDdlTransactionState)
-			{
-			};
-		}
+			YBClearDdlTransactionState();
 		return (YbDdlModeOptional)
 		{
 		};
