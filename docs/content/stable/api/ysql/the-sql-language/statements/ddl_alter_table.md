@@ -56,7 +56,7 @@ Add the specified column with the specified data type and constraint.
 
 ##### Table rewrites
 
-ADD COLUMN … DEFAULT statements require a [table rewrite](#alter-table-operations-that-involve-a-table-rewrite) when the default value uses *volatile* functions. [Volatile functions](https://www.postgresql.org/docs/current/xfunc-volatility.html#XFUNC-VOLATILITY) can return different results for different rows, so a table rewrite is required to fill in values for existing rows. For non-volatile functions, no table rewrite is required.
+ADD COLUMN … DEFAULT statements require a [table rewrite](#alter-table-operations-that-involve-a-table-rewrite) when the default value is a *volatile* expression. [Volatile expressions](https://www.postgresql.org/docs/current/xfunc-volatility.html#XFUNC-VOLATILITY) can return different results for different rows, so a table rewrite is required to fill in values for existing rows. For non-volatile expressions, no table rewrite is required.
   
 Examples of volatile expressions
 
