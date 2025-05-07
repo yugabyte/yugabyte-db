@@ -259,6 +259,10 @@ Status MiniCluster::StartAsync(
   }
 
   running_ = true;
+  rpc::MessengerBuilder builder("minicluster-messenger");
+  builder.set_num_reactors(1);
+  messenger_ = VERIFY_RESULT(builder.Build());
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
   return Status::OK();
 }
 
@@ -540,6 +544,8 @@ void MiniCluster::StopSync() {
     master_server->Shutdown();
   }
 
+  messenger_->Shutdown();
+
   running_ = false;
 }
 
@@ -574,6 +580,8 @@ void MiniCluster::Shutdown() {
     }
   }
   mini_masters_.clear();
+
+  messenger_->Shutdown();
 
   running_ = false;
 }

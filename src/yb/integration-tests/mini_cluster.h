@@ -250,6 +250,9 @@ class MiniCluster : public MiniClusterBase {
 
   Status WaitForLoadBalancerToStabilize(MonoDelta timeout);
 
+  template <typename T>
+  Result<T> GetLeaderMasterProxy();
+
   std::string GetClusterId() { return options_.cluster_id; }
 
  private:
@@ -282,6 +285,8 @@ class MiniCluster : public MiniClusterBase {
   MiniTabletServers mini_tablet_servers_;
 
   PortPicker port_picker_;
+  std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
@@ -440,5 +445,10 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster);
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
+
+template <typename T>
+Result<T> MiniCluster::GetLeaderMasterProxy() {
+  return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
+}
 
 }  // namespace yb
