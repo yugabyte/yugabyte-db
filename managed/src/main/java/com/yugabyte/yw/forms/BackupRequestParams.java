@@ -17,6 +17,7 @@ import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -146,8 +147,10 @@ public class BackupRequestParams extends UniverseTaskParams {
   // False until fully tested.
   @ApiModelProperty(
       value =
-          "Add role exists checks for roles metadata. All GRANT/REVOKE and ALTER sql commands will"
-              + " first check if the role exists")
+          "WARNING: This is a preview API that could change. Add role exists checks for roles"
+              + " metadata. All GRANT/REVOKE and ALTER sql commands will first check if the role"
+              + " exists")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.1.0.0")
   @Getter
   @Setter
   private Boolean dumpRoleChecks = false;

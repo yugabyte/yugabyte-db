@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -151,7 +152,9 @@ public class RestoreBackupParams extends UniverseTaskParams {
     // This will be be harcoded to true if success marker does not have dump_role_checks set to
     // true.
     // Default true until testing is complete.
-    @ApiModelProperty(value = "Ignore all restore errors")
+    @ApiModelProperty(
+        value = "WARNING: This is a preview API that could change. Ignore all restore errors")
+    @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.1.0.0")
     @Getter
     @Setter
     private Boolean ignoreErrors = true;

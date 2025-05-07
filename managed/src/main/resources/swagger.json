@@ -3440,7 +3440,7 @@
           "type" : "boolean"
         },
         "dumpRoleChecks" : {
-          "description" : "Add role exists checks for roles metadata. All GRANT/REVOKE and ALTER sql commands will first check if the role exists",
+          "description" : "WARNING: This is a preview API that could change. Add role exists checks for roles metadata. All GRANT/REVOKE and ALTER sql commands will first check if the role exists",
           "type" : "boolean"
         },
         "enablePointInTimeRestore" : {
@@ -3901,7 +3901,7 @@
           "type" : "string"
         },
         "ignoreErrors" : {
-          "description" : "Ignore all restore errors",
+          "description" : "WARNING: This is a preview API that could change. Ignore all restore errors",
           "type" : "boolean"
         },
         "keyspace" : {
