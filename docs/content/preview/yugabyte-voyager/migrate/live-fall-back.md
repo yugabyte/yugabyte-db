@@ -922,7 +922,7 @@ Perform the following steps as part of the cutover process:
 
     As part of the cutover process, the following occurs in the background:
 
-    1. The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to targe` phase continues and completes by importing all the exported events into the target YugabyteDB database.
+    1. The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to target` phase continues and completes by importing all the exported events into the target YugabyteDB database.
 
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database.
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart the process using the `export data from target` command as suggested in the `import data to target` output.
