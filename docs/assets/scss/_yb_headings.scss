@@ -38,6 +38,8 @@
     }
 
     .td-heading-self-link {
+      position: relative;
+
       &::before {
         content: "";
         background: url(/icons/heading-link.svg) 50% no-repeat;
@@ -50,15 +52,17 @@
         content: "Copied";
         background: #fff;
         position: absolute;
-        color:#000;
+        top: calc(100% - 30px);
+        left: calc(100% + 12px);
+        color: #4E5F6D;
         opacity: 0;
         visibility: visible;
-        font-size: 10px;
-        font-weight: 300;
-        box-shadow: 0 0 2px #959595;
+        font-size: 11.5px;
+        font-weight: 400;
+        border: 1px solid #E9EDF0;
+        box-shadow: 0 0 8px rgba(0,0,0,0.1);
         line-height: normal;
-        margin: 7px 0 0 7px;
-        border-radius: 3px;
+        border-radius: 8px;
         transition: opacity 250ms ease;
         width: 0;
         height: 0;
@@ -71,8 +75,8 @@
       &.copied {
         &::after {
           opacity: 1;
-          width: 46px;
-          height: 18px;
+          width: 59px;
+          height: 36px;
         }
       }
     }
@@ -236,4 +240,7 @@
 
 .td-searchpage .td-content h1 {
   margin-bottom: 16px;
+}
+.content-parent {
+  overflow: hidden;
 }
