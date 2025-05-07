@@ -45,6 +45,13 @@ Do that ten or so times, and it becomes difficult to track which changes are mad
 The CSV necessitates a single commit tracking what upstream state is being tracked.
 Therefore, in case of port-imports, YugabyteDB must create a fork of the external repository to track the state of the upstream code with the point-imports.
 
+To make matters more complicated, the upstream repository might be tracked differently across [`yugabyte/yugabyte-db`][repo-yugabyte-db] branches.
+For example, pgaudit has different branches for each PG version while pg_cron has a single branch where, at any point, there is multi-version support.
+In case of the former, it is necessary to track separate upstream commits across [`yugabyte/yugabyte-db`][repo-yugabyte-db] branches, and if a fork is required, then a branch should be created for each PG version that YugabyteDB supports, conventionally named `yb-pg<version>`.
+In case of the latter, one may do the same, or a single `yb` branch can be used across all [`yugabyte/yugabyte-db`][repo-yugabyte-db] branches.
+Branches can be renamed, so if the single `yb` branch ever needs to be split to two, it can switch to the `yb-pg<version>` format from that point.
+It's fine as long as historical commits are not lost so that old commits still have a valid upstream commit that can be referenced.
+
 Not all external repositories are yet tracked in [`upstream_repositories.csv`][upstream-repositories-csv].
 New repositories ought to be registered in here.
 Old repositories should be migrated into the CSV over time.
@@ -411,14 +418,23 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    This should not run into any conflicts; there should be no need for force push.
    This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
    **Make sure the commit hashes have not changed when landing to `yb-pg<version>`.**
+1. If backporting to stable branches, the same process should be repeated using the `yb-pg<version>` branch corresponding to that stable branch's PG version.
+   The [search for back-patch commits](#find-postgresql-back-patch-commits) should be redone for each PG version.
 
 #### Squash direct-descendant merge
 
 A direct-descendant merge for PostgreSQL is typically a minor version upgrade.
 An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd531080239c350528da38268ac0fa0e](https://github.com/yugabyte/postgres/commit/12398eddbd531080239c350528da38268ac0fa0e) and [`yugabyte/yugabyte-db` e99df6f4d97e5c002d3c4b89c74a778ad0ac0932](https://github.com/yugabyte/yugabyte-db/commit/e99df6f4d97e5c002d3c4b89c74a778ad0ac0932).
 
-1. Switch to a feature branch off the latest `yugabyte/postgres` repo `yb-pg<version>` branch: `git switch -c merge-pg yb-pg<version>`.
-1. Do `git merge <commit>`.
+1. First, determine whether a merge in the upstream repository can be skipped.
+   This is only permissible if the current upstream repository referenced commit is not a YugabyteDB commit (e.g. there is no `yb-pg15` branch since a `postgres/postgres` commit is used directly).
+   Then, the target version can directly be used.
+   (In this example, this shortcut could not be used.)
+1. Otherwise, switch to a feature branch off the latest `yugabyte/postgres` repo `yb-pg<version>` branch: `git switch -c merge-pg yb-pg<version>`.
+   Then, do `git merge REL_15_12`.
+   (It may still be the case that the target version, in this example 15.12, already has contains all the changes YB imported on top of 15.2.
+   If that is the case, then the merge can be simplified to take exactly the target version: `git merge -X theirs REL_15_12`.
+   In this example, that was not possible since YB imported some newer commits.)
    [Make sure tests pass](#testing-postgresql).
    Record merge resolutions into the merge commit message.
    There should only be the merge commit and no other extraneous commits on top of it.
@@ -431,13 +447,13 @@ An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd5310802
    If `yugabyte/postgres` needs changes, then commit hashes change, so `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv` must be updated, and re-test on `yugabyte/yugabyte-db` should be considered.
 1. Land the `yugabyte/yugabyte-db` revision.
    **If there is a merge conflict on `src/lint/upstream_repositories.csv`, then redo the whole process.**
-   It means someone else updated `yb-pg<version>` branch, so `yugabyte/postgres` merge need to be redone on latest `yb-pg<version>`, compilation/testing needs to be re-done, and since the commit hashes change, `src/lint/upstream_repositories.csv` needs a new commit hash.
+   It means someone else updated `yb-pg15` branch, so `yugabyte/postgres` merge need to be redone on latest `yb-pg15`, compilation/testing needs to be re-done, and since the commit hashes change, `src/lint/upstream_repositories.csv` needs a new commit hash.
    Plus, it's safest to re-run tests on `yugabyte/yugabyte-db` after all this adjustment.
-1. Push the `yugabyte/postgres` merge directly onto `yb-pg<version>`: `git push <remote> merge-pg:yb-pg<version>`.
+1. Push the `yugabyte/postgres` merge directly onto `yb-pg15`: `git push <remote> merge-pg:yb-pg15`.
    **Do not use the GitHub PR UI to merge because that changes commit hashes.**
    This should not run into any conflicts; there should be no need for force push.
-   This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
-   **Make sure the commit hashes have not changed when landing to `yb-pg<version>`.**
+   This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg15` concurrently.
+   **Make sure the commit hashes have not changed when landing to `yb-pg15`.**
 
 #### Squash non-direct-descendant merge
 
@@ -478,14 +494,60 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 
 ### Embedded via subtree
 
-The steps that follow will use pgaudit as an example.
-At the time of writing, pgaudit uses the subtree embedding strategy.
-
 #### Subtree point-imports
+
+1. If this subtree is currently not forked by YugabyteDB, ask yourself whether this point-import is necessary.
+   If you instead merge to a newer version, you avoid the need to make a YugabyteDB fork.
+1. If there is no YugabyteDB fork, that needs to be created and [a new branch added to it](#how-upstream-repositories-are-tracked): `git switch -c yb-pg15 "$(grep pgaudit src/lint/upstream_repositories.csv | cut -d, -f4)"`.
+1. Do `git cherry-pick -x <commit>` for each commit being imported.
+   Notice the `-x` to record the commit hash being cherry-picked.
+   Do any relevant testing if applicable.
+   For any merge conflicts, resolve and amend them to that same commit, describing resolutions within the commit messages themselves.
+   This includes logical merge conflicts which can be found via compilation failure or test failure.
+   At the end, you should be n commits ahead of the commit in `upstream_repositories.csv`, where n is the number of commits you are point-importing.
+   Make a GitHub PR of this through your fork for review.
+1. On the `yugabyte/yugabyte-db` repo, [subtree merge](#git-subtrees) this branch.
 
 #### Subtree direct-descendant merge
 
+The steps that follow will use documentdb as a hypothetical example.
+Suppose that YugabyteDB was based off a `yugabyte/documentdb` repo `yb` branch constructed from `v0.102-0` with commit [b896737f53d9eb13e0b397976e1b2edd310cca57](https://github.com/microsoft/documentdb/commit/b896737f53d9eb13e0b397976e1b2edd310cca57) cherry-picked.
+We are trying to merge to `v0.103-0` (which doesn't exist at the time of writing, but you get the idea of the example).
+
+1. First, determine whether a merge in the upstream repository can be skipped.
+   This is only permissible if the current upstream repository referenced commit is not a YugabyteDB commit (e.g. there is no `yb` branch since a `microsoft/documentdb` commit is used directly).
+   Then, the target version can directly be used.
+   (In this example, this shortcut can not be used.)
+1. Otherwise, switch to a feature branch off the latest `yugabyte/documentdb` repo `yb` branch: `git switch -c merge-documentdb yb`.
+   Then, do `git merge v0.103-0`.
+   (It may still be the case that the target version, in this example `v0.103-0`, already has contains all the changes YB imported on top of `v0.102-0`.
+   If that is the case, then the merge can be simplified to take exactly the target version: `git merge -X theirs v0.103-0`.)
+   Do any relevant testing if applicable.
+   Record merge resolutions into the merge commit message.
+   There should only be the merge commit and no other extraneous commits on top of it.
+   Make a GitHub PR of this through your fork for review.
+1. On the `yugabyte/yugabyte-db` repo, [subtree merge](#git-subtrees) this branch.
+
 #### Subtree non-direct-descendant merge
+
+The steps that follow will use pgaudit as an example.
+
+This merge can technically be handled similarly as [direct-descendant merge](#squash-direct-descendant-merge).
+However, there is a much faster alternative that should be taken.
+A prerequisite for using this alternative is that the target version contains all the commits of the source version (or, nearly equivalently, the target version was released later than the source version).
+For example, `1.7.0` should contain all commits in `1.3.2`, considering backports as equivalent to each other, and for any commits only in PG `1.3.2`, they are likely irrelevant for PG `1.7.0`.
+This prerequisite generally shouldn't fail since major version upgrades should aim for the latest minor version of a major version.
+
+Suppose that YugabyteDB was based off a `yugabyte/pgaudit` repo `yb-pg11` branch constructed from `1.3.2` with commit [455cde5ec3a4374b18ad551aaabe6d60761b6503](https://github.com/pgaudit/pgaudit/commit/455cde5ec3a4374b18ad551aaabe6d60761b6503) cherry-picked.
+We are trying to merge to `1.7.0`.
+
+1. Ensure `1.3.2` to `1.7.0` satisfies the prerequisite mentioned above.
+1. First, determine whether a merge in the upstream repository can be skipped.
+   This is only permissible if the current upstream repository referenced commit is not a YugabyteDB commit (e.g. there is no `yb-pg11` branch since a `pgaudit/pgaudit` commit is used directly).
+   Then, the target version can directly be used.
+   (In this example, this shortcut can not be used.)
+1. Otherwise, follow the steps to identify commits to cherry-pick and create a `yb-pg15` branch as in [squash non-direct-descendant merge](#squash-non-direct-descendant-merge).
+1. On the `yugabyte/yugabyte-db` repo, [subtree merge](#git-subtrees) this branch.
 
 ## General advice
 
