@@ -333,6 +333,10 @@ public class TokenAuthenticator extends Action.Simple {
       return userUUID.equals(user.getUuid());
     }
 
+    if (endPoint.endsWith("/reset_password")) {
+      return true;
+    }
+
     if (requestType.equals("GET")
         && (endPoint.endsWith("/users/" + user.getUuid())
             || path.endsWith("/customers/" + user.getCustomerUUID()))) {
