@@ -171,9 +171,12 @@ class PgSupervisor : public ProcessSupervisor {
 
   void Stop() override;
 
-  const PgProcessConf& conf() const {
-    return conf_;
-  }
+  const PgProcessConf& conf() const { return conf_; }
+
+  // todo(zdrudi): maybe rename this?
+  // what we want is to verify that the process can be started, and then potentially pause it.
+  // So the semantics should maybe be different.
+  Status StartAndMaybePause();
 
   Status ReloadConfig();
   Status UpdateAndReloadConfig();

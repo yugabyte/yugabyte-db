@@ -55,6 +55,8 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
     RETURN_NOT_OK(WaitForInitDb(test_cluster()));
     test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
     RETURN_NOT_OK(test_cluster_.InitPostgres());
+    auto pg_ts = test_cluster()->mini_tablet_server(test_cluster_.pg_ts_idx_);
+    RETURN_NOT_OK(pg_ts->StartPgIfConfigured());
     RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
     cdc_proxy_ = GetCdcProxy();

@@ -38,12 +38,6 @@ namespace yb {
 class ExternalMiniClusterSecureTest :
     public MiniClusterTestWithClient<ExternalMiniCluster> {
  public:
-
-  void SetUp(bool enable_ysql) {
-    enable_ysql_ = enable_ysql;
-    ExternalMiniClusterSecureTest::SetUp();
-  }
-
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
@@ -183,7 +177,8 @@ class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterS
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
     // TODO: enable ysql after #26138 is fixed
-    ExternalMiniClusterSecureTest::SetUp(false);
+    enable_ysql_ = false;
+    ExternalMiniClusterSecureTest::SetUp();
   }
 };
 
@@ -195,6 +190,11 @@ TEST_F_EX(ExternalMiniClusterSecureTest, YbTools, ExternalMiniClusterSecureWithC
 
 class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest {
  public:
+  void SetUp() override {
+    enable_ysql_ = false;
+    ExternalMiniClusterSecureTest::SetUp();
+  }
+
   void SetUpFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = JoinPathSegments(GetTestDataDirectory(), "certs");
 
@@ -269,11 +269,10 @@ TEST_F_EX(ExternalMiniClusterSecureTest, ReloadCertificates, ExternalMiniCluster
 }
 
 class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecureTest {
-
-  public:
+ public:
   void SetUpFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =
-      JoinPathSegments(env_util::GetRootDir("test_certs"), "test_certs/intermediate1");
+        JoinPathSegments(env_util::GetRootDir("test_certs"), "test_certs/intermediate1");
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) = "hostssl all all all cert";
   }
 
@@ -300,17 +299,14 @@ class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecur
   }
 };
 
-
-class ExternalMiniClusterSecureWithInterCAServerCertTest :
-  public ExternalMiniClusterSecureWithInterCATest {
-
-  public:
+class ExternalMiniClusterSecureWithInterCAServerCertTest
+    : public ExternalMiniClusterSecureWithInterCATest {
+ public:
   void SetUpFlags() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =  JoinPathSegments(
-        env_util::GetRootDir("test_certs"), "test_certs/intermediate2");
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) = "hostssl all all all cert";
-    }
-
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =
+        JoinPathSegments(env_util::GetRootDir("test_certs"), "test_certs/intermediate2");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) = "hostssl all all all cert";
+  }
 };
 
 // ca.crt contains both root and intermediate CA certs

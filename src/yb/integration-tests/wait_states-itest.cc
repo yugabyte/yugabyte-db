@@ -186,10 +186,7 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
   }
 
   void EnableYSQLFlags() override {
-    if (test_mode_ == TestMode::kYCQL) {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = false;
-    } else {
+    if (test_mode_ != TestMode::kYCQL) {
       pgwrapper::PgMiniTestBase::EnableYSQLFlags();
     }
   }
