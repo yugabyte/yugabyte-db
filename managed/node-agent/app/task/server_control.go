@@ -72,6 +72,26 @@ func (handler *ServerControlHandler) Handle(
 			return nil, err
 		}
 	}
+	// Enable linger for user level systemd.
+	yes, err := module.IsUserSystemd(handler.username, handler.param.GetServerName())
+	if err != nil {
+		return nil, err
+	}
+	if yes {
+		lingerCmd := fmt.Sprintf("loginctl enable-linger %s", handler.username)
+		shellTask = NewShellTaskWithUser(
+			handler.String(),
+			handler.username,
+			util.DefaultShell,
+			[]string{"-c", lingerCmd},
+		)
+		_, err = shellTask.Process(ctx)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Server control failed in %v - %s", lingerCmd, err.Error())
+			return nil, err
+		}
+	}
 	controlType := strings.ToLower(pb.ServerControlType_name[int32(handler.param.ControlType)])
 	cmd, err := module.ControlServerCmd(
 		handler.username,
