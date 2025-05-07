@@ -54,7 +54,7 @@ YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the app
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application.
+Follow the [setup instructions](../../cluster-setup-aeon/#set-up-yb-workload-simulator) to install the YB Workload Simulator application.
 
 ### Configure the smart driver
 

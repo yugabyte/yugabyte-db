@@ -130,7 +130,7 @@ java -jar \
 
 The `-Dnode` flag specifies the IP address of the node to which to connect.
 
-The `-Dspring.datasource` flag enables [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-load-balancing) for the application connections. If you created a universe using different zones, replace the zones with the corresponding zones in your universe, comma-separated, in the format `cloud.region.zone`.
+The `-Dspring.datasource` flag enables [topology-aware load balancing](../../drivers-orms/smart-drivers/#topology-aware-load-balancing) for the application connections. If you created a universe using different zones, replace the zones with the corresponding zones in your universe, comma-separated, in the format `cloud.region.zone`.
 
 To view the application UI, navigate to `http://<machine_ip_or_dns>:8080` (for example, `http://localhost:8080`).
 

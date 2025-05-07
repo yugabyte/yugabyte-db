@@ -46,7 +46,7 @@ Before you can [create a multi-region universe in YugabyteDB Anywhere](../../../
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application, connect it, and then [start a workload](../../#start-a-read-and-write-workload).
+Follow the [setup instructions](../../cluster-setup-anywhere/#set-up-yb-workload-simulator) to install the YB Workload Simulator application, connect it, and then [start a workload](../../#start-a-read-and-write-workload).
 
 To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 

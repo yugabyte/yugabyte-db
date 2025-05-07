@@ -72,7 +72,7 @@ In this deployment, the YB-Masters are each placed in a separate region to allow
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application.
+Follow the [setup instructions](../../cluster-setup-local/#set-up-yb-workload-simulator) to install the YB Workload Simulator application.
 
 ### Configure the smart driver
 
