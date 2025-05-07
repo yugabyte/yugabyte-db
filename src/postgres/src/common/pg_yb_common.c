@@ -252,9 +252,9 @@ YBGetYsqlOutputBufferSize()
 
 	/*
 	 * Shouldn't reach here. But even if we do, instead of failing in a release
-	 * build, we return 256KB as a default.
+	 * build, we return 1 MiB as a default.
 	 */
-	return 256 * 1024;
+	return 1024 * 1024;
 
 }
 
