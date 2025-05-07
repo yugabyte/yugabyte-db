@@ -2597,5 +2597,34 @@ EXECUTE PROCEDURE log_ddl();
   ASSERT_EQ(v, 3);
 }
 
+// We have made a special case to allow expression pushdown for table pg_yb_catalog_version
+// in order to ensure continued support of cross-database concurrent DDLs. Without expression
+// pushdown PG would read all the rows of pg_yb_catalog_version in order to check for not null
+// constraint on column current_version and column last_breaking_version. Reading all the rows
+// defeats concurrent cross-database DDLs which would otherwise operate on different rows without
+// conflicts. This test verifies our pushdown special case does not incorrectly allow a null
+// value gets inserted into the table pg_yb_catalog_version.
+TEST_F(PgCatalogVersionTest, NotNullConstraint) {
+  const string query =
+        R"#(
+CREATE OR REPLACE FUNCTION foo(amount INT) RETURNS VOID AS
+$$
+  UPDATE pg_yb_catalog_version SET current_version = current_version + amount WHERE db_oid = 1;
+$$ LANGUAGE SQL;
+SET enable_seqscan = off;
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
+        )#";
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Execute(query));
+  auto status = conn.Execute("SELECT foo(null)");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "null value in column \"current_version\" of relation "
+                                         "\"pg_yb_catalog_version\" violates not-null constraint");
+  auto expected = "1, 1, 1"s;
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT * FROM pg_yb_catalog_version WHERE db_oid = 1"));
+  ASSERT_EQ(expected, result);
+}
+
 } // namespace pgwrapper
 } // namespace yb
