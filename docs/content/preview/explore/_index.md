@@ -47,7 +47,7 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 
   {{< sections/3-box-card
     title="YCQL features"
-    description="Explore YugabyteDB's Cassandra-compatible YCQL API."
+    description="Explore YugabyteDB's Cassandra-compatible API."
     linkText1="Keyspaces and tables"
     linkUrl1="ycql-language/keyspaces-tables/"
     linkText2="Data types"
