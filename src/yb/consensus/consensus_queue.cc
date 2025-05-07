@@ -41,6 +41,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/common/common_consensus_util.h"
+
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log_util.h"
@@ -1229,7 +1231,7 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
     }
 
     static result_type InfiniteWatermarkForLocalPeer() {
-      return HybridTime::kMax.GetPhysicalValueMicros();
+      return kInfiniteHybridTimeLeaseExpiration;
     }
 
     static result_type ExtractValue(const TrackedPeer& peer) {

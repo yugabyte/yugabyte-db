@@ -272,6 +272,10 @@ Status MiniCluster::StartAsync(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = ts_data_dirs;
 
   running_ = true;
+  rpc::MessengerBuilder builder("minicluster-messenger");
+  builder.set_num_reactors(1);
+  messenger_ = VERIFY_RESULT(builder.Build());
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
   return Status::OK();
 }
 
@@ -610,6 +614,8 @@ void MiniCluster::StopSync() {
     master_server->Shutdown();
   }
 
+  messenger_->Shutdown();
+
   running_ = false;
 }
 
@@ -649,6 +655,8 @@ void MiniCluster::Shutdown() {
     yb_controller->Shutdown();
   }
   yb_controller_servers_.clear();
+
+  messenger_->Shutdown();
 
   running_ = false;
 }
