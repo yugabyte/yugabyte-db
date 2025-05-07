@@ -18,8 +18,8 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
-    title="SQL features"
-    description="Explore YugabyteDB's PostgreSQL-compatible API."
+    title="PostgreSQL-compatible API"
+    description="Explore YSQL, YugabyteDB's fully-relational, PostgreSQL-compatible query language."
     linkText1="JSON support"
     linkUrl1="ysql-language-features/jsonb-ysql/"
     linkText2="Indexes"
@@ -33,7 +33,7 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 
   {{< sections/3-box-card
     title="Going beyond SQL"
-    description="Advanced features for cloud-native applications."
+    description="Learn about YugabyteDB's advanced features for cloud-native applications."
     linkText1="Cluster-aware client drivers"
     linkUrl1="going-beyond-sql/cluster-aware-drivers/"
     linkText2="Built-in connection pooling"
@@ -46,8 +46,8 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
   >}}
 
   {{< sections/3-box-card
-    title="YCQL features"
-    description="Explore YugabyteDB's Cassandra-compatible API."
+    title="Cassandra-compatible API"
+    description="Explore YCQL, YugabyteDB's semi-relational, Cassandra-compatible query language."
     linkText1="Keyspaces and tables"
     linkUrl1="ycql-language/keyspaces-tables/"
     linkText2="Data types"
