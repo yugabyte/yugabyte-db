@@ -12,7 +12,7 @@ type: docs
 ---
 
 
-This section describes how DDL statements work in YSQL and documents the difference in YugabyteDB behavior from PostgreSQL.
+This section describes how DDL statements work in YSQL and documents the differences between YugabyteDB and PostgreSQL.
 
 ## Concurrent DML during a DDL operation
 
@@ -27,5 +27,5 @@ Most DDL statements complete quickly, so this is typically not a significant iss
 
 ## Concurrent DDL during a DDL operation
 
-DDL statements that affect entities in different databases can be run concurrently. However, you cannot concurrently execute two DDL statements that affect entities in the same database. DDL that relate to shared objects like roles, tablespaces are considered as affecting all databases in the cluster, so they cannot be run concurrently with any per-database DDL. 
+DDL statements that affect entities in different databases can be run concurrently. However, for DDL statements that impact the same database, it is recommended to execute them sequentially. DDL that relate to shared objects like roles, tablespaces are considered as affecting all databases in the cluster, so they should be run sequentially as well.
 
