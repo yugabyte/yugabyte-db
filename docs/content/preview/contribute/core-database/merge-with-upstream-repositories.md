@@ -392,12 +392,8 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    At the end, you should be n commits ahead of `yb-pg<version>`, where n is the number of commits you are point-importing.
    Make a GitHub PR of this through your fork for review.
 1. On the `yugabyte/yugabyte-db` repo, import the commits that are part of the `yugabyte/postgres` repo PR.
-   This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository patch][cross-repo-patch] for advice.
-   TODO(jason): another alternative is to apply the giant patch to yugabyte-db.
-   For any merge-related changes, keep track of resolution details in some temporary place.
+   This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository patch](#cross-repository-patch) for advice.
    Unlike as in `yugabyte/postgres`, the commit structure in `yugabyte/yugabyte-db` does not matter since these changes will eventually be squashed.
-   See MERGE.
-   TODO(jason): where is MERGE?
    Once all commits are imported, update `src/lint/upstream_repositories.csv`, and create a Phorge revision.
    The Phorge summary should have the upstream postgres commit hashes and their commit messages.
    Add to the summary the merge resolution details that were previously recorded.
@@ -440,7 +436,7 @@ An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd5310802
    There should only be the merge commit and no other extraneous commits on top of it.
    Make a GitHub PR of this through your fork for review.
 1. Apply those changes to the `yugabyte/yugabyte-db` repo.
-   See [cross-repository patch][cross-repo-patch] for details.
+   See [cross-repository patch](#cross-repository-patch) for details.
    Update `src/lint/upstream_repositories.csv`, and create a Phorge revision listing all the merge conflict details.
    Ensure that the [author information][git-author-information] for the latest commit of this Phorge revision is `YugaBot <yugabot@users.noreply.github.com>`.
 1. Pass review for both `yugabyte/postgres` GitHub PR and `yugabyte/yugabyte-db` Phorge revision.
@@ -554,6 +550,49 @@ We are trying to merge to `1.7.0`.
 MERGE:
 - port regress tests
 
+### Cross-repository patch
+
+Cherry-picking a change from one repository to another where the prefixes of paths differ is a little tricky.
+It is most commonly done for point-imports of upstream repositories to YugabyteDB.
+
+If you are new to it, you may be tempted to copy-paste code changes from one side to the other.
+Please do not do that as it is error-prone.
+
+Another smarter way to do it is to get a patch of the upstream changes, prefix all paths to the appropriate location in `yugabyte/yugabyte-db`, then apply that modified patch in `yugabyte/yugabyte-db`.
+It is quite hacky, and it doesn't preserve Git author information.
+
+Perhaps the best way to do it is using subtree merge.
+This requires having the source repository's commit present in the destination repository.
+Then, a cherry-pick can be done directly.
+
+For example, suppose you put up a GitHub PR of a commit that you point-imported on `yugabyte/postgres`.
+That commit exists locally in your `postgres` repository, and it also exists in your GitHub fork of `postgres`.
+Either can be used as a remote in order to get the commit: for this example, let's use the fork as that process may be more familiar to people.
+
+```sh
+git remote add postgres-fork https://github.com/<my_user>/postgres
+git fetch postgres-fork <commit>
+git cherry-pick --strategy subtree -Xsubtree=src/postgres <commit>
+```
+
+This can get tedious in case you point-imported multiple commits at once, and you want to resolve all merge conflicts in one go rather than one-by-one.
+In that case, you can construct a squash commit of the source commits, then subtree cherry-pick that.
+For example:
+
+```sh
+pushd ~/code/postgres
+git switch -c tmp-squash heads/yb-pg15
+git merge --squash <feature_branch>
+popd
+git remote add local-postgres ~/code/postgres
+git fetch local-postgres tmp-squash
+git cherry-pick --strategy subtree -Xsubtree=src/postgres local-postgres/tmp-squash
+```
+
+In all cases, cross-repository merge conflicts may arise, in which case resolution details should be noted in the commit messages.
+See MERGE.
+TODO(jason): where is MERGE?
+
 ### Testing PostgreSQL
 
 When doing a point-import or merge of upstream PostgreSQL, often that leads to creating a commit in `yugabyte/postgres` repo.
@@ -592,5 +631,4 @@ If you are interested in finding whether a certain `REL_15_STABLE` back-patch co
 [repo-yugabyte-db]: https://github.com/yugabyte/yugabyte-db
 [repo-thirdparty]: https://github.com/yugabyte/yugabyte-db-thirdparty
 [upstream-repositories-csv]: https://github.com/yugabyte/yugabyte-db/blob/master/src/lint/upstream_repositories.csv
-[cross-repo-patch]: TODO(jason)
 [git-author-information]: TODO(jason)
