@@ -359,7 +359,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
     "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
     "upgrade. For example, IN, ANY, ALL.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
