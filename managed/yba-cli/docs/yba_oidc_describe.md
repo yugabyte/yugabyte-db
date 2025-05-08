@@ -1,29 +1,26 @@
-## yba oidc disable
+## yba oidc describe
 
-Disable OIDC configuration for YBA
+Describe OIDC configuration for YBA
 
 ### Synopsis
 
-Disable OIDC configuration  for YBA
+Describe OIDC configuration for YBA
 
 ```
-yba oidc disable [flags]
+yba oidc describe [flags]
 ```
 
 ### Examples
 
 ```
-yba oidc disable --reset-fields client-id,client-secret
+yba oidc describe
 ```
 
 ### Options
 
 ```
-      --reset-all              [Optional] Reset all OIDC fields to default values
-      --reset-fields strings   [Optional] Reset specific OIDC fields to default values. Comma separated list of fields. Example: --reset-fields <field1>,<field2>
-                                          Allowed values: client-id, client-secret, discovery-url, scope, email-attribute, default-role 
-                                          refresh-token-endpoint, provider-configuration, auto-create-user, group-claim
-  -h, --help                   help for disable
+      --user-set-only   [Optional] Only show the attributes that were set by the user explicitly.
+  -h, --help            help for describe
 ```
 
 ### Options inherited from parent commands
