@@ -401,7 +401,7 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    Besides general merge review, here are things reviewers should watch out for in the `yugabyte/postgres` review:
 
    - Was `-x` used for each cherry-pick?
-   - Was the commit author metadata preserved for each cherry-pick?
+   - Was the [commit author metadata](#git-author-information) preserved for each cherry-pick?
    - Was the commit message preserved for each cherry-pick?
    - Are there exactly n commits, and are they branched off the latest `yb-pg<version>` commit?
 
@@ -438,7 +438,7 @@ An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd5310802
 1. Apply those changes to the `yugabyte/yugabyte-db` repo.
    See [cross-repository patch](#cross-repository-patch) for details.
    Update `src/lint/upstream_repositories.csv`, and create a Phorge revision listing all the merge conflict details.
-   Ensure that the [author information][git-author-information] for the latest commit of this Phorge revision is `YugaBot <yugabot@users.noreply.github.com>`.
+   Ensure that the [author information](#git-author-information) for the latest commit of this Phorge revision is `YugaBot <yugabot@users.noreply.github.com>`.
 1. Pass review for both `yugabyte/postgres` GitHub PR and `yugabyte/yugabyte-db` Phorge revision.
    If `yugabyte/postgres` needs changes, then commit hashes change, so `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv` must be updated, and re-test on `yugabyte/yugabyte-db` should be considered.
 1. Land the `yugabyte/yugabyte-db` revision.
@@ -551,6 +551,25 @@ We are trying to merge to `1.7.0`.
 MERGE:
 - port regress tests
 
+### Git author information
+
+Each commit has the following six pieces of metadata.
+(See `git commit --help` "COMMIT INFORMATION" section for more details.)
+
+- GIT_AUTHOR_NAME
+- GIT_AUTHOR_EMAIL
+- GIT_AUTHOR_DATE
+- GIT_COMMITTER_NAME
+- GIT_COMMITTER_EMAIL
+- GIT_COMMITTER_DATE
+
+Normally, `git cherry-pick`ing a commit preserves that commit's author information.
+Otherwise, the author information is generated with your configuration.
+`git commit --amend --reset-author` also regenerates the author information with your configuration.
+Take care not to overwrite the author information when you shouldn't.
+
+For Phorge, if the squash strategy is used for landing, the author information of the latest commit being landed is transferred to the squash commit.
+
 ### Cross-repository patch
 
 Cherry-picking a change from one repository to another where the prefixes of paths differ is a little tricky.
@@ -559,8 +578,8 @@ It is most commonly done for point-imports of upstream repositories to YugabyteD
 If you are new to it, you may be tempted to copy-paste code changes from one side to the other.
 Please do not do that as it is error-prone.
 
-Another smarter way to do it is to get a patch of the upstream changes, prefix all paths to the appropriate location in `yugabyte/yugabyte-db`, then apply that modified patch in `yugabyte/yugabyte-db`.
-It is quite hacky, and it doesn't preserve Git author information.
+A smarter way to do it is to get a patch of the upstream changes, prefix all paths to the appropriate location in `yugabyte/yugabyte-db`, then apply that modified patch in `yugabyte/yugabyte-db`.
+It is quite hacky, and it doesn't preserve [Git author information](#git-author-information).
 
 Perhaps the best way to do it is using subtree merge.
 This requires having the source repository's commit present in the destination repository.
@@ -632,4 +651,3 @@ If you are interested in finding whether a certain `REL_15_STABLE` back-patch co
 [repo-yugabyte-db]: https://github.com/yugabyte/yugabyte-db
 [repo-thirdparty]: https://github.com/yugabyte/yugabyte-db-thirdparty
 [upstream-repositories-csv]: https://github.com/yugabyte/yugabyte-db/blob/master/src/lint/upstream_repositories.csv
-[git-author-information]: TODO(jason)
