@@ -46,7 +46,13 @@ For instructions on creating a universe in YugabyteDB Anywhere, refer to [Create
 
 ## Set up YB Workload Simulator
 
-YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
+YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view.
+
+The application is used to demonstrate the following Explore topics:
+
+- [Horizontal scalability](../linear-scalability/scaling-universe-yba/)
+- [Resiliency](../fault-tolerance/macos-yba/)
+- [Multi-region deployment](../multi-region-deployments/synchronous-replication-yba/)
 
 The application uses the YugabyteDB JDBC [Smart Driver](../../drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and re-balances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 

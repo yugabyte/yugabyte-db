@@ -12,12 +12,7 @@ menu:
 type: docs
 ---
 
-For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region cluster. In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
-
-This deployment provides the following advantages:
-
-- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence.
-- Consistency. All writes are synchronously replicated. Transactions are globally consistent.
+For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region cluster.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -39,6 +34,13 @@ This deployment provides the following advantages:
     </a>
   </li>
 </ul>
+
+In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
+
+This deployment provides the following advantages:
+
+- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence.
+- Consistency. All writes are synchronously replicated. Transactions are globally consistent.
 
 ## Create a Replicate across regions cluster
 
