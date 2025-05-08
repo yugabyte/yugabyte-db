@@ -3718,6 +3718,47 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			 */
 			break;
 
+		case T_TransactionStmt:
+			{
+				TransactionStmt *stmt = castNode(TransactionStmt, parsetree);
+				/*
+				 * We make a special case for YSQL upgrade, where we often use
+				 * DML statements writing to catalog tables directly under the GUC
+				 * yb_non_ddl_txn_for_sys_tables_allowed=1. These DML statements
+				 * generate invalidation messages that if ignored can cause stale
+				 * cache problem. We mark a COMMIT statement as ddl so that we
+				 * can capture these DML-generated invalidation messages and send
+				 * them to all PG backends on all the nodes.
+				 */
+				if (IsYsqlUpgrade &&
+					stmt->kind == TRANS_STMT_COMMIT &&
+					/*
+					 * A COMMIT statement itself does not ensure a successful
+					 * commit. If the current transaction is already aborted,
+					 * it is equivalent to a ROLLBACK statement.
+					 */
+					IsTransactionState() &&
+					YbIsInvalidationMessageEnabled() &&
+					/*
+					 * When we have ddl transaction block support, we do not need
+					 * this special case code for YSQL upgrade.
+					 */
+					!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+				{
+					/*
+					 * We assume YSQL upgrade only makes simple use of COMMIT
+					 * so that we can handle invalidation messages correctly.
+					 */
+					if (is_top_level)
+						is_breaking_change = false;
+					else
+						elog(ERROR, "improper nesting level of COMMIT in YSQL upgrade");
+				}
+				else
+					is_ddl = false;
+				break;
+			}
+
 		default:
 			/* Not a DDL operation. */
 			is_ddl = false;
@@ -7523,7 +7564,9 @@ YbRefreshMatviewInPlace()
 static bool
 YbHasDdlMadeChanges()
 {
-	return YBCPgHasWriteOperationsInDdlTxnMode() || ddl_transaction_state.force_send_inval_messages;
+	return YBCPgHasWriteOperationsInDdlTxnMode() ||
+		   ddl_transaction_state.original_node_tag == T_TransactionStmt ||
+		   ddl_transaction_state.force_send_inval_messages;
 }
 
 void
