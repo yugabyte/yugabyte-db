@@ -383,7 +383,7 @@ Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the tra
 
 Most ALTER TABLE statements only involve a schema modification and complete quickly. However, certain specific ALTER TABLE statements require a new copy of the underlying table (and associated index tables, in some cases) to be made and can potentially take a long time, depending on the sizes of the tables and indexes involved. This is typically referred to as a "table rewrite". This behavior is [similar to PostgreSQL](https://www.crunchydata.com/blog/when-does-alter-table-require-a-rewrite), though the exact scenarios when a rewrite is triggered may differ between PostgreSQL and YugabyteDB.
 
-It is not safe to execute concurrent DML on the table during a table rewrite because the results of any concurrent DML are not guaranteed to be reflected in the copy of the table being made. This behavior is also similar to PostgreSQL, where a table lock typically excludes concurrent DML on the table during the rewrite.
+It is not safe to execute concurrent DML on the table during a table rewrite because the results of any concurrent DML are not guaranteed to be reflected in the copy of the table being made. This restriction is similar to PostgresSQL, which explicitly prevents concurrent DML during a table rewrite by acquiring an ACCESS EXCLUSIVE table lock.
 
 When such expensive rewrites have to be performed, it is recommended to combine them into a single ALTER TABLE as shown below to avoid multiple expensive rewrites.
 
