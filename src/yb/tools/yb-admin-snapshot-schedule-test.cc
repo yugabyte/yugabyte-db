@@ -262,8 +262,12 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     std::string seq_no{VERIFY_RESULT(GetMemberAsStr(out, "seq_no"))};
 
     return WaitFor([&]() -> Result<bool> {
-      auto out = VERIFY_RESULT(CallJsonAdmin("list_clones", source_namespace_id, seq_no));
-      const auto entries = out.GetArray();
+      auto out = CallJsonAdmin("list_clones", source_namespace_id, seq_no);
+      if (!out.ok()) {
+        LOG(WARNING) << "Failed to list clones: " << out.status();
+        return false;
+      }
+      const auto entries = out->GetArray();
       SCHECK_EQ(entries.Size(), 1, IllegalState, "Wrong number of entries. Expected 1");
       auto state = master::SysCloneStatePB::CLONE_SCHEMA_STARTED;
       master::SysCloneStatePB::State_Parse(
@@ -1295,14 +1299,24 @@ class YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam:
   }
 };
 
+namespace {
+
+std::string TestParamToString(const testing::TestParamInfo<ScheduleRestoreTestParams>& param_info) {
+  return AsString(get<0>(param_info.param)).substr(1) + "_" +
+         AsString(get<1>(param_info.param)).substr(1);
+}
+
+} // namespace
+
 INSTANTIATE_TEST_CASE_P(
-    ColocationAndRestoreType, YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+    , YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
     ::testing::Values(
         ScheduleRestoreTestParams(YsqlColocationConfig::kNotColocated, RestoreType::kPITR),
         ScheduleRestoreTestParams(YsqlColocationConfig::kDBColocated, RestoreType::kPITR),
         ScheduleRestoreTestParams(YsqlColocationConfig::kTablegroup, RestoreType::kPITR),
         ScheduleRestoreTestParams(YsqlColocationConfig::kNotColocated, RestoreType::kClone),
-        ScheduleRestoreTestParams(YsqlColocationConfig::kDBColocated, RestoreType::kClone)));
+        ScheduleRestoreTestParams(YsqlColocationConfig::kDBColocated, RestoreType::kClone)),
+    TestParamToString);
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, Pgsql) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
