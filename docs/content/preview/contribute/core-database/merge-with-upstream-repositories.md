@@ -548,9 +548,6 @@ We are trying to merge to `1.7.0`.
 
 ## General advice
 
-MERGE:
-- port regress tests
-
 ### Git author information
 
 Each commit has the following six pieces of metadata.
@@ -569,6 +566,41 @@ Otherwise, the author information is generated with your configuration.
 Take care not to overwrite the author information when you shouldn't.
 
 For Phorge, if the squash strategy is used for landing, the author information of the latest commit being landed is transferred to the squash commit.
+
+### Find PostgreSQL back-patch commits
+
+When PostgreSQL back-patches a commit, the commit message is generally unchanged.
+Therefore, one way to find all back-patches of a given commit is by filtering on the commit title: `git --grep '<title>' --all`.
+Do be aware to neutralize any regex special characters when using this command, for example by replacing them with `.` or `.*` or omitting them if they are at one of the ends.
+For example, title `Reject substituting extension schemas or owners matching ["$'\].` can be searched by `git --grep 'Reject substituting extension schemas or owners matching ' --all`.
+
+If you already have a certain branch in mind, it is more efficient to search in that branch directly.
+For example, if you are interested in finding whether a certain `master` commit has been back-patched to `REL_15_STABLE`, use `git --grep '<title>' REL_15_STABLE`.
+If you are interested in finding whether a certain `REL_15_STABLE` back-patch commit is present in `REL_18_1`, use `git --grep '<title>' REL_18_1`.
+
+### Testing PostgreSQL
+
+When doing a point-import or merge of upstream PostgreSQL, often that leads to creating a commit in `yugabyte/postgres` repo.
+One should make sure that tests pass after that commit to catch logical merge conflicts.
+
+There are many tests scattered around different Makefiles, generally run using `make check`.
+Ideally, all should pass, but here are a few that one should pay special attention to since `yugabyte/yugabyte-db` also partially uses them:
+
+```sh
+./configure
+make check
+( cd contrib; make check )
+( cd src/test/isolation; make check )
+( cd src/test/modules; make check )
+```
+
+There are also `pg_dump` tests.
+They are not run in `yugabyte/yugabyte-db`, but it is still good to make sure they pass:
+
+```sh
+./configure --enable-tap-tests
+( cd src/bin/pg_dump; make check )
+```
 
 ### Cross-repository patch
 
@@ -613,40 +645,8 @@ In all cases, cross-repository merge conflicts may arise, in which case resoluti
 See MERGE.
 TODO(jason): where is MERGE?
 
-### Testing PostgreSQL
-
-When doing a point-import or merge of upstream PostgreSQL, often that leads to creating a commit in `yugabyte/postgres` repo.
-One should make sure that tests pass after that commit to catch logical merge conflicts.
-
-There are many tests scattered around different Makefiles, generally run using `make check`.
-Ideally, all should pass, but here are a few that one should pay special attention to since `yugabyte/yugabyte-db` also partially uses them:
-
-```sh
-./configure
-make check
-( cd contrib; make check )
-( cd src/test/isolation; make check )
-( cd src/test/modules; make check )
-```
-
-There are also `pg_dump` tests.
-They are not run in `yugabyte/yugabyte-db`, but it is still good to make sure they pass:
-
-```sh
-./configure --enable-tap-tests
-( cd src/bin/pg_dump; make check )
-```
-
-### Find PostgreSQL back-patch commits
-
-When PostgreSQL back-patches a commit, the commit message is generally unchanged.
-Therefore, one way to find all back-patches of a given commit is by filtering on the commit title: `git --grep '<title>' --all`.
-Do be aware to neutralize any regex special characters when using this command, for example by replacing them with `.` or `.*` or omitting them if they are at one of the ends.
-For example, title `Reject substituting extension schemas or owners matching ["$'\].` can be searched by `git --grep 'Reject substituting extension schemas or owners matching ' --all`.
-
-If you already have a certain branch in mind, it is more efficient to search in that branch directly.
-For example, if you are interested in finding whether a certain `master` commit has been back-patched to `REL_15_STABLE`, use `git --grep '<title>' REL_15_STABLE`.
-If you are interested in finding whether a certain `REL_15_STABLE` back-patch commit is present in `REL_18_1`, use `git --grep '<title>' REL_18_1`.
+MERGE:
+- port regress tests
 
 [repo-yugabyte-db]: https://github.com/yugabyte/yugabyte-db
 [repo-thirdparty]: https://github.com/yugabyte/yugabyte-db-thirdparty
