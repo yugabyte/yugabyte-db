@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -586,6 +587,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           false);
     }
 
+    int sleepAfterEachPodRestart =
+        confGetter.getConfForScope(universe, UniverseConfKeys.rollingOpsWaitAfterEachPodMs);
+    universeDetails.sleepAfterMasterRestartMillis = sleepAfterEachPodRestart;
+    universeDetails.sleepAfterTServerRestartMillis = sleepAfterEachPodRestart;
+
     UUID taskUUID = null;
     try {
       if (specificTaskTypeToRerun != null) {
@@ -616,7 +622,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 universe, k8ResourceDetails, TaskType.KubernetesOverridesUpgrade.name());
             taskUUID =
                 updateOverridesYbUniverse(
-                    universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
+                    universeDetails,
+                    cust,
+                    ybUniverse,
+                    incomingIntent.universeOverrides,
+                    true /* isRerun */);
             break;
           case GFlagsKubernetesUpgrade:
             if (checkAndHandleUniverseLock(
@@ -628,7 +638,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 universe, k8ResourceDetails, TaskType.GFlagsKubernetesUpgrade.name());
             taskUUID =
                 updateGflagsYbUniverse(
-                    universeDetails, cust, ybUniverse, incomingIntent.specificGFlags);
+                    universeDetails,
+                    cust,
+                    ybUniverse,
+                    incomingIntent.specificGFlags,
+                    true /* isRerun */);
             break;
           default:
             log.error("Unexpected task, this should not happen!");
@@ -692,7 +706,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
           taskUUID =
               updateOverridesYbUniverse(
-                  universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
+                  universeDetails,
+                  cust,
+                  ybUniverse,
+                  incomingIntent.universeOverrides,
+                  false /* isRerun */);
         } else if (operatorUtils.checkIfGFlagsChanged(
             universe, currentUserIntent.specificGFlags, incomingIntent.specificGFlags)) {
           log.info("Updating Gflags");
@@ -705,7 +723,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
           taskUUID =
               updateGflagsYbUniverse(
-                  universeDetails, cust, ybUniverse, incomingIntent.specificGFlags);
+                  universeDetails,
+                  cust,
+                  ybUniverse,
+                  incomingIntent.specificGFlags,
+                  false /* isRerun */);
         } else if (!currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion)) {
           log.info("Upgrading software");
           kubernetesStatusUpdater.createYBUniverseEventStatus(
@@ -753,7 +775,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       UniverseDefinitionTaskParams taskParams,
       Customer cust,
       YBUniverse ybUniverse,
-      String universeOverrides) {
+      String universeOverrides,
+      boolean isRerun) {
     KubernetesOverridesUpgradeParams requestParams = new KubernetesOverridesUpgradeParams();
 
     ObjectMapper mapper =
@@ -769,6 +792,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       log.error("Failed at creating upgrade software params", e);
     }
     requestParams.universeOverrides = universeOverrides;
+    requestParams.skipNodeChecks = isRerun;
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(
@@ -783,7 +807,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       UniverseDefinitionTaskParams taskParams,
       Customer cust,
       YBUniverse ybUniverse,
-      SpecificGFlags newGFlags) {
+      SpecificGFlags newGFlags,
+      boolean isRerun) {
     KubernetesGFlagsUpgradeParams requestParams = new KubernetesGFlagsUpgradeParams();
 
     ObjectMapper mapper =
@@ -799,6 +824,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     } catch (Exception e) {
       log.error("Failed at creating upgrade software params", e);
     }
+    requestParams.skipNodeChecks = isRerun;
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(
