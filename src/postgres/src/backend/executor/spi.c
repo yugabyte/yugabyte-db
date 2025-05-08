@@ -244,6 +244,11 @@ _SPI_commit(bool chain)
 				(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
 				 errmsg("invalid transaction termination")));
 
+	if (IsYugaByteEnabled() && IsYsqlUpgrade)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION),
+				 errmsg("invalid transaction termination")));
+
 	/*
 	 * This restriction is required by PLs implemented on top of SPI.  They
 	 * use subtransactions to establish exception blocks that are supposed to
