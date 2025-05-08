@@ -494,7 +494,8 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 
 1. If this subtree is currently not forked by YugabyteDB, ask yourself whether this point-import is necessary.
    If you instead merge to a newer version, you avoid the need to make a YugabyteDB fork.
-1. If there is no YugabyteDB fork, that needs to be created and [a new branch added to it](#how-upstream-repositories-are-tracked): `git switch -c yb-pg15 "$(grep pgaudit src/lint/upstream_repositories.csv | cut -d, -f4)"`.
+1. If there is no YugabyteDB fork, that needs to be created and [a new branch added to it](#how-upstream-repositories-are-tracked).
+   Using pgaudit as an example, `git switch -c yb-pg15 "$(grep pgaudit src/lint/upstream_repositories.csv | cut -d, -f4)"`.
 1. Do `git cherry-pick -x <commit>` for each commit being imported.
    Notice the `-x` to record the commit hash being cherry-picked.
    Do any relevant testing if applicable.
