@@ -51,7 +51,7 @@ This deployment provides the following advantages:
 
 This example simulates AWS regions on a local machine. To run it, first [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-cluster) any running local universes.
 
-You can also use these steps for deploying universes in any public cloud, private data center, or in separate virtual machines. Simply replace the IP addresses in the commands with the corresponding IP addresses of your nodes/VMs.
+You can also use these steps to deploy universes in a public cloud, private data center, or in separate virtual machines. Simply replace the IP addresses in the commands with the corresponding IP addresses of your nodes/VMs.
 
 Start a three-node universe with an RF of `3` and with each replica placed in different AWS regions (`us-west-2`, `us-east-1`, `ap-northeast-1`), as follows.
 
