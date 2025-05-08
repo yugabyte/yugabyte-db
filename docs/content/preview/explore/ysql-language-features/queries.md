@@ -18,7 +18,7 @@ The SELECT statement is used to retrieve data from tables. It begins by specifyi
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Create the following table and add corresponding data.
 

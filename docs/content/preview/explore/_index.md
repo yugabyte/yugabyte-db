@@ -65,18 +65,19 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
+    title="Horizontal scalability"
+    description="Learn about YugabyteDB's operationally simple and completely transparent scaling."
+    buttonText="Scale"
+    buttonUrl="linear-scalability/"
+  >}}
+
+  {{< sections/3-box-card
     title="Resiliency"
     description="Learn how YugabyteDB survives and recovers from outages with zero downtime."
     buttonText="Resiliency"
     buttonUrl="fault-tolerance/"
   >}}
 
-  {{< sections/3-box-card
-    title="Horizontal scalability"
-    description="Learn about YugabyteDB's operationally simple and completely transparent scaling."
-    buttonText="Scale"
-    buttonUrl="linear-scalability/"
-  >}}
   {{< sections/3-box-card
     title="Distributed transactions"
     description="Learn how distributed transactions work and about YugabyteDB's isolation levels."

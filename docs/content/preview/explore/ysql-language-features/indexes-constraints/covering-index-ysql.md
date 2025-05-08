@@ -18,7 +18,7 @@ A covering index is an efficient way to perform [index-only](https://wiki.postgr
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Index-Only scan
 

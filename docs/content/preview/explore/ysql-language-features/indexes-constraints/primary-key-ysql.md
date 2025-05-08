@@ -59,7 +59,7 @@ The order of the keys matters a lot in range sharding. The data is distributed a
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Create a census table as follows:
 

@@ -26,7 +26,7 @@ For a list of supported and unsupported data types, see [Data types](../../../ap
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Strings
 

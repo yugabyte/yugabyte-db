@@ -56,7 +56,7 @@ For more information, see [DROP INDEX](../../../../api/ycql/ddl_drop_index/).
 
 ## Example
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Suppose you work with a database that includes the following table populated with data:
 
@@ -143,7 +143,7 @@ A column combination like (col2,col4) cannot be used to search or query a table.
 
 ## Multi-column example
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Create a keyspace and a table as follows:
 

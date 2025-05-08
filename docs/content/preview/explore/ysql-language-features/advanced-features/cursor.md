@@ -132,7 +132,7 @@ CLOSE employees_cursor_2;
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Suppose you work with a database that includes the following table populated with data:
 

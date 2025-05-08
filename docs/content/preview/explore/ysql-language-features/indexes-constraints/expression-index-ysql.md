@@ -26,7 +26,7 @@ Once defined, the index is used when the expression that defines the index is in
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 A common use case of an expression index is to support case-insensitive text to enable efficient searchability.
 

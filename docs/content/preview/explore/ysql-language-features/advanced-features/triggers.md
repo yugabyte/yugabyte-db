@@ -16,7 +16,7 @@ Triggers are special types of stored procedures that automatically execute in re
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Create triggers
 

@@ -19,7 +19,7 @@ INSERT, UPDATE, and DELETE (often abbreviated as IUD) are fundamental SQL operat
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 For illustration, consider the following employee schema:
 

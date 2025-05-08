@@ -14,7 +14,7 @@ YugabyteDB provides a rich set of expressions and operators that form the buildi
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Mathematical operators
 

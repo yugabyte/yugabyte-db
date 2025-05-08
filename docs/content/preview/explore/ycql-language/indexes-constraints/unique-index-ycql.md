@@ -26,7 +26,7 @@ CREATE UNIQUE INDEX index_name ON table_name(column_list);
 
 ## Example
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 1. Create a keyspace and a table as follows:
 

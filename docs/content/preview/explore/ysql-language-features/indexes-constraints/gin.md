@@ -43,7 +43,7 @@ YugabyteDB GIN indexes are slightly different from PostgreSQL GIN indexes:
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 For illustration, set up some tables and insert some data.
 

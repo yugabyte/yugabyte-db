@@ -20,7 +20,7 @@ For the list of supported and unsupported schema relations operations, see [Sche
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Databases
 

@@ -28,7 +28,7 @@ In general, most applications should prefer to store JSON data as JSONB, unless 
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 To illustrate, create a basic table `books` with a primary key and one JSONB column `doc` that contains various details about each book.
 

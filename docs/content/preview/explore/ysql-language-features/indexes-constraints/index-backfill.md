@@ -34,7 +34,7 @@ Columns such as `lockers_total`, `lockers_done`, `current_locker_pid`, `blocks_t
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 1. From your local YugabyteDB installation directory, create an index on an existing table as follows:
 

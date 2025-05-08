@@ -29,7 +29,7 @@ Run the following examples to understand how you can use these statistics to imp
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Create a users table:
 

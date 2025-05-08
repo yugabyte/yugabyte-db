@@ -26,7 +26,7 @@ The WHERE clause specifies which rows need to be added to the index.
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 The example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 

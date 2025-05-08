@@ -35,7 +35,7 @@ The columns that are specified in the [CREATE INDEX](../../../../api/ysql/the-sq
 
 ## Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Create a census table as follows:
 
