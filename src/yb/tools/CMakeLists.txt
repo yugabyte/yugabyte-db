@@ -161,6 +161,7 @@ target_link_libraries(yb-bulk_load
 add_executable(yb-pbc-dump pbc-dump.cc)
 target_link_libraries(yb-pbc-dump
   ${LINK_LIBS}
+  encryption
 )
 
 add_library(admin-test-base admin-test-base.cc)
