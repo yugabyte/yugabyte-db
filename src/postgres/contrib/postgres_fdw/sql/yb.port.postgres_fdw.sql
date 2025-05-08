@@ -629,8 +629,6 @@ ALTER VIEW v4 OWNER TO regress_view_owner;
 -- cleanup
 DROP OWNED BY regress_view_owner;
 DROP ROLE regress_view_owner;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 
 -- ===================================================================
@@ -879,8 +877,6 @@ drop operator public.<^(int, int);
 explain (verbose, costs off)
 select count(t1.c3) from ft2 t1 left join ft2 t2 on (t1.c1 = random() * t2.c2);
 
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 -- Subquery in FROM clause having aggregate
 explain (verbose, costs off)
 select count(*), x.b from ft1, (select c2 a, sum(c1) b from ft1 group by c2) x where ft1.c2 = x.a group by x.b order by 1, 2;
@@ -1083,15 +1079,11 @@ DROP FUNCTION f_test(int);
 -- conversion error
 -- ===================================================================
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE int;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 SELECT * FROM ft1 WHERE c1 = 1;  -- ERROR
 SELECT  ft1.c1,  ft2.c2, ft1.c8 FROM ft1, ft2 WHERE ft1.c1 = ft2.c1 AND ft1.c1 = 1; -- ERROR
 SELECT  ft1.c1,  ft2.c2, ft1 FROM ft1, ft2 WHERE ft1.c1 = ft2.c1 AND ft1.c1 = 1; -- ERROR
 SELECT sum(c2), array_agg(c8) FROM ft1 GROUP BY c8; -- ERROR
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE user_enum;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 -- ===================================================================
 -- subtransaction
@@ -1117,8 +1109,6 @@ COMMIT;
 create table loct3 (f1 text collate "C" unique, f2 text, f3 varchar(10) unique);
 create foreign table ft3 (f1 text collate "C", f2 text, f3 varchar(10))
   server loopback options (table_name 'loct3', use_remote_estimate 'true');
--- YB note: foreign table does not exist, remove when #11684 is fixed
-select pg_sleep(1);
 
 -- can be sent to remote
 explain (verbose, costs off) select * from ft3 where f1 = 'foo';
@@ -1174,8 +1164,6 @@ UPDATE ft2 SET c3 = 'bar' WHERE c1 = 1200 RETURNING tableoid::regclass;
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;                       -- can be pushed down
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 -- Test UPDATE/DELETE with RETURNING on a three-table join
 INSERT INTO ft2 (c1,c2,c3)
@@ -1260,8 +1248,6 @@ SELECT * FROM cte ORDER BY c1;
 -- Test errors thrown on remote side during update
 ALTER TABLE "S 1"."T 1" ADD CONSTRAINT c2positive CHECK (c2 >= 0);
 
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 INSERT INTO ft1(c1, c2) VALUES(11, 12);  -- duplicate key
 INSERT INTO ft1(c1, c2) VALUES(11, 12) ON CONFLICT DO NOTHING; -- works
 INSERT INTO ft1(c1, c2) VALUES(11, 12) ON CONFLICT (c1, c2) DO NOTHING; -- unsupported
@@ -1333,16 +1319,12 @@ SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
 
 -- Consistent check constraints provide consistent results
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c2positive CHECK (c2 >= 0);
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 < 0;
 SELECT count(*) FROM ft1 WHERE c2 < 0;
 SET constraint_exclusion = 'on';
 EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 < 0;
 SELECT count(*) FROM ft1 WHERE c2 < 0;
 RESET constraint_exclusion;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 -- check constraint is enforced on the remote side, not locally
 INSERT INTO ft1(c1, c2) VALUES(1111, -2);  -- c2positive
 UPDATE ft1 SET c2 = -c2 WHERE c1 = 1;  -- c2positive
@@ -1350,16 +1332,12 @@ ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2positive;
 
 -- But inconsistent check constraints provide inconsistent results
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c2negative CHECK (c2 < 0);
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 >= 0;
 SELECT count(*) FROM ft1 WHERE c2 >= 0;
 SET constraint_exclusion = 'on';
 EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 >= 0;
 SELECT count(*) FROM ft1 WHERE c2 >= 0;
 RESET constraint_exclusion;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 -- local check constraint is not actually enforced
 INSERT INTO ft1(c1, c2) VALUES(1111, 2);
 UPDATE ft1 SET c2 = c2 + 1 WHERE c1 = 1;
@@ -1564,8 +1542,6 @@ $$ language plpgsql;
 CREATE TRIGGER trig_row_before_insupd
 BEFORE INSERT OR UPDATE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- The new values should have 'triggered' appended
 INSERT INTO rem1 values(1, 'insert');
@@ -1584,8 +1560,6 @@ DELETE FROM rem1;
 CREATE TRIGGER trig_row_before_insupd2
 BEFORE INSERT OR UPDATE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 INSERT INTO rem1 values(1, 'insert');
 SELECT * from loc1;
@@ -1613,8 +1587,6 @@ $$ language plpgsql;
 CREATE TRIGGER trig_null
 BEFORE INSERT OR UPDATE OR DELETE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trig_null();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- Nothing should have changed.
 INSERT INTO rem1 VALUES (2, 'test2');
@@ -1646,8 +1618,6 @@ FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 
 CREATE TRIGGER trig_local_before BEFORE INSERT OR UPDATE ON loc1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 INSERT INTO rem1(f2) VALUES ('test');
 UPDATE rem1 SET f2 = 'testo';
@@ -2019,8 +1989,6 @@ create trigger loct1_br_insert_trigger before insert on loct1
 	for each row execute procedure br_insert_trigfunc();
 create trigger loct2_br_insert_trigger before insert on loct2
 	for each row execute procedure br_insert_trigfunc();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 insert into itrtest values (1, 'foo') returning *;
@@ -2042,8 +2010,6 @@ create foreign table remp (a int check (a in (1)), b text) server loopback optio
 create table locp (a int check (a in (2)), b text);
 alter table utrtest attach partition remp for values in (1);
 alter table utrtest attach partition locp for values in (2);
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 insert into utrtest values (1, 'foo');
 insert into utrtest values (2, 'qux');
@@ -2150,8 +2116,6 @@ drop table loct2;
 create table loc2 (f1 int, f2 text);
 alter table loc2 set (autovacuum_enabled = 'false');
 create foreign table rem2 (f1 int, f2 text) server loopback options(table_name 'loc2');
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 -- Test basic functionality
 copy rem2 from stdin;
@@ -2165,8 +2129,6 @@ delete from rem2;
 -- Test check constraints
 alter table loc2 add constraint loc2_f1positive check (f1 >= 0);
 alter foreign table rem2 add constraint rem2_f1positive check (f1 >= 0);
--- YB note: constraints don't work immediately, remove pg_sleeps when issue #11598 is fixed
-select pg_sleep(1);
 
 -- check constraint is enforced on the remote side, not locally
 copy rem2 from stdin;
@@ -2180,8 +2142,6 @@ select * from rem2;
 
 alter foreign table rem2 drop constraint rem2_f1positive;
 alter table loc2 drop constraint loc2_f1positive;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 delete from rem2;
 
@@ -2194,8 +2154,6 @@ create trigger trig_row_before before insert on rem2
 	for each row execute procedure trigger_data(23,'skidoo');
 create trigger trig_row_after after insert on rem2
 	for each row execute procedure trigger_data(23,'skidoo');
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 copy rem2 from stdin;
 1	foo
 2	bar
@@ -2212,8 +2170,6 @@ delete from rem2;
 -- YB note: The following line is changed in the upstream PG 15 test
 create trigger trig_row_before_insert before insert on rem2
 for each row execute procedure trig_row_before_insupdate(); -- YB note: see above
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
@@ -2228,8 +2184,6 @@ delete from rem2;
 
 create trigger trig_null before insert on rem2
 	for each row execute procedure trig_null();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- Nothing happens
 copy rem2 from stdin;
@@ -2245,8 +2199,6 @@ delete from rem2;
 -- Test remote triggers
 create trigger trig_row_before_insert before insert on loc2
 	for each row execute procedure trig_row_before_insupdate();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
@@ -2261,8 +2213,6 @@ delete from rem2;
 
 create trigger trig_null before insert on loc2
 	for each row execute procedure trig_null();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(2);
 
 -- Nothing happens
 copy rem2 from stdin;
@@ -2282,8 +2232,6 @@ create trigger rem2_trig_row_after after insert on rem2
 	for each row execute procedure trigger_data(23,'skidoo');
 create trigger loc2_trig_row_before_insert before insert on loc2
 	for each row execute procedure trig_row_before_insupdate();
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 copy rem2 from stdin;
 1	foo
@@ -2370,8 +2318,6 @@ CREATE TABLE import_source.t5 (c1 int, c2 text collate "C", "Col" "Colors");
 CREATE SCHEMA import_dest5;
 BEGIN;
 DROP TYPE "Colors" CASCADE;
--- YB note: type dropping in transaction is not respected, should error when issue #11742 is fixed
-select pg_sleep(1);
 IMPORT FOREIGN SCHEMA import_source LIMIT TO (t5)
   FROM SERVER loopback INTO import_dest5;  -- ERROR
 
@@ -2452,14 +2398,10 @@ CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
 ALTER TABLE fprt2 ATTACH PARTITION ftprt2_p1 FOR VALUES FROM (0) TO (250);
 CREATE FOREIGN TABLE ftprt2_p2 PARTITION OF fprt2 FOR VALUES FROM (250) TO (500)
 	SERVER loopback OPTIONS (table_name 'fprt2_p2', use_remote_estimate 'true');
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 ANALYZE fprt2;
 ANALYZE fprt2_p1;
 ANALYZE fprt2_p2;
 
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 -- inner join three tables
 EXPLAIN (COSTS OFF)
 SELECT t1.a,t2.b,t3.c FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) INNER JOIN fprt1 t3 ON (t2.b = t3.a) WHERE t1.a % 25 =0 ORDER BY 1,2,3;
