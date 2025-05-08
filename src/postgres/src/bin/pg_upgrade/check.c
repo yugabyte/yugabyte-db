@@ -1828,7 +1828,9 @@ yb_check_installed_extensions()
 			"'pg_cron',"
 			"'pg_partman',"
 			"'plpgsql',"
-			"'anon')");
+			"'anon',"
+			"'cube',"
+			"'earthdistance')");
 		ntups = PQntuples(res);
 		i_name = PQfnumber(res, "extname");
 
