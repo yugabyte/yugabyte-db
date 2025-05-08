@@ -5,8 +5,6 @@
 package key
 
 import (
-	"fmt"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -45,40 +43,10 @@ var deleteKeyCmd = &cobra.Command{
 
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		scopeName := util.MustGetFlagString(cmd, "uuid")
+		keyName := util.MustGetFlagString(cmd, "name")
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-
-		scopeName, err := cmd.Flags().GetString("uuid")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		keyName, err := cmd.Flags().GetString("name")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		r, response, err := authAPI.DeleteKey(scopeName, keyName).Execute()
-		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Runtime Configuration Scope Key", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-		}
-
-		if r.GetSuccess() {
-			logrus.Info(fmt.Sprintf("The key %s of scope %s has been deleted",
-				formatter.Colorize(keyName, formatter.GreenColor), scopeName))
-
-		} else {
-			logrus.Errorf(
-				formatter.Colorize(
-					fmt.Sprintf(
-						"An error occurred while deleting key %s\n",
-						formatter.Colorize(keyName, formatter.GreenColor)),
-					formatter.RedColor))
-		}
-
+		DeleteKey(authAPI, scopeName, keyName, true /*logSuccess*/)
 	},
 }
 
