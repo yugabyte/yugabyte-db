@@ -1379,7 +1379,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbIsSingleRowModifyTxnPlanned(plannedstmt, queryDesc->estate);
 
 		/* YB: Refresh the session stats before the start of the query */
-		if (es->rpc)
+		if (es->analyze)
 		{
 			YbRefreshSessionStatsBeforeExecution();
 		}
