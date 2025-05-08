@@ -20,6 +20,7 @@
 #include "postgres.h"
 
 #include "catalog/dependency.h"
+#include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_class_d.h"
 #include "catalog/pg_namespace_d.h"
@@ -164,6 +165,13 @@ static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
 
     /* We are interested in DROP SCHEMA and DROP TABLE commands. */
     if (access != OAT_DROP)
+        return;
+
+    /*
+     * Age might be installed into shared_preload_libraries before extension is
+     * created. In this case we must bail out from this hook.
+     */
+    if (!OidIsValid(get_namespace_oid("ag_catalog", true)))
         return;
 
     drop_arg = arg;
