@@ -379,7 +379,9 @@ public class TokenAuthenticator extends Action.Simple {
         || endPoint.endsWith("create_backup_schedule")
         || endPoint.endsWith("create_backup_schedule_async")
         || endPoint.contains("/schedules")
-        || endPoint.endsWith("/restore")) {
+        || endPoint.endsWith("/restore")
+        || endPoint.endsWith("/restore/preflight")
+        || endPoint.endsWith("/restore/advanced_restore_preflight")) {
       return true;
     }
     // If the user is backupAdmin, they don't get further access.
