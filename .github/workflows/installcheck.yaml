@@ -22,6 +22,11 @@ jobs:
           path: ~/pg15
           key: ${{ runner.os }}-v1-pg15-${{ env.PG_COMMIT_HASH }}
 
+      - name: Install necessary dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libreadline-dev zlib1g-dev flex bison
+
       - name: Install PostgreSQL 15 and some extensions
         if: steps.pg15cache.outputs.cache-hit != 'true'
         run: |
