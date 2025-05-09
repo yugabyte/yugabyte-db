@@ -613,7 +613,7 @@ Please do not do that as it is error-prone.
 A smarter way to do it is to get a patch of the upstream changes, prefix all paths to the appropriate location in `yugabyte/yugabyte-db`, then apply that modified patch in `yugabyte/yugabyte-db`.
 It is quite hacky, and it doesn't preserve [Git author information](#git-author-information).
 
-Perhaps the best way to do it is using subtree merge.
+Perhaps the best way to do it is using the subtree merge strategy.
 This requires having the source repository's commit present in the destination repository.
 Then, a cherry-pick can be done directly.
 
