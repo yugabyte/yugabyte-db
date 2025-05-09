@@ -232,6 +232,41 @@
   }
 }
 
+body.configuration {
+  .td-content {
+    h5:not(:first-child) {
+      font-family: 'SFMonoMedium';
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 24px;
+      position: relative;
+      margin-top: 64px;
+
+      &::after {
+        position: absolute;
+        top: calc(7.5rem + 20px - 32px);
+        content: "";
+        display: block;
+        width: 100%;
+        height: 1px;
+        background: #D7DEE4;
+      }
+    }
+
+    header + h5:not(:first-child) ,
+    .main-heading-with-version + h5:not(:first-child) ,
+    h2 + h5:not(:first-child) ,
+    h3 + h5:not(:first-child) ,
+    h4 + h5:not(:first-child) {
+      margin-top: 32px;
+
+      &::after {
+        display: none;
+      }
+    }
+  }
+}
+
 @media (hover: none) and (pointer: coarse), (max-width: 576px) {
   .td-heading-self-link {
     visibility: hidden;
@@ -240,7 +275,4 @@
 
 .td-searchpage .td-content h1 {
   margin-bottom: 16px;
-}
-.content-parent {
-  overflow: hidden;
 }
