@@ -72,6 +72,15 @@ To install YugabyteDB Anywhere and be able to deploy YugabyteDB universes requir
 
 See [Prepare your infrastructure](../prepare/) for instructions on meeting these prerequisites.
 
+### Checklists
+
+To track your progress while you prepare your infrastructure, you can use the following checklists:
+
+- [On-Premises Provider Configuration](/files/YBA-Prerequisites-Checklist-On-Premises.pdf)
+- [Public Cloud Provider Configuration](/files/YBA-Prerequisites-Checklist-Cloud-Provider.pdf)
+
+See [Prepare your infrastructure](../prepare/) for instructions on meeting these prerequisites.
+
 ## Best practices
 
 <!--Fill out the pre-requisites form as you go along. Start installing only after the pre-requisites form is completed. To obtain the form, contact {{% support-platform %}}.-->
