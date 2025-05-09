@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.95.1-SNAPSHOT</version>
+  <version>0.8.95.3-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>Yugabyte</name>

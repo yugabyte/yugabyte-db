@@ -51,6 +51,9 @@ public class BundleDetails {
     @EnumValue("SystemLogs")
     SystemLogs(ComponentLevel.NodeLevel),
 
+    @EnumValue("TabletReport")
+    TabletReport(ComponentLevel.GlobalLevel),
+
     @EnumValue("K8sInfo")
     K8sInfo(ComponentLevel.GlobalLevel),
 

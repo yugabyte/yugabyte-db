@@ -1100,6 +1100,47 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Gets the list of status and schema of Tablets for a TServer.
+   *
+   * @param hp host and port of the TServer.
+   * @return a object containing the list of status and schema of tablets
+   *         that exist on the TServer.
+   */
+  public ListTabletsResponse listStatusAndSchemaOfTabletsForTServer(HostAndPort hp)
+      throws Exception {
+    Deferred<ListTabletsResponse> d = asyncClient.listStatusAndSchemaOfTabletsForTServer(hp);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get consensus state for a tablet from a Tserver.
+   *
+   * @param tabletId
+   * @param hp host and port of the Tserver.
+   * @return
+   */
+  public GetConsensusStateResponse getTabletConsensusStateFromTS(final String tabletId,
+      final HostAndPort hp) throws Exception {
+    Deferred<GetConsensusStateResponse> d = asyncClient.getTabletConsensusStateFromTS(tabletId, hp);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get the OpIds of the latest entries for a given list of tablets.
+   *
+   * @param hp        host and port of the Tserver on which the tablets are
+   *                  present.
+   * @param tabletIds
+   * @return
+   * @throws Exception
+   */
+  public GetLatestEntryOpIdResponse getLatestEntryOpIds(final HostAndPort hp,
+      List<String> tabletIds) throws Exception {
+    Deferred<GetLatestEntryOpIdResponse> d = asyncClient.getLatestEntryOpIds(hp, tabletIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Check if the server is ready to serve requests.
    *
    * @param hp the host and port of the server.

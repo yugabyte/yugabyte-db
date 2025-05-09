@@ -22,6 +22,7 @@ public class SupportBundleComponentFactory {
   private final YbaMetadataComponent ybaMetadataComponent;
   private final PrometheusMetricsComponent prometheusMetricsComponent;
   private final SystemLogsComponent systemLogsComponent;
+  private final TabletReportComponent tabletReportComponent;
 
   @Inject
   public SupportBundleComponentFactory(
@@ -39,7 +40,8 @@ public class SupportBundleComponentFactory {
       NodeAgentComponent nodeAgentComponent,
       YbaMetadataComponent ybaMetadataComponent,
       PrometheusMetricsComponent prometheusMetricsComponent,
-      SystemLogsComponent systemLogsComponent) {
+      SystemLogsComponent systemLogsComponent,
+      TabletReportComponent tabletReportComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
     this.universeLogsComponent = universeLogsComponent;
     this.outputFilesComponent = outputFilesComponent;
@@ -55,6 +57,7 @@ public class SupportBundleComponentFactory {
     this.ybaMetadataComponent = ybaMetadataComponent;
     this.prometheusMetricsComponent = prometheusMetricsComponent;
     this.systemLogsComponent = systemLogsComponent;
+    this.tabletReportComponent = tabletReportComponent;
   }
 
   // Maps the support bundle component type to its respective implementation
@@ -106,6 +109,9 @@ public class SupportBundleComponentFactory {
         break;
       case SystemLogs:
         supportBundleComponent = this.systemLogsComponent;
+        break;
+      case TabletReport:
+        supportBundleComponent = this.tabletReportComponent;
         break;
       default:
         break;

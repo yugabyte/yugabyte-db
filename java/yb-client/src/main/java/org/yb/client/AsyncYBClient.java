@@ -897,6 +897,59 @@ public class AsyncYBClient implements AutoCloseable {
             });
   }
 
+  /**
+   * @see YBClient#listStatusAndSchemaOfTabletsForTServer(HostAndPort)
+   */
+  public Deferred<ListTabletsResponse> listStatusAndSchemaOfTabletsForTServer(
+      final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+
+    ListTabletsRequest rpc = new ListTabletsRequest();
+    rpc.setTimeoutMillis(DEFAULT_OPERATION_TIMEOUT_MS);
+    Deferred<ListTabletsResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
+   * @see YBClient#getTabletConsensusStateFromTS(String, HostAndPort)
+   */
+  public Deferred<GetConsensusStateResponse> getTabletConsensusStateFromTS(final String tabletId,
+      final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+
+    GetConsensusStateRequest rpc = new GetConsensusStateRequest(tabletId);
+    rpc.setTimeoutMillis(DEFAULT_OPERATION_TIMEOUT_MS);
+    Deferred<GetConsensusStateResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
+   * @see YBClient#getLatestEntryOpIds(List)
+   */
+  public Deferred<GetLatestEntryOpIdResponse> getLatestEntryOpIds(final HostAndPort hp,
+      final List<String> tabletIds) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    GetLatestEntryOpIdRequest rpc = new GetLatestEntryOpIdRequest(tabletIds);
+    rpc.setTimeoutMillis(DEFAULT_OPERATION_TIMEOUT_MS);
+    Deferred<GetLatestEntryOpIdResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
   /*
    * Create a CQL keyspace.
    * @param name of the keyspace.
