@@ -330,6 +330,53 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testPreflightApiOldRbac() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    Users user = ModelFactory.testUser(defaultCustomer, "test2@yugabyte.com");
+    user.setRole(Users.Role.BackupAdmin);
+    user.save();
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("backupUUID", defaultBackup.getBackupUUID().toString());
+    Result result;
+
+    // BackupAdmin user should have access to preflight API.
+    result = runPreflight(bodyJson, user);
+    assertEquals(OK, result.status());
+
+    // ReadOnly user should not have access to preflight API.
+    user.setRole(Users.Role.ReadOnly);
+    user.save();
+    result = runPreflight(bodyJson, user);
+    assertEquals(FORBIDDEN, result.status());
+  }
+
+  @Test
+  public void testAdvancedPreflightApiOldRbac() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    Users user = ModelFactory.testUser(defaultCustomer, "test2@yugabyte.com");
+    user.setRole(Users.Role.BackupAdmin);
+    user.save();
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("backupUUID", defaultBackup.getBackupUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("backupLocations", new HashSet<>().toString());
+    Result result;
+
+    // BackupAdmin user should have access to the advanced preflight API.
+    result = runAdvancedPreflight(bodyJson, user);
+    assertEquals(OK, result.status());
+
+    // ReadOnly user should not have access to the advanced preflight API.
+    user.setRole(Users.Role.ReadOnly);
+    user.save();
+    result = runAdvancedPreflight(bodyJson, user);
+    assertEquals(FORBIDDEN, result.status());
+  }
+
+  @Test
   public void testCreateScheduleBackupWithoutName() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
     ObjectNode bodyJson = Json.newObject();
@@ -691,6 +738,21 @@ public class BackupsControllerTest extends FakeDBApplication {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.getUuid() + "/backups";
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private Result runPreflight(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "POST";
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/restore/preflight";
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private Result runAdvancedPreflight(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "POST";
+    String url =
+        "/api/customers/" + defaultCustomer.getUuid() + "/restore/advanced_restore_preflight";
     return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
