@@ -238,9 +238,9 @@ Add the specified constraint to the table.
 
 ##### Table rewrites
 
-Adding a `PRIMARY KEY` constraint results in a full table rewrite of the main table and all associated indexes, which can be a potentially expensive operation. For more details about [table rewrites, see this section](#alter-table-operations-that-involve-a-table-rewrite).
+Adding a `PRIMARY KEY` constraint results in a full table rewrite of the main table and all associated indexes, which can be a potentially expensive operation. For more details about table rewrites, see [Alter table operations that involve a table rewrite](#alter-table-operations-that-involve-a-table-rewrite).
 
-The reason for the table rewrite is the clustered storage by primary key that YugabyteDB uses to store rows and indexes. Tables without a `PRIMARY KEY` have a hidden one underneath and rows are stored clustered on it. These rows need to be rewritten to use the newly added primary key column. 
+The table rewrite is needed because of how YugabyteDB stores rows and indexes. In YugabyteDB, data is distributed based on the primary key; when a table does not have an explicit primary key assigned, YugabyteDB automatically creates an internal row ID to use as the table's primary key. As a result, these rows need to be rewritten to use the newly added primary key column. For more information, refer to [Primary keys](../../../../../develop/data-modeling/primary-keys-ysql). 
 
 
 #### ALTER [ COLUMN ] *column_name* [ SET DATA ] TYPE *data_type* [ COLLATE *collation* ] [ USING *expression* ]
@@ -255,9 +255,9 @@ Change the type of an existing column. The following semantics apply:
 
 ##### Table rewrites
 
-Altering a column’s type requires a [full table rewrite](#alter-table-operations-that-involve-a-table-rewrite) of the table and any indexes that contain this column when the underlying storage format changes or if the data changes.
+Altering a column's type requires a [full table rewrite](#alter-table-operations-that-involve-a-table-rewrite) of the table, and any indexes that contain this column when the underlying storage format changes or if the data changes.
 
-The following type changes are common cases where we require a table rewrite:
+The following type changes commonly require a table rewrite:
 
 |     From         |  To               | Reason for table rewrite                                       |
 | ------------ | -------------- | --------------------------------------------------------------------- |
@@ -286,7 +286,7 @@ Altering a column with a (non-trivial) USING clause always requires a rewrite.
 
 The table rewrite operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
 
-Examples of ALTER TYPE that cause a table rewrite
+For example, the following ALTER TYPE statements would cause a table rewrite:
 
 - ALTER TABLE foo
     ALTER COLUMN foo_timestamp TYPE timestamp with time zone
@@ -295,7 +295,7 @@ Examples of ALTER TYPE that cause a table rewrite
 - ALTER TABLE t ALTER COLUMN t_num1 TYPE NUMERIC(9,5) -- from NUMERIC(6,1);
 - ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT; -- from INT
 
-Examples of ALTER TYPE that do not cause a table rewrite
+The following ALTER TYPE statement does not cause a table rewrite:
 
 - ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51); -- from VARCHAR(50)
 
@@ -309,7 +309,7 @@ Drop the named constraint from the table.
 
 ##### Table rewrites
 
-Dropping the `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table, which is a potentially expensive operation. More details and common limitations of table rewrites  [are described in this section](#alter-table-operations-that-involve-a-table-rewrite).
+Dropping the `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table, which is a potentially expensive operation. For more details and common limitations of table rewrites, refer to [Alter table operations that involve a table rewrite](#alter-table-operations-that-involve-a-table-rewrite).
 
 
 #### RENAME [ COLUMN ] *column_name* TO *column_name*
@@ -385,13 +385,14 @@ Most ALTER TABLE statements only involve a schema modification and complete quic
 
 It is not safe to execute concurrent DML on the table during a table rewrite because the results of any concurrent DML are not guaranteed to be reflected in the copy of the table being made. This restriction is similar to PostgresSQL, which explicitly prevents concurrent DML during a table rewrite by acquiring an ACCESS EXCLUSIVE table lock.
 
-When such expensive rewrites have to be performed, it is recommended to combine them into a single ALTER TABLE as shown below to avoid multiple expensive rewrites.
+If you need to perform one of these expensive rewrites, it is recommended to combine them into a single ALTER TABLE statement to avoid multiple expensive rewrites. For example:
 
 ```
 ALTER TABLE t ADD COLUMN c6 UUID DEFAULT gen_random_uuid(), ALTER COLUMN c8 TYPE TEXT
 ```
 
-The following alter table operations involve making a full copy of the underlying table (and possibly associated index tables).
+The following ALTER TABLE operations involve making a full copy of the underlying table (and possibly associated index tables):
+
 1. [Adding](#add-alter-table-constraint-constraints) or [dropping](#drop-constraint-constraint-name-restrict-cascade) the primary key of a table.
 2. [Adding a column with a (volatile) default value](#add-column-if-not-exists-column-name-data-type-constraint-constraints).
 4. [Changing the type of a column](#alter-column-column-name-set-data-type-data-type-collate-collation-using-expression).
