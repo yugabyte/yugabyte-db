@@ -4,7 +4,6 @@ import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { UniverseCard } from './UniverseCard';
 import { useQuery } from 'react-query';
-import { makeStyles } from '@material-ui/core';
 
 import { CronToSystemdReminderBanner } from './CronToSystemdReminderBanner';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
@@ -89,14 +88,22 @@ export const UniverseDisplayPanel = ({
           );
         });
     }
+    const hasUniverseMissingNodeAgent = universeList.data.some(
+      (universe: Universe) => universe.universeDetails.nodeAgentMissing === true
+    );
     const nodeAgentEnablerScanInterval =
       globalRuntimeConfigQuery.data?.configEntries?.find(
         (configEntry: RunTimeConfigEntry) =>
           configEntry.key === RuntimeConfigKey.NODE_AGENT_ENABLER_SCAN_INTERVAL
       )?.value ?? '';
     const isNodeAgentEnabled = getIsNodeAgentEnabled(nodeAgentEnablerScanInterval);
+    const isAutoNodeAgentInstallationEnabled =
+      globalRuntimeConfigQuery.data?.configEntries?.find(
+        (configEntry: RunTimeConfigEntry) =>
+          configEntry.key === RuntimeConfigKey.ENABLE_AUTO_NODE_AGENT_INSTALLATION
+      )?.value === 'true' ?? false;
 
-    const showNodeAgentBanner = isNodeAgentEnabled && hasNodeAgentFailures;
+    const showNodeAgentInstallReminderBanner = isNodeAgentEnabled && hasUniverseMissingNodeAgent;
     return (
       <div className="universe-display-panel-container">
         <Row>
@@ -124,7 +131,12 @@ export const UniverseDisplayPanel = ({
             )}
           </Col>
         </Row>
-        {showNodeAgentBanner && <InstallNodeAgentReminderBanner />}
+        {showNodeAgentInstallReminderBanner && (
+          <InstallNodeAgentReminderBanner
+            isAutoNodeAgentInstallationEnabled={isAutoNodeAgentInstallationEnabled}
+            hasNodeAgentFailures={hasNodeAgentFailures}
+          />
+        )}
         {hasCronBasedUniverse && <CronToSystemdReminderBanner />}
         <Row className="list-group">{universeDisplayList}</Row>
       </div>

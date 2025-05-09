@@ -247,6 +247,9 @@ export interface UniverseDetails {
   prevYBSoftwareConfig: { softwareVersion: string };
   universePaused: boolean;
   xclusterInfo: any;
+  installNodeAgent: boolean;
+  nodeAgentMissing: boolean;
+  runOnlyPrechecks?: boolean;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
