@@ -2426,6 +2426,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   friend class UniverseReplicationLoader;
   friend class UniverseReplicationBootstrapLoader;
 
+  Status AggregatePgStats();
+
   // Performs the provided action with the sys catalog shared tablet instance, or sets up an error
   // if the tablet is not found.
   template <class Req, class Resp, class F>

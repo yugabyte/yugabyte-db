@@ -216,6 +216,10 @@
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
+
 using namespace std::literals;
 using namespace yb::size_literals;
 
@@ -10404,6 +10408,18 @@ Status CatalogManager::EnableBgTasks() {
 
   xrepl_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
 
+  Status s = background_tasks_thread_pool_->SubmitFunc([&]() {
+    while (true) {
+      SleepFor(MonoDelta::FromMilliseconds(20000));
+      LOG(INFO) << "pgstat: woke up";
+      Status res = AggregatePgStats();
+      if (!res.ok())
+        LOG(INFO) << "pgstats: error running aggregate " << res.ToString();
+      }
+    });
+  if (!s.ok())
+    LOG(INFO) << "pgstats: error scheduling bg task";
+
   return Status::OK();
 }
 
@@ -13539,6 +13555,80 @@ Result<std::vector<SysCatalogEntryDumpPB>> CatalogManager::FetchFromSysCatalog(
       }));
 
   return result;
+}
+
+Status CatalogManager::AggregatePgStats() {
+    std::vector<std::shared_ptr<TSDescriptor>> descs;
+    master_->ts_manager()->GetAllLiveDescriptors(&descs);
+    auto controller = std::make_shared<rpc::RpcController>();
+    std::shared_ptr<tserver::TabletServerServiceProxy> proxy;
+    CountDownLatch latch(descs.size());
+
+    for (const auto& desc : descs) {
+      RETURN_NOT_OK(desc->GetProxy(&proxy));
+      tserver::AdminExecutePgsqlRequestPB req;
+      req.set_database_name("yugabyte");
+      std::string query = yb::Format(
+        "BEGIN;"
+        "DELETE FROM yb_stat_tmp where server_uuid = '$0'; "
+        "INSERT INTO yb_stat_tmp("
+        "SELECT userid, dbid, queryid, query, plans, total_plan_time,calls,max_exec_time, '$0' "
+        "FROM pg_stat_statements);"
+        "COMMIT;",
+      desc->permanent_uuid());
+      LOG(INFO) << "pgstat: running query " << query << " on tserver " << desc->ToString();
+      req.add_pgsql_statements(query);
+      auto resp = std::make_shared<tserver::AdminExecutePgsqlResponsePB>();
+
+      proxy->AdminExecutePgsqlAsync(
+          req, resp.get(), controller.get(), [&, desc]() {
+            latch.CountDown();
+            Status status = controller->status();
+            if (!status.ok() || !resp || resp->has_error()) {
+              LOG(INFO) << "pgstat: Failed to run query on tserver " << desc->ToString()
+                << " status: " << status.ToString()
+                << ", " << (resp ? yb::ToString(resp->error().status()) : " no error");
+            } else {
+              LOG(INFO) << "pgstat: Got resp " << resp->DebugString();
+            }
+          });
+    }
+
+    latch.Wait();
+
+    LOG(INFO) << "proxy: " << (bool)proxy;
+    if (proxy) {
+      latch.Reset(1);
+      tserver::AdminExecutePgsqlRequestPB req;
+      req.set_database_name("yugabyte");
+      std::string query =
+        "BEGIN;"
+        "delete from yb_stat_statements; "
+        "insert into yb_stat_statements "
+        "(select userid, dbid, queryid, query, sum(plans), sum(total_plan_time), sum(calls), max(max_exec_time) "
+        "from yb_stat_tmp group by (userid, dbid, queryid, query) );"
+        "COMMIT;";
+      LOG(INFO) << "pgstat: running query " << query;
+      req.add_pgsql_statements(query);
+      auto resp = std::make_shared<tserver::AdminExecutePgsqlResponsePB>();
+      //controller->set_deadline(deadline);
+
+      proxy->AdminExecutePgsqlAsync(
+          req, resp.get(), controller.get(), [&]() {
+            latch.CountDown();
+            Status status = controller->status();
+            if (!status.ok() || !resp || resp->has_error()) {
+              LOG(INFO) << "pgstat: Failed to run query " << status.ToString()
+                    << ", " << (resp ? yb::ToString(resp->error().status()) : " no error");
+            } else {
+              LOG(INFO) << "pgstat: Got resp " << resp->DebugString();
+            }
+          });
+      latch.Wait();
+    }
+
+
+    return Status::OK();
 }
 
 Status CatalogManager::WriteToSysCatalog(
