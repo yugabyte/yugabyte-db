@@ -201,7 +201,7 @@ DEFINE_UNKNOWN_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeas
 DEFINE_validator(leader_lease_duration_ms,
     FLAG_DELAYED_COND_VALIDATOR(
         FLAGS_raft_heartbeat_interval_ms <= _value,
-        "Must be greater than raft_heartbeat_interval_ms"));
+        yb::Format("Must be greater than or equal to raft_heartbeat_interval_ms: $0", FLAGS_raft_heartbeat_interval_ms)));
 
 DEFINE_validator(raft_heartbeat_interval_ms,
     FLAG_DELAYED_COND_VALIDATOR(
