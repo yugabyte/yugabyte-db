@@ -39,7 +39,7 @@ SQL statements are shown below.
 
 ### Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Connect to the database using ysqlsh and enable the pgaudit extension on the YugabyteDB cluster as follows:
 

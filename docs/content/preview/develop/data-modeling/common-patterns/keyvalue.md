@@ -62,7 +62,7 @@ Let us go over both schemas.
 
 ## Cluster setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 ## Attributes as separate rows
 

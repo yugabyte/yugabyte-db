@@ -26,7 +26,7 @@ To do this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/mu
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Suppose you want to store the data of users from the US and Europe on their respective continents. For this, you set up a replication factor 3 cluster spread across 2 geographies, `US` and `Europe`. To make sure each partition acts like a global database, you opt for 3 regions in each of the geographies.
 
