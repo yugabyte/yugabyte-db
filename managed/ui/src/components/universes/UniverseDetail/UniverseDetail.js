@@ -397,8 +397,7 @@ class UniverseDetail extends Component {
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
     const isProviderNodeAgentEnabled = provider?.details?.enableNodeAgent;
-    const isNodeAgentInstallationPending =
-      universe?.currentUniverse?.data?.universeDetails?.installNodeAgent;
+    const isNodeAgentMissing = universe?.currentUniverse?.data?.universeDetails?.nodeAgentMissing;
 
     let onPremSkipProvisioning = false;
     if (provider && provider.code === 'onprem') {
@@ -1519,9 +1518,7 @@ class UniverseDetail extends Component {
                           onClick={showInstallNodeAgentModal}
                         >
                           <YBLabelWithIcon icon="fa fa-plus">
-                            {isNodeAgentInstallationPending
-                              ? 'Install Node Agent'
-                              : 'Reinstall Node Agent'}
+                            {isNodeAgentMissing ? 'Install Node Agent' : 'Reinstall Node Agent'}
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       </RbacValidator>
@@ -1797,7 +1794,7 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
           nodeNames={nodeNames}
           isUniverseAction={true}
-          isReinstall={!isNodeAgentInstallationPending}
+          isReinstall={!isNodeAgentMissing}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>
