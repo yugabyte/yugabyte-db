@@ -20,7 +20,7 @@ Application instances are active in all regions, do consistent reads, and operat
 
 ## Overview
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Suppose you want to serve users both in the East and West regions of the US with reduced latency. Set up a cluster with a replication factor of 3 and leaders in 2 regions, `us-west-1` and `us-east-1`, and place the replicas in nearby regions, `us-west-2` and `us-east-2`. This provides low read and write latencies for the 2 partitions.
 

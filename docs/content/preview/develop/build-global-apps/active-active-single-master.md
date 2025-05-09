@@ -19,7 +19,7 @@ Only one application instance is actively writing at any time. A replica cluster
 
 ## Setup
 
-{{<cluster-setup-tabs list="local,anywhere">}}
+{{<cluster-setup-tabs-new list="local,anywhere">}}
 
 Suppose you have cluster with a replication factor of 3, and applications deployed in `us-west`.
 

@@ -20,7 +20,7 @@ Application instances are active in multiple regions and may read stale data.
 
 ## Overview
 
-{{<cluster-setup-tabs list="local,anywhere">}}
+{{<cluster-setup-tabs-new list="local,anywhere">}}
 
 Suppose you have cluster with a replication factor of 3, and applications deployed in `us-west`.
 
