@@ -15,6 +15,7 @@ pushd "$base_dir"
 readonly project_dir=$(pwd)
 popd
 
+export PROJECT_DIR="$project_dir"
 export GOPATH=$project_dir/third-party
 export GOBIN=$GOPATH/bin
 export PATH=$GOBIN:$PATH
@@ -193,6 +194,7 @@ package_for_platform() {
     version_dir="${build_output_dir}/${staging_dir_name}/${version}"
     script_dir="${version_dir}/scripts"
     bin_dir="${version_dir}/bin"
+    templates_dir="${version_dir}/templates"
     echo "Packaging ${staging_dir_name}"
     os_exec_name=$(get_executable_name "$os" "$arch")
     exec_name="node-agent"
@@ -205,11 +207,13 @@ package_for_platform() {
     mkdir "$staging_dir_name"
     mkdir -p "$script_dir"
     mkdir -p "$bin_dir"
+    mkdir -p "$templates_dir"
     cp -rf "$os_exec_name" "${bin_dir}/$exec_name"
     # Follow the symlinks.
     cp -Lf ../version.txt "${version_dir}"/version.txt
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
     pushd "$project_dir/resources"
+    cp -rf templates/* "$templates_dir/"
     cp -rf ../pywheels "${script_dir}"/pywheels
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh

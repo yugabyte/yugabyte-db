@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -37,6 +38,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
@@ -474,6 +476,51 @@ public class ScheduleControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditScheduleExpiredBackup() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    // JsonNode with keyspace variable set to test1
+    ObjectNode taskParams = Json.newObject();
+    taskParams.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    taskParams.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    taskParams.put("backupType", "PGSQL_TABLE_TYPE");
+    schedule.setTaskParams(taskParams);
+    schedule.setStatus(State.Stopped);
+    schedule.updateBacklogStatus(false);
+    schedule.updateIncrementBacklogStatus(false);
+    // Last task was run 3 hours ago
+    Date taskStart = new Date(System.currentTimeMillis() - 3000L * 3600L);
+    schedule.updateNextScheduleTaskTime(taskStart);
+    schedule.updateNextIncrementScheduleTaskTime(taskStart);
+    schedule.updateIncrementalBackupFrequencyAndTimeUnit(15L, TimeUnit.MINUTES);
+    schedule.save();
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.status = State.Active;
+    params.frequency = 2 * 1000L * 3600L;
+    params.frequencyTimeUnit = TimeUnit.HOURS;
+    params.incrementalBackupFrequency = 15L;
+    params.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
+    params.runImmediateBackupOnResume = true;
+    editSchedule(schedule.getScheduleUUID(), defaultCustomer.getUuid(), Json.toJson(params));
+    schedule.refresh();
+    assertEquals(State.Active, schedule.getStatus());
+    assertTrue(schedule.isBacklogStatus());
+    assertTrue(schedule.isIncrementBacklogStatus());
+    // THis method of edit schedule will reset expired "nextScheduleTaskTime" to current time, so
+    // the calculation should be from current time, not the last task time we have above.
+    // This is not an exact calculation (we get current time multiple times in it), so it is likely
+    // to be close, but not exactly 4 hours. We are giving a 10 second range
+    Long diff =
+        new Date().getTime() + 2l * 1000l * 3600l - schedule.getNextScheduleTaskTime().getTime();
+    // It would be impressive to for the diff to be negative, but lets check anyways
+    assertTrue(diff < 10000 && diff > -10000);
+  }
+
+  @Test
   public void testDeleteValidScheduleHavingTaskYb() {
     Schedule schedule =
         Schedule.create(
@@ -762,10 +809,13 @@ public class ScheduleControllerTest extends FakeDBApplication {
         ModelFactory.createScheduleBackup(
             defaultCustomer.getUuid(),
             defaultUniverse.getUniverseUUID(),
-            customerConfig.getConfigUUID());
+            customerConfig.getConfigUUID(),
+            TaskType.CreateBackup);
     schedule =
         Schedule.updateStatusAndSave(
             defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Stopped);
+    // Expired next schedule task time
+    schedule.updateNextScheduleTaskTime(new Date(System.currentTimeMillis() - 1000L * 3600L));
     assertEquals(schedule.getStatus(), State.Stopped);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("status", "Active");
@@ -778,6 +828,41 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertOk(result);
     schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
     assertEquals(schedule.getStatus(), State.Active);
+    // Also validate that backlog is not set for non-expired schedules
+    // isBacklogStatus should either be false or null;
+    assertNotEquals(true, schedule.isBacklogStatus());
+  }
+
+  @Test
+  public void testToggleScheduleActiveSuccessWithImmediate() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    schedule =
+        Schedule.updateStatusAndSave(
+            defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Stopped);
+    // Expired next schedule task time
+    schedule.updateNextScheduleTaskTime(new Date(System.currentTimeMillis() - 1000L * 3600L));
+    schedule.updateNextIncrementScheduleTaskTime(
+        new Date(System.currentTimeMillis() - 1000L * 3600L));
+    assertEquals(schedule.getStatus(), State.Stopped);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Active");
+    bodyJson.put("runImmediateBackupOnResume", true);
+    Result result =
+        toggleSchedule(
+            schedule.getScheduleUUID(),
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            bodyJson);
+    assertOk(result);
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(schedule.getStatus(), State.Active);
+    assertTrue(schedule.isBacklogStatus());
+    assertTrue(schedule.isIncrementBacklogStatus());
   }
 
   @Test

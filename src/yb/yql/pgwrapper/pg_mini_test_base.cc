@@ -65,12 +65,11 @@ void PgMiniTestBase::SetUp() {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   MiniClusterTestWithClient::SetUp();
 
-  MiniClusterOptions mini_cluster_opt = MiniClusterOptions {
+  MiniClusterOptions mini_cluster_opt = MiniClusterOptions{
       .num_masters = NumMasters(),
       .num_tablet_servers = NumTabletServers(),
       .num_drives = 1,
-      .master_env = env_.get()
-  };
+      .master_env = env_.get()};
   OverrideMiniClusterOptions(&mini_cluster_opt);
   cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
 
@@ -86,8 +85,7 @@ void PgMiniTestBase::SetUp() {
 
   ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
-  StartPgSupervisor(pg_port, pg_ts_idx);
-
+  ASSERT_OK(SetupPGCallbacksAndStartPG(pg_port, pg_ts_idx, mini_cluster_opt.wait_for_pg));
   DontVerifyClusterBeforeNextTearDown();
 
   ASSERT_OK(MiniClusterTestWithClient<MiniCluster>::CreateClient());
@@ -127,6 +125,7 @@ Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port, size_t 
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  cluster_->SetYsqlHostport(pg_host_port());
 
   return pg_process_conf;
 }
@@ -146,10 +145,30 @@ void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
 
   BeforePgProcessStart();
   pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, pg_ts->server());
-  ASSERT_OK(pg_supervisor_->Start());
+  ASSERT_OK(pg_supervisor_->StartAndMaybePause());
   pg_ts->SetPgServerHandlers(
-      [this] { return StartPostgres(); },
-      [this] { StopPostgres(); });
+      [this] { return StartPostgres(); }, [this] { StopPostgres(); },
+      [this] { return MakeConnSettings(); });
+}
+
+Status PgMiniTestBase::SetupPGCallbacksAndStartPG(
+    uint16_t pg_port, int pg_ts_idx, bool wait_for_pg) {
+  RETURN_NOT_OK(WaitForInitDb(cluster_.get()));
+
+  auto pg_process_conf = VERIFY_RESULT(CreatePgProcessConf(pg_port, pg_ts_idx));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
+
+  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
+            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+
+  BeforePgProcessStart();
+
+  auto pg_ts = cluster_->mini_tablet_server(pg_ts_idx);
+  pg_ts->SetPgServerHandlers(
+      [this] { return StartPostgres(); }, [this] { StopPostgres(); },
+      [this] { return MakeConnSettings(); });
+  return pg_ts->StartPgIfConfigured(tserver::WaitToAcceptPgConnections(wait_for_pg));
 }
 
 Status PgMiniTestBase::RecreatePgSupervisor() {
@@ -181,7 +200,7 @@ void PgMiniTestBase::StopPostgres() {
 Status PgMiniTestBase::StartPostgres() {
   LOG(INFO) << "Starting PostgreSQL server";
   RETURN_NOT_OK(RecreatePgSupervisor());
-  return pg_supervisor_->Start();
+  return pg_supervisor_->StartAndMaybePause();
 }
 
 Status PgMiniTestBase::RestartPostgres() {

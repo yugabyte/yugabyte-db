@@ -518,6 +518,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
+  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);
@@ -2417,6 +2418,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs);
 
+  Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
+
  private:
   friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
@@ -2991,7 +2994,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     // The processed_tables is used to avoid duplicated processing. Currently it is the set of
     // tables for which delete table has already been called. For PITR, we cannot make duplicate
     // delete table calls.
-    std::vector<scoped_refptr<TableInfo>> tables;
+    std::vector<TableInfoPtr> tables;
     std::unordered_set<TableId> processed_tables;
     // Set of tables whose DocDB schema do not change.
     std::unordered_set<TableId> nochange_tables;

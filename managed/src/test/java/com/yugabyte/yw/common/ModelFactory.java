@@ -60,6 +60,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
@@ -526,13 +527,22 @@ public class ModelFactory {
 
   public static Schedule createScheduleBackup(
       UUID customerUUID, UUID universeUUID, UUID configUUID) {
+    return createScheduleBackup(customerUUID, universeUUID, configUUID, TaskType.BackupUniverse);
+  }
+
+  public static Schedule createScheduleBackup(
+      UUID customerUUID, UUID universeUUID, UUID configUUID, TaskType taskType) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.setUniverseUUID(universeUUID);
     params.setKeyspace("foo");
     params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
-    return Schedule.create(customerUUID, params, TaskType.BackupUniverse, 1000, null);
+    return Schedule.create(customerUUID, params, taskType, 1000, null);
+  }
+
+  public static ScheduleTask createScheduleTask(UUID taskUUID, UUID scheduleUUID) {
+    return ScheduleTask.create(taskUUID, scheduleUUID);
   }
 
   public static CustomerConfig setCallhomeLevel(Customer customer, String level) {

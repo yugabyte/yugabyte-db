@@ -302,6 +302,8 @@ class XClusterManager : public XClusterManagerIf,
       const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
       const NamespaceId& namespace_id) const;
 
+  Status ValidateCreateTableRequest(const CreateTableRequestPB& req);
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;

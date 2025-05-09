@@ -155,6 +155,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
     (kConflictResolution_WaitOnConflictingTxns)
+    (kRemoteBootstrap_FetchData)
+    (kRemoteBootstrap_StartRemoteSession)
+    (kRemoteBootstrap_ReadDataFromFile)
+    (kRemoteBootstrap_RateLimiter)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -186,6 +190,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     // Wait states related to YBClient
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
+    (kYBClient_WaitingOnMaster)
 );
 
 // We also want to track background operations such as, log-append
@@ -200,6 +205,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForUncomputedQueryId, 5))
   ((kQueryIdForLogBackgroundSync, 6))
   ((kQueryIdForYSQLBackgroundWorker, 7))
+  ((kQueryIdForRemoteBootstrap, 8))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -250,6 +256,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kIsObjectPartOfXRepl)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
+  (kSetTserverCatalogMessageList)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)
@@ -457,6 +464,13 @@ class WaitStateInfo {
   void MetadataToPB(PB* pb) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb);
+  }
+
+  template <class PB>
+  static void CurrentMetadataToPB(PB* pb) {
+    if (const auto& wait_state = CurrentWaitState()) {
+      wait_state->MetadataToPB(pb);
+    }
   }
 
   template <class PB>

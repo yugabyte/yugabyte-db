@@ -12,16 +12,9 @@
 
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
-#include "yb/rpc/secure.h"
-
-#include "yb/server/server_base_options.h"
-
+#include "yb/util/env.h"
 #include "yb/util/scope_exit.h"
-
-DECLARE_string(certs_dir);
-DECLARE_string(certs_for_client_dir);
-DECLARE_string(cert_node_filename);
-DECLARE_bool(use_client_to_server_encryption);
+#include "yb/util/unique_lock.h"
 
 using namespace std::literals;
 
@@ -49,7 +42,9 @@ Result<int> ProcessWrapper::Wait() {
 void ProcessWrapper::Kill() { Kill(SIGQUIT); }
 
 void ProcessWrapper::Kill(int signal) {
-  WARN_NOT_OK(proc_->Kill(signal), "Kill process failed");
+  if (proc_) {
+    WARN_NOT_OK(proc_->KillNoCheckIfRunning(signal), "Kill process failed");
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -80,7 +75,6 @@ void ProcessSupervisor::RunThread() {
         } else {
           util::LogWaitCode(ret_code, process_name);
         }
-        process_wrapper_.reset();
       } else {
         LOG(WARNING) << "Failed when waiting for process to exit: " << wait_result.status();
 
@@ -89,14 +83,21 @@ void ProcessSupervisor::RunThread() {
         // process_wrapper is not initilized. So there isn't a process to wait.
         if (!wait_result.status().IsIllegalState()) {
           LOG(INFO) << "Wait a bit next process_wrapper wait-check for " << process_name;
-          SleepFor(std::chrono::seconds(1));
+          SleepFor(MonoDelta::FromSeconds(1));
           continue;
         }
       }
     }
 
     {
-      std::lock_guard lock(mtx_);
+      UniqueLock lock(mtx_);
+      if (state_ == YbSubProcessState::kPaused) {
+        LOG(INFO) << "Supervisor thread for " << process_name << " waiting on paused state.";
+        cond_.wait(GetLockForCondition(lock), [this]() REQUIRES(mtx_) {
+          return this->state_ != YbSubProcessState::kPaused;
+        });
+      }
+      process_wrapper_.reset();
       if (state_ == YbSubProcessState::kStopping) {
         break;
       }
@@ -105,10 +106,11 @@ void ProcessSupervisor::RunThread() {
       if (!start_status.ok()) {
         LOG(WARNING) << "Failed trying to start " << process_name
                      << " process: " << start_status << ", waiting a bit";
-        SleepFor(std::chrono::seconds(1));
+        SleepFor(MonoDelta::FromSeconds(1));
       }
     }
   }
+  LOG(INFO) << "Supervisor thread for " << process_name << " exiting";
 }
 
 Status ProcessSupervisor::StartProcessUnlocked() {
@@ -123,26 +125,27 @@ Status ProcessSupervisor::StartProcessUnlocked() {
 }
 
 Status ProcessSupervisor::Start() {
-  std::lock_guard lock(mtx_);
-  std::string process_name = GetProcessName();
-  RETURN_NOT_OK(ExpectStateUnlocked(YbSubProcessState::kNotStarted));
-  RETURN_NOT_OK(PrepareForStart());
-  LOG(INFO) << "Starting "  << process_name << " process";
+  return Init(YbSubProcessState::kRunning);
+}
 
-  RETURN_NOT_OK(StartProcessUnlocked());
+Status ProcessSupervisor::InitPaused() {
+  return Init(YbSubProcessState::kPaused);
+}
 
-  std::string thread_name = process_name + " supervisor";
-  Status status = Thread::Create(
-      thread_name, thread_name, &ProcessSupervisor::RunThread,
-      this, &supervisor_thread_);
-  if (!status.ok()) {
-    supervisor_thread_.reset();
-    return status;
+Status ProcessSupervisor::InitializeProcessWrapperUnlocked() {
+  if (process_wrapper_) {
+    RSTATUS_DCHECK(!process_wrapper_, IllegalState, "Expecting 'process_wrapper_' to not be set");
   }
-
-  state_ = YbSubProcessState::kRunning;
-
+  process_wrapper_ = CreateProcessWrapper();
   return Status::OK();
+}
+
+Status ProcessSupervisor::Restart() {
+  return KillAndChangeState(YbSubProcessState::kRunning);
+}
+
+Status ProcessSupervisor::Pause() {
+  return KillAndChangeState(YbSubProcessState::kPaused);
 }
 
 void ProcessSupervisor::Stop() {
@@ -154,7 +157,11 @@ void ProcessSupervisor::Stop() {
     if (process_wrapper_) {
       process_wrapper_->Kill();
     }
+    if (!supervisor_thread_) {
+      return;
+    }
   }
+  cond_.notify_one();
   auto start = CoarseMonoClock::now();
   for (;;) {
     if (thread_finished_latch_.WaitFor(10s)) {
@@ -171,32 +178,51 @@ void ProcessSupervisor::Stop() {
       break;
     } else {
       LOG(WARNING) << GetProcessName() << " did not gracefully exist after " << passed;
+
     }
   }
   supervisor_thread_->Join();
 }
 
-Status ProcessWrapperCommonConfig::SetSslConf(
-    const server::ServerBaseOptions& options, FsManager& fs_manager) {
-  this->certs_dir =
-      FLAGS_certs_dir.empty() ? rpc::GetCertsDir(fs_manager.GetDefaultRootDir()) : FLAGS_certs_dir;
-  this->certs_for_client_dir =
-      FLAGS_certs_for_client_dir.empty() ? this->certs_dir : FLAGS_certs_for_client_dir;
-  this->enable_tls = FLAGS_use_client_to_server_encryption;
+Status ProcessSupervisor::KillAndChangeState(YbSubProcessState new_state) {
+  {
+    std::lock_guard lock(mtx_);
+    if (state_ != YbSubProcessState::kPaused && state_ != YbSubProcessState::kRunning) {
+      return STATUS_FORMAT(
+          IllegalState, "State must be either paused or running, state is $0", state_);
+    }
+    if (process_wrapper_) {
+      process_wrapper_->Kill(SIGKILL);
+    }
+    state_ = new_state;
+  }
+  cond_.notify_one();
+  return Status::OK();
+}
 
-  // Follow the same logic as elsewhere, check FLAGS_cert_node_filename then
-  // server_broadcast_addresses then rpc_bind_addresses.
-  if (!FLAGS_cert_node_filename.empty()) {
-    this->cert_base_name = FLAGS_cert_node_filename;
-  } else {
-    const auto server_broadcast_addresses =
-        HostPort::ParseStrings(options.server_broadcast_addresses, 0);
-    RETURN_NOT_OK(server_broadcast_addresses);
-    const auto rpc_bind_addresses = HostPort::ParseStrings(options.rpc_opts.rpc_bind_addresses, 0);
-    RETURN_NOT_OK(rpc_bind_addresses);
-    this->cert_base_name = !server_broadcast_addresses->empty()
-                               ? server_broadcast_addresses->front().host()
-                               : rpc_bind_addresses->front().host();
+Status ProcessSupervisor::Init(YbSubProcessState target_state) {
+  if (target_state != YbSubProcessState::kPaused && target_state != YbSubProcessState::kRunning) {
+    return STATUS_FORMAT(
+        InvalidArgument, "First state after kNotStarted must be kRunning or kPaused, not $0",
+        target_state);
+  }
+  std::lock_guard lock(mtx_);
+  std::string process_name = GetProcessName();
+  RETURN_NOT_OK(ExpectStateUnlocked(YbSubProcessState::kNotStarted));
+  RETURN_NOT_OK(PrepareForStart());
+  if (target_state == YbSubProcessState::kRunning) {
+    LOG(INFO) << "Starting " << process_name << " process";
+    RETURN_NOT_OK(StartProcessUnlocked());
+  }
+
+  state_ = target_state;
+  std::string thread_name = process_name + " supervisor";
+  auto status = Thread::Create(
+      thread_name, thread_name, &ProcessSupervisor::RunThread, this, &supervisor_thread_);
+  if (!status.ok()) {
+    supervisor_thread_.reset();
+    state_ = YbSubProcessState::kNotStarted;
+    return status;
   }
 
   return Status::OK();

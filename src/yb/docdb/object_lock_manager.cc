@@ -230,19 +230,20 @@ bool ObjectLockManagerImpl::Lock(
     const ObjectLockOwner& object_lock_owner) {
   TRACE("Locking a batch of $0 keys", key_to_intent_type.size());
   auto& transaction_entry = Reserve(key_to_intent_type, object_lock_owner);
-  auto owner_as_string = make_lw_function([&object_lock_owner] {
+  auto owner_as_string = [&object_lock_owner] {
     return AsString(object_lock_owner);
-  });
+  };
   for (auto it = key_to_intent_type.begin(); it != key_to_intent_type.end(); ++it) {
     const auto& intent_types = it->intent_types;
     VLOG(4) << "Locking " << AsString(intent_types) << ": "
             << AsString(it->key);
     if (!LockSingleEntry(
-        *it, deadline, transaction_entry, object_lock_owner.subtxn_id, owner_as_string)) {
+        *it, deadline, transaction_entry, object_lock_owner.subtxn_id,
+        make_lw_function(owner_as_string))) {
       while (it != key_to_intent_type.begin()) {
         --it;
         UnlockSingleEntry(
-            *it, transaction_entry, object_lock_owner.subtxn_id, owner_as_string);
+            *it, transaction_entry, object_lock_owner.subtxn_id, make_lw_function(owner_as_string));
       }
       Cleanup(key_to_intent_type);
       return false;
@@ -292,7 +293,7 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
     old_value = entry.num_holding.load(std::memory_order_acquire);
     if (((old_value ^ lock_entry.existing_state) & conflicting_lock_state) != 0) {
       DEBUG_ONLY_TEST_SYNC_POINT("ObjectLockedBatchEntry::Lock");
-      SCOPED_WAIT_STATUS(LockedBatchEntry_Lock);
+      SCOPED_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
       if (deadline != CoarseTimePoint::max()) {
         // Note -- even if we wait here, we don't need to be aware for the purposes of deadlock
         // detection since this eventually succeeds (in which case thread gets to queue) or times

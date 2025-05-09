@@ -401,11 +401,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeAfterSnapshot) {
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {1, 1, 0, 0, 1, 0};
+  const uint32_t expected_count[] = {
+      static_cast<uint32_t>((FLAGS_ysql_enable_packed_row ? 2 : 1)), 1, 0, 0, 1, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  ExpectedRecord expected_records_before_snapshot[] = {{0, 0}, {1, 2}};
-  ExpectedRecord expected_records_after_snapshot[] = {{2, 3}};
+  ExpectedRecord expected_records_before_snapshot[] = {{0, 0} /* DDL */, {1, 2}};
+  ExpectedRecord expected_records_after_snapshot_with_packed_row[] = {{0, 0} /* DDL */, {2, 3}};
+  ExpectedRecord expected_records_after_snapshot_no_packed_row[] = {{2, 3}};
 
   GetChangesResponsePB change_resp_updated =
       ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, cp_resp));
@@ -428,7 +430,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeAfterSnapshot) {
         record.row_message().op() == RowMessage::COMMIT) {
       continue;
     }
-    CheckRecord(record, expected_records_after_snapshot[expected_record_count++], count);
+    if (FLAGS_ysql_enable_packed_row) {
+      CheckRecord(
+          record, expected_records_after_snapshot_with_packed_row[expected_record_count++], count);
+    } else {
+      CheckRecord(
+          record, expected_records_after_snapshot_no_packed_row[expected_record_count++], count);
+    }
   }
   CheckCount(expected_count, count);
 }

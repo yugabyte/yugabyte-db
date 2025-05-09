@@ -1544,8 +1544,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         args.itest_s3_package_path,
                         args.search_pattern, time.time() - start_time))
                 else:
-                    if copy_to_tmp(self.extra_vars, args.package,
-                                   remote_tmp_dir=args.remote_tmp_dir):
+                    if (args.package is not None and
+                        copy_to_tmp(self.extra_vars, args.package,
+                                    remote_tmp_dir=args.remote_tmp_dir)):
                         raise YBOpsRecoverableError(
                             f"[app] Failed to copy package {args.package} to {args.search_pattern}")
 

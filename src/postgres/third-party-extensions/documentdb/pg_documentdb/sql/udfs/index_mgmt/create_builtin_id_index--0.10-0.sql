@@ -11,7 +11,8 @@ BEGIN
     EXECUTE format($$
         ALTER TABLE __API_DATA_SCHEMA__.documents_%s
         ADD CONSTRAINT collection_pk_%s
-        PRIMARY KEY (shard_key_value, object_id)
+         /* YB requires two braces so that both are included in as a hash column */
+        PRIMARY KEY ((shard_key_value, object_id))
     $$, collection_id, collection_id);
 
     IF register_id_index THEN

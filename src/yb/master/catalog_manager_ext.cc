@@ -567,12 +567,14 @@ Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRe
 Status CatalogManager::RestoreSnapshot(
     const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  LOG(INFO) << "Servicing RestoreSnapshot request: " << req->ShortDebugString();
   auto txn_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
   HybridTime ht;
   if (req->has_restore_ht()) {
     ht = HybridTime(req->restore_ht());
   }
+  LOG(INFO)
+      << "Servicing RestoreSnapshot request: " << txn_snapshot_id
+      << (ht ? Format(" to restore to time ", ht) : "");
   TxnSnapshotRestorationId id = VERIFY_RESULT(
       master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
   resp->set_restoration_id(id.data(), id.size());

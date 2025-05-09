@@ -73,6 +73,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
                            std::move(epoch), /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()),
     cdc_sdk_set_retention_barriers_(cdc_sdk_set_retention_barriers) {
+  // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = start_timestamp_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
@@ -244,6 +245,7 @@ AsyncStartElection::AsyncStartElection(Master *master,
   : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid,
         tablet->table(), std::move(epoch), /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
+  // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = start_timestamp_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
@@ -696,7 +698,8 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
       tablet_(tablet),
       cstate_(cstate),
       change_config_ts_uuid_(change_config_ts_uuid) {
-  deadline_ = MonoTime::Max();  // Never time out.
+  // No deadline for the task, refer to ComputeDeadline() for a single attempt deadline.
+  deadline_ = MonoTime::Max();
 }
 
 CommonInfoForRaftTask::~CommonInfoForRaftTask() = default;
@@ -1029,7 +1032,9 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
     Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
     if (!s.ok()) {
-      LOG(DFATAL) << "Error updating table " << table_->ToString() << ": " << s;
+      auto started_hiding_or_deleting = table_->LockForRead()->started_hiding_or_deleting();
+      (started_hiding_or_deleting ? LOG(WARNING) : LOG(DFATAL))
+          << "Error updating table " << table_->ToString() << ": " << s;
       TransitionToFailedState(MonitoredTaskState::kRunning, s);
       return;
     }

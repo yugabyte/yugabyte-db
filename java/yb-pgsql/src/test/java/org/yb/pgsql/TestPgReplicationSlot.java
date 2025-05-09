@@ -116,8 +116,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionCreateDrop() throws Exception {
-    markClusterNeedsRecreation();
-
     String[] wal_levels = {"minimal", "replica", "logical"};
     for (String wal_level : wal_levels) {
       LOG.info("Testing replicationConnectionCreateDrop with wal_level = {}", wal_level);
@@ -746,7 +744,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testReplicationConnectionConsumptionWithCreateIndex() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("ysql_yb_wait_for_backends_catalog_version_timeout", "10000");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -1060,7 +1057,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionMultipleBatchesWithYboutput() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the test is fast.
     tserverFlags.put("cdcsdk_max_consistent_records", "2");
@@ -1072,7 +1068,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionMultipleBatchesWithPgoutput() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the test is fast.
     tserverFlags.put("cdcsdk_max_consistent_records", "2");
@@ -1324,7 +1319,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void consumptionOnSubsetOfColocatedTables() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the
     // test is fast.
@@ -1426,7 +1420,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionDisabled() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("ysql_yb_enable_replication_slot_consumption", "false");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -2034,7 +2027,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testWalsenderGracefulShutdownWithCDCServiceError() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("TEST_cdc_force_destroy_virtual_wal_failure", "true");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -3473,7 +3465,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testConsumptionOnSubsetOfTabletsFromMultipleSlots() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3589,7 +3580,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testOutOfBoundHashRangeWithSlot() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3630,7 +3620,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testNonNumericHashRangeWithSlot() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3895,7 +3884,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testWalStatusLost() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("cdc_intent_retention_ms", "0");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);

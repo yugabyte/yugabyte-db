@@ -15,9 +15,13 @@ package org.yb.util;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -157,5 +161,58 @@ public final class ProcessUtil {
     if (process.exitValue() != 0) {
       throw new IOException(programName + " exited with code " + process.exitValue());
     }
+  }
+
+  /*
+   * TODO(jason): combine this with executeSimple.
+   */
+  public static String runProcess(List<String> args, int timeoutSeconds) throws Exception {
+    return runProcess(args, timeoutSeconds, new HashMap<>());
+  }
+
+  /*
+   * TODO(jason): combine this with executeSimple.
+   */
+  public static String runProcess(List<String> args,
+      int timeoutSeconds, Map<String, String> env) throws Exception {
+    String processStr = "";
+    for (String arg : args) {
+      processStr += (processStr.isEmpty() ? "" : " ") + arg;
+    }
+    LOG.info("RUN:" + processStr);
+
+    ProcessBuilder processBuilder = new ProcessBuilder(args);
+    processBuilder.environment().putAll(env);
+    final Process process = processBuilder.start();
+    String line = null;
+
+    final BufferedReader stderrReader =
+        new BufferedReader(new InputStreamReader(process.getErrorStream()));
+    while ((line = stderrReader.readLine()) != null) {
+      LOG.info("STDERR: " + line);
+    }
+
+    final BufferedReader stdoutReader =
+        new BufferedReader(new InputStreamReader(process.getInputStream()));
+    StringBuilder stdout = new StringBuilder();
+    while ((line = stdoutReader.readLine()) != null) {
+      stdout.append(line + "\n");
+    }
+
+    if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+      throw new TimeoutException(
+          "Timeout of process run (" + timeoutSeconds + " seconds): [" + processStr + "]");
+    }
+
+    final int exitCode = process.exitValue();
+    LOG.info("Process [" + processStr + "] exit code: " + exitCode);
+
+    if (exitCode != 0) {
+      LOG.info("STDOUT:\n" + stdout.toString());
+      throw new IOException(
+          "Failed process with exit code " + exitCode + ": [" + processStr + "]");
+    }
+
+    return stdout.toString();
   }
 }

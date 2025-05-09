@@ -57,6 +57,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
 
@@ -144,22 +145,22 @@ DEFINE_RUNTIME_bool(use_priority_thread_pool_for_compactions, true,
     "When true priority thread pool will be used for compactions, otherwise "
     "Env thread pool with Priority::LOW will be used.");
 
-DEFINE_UNKNOWN_int32(compaction_priority_start_bound, 10,
-             "Compaction task of DB that has number of SST files less than specified will have "
-             "priority 0.");
+DEFINE_RUNTIME_int32(compaction_priority_start_bound, 10,
+    "Compaction task of DB that has number of SST files less than specified will have "
+    "priority 0.");
 
-DEFINE_UNKNOWN_int32(compaction_priority_step_size, 5,
-             "Compaction task of DB that has number of SST files greater that "
-             "compaction_priority_start_bound will get 1 extra priority per every "
-             "compaction_priority_step_size files.");
+DEFINE_RUNTIME_int32(compaction_priority_step_size, 5,
+    "Compaction task of DB that has number of SST files greater that "
+    "compaction_priority_start_bound will get 1 extra priority per every "
+    "compaction_priority_step_size files.");
 
-DEFINE_UNKNOWN_int32(small_compaction_extra_priority, 1,
-             "Small compaction will get small_compaction_extra_priority extra priority.");
+DEFINE_RUNTIME_int32(small_compaction_extra_priority, 1,
+    "Small compaction will get small_compaction_extra_priority extra priority.");
 
-DEFINE_UNKNOWN_int32(automatic_compaction_extra_priority, 50,
-             "Assigns automatic compactions extra priority when automatic tablet splits are "
-             "enabled. This deprioritizes manual compactions including those induced by the "
-             "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
+DEFINE_RUNTIME_int32(automatic_compaction_extra_priority, 50,
+    "Assigns automatic compactions extra priority when automatic tablet splits are "
+    "enabled. This deprioritizes manual compactions including those induced by the "
+    "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
@@ -168,6 +169,9 @@ DEFINE_UNKNOWN_bool(rocksdb_use_logging_iterator, false,
 
 DEFINE_test_flag(int32, max_write_waiters, std::numeric_limits<int32_t>::max(),
                  "Max allowed number of write waiters per RocksDB instance in tests.");
+
+DEFINE_test_flag(double, simulated_crash_after_modify_flushed_frontier_probability, 0.0,
+                 "Probability of a simulated crash at the end of DBImpl::ModifyFlushedFrontier.");
 
 DEFINE_RUNTIME_bool(
     rocksdb_allow_multiple_pending_compactions_for_priority_thread_pool, false,
@@ -259,9 +263,7 @@ class DBImpl::ThreadPoolTask : public yb::PriorityThreadPoolTask {
 };
 
 constexpr int kNoDiskPriority = 0;
-constexpr int kTopDiskCompactionPriority = 100;
 constexpr int kTopDiskFlushPriority = 200;
-constexpr int kShuttingDownPriority = 200;
 constexpr int kFlushPriority = 100;
 constexpr int kNoJobId = -1;
 
@@ -527,7 +529,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    return kTopDiskCompactionPriority - active_tasks;
+    return internal::kTopDiskCompactionPriority - active_tasks;
   }
 
   ColumnFamilyData* column_family_data() const {
@@ -577,17 +579,18 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     db_impl_->mutex_.AssertHeld();
 
     if (db_impl_->IsShuttingDown()) {
-      return kShuttingDownPriority;
+      return internal::kShuttingDownPriority;
     }
 
     auto* current_version = cfd_->GetSuperVersion()->current;
     auto num_files = current_version->storage_info()->l0_delay_trigger_count();
 
+    const auto compaction_priority_start_bound = FLAGS_compaction_priority_start_bound;
     int result = 0;
-    if (num_files >= FLAGS_compaction_priority_start_bound) {
+    if (num_files >= compaction_priority_start_bound) {
       result =
           1 +
-          (num_files - FLAGS_compaction_priority_start_bound) / FLAGS_compaction_priority_step_size;
+          (num_files - compaction_priority_start_bound) / FLAGS_compaction_priority_step_size;
     }
 
     if (compaction_size_kind_ == CompactionSizeKind::kSmall) {
@@ -6454,7 +6457,9 @@ Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
 Status DBImpl::ModifyFlushedFrontier(UserFrontierPtr frontier, FrontierModificationMode mode) {
   VersionEdit edit;
   edit.ModifyFlushedFrontier(std::move(frontier), mode);
-  return ApplyVersionEdit(&edit);
+  RETURN_NOT_OK(ApplyVersionEdit(&edit));
+  MAYBE_FAULT(FLAGS_TEST_simulated_crash_after_modify_flushed_frontier_probability);
+  return Status::OK();
 }
 
 void DBImpl::GetColumnFamilyMetaData(

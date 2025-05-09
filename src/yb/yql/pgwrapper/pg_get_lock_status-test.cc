@@ -45,6 +45,8 @@ using std::string;
 namespace yb {
 namespace pgwrapper {
 
+YB_STRONGLY_TYPED_BOOL(RequestSpecifiedTxnIds);
+
 struct TestTxnLockInfo {
   TestTxnLockInfo() {}
   explicit TestTxnLockInfo(int num_locks) : num_locks(num_locks) {}
@@ -92,20 +94,40 @@ class PgGetLockStatusTest : public PgLocksTestBase {
     return VERIFY_RESULT(GetTxnsInLockStatusResponse(resp)).size();
   }
 
-  Result<size_t> GetNumTabletsInLockStatusResponse(const tserver::GetLockStatusResponsePB& resp) {
+  Result<size_t> GetNumTabletsInLockStatusResponse(
+      const tserver::GetLockStatusResponsePB& resp, const std::vector<TransactionId>& txn_ids,
+      RequestSpecifiedTxnIds request_specified_txn_ids = RequestSpecifiedTxnIds::kFalse) {
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
 
     std::unordered_set<std::string> tablet_ids_set;
+    const std::unordered_set<TransactionId> txn_ids_set(txn_ids.begin(), txn_ids.end());
     for (const auto& tablet_lock_info : resp.tablet_lock_infos()) {
-      tablet_ids_set.insert(tablet_lock_info.tablet_id());
+      if (!request_specified_txn_ids) {
+        tablet_ids_set.insert(tablet_lock_info.tablet_id());
+        continue;
+      }
+      // When GetLockStatus is called with specific txn ids, the response from tserver
+      // includes lock infos from all tablets, not just those involved.
+      // Thus, we need to check if the tablet is involved in the requested txns.
+      // TODO(pglocks): Ideally, only involved tablets should be included in the response.
+      //                See https://github.com/yugabyte/yugabyte-db/issues/16913
+      for (const auto& txn_lock_info : tablet_lock_info.transaction_locks()) {
+        auto id = VERIFY_RESULT(FullyDecodeTransactionId(txn_lock_info.id()));
+        if (txn_ids_set.find(id) != txn_ids_set.end()) {
+          tablet_ids_set.insert(tablet_lock_info.tablet_id());
+          break;
+        }
+      }
     }
     return tablet_ids_set.size();
   }
 
   void VerifyResponse(const tserver::PgGetLockStatusResponsePB& resp,
-                      TabletTxnLocksMap expected_tablet_txn_locks) {
+                      TabletTxnLocksMap expected_tablet_txn_locks,
+                      RequestSpecifiedTxnIds request_specified_txn_ids =
+                          RequestSpecifiedTxnIds::kFalse) {
     for (const auto& node_lock : resp.node_locks()) {
       for (const auto& tablet_locks : node_lock.tablet_lock_infos()) {
         if (tablet_locks.tablet_id().empty()) {
@@ -113,6 +135,15 @@ class PgGetLockStatusTest : public PgLocksTestBase {
         }
 
         auto tablet_map_it = expected_tablet_txn_locks.find(tablet_locks.tablet_id());
+        if (request_specified_txn_ids && tablet_map_it == expected_tablet_txn_locks.end()) {
+          // When GetLockStatus is called with specific txn ids, the response from tserver
+          // includes lock infos from all tablets, not just those involved.
+          // For tablets not involved in the requested txns, we expect the lock info to be empty.
+          // TODO(pglocks): Ideally, only involved tablets should be included in the response.
+          //                See https://github.com/yugabyte/yugabyte-db/issues/16913
+          ASSERT_EQ(tablet_locks.transaction_locks().size(), 0);
+          continue;
+        }
         ASSERT_NE(tablet_map_it, expected_tablet_txn_locks.end());
         ASSERT_EQ(tablet_locks.transaction_locks().size(), tablet_map_it->second.size());
 
@@ -178,7 +209,8 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusWithCustomTransactionsList) {
   txn_ids.push_back(session2.txn_id);
 
   auto resp = ASSERT_RESULT(GetLockStatus(txn_ids));
-  auto num_tablets = ASSERT_RESULT(GetNumTabletsInLockStatusResponse(resp));
+  auto num_tablets = ASSERT_RESULT(
+      GetNumTabletsInLockStatusResponse(resp, txn_ids, RequestSpecifiedTxnIds::kTrue));
   ASSERT_EQ(num_tablets, 2);
   auto num_txns = ASSERT_RESULT(GetNumTxnsInLockStatusResponse(resp));
   ASSERT_EQ(num_txns, 2);
@@ -187,7 +219,8 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusWithCustomTransactionsList) {
   txn_ids.pop_back();
 
   resp = ASSERT_RESULT(GetLockStatus(txn_ids));
-  num_tablets = ASSERT_RESULT(GetNumTabletsInLockStatusResponse(resp));
+  num_tablets = ASSERT_RESULT(
+      GetNumTabletsInLockStatusResponse(resp, txn_ids, RequestSpecifiedTxnIds::kTrue));
   ASSERT_EQ(num_tablets, 2);
   num_txns = ASSERT_RESULT(GetNumTxnsInLockStatusResponse(resp));
   ASSERT_EQ(num_txns, 1);
@@ -240,7 +273,6 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusSimple) {
   auto session = ASSERT_RESULT(Init(table, key));
 
   tserver::PgGetLockStatusRequestPB req;
-  req.set_transaction_id(session.txn_id.data(), session.txn_id.size());
   req.set_max_num_txns(50);
   auto resp = ASSERT_RESULT(GetLockStatus(req));
   VerifyResponse(resp, {
@@ -310,7 +342,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusOfOldTxns) {
         {other_txn, TestTxnLockInfo(2)}
       }
     }
-  });
+  }, RequestSpecifiedTxnIds::kTrue);
   req.clear_transaction_id();
 
   req.set_min_txn_age_ms(min_txn_age_ms * 100);
@@ -404,7 +436,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumTxnLocks) {
                              false /* has more awaiting locks */)}
       }
     }
-  });
+  }, RequestSpecifiedTxnIds::kTrue);
   resp.Clear();
 
   yb::SyncPoint::GetInstance()->LoadDependency({
@@ -430,7 +462,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumTxnLocks) {
                              true /* has more awaiting locks */)}
       }
     }
-  });
+  }, RequestSpecifiedTxnIds::kTrue);
   resp.Clear();
 
   req.set_max_txn_locks_per_tablet(1);
@@ -446,7 +478,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumTxnLocks) {
                              true /* has more awaiting locks */)}
       }
     }
-  });
+  }, RequestSpecifiedTxnIds::kTrue);
   resp.Clear();
 
   // When the field is set to zero, it could mean wither of the below cases
@@ -467,7 +499,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumTxnLocks) {
                              false /* has more awaiting locks */)}
       }
     }
-  });
+  }, RequestSpecifiedTxnIds::kTrue);
   ASSERT_OK(conn.CommitTransaction());
   th.join();
   ASSERT_OK(session.conn->CommitTransaction());

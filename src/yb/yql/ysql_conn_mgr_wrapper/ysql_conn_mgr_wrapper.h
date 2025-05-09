@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include "yb/yql/process_wrapper/common_config.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
 #include "yb/util/net/net_util.h"

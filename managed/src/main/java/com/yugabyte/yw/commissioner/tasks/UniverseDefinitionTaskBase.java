@@ -42,7 +42,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
@@ -57,6 +56,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -2012,7 +2012,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
               })
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+          .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
     // Configure the masters to update the masters addresses in their conf files.
     if (CollectionUtils.isNotEmpty(masterNodes)) {
@@ -2024,19 +2024,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
               })
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+          .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
     // Update the master addresses in memory.
     if (CollectionUtils.isNotEmpty(tserverNodes)) {
       createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+          .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
     // Update the master addresses in memory.
     if (CollectionUtils.isNotEmpty(masterNodes)) {
       createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
-          .setAfterRunHandler(failedMasterAddrUpdateHandler);
+          .setAfterTaskRunHandler(failedMasterAddrUpdateHandler);
     }
   }
 
@@ -2128,7 +2128,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Update the task details for the task info in the DB.
+   * Update the task details for the task info in the DB. This is used during freezing in
+   * transaction.
    *
    * @param taskParams the given task params(details).
    */
@@ -2511,6 +2512,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
+              createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
               if (userIntent.providerType != CloudType.local && !isUniverseManuallyProvisioned) {
                 createSetupYNPTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -2523,7 +2525,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-              createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
               if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
                 createSetupServerTasks(filteredNodes, setupParamsCustomizer)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -3297,26 +3298,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  /** Creates a task to update node info in universe details. */
-  protected SubTaskGroup createNodeDetailsUpdateTask(
-      NodeDetails node, boolean updateCustomImageUsage) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateNodeDetails");
-    UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
-    updateNodeDetailsParams.setUniverseUUID(taskParams().getUniverseUUID());
-    updateNodeDetailsParams.azUuid = node.azUuid;
-    updateNodeDetailsParams.nodeName = node.nodeName;
-    updateNodeDetailsParams.details = node;
-    updateNodeDetailsParams.updateCustomImageUsage = updateCustomImageUsage;
-
-    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
-    updateNodeTask.initialize(updateNodeDetailsParams);
-    updateNodeTask.setUserTaskUUID(getUserTaskUUID());
-    subTaskGroup.addSubTask(updateNodeTask);
-
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
   protected void createNodePrecheckTasks(
       NodeDetails node,
       Set<ServerType> processTypes,
@@ -3609,9 +3590,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param universe the universe to which the nodes belong.
    * @param nodes the nodes.
+   * @param shellContext the shell context to be used.
    * @return the subtask group.
    */
-  protected SubTaskGroup createRunEnableLinger(Universe universe, Collection<NodeDetails> nodes) {
+  protected SubTaskGroup createRunEnableLinger(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      @Nullable ShellProcessContext shellContext) {
     // Command is run in shell.
     List<String> command =
         ImmutableList.<String>builder()
@@ -3627,7 +3612,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         nodes,
         command,
         (n, r) -> r.processErrors("linger could not be enabled for yugabyte user"),
-        null /* shell context */);
+        shellContext);
   }
 
   protected <X> void addParallelTasks(
@@ -3818,11 +3803,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     if (universe.isYbcEnabled()) {
-      createStartYbcTasks(tserverNodeList)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      List<NodeDetails> nodesList =
+          Sets.union(new HashSet<>(tserverNodeList), new HashSet<>(masterNodeList)).stream()
+              .collect(Collectors.toList());
+      createStartYbcTasks(nodesList).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(new HashSet<>(tserverNodeList))
+      createWaitForYbcServerTask(new HashSet<>(nodesList))
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 

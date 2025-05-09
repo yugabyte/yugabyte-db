@@ -784,10 +784,6 @@ TEST_F(LoadBalancerPlacementPolicyTest, PrefixPlacementTest) {
   LOG(INFO) << "With c.r.z0,c.r2.z0,c.r.z2 as placement";
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r2.z0,c.r.z2", 3, ""));
 
-  // Test 13 - All CRZ empty allowed.
-  LOG(INFO) << "With ,, as placement";
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(",,", 3, ""));
-
   // FIN: Thank you all for watching, have a great day ahead!
 }
 

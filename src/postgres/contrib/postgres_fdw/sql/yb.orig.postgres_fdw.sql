@@ -79,3 +79,20 @@ SELECT * FROM ft_test3 ORDER BY v;
 -- A join involving tables of different server types must not be pushed down.
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft_test1, ft_test2, ft_test3 WHERE ft_test1.v = ft_test2.v AND ft_test1.v = ft_test3.v;
 SELECT * FROM ft_test1, ft_test2, ft_test3 WHERE ft_test1.v = ft_test2.v AND ft_test1.v = ft_test3.v;
+
+-- Modifying table level options should be allowed.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_othertest');
+ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name, ADD batch_size '1000');
+SELECT * FROM pg_foreign_table;
+-- Setting an option should be disallowed if it doesn't already exist.
+ALTER FOREIGN TABLE ft_test3 OPTIONS (SET batch_size '1000', SET table_name 't_othertest');
+-- Dropping an option should be disallowed if it doesn't already exist.
+ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name);
+-- Adding an option should be disallowed if it already exists.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (ADD table_name 't_test');
+SELECT * FROM pg_foreign_table;
+
+-- Restore the original table name.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_test');
+ALTER FOREIGN TABLE ft_test2 OPTIONS (ADD table_name 't_test', DROP batch_size);
+SELECT * FROM pg_foreign_table;

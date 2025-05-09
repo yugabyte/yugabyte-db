@@ -169,8 +169,16 @@ YBCDropDBSequences(Oid dboid)
 {
 	YbcPgStatement sequences_handle;
 
+	/*
+	 * We need to create the sequences handle in the CurTransactionContext
+	 * because it is executed after the transaction commits.
+	 * The PortalContext is reset by that time, hence we cannot use it.
+	 */
+	Assert(CurTransactionContext != NULL);
+	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
 	HandleYBStatus(YBCPgNewDropDBSequences(dboid, &sequences_handle));
 	YBSaveDdlHandle(sequences_handle);
+	MemoryContextSwitchTo(oldcontext);
 }
 
 void
@@ -1000,8 +1008,16 @@ YBCDropSequence(Oid sequence_oid)
 {
 	YbcPgStatement handle;
 
+	/*
+	 * We need to create the handle in the CurTransactionContext because it is
+	 * executed after the transaction commits.
+	 * The PortalContext is reset by that time, hence we cannot use it.
+	 */
+	Assert(CurTransactionContext != NULL);
+	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
 	HandleYBStatus(YBCPgNewDropSequence(MyDatabaseId, sequence_oid, &handle));
 	YBSaveDdlHandle(handle);
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*

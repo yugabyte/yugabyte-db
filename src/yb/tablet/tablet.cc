@@ -735,7 +735,9 @@ Tablet::Tablet(const TabletInitData& data)
 
   snapshots_ = std::make_unique<TabletSnapshots>(this);
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
-      this, data.vector_index_thread_pool_provider);
+      this,
+      data.vector_index_thread_pool_provider,
+      data.vector_index_priority_thread_pool_provider);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 
@@ -1707,7 +1709,8 @@ Status Tablet::WriteTransactionalBatch(
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
   auto prepare_batch_data = VERIFY_RESULT(transaction_participant()->PrepareBatchData(
-      transaction_id, batch_idx, &encoded_replicated_batch_idx_set));
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set,
+      !put_batch.write_pairs().empty()));
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
@@ -3003,10 +3006,13 @@ Status Tablet::BackfillIndexesForYsql(
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
-  auto conn = VERIFY_RESULT(pgwrapper::CreateInternalPGConnBuilder(
-                                pgsql_proxy_bind_address, database_name, postgres_auth_key,
-                                backfill_params.modified_deadline)
-                                .Connect());
+  auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
+                          pgsql_proxy_bind_address, database_name, postgres_auth_key,
+                          backfill_params.modified_deadline)
+                          .Connect();
+  // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
+  auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
+      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
 
   // Construct query string.
   std::string index_oids;
@@ -3668,6 +3674,10 @@ Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
     rocksdb::FrontierModificationMode mode,
     FlushFlags flags) {
+  // We should always flush RocksDBs before modifying their frontiers, otherwise if we crash between
+  // frontier is modified and regular DB is flushed we can lose data because of skipping ops replay
+  // during local bootstrap.
+  RETURN_NOT_OK(Flush(FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents));
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
@@ -3722,7 +3732,7 @@ Status Tablet::ModifyFlushedFrontier(
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
   }
 
-  return Flush(FlushMode::kAsync, flags);
+  return Status::OK();
 }
 
 Status Tablet::Truncate(TruncateOperation* operation) {

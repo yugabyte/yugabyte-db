@@ -190,3 +190,42 @@ SELECT * FROM ft_test1, ft_test2, ft_test3 WHERE ft_test1.v = ft_test2.v AND ft_
  10 | 10 | 10
 (10 rows)
 
+-- Modifying table level options should be allowed.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_othertest');
+ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name, ADD batch_size '1000');
+SELECT * FROM pg_foreign_table;
+ ftrelid | ftserver |        ftoptions         
+---------+----------+--------------------------
+   16407 |    16391 | {table_name=t_othertest}
+   16410 |    16392 | {batch_size=1000}
+   16413 |    16394 | {table_name=t_test}
+(3 rows)
+
+-- Setting an option should be disallowed if it doesn't already exist.
+ALTER FOREIGN TABLE ft_test3 OPTIONS (SET batch_size '1000', SET table_name 't_othertest');
+ERROR:  option "batch_size" not found
+-- Dropping an option should be disallowed if it doesn't already exist.
+ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name);
+ERROR:  option "table_name" not found
+-- Adding an option should be disallowed if it already exists.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (ADD table_name 't_test');
+ERROR:  option "table_name" provided more than once
+SELECT * FROM pg_foreign_table;
+ ftrelid | ftserver |        ftoptions         
+---------+----------+--------------------------
+   16407 |    16391 | {table_name=t_othertest}
+   16410 |    16392 | {batch_size=1000}
+   16413 |    16394 | {table_name=t_test}
+(3 rows)
+
+-- Restore the original table name.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_test');
+ALTER FOREIGN TABLE ft_test2 OPTIONS (ADD table_name 't_test', DROP batch_size);
+SELECT * FROM pg_foreign_table;
+ ftrelid | ftserver |      ftoptions      
+---------+----------+---------------------
+   16407 |    16391 | {table_name=t_test}
+   16410 |    16392 | {table_name=t_test}
+   16413 |    16394 | {table_name=t_test}
+(3 rows)
+

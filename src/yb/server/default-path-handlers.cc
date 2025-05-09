@@ -192,7 +192,7 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
 void ConvertFlagsToJson(
     const std::unordered_map<FlagType, std::vector<FlagInfo>>& flag_infos,
     std::stringstream* output) {
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
   jw.String("flags");
   jw.StartArray();
@@ -300,7 +300,7 @@ static void JsonOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
                                   std::stringstream *output,
                                   int max_depth,
                                   bool use_full_path) {
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   for (auto it = trackers.begin(); it != trackers.end(); it++) {
     // If the data.depth >= max_depth, skip the info.
     const auto data = *it;
@@ -488,7 +488,7 @@ static void HandleGetVersionInfo(
   VersionInfoPB version_info;
   VersionInfo::GetVersionInfoPB(&version_info);
 
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
 
   jw.String("build_id");
@@ -677,8 +677,8 @@ void ParseRequestOptions(
 
   if (json_mode) {
     arg = FindWithDefault(req.parsed_args, "compact", "false");
-    *json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
-                                                           : JsonWriter::PRETTY_ESCAPE_STR;
+    *json_mode =
+        ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   }
 }
 
