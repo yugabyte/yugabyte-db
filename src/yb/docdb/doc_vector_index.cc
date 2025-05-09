@@ -213,16 +213,20 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Open(const std::string& log_prefix,
               const std::string& data_root_dir,
-              rpc::ThreadPool& thread_pool,
+              const DocVectorIndexThreadPoolProvider& thread_pool_provider,
               const PgVectorIdxOptionsPB& idx_options) {
+    index_id_ = idx_options.id();
     name_ = RemoveLogPrefixColon(log_prefix);
+    auto thread_pools = thread_pool_provider();
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
           idx_options))),
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
-      .thread_pool = &thread_pool,
+      .thread_pool = thread_pools.thread_pool,
+      .insert_thread_pool = thread_pools.insert_thread_pool,
+      .compaction_thread_pool = thread_pools.compaction_thread_pool,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
       .vector_merge_filter_factory = [this]() {
         return std::make_unique<VectorMergeFilter>(
@@ -370,7 +374,7 @@ void DocVectorIndex::ApplyReverseEntry(
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
     const std::string& data_root_dir,
-    rpc::ThreadPool& thread_pool,
+    const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
@@ -379,7 +383,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), hybrid_time,
       doc_db);
-  RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool, options));
+  RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool_provider, options));
   return result;
 }
 

@@ -56,6 +56,7 @@ DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
+DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(global_memstore_size_mb_max);
@@ -1921,6 +1922,15 @@ TEST_F(PgSingleTServerTest, BoundedBackwardScanWithLargeTransaction) {
   ASSERT_EQ(result, "1");
 }
 
+class PgSmallRpcWorkersTest : public PgSingleTServerTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
+
+    PgSingleTServerTest::SetUp();
+  }
+};
+
 TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 10;
   constexpr int kNumRows = 20;
@@ -1940,6 +1950,36 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
   auto result = ASSERT_RESULT(conn.FetchAllAsString(
       "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
   ASSERT_EQ(result, "1");
+}
+
+TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGINT PRIMARY KEY, value BIGINT)"));
+  ThreadHolder threads;
+  std::atomic<int> key = 0;
+  for (unsigned int i = 0; i != 64; ++i) {
+    threads.AddThread([this, &stop = threads.stop_flag(), &key] {
+      auto new_conn = ASSERT_RESULT(Connect());
+      while (!stop.load()) {
+        auto k = ++key;
+        auto res = new_conn.ExecuteFormat("INSERT INTO test (key, value) VALUES ($0, -$0)", k);
+        if (res.ok()) {
+          continue;
+        }
+        auto msg = res.ToString();
+        ASSERT_TRUE(msg.contains("Invalid column number") ||
+                    msg.contains("marked for deletion in table") ||
+                    msg.contains("schema version mismatch for table")) << res;
+      }
+    });
+  }
+  for (unsigned int i = 0; i != 3; ++i) {
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 BIGINT"));
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
+  }
+  threads.WaitAndStop(1s);
 }
 
 }  // namespace pgwrapper

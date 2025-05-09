@@ -62,6 +62,8 @@ main(int argc, char **argv)
 	int			numWorkers = 1;
 	Archive    *AH;
 	char	   *inputFileSpec;
+	bool		data_only = false;
+	bool		schema_only = false;
 	static int	disable_triggers = 0;
 	static int	enable_row_security = 0;
 	static int	if_exists = 0;
@@ -70,12 +72,17 @@ main(int argc, char **argv)
 	static int	outputNoTablespaces = 0;
 	static int	use_setsessauth = 0;
 	static int	no_comments = 0;
+	static int	no_data = 0;
 	static int	no_publications = 0;
+	static int	no_schema = 0;
 	static int	no_security_labels = 0;
+	static int	no_statistics = 0;
 	static int	no_subscriptions = 0;
 	static int	strict_names = 0;
-	bool		data_only = false;
-	bool		schema_only = false;
+	static int	statistics_only = 0;
+	static int	with_data = 0;
+	static int	with_schema = 0;
+	static int	with_statistics = 0;
 
 	struct option cmdopts[] = {
 		{"clean", 0, NULL, 'c'},
@@ -122,9 +129,16 @@ main(int argc, char **argv)
 		{"strict-names", no_argument, &strict_names, 1},
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 		{"no-comments", no_argument, &no_comments, 1},
+		{"no-data", no_argument, &no_data, 1},
 		{"no-publications", no_argument, &no_publications, 1},
+		{"no-schema", no_argument, &no_schema, 1},
 		{"no-security-labels", no_argument, &no_security_labels, 1},
 		{"no-subscriptions", no_argument, &no_subscriptions, 1},
+		{"no-statistics", no_argument, &no_statistics, 1},
+		{"with-data", no_argument, &with_data, 1},
+		{"with-schema", no_argument, &with_schema, 1},
+		{"with-statistics", no_argument, &with_statistics, 1},
+		{"statistics-only", no_argument, &statistics_only, 1},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -326,8 +340,29 @@ main(int argc, char **argv)
 		opts->useDB = 1;
 	}
 
+	/* reject conflicting "-only" options */
 	if (data_only && schema_only)
 		pg_fatal("options -s/--schema-only and -a/--data-only cannot be used together");
+	if (schema_only && statistics_only)
+		pg_fatal("options -s/--schema-only and --statistics-only cannot be used together");
+	if (data_only && statistics_only)
+		pg_fatal("options -a/--data-only and --statistics-only cannot be used together");
+
+	/* reject conflicting "-only" and "no-" options */
+	if (data_only && no_data)
+		pg_fatal("options -a/--data-only and --no-data cannot be used together");
+	if (schema_only && no_schema)
+		pg_fatal("options -s/--schema-only and --no-schema cannot be used together");
+	if (statistics_only && no_statistics)
+		pg_fatal("options --statistics-only and --no-statistics cannot be used together");
+
+	/* reject conflicting "with-" and "no-" options */
+	if (with_data && no_data)
+		pg_fatal("options --with-data and --no-data cannot be used together");
+	if (with_schema && no_schema)
+		pg_fatal("options --with-schema and --no-schema cannot be used together");
+	if (with_statistics && no_statistics)
+		pg_fatal("options --with-statistics and --no-statistics cannot be used together");
 
 	if (data_only && opts->dropSchema)
 		pg_fatal("options -c/--clean and -a/--data-only cannot be used together");
@@ -343,9 +378,19 @@ main(int argc, char **argv)
 	if (opts->single_txn && numWorkers > 1)
 		pg_fatal("cannot specify both --single-transaction and multiple jobs");
 
-	/* set derivative flags */
-	opts->dumpSchema = (!data_only);
-	opts->dumpData = (!schema_only);
+	/*
+	 * Set derivative flags. An "-only" option may be overridden by an
+	 * explicit "with-" option; e.g. "--schema-only --with-statistics" will
+	 * include schema and statistics. Other ambiguous or nonsensical
+	 * combinations, e.g. "--schema-only --no-schema", will have already
+	 * caused an error in one of the checks above.
+	 */
+	opts->dumpData = ((opts->dumpData && !schema_only && !statistics_only) ||
+					  (data_only || with_data)) && !no_data;
+	opts->dumpSchema = ((opts->dumpSchema && !data_only && !statistics_only) ||
+						(schema_only || with_schema)) && !no_schema;
+	opts->dumpStatistics = ((opts->dumpStatistics && !schema_only && !data_only) ||
+							(statistics_only || with_statistics)) && !no_statistics;
 
 	opts->disable_triggers = disable_triggers;
 	opts->enable_row_security = enable_row_security;
@@ -471,19 +516,26 @@ usage(const char *progname)
 	printf(_("  --enable-row-security        enable row security\n"));
 	printf(_("  --if-exists                  use IF EXISTS when dropping objects\n"));
 	printf(_("  --no-comments                do not restore comments\n"));
+	printf(_("  --no-data                    do not restore data\n"));
 	printf(_("  --no-data-for-failed-tables  do not restore data of tables that could not be\n"
 			 "                               created\n"));
 	printf(_("  --no-publications            do not restore publications\n"));
+	printf(_("  --no-schema                  do not restore schema\n"));
 	printf(_("  --no-security-labels         do not restore security labels\n"));
+	printf(_("  --no-statistics              do not restore statistics\n"));
 	printf(_("  --no-subscriptions           do not restore subscriptions\n"));
 	printf(_("  --no-table-access-method     do not restore table access methods\n"));
 	printf(_("  --no-tablespaces             do not restore tablespace assignments\n"));
 	printf(_("  --section=SECTION            restore named section (pre-data, data, or post-data)\n"));
+	printf(_("  --statistics-only            restore only the statistics, not schema or data\n"));
 	printf(_("  --strict-names               require table and/or schema include patterns to\n"
 			 "                               match at least one entity each\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
+	printf(_("  --with-data                  dump the data\n"));
+	printf(_("  --with-schema                dump the schema\n"));
+	printf(_("  --with-statistics            dump the statistics\n"));
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));

@@ -422,6 +422,11 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
     return Status::OK();
   }
 
+  LOG_WITH_PREFIX(WARNING) << "Error when running DDL: " << s
+                           << (FLAGS_TEST_xcluster_ddl_queue_handler_log_queries
+                                   ? Format(". Query: $0", query_info.ToString())
+                                   : "");
+
   DCHECK(!last_failed_query_ || last_failed_query_->MatchesQueryInfo(query_info));
   if (last_failed_query_ && last_failed_query_->MatchesQueryInfo(query_info)) {
     num_fails_for_this_ddl_++;

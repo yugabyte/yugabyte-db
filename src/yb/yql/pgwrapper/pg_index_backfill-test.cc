@@ -66,9 +66,8 @@ const auto kPhaseBackfilling = "backfilling"s;
 const auto kPhaseInitializing = "initializing"s;
 const client::YBTableName kYBTableName(YQLDatabase::YQL_DATABASE_PGSQL, kDatabaseName, kTableName);
 constexpr auto kBackfillSleepSec = 10 * kTimeMultiplier;
-constexpr auto kWaitForYsqlLeaseSec = 10 * kTimeMultiplier;
 
-} // namespace
+}  // namespace
 
 YB_DEFINE_ENUM(IndexStateFlag, (kIndIsLive)(kIndIsReady)(kIndIsValid));
 typedef EnumBitSet<IndexStateFlag> IndexStateFlags;
@@ -77,17 +76,10 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
  public:
   void SetUp() override {
     LibPqTestBase::SetUp();
-    // TODO(bkolagani): Remove once https://github.com/yugabyte/yugabyte-db/issues/26522 is fixed.
-    if (EnableTableLocks()) {
-      ASSERT_OK(cluster_->WaitForTabletServersToAcquireYSQLLeases(
-          MonoTime::Now() + 1s * kWaitForYsqlLeaseSec));
-    }
     conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
   }
 
-  bool EnableTableLocks() const {
-    return GetParam();
-  }
+  bool EnableTableLocks() const { return GetParam(); }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
@@ -101,10 +93,10 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
 
     if (EnableTableLocks()) {
       options->extra_master_flags.push_back("--TEST_enable_object_locking_for_table_locks=true");
-      options->extra_master_flags.push_back("--TEST_enable_ysql_operation_lease=true");
+      options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 
       options->extra_tserver_flags.push_back("--TEST_enable_object_locking_for_table_locks=true");
-      options->extra_tserver_flags.push_back("--TEST_enable_ysql_operation_lease=true");
+      options->extra_tserver_flags.push_back("--enable_ysql_operation_lease=true");
       options->extra_tserver_flags.push_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     }
   }
@@ -2738,6 +2730,23 @@ TEST_P(PgIndexBackfillTest, VectorIndex) {
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
   }
   writer.Verify(*conn_);
+}
+
+class PgSerializeBackfillTest : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_default_transaction_isolation='serializable'");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgSerializeBackfillTest, ::testing::Bool());
+
+TEST_P(PgSerializeBackfillTest, BackfillRead) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (i int)"));
+  // Run backfill.
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t(i)"));
 }
 
 } // namespace yb::pgwrapper

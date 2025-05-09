@@ -119,7 +119,8 @@ class PgClientSession final {
 
   uint64_t id() const;
 
-  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
+  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
+                 const PgTablesQueryResult& tables);
 
   void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
@@ -158,6 +159,9 @@ class PgClientSession final {
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+void PreparePgTablesQuery(
+    const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids);
 
 } // namespace tserver
 } // namespace yb

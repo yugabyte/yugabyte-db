@@ -331,7 +331,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       Status waiter_status, HybridTime resume_ht = HybridTime::kInvalid,
       CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
     ADOPT_WAIT_STATE(wait_state);
-    SET_WAIT_STATUS(OnCpu_Active);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     // ASH: This may later be set to ResolveConficts for another thread to pick up
     // working on the wait-state.
     ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state);

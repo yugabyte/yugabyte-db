@@ -33,7 +33,7 @@ public class SetupYNP extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
-  private ShellProcessContext shellContext =
+  private final ShellProcessContext defaultShellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
   private final RuntimeConfGetter confGetter;
 
@@ -71,7 +71,8 @@ public class SetupYNP extends AbstractTaskBase {
     nodeUniverseManager.runCommand(node, universe, command, shellContext).isSuccess();
   }
 
-  private Path getNodeAgentPackagePath(Universe universe, NodeDetails node) {
+  private Path getNodeAgentPackagePath(
+      Universe universe, NodeDetails node, ShellProcessContext shellContext) {
     String output =
         nodeUniverseManager
             .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
@@ -91,10 +92,11 @@ public class SetupYNP extends AbstractTaskBase {
 
   @Override
   public void run() {
+    ShellProcessContext shellContext = defaultShellContext;
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     if (taskParams().sshUser != null) {
-      shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
+      shellContext = defaultShellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Provider provider =
         Provider.getOrBadRequest(
@@ -105,7 +107,7 @@ public class SetupYNP extends AbstractTaskBase {
     Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
     Path targetPackagePath = ynpStagingDir.resolve(Paths.get("release", "node-agent.tgz"));
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    Path packagePath = getNodeAgentPackagePath(universe, node);
+    Path packagePath = getNodeAgentPackagePath(universe, node, shellContext);
 
     // Clean up the previous stale data.
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);

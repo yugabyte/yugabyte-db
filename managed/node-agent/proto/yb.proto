@@ -116,3 +116,13 @@ message InstallSoftwareInput {
 message InstallSoftwareOutput {
     int32 pid = 1;
 }
+
+message ServerGFlagsInput {
+    map<string, string> gflags = 1;
+    string serverName = 2;
+    string serverHome = 3;
+    bool resetMasterState = 4;
+}
+
+message ServerGFlagsOutput {
+}

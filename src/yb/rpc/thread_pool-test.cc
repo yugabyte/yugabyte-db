@@ -296,6 +296,57 @@ TEST_F(ThreadPoolTest, TestOwns) {
   ASSERT_TRUE(pool.Owns(task.thread()));
 }
 
+TEST_F(ThreadPoolTest, MassEnqueue) {
+  constexpr size_t kTotalThreads = 64;
+  CountDownLatch wait_threads_latch(kTotalThreads);
+  CountDownLatch enqueue_tasks_latch(1);
+  CountDownLatch task_run_latch{kTotalThreads};
+
+  class TestTask : public ThreadPoolTask {
+   public:
+    explicit TestTask(CountDownLatch& latch) : latch_(latch) {
+    }
+
+    void Run() override {
+      latch_.CountDown();
+    }
+
+    void Done(const Status& status) override {
+    }
+
+    void Wait() {
+      latch_.Wait();
+    }
+   private:
+    CountDownLatch& latch_;
+  };
+
+  std::vector<TestTask> tasks(kTotalThreads, TestTask(task_run_latch));
+
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalThreads,
+  });
+
+  TestThreadHolder threads;
+
+  for (size_t i = 0; i != kTotalThreads; ++i) {
+    threads.AddThreadFunctor([&wait_threads_latch, &enqueue_tasks_latch, &pool,  &task = tasks[i]] {
+      wait_threads_latch.CountDown();
+      enqueue_tasks_latch.Wait();
+      pool.Enqueue(&task);
+      task.Wait();
+    });
+  }
+
+  wait_threads_latch.Wait();
+  auto start = MonoTime::Now();;
+  enqueue_tasks_latch.CountDown();
+  task_run_latch.Wait();
+  auto stop = MonoTime::Now();
+  LOG(INFO) << "Passed: " << (stop - start).ToPrettyString();
+}
+
 namespace strand {
 
 constexpr size_t kPoolMaxTasks = 100;

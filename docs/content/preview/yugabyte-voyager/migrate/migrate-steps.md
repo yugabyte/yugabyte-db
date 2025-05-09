@@ -32,7 +32,7 @@ The following page describes the steps to perform and verify a successful offlin
 | |[Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | DATA | [Export data](#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
 | | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
-| | [Post&nbsp;snapshot&nbsp;import](#post-snapshot-import) | Restore NOT VALID constraints and refresh materialized views (if any) in the target YugabyteDB database using the `yb-voyager import schema` command with additional flags `--post-snapshot-import` and `--refresh-mviews`. |
+| | [Finalize schema post data import](#finalize-schema-post-data-import) | Restore NOT VALID constraints and refresh materialized views (if any) in the target YugabyteDB database using the `yb-voyager finalize-schema-post-data-import` command with additional flag `--refresh-mviews`.|
 | | [Verify](#verify-migration) | Check if the offline migration is successful. |
 | END | [End migration](#end-migration) | Clean up the migration information stored in the export directory and databases (source and target). |
 
@@ -242,7 +242,7 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
 
-Voyager will add these constraints back during [Post snapshot import](#post-snapshot-import).
+Voyager will add these constraints back during [Finalize schema post data import](#finalize-schema-post-data-import).
 
 {{< /note >}}
 
@@ -349,36 +349,25 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
 
-### Post snapshot import
+### Finalize schema post data import
 
-If there are any NOT VALID constraints on the source, create them after the `import data` command is completed by using the `import schema` command with the `post-snapshot-import` flag:
+If there are any NOT VALID constraints on the source, create them after the `import data` command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them by setting the `--refresh-mviews` flag to true.
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager import schema --export-dir <EXPORT_DIR> \
+yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
        --target-db-host <TARGET_DB_HOST> \
        --target-db-user <TARGET_DB_USER> \
        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-       --post-snapshot-import true
 ```
 
-If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them using the following command:
+Refer to [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) for details about the arguments.
 
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import schema --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-        --post-snapshot-import true \
-        --refresh-mviews true
-```
-
-Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+{{< note title ="Note" >}}
+The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+{{< /note >}}
 
 ### Verify migration
 

@@ -223,7 +223,8 @@ func (m *TaskManager) Subscribe(
 			}
 
 			size = 0
-			if taskStatus == nil || taskStatus.ExitStatus.Code == 0 {
+			if taskStatus == nil || taskStatus.ExitStatus == nil ||
+				taskStatus.ExitStatus.Code == 0 {
 				result, err := tInfo.future.Get()
 				if err != nil {
 					return err

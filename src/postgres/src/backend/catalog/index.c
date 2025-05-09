@@ -67,6 +67,7 @@
 #include "optimizer/optimizer.h"
 #include "parser/parser.h"
 #include "pgstat.h"
+#include "postmaster/autovacuum.h"
 #include "rewrite/rewriteManip.h"
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
@@ -2975,6 +2976,27 @@ index_update_stats(Relation rel,
 		reltuples = -1;
 
 	update_stats = reltuples >= 0;
+
+	/*
+	 * If autovacuum is off, user may not be expecting table relstats to
+	 * change.  This can be important when restoring a dump that includes
+	 * statistics, as the table statistics may be restored before the index is
+	 * created, and we want to preserve the restored table statistics.
+	 */
+	if (AutoVacuumingActive())
+	{
+		if (rel->rd_rel->relkind == RELKIND_RELATION ||
+			rel->rd_rel->relkind == RELKIND_TOASTVALUE ||
+			rel->rd_rel->relkind == RELKIND_MATVIEW)
+		{
+			StdRdOptions *options = (StdRdOptions *) rel->rd_options;
+
+			if (options != NULL && !options->autovacuum.enabled)
+				update_stats = false;
+		}
+	}
+	else
+		update_stats = false;
 
 	/*
 	 * Finish I/O and visibility map buffer locks before

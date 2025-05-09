@@ -2785,7 +2785,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -3438,6 +3439,10 @@
           "description" : "Don't add -m flag during gsutil upload dir command",
           "type" : "boolean"
         },
+        "dumpRoleChecks" : {
+          "description" : "WARNING: This is a preview API that could change. Add role exists checks for roles metadata. All GRANT/REVOKE and ALTER sql commands will first check if the role exists",
+          "type" : "boolean"
+        },
         "enablePointInTimeRestore" : {
           "description" : "Enable Point-In-Time-Restore capability on backup schedules with a limited restore window. Only applicable for YB-Controller enabled universes",
           "type" : "boolean"
@@ -3859,6 +3864,10 @@
     },
     "BackupScheduleToggleParams" : {
       "properties" : {
+        "runImmediateBackupOnResume" : {
+          "description" : "Run a full or incremental backup if required when resuming a stopped schedule. When false (default), the full backup will instead run at its normally scheduled time.",
+          "type" : "boolean"
+        },
         "status" : {
           "description" : "State of the schedule",
           "enum" : [
@@ -3890,6 +3899,10 @@
             "TRANSACTION_STATUS_TABLE_TYPE"
           ],
           "type" : "string"
+        },
+        "ignoreErrors" : {
+          "description" : "WARNING: This is a preview API that could change. Ignore all restore errors",
+          "type" : "boolean"
         },
         "keyspace" : {
           "description" : "Keyspace name",
@@ -5421,7 +5434,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -7725,6 +7739,10 @@
           ],
           "type" : "string"
         },
+        "runImmediateBackupOnResume" : {
+          "description" : "Run a full or incremental backup if the schedule is expired when resuming a stopped schedule",
+          "type" : "boolean"
+        },
         "status" : {
           "description" : "State of the schedule",
           "enum" : [
@@ -8404,7 +8422,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -9178,7 +9197,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -10570,7 +10590,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -14740,7 +14761,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -15730,7 +15752,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -16531,7 +16554,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -18021,7 +18045,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -18554,7 +18579,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -18929,7 +18955,8 @@
               "MasterLeaderStepdown",
               "SetupYNP",
               "YNPProvisioning",
-              "ConfigureOOMServiceOnNode"
+              "ConfigureOOMServiceOnNode",
+              "CheckSshConnection"
             ],
             "type" : "string"
           },
@@ -19725,7 +19752,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -20791,7 +20819,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -22056,7 +22085,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -22700,7 +22730,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -23599,7 +23630,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -24207,7 +24239,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -24815,7 +24848,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -25825,7 +25859,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -26988,7 +27023,8 @@
             "MasterLeaderStepdown",
             "SetupYNP",
             "YNPProvisioning",
-            "ConfigureOOMServiceOnNode"
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },

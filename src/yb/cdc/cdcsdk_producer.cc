@@ -50,6 +50,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 using std::string;
 
@@ -789,6 +790,51 @@ Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
   }
 }
 
+bool SchemaPackingStorageContainsVersion(
+    SchemaPackingStorage* schema_packing_storage, uint32_t schema_version) {
+  auto result = schema_packing_storage->GetPacking(schema_version);
+  if (!result.ok()) {
+    DCHECK(result.status().IsNotFound());
+    return false;
+  }
+  return true;
+}
+
+Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& table_id,
+    uint64 read_hybrid_time, SchemaDetailsMap* cached_schema_details,
+    SchemaPackingStorage* schema_packing_storage, bool is_packed_row, Slice packed_row,
+    client::YBClient* client, GetChangesResponsePB* resp,
+    CDCThroughputMetrics* throughput_metrics) {
+  bool update_schema_packing_storage = false;
+  if (is_packed_row) {
+    auto pr_schema_version = VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed_row));
+    // Check if packed row schema version is present in the schema_packing_storage. If not
+    // present, invalidate the cached_schema_details so that we fetch schema with required
+    // version from sys catalog.
+    if (!SchemaPackingStorageContainsVersion(
+            schema_packing_storage, narrow_cast<SchemaVersion>(pr_schema_version))) {
+      update_schema_packing_storage = true;
+      auto it = cached_schema_details->find(table_id);
+      if (it != cached_schema_details->end()) {
+        (*cached_schema_details).erase(it);
+      }
+    }
+  }
+
+  const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
+      tablet_peer, read_hybrid_time, cached_schema_details, client, table_id, resp,
+      throughput_metrics));
+  auto schema_version = schema_details.schema_version;
+  auto schema = *schema_details.schema;
+
+  if (update_schema_packing_storage) {
+    schema_packing_storage->AddSchema(schema_version, schema);
+  }
+
+  return std::make_pair(schema_version, *schema_details.schema);
+}
+
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
 Status PopulateCDCSDKIntentRecord(
     const OpId& op_id,
@@ -800,6 +846,7 @@ Status PopulateCDCSDKIntentRecord(
     const CompositeAttsMap& composite_atts_map,
     CDCSDKRequestSource request_source,
     SchemaDetailsMap* cached_schema_details,
+    TableSchemaPackingStorage* schema_packing_storages,
     GetChangesResponsePB* resp,
     ScopedTrackedConsumption* consumption,
     IntraTxnWriteId* write_id,
@@ -813,21 +860,11 @@ Status PopulateCDCSDKIntentRecord(
   bool colocated = tablet->metadata()->colocated();
   Schema schema = Schema();
   SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
-  SchemaPackingStorage schema_packing_storage(tablet->table_type());
   ColocationId colocation_id = kColocationIdNotSet;
   CDCRecordType record_type = CDCRecordType::CHANGE;
   std::string table_name = tablet->metadata()->table_name();
   auto table_id = tablet->metadata()->table_id();
-  if (!colocated) {
-    const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
-        tablet_peer, intents.begin()->intent_ht.hybrid_time().ToUint64(), cached_schema_details,
-        client, tablet->metadata()->table_id(), resp, throughput_metrics));
-    schema = *schema_details.schema;
-    schema_version = schema_details.schema_version;
-    schema_packing_storage.AddSchema(schema_version, schema);
-    record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
-  }
-
+  SchemaPackingStorage* schema_packing_storage = &schema_packing_storages->at(table_id);
   Slice prev_key;
   CDCSDKProtoRecordPB proto_record;
   RowMessage* row_message = proto_record.mutable_row_message();
@@ -862,6 +899,14 @@ Status PopulateCDCSDKIntentRecord(
     RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
     auto value_type = dockv::DecodeValueEntryType(value_slice);
     value_slice.consume_byte();
+
+    if (!colocated) {
+      std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(
+          tablet_peer, tablet->metadata()->table_id(), intent.intent_ht.hybrid_time().ToUint64(),
+          cached_schema_details, schema_packing_storage, IsPackedRow(value_type), value_slice,
+          client, resp, throughput_metrics));
+      record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
+    }
 
     if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kColumnId &&
         schema.is_key_column(column_id_opt->GetColumnId())) {
@@ -953,22 +998,19 @@ Status PopulateCDCSDKIntentRecord(
           continue;
         }
         auto table_info = *tablet_info_result;
-
-        const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
-            tablet_peer, intents.begin()->intent_ht.hybrid_time().ToUint64(), cached_schema_details,
-            client, table_info->table_id, resp, throughput_metrics));
-
-        schema = *schema_details.schema;
-        schema_version = schema_details.schema_version;
-        table_name = table_info->table_name;
         table_id = table_info->table_id;
         if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
           continue;
         }
 
+        schema_packing_storage = &schema_packing_storages->at(table_id);
+        std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(
+            tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(), cached_schema_details,
+            schema_packing_storage, IsPackedRow(value_type), value_slice, client, resp,
+            throughput_metrics));
+
+        table_name = table_info->table_name;
         record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
-        schema_packing_storage = SchemaPackingStorage(tablet->table_type());
-        schema_packing_storage.AddSchema(schema_version, schema);
       }
 
       // Check whether operation is WRITE or DELETE.
@@ -1049,7 +1091,7 @@ Status PopulateCDCSDKIntentRecord(
     if (IsInsertOrUpdate(*row_message)) {
       if (auto packed_row_version = GetPackedRowVersion(value_type)) {
         col_count += VERIFY_RESULT(PopulatePackedRows(
-            *packed_row_version, schema_packing_storage, schema, tablet_peer, enum_oid_label_map,
+            *packed_row_version, *schema_packing_storage, schema, tablet_peer, enum_oid_label_map,
             composite_atts_map, request_source, &value_slice, row_message, &modified_columns,
             record_type, &null_value_columns));
       } else {
@@ -1296,6 +1338,7 @@ Status PopulateCDCSDKWriteRecord(
     const CompositeAttsMap& composite_atts_map,
     CDCSDKRequestSource request_source,
     SchemaDetailsMap* cached_schema_details,
+    TableSchemaPackingStorage* schema_packing_storages,
     GetChangesResponsePB* resp,
     client::YBClient* client,
     CDCThroughputMetrics* throughput_metrics) {
@@ -1326,18 +1369,7 @@ Status PopulateCDCSDKWriteRecord(
   CDCRecordType record_type = CDCRecordType::CHANGE;
   auto table_name = tablet_ptr->metadata()->table_name();
   auto table_id = tablet_ptr->metadata()->table_id();
-
-  if (!colocated) {
-    const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
-        tablet_peer, msg->hybrid_time(), cached_schema_details, client,
-        tablet_ptr->metadata()->table_id(), resp, throughput_metrics));
-    schema = *schema_details.schema;
-    schema_version = schema_details.schema_version;
-    record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
-  }
-
-  SchemaPackingStorage schema_packing_storage(tablet_ptr->table_type());
-  schema_packing_storage.AddSchema(schema_version, schema);
+  SchemaPackingStorage* schema_packing_storage = &schema_packing_storages->at(table_id);
   // TODO: This function and PopulateCDCSDKIntentRecord have a lot of code in common. They should
   // be refactored to use some common row-column iterator.
   for (auto it = batch.write_pairs().cbegin(); it != batch.write_pairs().cend(); ++it) {
@@ -1350,6 +1382,15 @@ Status PopulateCDCSDKWriteRecord(
     RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
     auto value_type = dockv::DecodeValueEntryType(value_slice);
     value_slice.consume_byte();
+
+    if (!colocated) {
+      std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(
+          tablet_peer, tablet_ptr->metadata()->table_id(), msg->hybrid_time(),
+          cached_schema_details, schema_packing_storage, IsPackedRow(value_type), value_slice,
+          client, resp, throughput_metrics));
+
+      record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
+    }
 
     Slice sub_doc_key = key;
     dockv::SubDocKey decoded_key;
@@ -1387,21 +1428,18 @@ Status PopulateCDCSDKWriteRecord(
           continue;
         }
         auto table_info = *tablet_info_result;
-
-        const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
-            tablet_peer, msg->hybrid_time(), cached_schema_details, client, table_info->table_id,
-            resp, throughput_metrics));
-        schema = *schema_details.schema;
-        schema_version = schema_details.schema_version;
-        table_name = table_info->table_name;
         table_id = table_info->table_id;
         if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
           continue;
         }
+        schema_packing_storage = &schema_packing_storages->at(table_id);
+        std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(
+            tablet_peer, table_id, msg->hybrid_time(), cached_schema_details,
+            schema_packing_storage, IsPackedRow(value_type), value_slice, client, resp,
+            throughput_metrics));
 
+        table_name = table_info->table_name;
         record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
-        schema_packing_storage = SchemaPackingStorage(tablet_ptr->table_type());
-        schema_packing_storage.AddSchema(schema_version, schema);
       }
 
       if (row_message != nullptr && row_message->op() == RowMessage_Op_UPDATE) {
@@ -1535,7 +1573,7 @@ Status PopulateCDCSDKWriteRecord(
 
       if (auto version = GetPackedRowVersion(value_type)) {
         RETURN_NOT_OK(PopulatePackedRows(
-            *version, schema_packing_storage, schema, tablet_peer, enum_oid_label_map,
+            *version, *schema_packing_storage, schema, tablet_peer, enum_oid_label_map,
             composite_atts_map, request_source, &value_slice, row_message, &modified_columns,
             record_type, &null_value_columns));
       } else {
@@ -1639,6 +1677,7 @@ Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
     const CompositeAttsMap& composite_atts_map,
     CDCSDKRequestSource request_source,
     SchemaDetailsMap* cached_schema_details,
+    TableSchemaPackingStorage* schema_packing_storages,
     GetChangesResponsePB* resp,
     client::YBClient* client,
     CDCThroughputMetrics* throughput_metrics) {
@@ -1646,7 +1685,7 @@ Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
 
   auto status = PopulateCDCSDKWriteRecord(
       msg, metadata, tablet_peer, enum_oid_label_map, composite_atts_map, request_source,
-      cached_schema_details, resp, client, throughput_metrics);
+      cached_schema_details, schema_packing_storages, resp, client, throughput_metrics);
 
   if (!status.ok()) {
     VLOG_WITH_FUNC(1) << "Received error status: " << status.ToString()
@@ -1668,7 +1707,7 @@ Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
 
     auto status = PopulateCDCSDKWriteRecord(
         msg, metadata, tablet_peer, enum_oid_label_map, composite_atts_map, request_source,
-        cached_schema_details, resp, client, throughput_metrics);
+        cached_schema_details, schema_packing_storages, resp, client, throughput_metrics);
   }
 
   return status;
@@ -1846,12 +1885,14 @@ Status ProcessIntents(
     docdb::ApplyTransactionState* stream_state,
     client::YBClient* client,
     SchemaDetailsMap* cached_schema_details,
+    TableSchemaPackingStorage* schema_packing_storages,
     const uint64_t& commit_time,
     CDCThroughputMetrics* throughput_metrics) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
     FillBeginRecord(transaction_id, tablet_peer, resp, commit_time, metadata, throughput_metrics);
+    TEST_SYNC_POINT("AddBeginRecord::End");
   }
 
   RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
@@ -1892,12 +1933,14 @@ Status ProcessIntents(
   if (!keyValueIntents->empty()) {
     RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
         op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
-        composite_atts_map, request_source, cached_schema_details, resp, consumption, &write_id,
-        &reverse_index_key, commit_time, client, end_of_transaction, throughput_metrics));
+        composite_atts_map, request_source, cached_schema_details, schema_packing_storages, resp,
+        consumption, &write_id, &reverse_index_key, commit_time, client, end_of_transaction,
+        throughput_metrics));
   }
 
   if (end_of_transaction) {
     if (FLAGS_cdc_populate_end_markers_transactions) {
+      TEST_SYNC_POINT("FillCommitRecord::Start");
       FillCommitRecord(
           op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time, metadata,
           throughput_metrics);
@@ -1924,6 +1967,7 @@ Status PrcoessIntentsWithInvalidSchemaRetry(
     docdb::ApplyTransactionState* stream_state,
     client::YBClient* client,
     SchemaDetailsMap* cached_schema_details,
+    TableSchemaPackingStorage* schema_packing_storages,
     const uint64_t& commit_time,
     CDCThroughputMetrics* throughput_metrics) {
   const auto& records_size_before = resp->cdc_sdk_proto_records_size();
@@ -1931,7 +1975,7 @@ Status PrcoessIntentsWithInvalidSchemaRetry(
   auto status = ProcessIntents(
       op_id, transaction_id, metadata, enum_oid_label_map, composite_atts_map, request_source, resp,
       consumption, checkpoint, tablet_peer, keyValueIntents, stream_state, client,
-      cached_schema_details, commit_time, throughput_metrics);
+      cached_schema_details, schema_packing_storages, commit_time, throughput_metrics);
 
   if (!status.ok()) {
     VLOG_WITH_FUNC(1) << "Received error status: " << status.ToString()
@@ -1955,7 +1999,7 @@ Status PrcoessIntentsWithInvalidSchemaRetry(
     status = ProcessIntents(
         op_id, transaction_id, metadata, enum_oid_label_map, composite_atts_map, request_source,
         resp, consumption, checkpoint, tablet_peer, keyValueIntents, stream_state, client,
-        cached_schema_details, commit_time, throughput_metrics);
+        cached_schema_details, schema_packing_storages, commit_time, throughput_metrics);
   }
 
   return status;
@@ -2668,6 +2712,7 @@ Status GetChangesForCDCSDK(
     GetChangesResponsePB* resp,
     uint64_t* commit_timestamp,
     SchemaDetailsMap* cached_schema_details,
+    TableSchemaPackingStorage* schema_packing_storages,
     OpId* last_streamed_op_id,
     const int64_t& safe_hybrid_time_req,
     const std::optional<uint64_t> consistent_snapshot_time,
@@ -2690,12 +2735,9 @@ Status GetChangesForCDCSDK(
   // 'checkpoint_updated' decides if the response checkpoint should be copied from
   // previously declared 'checkpoint' or the 'from_op_id'.
   bool checkpoint_updated = false;
-  bool report_tablet_split = false;
-  bool snapshot_operation = false;
-  bool pending_intents = false;
   int wal_segment_index = GetWalSegmentIndex(wal_segment_index_req);
-  bool wait_for_wal_update = false;
-  bool txn_load_in_progress = false;
+  bool report_tablet_split = false, snapshot_operation = false, pending_intents = false,
+       wait_for_wal_update = false, txn_load_in_progress = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   auto leader_safe_time = tablet_ptr->SafeTime();
@@ -2790,7 +2832,8 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(PrcoessIntentsWithInvalidSchemaRetry(
         op_id, transaction_id, stream_metadata, enum_oid_label_map, composite_atts_map,
         request_source, resp, &consumption, &checkpoint, tablet_peer, &keyValueIntents,
-        &stream_state, client, cached_schema_details, commit_timestamp, throughput_metrics));
+        &stream_state, client, cached_schema_details, schema_packing_storages, commit_timestamp,
+        throughput_metrics));
 
     if (checkpoint.write_id() == 0 && checkpoint.key().empty() && wal_records.size()) {
       AcknowledgeStreamedMultiShardTxn(
@@ -2971,7 +3014,7 @@ Status GetChangesForCDCSDK(
               RETURN_NOT_OK(PrcoessIntentsWithInvalidSchemaRetry(
                   op_id, txn_id, stream_metadata, enum_oid_label_map, composite_atts_map,
                   request_source, resp, &consumption, &checkpoint, tablet_peer, &intents,
-                  &new_stream_state, client, cached_schema_details,
+                  &new_stream_state, client, cached_schema_details, schema_packing_storages,
                   msg->transaction_state().commit_hybrid_time(), throughput_metrics));
               streamed_txns.insert(txn_id.ToString());
 
@@ -3004,7 +3047,8 @@ Status GetChangesForCDCSDK(
             if (!batch.has_transaction()) {
               RETURN_NOT_OK(PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
                   msg, stream_metadata, tablet_peer, enum_oid_label_map, composite_atts_map,
-                  request_source, cached_schema_details, resp, client, throughput_metrics));
+                  request_source, cached_schema_details, schema_packing_storages, resp, client,
+                  throughput_metrics));
 
               AcknowledgeStreamedMsg(
                   msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
@@ -3015,6 +3059,7 @@ Status GetChangesForCDCSDK(
           } break;
 
           case consensus::OperationType::CHANGE_METADATA_OP: {
+            VLOG(3) << "Will stream a DDL record. " << msg->ShortDebugString();
             RETURN_NOT_OK(SchemaFromPB(
                 msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
             TabletId table_id = tablet_ptr->metadata()->table_id();
@@ -3052,6 +3097,12 @@ Status GetChangesForCDCSDK(
                   .schema_version = result->second,
                   .schema = std::make_shared<Schema>(result->first)};
               changed_schema_version = result->second;
+            }
+
+            auto schema_packing_storage = &schema_packing_storages->at(table_id);
+            if (!SchemaPackingStorageContainsVersion(
+                    schema_packing_storage, changed_schema_version)) {
+              schema_packing_storage->AddSchema(changed_schema_version, current_schema);
             }
 
             bool has_columns_marked_for_deletion = false;

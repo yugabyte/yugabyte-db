@@ -20,23 +20,21 @@ import { useTranslation } from 'react-i18next';
 import { ResilienceTypeField } from '../../fields/resilience-type/ResilienceType';
 
 export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
-  const [, { moveToPreviousPage }] = (useContext(
+  const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-
-  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.resilienceAndRegions' });
-
-  const methods = useForm<ResilienceAndRegionsProps>({
-
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.resilienceAndRegions'
   });
 
+  const methods = useForm<ResilienceAndRegionsProps>({});
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
-
+        moveToNextPage();
       },
       onPrev: () => {
         moveToPreviousPage();
@@ -50,8 +48,7 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
       <ResilienceTypeField<ResilienceAndRegionsProps> name="resilienceType" />
       <StyledPanel>
         <StyledHeader>{t('title')}</StyledHeader>
-        <StyledContent>
-        </StyledContent>
+        <StyledContent></StyledContent>
       </StyledPanel>
     </FormProvider>
   );

@@ -27,7 +27,7 @@ Multiple application instances are active and some instances read stale data.
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Suppose you have a replication factor 3 cluster set up in `us-east-1` and `us-east-2`, with leader preference set to `us-east-1`, and you want to run other applications in `us-central` and `us-west`. The read latencies would be similar to the following illustration.
 

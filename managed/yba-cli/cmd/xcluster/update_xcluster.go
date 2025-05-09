@@ -135,6 +135,8 @@ var updateXClusterCmd = &cobra.Command{
 			// In case add is empty, this list is sent for xCluster
 			logrus.Debug("Removing tables from XCluster")
 			req.SetTables(formTableUUIDs)
+		} else {
+			formTableUUIDs = xClusterTables
 		}
 
 		allowBoostrap := false

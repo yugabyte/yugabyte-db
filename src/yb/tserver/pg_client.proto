@@ -143,6 +143,9 @@ service PgClientService {
 
   rpc GetTserverCatalogMessageLists(PgGetTserverCatalogMessageListsRequestPB)
       returns (PgGetTserverCatalogMessageListsResponsePB);
+
+  rpc SetTserverCatalogMessageList(PgSetTserverCatalogMessageListRequestPB)
+      returns (PgSetTserverCatalogMessageListResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -972,6 +975,18 @@ message PgGetTserverCatalogMessageListsResponsePB {
   // be fulfilled, entries will be empty. This only happens when the requested sequence does not
   // exist in the tserver's message queue.
   repeated TServerDBCatalogMessageListInfo entries = 2;
+}
+
+message PgSetTserverCatalogMessageListRequestPB {
+  uint32 db_oid = 1;
+  bool is_breaking_change = 2;
+  uint64 new_catalog_version = 3;
+  TServerDBCatalogMessageListInfo message_list = 4;
+  AshMetadataPB ash_metadata = 5;
+}
+
+message PgSetTserverCatalogMessageListResponsePB {
+  AppStatusPB status = 1;
 }
 
 message PgWaitForBackendsCatalogVersionRequestPB {

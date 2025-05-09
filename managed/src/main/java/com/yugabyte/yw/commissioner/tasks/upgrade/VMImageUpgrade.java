@@ -320,6 +320,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               || !userIntent.useSystemd;
       // TODO This can be improved to skip already provisioned nodes as there are long running
       // subtasks.
+      createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
       if (userIntent.providerType != CloudType.local) {
         createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
         if (!useAnsibleProvisioning) {
@@ -330,7 +331,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createInstallNodeAgentTasks(universe, nodeList)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
       if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
         createSetupServerTasks(
                 nodeList,

@@ -66,6 +66,7 @@ The list of commands for various phases of migration are as follows:
 - [Import data to source](../../reference/data-migration/import-data/#import-data-to-source)
 - [Import data to source-replica](../../reference/data-migration/import-data/#import-data-to-source-replica)
 - [Import data file](../../reference/bulk-data-load/import-data-file/)
+- [Finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/)
 - [Cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target)
 - [Cutover to source](../../reference/cutover-archive/cutover/#cutover-to-source)
 - [Cutover to source-replica](../../reference/cutover-archive/cutover/#cutover-to-source-replica)

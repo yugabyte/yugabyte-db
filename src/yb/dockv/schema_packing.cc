@@ -33,7 +33,7 @@
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags/flag_tags.h"
 
-DEFINE_test_flag(bool, dcheck_for_missing_schema_packing, true,
+DEFINE_test_flag(bool, dcheck_for_missing_schema_packing, false,
                  "Whether we use check failure for missing schema packing in debug builds");
 
 namespace yb::dockv {

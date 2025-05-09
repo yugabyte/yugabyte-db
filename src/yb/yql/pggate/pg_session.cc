@@ -990,12 +990,12 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   return status;
 }
 
-void PgSession::ResetHasWriteOperationsInDdlMode() {
-  has_write_ops_in_ddl_mode_ = false;
+void PgSession::ResetHasCatalogWriteOperationsInDdlMode() {
+  has_catalog_write_ops_in_ddl_mode_ = false;
 }
 
-bool PgSession::HasWriteOperationsInDdlMode() const {
-  return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
+bool PgSession::HasCatalogWriteOperationsInDdlMode() const {
+  return has_catalog_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
 void PgSession::SetDdlHasSyscatalogChanges() {
@@ -1056,12 +1056,18 @@ Result<PerformFuture> PgSession::DoRunAsync(
         RSTATUS_DCHECK_EQ(
             session_type, group_session_type,
             IllegalState, "Operations on different sessions can't be mixed");
-        if (force_catalog_modification &&
-            table.schema().table_properties().is_ysql_catalog_table()) {
+        const bool is_ysql_catalog_table =
+            table.schema().table_properties().is_ysql_catalog_table();
+        if (force_catalog_modification && is_ysql_catalog_table) {
           ApplyForceCatalogModification(*op);
         }
-        has_write_ops_in_ddl_mode_ =
-            has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
+        // We can have a DDL event trigger that writes to a user table instead of ysql
+        // catalog table. The DDL itself may be a no-op (e.g., GRANT a privilege to a
+        // user that already has that privilege). We do not want to account this case
+        // as writing to ysql catalog so we can avoid incrementing the catalog version.
+        has_catalog_write_ops_in_ddl_mode_ =
+            has_catalog_write_ops_in_ddl_mode_ ||
+            (is_ddl && !IsReadOnly(*op) && is_ysql_catalog_table);
         return runner.Apply(table, op);
     };
   RETURN_NOT_OK(processor(first_table_op));

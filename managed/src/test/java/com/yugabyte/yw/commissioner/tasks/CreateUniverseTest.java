@@ -54,9 +54,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks, // PreNodeProvision
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
-          TaskType.RunHooks, // PreNodeProvision
           TaskType.SetNodeStatus,
           TaskType.RunHooks, // PostNodeProvision
           TaskType.CheckLocale,

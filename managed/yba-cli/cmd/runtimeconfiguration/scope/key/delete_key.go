@@ -46,7 +46,7 @@ var deleteKeyCmd = &cobra.Command{
 		scopeName := util.MustGetFlagString(cmd, "uuid")
 		keyName := util.MustGetFlagString(cmd, "name")
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-		DeleteKey(authAPI, scopeName, keyName)
+		DeleteKey(authAPI, scopeName, keyName, true /*logSuccess*/)
 	},
 }
 

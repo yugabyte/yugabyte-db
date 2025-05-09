@@ -733,7 +733,7 @@ extern bool yb_use_hash_splitting_by_default;
 extern bool yb_enable_inplace_index_update;
 
 /*
- * Enable the advisory lock feature.
+ * Enable the advisory lock feature. (DEPRECATED)
  */
 extern bool yb_enable_advisory_locks;
 
@@ -825,7 +825,7 @@ typedef enum YbSysCatalogModificationAspect
 	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
 	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4,
 	/*
-	 * Indicates if the statement runs in an autonomous transaction even if
+	 * Indicates if the statement runs in an autonomous transaction when
 	 * transactional DDL support is enabled.
 	 * Always unset if TEST_ysql_yb_ddl_transaction_block_enabled is false.
 	 */

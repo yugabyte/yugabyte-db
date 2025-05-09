@@ -67,6 +67,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 using namespace std::literals;
 
 using yb::common::GetMemberAsArray;
@@ -570,6 +572,188 @@ Result<string> RegexFetchFirst(const string out, const string &exp) {
   return match[1];
 }
 } // namespace
+
+class AdminCliTestForTableLocks : public AdminCliTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->enable_ysql = true;
+    options->extra_master_flags.push_back("--TEST_enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--TEST_enable_object_locking_for_table_locks=true");
+  }
+
+ protected:
+  Result<std::pair<std::string, std::string>> ExtractTxnAndSubtxnIdFrom(
+      const HostPort& addr, const std::string& page) {
+    EasyCurl curl;
+    const std::regex txn_regex(
+        "\\{txn: ([a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}) subtxn_id: "
+        "([0-9]+)\\}");
+    faststring buf;
+    auto url = strings::Substitute("http://$0/$1", ToString(addr), page);
+    RETURN_NOT_OK(curl.FetchURL(url, &buf));
+    auto lt_out = buf.ToString();
+    VLOG(1) << "Response from url: " << url << " :\n" << lt_out;
+    std::smatch match;
+    if (!std::regex_search(lt_out.cbegin(), lt_out.cend(), match, txn_regex)) {
+      return STATUS(NotFound, "Pattern not found");
+    }
+    for (std::size_t i = 0; i < match.size(); ++i) {
+      VLOG(1) << i << ": " << match[i] << '\n';
+    }
+    auto txn_id = match[1];
+    auto subtxn_id = match[2];
+    VLOG(1) << "Transaction ID: " << txn_id;
+    VLOG(1) << "Subtransaction ID: " << subtxn_id;
+    return std::make_pair(txn_id, subtxn_id);
+  }
+
+  Result<std::pair<std::string, std::string>> ExtractTxnAndSubtxnIdFromMaster() {
+    return ExtractTxnAndSubtxnIdFrom(
+        cluster_->GetLeaderMaster()->bound_http_hostport(), "ObjectLockManager");
+  }
+
+  Result<std::pair<std::string, std::string>> ExtractTxnAndSubtxnIdFromTServer(int index) {
+    return ExtractTxnAndSubtxnIdFrom(
+        cluster_->tablet_server(index)->bound_http_hostport(), "TSLocalLockManager");
+  }
+
+  Result<bool> HasLocksTServer(int index) {
+    return HasLocks(cluster_->tablet_server(index)->bound_http_hostport(), "TSLocalLockManager");
+  }
+
+  Result<bool> HasLocksMaster() {
+    return HasLocks(cluster_->GetLeaderMaster()->bound_http_hostport(), "ObjectLockManager");
+  }
+
+  Result<bool> HasLocks(const HostPort& addr, const std::string& page) {
+    auto res = ExtractTxnAndSubtxnIdFrom(addr, page);
+    if (res.ok()) {
+      return true;
+    } else if (res.status().IsNotFound()) {
+      return false;
+    } else {
+      return res.status();
+    }
+  }
+};
+
+TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnIdAndSubtxnId) {
+  BuildAndStart();
+  const std::string db_name{"yugabyte"};
+  const int kTServerIndex = 0;
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+
+  const std::string table_name = "test_table";
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  std::string txn_id;
+  std::string subtxn_id;
+  std::tie(txn_id, subtxn_id) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromMaster());
+
+  ASSERT_OK(CallAdmin("unsafe_release_object_locks_global", txn_id, subtxn_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+
+  // Sanity check that other tranactions can acquire locks.
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnId) {
+  BuildAndStart();
+  const std::string db_name{"yugabyte"};
+  const int kTServerIndex = 0;
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+
+  const std::string table_name = "test_table";
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  std::string txn_id;
+  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromMaster());
+
+  ASSERT_OK(CallAdmin("unsafe_release_object_locks_global", txn_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+
+  // Sanity check that other tranactions can acquire locks.
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksAtTServer) {
+  BuildAndStart();
+  const std::string db_name{"yugabyte"};
+  const int kTServerIndex = 0;
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+
+  const std::string table_name = "test_table";
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  std::string txn_id;
+  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex));
+
+  // Having this test flag allows us to release locks for unknown transactions at the master.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_allow_unknown_txn_release_request", "false"));
+  ASSERT_NOK(CallAdmin("unsafe_release_object_locks_global", txn_id));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+
+  ASSERT_OK(CallTSCli("unsafe_release_all_locks_for_txn", txn_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+
+  // Sanity check that other tranactions can acquire locks.
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksThroughMaster) {
+  BuildAndStart();
+  const std::string db_name{"yugabyte"};
+  const int kTServerIndex = 0;
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+
+  const std::string table_name = "test_table";
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  std::string txn_id;
+  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex));
+
+  // Having this test flag allows us to release locks for unknown transactions at the master.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_allow_unknown_txn_release_request", "true"));
+
+  ASSERT_OK(CallAdmin("unsafe_release_object_locks_global", txn_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+
+  // Sanity check that other tranactions can acquire locks.
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
 
 // Use list_tablets to list one single tablet for the table.
 // Parse out the tablet from the output.

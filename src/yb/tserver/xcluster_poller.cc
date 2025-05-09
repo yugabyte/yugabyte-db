@@ -539,10 +539,10 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
       if (s.IsTryAgain()) {
         // The handler will return try again when waiting for safe time to catch up, so can log
         // these errors less frequently.
-        YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 300)
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 300)
             << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
       } else {
-        YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 30)
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
             << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
       }
       StoreNOKReplicationError();

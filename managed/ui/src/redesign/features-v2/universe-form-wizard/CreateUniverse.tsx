@@ -62,7 +62,7 @@ export const CreateUniverse = () => {
         <Close style={{ cursor: 'pointer' }} />
       </Grid>
       <Grid container spacing={2}>
-        <Grid>
+        <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>
           <YBMultiLevelStepper activeStep={activeStep} steps={steps} />
         </Grid>
         <Grid

@@ -19,18 +19,26 @@ type InstallSoftwareHandler struct {
 	param     *pb.InstallSoftwareInput
 	username  string
 	result    string
+	logOut    util.Buffer
 }
 
 func NewInstallSoftwareHandler(
 	param *pb.InstallSoftwareInput,
 	username string,
 ) *InstallSoftwareHandler {
-	return &InstallSoftwareHandler{param: param, username: username}
+	return &InstallSoftwareHandler{
+		param:    param,
+		username: username,
+		logOut:   util.NewBuffer(MaxBufferCapacity),
+	}
 }
 
 // CurrentTaskStatus implements the AsyncTask method.
 func (h *InstallSoftwareHandler) CurrentTaskStatus() *TaskStatus {
-	return nil
+	return &TaskStatus{
+		Info:       h.logOut,
+		ExitStatus: &ExitStatus{},
+	}
 }
 
 func (h *InstallSoftwareHandler) String() string {
@@ -43,6 +51,7 @@ func (h *InstallSoftwareHandler) runShell(
 	desc, shell string,
 	args []string,
 ) error {
+	h.logOut.WriteLine("Running install software phase: %s", desc)
 	h.shellTask = NewShellTaskWithUser(desc, h.username, shell, args)
 	_, err := h.shellTask.Process(ctx)
 	if err != nil {
@@ -82,8 +91,10 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 		util.FileLogger().Errorf(ctx, "Download cmd generation failed: %s", err)
 		return nil, err
 	}
-	util.FileLogger().Infof(ctx, cmdStr)
+	util.FileLogger().Infof(ctx, "Download command %s", cmdStr)
+	h.logOut.WriteLine("Download command %s", cmdStr)
 	if cmdStr != "" {
+		h.logOut.WriteLine("Dowloading software")
 		if err := h.runShell(ctx, "download-software", util.DefaultShell, []string{"-c", cmdStr}); err != nil {
 			return nil, err
 		}

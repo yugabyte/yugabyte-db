@@ -16,6 +16,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
@@ -23,10 +24,14 @@ import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeAgent;
@@ -43,6 +48,8 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
+import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -238,11 +245,11 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public void run() {
     log.debug("AnsibleConfigureServers run called for {}", taskParams().getUniverseUUID());
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
     taskParams().useSystemd =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     String processType = taskParams().getProperty("processType");
     boolean resetMasterState = false;
-    NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
     if (taskParams().resetMasterState
         && taskParams().isMasterInShellMode
         && ServerType.MASTER.toString().equalsIgnoreCase(processType)) {
@@ -268,8 +275,11 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             ? nodeUniverseManager.maybeGetNodeAgent(
                 getUniverse(), nodeDetails, true /*check feature flag*/)
             : Optional.empty();
-    if (optional.isPresent()) {
-      taskParams().skipDownloadSoftware = true;
+    taskParams().skipDownloadSoftware = optional.isPresent();
+    if (optional.isPresent() && taskParams().type == UpgradeTaskType.GFlags) {
+      log.info("Updating gflags using node agent {}", optional.get());
+      runServerGFlagsWithNodeAgent(optional.get(), universe, nodeDetails);
+      return;
     }
     // Execute the ansible command.
     ShellResponse response =
@@ -280,6 +290,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         && (taskParams().type == UpgradeTaskType.Everything
             || taskParams().type == UpgradeTaskType.Software
             || taskParams().type == UpgradeTaskType.YbcGFlags)) {
+      log.info("Installing software using node agent {}", optional.get());
       nodeAgentClient.runInstallSoftware(
           optional.get(),
           setupInstallSoftwareBits(universe, nodeDetails, taskParams(), optional.get()),
@@ -330,6 +341,68 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         setNodeStatus(NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build());
       }
     }
+  }
+
+  private void runServerGFlagsWithNodeAgent(
+      NodeAgent nodeAgent, Universe universe, NodeDetails nodeDetails) {
+    String processType = taskParams().getProperty("processType");
+    if (!processType.equals(ServerType.CONTROLLER.toString())
+        && !processType.equals(ServerType.MASTER.toString())
+        && !processType.equals(ServerType.TSERVER.toString())) {
+      throw new RuntimeException("Invalid processType: " + processType);
+    }
+    String serverName = processType.toLowerCase();
+    String serverHome =
+        Paths.get(nodeUniverseManager.getYbHomeDir(nodeDetails, universe), serverName).toString();
+    boolean useHostname =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
+            || !Util.isIpAddress(nodeDetails.cloudInfo.private_ip);
+    UserIntent userIntent = getNodeManager().getUserIntentFromParams(universe, taskParams());
+    ServerGFlagsInput.Builder builder =
+        ServerGFlagsInput.newBuilder()
+            .setServerHome(serverHome)
+            .setServerName(serverHome)
+            .setServerName(serverName);
+    Map<String, String> gflags =
+        new HashMap<>(
+            GFlagsUtil.getAllDefaultGFlags(
+                taskParams(), universe, userIntent, useHostname, config, confGetter));
+    if (processType.equals(ServerType.CONTROLLER.toString())) {
+      // TODO Is the check taskParam.isEnableYbc() required here?
+      Map<String, String> ybcFlags =
+          GFlagsUtil.getYbcFlags(
+              universe, taskParams(), confGetter, config, taskParams().ybcGflags);
+      // Override for existing keys as this has higher precedence.
+      gflags.putAll(ybcFlags);
+    } else if (processType.equals(ServerType.MASTER.toString())
+        || processType.equals(ServerType.TSERVER.toString())) {
+      // Override for existing keys as this has higher precedence.
+      gflags.putAll(taskParams().gflags);
+      getNodeManager()
+          .processGFlags(config, universe, nodeDetails, taskParams(), gflags, useHostname);
+      if (!config.getBoolean("yb.cloud.enabled")) {
+        if (gflags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
+          String hbaConfValue = gflags.get(GFlagsUtil.YSQL_HBA_CONF_CSV);
+          if (hbaConfValue.contains(GFlagsUtil.JWT_AUTH)) {
+            Path tmpDirectoryPath =
+                FileUtils.getOrCreateTmpDirectory(
+                    confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
+            Path localGflagFilePath =
+                tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
+            String providerUUID = userIntent.provider;
+            String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
+            String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+            nodeAgentClient.uploadFile(nodeAgent, localGflagFilePath.toString(), remoteGFlagPath);
+          }
+        }
+      }
+      if (taskParams().resetMasterState) {
+        builder.setResetMasterState(true);
+      }
+    }
+    ServerGFlagsInput input = builder.putAllGflags(gflags).build();
+    log.debug("Setting gflags using node agent: {}", input.getGflagsMap());
+    nodeAgentClient.runServerGFlags(nodeAgent, input, "yugabyte");
   }
 
   @Override

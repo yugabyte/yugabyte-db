@@ -382,6 +382,11 @@ public class TaskExecutor {
     taskInfo.save();
     task.setTaskUUID(taskInfo.getUuid());
     task.setUserTaskUUID(taskInfo.getUuid());
+    log.info(
+        "Task {}({}) with version {}",
+        taskInfo.getTaskType(),
+        taskInfo.getUuid(),
+        taskInfo.getVersion());
     return new RunnableTask(task, taskInfo.getUuid());
   }
 
@@ -1605,13 +1610,16 @@ public class TaskExecutor {
 
     // SubTaskGroupType can be set before or after the group is added to the parent task.
     void setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {
-      TaskInfo.maybeGet(getTaskUUID())
-          .ifPresent(
-              tf -> {
-                // Update task info if the group with subtasks is alreay added.
-                tf.setSubTaskGroupType(subTaskGroupType);
-                tf.update();
-              });
+      UUID taskUuid = getTaskUUID();
+      if (taskUuid != null) {
+        TaskInfo.maybeGet(taskUuid)
+            .ifPresent(
+                tf -> {
+                  // Update task info if the group with subtasks is alreay added.
+                  tf.setSubTaskGroupType(subTaskGroupType);
+                  tf.update();
+                });
+      }
     }
 
     private void setRunnableTaskContext(RunnableTask parentRunnableTask, int position) {

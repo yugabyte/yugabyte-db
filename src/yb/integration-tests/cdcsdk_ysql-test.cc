@@ -9072,10 +9072,7 @@ TEST_F(CDCSDKYsqlTest, TestUpdateOnNonExistingEntry) {
 
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &checkpoint));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(0).row_message().op(), RowMessage::BEGIN);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(1).row_message().op(), RowMessage::DDL);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(2).row_message().op(), RowMessage::COMMIT);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
 }
 
 TEST_F(CDCSDKYsqlTest, TestGetChangesResponseSize) {
@@ -11989,6 +11986,55 @@ TEST_F(CDCSDKYsqlTest, TestDropIndexWithColocatedTable) {
   ASSERT_OK(test_cluster()->WaitForAllTabletServers());
 
   auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+}
+
+// This test was added as a part of #26861. When an index was being created in the midst of a
+// GetChanges call, we would end up seeing an extra COMMIT record corresponding to the index table.
+TEST_F(CDCSDKYsqlTest, TestEqualityOfTxnalRecordsWithColocatedTableHavingIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  google::SetVLOGLevel("cdcsdk_producer", 3);
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"AddBeginRecord::End", "CreateIndex::Start"},
+       {"CreateIndex::Done", "FillCommitRecord::Start"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  ASSERT_OK(WriteRowsHelper(1, 3, &test_cluster_, true));
+
+  GetChangesResponsePB change_resp;
+  std::thread t1([&]() { change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets)); });
+
+  TEST_SYNC_POINT("CreateIndex::Start");
+  ASSERT_OK(conn.Execute("CREATE INDEX idx ON test_table(value_1)"));
+  TEST_SYNC_POINT("CreateIndex::Done");
+
+  t1.join();
+
+  auto begin_count = 0, commit_count = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage_Op_BEGIN) {
+      begin_count++;
+    } else if (record.row_message().op() == RowMessage_Op_COMMIT) {
+      commit_count++;
+    }
+  }
+
+  ASSERT_EQ(begin_count, commit_count);
+  ASSERT_EQ(commit_count, 1);
 }
 
 }  // namespace cdc

@@ -359,7 +359,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
     "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
     "upgrade. For example, IN, ANY, ALL.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
@@ -922,7 +922,7 @@ Status PgWrapper::SetYsqlConnManagerStatsShmKey(key_t key) {
 }
 
 Status PgWrapper::ReloadConfig() {
-  return proc_->Kill(SIGHUP);
+  return proc_->KillNoCheckIfRunning(SIGHUP);
 }
 
 Status PgWrapper::UpdateAndReloadConfig() {
@@ -1002,6 +1002,10 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
   } else {
     args.push_back("--old-host");
     args.push_back(param.old_version_pg_address);
+  }
+
+  if (param.no_statistics) {
+    args.push_back("--no-statistics");
   }
 
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
@@ -1349,6 +1353,14 @@ void PgSupervisor::Stop() {
   }
 }
 
+Status PgSupervisor::StartAndMaybePause() {
+  if (IsYsqlLeaseEnabled()) {
+    return InitPaused();
+  } else {
+    return Start();
+  }
+}
+
 Status PgSupervisor::ReloadConfig() {
   std::lock_guard lock(mtx_);
   if (process_wrapper_) {
@@ -1356,8 +1368,6 @@ Status PgSupervisor::ReloadConfig() {
   }
   return Status::OK();
 }
-
-
 
 Status PgSupervisor::UpdateAndReloadConfig() {
   // See GHI #16055. TSAN detects that Start() and UpdateAndReloadConfig each acquire M0 and M1 in

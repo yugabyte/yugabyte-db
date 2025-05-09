@@ -13,9 +13,6 @@
 
 #include "bson_init.h"
 
-/* YB includes */
-#include "pg_yb_utils.h"
-
 static void * pg_malloc(size_t num_bytes);
 static void * pg_calloc(size_t n_members, size_t num_bytes);
 static void * pg_realloc(void *mem, size_t num_bytes);
@@ -55,13 +52,7 @@ bool EnableCollation = DEFAULT_ENABLE_COLLATION;
 void
 InstallBsonMemVTables(void)
 {
-	/*
-	 * YB: Upstream bug. pg_aligned_alloc does not work on Postgres versions
-	 * less than 16. Temporarily fixing this by defaulting to default bson
-	 * non-pg mem allocators. This is called from _PG_init, so check the env var
-	 * instead of IsYugaByteEnabled.
-	 */
-	if (!YBIsEnabledInPostgresEnvVar() && !gHasSetVTable)
+	if (!gHasSetVTable)
 	{
 		bson_mem_set_vtable(&gMemVtable);
 		gHasSetVTable = true;

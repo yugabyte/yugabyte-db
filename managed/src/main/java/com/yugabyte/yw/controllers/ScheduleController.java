@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
@@ -66,13 +68,18 @@ public class ScheduleController extends AuthenticatedController {
   private final BackupHelper backupHelper;
   private final Commissioner commissioner;
   private final ScheduleTaskHelper scheduleTaskHelper;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public ScheduleController(
-      BackupHelper backupHelper, Commissioner commissioner, ScheduleTaskHelper scheduleTaskHelper) {
+      BackupHelper backupHelper,
+      Commissioner commissioner,
+      ScheduleTaskHelper scheduleTaskHelper,
+      RuntimeConfGetter confGetter) {
     this.backupHelper = backupHelper;
     this.commissioner = commissioner;
     this.scheduleTaskHelper = scheduleTaskHelper;
+    this.confGetter = confGetter;
   }
 
   @Deprecated
@@ -226,18 +233,27 @@ public class ScheduleController extends AuthenticatedController {
         schedule.updateFrequency(params.frequency);
         schedule.updateFrequencyTimeUnit(params.frequencyTimeUnit);
 
-        ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
-        Date nextScheduleTaskTime;
-
-        if (lastTask == null
-            || Util.isTimeExpired(schedule.nextExpectedTaskTime(lastTask.getScheduledTime()))) {
-          nextScheduleTaskTime = schedule.nextExpectedTaskTime(null);
-        } else {
-          nextScheduleTaskTime = schedule.nextExpectedTaskTime(lastTask.getScheduledTime());
+        if (schedule.getNextScheduleTaskTime() != null
+            && Util.isTimeExpired(schedule.getNextScheduleTaskTime())
+            && params.runImmediateBackupOnResume
+            && schedule.getTaskType() == TaskType.CreateBackup) {
+          LOG.info("Schedule {} will run immediately because of backlog", scheduleUUID);
+          schedule.updateBacklogStatus(true);
         }
 
-        schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
-
+        if (schedule.getNextScheduleTaskTime() == null) {
+          LOG.info("No next time found for schedule {}, run next task immediately", scheduleUUID);
+          schedule.updateNextScheduleTaskTime(schedule.nextExpectedTaskTime(null));
+        } else if (Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
+          LOG.debug("Schedule {} is expired, calculate next run", schedule.getScheduleUUID());
+          schedule.updateNextScheduleTaskTime(
+              schedule.nextExpectedTaskTime(schedule.getNextScheduleTaskTime()));
+        } else {
+          LOG.debug(
+              "Schedule {} is not expired, next run is {}",
+              schedule.getScheduleUUID(),
+              schedule.getNextScheduleTaskTime());
+        }
       } else if (params.cronExpression != null) {
         BackupUtil.validateBackupCronExpression(params.cronExpression);
         schedule.updateCronExpression(params.cronExpression);
@@ -276,6 +292,13 @@ public class ScheduleController extends AuthenticatedController {
               params.incrementalBackupFrequency,
               schedulingFrequency,
               Universe.getOrBadRequest(schedule.getOwnerUUID(), customer));
+          if (schedule.getNextIncrementScheduleTaskTime() != null
+              && Util.isTimeExpired(schedule.getNextIncrementScheduleTaskTime())
+              && params.runImmediateBackupOnResume) {
+            LOG.info(
+                "Incremental chedule {} will run immediately because of backlog", scheduleUUID);
+            schedule.updateIncrementBacklogStatus(true);
+          }
           schedule.updateIncrementalBackupFrequencyAndTimeUnit(
               params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit);
           schedule.updateNextIncrementScheduleTaskTime(
@@ -441,7 +464,11 @@ public class ScheduleController extends AuthenticatedController {
     // Check if attempting to modify schedule when universe is locked( not allowed ).
     // Only allow to toggle schedule between Active and Stopped.
     scheduleToggleParams.verifyScheduleToggle(schedule.getStatus());
-    Schedule.toggleBackupSchedule(customerUUID, scheduleUUID, scheduleToggleParams.status);
+    Schedule.toggleBackupSchedule(
+        customerUUID,
+        scheduleUUID,
+        scheduleToggleParams.status,
+        scheduleToggleParams.runImmediateBackupOnResume);
 
     Audit.ActionType actionType =
         scheduleToggleParams.status == Schedule.State.Stopped
