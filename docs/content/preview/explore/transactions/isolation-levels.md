@@ -75,7 +75,7 @@ The other levels are defined by which anomalies (none of which are possible with
 
 ## Serializable isolation
 
-{{<explore-setup-single>}}
+{{% explore-setup-single-new %}}
 
 The Serializable isolation level provides the strictest transaction isolation. This level emulates serial transaction execution for all committed transactions, as if transactions had been executed one after another, serially rather than concurrently. Serializable isolation can detect read-write conflicts in addition to write-write conflicts. This is accomplished by writing provisional records for read operations as well.
 

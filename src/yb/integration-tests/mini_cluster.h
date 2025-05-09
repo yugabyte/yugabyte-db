@@ -56,8 +56,9 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
@@ -81,7 +82,6 @@ class MiniTabletServer;
 
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
-YB_STRONGLY_TYPED_BOOL(IncludeTransactionStatusTablets);
 YB_STRONGLY_TYPED_BOOL(RequireLeaderIsReady)
 
 struct MiniClusterOptions {
@@ -112,6 +112,9 @@ struct MiniClusterOptions {
   // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
+
+  // Whether to wait for the cluster to accept pg connections in the Start and Restart methods.
+  bool wait_for_pg = true;
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -172,7 +175,7 @@ class MiniCluster : public MiniClusterBase {
   Status StartYbControllerServers();
 
   // Add a new YB Controller server for the given tablet server
-  Status AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer>);
+  Status AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer>& ts);
 
   Status AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
   Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
@@ -231,7 +234,7 @@ class MiniCluster : public MiniClusterBase {
   std::string GetTabletServerDrive(size_t idx, int drive_index);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
-  std::string GetMasterAddresses() const;
+  std::string GetMasterAddresses() const override;
 
     // The comma separated string of the tserver adresses host/ports from current list of tservers.
   std::string GetTserverHTTPAddresses() const;
@@ -278,6 +281,17 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetClusterId() { return options_.cluster_id; }
 
+  HostPort YsqlHostport() const override {
+    CHECK(ysql_hostport_ != HostPort());
+    return ysql_hostport_;
+  }
+
+  void SetYsqlHostport(const HostPort& value) {
+    ysql_hostport_ = value;
+  }
+
+  std::string GetTabletServerHTTPAddresses() const override;
+
  private:
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
@@ -314,6 +328,7 @@ class MiniCluster : public MiniClusterBase {
   PortPicker port_picker_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+  HostPort ysql_hostport_;
 };
 
 // Requires that skewed clock is registered as physical clock.
@@ -344,11 +359,11 @@ std::unordered_set<std::string> ListActiveTabletIdsForTable(
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter,
-    IncludeTransactionStatusTablets include_transaction_status_tablets =
-        IncludeTransactionStatusTablets::kTrue);
+    UserTabletsOnly user_tablets_only = UserTabletsOnly::kTrue);
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
-    MiniCluster* cluster, TabletPeerFilter filter);
+    MiniCluster* cluster, TabletPeerFilter filter,
+    UserTabletsOnly user_tablets_only = UserTabletsOnly::kTrue);
 
 Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeers(
     MiniCluster* cluster, const TabletId& tablet_id, TabletPeerFilter filter = TabletPeerFilter());

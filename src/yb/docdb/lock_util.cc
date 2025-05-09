@@ -73,21 +73,18 @@ uint16_t LockStateIntentCount(LockState num_waiting, dockv::IntentType intent_ty
       & kFirstIntentTypeMask;
 }
 
-Status FormSharedLock(
-    ObjectLockPrefix&& key, dockv::IntentTypeSet intent_types,
-    LockBatchEntries<ObjectLockManager>* keys_locked) {
+Result<LockBatchEntry<ObjectLockManager>> FormSharedLock(
+    ObjectLockPrefix&& key, dockv::IntentTypeSet intent_types) {
   SCHECK(!intent_types.None(), InternalError, "Empty intent types is not allowed");
-  keys_locked->push_back(
-      LockBatchEntry<ObjectLockManager> {.key = std::move(key), .intent_types = intent_types});
-  return Status::OK();
+  return LockBatchEntry<ObjectLockManager>{.key = std::move(key), .intent_types = intent_types};
 }
 
 Status AddObjectsToLock(
     LockBatchEntries<ObjectLockManager>& lock_batch, uint64_t database_oid, uint64_t object_oid,
     TableLockType lock_type) {
   for (const auto& [lock_key, intent_types] : GetEntriesForLockType(lock_type)) {
-    RETURN_NOT_OK(FormSharedLock(
-        ObjectLockPrefix(database_oid, object_oid, lock_key), intent_types, &lock_batch));
+    lock_batch.push_back(VERIFY_RESULT(FormSharedLock(
+        ObjectLockPrefix(database_oid, object_oid, lock_key), intent_types)));
   }
   return Status::OK();
 }
@@ -140,8 +137,8 @@ std::string LockStateDebugString(LockState state) {
 // in this case, we see that the intents requested are [kStrongRead] and [kStrongRead, kWeakWrite]
 // for modes 'ROW_SHARE' and 'EXCLUSIVE' respectively. And since the above intenttype sets conflict
 // among themselves, we successfully detect the conflict.
-const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& GetEntriesForLockType(
-    TableLockType lock) {
+std::span<const std::pair<KeyEntryType, dockv::IntentTypeSet>>
+GetEntriesForLockType(TableLockType lock) {
   static const std::array<
       std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>,
       TableLockType_ARRAYSIZE> lock_entries = {{

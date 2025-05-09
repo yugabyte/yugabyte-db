@@ -24,9 +24,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -39,6 +39,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -108,11 +110,13 @@ public class BackupsControllerTest extends FakeDBApplication {
   private Role role;
   private ResourceDefinition rd1;
   private UUID fakeTaskUUID;
+  private RuntimeConfGetter confGetter;
 
   Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
 
   @Before
   public void setUp() {
+    confGetter = mock(RuntimeConfGetter.class);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
@@ -263,8 +267,11 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfigService mockCCS = mock(CustomerConfigService.class);
     when(mockCCS.getOrBadRequest(any(), any())).thenReturn(customerConfig);
     when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
+    when(confGetter.getConfForScope(defaultUniverse, UniverseConfKeys.revertToPreRolesBehaviour))
+        .thenReturn(false);
     ReflectionTestUtils.setField(mockBackupHelper, "customerConfigService", mockCCS);
     ReflectionTestUtils.setField(mockBackupHelper, "commissioner", mockCommissioner);
+    ReflectionTestUtils.setField(mockBackupHelper, "confGetter", confGetter);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
@@ -815,8 +822,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
     bodyJson.put("storageLocation", b.getBackupInfo().storageLocation);
     Result result = restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, user);
-    assertEquals(FORBIDDEN, result.status());
-    assertEquals("User doesn't have access", contentAsString(result));
+    assertEquals(UNAUTHORIZED, result.status());
+    assertEquals("Unable to authorize user", contentAsString(result));
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 

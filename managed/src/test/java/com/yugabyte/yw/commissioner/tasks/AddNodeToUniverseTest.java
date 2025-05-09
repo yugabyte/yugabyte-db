@@ -200,9 +200,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // to Adding for 'To Be Added'
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
-          TaskType.RunHooks,
           TaskType.SetNodeStatus, // to ServerSetup
           TaskType.RunHooks,
           TaskType.CheckLocale,
@@ -262,9 +262,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
-          TaskType.RunHooks,
           TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
@@ -324,9 +324,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
-          TaskType.RunHooks,
           TaskType.SetNodeStatus, // provisioned
           TaskType.RunHooks,
           TaskType.CheckLocale,

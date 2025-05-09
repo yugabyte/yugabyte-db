@@ -886,6 +886,9 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
+// Set time zone.
+Universal / javaOptions += "-Duser.timezone=GMT"
+
 Universal / mappings ++= {
   val (status, cliFolders) = compileYbaCliBinary.value
   if (status == 0) {
@@ -932,7 +935,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.102-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b1"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b2"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

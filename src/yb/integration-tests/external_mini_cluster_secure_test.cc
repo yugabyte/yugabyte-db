@@ -38,12 +38,6 @@ namespace yb {
 class ExternalMiniClusterSecureTest :
     public MiniClusterTestWithClient<ExternalMiniCluster> {
  public:
-
-  void SetUp(bool enable_ysql) {
-    enable_ysql_ = enable_ysql;
-    ExternalMiniClusterSecureTest::SetUp();
-  }
-
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
@@ -183,7 +177,8 @@ class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterS
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
     // TODO: enable ysql after #26138 is fixed
-    ExternalMiniClusterSecureTest::SetUp(false);
+    enable_ysql_ = false;
+    ExternalMiniClusterSecureTest::SetUp();
   }
 };
 
@@ -195,12 +190,18 @@ TEST_F_EX(ExternalMiniClusterSecureTest, YbTools, ExternalMiniClusterSecureWithC
 
 class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest {
  public:
+  void SetUp() override {
+    enable_ysql_ = false;
+    ExternalMiniClusterSecureTest::SetUp();
+  }
+
   void SetUpFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = JoinPathSegments(GetTestDataDirectory(), "certs");
 
     const auto src_certs_dir = GetCertsDir();
-    ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
-                            UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
+    ASSERT_OK(CopyDirectory(
+        Env::Default(), src_certs_dir, FLAGS_certs_dir,
+        CopyOption::kCreateIfMissing, CopyOption::kKeepPermissions));
 
     LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
   }
@@ -228,8 +229,9 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
 
   void ReplaceYBCertificates() {
     const auto src_certs_dir = JoinPathSegments(GetCertsDir(), "CA2");
-    ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
-                            UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
+    ASSERT_OK(CopyDirectory(
+        Env::Default(), src_certs_dir, FLAGS_certs_dir,
+        CopyOption::kCreateIfMissing, CopyOption::kKeepPermissions));
     LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
 
     const auto combined_cert_file = JoinPathSegments(src_certs_dir, "combinedCA.crt");
@@ -269,8 +271,7 @@ TEST_F_EX(ExternalMiniClusterSecureTest, ReloadCertificates, ExternalMiniCluster
 }
 
 class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecureTest {
-
-  public:
+ public:
   void SetUpFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =
       JoinPathSegments(env_util::GetRootDir("test_certs"), "test_certs/intermediate1");
@@ -302,15 +303,13 @@ class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecur
 
 
 class ExternalMiniClusterSecureWithInterCAServerCertTest :
-  public ExternalMiniClusterSecureWithInterCATest {
-
-  public:
+    public ExternalMiniClusterSecureWithInterCATest {
+ public:
   void SetUpFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) =  JoinPathSegments(
         env_util::GetRootDir("test_certs"), "test_certs/intermediate2");
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_hba_conf_csv) = "hostssl all all all cert";
     }
-
 };
 
 // ca.crt contains both root and intermediate CA certs

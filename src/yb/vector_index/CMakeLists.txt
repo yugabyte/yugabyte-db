@@ -44,7 +44,6 @@ set(VECTOR_INDEX_SRCS
   vector_lsm.cc
   vector_lsm_metadata.cc
   vectorann.cc
-  yb_hnsw.cc
   )
 
 set(VECTOR_INDEX_LIBS
@@ -73,4 +72,3 @@ set(YB_TEST_LINK_LIBS
 ADD_YB_TEST(hnsw_util-test)
 ADD_YB_TEST(vector_lsm-test)
 ADD_YB_TEST(index_merge-test)
-ADD_YB_TEST(yb_hnsw-test)

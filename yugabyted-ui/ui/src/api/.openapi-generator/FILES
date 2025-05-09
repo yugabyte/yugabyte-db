@@ -5,6 +5,7 @@ package.json
 src/apis/BackupInfoApi.ts
 src/apis/ClusterApi.ts
 src/apis/ClusterInfoApi.ts
+src/apis/XClusterApi.ts
 src/apis/PitrInfoApi.ts
 src/apis/RestoreInfoApi.ts
 src/apis/VoyagerInfoApi.ts
@@ -63,6 +64,7 @@ src/models/MetricData.ts
 src/models/MetricResponse.ts
 src/models/MigrateSchemaTaskInfo.ts
 src/models/MigrationAssessmentReport.ts
+src/models/NamespacesInfo.ts
 src/models/NodeData.ts
 src/models/NodeDataCloudInfo.ts
 src/models/NodeDataMetrics.ts
@@ -88,6 +90,7 @@ src/models/SqlObjectsDetails.ts
 src/models/TableInfo.ts
 src/models/TableInfoTableReplicationInfo.ts
 src/models/TableReplicationInfo.ts
+src/models/TableReplicationLagDetailsOutbound.ts
 src/models/TabletInfo.ts
 src/models/TargetClusterRecommendationDetails.ts
 src/models/TargetClusterSpec.ts
@@ -102,6 +105,12 @@ src/models/VoyagerMigrationDetailsSourceDb.ts
 src/models/VoyagerMigrationDetailsTargetCluster.ts
 src/models/VoyagerMigrationDetailsVoyager.ts
 src/models/VoyagerMigrationsInfo.ts
+src/models/XClusterInboundGroup.ts
+src/models/XClusterNamespaceMetrics.ts
+src/models/XClusterOutboundGroup.ts
+src/models/XClusterPlacementLocation.ts
+src/models/XClusterReplicationGroups.ts
+src/models/XClusterTableInfoInbound.ts
 src/models/YbApiEnum.ts
 src/models/index.ts
 src/runtime.ts

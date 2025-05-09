@@ -35,6 +35,7 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | PREPARE |[Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
 | | [Prepare&nbsp;source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
 | | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with necessary privileges. |
+| ASSESS | [Assess Migration](#assess-migration) | Assess the migration complexity, and get schema changes, data distribution, and cluster sizing recommendations using the `yb-voyager assess-migration` command. |
 | SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
 | | [Analyze](#analyze-schema) | Generate a _Schema&nbsp;Analysis&nbsp;Report_ using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
@@ -516,6 +517,12 @@ The export directory has the following sub-directories and files:
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
 
+## Assess migration
+
+This step is optional and only applicable to PostgreSQL and Oracle database migrations. Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
+
+Refer to [Migration assessment](../../migrate/assess-migration/) for details.
+
 ## Migrate your database to YugabyteDB
 
 Proceed with schema and data migration using the following steps:
@@ -611,7 +618,7 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
 
-To add the constraints back, you run the `import schema` command after data import. See [Cutover to the target](#cutover-to-the-target).
+To add the constraints back, you run the `finalize-schema-post-data-import` command after data import. See [Cutover to the target](#cutover-to-the-target).
 
 {{< /note >}}
 
@@ -781,8 +788,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
-    The initiate cutover to target command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
-
+    The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to target` phase continues and completes by importing all the exported events into the target YugabyteDB database.
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
@@ -792,32 +798,21 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `import schema` with the `post-snapshot-import` flag:
+1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `finalize-schema-post-data-import`. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, you can refresh them by setting the `--refresh-mviews` flag to true.
 
     ```sh
     # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-            --post-snapshot-import true
+    yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
+       --target-db-host <TARGET_DB_HOST> \
+       --target-db-user <TARGET_DB_USER> \
+       --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+       --target-db-name <TARGET_DB_NAME> \
+       --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
     ```
 
-1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them using the following command:
-
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-            --post-snapshot-import true \
-            --refresh-mviews true
-    ```
+    {{< note title ="Note" >}}
+The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+    {{< /note >}}
 
 ### Verify migration
 
@@ -870,7 +865,8 @@ DROP USER ybvoyager;
 
 ## Limitations
 
-- Schema changes on the source Oracle database will not be recognized during the live migration.
+- Schema changes on the source database will not be recognized during the live migration.
+- Adding or deleting partitions of a partitioned table is not supported during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.

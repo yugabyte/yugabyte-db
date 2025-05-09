@@ -363,7 +363,7 @@ The following table describes metrics related to tablet limits.
 
 ### Example
 
-{{% explore-setup-single-local %}}
+{{% explore-setup-single-local-new %}}
 
 Assuming a cluster has been properly configured, if you try to create a table beyond the configurable limit, the error message you can expect to see in a ysqlsh session is as follows:
 

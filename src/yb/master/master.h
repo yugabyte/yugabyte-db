@@ -224,6 +224,10 @@ class Master : public tserver::DbServerBase {
       const tserver::GetTserverCatalogMessageListsRequestPB& req,
       tserver::GetTserverCatalogMessageListsResponsePB *resp) const;
 
+  Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list);
+
   Status ReloadKeysAndCertificates() override;
 
   std::string GetCertificateDetails() override;
@@ -233,6 +237,7 @@ class Master : public tserver::DbServerBase {
   const std::string& permanent_uuid() const override;
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
+  void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override {}
 
  protected:
   Status RegisterServices();

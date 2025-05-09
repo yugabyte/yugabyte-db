@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) YugaByte, Inc.
+ */
+
 package group
 
 import (

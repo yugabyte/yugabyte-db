@@ -103,6 +103,10 @@ YbcStatus YBCGetTserverCatalogMessageLists(
     YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
     YbcCatalogMessageLists* message_lists);
 
+YbcStatus YBCPgSetTserverCatalogMessageList(
+    YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -142,6 +146,8 @@ YbcStatus YBCFetchFromUrl(const char *url, char **buf);
 bool YBCIsCronLeader();
 YbcStatus YBCSetCronLastMinute(int64_t last_minute);
 YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
+
+int YBCGetXClusterRole(uint32_t db_oid);
 
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations

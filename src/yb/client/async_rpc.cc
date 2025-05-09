@@ -406,9 +406,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   // TODO(#26139): this set_allocated_* call is not safe.
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->MetadataToPB(req_.mutable_ash_metadata());
-  }
+  ash::WaitStateInfo::CurrentMetadataToPB(req_.mutable_ash_metadata());
   const ConsistentReadPoint* read_point = batcher_->read_point();
   bool has_read_time = false;
   if (read_point) {
@@ -471,10 +469,21 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
   auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
   if (restart_read_time) {
     auto read_point = batcher_->read_point();
+    auto tablet_id = req_.tablet_id();
+    HybridTime original_read_time;
     if (read_point) {
-      read_point->RestartRequired(req_.tablet_id(), restart_read_time);
+      original_read_time = read_point->GetReadTime(tablet_id).read;
+      read_point->RestartRequired(tablet_id, restart_read_time);
     }
-    Failed(STATUS(TryAgain, Format("Restart read required at: $0", restart_read_time), Slice(),
+    auto leader_uuid = tablet().current_leader_uuid();
+    auto table_name = table()->name().ToString();
+    auto key = resp_.restart_read_key();
+    Failed(STATUS(TryAgain,
+                  Format("restart_read_time: $0, original_read_time: $1"
+                         ", table: $2, tablet: $3, leader_uuid: $4, key: $5",
+                         restart_read_time, original_read_time,
+                         table_name, tablet_id, leader_uuid, key),
+                  Slice(),
                   TransactionError(TransactionErrorCode::kReadRestartRequired)));
     return false;
   }

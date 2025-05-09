@@ -287,6 +287,14 @@ func main() {
     // GetPITRConfig - Get the PITR configuration for YugabyteDB cluster
     e.GET("/api/pitr", c.GetPITRConfigurations)
 
+    //Get the list of all inbound and outbound metrics.
+    e.GET("/api/xcluster_metrics", c.GetXClusterMetrics)
+
+    //Get the list of all the tables replicating on target side and corresponding latencies.
+    e.GET("/api/xcluster_namespace_details/:replication_id", c.GetNamespaceMetrics)
+
+    //Get the lag safe time metrics.
+    e.GET("/api/xcluster_safe_time_metrics", c.GetXClusterSafeTime)
     render_htmls := templates.NewTemplate()
 
     // Code for rendering UI Without embedding the files

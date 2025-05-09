@@ -4878,7 +4878,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAdd100TableToNamespaceWithAct
   ASSERT_OK(SetUpWithParams(1, 1, true));
 
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, num_tablets, true /* add_pk */,
+      true /* colocated */));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -7881,8 +7883,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
 TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
-  const auto errstr =
-      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
+  const auto errstr = "Cannot rewrite a table that is a part of CDC.";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
@@ -9071,10 +9072,7 @@ TEST_F(CDCSDKYsqlTest, TestUpdateOnNonExistingEntry) {
 
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &checkpoint));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(0).row_message().op(), RowMessage::BEGIN);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(1).row_message().op(), RowMessage::DDL);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(2).row_message().op(), RowMessage::COMMIT);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
 }
 
 TEST_F(CDCSDKYsqlTest, TestGetChangesResponseSize) {
@@ -11949,6 +11947,94 @@ TEST_F(CDCSDKYsqlTest, TestCDCFlushLagMetricWithgRPCModel) {
 
   // Assert that cdcsdk_flush_lag value remains zero.
   ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
+}
+
+TEST_F(CDCSDKYsqlTest, TestDropIndexWithColocatedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Add a column and create index on that column.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_test_table_value_2 ON test_table(value_2)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(1,100), 10, 11)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(101,200), 11, 12)"));
+
+  // Add another column, drop the previous index and create index on the newly added column.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_3 int"));
+  ASSERT_OK(conn.Execute("DROP INDEX idx_test_table_value_2"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_test_table_value_3 ON test_table(value_3)"));
+
+  // Restart the test cluster to clear the caches.
+  ASSERT_OK(test_cluster()->RestartSync());
+  LOG(INFO) << "All nodes restarted";
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+}
+
+// This test was added as a part of #26861. When an index was being created in the midst of a
+// GetChanges call, we would end up seeing an extra COMMIT record corresponding to the index table.
+TEST_F(CDCSDKYsqlTest, TestEqualityOfTxnalRecordsWithColocatedTableHavingIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  google::SetVLOGLevel("cdcsdk_producer", 3);
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"AddBeginRecord::End", "CreateIndex::Start"},
+       {"CreateIndex::Done", "FillCommitRecord::Start"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(SetUpWithParams(
+      1, 1, true /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  ASSERT_OK(WriteRowsHelper(1, 3, &test_cluster_, true));
+
+  GetChangesResponsePB change_resp;
+  std::thread t1([&]() { change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets)); });
+
+  TEST_SYNC_POINT("CreateIndex::Start");
+  ASSERT_OK(conn.Execute("CREATE INDEX idx ON test_table(value_1)"));
+  TEST_SYNC_POINT("CreateIndex::Done");
+
+  t1.join();
+
+  auto begin_count = 0, commit_count = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage_Op_BEGIN) {
+      begin_count++;
+    } else if (record.row_message().op() == RowMessage_Op_COMMIT) {
+      commit_count++;
+    }
+  }
+
+  ASSERT_EQ(begin_count, commit_count);
+  ASSERT_EQ(commit_count, 1);
 }
 
 }  // namespace cdc

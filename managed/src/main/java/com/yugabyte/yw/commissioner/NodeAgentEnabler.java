@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
 import java.time.Duration;
@@ -159,7 +160,6 @@ public class NodeAgentEnabler {
     }
     enable();
     // Mark the eligible universes on init.
-    // TODO we may not want to run this everytime on startup. Will be fixed in subsequent tasks.
     markUniverses();
     universeInstallerExecutor =
         platformExecutorFactory.createExecutor(
@@ -216,6 +216,62 @@ public class NodeAgentEnabler {
             });
   }
 
+  // Check node agents for all universes.
+  private void updateMissingNodeAgents() {
+    Customer.getAll()
+        .forEach(
+            c -> c.getUniverseUUIDs().forEach(uuid -> updateMissingNodeAgents(c.getUuid(), uuid)));
+  }
+
+  // Check node agents for all nodes in the universe and update the field in the universe details
+  // accordingly.
+  @VisibleForTesting
+  void updateMissingNodeAgents(UUID customerUuid, UUID universeUuid) {
+    Universe.doIfUnlocked(
+        universeUuid,
+        universe -> {
+          Set<String> nodeIps =
+              universe.getNodes().stream()
+                  .filter(n -> n.state == NodeState.Live)
+                  .filter(n -> n.cloudInfo != null && n.cloudInfo.private_ip != null)
+                  .map(n -> n.cloudInfo.private_ip)
+                  .collect(Collectors.toSet());
+          if (nodeIps.size() == 0) {
+            return;
+          }
+          int nodeAgentCount = NodeAgent.count(customerUuid, nodeIps, NodeAgent.State.READY);
+          log.trace(
+              "Total {} node agents out of {} Live nodes for universe {}({})",
+              nodeAgentCount,
+              nodeIps,
+              universe.getName(),
+              universe.getUniverseUUID());
+          boolean nodeAgentMissing = nodeAgentCount != nodeIps.size();
+          if (nodeAgentMissing == universe.getUniverseDetails().nodeAgentMissing) {
+            // No change.
+            return;
+          }
+          log.info(
+              "Updating nodeAgentMissing for universe {}({}) to {}",
+              universe.getName(),
+              universe.getUniverseUUID(),
+              nodeAgentMissing);
+          // Do real DB update in transaction.
+          Universe.saveUniverseDetails(
+              universeUuid,
+              null /* version increment CB */,
+              u -> {
+                UniverseDefinitionTaskParams details = u.getUniverseDetails();
+                if (details.updateInProgress) {
+                  log.debug(
+                      "Universe {}({}) is already being updated", u.getName(), u.getUniverseUUID());
+                  return;
+                }
+                details.nodeAgentMissing = nodeAgentMissing;
+              });
+        });
+  }
+
   /**
    * Checks if node agent enabler is enabled.
    *
@@ -239,7 +295,24 @@ public class NodeAgentEnabler {
    * @return true if it should be marked, else false.
    */
   public boolean shouldMarkUniverse(Universe universe) {
+    // Not mandatory now, but mark it for future back-fill.
     return isEnabled() && isNodeAgentEnabled(universe, p -> true).orElse(false) == false;
+  }
+
+  /**
+   * Checks if node agent is mandatory for the provider.
+   *
+   * @param provider the provider.
+   * @return true if it is mandatory, else false.
+   */
+  public boolean isNodeAgentMandatory(Provider provider) {
+    boolean clientEnabled =
+        confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+    if (!clientEnabled) {
+      log.trace("Node agent client is disabled for provider {}", provider.getUuid());
+      return false;
+    }
+    return provider.getDetails().isEnableNodeAgent();
   }
 
   /**
@@ -396,6 +469,24 @@ public class NodeAgentEnabler {
   @VisibleForTesting
   void scanUniverses() {
     try {
+      try {
+        // Update the field irrespective of the installer flag.
+        updateMissingNodeAgents();
+      } catch (Throwable t) {
+        log.error("Error in updating missing node agent field in universes - {}", t.getMessage());
+        if (t instanceof Error) {
+          throw (Error) t;
+        }
+      }
+      boolean processNextUniverse =
+          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnablerRunInstaller);
+      if (!processNextUniverse) {
+        if (customerNodeAgentInstallers.isEmpty()) {
+          // No installer is running.
+          return;
+        }
+        log.info("Installer is disabled. Waiting for running installations to complete");
+      }
       // Sort customer by name for deterministic order.
       Iterator<Customer> customerIter =
           Customer.getAll().stream()
@@ -462,49 +553,55 @@ public class NodeAgentEnabler {
             // Go to next universe.
           }
         }
-        log.debug("Continuing to the next eligible universe for customer {}", customer.getUuid());
-        Iterator<Universe> universeIter =
-            customer.getUniverses().stream()
-                .sorted(
-                    Comparator.comparing(Universe::getCreationDate)
-                        .thenComparing(Universe::getName))
-                .iterator();
-        while (universeIter.hasNext()) {
-          Universe universe = universeIter.next();
-          // Round-robin to give equal priority to every universe within each customer.
-          if (installer != null && installer.alreadyProcessed(universe)) {
-            log.trace(
-                "Skipping processed universe {} for customer {} in the current interation",
+        if (processNextUniverse) {
+          log.debug("Continuing to the next eligible universe for customer {}", customer.getUuid());
+          Iterator<Universe> universeIter =
+              customer.getUniverses().stream()
+                  .sorted(
+                      Comparator.comparing(Universe::getCreationDate)
+                          .thenComparing(Universe::getName))
+                  .iterator();
+          while (universeIter.hasNext()) {
+            Universe universe = universeIter.next();
+            // Round-robin to give equal priority to every universe within each customer.
+            if (installer != null && installer.alreadyProcessed(universe)) {
+              log.trace(
+                  "Skipping processed universe {} for customer {} in the current interation",
+                  universe.getName(),
+                  customer.getUuid());
+              continue;
+            }
+            if (!shouldInstallNodeAgents(universe, false /* Ignore universe lock */)) {
+              log.trace(
+                  "Skipping installation for universe {} for customer {} as it is not eligible",
+                  universe.getName(),
+                  customer.getUuid());
+              continue;
+            }
+            log.info(
+                "Picking up universe {} ({}) for customer {} for installation",
                 universe.getName(),
-                customer.getUuid());
-            continue;
-          }
-          if (!shouldInstallNodeAgents(universe, false /* Ignore universe lock */)) {
-            log.trace(
-                "Skipping installation for universe {} for customer {} as it is not eligible",
-                universe.getName(),
-                customer.getUuid());
-            continue;
-          }
-          log.info(
-              "Picking up universe {} ({}) for customer {} for installation",
-              universe.getName(),
-              universe.getUniverseUUID(),
-              customer.getUuid());
-          try {
-            UniverseNodeAgentInstaller nextInstaller =
-                new UniverseNodeAgentInstaller(customer.getUuid(), universe);
-            nextInstaller.future =
-                CompletableFuture.runAsync(nextInstaller, universeInstallerExecutor);
-            customerNodeAgentInstallers.put(customer.getUuid(), nextInstaller);
-            // Break to go to next customer.
-            break;
-          } catch (RejectedExecutionException e) {
-            log.error(
-                "Failed to submit installer for universe {} - {}",
                 universe.getUniverseUUID(),
-                e.getMessage());
+                customer.getUuid());
+            try {
+              UniverseNodeAgentInstaller nextInstaller =
+                  new UniverseNodeAgentInstaller(customer.getUuid(), universe);
+              nextInstaller.future =
+                  CompletableFuture.runAsync(nextInstaller, universeInstallerExecutor);
+              customerNodeAgentInstallers.put(customer.getUuid(), nextInstaller);
+              // Break to go to next customer.
+              break;
+            } catch (RejectedExecutionException e) {
+              log.error(
+                  "Failed to submit installer for universe {} - {}",
+                  universe.getUniverseUUID(),
+                  e.getMessage());
+            }
           }
+        } else {
+          log.info(
+              "Skipping next universe for customer {} because installer is disabled",
+              customer.getUuid());
         }
         if (installer != null && customerNodeAgentInstallers.get(customer.getUuid()) == installer) {
           // Same reference means no new installer was created.
@@ -512,8 +609,11 @@ public class NodeAgentEnabler {
           customerNodeAgentInstallers.remove(customer.getUuid());
         }
       }
-    } catch (Exception e) {
-      log.error("Error encountered in scanning universes to enable node agents", e);
+    } catch (Throwable t) {
+      log.error("Error encountered in scanning universes to enable node agents", t);
+      if (t instanceof Error) {
+        throw (Error) t;
+      }
     }
   }
 

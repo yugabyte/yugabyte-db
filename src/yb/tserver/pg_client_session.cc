@@ -103,6 +103,10 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
 
+DEFINE_RUNTIME_int32(ysql_max_retries_for_release_object_lock_requests, 10,
+                      "Maximum retries for a object lock release request sent to the Master(s). "
+                      "This does not include the retries done internally at the ybclient layer.");
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
@@ -410,11 +414,12 @@ Status HandleOperationResponse(uint64_t session_id,
   return status;
 }
 
-Status GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr* table) {
+template <class TableProvider>
+Status GetTable(const TableId& table_id, TableProvider& provider, client::YBTablePtr* table) {
   if (*table && (**table).id() == table_id) {
     return Status::OK();
   }
-  *table = VERIFY_RESULT(cache->Get(table_id));
+  *table = VERIFY_RESULT(provider.Get(table_id));
   return Status::OK();
 }
 
@@ -599,7 +604,7 @@ using VectorIndexQueryPtr = std::shared_ptr<VectorIndexQuery>;
 
 Result<PgClientSessionOperations> PrepareOperations(
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
-    PgTableCache* table_cache, VectorIndexQueryPtr& vector_index_query) {
+    const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query) {
   auto write_time = HybridTime::FromPB(req->write_time());
   PgClientSessionOperations ops;
   ops.reserve(req->ops().size());
@@ -614,7 +619,7 @@ Result<PgClientSessionOperations> PrepareOperations(
   for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
       auto& read = *op.mutable_read();
-      RETURN_NOT_OK(GetTable(read.table_id(), table_cache, &table));
+      RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
       if (read.index_request().has_vector_idx_options()) {
         if (req->ops_size() != 1) {
           auto status = STATUS_FORMAT(
@@ -640,7 +645,7 @@ Result<PgClientSessionOperations> PrepareOperations(
       }
     } else {
       auto& write = *op.mutable_write();
-      RETURN_NOT_OK(GetTable(write.table_id(), table_cache, &table));
+      RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, *sidecars, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
@@ -1193,6 +1198,9 @@ Request AcquireRequestFor(
     ClockBase* clock, CoarseTimePoint deadline) {
   auto now = clock->Now();
   Request req;
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(req.mutable_ash_metadata());
+  }
   req.set_txn_id(txn_id.data(), txn_id.size());
   req.set_subtxn_id(subtxn_id);
   req.set_session_host_uuid(session_host_uuid);
@@ -1215,6 +1223,9 @@ Request ReleaseRequestFor(
     std::optional<SubTransactionId> subtxn_id, uint64_t lease_epoch = 0,
     ClockBase* clock = nullptr) {
   Request req;
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(req.mutable_ash_metadata());
+  }
   req.set_txn_id(txn_id.data(), txn_id.size());
   if (subtxn_id) {
     req.set_subtxn_id(*subtxn_id);
@@ -1229,6 +1240,60 @@ Request ReleaseRequestFor(
   return req;
 }
 
+class SharedMemoryPerformListener : public PgTablesQueryListener {
+ public:
+  SharedMemoryPerformListener() = default;
+
+  Status Wait(CoarseTimePoint deadline) {
+    if (latch_.WaitUntil(deadline)) {
+      return Status::OK();
+    }
+    return STATUS_FORMAT(TimedOut, "Timeout waiting for tables");
+  }
+
+ private:
+  void Ready() override {
+    latch_.CountDown();
+  }
+
+  CountDownLatch latch_{1};
+};
+
+void ReleaseWithRetries(
+    yb::client::YBClient& client, LeaseEpochValidator& lease_validator,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req,
+    int attempt = 1) {
+  // Practically speaking, if the TServer cannot reach the master/leader for the ysql lease
+  // interval it can safely give up. The Master is responsible for cleaning up the locks for any
+  // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
+  // used here defaults to 60s, which is much larger than the default lease interval of 15s.
+  auto timeout = MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+  if (!lease_validator.IsLeaseValid(release_req->lease_epoch())) {
+    LOG(INFO) << "Lease epoch " << release_req->lease_epoch() << " is not valid. Will not retry "
+              << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+    return;
+  } else if (attempt > GetAtomicFlag(&FLAGS_ysql_max_retries_for_release_object_lock_requests)) {
+    LOG(ERROR) << "Release global locks failing completely after " << attempt
+               << " attempts. No more retries. req " << release_req->ShortDebugString();
+    return;
+  }
+  client.ReleaseObjectLocksGlobalAsync(
+      *release_req,
+      [&client, &lease_validator, release_req, attempt](const Status& s) {
+        if (s.ok()) {
+          VLOG(1) << "Release global request done. "
+                  << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+          return;
+        } else {
+          VLOG_WITH_FUNC(1) << "Release global locks failed. Will retry."
+                            << " status " << s
+                            << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+          ReleaseWithRetries(client, lease_validator, release_req, attempt + 1);
+        }
+      },
+      timeout);
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -1236,11 +1301,13 @@ class PgClientSession::Impl {
   Impl(
       TransactionBuilder&& transaction_builder, std::shared_ptr<PgClientSession> shared_this,
       client::YBClient& client, const PgClientSessionContext& context, uint64_t id,
-      uint64_t lease_epoch, tserver::TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
+      uint64_t lease_epoch, LeaseEpochValidator* lease_validator,
+      TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
       : client_(client),
         context_(context),
         shared_this_(std::move(shared_this)),
         id_(id),
+        lease_validator_(lease_validator),
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
         transaction_provider_(std::move(transaction_builder)),
@@ -1386,7 +1453,7 @@ class PgClientSession::Impl {
 
     if (req.has_replica_identity()) {
       client::YBTablePtr yb_table;
-      RETURN_NOT_OK(GetTable(table_id, &table_cache(), &yb_table));
+      RETURN_NOT_OK(GetTable(table_id, table_cache(), &yb_table));
       auto table_properties = yb_table->schema().table_properties();
       auto replica_identity = VERIFY_RESULT(GetReplicaIdentityEnumValue(
           req.replica_identity().replica_identity()));
@@ -1686,11 +1753,22 @@ class PgClientSession::Impl {
     return DoFinishTransaction(req, deadline, txn_value, kind);
   }
 
+  Status CleanupObjectLocks() {
+    return MergeStatus(
+        ReleaseObjectLocksIfNecessary(
+            GetSessionData(PgClientSessionKind::kPlain).transaction, PgClientSessionKind::kPlain,
+            CoarseTimePoint::max()),
+        ReleaseObjectLocksIfNecessary(
+            GetSessionData(PgClientSessionKind::kDdl).transaction, PgClientSessionKind::kDdl,
+            CoarseTimePoint::max()));
+  }
+
   Status Perform(
-      PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+      PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
+      const PgTablesQueryResult& tables) {
     VLOG(5) << "Perform rpc: " << req->ShortDebugString();
     auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache(), req, resp, context);
-    auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context);
+    auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context, tables);
     if (!status.ok()) {
       *context = std::move(data->context);
       return status;
@@ -2105,10 +2183,16 @@ class PgClientSession::Impl {
         wait_state->UpdateAuxInfo({.method = "Perform"});
         ash::SharedMemoryPgPerformTracker().Track(wait_state);
       }
-      status = DoPerform(data, data->deadline, nullptr);
-      if (wait_state) {
-        ash::SharedMemoryPgPerformTracker().Untrack(wait_state);
+      auto listener = std::make_shared<SharedMemoryPerformListener>();
+      boost::container::small_vector<TableId, 4> table_ids;
+      PreparePgTablesQuery(data->req, table_ids);
+      PgTablesQueryResult result;
+      table_cache().GetTables(table_ids, {}, result, listener);
+      status = listener->Wait(data->deadline);
+      if (status.ok()) {
+        status = DoPerform(data, data->deadline, nullptr, result);
       }
+      ash::SharedMemoryPgPerformTracker().Untrack(wait_state);
     }
     if (!status.ok()) {
       StatusToPB(status, data->resp.mutable_status());
@@ -2200,7 +2284,6 @@ class PgClientSession::Impl {
       const PgReleaseAdvisoryLockRequestPB& req, PgReleaseAdvisoryLockResponsePB* resp,
       rpc::RpcContext* context) {
     VLOG(2) << "Servicing ReleaseAdvisoryLock: " << req.ShortDebugString();
-    SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
     // Release Advisory lock api is only invoked for session advisory locks.
     const auto& session_data =
         VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(context->GetClientDeadline()));
@@ -2270,6 +2353,7 @@ class PgClientSession::Impl {
   }
 
   void StartShutdown() {
+    WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
     if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
       txn->Abort();
     }
@@ -2363,21 +2447,21 @@ class PgClientSession::Impl {
           ERROR_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
                        "WaitForDdlVerificationToFinish call failed");
         }
-        // Since release of object locks will be handled by master's ddl verification task, skip
-        // supplying the txn, but reset required state.
-        return ReleaseObjectLocksIfNecessary(nullptr, used_session_kind, deadline);
       }
     }
-    // Release object locks for the following:
-    // 1. DDLs not performing docdb schema changes aren't tracked by master's ddl verification task,
-    //    but might have acquired some object locks. For instance, as part of CREATE INDEX, we
-    //    launch a DDL that changes the permissions of the index and increments the catalog version.
-    // 2. Plain DML transactions.
+    // Notify master/local tserver's lock manager of the release. We expect 3 types of transactions
+    // here.
+    // 1. transactions with docdb schema changes tracked by master's ddl verifier.
+    // 2. transactions without docdb schema changes (hence not tracked by master's ddl verification
+    //    task) but with exclusive object locks. For instance, as part of CREATE INDEX, we launch
+    //    a DDL that changes the permissions of the index and increments the catalog version.
+    // 3. DMLs without any exclusive locks
     return ReleaseObjectLocksIfNecessary(txn, used_session_kind, deadline);
   }
 
   template <class DataPtr>
-  Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context) {
+  Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context,
+                   const PgTablesQueryResult& tables) {
     auto& options = *data->req.mutable_options();
     TryUpdateAshWaitState(options);
     if (!(options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed()) &&
@@ -2395,8 +2479,8 @@ class PgClientSession::Impl {
     }
 
     if (options.has_caching_info()) {
-      VLOG_WITH_PREFIX(3) << "Executing read from response cache for session "
-      << data->req.session_id();
+      VLOG_WITH_PREFIX(3)
+          << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
           options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
       if (!data->cache_setter) {
@@ -2433,7 +2517,7 @@ class PgClientSession::Impl {
     data->subtxn_id = options.active_sub_transaction_id();
 
     data->ops = VERIFY_RESULT(PrepareOperations(
-        &data->req, session, &data->sidecars, &table_cache(), vector_index_query_data_));
+        &data->req, session, &data->sidecars, tables, vector_index_query_data_));
     data->vector_index_query = vector_index_query_data_;
     TracePtr trace(Trace::CurrentTrace());
     session->FlushAsync([this, data, trace](client::FlushStatus* flush_status) {
@@ -3097,27 +3181,19 @@ class PgClientSession::Impl {
   Status DoReleaseObjectLocks(
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
       CoarseTimePoint deadline, bool has_exclusive_locks) {
-    VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "Requesting release of " << (has_exclusive_locks ? "global" : "local")
-        << " locks for " << " txn " << txn_id << " subtxn_id " << AsString(subtxn_id);
+    VLOG_WITH_PREFIX_AND_FUNC(1) << "Requesting release of "
+                                 << (has_exclusive_locks ? "global" : "local") << " locks for txn "
+                                 << txn_id << " subtxn_id " << AsString(subtxn_id);
     if (!has_exclusive_locks) {
       return ts_lock_manager()->ReleaseObjectLocks(
           ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
               instance_uuid(), txn_id, subtxn_id),
           deadline);
     }
-    // TODO: Need to handle failures here, else there could be a leak of exclusive locks. The
-    // problem is only with the following types of transactions. (GHI #26498)
-    // 1. DDLs that don't have schema changes (not tracked by master's bg DDL verification task).
-    // 2. Any plain transaction that takes explicit global locks using 'LOCK TABLE ...'.
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_id, subtxn_id, lease_epoch_, context_.clock.get()));
-    client_.ReleaseObjectLocksGlobalAsync(
-        *release_req, [release_req](Status s) {
-          WARN_NOT_OK(
-              s, Format("Release global locks failed for req $0", release_req->ShortDebugString()));
-        }, deadline - ToCoarse(MonoTime::Now()));
+    ReleaseWithRetries(client_, *lease_validator_, release_req);
     return Status::OK();
   }
 
@@ -3144,6 +3220,7 @@ class PgClientSession::Impl {
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
+  LeaseEpochValidator* lease_validator_;
   const uint64_t lease_epoch_;
   const tserver::TSLocalLockManagerPtr ts_lock_manager_;
   TransactionProvider transaction_provider_;
@@ -3171,12 +3248,11 @@ class PgClientSession::Impl {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
     client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-    uint64_t id, uint64_t lease_epoch,
+    uint64_t id, uint64_t lease_epoch, LeaseEpochValidator* lease_validator,
     tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler)
     : impl_(new Impl(
-        std::move(transaction_builder), {std::move(shared_this_source), this}, client, context, id,
-        lease_epoch, std::move(ts_local_lock_manager), scheduler)) {
-}
+          std::move(transaction_builder), {std::move(shared_this_source), this}, client, context,
+          id, lease_epoch, lease_validator, std::move(ts_local_lock_manager), scheduler)) {}
 
 PgClientSession::~PgClientSession() = default;
 
@@ -3185,8 +3261,9 @@ uint64_t PgClientSession::id() const {
 }
 
 Status PgClientSession::Perform(
-    PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-  return impl_->Perform(req, resp, context);
+    PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
+    const PgTablesQueryResult& tables) {
+  return impl_->Perform(req, resp, context, tables);
 }
 
 void PgClientSession::ProcessSharedRequest(size_t size, SharedExchange* exchange) {
@@ -3239,5 +3316,13 @@ BOOST_PP_SEQ_FOR_EACH(
     PG_CLIENT_SESSION_METHOD_DEFINE, (Status, rpc::RpcContext*), PG_CLIENT_SESSION_METHODS);
 BOOST_PP_SEQ_FOR_EACH(
     PG_CLIENT_SESSION_METHOD_DEFINE, (void, rpc::RpcContext), PG_CLIENT_SESSION_ASYNC_METHODS);
+
+void PreparePgTablesQuery(
+    const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids) {
+  for (const auto& op : req.ops()) {
+    const auto& table_id = op.has_read() ? op.read().table_id() : op.write().table_id();
+    AddTableIdIfMissing(table_id, table_ids);
+  }
+}
 
 }  // namespace yb::tserver

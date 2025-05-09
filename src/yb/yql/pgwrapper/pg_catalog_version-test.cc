@@ -107,22 +107,32 @@ class PgCatalogVersionTest : public LibPqTestBase {
     RestartClusterSetDBCatalogVersionMode(true, extra_tserver_flags);
   }
 
-  void RestartClusterWithInvalMessageEnabled(
+  void RestartClusterWithInvalMessageMode(
+      bool mode,
       const std::vector<string>& extra_tserver_flags = {}) {
-    LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=true";
+    const auto mode_str = mode ? "true" : "false";
+    LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=" << mode_str;
     cluster_->Shutdown();
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(
-          "--ysql_yb_enable_invalidation_messages=true");
+          Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(
-          "--ysql_yb_enable_invalidation_messages=true");
+          Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
       for (const auto& flag : extra_tserver_flags) {
         cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
       }
     }
     ASSERT_OK(cluster_->Restart());
+  }
+  void RestartClusterWithInvalMessageEnabled(
+      const std::vector<string>& extra_tserver_flags = {}) {
+    RestartClusterWithInvalMessageMode(true /* mode */, extra_tserver_flags);
+  }
+  void RestartClusterWithInvalMessageDisabled(
+      const std::vector<string>& extra_tserver_flags = {}) {
+    RestartClusterWithInvalMessageMode(false /* mode */, extra_tserver_flags);
   }
 
   // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
@@ -142,15 +152,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
     }
     LOG(INFO) << "Catalog version map: " << output;
     return result;
-  }
-
-  static void WaitForCatalogVersionToPropagate() {
-    // This is an estimate that should exceed the tserver to master hearbeat interval.
-    // However because it is an estimate, this function may return before the catalog version is
-    // actually propagated.
-    constexpr int kSleepSeconds = 2;
-    LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
-    std::this_thread::sleep_for(kSleepSeconds * 1s);
   }
 
   // Verify that all the tservers have identical shared memory db catalog version array by
@@ -453,6 +454,68 @@ class PgCatalogVersionTest : public LibPqTestBase {
       ASSERT_STR_CONTAINS(status.ToString(), "permission denied for table t5");
     }
   }
+  void InvalMessageLocalCatalogVersionHelper() {
+    // Create a number of databases.
+    auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+    const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
+    const int num_databases = 10;
+    for (int i = 0; i < num_databases; ++i) {
+      ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE test_db$0", i));
+    }
+    // Create a number of connections.
+    const int num_connections = num_databases * (num_databases + 1) / 2;
+    std::vector<int> indexes;
+    for (int i = 1; i <= num_databases; ++i) {
+      for (int j = 0; j < i; ++j) {
+        indexes.push_back(i - 1);
+      }
+    }
+    LOG(INFO) << "indexes: " << yb::ToString(indexes);
+    CHECK_EQ(num_connections, static_cast<int>(indexes.size()));
+    std::vector<PGConn> conns;
+    // indexes:
+    // 0,              connect to test_db0
+    // 1, 1,           connect to test_db1
+    // 2, 2, 2,        connect to test_db2
+    // 3, 3, 3, 3,     connect to test_db3
+    // 4, 4, 4, 4, 4   connect to test_db4
+    for (size_t i = 0; i < indexes.size(); ++i) {
+      std::string dbname = Format("test_db$0", indexes[i]);
+      PGConn conn = ASSERT_RESULT(ConnectToDB(dbname));
+      conns.emplace_back(std::move(conn));
+    }
+    // Use the standalone connection conn_yugabyte to cause global impact catalog version bump,
+    // so that in the end each connection will have a different local catalog version.
+    for (size_t i = 0; i < indexes.size(); ++i) {
+      auto result = ASSERT_RESULT(conns[i].FetchAllAsString("SELECT 1"));
+      ASSERT_EQ(result, "1");
+      // i == 0 needs to be NOSUPERUSER or else it is a noop that does not increment
+      // the catalog version.
+      ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, i % 2 == 0 ? "NOSUPERUSER" : "SUPERUSER"));
+      WaitForCatalogVersionToPropagate();
+    }
+    // Use datid != 1 to exclude template1, which is the database that the tserver
+    // background task periodically run a query to find out local catalog versions
+    // of all PG backends. Otherwise, it there is a coincident that the background
+    // task happens to be running and we will see an extra result of (1, 56).
+    const std::string query = "SELECT datid, local_catalog_version FROM "
+                              "yb_pg_stat_get_backend_local_catalog_version(NULL) "
+                              "WHERE datid != 1 ORDER BY datid ASC, local_catalog_version ASC";
+    auto result = ASSERT_RESULT((conn_yugabyte.FetchAllAsString(query)));
+    const string expected =
+        Format("$0, 56; "
+               "16384, 1; 16385, 2; 16385, 3; 16386, 4; 16386, 5; 16386, 6; "
+               "16387, 7; 16387, 8; 16387, 9; 16387, 10; "
+               "16388, 11; 16388, 12; 16388, 13; 16388, 14; 16388, 15; "
+               "16389, 16; 16389, 17; 16389, 18; 16389, 19; 16389, 20; 16389, 21; "
+               "16390, 22; 16390, 23; 16390, 24; 16390, 25; 16390, 26; 16390, 27; 16390, 28; "
+               "16391, 29; 16391, 30; 16391, 31; 16391, 32; 16391, 33; 16391, 34; 16391, 35; "
+               "16391, 36; 16392, 37; 16392, 38; 16392, 39; 16392, 40; 16392, 41; 16392, 42; "
+               "16392, 43; 16392, 44; 16392, 45; 16393, 46; 16393, 47; 16393, 48; 16393, 49; "
+               "16393, 50; 16393, 51; 16393, 52; 16393, 53; 16393, 54; 16393, 55", yugabyte_db_oid);
+    ASSERT_EQ(result, expected);
+  }
+
   static size_t CountRelCacheInitFiles(const string& dirpath) {
     auto CloseDir = [](DIR* d) { closedir(d); };
     std::unique_ptr<DIR, decltype(CloseDir)> d(opendir(dirpath.c_str()),
@@ -495,15 +558,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   void VerifyCatCacheRefreshMetricsHelper(
       int num_full_refreshes, int num_delta_refreshes) {
-    ExternalTabletServer* ts = cluster_->tablet_server(0);
-    auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
-    EasyCurl c;
-    faststring buf;
-
-    auto json_metrics_url =
-        Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
-    ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
-    auto json_metrics = ParseJsonMetrics(buf.ToString());
+    auto json_metrics = GetJsonMetrics();
 
     int count = 0;
     for (const auto& metric : json_metrics) {
@@ -1753,6 +1808,15 @@ TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
   ASSERT_EQ(v3, v2 + 1);
 }
 
+TEST_F(PgCatalogVersionTest, SimulateDelayedHeartbeatResponse) {
+  RestartClusterWithDBCatalogVersionMode({"--TEST_delay_set_catalog_version_table_mode_count=30"});
+  auto status = ResultToStatus(Connect());
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "catalog_version_table mode not set in shared memory, "
+                      "tserver not ready to serve requests");
+}
+
 TEST_F(PgCatalogVersionTest, AlterDatabaseCatalogVersionIncrement) {
   PGConn conn = ASSERT_RESULT(Connect());
   // Create a test db and a test user.
@@ -2453,6 +2517,113 @@ TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
   }
   // Verify that the incremental catalog cache refresh happened on conn2.
   VerifyCatCacheRefreshMetricsHelper(0 /* num_full_refreshes */, 10 /* num_delta_refreshes */);
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageLocalCatalogVersion) {
+  RestartClusterWithInvalMessageEnabled();
+  InvalMessageLocalCatalogVersionHelper();
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageGarbageCollection) {
+  RestartClusterWithInvalMessageEnabled(
+      { "--check_lagging_catalog_versions_interval_secs=5" });
+  InvalMessageLocalCatalogVersionHelper();
+}
+
+class PgCatalogVersionHasCatalogWriteTest
+    : public PgCatalogVersionTest,
+      public ::testing::WithParamInterface<bool> {
+};
+
+INSTANTIATE_TEST_CASE_P(PgCatalogVersionHasCatalogWriteTest,
+                        PgCatalogVersionHasCatalogWriteTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgCatalogVersionHasCatalogWriteTest, WriteUserTableInsideDdlEventTrigger) {
+  const bool enable_inval_messages = GetParam();
+  enable_inval_messages ? RestartClusterWithInvalMessageEnabled()
+                        : RestartClusterWithInvalMessageDisabled();
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  const string query =
+        R"#(
+-- Create a table to store DDL history
+-- this DDL does not increment catalog version
+CREATE TABLE ddl_history (
+    id SERIAL PRIMARY KEY,
+    ddl_date TIMESTAMP WITH TIME ZONE,
+    ddl_tag TEXT,
+    object_name TEXT
+);
+
+-- Create the log_ddl function (example)
+-- this DDL does not increment catalog version
+CREATE FUNCTION log_ddl()
+RETURNS event_trigger AS $$
+DECLARE
+    obj record;
+BEGIN
+    obj := pg_event_trigger_ddl_commands();
+    INSERT INTO ddl_history (ddl_date, ddl_tag, object_name)
+    VALUES (statement_timestamp(), tg_tag, obj.object_identity);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create an event trigger to execute log_ddl on DDL events
+-- this DDL does increment catalog version by 1
+CREATE EVENT TRIGGER ddl_event_log
+ON ddl_command_end
+EXECUTE PROCEDURE log_ddl();
+        )#";
+  ASSERT_OK(conn_yugabyte.Execute(query));
+  ASSERT_OK(conn_yugabyte.Execute("SET log_min_messages = DEBUG1"));
+  // The first GRANT statement even though could have been a no-op, it writes
+  // to pg_attribute table and updated a NULL value to {yugabyte=r/postgres}.
+  // So it indeed has written a catalog table. That's why the catalog version
+  // is incremented by 1, from 2 to 3.
+  ASSERT_OK(conn_yugabyte.Execute(
+      "GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER"));
+  auto v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  ASSERT_EQ(v, 3);
+  // The next GRANT statement is a no-op because it is identical to the first GRANT.
+  // However we used to increment the catalog version because of the INSERT inside
+  // function log_ddl() which is executed as part of the GRANT statement so the GRANT
+  // was detected to have made writes. This test ensures that we are now able to more
+  // acurately detect that the GRANT statement has not made any catalog table writes.
+  // Therefore the sys catalog has not changed and we do not need to increment the
+  // catalog version.
+  ASSERT_OK(conn_yugabyte.Execute(
+      "GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER"));
+  v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  ASSERT_EQ(v, 3);
+}
+
+// We have made a special case to allow expression pushdown for table pg_yb_catalog_version
+// in order to ensure continued support of cross-database concurrent DDLs. Without expression
+// pushdown PG would read all the rows of pg_yb_catalog_version in order to check for not null
+// constraint on column current_version and column last_breaking_version. Reading all the rows
+// defeats concurrent cross-database DDLs which would otherwise operate on different rows without
+// conflicts. This test verifies our pushdown special case does not incorrectly allow a null
+// value gets inserted into the table pg_yb_catalog_version.
+TEST_F(PgCatalogVersionTest, NotNullConstraint) {
+  const string query =
+        R"#(
+CREATE OR REPLACE FUNCTION foo(amount INT) RETURNS VOID AS
+$$
+  UPDATE pg_yb_catalog_version SET current_version = current_version + amount WHERE db_oid = 1;
+$$ LANGUAGE SQL;
+SET enable_seqscan = off;
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
+        )#";
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Execute(query));
+  auto status = conn.Execute("SELECT foo(null)");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "null value in column \"current_version\" of relation "
+                                         "\"pg_yb_catalog_version\" violates not-null constraint");
+  auto expected = "1, 1, 1"s;
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT * FROM pg_yb_catalog_version WHERE db_oid = 1"));
+  ASSERT_EQ(expected, result);
 }
 
 } // namespace pgwrapper

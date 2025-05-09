@@ -16,7 +16,6 @@
 #include "yb/common/transaction.h"
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/value_type.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/tostring.h"

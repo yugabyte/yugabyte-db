@@ -169,8 +169,6 @@ public class ConcurrentTablespaceTest extends BaseTablespaceTest {
    */
   @Before
   public void setup() throws Exception {
-    markClusterNeedsRecreation();
-
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
           "CREATE TABLE concurrent_test_tbl (k INT PRIMARY KEY, v1 INT DEFAULT 10, v2 INT DEFAULT"

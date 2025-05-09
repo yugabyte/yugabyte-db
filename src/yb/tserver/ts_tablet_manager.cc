@@ -80,6 +80,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 
@@ -1393,7 +1394,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   std::vector<tablet::TableInfoPtr> colocated_tables_infos;
 
   for (const auto& colocated_table : ToRepeatedPtrField(request->colocated_tables())) {
-    VLOG(3) << Format(
+    LOG(INFO) << Format(
         "Adding table $0 to the tablet: $1", colocated_table.table_id(), target_tablet_id);
     colocated_tables_infos.push_back(VERIFY_RESULT(
         tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table)));
@@ -1435,8 +1436,8 @@ Status TSTabletManager::DoApplyCloneTablet(
         source_tablet->metadata()->TopSnapshotsDir()), source_snapshot_id.ToString());
     LOG(INFO) << Format("Hard-linking from $0 to $1", source_snapshot_dir, target_snapshot_dir);
     RETURN_NOT_OK(CopyDirectory(
-        fs_manager_->env(), source_snapshot_dir, target_snapshot_dir, UseHardLinks::kTrue,
-        CreateIfMissing::kTrue));
+        fs_manager_->env(), source_snapshot_dir, target_snapshot_dir,
+        CopyOption::kUseHardLinks, CopyOption::kCreateIfMissing, CopyOption::kRecursive));
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_clone_target_marked_ready)) {
@@ -1486,8 +1487,9 @@ Status TSTabletManager::ApplyCloneTablet(
   }
 
   LOG(INFO) << Format(
-      "Starting apply of clone op with seq_no $0 on source tablet $1 to target tablet $2",
-      clone_request_seq_no, source_tablet_id, operation->request()->target_tablet_id());
+      "Starting apply of clone op with seq_no $0 on source T $1 P $3 to target T $2 P $3",
+      clone_request_seq_no, source_tablet_id, operation->request()->target_tablet_id(),
+      fs_manager_->uuid());
   auto status = DoApplyCloneTablet(operation, raft_log, committed_raft_config);
   if (!status.ok()) {
     if (FLAGS_TEST_expect_clone_apply_failure) {
@@ -2091,6 +2093,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .vector_index_thread_pool_provider = [this](auto type) {
           return VectorIndexThreadPool(type);
         },
+        .vector_index_priority_thread_pool_provider = [this](auto type) {
+          return VectorIndexPriorityThreadPool(type);
+        },
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -2488,10 +2493,11 @@ Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
   return server_->GetRegistration(reg, server::RpcOnly::kTrue);
 }
 
-TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(TabletPtrs* tablet_ptrs) const {
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(
+    TabletPtrs* tablet_ptrs, UserTabletsOnly user_tablets_only) const {
   SharedLock<RWMutex> shared_lock(mutex_);
   TabletPeers peers;
-  GetTabletPeersUnlocked(&peers);
+  GetTabletPeersUnlocked(&peers, user_tablets_only);
   if (tablet_ptrs) {
     for (const auto& peer : peers) {
       if (!peer) continue;
@@ -2516,16 +2522,25 @@ TSTabletManager::TabletPeers TSTabletManager::GetTabletPeersWithTableId(
   return filtered_peers;
 }
 
-void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
+void TSTabletManager::GetTabletPeersUnlocked(
+    TabletPeers* tablet_peers,  UserTabletsOnly user_tablets_only) const {
   DCHECK(tablet_peers != nullptr);
   // See AppendKeysFromMap for why this is done.
   if (tablet_peers->empty()) {
     tablet_peers->reserve(tablet_map_.size());
   }
-  for (const auto& entry : tablet_map_) {
-    if (entry.second != nullptr) {
-      tablet_peers->push_back(entry.second);
+  for (const auto& [_, peer] : tablet_map_) {
+    if (peer == nullptr) {
+      continue;
     }
+    if (user_tablets_only) {
+      auto tablet_ptr = peer->shared_tablet();
+      if (tablet_ptr &&
+          tablet_ptr->metadata()->namespace_name() == master::kSystemNamespaceName) {
+        continue;
+      }
+    }
+    tablet_peers->push_back(peer);
   }
 }
 
@@ -3543,6 +3558,13 @@ rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThrea
   LOG(INFO) << "Use " << options.max_workers << " for vector index " << type << " thread pool";
   thread_pool_ptr.reset(result = new rpc::ThreadPool(std::move(options)));
   return result;
+}
+
+PriorityThreadPool* TSTabletManager::VectorIndexPriorityThreadPool(
+    tablet::VectorIndexPriorityThreadPoolType type) {
+  // Currently there's only one type of priority thread pool, which is used for compacitons.
+  DCHECK_EQ(type, tablet::VectorIndexPriorityThreadPoolType::kCompaction);
+  return docdb::GetGlobalPriorityThreadPool();
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

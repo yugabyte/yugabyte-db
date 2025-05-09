@@ -35,6 +35,8 @@ import com.yugabyte.yw.nodeagent.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.FileInfo;
+import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
+import com.yugabyte.yw.nodeagent.InstallSoftwareOutput;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
@@ -44,6 +46,8 @@ import com.yugabyte.yw.nodeagent.PreflightCheckInput;
 import com.yugabyte.yw.nodeagent.PreflightCheckOutput;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlOutput;
+import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
+import com.yugabyte.yw.nodeagent.ServerGFlagsOutput;
 import com.yugabyte.yw.nodeagent.SubmitTaskRequest;
 import com.yugabyte.yw.nodeagent.SubmitTaskResponse;
 import com.yugabyte.yw.nodeagent.UpdateRequest;
@@ -907,6 +911,30 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), ServerControlOutput.class);
+  }
+
+  public InstallSoftwareOutput runInstallSoftware(
+      NodeAgent nodeAgent, InstallSoftwareInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setInstallSoftwareInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), InstallSoftwareOutput.class);
+  }
+
+  public ServerGFlagsOutput runServerGFlags(
+      NodeAgent nodeAgent, ServerGFlagsInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setServerGFlagsInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ServerGFlagsOutput.class);
   }
 
   public synchronized void cleanupCachedClients() {

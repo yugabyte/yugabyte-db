@@ -22,7 +22,7 @@ Refer to the Grammar section for [CREATE TABLE](../../../../api/ycql/ddl_create_
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ### Column constraint
 

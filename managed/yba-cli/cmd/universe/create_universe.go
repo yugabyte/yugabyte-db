@@ -308,8 +308,8 @@ func init() {
 	createUniverseCmd.Flags().String("master-gflags", "",
 		"[Optional] Master GFlags in map (JSON or YAML) format. "+
 			"Provide the gflags in the following formats: "+
-			"\"--master-gflags {\"master-gflag-key-1\":\"value-1\","+
-			"\"master-gflag-key-2\":\"value-2\" }\" or"+
+			"\"--master-gflags '{\"master-gflag-key-1\":\"value-1\","+
+			"\"master-gflag-key-2\":\"value-2\" }'\" or"+
 			"  \"--master-gflags \"master-gflag-key-1: value-1\nmaster-gflag-key-2"+
 			": value-2\nmaster-gflag-key-3: value-3\".")
 

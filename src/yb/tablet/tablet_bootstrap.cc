@@ -38,6 +38,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
@@ -503,6 +505,11 @@ class TabletBootstrap {
     }
 
     listener_->StatusMessage("Bootstrap starting.");
+
+    const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+    if (wait_state) {
+      wait_state->UpdateAuxInfo({.tablet_id = tablet_id, .method = "LocalBootstrap"});
+    }
 
     if (VLOG_IS_ON(1)) {
       RaftGroupReplicaSuperBlockPB super_block;

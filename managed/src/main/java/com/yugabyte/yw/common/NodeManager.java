@@ -231,7 +231,7 @@ public class NodeManager extends DevopsBase {
     return imageBundle.getDetails().useIMDSv2;
   }
 
-  private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
+  public UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
       Iterator<NodeDetails> nodeIter = universe.getUniverseDetails().nodeDetailsSet.iterator();
@@ -850,7 +850,7 @@ public class NodeManager extends DevopsBase {
     return subcommandStrings;
   }
 
-  private void processGFlags(
+  public void processGFlags(
       Config config,
       Universe universe,
       NodeDetails node,
@@ -1041,8 +1041,10 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + taskParam.ybSoftwareVersion);
         }
-        subcommand.add("--package");
-        subcommand.add(ybServerPackage);
+        if (!taskParam.skipDownloadSoftware) {
+          subcommand.add("--package");
+          subcommand.add(ybServerPackage);
+        }
         if (taskParam.isEnableYbc()) {
           subcommand.add("--ybc_flags");
           subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -1085,8 +1087,10 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException(
                 "Unable to fetch yugabyte release for version: " + taskParam.ybSoftwareVersion);
           }
-          subcommand.add("--package");
-          subcommand.add(ybServerPackage);
+          if (!taskParam.skipDownloadSoftware) {
+            subcommand.add("--package");
+            subcommand.add(ybServerPackage);
+          }
 
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
@@ -1192,7 +1196,6 @@ public class NodeManager extends DevopsBase {
             }
           }
           sensitiveData.put("--gflags", Json.stringify(Json.toJson(gflags)));
-
           subcommand.add("--tags");
           subcommand.add("override_gflags");
           if (taskParam.resetMasterState) {
@@ -1400,8 +1403,10 @@ public class NodeManager extends DevopsBase {
         }
         break;
       case YbcGFlags:
-        subcommand.add("--package");
-        subcommand.add(ybServerPackage);
+        if (!taskParam.skipDownloadSoftware) {
+          subcommand.add("--package");
+          subcommand.add(ybServerPackage);
+        }
         subcommand.add("--ybc_package");
         subcommand.add(ybcPackage);
         subcommand.add("--ybc_flags");
@@ -1733,7 +1738,6 @@ public class NodeManager extends DevopsBase {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
-
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
               ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName())
@@ -2714,12 +2718,13 @@ public class NodeManager extends DevopsBase {
     switch (rootCert.getCertType()) {
       case CustomCertHostPath:
         CertificateParams.CustomCertInfo certConfig = rootCert.getCustomCertPathParams();
+        String fingerprint = CertificateHelper.computeFingerprint(rootCert.getCertificate());
         // For NodeToNode encryption
         if (!isClient) {
           commandArgs.add("--root_cert_path");
           commandArgs.add(certConfig.rootCertPath);
-          commandArgs.add("--yba_root_cert_checksum");
-          commandArgs.add(rootCert.getChecksum());
+          commandArgs.add("--yba_root_cert_fingerprint");
+          commandArgs.add(fingerprint);
           commandArgs.add("--node_server_cert_path");
           commandArgs.add(certConfig.nodeCertPath);
           commandArgs.add("--node_server_key_path");
@@ -2729,8 +2734,8 @@ public class NodeManager extends DevopsBase {
         else {
           commandArgs.add("--client_root_cert_path");
           commandArgs.add(certConfig.rootCertPath);
-          commandArgs.add("--yba_client_root_cert_checksum");
-          commandArgs.add(rootCert.getChecksum());
+          commandArgs.add("--yba_client_root_cert_fingerprint");
+          commandArgs.add(fingerprint);
           commandArgs.add("--client_server_cert_path");
           commandArgs.add(certConfig.nodeCertPath);
           commandArgs.add("--client_server_key_path");

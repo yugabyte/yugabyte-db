@@ -99,6 +99,12 @@ Status XClusterConfig::FillHeartbeatResponse(
     *resp->mutable_xcluster_producer_registry() = config_pb.xcluster_producer_registry();
   }
 
+  auto& xcluster_info_per_namespace =
+      *resp->mutable_xcluster_heartbeat_info()->mutable_xcluster_info_per_namespace();
+  for (const auto& [namespace_id, xcluster_info] : config_pb.xcluster_info_per_namespace()) {
+    xcluster_info_per_namespace[namespace_id] = xcluster_info;
+  }
+
   return Status::OK();
 }
 
@@ -112,6 +118,21 @@ Status XClusterConfig::BumpVersionUpsertAndCommit(
   l.Commit();
 
   return Status::OK();
+}
+
+Status XClusterConfig::SetXClusterRole(
+    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+    XClusterNamespaceInfoPB_XClusterRole role) {
+  SharedLock mutex_lock(mutex_);
+  SCHECK(xcluster_config_info_, IllegalState, "XCluster config is not initialized");
+
+  auto l = xcluster_config_info_->LockForWrite();
+  auto& config_pb = l.mutable_data()->pb;
+  auto* xcluster_info_per_namespace =
+      config_pb.mutable_xcluster_info_per_namespace();
+  (*xcluster_info_per_namespace)[namespace_id].set_role(role);
+
+  return BumpVersionUpsertAndCommit(epoch, l);
 }
 
 Status XClusterConfig::RemoveStreams(

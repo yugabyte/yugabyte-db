@@ -30,7 +30,11 @@ Status RandomAccessFile::ReadAndValidate(
 }
 
 Status RandomAccessFile::Read(uint64_t offset, size_t n, Slice* result, char* scratch) {
-  return Read(offset, n, result, reinterpret_cast<uint8_t*>(scratch));
+  return Read(offset, n, result, pointer_cast<uint8_t*>(scratch));
+}
+
+Status RandomAccessFile::Read(uint64_t offset, size_t n, Slice* result, std::byte* scratch) {
+  return Read(offset, n, result, pointer_cast<uint8_t*>(scratch));
 }
 
 Status RandomAccessFile::InvalidateCache(size_t offset, size_t length) {

@@ -735,6 +735,10 @@ public class HealthChecker {
       Map<UUID, NodeInstance> nodeInstanceMap =
           NodeInstance.listByUuids(nodeUuids).stream()
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
+      boolean earlyoomEnabled =
+          details.additionalServicesStateData != null
+              && details.additionalServicesStateData.getEarlyoomConfig() != null
+              && details.additionalServicesStateData.getEarlyoomConfig().isEnabled();
       for (NodeDetails nodeDetails : sortedDetails) {
         NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
         String nodeIdentifier = StringUtils.EMPTY;
@@ -762,6 +766,7 @@ public class HealthChecker {
                 .setTestYsqlshConnectivity(testYsqlshConnectivity)
                 .setTestCqlshConnectivity(testCqlshConnectivity)
                 .setUniverseUuid(params.universe.getUniverseUUID())
+                .setEarlyoomEnabled(earlyoomEnabled)
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
           nodeInfo
@@ -1308,6 +1313,7 @@ public class HealthChecker {
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
+    private boolean earlyoomEnabled = false;
   }
 
   @Data

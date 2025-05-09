@@ -35,6 +35,7 @@ import java.security.Key;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
@@ -1134,6 +1135,38 @@ public class CertificateHelper {
         x509CACerts.addAll(0, x509ServerCerts);
       }
       verifyCertSignatureAndOrder(x509CACerts, keyContent);
+    }
+  }
+
+  /*
+   * Compute the fingerprint of the certificate.
+   * Incase of multiple certificates, return the fingerprint for first one.
+   */
+  public static String computeFingerprint(String certPath) {
+    try {
+      if (certPath == null || certPath.isEmpty()) {
+        throw new IllegalArgumentException("Certificate path is empty or null");
+      }
+      Collection<X509Certificate> certs = getCertsFromFile(certPath);
+      if (certs.isEmpty()) {
+        throw new IllegalArgumentException("No certificates found in the file");
+      }
+      X509Certificate cert = certs.iterator().next();
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] fingerprint = digest.digest(cert.getEncoded());
+      StringBuilder sb = new StringBuilder();
+      for (byte b : fingerprint) {
+        sb.append(String.format("%02X:", b));
+      }
+      // Sample fingerprint - E1:9A:EC:C6:AE:B9:2F:A5:D9:37:3E:7E:EF:36:99:10:07:7C:30:
+      return sb.substring(0, sb.length() - 1);
+
+    } catch (Exception e) {
+      log.error(
+          "Error computing fingerprint for certificate present at: {}. Error: {}",
+          certPath,
+          e.getMessage());
+      throw new RuntimeException("Failed to compute fingerprint", e);
     }
   }
 }

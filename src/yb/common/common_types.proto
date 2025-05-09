@@ -215,3 +215,17 @@ enum XClusterReplicationType {
   XCLUSTER_YSQL_TRANSACTIONAL = 1; // YSQL, Unidirectional only. Table level.
   XCLUSTER_YSQL_DB_SCOPED = 2;     // YSQL, Transactional and Unidirectional only. DB level.
 }
+
+// Information for a namespace currently/previously under automatic mode xCluster replication.
+message XClusterNamespaceInfoPB {
+  enum XClusterRole {
+    UNSPECIFIED = 0;         // This should never occur; not stored.
+    UNAVAILABLE = 1;         // Used to denote that we cannot determine the role; not stored.
+
+    NOT_AUTOMATIC_MODE = 2;  // No automatic mode replication is occurring for this namespace.
+
+    AUTOMATIC_SOURCE = 3;
+    AUTOMATIC_TARGET = 4;
+  }
+  optional XClusterRole role = 1 [default = NOT_AUTOMATIC_MODE];
+}

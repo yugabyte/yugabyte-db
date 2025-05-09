@@ -535,6 +535,16 @@ func MustGetFlagInt64(cmd *cobra.Command, name string) int64 {
 	return value
 }
 
+// MustGetFlagInt returns the value of the int flag with the given name
+func MustGetFlagInt(cmd *cobra.Command, name string) int {
+	value, err := cmd.Flags().GetInt(name)
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(
+			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
+	}
+	return value
+}
+
 // MustGetFlagBool returns the value of the bool flag with the given name
 func MustGetFlagBool(cmd *cobra.Command, name string) bool {
 	value, err := cmd.Flags().GetBool(name)
@@ -675,4 +685,22 @@ func HumanReadableSize(bytes float64) (float64, string) {
 	default:
 		return float64(bytes), "bytes"
 	}
+}
+
+// GetFlagValueAsStringIfSet checks if the flag is set and returns its value as a string
+// If the flag is not set, it returns an empty string
+func GetFlagValueAsStringIfSet(cmd *cobra.Command, flagName string) string {
+	if cmd.Flags().Changed(flagName) {
+		return cmd.Flag(flagName).Value.String()
+	}
+	return ""
+}
+
+// IsValidJSON checks if the given string is a valid JSON
+func IsValidJSON(str string) error {
+	var js json.RawMessage
+	if err := json.Unmarshal([]byte(str), &js); err != nil {
+		return err
+	}
+	return nil
 }

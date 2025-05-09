@@ -178,6 +178,10 @@ class UsearchIndex :
     return index_.limits().members;
   }
 
+  size_t Dimensions() const override {
+    return dimensions_;
+  }
+
   Status DoSaveToFile(const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
     VLOG_WITH_FUNC(2) << path << ", size: " << index_.size();

@@ -34,11 +34,9 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
 
-#include "yb/util/enums.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -158,6 +156,8 @@ class PgClient {
 
   Result<uint64_t> GetCatalogMasterVersion();
 
+  Result<uint32_t> GetXClusterRole(uint32_t db_oid);
+
   Status CreateSequencesDataTable();
 
   Result<client::YBTableName> DropTable(
@@ -232,6 +232,10 @@ class PgClient {
 
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
+
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change,
+      uint64_t new_catalog_version, const std::optional<std::string>& message_list);
 
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);

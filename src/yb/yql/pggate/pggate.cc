@@ -29,11 +29,9 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -71,7 +69,6 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
@@ -1801,13 +1798,14 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
     // heartbeat response from yb-master that has set a value in
     // catalog_version_table_in_perdb_mode_ in the shared memory object
     // yet. Let's wait with 500ms interval until a value is set or until
-    // a 10-second timeout.
+    // a 20-second timeout.
     auto status = LoggedWaitFor(
         [this]() -> Result<bool> {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
-        10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set in shared memory",
+        20s /* timeout */,
+        "catalog_version_table mode not set in shared memory, "
+        "tserver not ready to serve requests",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(
@@ -1824,6 +1822,18 @@ PgApiImpl::GetTserverCatalogMessageLists(
       db_oid, ysql_catalog_version, num_catalog_versions);
 }
 
+Result<tserver::PgSetTserverCatalogMessageListResponsePB>
+PgApiImpl::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list) {
+  std::optional<std::string> messages;
+  if (message_list->message_list) {
+    messages.emplace(message_list->message_list, message_list->num_bytes);
+  }
+  return pg_client_.SetTserverCatalogMessageList(
+      db_oid, is_breaking_change, new_catalog_version, messages);
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
@@ -1834,6 +1844,10 @@ const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
 
 pid_t PgApiImpl::GetLocalTServerPid() const {
   return tserver_shared_object_->pid();
+}
+
+Result<int> PgApiImpl::GetXClusterRole(uint32_t db_oid) {
+  return pg_session_->GetXClusterRole(db_oid);
 }
 
 // Tuple Expression -----------------------------------------------------------------------------
@@ -1926,19 +1940,19 @@ Status PgApiImpl::SetReadOnlyStmt(bool read_only_stmt) {
 }
 
 Status PgApiImpl::SetDdlStateInPlainTransaction() {
-  pg_session_->ResetHasWriteOperationsInDdlMode();
+  pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->SetDdlStateInPlainTransaction();
 }
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  pg_session_->ResetHasWriteOperationsInDdlMode();
+  pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
 
 bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
-  return pg_session_->HasWriteOperationsInDdlMode();
+  return pg_session_->HasCatalogWriteOperationsInDdlMode();
 }
 
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {

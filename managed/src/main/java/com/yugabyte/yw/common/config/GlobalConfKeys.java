@@ -1498,6 +1498,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node agent enabler scan interval",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentEnablerRunInstaller =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.run_installer",
+          ScopeType.GLOBAL,
+          "Node Agent Enabler Run Installer",
+          "Enable or disable the background installer in node agent enabler",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> supportBundleDefaultPromDumpRange =
       new ConfKeyInfo<>(
           "yb.support_bundle.default_prom_dump_range",
@@ -1651,6 +1659,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Node Agent Configure Server",
           "Enable or disable server configuration RPCs in node agent. Defaults to ansible if it is"
               + " disabled.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
+      new ConfKeyInfo<>(
+          "yb.task.enable_task_runtime_info_on_retry",
+          ScopeType.GLOBAL,
+          "Enable Task Runtime Info on Retry",
+          "Use the runtime info from the previously failed task on retry",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

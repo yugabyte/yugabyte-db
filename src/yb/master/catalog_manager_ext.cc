@@ -101,6 +101,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
@@ -566,12 +567,14 @@ Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRe
 Status CatalogManager::RestoreSnapshot(
     const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  LOG(INFO) << "Servicing RestoreSnapshot request: " << req->ShortDebugString();
   auto txn_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
   HybridTime ht;
   if (req->has_restore_ht()) {
     ht = HybridTime(req->restore_ht());
   }
+  LOG(INFO)
+      << "Servicing RestoreSnapshot request: " << txn_snapshot_id
+      << (ht ? Format(" to restore to time ", ht) : "");
   TxnSnapshotRestorationId id = VERIFY_RESULT(
       master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
   resp->set_restoration_id(id.data(), id.size());
@@ -1741,7 +1744,7 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   return Status::OK();
 }
 
-Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
+Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
                                         ExternalTableSnapshotData* table_data,
                                         const LeaderEpoch& epoch,
                                         bool is_clone) {
@@ -1787,17 +1790,24 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
       // Create and mark new tablets for creation.
 
+      std::vector<TabletId> tablet_ids;
+      tablet_ids.reserve(table_data->old_tablets.size());
+      while (tablet_ids.size() < table_data->old_tablets.size()) {
+        tablet_ids.push_back(GenerateObjectId());
+      }
+
+      std::ranges::sort(tablet_ids);
+
       // Use partitions from external snapshot to create new tablets.
       // Clone tablets start in the CREATING state since they will be created by tservers.
       // Non-clone tablets start in the PREPARING state, and will start CREATING once they are
       // committed in memory.
+      auto tablet_id_it = tablet_ids.begin();
       for (const auto& [source_tablet_id, partition_pb] : table_data->old_tablets) {
-        TabletInfoPtr tablet;
+        auto state = is_clone ? SysTabletsEntryPB::CREATING : SysTabletsEntryPB::PREPARING;
+        auto tablet = CreateTabletInfo(table, partition_pb, state, *tablet_id_it++);
         if (is_clone) {
-          tablet = CreateTabletInfo(table, partition_pb, SysTabletsEntryPB::CREATING);
           tablet->mutable_metadata()->mutable_dirty()->pb.set_created_by_clone(true);
-        } else {
-          tablet = CreateTabletInfo(table, partition_pb, SysTabletsEntryPB::PREPARING);
         }
         tablet->mutable_metadata()->mutable_dirty()->pb.set_colocated(table->colocated());
         new_tablets.push_back(tablet);
@@ -2039,11 +2049,13 @@ Status CatalogManager::ImportTableEntry(
     // Schema validation and repartitioning checks. TODO: Refactor this code path.
     Schema persisted_schema;
     size_t new_num_tablets = 0;
+    std::string parent_table_id;
     {
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
       persisted_schema = VERIFY_RESULT(table_lock->GetSchema());
       new_num_tablets = table->NumPartitions();
+      parent_table_id = table_lock->pb.parent_table_id();
     }
 
     // Ignore 'nullable' attribute - due to difference in implementation
@@ -2120,7 +2132,8 @@ Status CatalogManager::ImportTableEntry(
       // For colocated tables that are not the parent table, update their info to point to the newly
       // recreated parent tablet.
       // TODO(mhaddad): Check necessary steps for vector indexes.
-      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(table, table_data, epoch));
+      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(
+          table, parent_table_id, table_data, epoch));
     }
 
     // Table schema update depending on different conditions.
@@ -2208,8 +2221,7 @@ Status CatalogManager::ImportTableEntry(
     if (is_clone) {
       // The Source table should be found as we are cloning from it.
       TRACE("Looking up source table");
-      scoped_refptr<TableInfo> source_table =
-          VERIFY_RESULT(FindTableById(table_data->old_table_id));
+      TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
       auto source_table_lock = source_table->LockForRead();
       if (source_table_lock->table_type() == TableType::YQL_TABLE_TYPE &&
           source_table_lock->is_index()) {
@@ -2424,32 +2436,27 @@ Result<bool> CatalogManager::ImportTableEntryByName(
 }
 
 Status CatalogManager::UpdateColocatedUserTableInfoForClone(
-    scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
-    const LeaderEpoch& epoch) {
+    const TableInfoPtr& table, const TableId& new_parent_table_id,
+    ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch) {
   RSTATUS_DCHECK(
       table->IsSecondaryTable(), InvalidArgument,
       Format("table: $0 is not a colocated user table", table->id()));
   // Remove old colocated tablet from TableInfo.
-  auto old_tablet = VERIFY_RESULT(table->GetTablets())[0];
-  auto old_colocated_tablet_lock = old_tablet->LockForWrite();
-  RETURN_NOT_OK(table->RemoveTablet(old_tablet->tablet_id()));
+  table->ClearTabletMaps();
   // Add new colocated tablet to TableInfo.
-  TableInfoPtr parent_table =
-      VERIFY_RESULT(FindTableById(VERIFY_RESULT(GetParentTableIdForColocatedTable(table))));
-  auto tablets = VERIFY_RESULT(parent_table->GetTablets());
+  TableInfoPtr parent_table = VERIFY_RESULT(FindTableById(new_parent_table_id));
 
-  RSTATUS_DCHECK(
-      tablets.size() == 1, NotFound,
-      Format("Wrong number of parent tablet of colocated database:$1", tablets.size()));
-  auto new_tablet_lock = tablets[0]->LockForWrite();
-  RETURN_NOT_OK(table->AddTablet(tablets[0]));
-  VLOG(1) << Format(
-      "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
-      table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
-  tablets[0]->AddTableId(table_data->new_table_id);
+  for (auto tablet : VERIFY_RESULT(parent_table->GetTablets())) {
+    auto new_tablet_lock = tablet->LockForWrite();
+    RETURN_NOT_OK(table->AddTablet(tablet));
+    VLOG(1) << Format(
+        "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
+        table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
+    tablet->AddTableId(table_data->new_table_id);
 
-  new_tablet_lock.Commit();
-  old_colocated_tablet_lock.Commit();
+    new_tablet_lock.Commit();
+  }
+
   return Status::OK();
 }
 

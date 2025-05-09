@@ -37,6 +37,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <ranges>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -409,6 +410,10 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
         opts_.num_tablet_servers, kTabletServerRegistrationTimeout));
   } else {
     LOG(INFO) << "No need to start tablet servers";
+  }
+  if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
+    RETURN_NOT_OK(WaitForTabletServersToAcceptYSQLConnection(
+        MonoTime::Now() + kTabletServerRegistrationTimeout));
   }
 
   running_ = true;
@@ -1519,6 +1524,10 @@ Status ExternalMiniCluster::AddTabletServer(
 
   if (wait_for_registration) {
     RETURN_NOT_OK(WaitForTabletServerToRegister(ts->uuid(), kTabletServerRegistrationTimeout));
+    if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
+      RETURN_NOT_OK(WaitForTabletServersToAcceptYSQLConnection(
+          {idx}, MonoTime::Now() + kTabletServerRegistrationTimeout));
+    }
   }
 
   return Status::OK();
@@ -1588,31 +1597,27 @@ Status ExternalMiniCluster::AddYbControllerServer(const scoped_refptr<ExternalTa
     }
   }
 
-  size_t idx = yb_controller_servers_.size() + 1;
-  vector<string> extra_flags;
+  auto idx = yb_controller_servers_.size() + 1;
+  ExternalYbControllerOptions options = {
+    .idx = idx,
+    .log_dir = GetDataPath(Format("ybc-$0/logs", idx)),
+    .tmp_dir = GetDataPath(Format("ybc-$0/tmp", idx)),
+    .yb_tserver_address = ts->bind_host(),
+    .server_port = idx == 1 ? AllocateFreePort() : yb_controller_servers_[0]->GetServerPort(),
+    .yb_master_webserver_port = masters_[0]->http_port(),
+    .yb_tserver_webserver_port = ts->http_port(),
+    .server_address = ts->bind_host(),
+  };
+
   for (const auto& flag : opts_.extra_tserver_flags) {
     if (flag.find("certs_dir") != string::npos) {
-      extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
+      options.extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
     }
   }
 
-  // All yb controller servers need to be on the same port.
-  uint16_t server_port;
-  if (idx == 1) {
-    server_port = AllocateFreePort();
-  } else {
-    server_port = yb_controller_servers_[0]->GetServerPort();
-  }
-  const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", idx));
-  const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", idx));
-  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
-  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
-  scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-      idx, yb_controller_log_dir, yb_controller_tmp_dir, ts->bind_host(), GetToolPath("yb-admin"),
-      GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
-      GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
-      server_port, masters_[0]->http_port(), ts->http_port(), ts->bind_host(),
-      GetYbcToolPath("yb-controller-server"), extra_flags);
+  RETURN_NOT_OK(Env::Default()->CreateDirs(options.log_dir));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(options.tmp_dir));
+  auto yb_controller = make_scoped_refptr<ExternalYbController>(options);
 
   RETURN_NOT_OK_PREPEND(
       yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(idx));
@@ -1678,8 +1683,7 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
       for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
         for (auto it = last_unmatched.begin(); it != last_unmatched.end(); ++it) {
           if ((**it).instance_id().permanent_uuid() == e.instance_id().permanent_uuid() &&
-              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno() &&
-              (!e.has_lease_info() || e.lease_info().is_live())) {
+              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno()) {
             match_count++;
             last_unmatched.erase(it);
             break;
@@ -1722,44 +1726,36 @@ Status ExternalMiniCluster::WaitForTabletServerToRegister(
   return Status::OK();
 }
 
-Status ExternalMiniCluster::WaitForTabletServersToAcquireYSQLLeases(MonoTime deadline) {
-  return WaitForTabletServersToAcquireYSQLLeases(tablet_servers_, deadline);
+Status ExternalMiniCluster::WaitForTabletServersToAcceptYSQLConnection(MonoTime deadline) {
+  auto range = std::ranges::iota_view<size_t, size_t>{0, tablet_servers_.size()};
+  std::vector<size_t> v{range.begin(), range.end()};
+  return WaitForTabletServersToAcceptYSQLConnection(v, deadline);
 }
 
-Status ExternalMiniCluster::WaitForTabletServersToAcquireYSQLLeases(
-    const std::vector<scoped_refptr<ExternalTabletServer>>& tablet_servers, MonoTime deadline) {
-  std::unordered_set<std::string> tservers_without_leases;
-  for (auto now = MonoTime::Now(); now < deadline; now = MonoTime::Now()) {
-    tservers_without_leases.clear();
-    for (const auto& ts : tablet_servers) {
-      tservers_without_leases.insert(ts->id());
-    }
-    for (const auto& ts : tablet_servers) {
-      tserver::GetYSQLLeaseInfoRequestPB req;
-      tserver::GetYSQLLeaseInfoResponsePB resp;
-      rpc::RpcController rpc;
-      rpc.set_timeout(kDefaultTimeout);
-      RETURN_NOT_OK(
-          GetProxy<TabletServerServiceProxy>(ts.get()).GetYSQLLeaseInfo(req, &resp, &rpc));
-      if (resp.has_error()) {
-        if (StatusFromPB(resp.error().status()).IsNotSupported()) {
-          tservers_without_leases.erase(ts->id());
-        }
-        continue;
-      }
-      if (resp.is_live()) {
-        tservers_without_leases.erase(ts->id());
-      }
-    }
-    if (tservers_without_leases.empty()) {
-      return Status::OK();
-    }
-    SleepFor(MonoDelta::FromMilliseconds(100));
+Status ExternalMiniCluster::WaitForTabletServersToAcceptYSQLConnection(
+    const std::vector<size_t>& indexes, MonoTime deadline) {
+  LOG(INFO) << "Waiting for tservers to accept ysql connections.";
+  for (const auto i : indexes) {
+    RETURN_NOT_OK(Wait(
+        [this, i, deadline]() -> Result<bool> {
+          ExternalClusterPGConnectionOptions options;
+          options.tserver_index = i;
+          auto now = MonoTime::Now();
+          if (deadline <= now) {
+            LOG(INFO) << Format("Now is: $0, deadline is: $1", now, deadline);
+            return STATUS(TimedOut, "Deadline passed, skipping connection attempt");
+          }
+          auto secs = std::lround((deadline - now).ToSeconds());
+          if (secs <= 0) {
+            secs = 1;
+          }
+          options.timeout_secs = secs;
+          auto result = ConnectToDB(std::move(options));
+          return result.ok();
+        },
+        deadline, "Waiting for tservers to accept ysql connections"));
   }
-  return STATUS_FORMAT(
-      TimedOut,
-      "$0 tablet server(s) failed to acquire leases, list of tablet servers without leases: $1",
-      tservers_without_leases.size(), tservers_without_leases);
+  return Status::OK();
 }
 
 void ExternalMiniCluster::AssertNoCrashes() {
@@ -1871,9 +1867,11 @@ Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
   return ts_admin_service_proxy->FlushTablets(req, &resp, &controller);
 }
 
-Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(ExternalTabletServer* ts) {
+Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(
+    ExternalTabletServer* ts, bool user_tablets_only) {
   rpc::RpcController rpc;
   ListTabletsRequestPB req;
+  req.set_include_user_tablets_only(user_tablets_only);
   ListTabletsResponsePB resp;
   rpc.set_timeout(opts_.timeout);
   TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
@@ -2267,23 +2265,43 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
 }
 
 Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
-    const std::string& db_name, std::optional<size_t> node_index, bool simple_query_protocol,
+    const std::string& db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
     const std::string& user) {
-  if (!node_index) {
-    node_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
+  ExternalClusterPGConnectionOptions options;
+  options.db_name = db_name;
+  if (tserver_index) {
+    options.tserver_index = tserver_index;
   }
-  LOG(INFO) << "Connecting to PG database " << db_name << " on tserver " << *node_index;
+  options.simple_query_protocol = simple_query_protocol;
+  options.user = user;
+  return ConnectToDB(std::move(options));
+}
 
-  auto* ts = tablet_server(*node_index);
+Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
+    ExternalClusterPGConnectionOptions&& options) {
+  if (!options.tserver_index) {
+    options.tserver_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
+  }
+  LOG(INFO) << Format(
+      "Connecting to PG database $0 on tserver at index $1", options.db_name,
+      *options.tserver_index);
+
+  auto* ts = tablet_server(*options.tserver_index);
 
   auto settings = pgwrapper::PGConnSettings{
-      .host = ts->bind_host(), .port = ts->ysql_port(), .dbname = db_name, .user = user};
+      .host = ts->bind_host(),
+      .port = ts->ysql_port(),
+      .dbname = options.db_name,
+      .user = options.user};
+  if (options.timeout_secs) {
+    settings.connect_timeout = *options.timeout_secs;
+  }
 
   if (opts_.enable_ysql_auth) {
     settings.user = "yugabyte";
     settings.password = "yugabyte";
   }
-  return pgwrapper::PGConnBuilder(settings).Connect(simple_query_protocol);
+  return pgwrapper::PGConnBuilder(settings).Connect(options.simple_query_protocol);
 }
 
 namespace {
@@ -2751,6 +2769,7 @@ void StartSecure(
   opts.use_even_ips = true;
   opts.enable_ysql = enable_ysql;
   opts.enable_ysql_auth = enable_ysql;
+  opts.wait_for_tservers_to_accept_ysql_connections = false;
   *cluster = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK((**cluster).Start(messenger->get()));
 }

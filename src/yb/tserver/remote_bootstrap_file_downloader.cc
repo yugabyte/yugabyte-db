@@ -16,6 +16,8 @@
 
 #include <iomanip>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
@@ -191,11 +193,19 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
       max_length = std::min(max_length, decltype(max_length)(max_size));
     }
     req.set_max_length(max_length);
+    if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+      wait_state->MetadataToPB(req.mutable_ash_metadata());
+    }
 
     FetchDataResponsePB resp;
-    auto status = rate_limiter->SendOrReceiveData([this, &req, &resp, &controller]() {
-      return proxy_->FetchData(req, &resp, &controller);
-    }, [&resp]() { return resp.ByteSize(); });
+    Status status;
+    {
+      SCOPED_WAIT_STATUS(RemoteBootstrap_RateLimiter);
+      status = rate_limiter->SendOrReceiveData([this, &req, &resp, &controller]() {
+        SCOPED_WAIT_STATUS(RemoteBootstrap_FetchData);
+        return proxy_->FetchData(req, &resp, &controller);
+      }, [&resp]() { return resp.ByteSize(); });
+    }
     RETURN_NOT_OK_UNWIND_PREPEND(status, controller, "Unable to fetch data from remote");
     DCHECK_LE(resp.chunk().data().size(), max_length);
     iterations++;

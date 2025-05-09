@@ -53,12 +53,12 @@ GetInt64FromVariable(const char *var, const char *var_name)
 	return ret;
 }
 
-static Oid	CachedExtensionOwnerOid = InvalidOid;	/* Cached for a pg connection. */
+static Oid	cached_extension_owner_oid = InvalidOid;	/* Cached for a pg connection. */
 Oid
 XClusterExtensionOwner(void)
 {
-	if (CachedExtensionOwnerOid > InvalidOid)
-		return CachedExtensionOwnerOid;
+	if (cached_extension_owner_oid > InvalidOid)
+		return cached_extension_owner_oid;
 
 	Relation	extensionRelation = table_open(ExtensionRelationId,
 											   AccessShareLock);
@@ -88,7 +88,7 @@ XClusterExtensionOwner(void)
 	table_close(extensionRelation, AccessShareLock);
 
 	/* Cache this value for future calls. */
-	CachedExtensionOwnerOid = extensionOwner;
+	cached_extension_owner_oid = extensionOwner;
 	return extensionOwner;
 }
 

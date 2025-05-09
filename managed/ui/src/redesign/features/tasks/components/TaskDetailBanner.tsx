@@ -29,7 +29,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   const dispatch = useDispatch();
 
   const universeData = useSelector((data: any) => data.universe?.currentUniverse?.data);
-  
+
   // we use localStorage to hide the banner for the task, if it is already closed.
   const [acknowlegedTasks, setAcknowlegedTasks] = useLocalStorage<Record<string, string>>(
     'acknowlegedTasks',

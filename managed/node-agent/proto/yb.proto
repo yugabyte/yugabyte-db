@@ -98,3 +98,31 @@ message ServerControlInput {
 message ServerControlOutput {
     int32 pid = 1;
 }
+
+message InstallSoftwareInput {
+    string ybPackage = 1;
+    bool s3RemoteDownload = 2;
+    string awsAccessKey = 3;
+    string awsSecretKey = 4;
+    bool gcsRemoteDownload = 5;
+    string gcsCredentialsJson = 6;
+    bool httpRemoteDownload = 7;
+    string httpPackageChecksum = 8;
+    string iTestS3PackagePath = 9;
+    string remoteTmp = 10;
+    string ybHomeDir = 11;
+}
+
+message InstallSoftwareOutput {
+    int32 pid = 1;
+}
+
+message ServerGFlagsInput {
+    map<string, string> gflags = 1;
+    string serverName = 2;
+    string serverHome = 3;
+    bool resetMasterState = 4;
+}
+
+message ServerGFlagsOutput {
+}

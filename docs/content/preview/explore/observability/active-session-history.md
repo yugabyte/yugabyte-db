@@ -222,7 +222,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Make sure you have an active ysqlsh session (`./bin/ysqlsh`) to run the following examples.
 

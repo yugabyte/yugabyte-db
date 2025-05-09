@@ -49,6 +49,7 @@ service PgClientService {
   rpc FinishTransaction(PgFinishTransactionRequestPB) returns (PgFinishTransactionResponsePB);
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
+  rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
@@ -142,6 +143,9 @@ service PgClientService {
 
   rpc GetTserverCatalogMessageLists(PgGetTserverCatalogMessageListsRequestPB)
       returns (PgGetTserverCatalogMessageListsResponsePB);
+
+  rpc SetTserverCatalogMessageList(PgSetTserverCatalogMessageListRequestPB)
+      returns (PgSetTserverCatalogMessageListResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -448,6 +452,11 @@ message PgDropTablegroupResponsePB {
 message PgGetCatalogMasterVersionRequestPB {
 }
 
+message PgGetXClusterRoleRequestPB {
+  uint32 db_oid = 1;
+  AshMetadataPB ash_metadata = 2;
+}
+
 message PgFinishTransactionRequestPB {
   message DdlModePB {
     // This transaction contains changes to the DocDB schema protobufs.
@@ -474,6 +483,11 @@ message PgFinishTransactionResponsePB {
 message PgGetCatalogMasterVersionResponsePB {
   AppStatusPB status = 1;
   uint64 version = 2;
+}
+
+message PgGetXClusterRoleResponsePB {
+  AppStatusPB status = 1;
+  uint32 xcluster_role = 2;  // Really XClusterNamespaceInfoPB.XClusterRole.
 }
 
 message PgGetDatabaseInfoRequestPB {
@@ -961,6 +975,18 @@ message PgGetTserverCatalogMessageListsResponsePB {
   // be fulfilled, entries will be empty. This only happens when the requested sequence does not
   // exist in the tserver's message queue.
   repeated TServerDBCatalogMessageListInfo entries = 2;
+}
+
+message PgSetTserverCatalogMessageListRequestPB {
+  uint32 db_oid = 1;
+  bool is_breaking_change = 2;
+  uint64 new_catalog_version = 3;
+  TServerDBCatalogMessageListInfo message_list = 4;
+  AshMetadataPB ash_metadata = 5;
+}
+
+message PgSetTserverCatalogMessageListResponsePB {
+  AppStatusPB status = 1;
 }
 
 message PgWaitForBackendsCatalogVersionRequestPB {

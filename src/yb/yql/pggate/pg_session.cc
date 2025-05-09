@@ -16,38 +16,31 @@
 #include "yb/yql/pggate/pg_session.h"
 
 #include <algorithm>
-#include <future>
 #include <optional>
 #include <utility>
 
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/tablespace_parser.h"
-#include "yb/qlexpr/ql_expr.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
-#include "yb/common/transaction_error.h"
+#include "yb/common/tablespace_parser.h"
 
 #include "yb/gutil/casts.h"
-
-#include "yb/tserver/pg_client.messages.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
 
@@ -496,6 +489,10 @@ Status PgSession::DropDatabase(const std::string& database_name, PgOid database_
 Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
   *version = VERIFY_RESULT(pg_client_.GetCatalogMasterVersion());
   return Status::OK();
+}
+
+Result<int> PgSession::GetXClusterRole(uint32_t db_oid) {
+  return pg_client_.GetXClusterRole(db_oid);
 }
 
 Status PgSession::CancelTransaction(const unsigned char* transaction_id) {
@@ -993,12 +990,12 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   return status;
 }
 
-void PgSession::ResetHasWriteOperationsInDdlMode() {
-  has_write_ops_in_ddl_mode_ = false;
+void PgSession::ResetHasCatalogWriteOperationsInDdlMode() {
+  has_catalog_write_ops_in_ddl_mode_ = false;
 }
 
-bool PgSession::HasWriteOperationsInDdlMode() const {
-  return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
+bool PgSession::HasCatalogWriteOperationsInDdlMode() const {
+  return has_catalog_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
 void PgSession::SetDdlHasSyscatalogChanges() {
@@ -1059,12 +1056,18 @@ Result<PerformFuture> PgSession::DoRunAsync(
         RSTATUS_DCHECK_EQ(
             session_type, group_session_type,
             IllegalState, "Operations on different sessions can't be mixed");
-        if (force_catalog_modification &&
-            table.schema().table_properties().is_ysql_catalog_table()) {
+        const bool is_ysql_catalog_table =
+            table.schema().table_properties().is_ysql_catalog_table();
+        if (force_catalog_modification && is_ysql_catalog_table) {
           ApplyForceCatalogModification(*op);
         }
-        has_write_ops_in_ddl_mode_ =
-            has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
+        // We can have a DDL event trigger that writes to a user table instead of ysql
+        // catalog table. The DDL itself may be a no-op (e.g., GRANT a privilege to a
+        // user that already has that privilege). We do not want to account this case
+        // as writing to ysql catalog so we can avoid incrementing the catalog version.
+        has_catalog_write_ops_in_ddl_mode_ =
+            has_catalog_write_ops_in_ddl_mode_ ||
+            (is_ddl && !IsReadOnly(*op) && is_ysql_catalog_table);
         return runner.Apply(table, op);
     };
   RETURN_NOT_OK(processor(first_table_op));

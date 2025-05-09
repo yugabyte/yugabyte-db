@@ -2313,12 +2313,6 @@ make_callstmt_target(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	int			nfields;
 	int			i;
 
-	/*
-	 * YB_TODO(zihong@yugabyte)
-	 * - Need to verify if this needs to be changed as in Pg11.
-	 * - Unlike Pg11, Pg13 doesn't call get_stmt_mcontext() on this call which
-	 *   was backported.
-	 */
 	/* Use eval_mcontext for any cruft accumulated here */
 	oldcontext = MemoryContextSwitchTo(get_eval_mcontext(estate));
 

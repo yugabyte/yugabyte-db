@@ -1554,21 +1554,16 @@ void RemoteBootstrapITest::BootstrapSourceCrashesWhileFetchingData() {
   // crash_test_leader_index_ starts from 0
   std::string tserver4_zone = crash_test_leader_index_ != 2 ? tserver2_zone : tserver3_zone;
   AddTServerInZone(tserver4_zone);
-  ASSERT_OK(cluster_->WaitForTabletServerCount(4, MonoDelta::FromSeconds(20)));
-  ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(3));
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(3, crash_test_tablet_id_, TABLET_DATA_READY));
 
   // will cause the rbs source to crash
   std::string tserver5_zone = tserver4_zone == "z1" ? "z2" : "z1";
   int rbs_source_index = tserver5_zone == "z1" ? 1 : 2;
   ASSERT_OK(cluster_->SetFlag(
-      cluster_->tablet_server(rbs_source_index),
-      "TEST_fault_crash_on_handle_rb_fetch_data",
+      cluster_->tablet_server(rbs_source_index), "TEST_fault_crash_on_handle_rb_fetch_data",
       "1.0"));
 
   AddTServerInZone(tserver5_zone);
-  ASSERT_OK(cluster_->WaitForTabletServerCount(5, MonoDelta::FromSeconds(20)));
-  ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(4));
   std::string rbs_source_uuid = cluster_->tablet_server(rbs_source_index)->uuid();
   std::string new_ts_uuid = cluster_->tablet_server(4)->uuid();
 
@@ -1901,8 +1896,8 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
   TServerDetails* ts = ts_map_[cluster_->tablet_server(ts_idx_to_bootstrap)->uuid()].get();
 
-  // Wait for 4 tablets - 3 transactions related and 1 user created colocated tablet.
-  ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 4, timeout, &tablets));
+  // 1 user created colocated tablet.
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 1, timeout, &tablets));
   vector<string> user_tablet_ids;
   for (auto tablet : tablets) {
     if (tablet.tablet_status().table_name().ends_with("parent.tablename")) {

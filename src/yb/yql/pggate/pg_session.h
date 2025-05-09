@@ -28,10 +28,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/tserver/tserver_util_fwd.h"
-
 #include "yb/util/lw_function.h"
-#include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
@@ -88,6 +85,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status DropDatabase(const std::string& database_name, PgOid database_oid);
 
   Status GetCatalogMasterVersion(uint64_t *version);
+
+  Result<int> GetXClusterRole(uint32_t db_oid);
 
   Status CancelTransaction(const unsigned char* transaction_id);
 
@@ -248,8 +247,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
 
-  void ResetHasWriteOperationsInDdlMode();
-  bool HasWriteOperationsInDdlMode() const;
+  void ResetHasCatalogWriteOperationsInDdlMode();
+  bool HasCatalogWriteOperationsInDdlMode() const;
 
   void SetDdlHasSyscatalogChanges();
 
@@ -348,7 +347,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   BufferingSettings& buffering_settings_;
   PgOperationBuffer buffer_;
 
-  bool has_write_ops_in_ddl_mode_ = false;
+  bool has_catalog_write_ops_in_ddl_mode_ = false;
 
   // This session is upgrading to PG15.
   const bool is_major_pg_version_upgrade_;

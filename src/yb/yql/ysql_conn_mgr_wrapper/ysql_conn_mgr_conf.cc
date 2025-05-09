@@ -55,7 +55,9 @@ DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
 DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
 DECLARE_uint32(ysql_conn_mgr_pool_timeout);
 DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
+DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
+DECLARE_uint32(ysql_conn_mgr_jitter_time);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -222,7 +224,10 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
       BoolToString(FLAGS_ysql_conn_mgr_optimized_extended_query_protocol)},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
     {"{%yb_ysql_max_connections%}", std::to_string(ysql_max_connections_)},
+    {"{%yb_optimized_session_parameters%}",
+      BoolToString(FLAGS_ysql_conn_mgr_optimized_session_parameters)},
     {"{%yb_max_pools%}", std::to_string(FLAGS_ysql_conn_mgr_max_pools)},
+    {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},
     {"{%unix_socket_dir%}",
       PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"

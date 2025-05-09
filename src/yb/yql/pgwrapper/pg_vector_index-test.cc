@@ -29,6 +29,9 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
 
+#include "yb/tools/tools_test_utils.h"
+#include "yb/tools/yb-backup/yb-backup-test_base.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -40,6 +43,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_uint32(vector_index_concurrent_reads);
@@ -77,6 +81,7 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
 class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
+    FLAGS_TEST_use_custom_varz = true;
     itest::SetupQuickSplit(1_KB);
     PgMiniTestBase::SetUp();
     tablet::TEST_fail_on_seq_scan_with_vector_indexes = true;
@@ -113,11 +118,13 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     return conn;
   }
 
-  Status CreateIndex(PGConn& conn) {
+  Status CreateIndex(
+       PGConn& conn, const std::string& index_name = kVectorIndexName,
+       std::optional<vector_index::DistanceKind> distance_kind = std::nullopt) {
     return conn.ExecuteFormat(
         "CREATE INDEX $1 ON test USING ybhnsw (embedding $0) "
             "WITH (ef_construction = 256, m = 32, m0 = 128)",
-        VectorOpsName(), kVectorIndexName);
+        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name);
   }
 
   Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
@@ -167,7 +174,12 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
 
   const char* VectorOpsName() const {
     using vector_index::DistanceKind;
-    switch (distance_kind_) {
+    return VectorOpsName(distance_kind_);
+  }
+
+  static const char* VectorOpsName(vector_index::DistanceKind distance_kind) {
+    using vector_index::DistanceKind;
+    switch (distance_kind) {
       case DistanceKind::kL2Squared:
         return "vector_l2_ops";
       case DistanceKind::kInnerProduct:
@@ -175,7 +187,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       case DistanceKind::kCosine:
         return "vector_cosine_ops";
     }
-    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind_);
+    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
   }
 
   const char* VectorOp() const {
@@ -359,13 +371,11 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(
     std::future<void> future;
     if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
       future = std::async([this] {
-        cds::threading::Manager::attachThread();
         std::this_thread::sleep_for(1s);
         CHECK_OK(cluster_->mini_tablet_server(1)->Restart());
         ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks)
             = false;
         std::this_thread::sleep_for(5s * kTimeMultiplier);
-        cds::threading::Manager::detachThread();
       });
     }
     RETURN_NOT_OK(CreateIndex(conn));
@@ -856,8 +866,7 @@ TEST_P(PgVectorIndexTest, Options) {
       LOG(INFO) << "Query: " << query;
       ASSERT_OK(conn.Execute(query));
     }
-    auto peers = ListTabletPeers(
-        cluster_.get(), ListPeersFilter::kLeaders, IncludeTransactionStatusTablets::kFalse);
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
       auto tablet = peer->shared_tablet();
       auto vector_indexes = tablet->vector_indexes().List();
@@ -882,6 +891,29 @@ TEST_P(PgVectorIndexTest, Options) {
       ASSERT_EQ(num_new_indexes, 1);
     }
   }
+}
+
+TEST_P(PgVectorIndexTest, Backup) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  TestManyRows(AddFilter::kFalse);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateIndex(conn, "vi_cos", vector_index::DistanceKind::kCosine));
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, "ysql." + DbName()));
+
+  // Restore the backup.
+  const std::string kRestoreDb = "restored_db";
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, "ysql." + kRestoreDb));
+
+  auto restore_conn = ASSERT_RESULT(ConnectToDB(kRestoreDb));
+  VerifyRead(restore_conn, 10, AddFilter::kFalse);
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {

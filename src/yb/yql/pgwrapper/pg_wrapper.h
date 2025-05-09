@@ -19,12 +19,17 @@
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/flags.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/status_fwd.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/flags.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/subprocess.h"
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 #include "yb/yql/pgwrapper/pg_wrapper_context.h"
+
+#include "yb/yql/process_wrapper/common_config.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
 namespace yb {
@@ -100,6 +105,7 @@ class PgWrapper : public ProcessWrapper {
     uint16_t old_version_pg_port;
     std::string new_version_socket_dir;
     uint16_t new_version_pg_port;
+    bool no_statistics;
   };
 
   static Status RunPgUpgrade(const PgUpgradeParams& param);
@@ -166,9 +172,12 @@ class PgSupervisor : public ProcessSupervisor {
 
   void Stop() override;
 
-  const PgProcessConf& conf() const {
-    return conf_;
-  }
+  const PgProcessConf& conf() const { return conf_; }
+
+  // todo(zdrudi): maybe rename this?
+  // what we want is to verify that the process can be started, and then potentially pause it.
+  // So the semantics should maybe be different.
+  Status StartAndMaybePause();
 
   Status ReloadConfig();
   Status UpdateAndReloadConfig();

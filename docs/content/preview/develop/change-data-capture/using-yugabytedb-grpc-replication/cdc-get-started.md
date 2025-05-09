@@ -591,3 +591,7 @@ value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'
 This expression checks if the value of the row after the operation has the country set to `UK`. If _yes_, then the expression returns `uk_users`. If _no_, it returns _null_, and in case the row after the operation is _null_ (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns _null_, the event is sent to the default topic.
 
 For more advanced routing configuration, refer to the [Debezium documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.
+
+## CDC with point-in-time recovery
+
+[Point-in-time recovery](../../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with CDC configured, you need to create new streams after the restore is complete, and start streaming from that point. Creating new streams ensures that you start streaming from the correct checkpoints.

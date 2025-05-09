@@ -101,7 +101,6 @@
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/bind.h"
@@ -167,11 +166,11 @@
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
+#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
-#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -201,9 +200,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
@@ -496,10 +495,6 @@ DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
 DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
     "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
 
-DEFINE_RUNTIME_bool(
-    enable_truncate_cdcsdk_table, false,
-    "When set, enables truncating tables currently part of a CDCSDK Stream");
-
 DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of a "
     "CDCSDK stream");
@@ -590,11 +585,14 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
-DECLARE_bool(ysql_yb_enable_replica_identity);
+DEFINE_test_flag(int32, system_table_num_tablets, -1,
+    "Number of tablets to use when creating the system tables. "
+    "If -1, the number of tablets will follow the value provided in the CreateTable request.");
 
 DECLARE_bool(enable_pg_cron);
-
+DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace yb {
 namespace master {
@@ -827,7 +825,7 @@ GetMoreEligibleSysCatalogLeaders(
   for (const auto& master : masters) {
     auto master_score = get_score(master.registration());
     if (master_score < my_score) {
-      scored_masters.push_back({master, get_score(master.registration())});
+      scored_masters.emplace_back(master, get_score(master.registration()));
     }
   }
 
@@ -950,7 +948,7 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
       state_(kConstructed),
       load_balance_policy_(std::make_unique<ClusterLoadBalancer>(this)),
       tablegroup_manager_(std::make_unique<YsqlTablegroupManager>()),
-      object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(master_, this)),
+      object_lock_info_manager_(std::make_unique<ObjectLockInfoManager>(*master_, *this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
@@ -3902,22 +3900,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return result;
   }
 
-  if (!orig_req->old_rewrite_table_id().empty()) {
-    auto table_id = orig_req->old_rewrite_table_id();
-    auto namespace_id = VERIFY_RESULT(GetTableById(table_id))->LockForRead()->namespace_id();
-    auto automatic_ddl_mode = xcluster_manager_->IsNamespaceInAutomaticDDLMode(namespace_id);
-    SharedLock lock(mutex_);
-    // Fail rewrites on tables that are part of CDC or non-automatic mode XCluster replication,
-    // except for TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
-    if ((xcluster_manager_->IsTableReplicated(table_id) && !automatic_ddl_mode)  ||
-        (IsTablePartOfCDCSDK(table_id) &&
-         (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
-      return STATUS(
-          NotSupported,
-          "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication"
-          " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
-    }
-  }
+  RETURN_NOT_OK(xcluster_manager_->ValidateCreateTableRequest(*orig_req));
+  RETURN_NOT_OK(CDCSDKValidateCreateTableRequest(*orig_req));
 
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
@@ -4084,7 +4068,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     index_info.CopyFrom(req.index_info());
 
     // Assign column-ids that have just been computed and assigned to "index_info".
-    if (!is_pg_table) {
+    if (is_vector_index) {
+      index_info.mutable_vector_idx_options()->set_id(
+          AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
+    } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
       for (size_t colidx = 0; colidx < schema.num_columns(); colidx++) {
@@ -4508,15 +4495,14 @@ Status CatalogManager::CreateTableIfNotFound(
   return Status::OK();
 }
 
-void CatalogManager::ScheduleVerifyTablePgLayer(TransactionMetadata txn,
-                                                const TableInfoPtr& table,
-                                                const LeaderEpoch& epoch) {
+void CatalogManager::ScheduleVerifyTablePgLayer(
+    TransactionMetadata txn, const TableInfoPtr& table, const LeaderEpoch& epoch) {
   auto when_done = [this, table, epoch](Result<std::optional<bool>> exists) {
     WARN_NOT_OK(VerifyTablePgLayer(table, exists, epoch), "Failed to verify table");
   };
   TableSchemaVerificationTask::CreateAndStartTask(
       *this, table, txn, std::move(when_done), sys_catalog_, master_->client_future(),
-      *master_->messenger(), epoch, false /* ddl_atomicity_enabled */);
+      *master_->messenger(), epoch, /*ddl_atomicity_enabled=*/false);
 }
 
 Status CatalogManager::VerifyTablePgLayer(
@@ -6345,7 +6331,7 @@ void CatalogManager::AcquireObjectLocksGlobal(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->LockObject(*req, resp, std::move(rpc));
+  object_lock_info_manager_->LockObject(*req, *resp, std::move(rpc));
 }
 
 void CatalogManager::ReleaseObjectLocksGlobal(
@@ -6357,7 +6343,7 @@ void CatalogManager::ReleaseObjectLocksGlobal(
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
     return;
   }
-  object_lock_info_manager_->UnlockObject(*req, resp, std::move(rpc));
+  object_lock_info_manager_->UnlockObject(*req, *resp, std::move(rpc));
 }
 
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
@@ -8246,12 +8232,12 @@ std::vector<TableInfoPtr> CatalogManager::GetTables(
   FATAL_INVALID_ENUM_VALUE(GetTablesMode, mode);
 }
 
-void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo>>* namespaces,
-                                      bool includeOnlyRunningNamespaces) {
+void CatalogManager::GetAllNamespaces(
+    std::vector<scoped_refptr<NamespaceInfo>>* namespaces, bool include_only_running_namespaces) {
   namespaces->clear();
   SharedLock lock(mutex_);
   for (const NamespaceInfoMap::value_type& e : namespace_ids_map_) {
-    if (includeOnlyRunningNamespaces && e.second->state() != SysNamespaceEntryPB::RUNNING) {
+    if (include_only_running_namespaces && e.second->state() != SysNamespaceEntryPB::RUNNING) {
       continue;
     }
     namespaces->push_back(e.second);
@@ -9457,11 +9443,11 @@ Status CatalogManager::DeleteYsqlDBTables(
       // Colocation parent tables should be deleted last, so we store them separately and append to
       // the end of the list later.
       if (table->IsColocationParentTable()) {
-        colocation_parents.push_back({table, std::move(l)});
+        colocation_parents.emplace_back(table, std::move(l));
       } else if (IsTable(l->pb)) {
         tables_and_locks.insert(tables_and_locks.begin(), {table, std::move(l)});
       } else {
-        tables_and_locks.push_back({table, std::move(l)});
+        tables_and_locks.emplace_back(table, std::move(l));
       }
     }
 
@@ -11695,6 +11681,10 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
 Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
     const CreateTableRequestPB& request, const Schema& schema,
     const PlacementInfoPB& placement_info) {
+  if (PREDICT_FALSE(FLAGS_TEST_system_table_num_tablets >= 0 &&
+                    request.namespace_().name() == kSystemNamespaceName)) {
+    return FLAGS_TEST_system_table_num_tablets;
+  }
   // Calculate number of tablets to be used. Priorities:
   //   1. Use Internally specified value from 'CreateTableRequestPB::num_tablets'.
   //   2. Use User specified value from

@@ -22,14 +22,13 @@
 #include <cstddef>
 #include <limits>
 
-#include <cds/intrusive/free_list_tagged.h>
-
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/cast.h"
 #include "yb/util/crash_point.h"
 #include "yb/util/errno.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/shmem/robust_mutex.h"
@@ -76,7 +75,7 @@ constexpr size_t GetFreeListIndexSize(size_t index) {
   return kAllocSizes[index];
 }
 
-using FreeListNode = cds::intrusive::TaggedFreeList::node;
+struct FreeListNode : public MPSCQueueEntry<FreeListNode> {};
 
 } // namespace
 
@@ -140,15 +139,6 @@ class SharedMemoryBackingAllocator::Impl {
 
 class SharedMemoryBackingAllocator::HeaderSegment {
  public:
-  ~HeaderSegment() {
-    for (auto& free_list : free_lists_) {
-      // We will be unlinking the entire shared memory file, so no need to do anything per node.
-      // But CDS requires us to empty the free list before it is destroyed. So we clear it with
-      // a no-op disposer function.
-      free_list.clear([](auto) {});
-    }
-  }
-
   void* Prepare(size_t user_data_size) {
     if (!user_data_size) {
       return nullptr;
@@ -236,7 +226,7 @@ class SharedMemoryBackingAllocator::HeaderSegment {
         pointer_cast<std::byte*>(user_ptr) + sizeof(FreeListNode), size - sizeof(FreeListNode));
     auto* node = new (user_ptr) FreeListNode();
     TEST_CRASH_POINT("SharedMemAllocator::AddFreeList:1");
-    free_lists_[index].put(node);
+    free_lists_[index].Push(node);
     TEST_CRASH_POINT("SharedMemAllocator::AddFreeList:2");
   }
 
@@ -248,7 +238,7 @@ class SharedMemoryBackingAllocator::HeaderSegment {
     // node->next for failed pop is detected as race against write to memory region after
     // successful pop.
     ANNOTATE_IGNORE_READS_BEGIN();
-    auto* node = free_list.get();
+    auto* node = free_list.Pop();
     ANNOTATE_IGNORE_READS_END();
     TEST_CRASH_POINT("SharedMemAllocator::PopFreeList:2");
     if (!node) {
@@ -322,7 +312,7 @@ class SharedMemoryBackingAllocator::HeaderSegment {
   // Lowest offset from start of data segment which all past allocations are under.
   std::atomic<size_t> highwater_offset_{DataStartOffset()};
 
-  cds::intrusive::TaggedFreeList free_lists_[GetFreeListIndex(kBlockSize) + 1] = {};
+  LockFreeStack<FreeListNode> free_lists_[GetFreeListIndex(kBlockSize) + 1] = {};
 };
 
 SharedMemoryBackingAllocator::Impl::Impl(std::string_view prefix, bool owner)

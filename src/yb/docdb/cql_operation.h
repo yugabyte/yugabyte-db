@@ -226,7 +226,7 @@ class QLReadOperation : public DocExprExecutor {
                  const DocReadContext& doc_read_context,
                  std::reference_wrapper<const ScopedRWOperation> pending_op,
                  qlexpr::QLResultSet* result_set,
-                 HybridTime* restart_read_ht);
+                 ReadRestartData* read_restart_data);
 
   Status PopulateResultSet(const std::unique_ptr<qlexpr::QLScanSpec>& spec,
                            const qlexpr::QLTableRow& table_row,

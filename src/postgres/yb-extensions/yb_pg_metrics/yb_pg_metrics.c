@@ -213,6 +213,9 @@ typedef enum YbStatementType
 	CatCacheTableMisses_49,
 	CatCacheTableMisses_50,
 	CatCacheTableMisses_End = CatCacheTableMisses_50,
+	HintCacheRefresh,
+	HintCacheHits,
+	HintCacheMisses,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -259,6 +262,10 @@ static long last_catcache_delta_refresh_val = 0;
 static long last_cache_misses_val = 0;
 static long last_cache_id_misses_val[SysCacheSize] = {0};
 static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
+
+static long last_hint_cache_refreshes_val = 0;
+static long last_hint_cache_hits_val = 0;
+static long last_hint_cache_misses_val = 0;
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -392,6 +399,13 @@ set_metric_names(void)
 				 table_name);
 	}
 
+	strcpy(ybpgm_table[HintCacheRefresh].name,
+		   YSQL_METRIC_PREFIX "HintCacheRefresh");
+	strcpy(ybpgm_table[HintCacheHits].name,
+		   YSQL_METRIC_PREFIX "HintCacheHits");
+	strcpy(ybpgm_table[HintCacheMisses].name,
+		   YSQL_METRIC_PREFIX "HintCacheMisses");
+
 	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
 	strcpy(ybpgm_table[Select].sum_help,
@@ -480,6 +494,18 @@ set_metric_names(void)
 				 ybpgm_table[i].table_name);
 		strcpy(ybpgm_table[i].sum_help, "Not applicable");
 	}
+
+	strcpy(ybpgm_table[HintCacheRefresh].count_help,
+		   "Number of hint cache refreshes");
+	strcpy(ybpgm_table[HintCacheRefresh].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[HintCacheHits].count_help,
+		   "Number of hint cache hits");
+	strcpy(ybpgm_table[HintCacheHits].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[HintCacheMisses].count_help,
+		   "Number of hint cache misses");
+	strcpy(ybpgm_table[HintCacheMisses].sum_help, "Not applicable");
 }
 
 /*
@@ -1098,6 +1124,22 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 							  last_cache_table_misses_val[j]));
 			last_cache_table_misses_val[j] = current_cache_table_misses[j];
 		}
+
+		/* Hint cache metrics */
+		long current_hint_cache_refreshes = YbGetHintCacheRefreshes();
+		total_delta = current_hint_cache_refreshes - last_hint_cache_refreshes_val;
+		last_hint_cache_refreshes_val = current_hint_cache_refreshes;
+		ybpgm_StoreCount(HintCacheRefresh, 0, total_delta);
+
+		long current_hint_cache_hits = YbGetHintCacheHits();
+		total_delta = current_hint_cache_hits - last_hint_cache_hits_val;
+		last_hint_cache_hits_val = current_hint_cache_hits;
+		ybpgm_StoreCount(HintCacheHits, 0, total_delta);
+
+		long current_hint_cache_misses = YbGetHintCacheMisses();
+		total_delta = current_hint_cache_misses - last_hint_cache_misses_val;
+		last_hint_cache_misses_val = current_hint_cache_misses;
+		ybpgm_StoreCount(HintCacheMisses, 0, total_delta);
 	}
 
 	IncStatementNestingLevel();

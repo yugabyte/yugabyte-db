@@ -69,7 +69,8 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
   void HandleResponse(int attempt) override;
   void Finished(const Status& status) override;
   bool SendRequest(int attempt) override;
-  MonoTime ComputeDeadline() override;
+  MonoTime ComputeDeadline() const override;
+
   // Not associated with a tablet.
   TabletId tablet_id() const override { return TabletId(); }
 

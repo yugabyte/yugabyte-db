@@ -80,7 +80,7 @@ class TSLocalLockManager::Impl {
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
     auto keys_to_lock = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    if (object_lock_manager_.Lock(object_lock_owner, keys_to_lock.lock_batch, deadline)) {
+    if (object_lock_manager_.Lock(keys_to_lock.lock_batch, deadline, object_lock_owner)) {
       TRACE("Successfully obtained object locks.");
       return Status::OK();
     }
@@ -148,7 +148,7 @@ class TSLocalLockManager::Impl {
 
   void UpdateLeaseEpochIfNecessary(const std::string& uuid, uint64_t lease_epoch) EXCLUDES(mutex_) {
     TRACE_FUNC();
-    std::lock_guard<LockType> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = max_seen_lease_epoch_.find(uuid);
     if (it == max_seen_lease_epoch_.end()) {
       max_seen_lease_epoch_[uuid] = lease_epoch;
@@ -158,7 +158,7 @@ class TSLocalLockManager::Impl {
   }
 
   uint64_t GetMaxSeenLeaseEpoch(const std::string& uuid) EXCLUDES(mutex_) {
-    std::lock_guard<LockType> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = max_seen_lease_epoch_.find(uuid);
     if (it != max_seen_lease_epoch_.end()) {
       return it->second;
@@ -169,7 +169,7 @@ class TSLocalLockManager::Impl {
   Status AddToInProgressTxns(const std::string& txn_id, const CoarseTimePoint& deadline)
       EXCLUDES(mutex_) {
     TRACE_FUNC();
-    yb::UniqueLock<LockType> lock(mutex_);
+    yb::UniqueLock lock(mutex_);
     while (txns_in_progress_.find(txn_id) != txns_in_progress_.end()) {
       if (deadline <= CoarseMonoClock::Now()) {
         LOG(ERROR) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
@@ -193,7 +193,7 @@ class TSLocalLockManager::Impl {
   void RemoveFromInProgressTxns(const std::string& txn_id) EXCLUDES(mutex_) {
     TRACE_FUNC();
     {
-      std::lock_guard<LockType> lock(mutex_);
+      std::lock_guard lock(mutex_);
       txns_in_progress_.erase(txn_id);
     }
     TRACE("Removed from in progress txn.");
@@ -222,15 +222,8 @@ class TSLocalLockManager::Impl {
 
   Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& entries) {
     VLOG(2) << __func__ << " using " << yb::ToString(entries.lock_entries());
-    // TODO(amit): 1) When we implement YSQL leases, we need to clear out the locks, and
-    // re-bootstrap. For now, we are not doing that, the only time this should be happening
-    // is when a tserver registers with the master for the first time.
-    // 2) If the tserver is already bootstrapped from a master, we should not be bootstrapping
-    // again. However, even if we are bootstrap again, it should be safe to do so. Once we implement
-    // persistence of TServer Registration at the master, we can avoid this.
     if (IsBootstrapped()) {
-      LOG_WITH_FUNC(INFO) << "TSLocalLockManager is already bootstrapped. Ignoring the request.";
-      return Status::OK();
+      return STATUS(IllegalState, "TSLocalLockManager is already bootstrapped.");
     }
     for (const auto& acquire_req : entries.lock_entries()) {
       // This call should not block on anything.
@@ -272,7 +265,8 @@ Status TSLocalLockManager::AcquireObjectLocks(
   if (VLOG_IS_ON(3)) {
     std::stringstream output;
     impl_->DumpLocksToHtml(output);
-    VLOG(3) << "Dumping current state After acquire : " << output.str();
+    VLOG(3) << "Acquire " << (ret.ok() ? "succeded" : "failed")
+            << ". Dumping current state After acquire : " << output.str();
   }
   return ret;
 }

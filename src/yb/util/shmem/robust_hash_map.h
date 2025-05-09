@@ -253,7 +253,7 @@ class RobustHashMap {
 
     std::string ToString() const {
       return Format("{ next: $0, key: $1, value: $2 }",
-                    static_cast<const void*>(*next), entry.first, entry.second);
+                    static_cast<const void*>(SHARED_MEMORY_LOAD(next)), entry.first, entry.second);
     }
 
     Entry entry;
@@ -404,7 +404,7 @@ class RobustHashMap {
     SHARED_MEMORY_STORE(in_progress_node_, node);
     // Crash up to this point: in_progess_node_ set but differs from bucket; insert can be retried.
     TEST_CRASH_POINT("RobustHashMap::DoInsert:2");
-    (*table_)[position].push_front(*node);
+    SHARED_MEMORY_LOAD(table_)[position].push_front(*node);
     // Crash at this point: in_progress_node_ set and equals bucket, insert has succeeded.
     TEST_CRASH_POINT("RobustHashMap::DoInsert:3");
     SHARED_MEMORY_STORE(num_elements_, new_num_elements);
@@ -442,7 +442,8 @@ class RobustHashMap {
 
   void CleanupInsertDeleteAfterCrash() {
     // State is consistent already.
-    if (!in_progress_node_) return;
+    Node* node = SHARED_MEMORY_LOAD(in_progress_node_);
+    if (!node) return;
 
     auto cmp = SHARED_MEMORY_LOAD(num_elements_) <=> SHARED_MEMORY_LOAD(in_progress_num_elements_);
     if (cmp == 0) {
@@ -457,11 +458,10 @@ class RobustHashMap {
       //    retry it.
       // 2. in_progress_node_ is head of its bucket -- we inserted the value but did not update
       //    num_elements_ and should update it.
-      Node* node = in_progress_node_;
       size_t position = Position(node->entry.first);
       TEST_CRASH_POINT("RobustHashMap::Cleanup::Insert:1");
-      auto& bucket = (*table_)[position];
-      if (bucket.empty() || &bucket.front() != in_progress_node_) {
+      auto& bucket = SHARED_MEMORY_LOAD(table_)[position];
+      if (bucket.empty() || &bucket.front() != node) {
         DoInsert(position, node);
         return;
       }
@@ -474,7 +474,7 @@ class RobustHashMap {
       //    in_progress_prev_ (if there is one) will not be the node.
       auto prev = List::s_iterator_to(*SHARED_MEMORY_LOAD(in_progress_prev_));
       auto current = std::next(prev);
-      if (current.pointed_node() && &*current == SHARED_MEMORY_LOAD(in_progress_node_)) {
+      if (current.pointed_node() && &*current == node) {
         TEST_CRASH_POINT("RobustHashMap::Cleanup::Delete:1");
         DoDelete(prev);
         return;
