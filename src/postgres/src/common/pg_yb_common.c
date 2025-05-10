@@ -213,9 +213,11 @@ int YBGetYsqlOutputBufferSize() {
 		return atoi(output_buffer_size_str);
 	}
 
-	// Shouldn't reach here. But even if we do, instead of failing in a release build, we return
-	// 256KB as a default.
-	return 256 * 1024;
+	/*
+	 * Shouldn't reach here. But even if we do, instead of failing in a release
+	 * build, we return 1 MiB as a default.
+	 */
+	return 1024 * 1024;
 
 }
 
@@ -251,7 +253,7 @@ YBColocateDatabaseByDefault()
 }
 
 /*
- * Note: This function is used for the test flag only. 
+ * Note: This function is used for the test flag only.
  * Once the associated feature is fully developed and stable, this function will be removed.
  * The flag is defined this way and not in ybc_pggate.cc because it is used in the ipic.c file,
  * which is initialized before the pggate api.
