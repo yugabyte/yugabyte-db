@@ -1044,6 +1044,16 @@ expensive when the number of YB-TServers, or the number of databases goes up.
 
 {{< /note >}}
 
+## Auto Analyze service flags
+
+Auto Analyze service flags are {{<tags/feature/tp idea="590">}}.
+
+See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-service-flags).
+
+##### ysql_enable_auto_analyze_service
+
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
 ## Advisory lock flags
 
 Support for advisory locks is {{<tags/feature/tp idea="812">}}.
