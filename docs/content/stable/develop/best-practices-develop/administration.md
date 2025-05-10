@@ -57,3 +57,7 @@ Most DDL statements complete quickly, so this is typically not a significant iss
 DDL statements that affect entities in different databases can be run concurrently. However, for DDL statements that impact the same database, it is recommended to execute them sequentially.
 
 DDL statements that relate to shared objects, such as roles or tablespaces, are considered as affecting all databases in the cluster, so they should also be run sequentially.
+
+## Preload postgres system catalog entries into the local catalog cache
+
+Many common postgres operations, like parsing a query, planning etc require looking up entries in postgres system catalog tables like pg_class, pg_operator, pg_statistic, pg_attribute to for postgres metadata for the columns, operators etc. Each postgres backend (process) caches such metadata for performance reasons. In YugabyteDB, misses on these caches need to be loaded from the yb-master leader, so initial queries on that backend can be slow until these caches are warm, especially if the leader yb-master is in a different region. YugabyteDB has a set of knobs that allow customizing this tradeoff to control the preloading entries into postgres caches. Consult [this detailed guide](../ysql-catalog-cache-tuning-guide.md) to make the right tradeoffs for your application.
