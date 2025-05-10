@@ -645,7 +645,244 @@ In all cases, cross-repository merge conflicts may arise, in which case resoluti
 See MERGE.
 TODO(jason): where is MERGE?
 
-MERGE:
+### Merge
+
+There are many resources out there to help with merging code.
+Some of this information may be a repeat or refresher.
+
+A merge conflict happens due to at least one historical commit on one side.
+
+Consider the following example:
+
+```
+A -> B -> C -> D -> E -> ... -> Y
+            \
+             > D' -> E' -> ... -> J'
+```
+
+Suppose the prime branch was merged to the main branch:
+
+```
+A -> B -> C -> D -> E -> ... -> Y ---> Z
+            \                       /
+             > D' -> E' -> ... -> J'
+```
+
+In the above example, `Z` is a merge of `Y` and `J'`.
+If there is a merge conflict, then the reason must be found in at least one of `D,E,...,Y,D',E',...,J'`.
+
+Suppose instead, commit `Q` was cherry-picked onto the prime branch:
+
+```
+A -> B -> C -> D -> E -> ... -> Y
+            \
+             > D' -> E' -> ... -> J' -> Q'
+```
+
+In the above example, `Q'` is a cherry-pick of `Q`.
+If there is a merge conflict, then the reason must be found in at least one of `D,E,...,P,D',E',...,J'`.
+Notice that `Q` is not considered a historical commit for the merge conflict reason.
+
+In an ideal scenario, all related historical commits are investigated, then the appropriate action is taken in context of that.
+However, it can be an insurmountable task to find all such commits in a large codebase such as PostgreSQL.
+So take a best effort approach in investigating a conflict.
+
+- If a merge conflict appears trivial, you may resolve it directly without looking up the history.
+- In the general case, use `git blame` on each side of a conflict hunk to find the offending commit(s).
+  Sometimes, more digging is necessary by walking further up the history (for example, if the main change was shadowed by a style change or refactor such as moving a function from one file to another).
+- Finding historical commits that deleted lines is harder than those that added lines since deleted lines do not show up in `git blame`.
+  There is no need to go out of your way to look for these historical commits unless you suspect one exists (due to the fundamental fact that conflicts always come from at least one historical commit).
+
+In case you are doing a point-import and the same historical commit appears multiple times as a reason for the conflict, consider importing that historical commit as it may save some hassle and make review easier as well.
+
+#### Finding conflict-causing commits
+
+In case of `git merge`, `git blame` works on both sides of each conflict hunk.
+In case of `git cherry-pick`, `git blame` does not work on the side for the commit being cherry-picked.
+To work around that, the simplest way is to make a second checkout of the repository at the commit being cherry-picked, then investigate using `git blame` and other tools from there.
+Otherwise, you can still see the state of the file at that commit using `git show <commit>:<path>`, find commits that changed line XYZ using some `git log -G`, etc., but it is not as convenient.
+
+In the common case, `git blame` on lines within conflict markers is good enough to reveal the offending commit(s).
+In case it is not enough, consider the following tips:
+
+- In case `git blame` points to a merge commit (authored by YugabyteDB), that merge commit should have listed the commit hashes involved in the conflict in an easy-to-find fashion.
+  Continue the search using those commits.
+- In case lines are missing, `git blame` does not help.
+  Instead, you can search for commits that touched that file using `git log --patch <revision-range> -- <path>`.
+- If you have any good keywords related to the conflict, such as "MinimalTuple", you can look up commits related to that using `git log --grep <keyword> <revision-range>`.
+  You may even be interested in looking up the keyword in historical merge commits in case there were similar conflicts whose resolutions you can follow.
+  In any case, the lookup can be made faster by specifying some `-- <path>` to the command: for YugabyteDB, `-- src` would exclude documentation changes, for example.
+- If you have any good code text related to the conflict, such as "IS_AF_UNIX", you can look up commits touching lines containing that text using `git log -S <code_text> <revision-range>` or `git log -G <code_text> <revision-range>` (read the manual for more details between the two).
+  Again, lookup can be made faster by specifying some `-- <path>`.
+
+#### Merge commit message
+
+When using `git merge`, the commit title is initially automatically generated.
+This depends on what ref was specified to `git merge` and what branch was checked out at the time.
+The template looks something like `Merge <ref> into <branch>`.
+For example,
+
+- `Merge commit 'd4103e809e0662c5cd4a51f9dfafb44ce210d38c' into pg15-master-merge`
+- `Merge tag 'YB_VERSION_4_9_3' into yb-orafce`
+
+The message is definitely changeable, but it may be of best interest to make sure that the auto-generated message appears like you wish it to be as a sanity check that you are doing things correctly.
+
+For the ref, a **full** commit hash is the safest approach.
+Short commit hashes have a risk of collision.
+Tags are preferred since they are more human-readable.
+In any case, the merge commit's second parent is the commit being merged, so this is technically duplicate information.
+A reason to still care about it is that Phorge merge commit titles are derived from these titles, and the Phorge merge commit is more removed from the commit being merged.
+
+This brings us to the next topic: do not use the template `Merge <ref> into <branch>` if ref or branch are not accurate.
+For example, when working on the PG 15 merge, a `pg15` branch was created to run in parallel with the `master` branch.
+Periodically, a commit from `master` was merged into `pg15` as follows:
+
+1. `git switch -c pg15-master-merge pg15`
+1. `git merge <master_commit_full_hash>`
+1. Resolve conflicts, recording them in a temporary place, then `git merge --continue` and dump the resolution information to the commit message.
+   The auto-generated title should be good as is.
+1. Create a Phorge revision of this for review.
+   Change the title to `[pg15] merge: master commit '<master_commit_full_hash>' into pg15`.
+   Note that this title does not follow the template because the eventual merge commit when it lands will not be merging `<master_commit_full_hash>` into `pg15` but rather the previous merge commit into `pg15`.
+   For a reader of `git log --first-parent pg15`, it is more useful to read that `<master_commit_full_hash>` is merged rather than some commit hash of a merge commit, which would be the case if we were to follow the template.
+
+Here is a graphical representation of the above example (`git log --oneline --graph 71ebe84823510774407c82e015eab1d44925b642`):
+
+```
+*   71ebe84823 [pg15] merge: master branch commit '1d410d7ca552b89b5c87ca073f1fb4c8cf42957f' into pg15
+|\
+| *   168e90a4fc Merge commit '1d410d7ca552b89b5c87ca073f1fb4c8cf42957f' into pg15-master-merge
+| |\
+| | * 1d410d7ca5 (tag: 2.21.1.0-b67) [#14025] YSQL: import Add function to log the memory contexts of specified backend process.
+| | * 997b064454 [#20950] DocDB: Update pg_cron to Jan 2024
+| | * 5b3b972fa0 [PLAT-12406] Migrating replicated config with correct types
+| | * 59dc0436b8 (tag: 2.21.1.0-b66) [PLAT-12529]: Add check for locale in node-agent preflight checks
+| | * b0c142e4f7 [PLAT-12414] Faster incremental sbt builds for developers
+| | * a3244a5981 [PLAT-12394] Change Gflag flow for YBM use case
+* | | 586dfd99e3 [pg15] refactor: rework index concurrent computation
+* | | 0a5cbae49f [pg15] fix: start DDL transaction for VACUUM ANALYZE
+* | | 522642f1e3 [pg15] fix: passwordcheck extension
+|/ /
+* | fab65ca9cf [pg15] feat: activate 'Allow ALTER TYPE to change some properties of a base type'
+* | 6192cad962 [pg15] test: fix expected value of reltuples in testCountAfterTruncate
+* |   32e3ed9655 [pg15] merge: master branch commit '03c9c4ca25ba365f9deeba3cc66fb64f919c98d3' into pg15
+|\ \
+| * | c9d333c33d Merge commit '03c9c4ca25ba365f9deeba3cc66fb64f919c98d3' into pg15-master-merge
+|/| |
+| |/
+| * 03c9c4ca25 (tag: 2.21.1.0-b65) [#20568][#20567] YSQL: Fix flakiness in some tests that use fail on conflict
+| * e0593bc6a1 [#20389] YSQL, Backups: Implement new tablespace related flags in yb_backup
+| * b0c02d75fa [PLAT-12527] [Master] Disable leaderlessTablet check on RF1 clusters
+...
+| * 988a6d4363 (tag: 2.21.1.0-b2) [PLAT-12412] API: Generate server stubs using openapi
+| * 1ded410bf1 [PLAT-12396] Reset Provider usability state in case edit task creation fails
+| * e6ee3d39e9 [PLAT-12360] Create provider with the same namespace as the CR object
+* | 1d332e208f [pg15] fix: re-merge pgstat.c, wait_event.c
+* | bb34506ee8 [pg15] fix: scan slot type in foreign scan
+* | 020353c365 [pg15] fix: reset reltuples to -1 on TRUNCATE
+* | 7d7872ebf2 [pg15] test: fully port yb_pg_insert regress test
+* | 4eea368075 [pg15] fix: test_lint.sh, and test failing lint
+* | dbb14f2886 [pg15] fix: CREATE TABLE LIKE INCLUDING DEFAULTS
+* |   f399fdbdf0 [pg15] merge: master branch commit 'ba3761c73a7db1473141cc86c7a1fd033755102d' into pg15
+|\ \
+| * | 26ba6082b6 Merge commit 'ba3761c73a7db1473141cc86c7a1fd033755102d' into pg15-master-merge
+| |\|
+| | * ba3761c73a (tag: 2.21.1.0-b1) [#20709] YSQL: fix wrong results from index aggregate
+| | * 3b0e58ba4b [PLAT-12318] Update YbUniverseReconciler to call edit universe on disk size, resource changes
+| | * fad54f1a27 PITR remove Stop workloads warning (#20771)
+```
+
+In case of subtree merge commits, there are two additional considerations:
+
+- If merge commit parent swapping is employed, then `<ref>` and `<branch>` should likewise be swapped in the title.
+- `<ref>` should be clarified with the subtree repository name prefixed.
+  This is particularly useful in case the same tag name is present in YugabyteDB and the subtree repository.
+
+See the latest three commits of the following example (`git log --oneline --graph cd2bd24a6b5b9b0052655d40853eb0fe207707b1`):
+
+```
+*   cd2bd24a6b [pg15] merge: pg_stat_monitor tag '2.0.4' into pg15
+|\
+| *   481d26bf02 Merge pg15-pg-stat-monitor-merge into pg_stat_monitor tag '2.0.4'
+| |\
+| | *   d57d3b411c Merge pg15 into pg_stat_monitor commit 'e8bfff127b9bbadf1360469c06ea8f3cbde7e6fd'
+| | |\
+| * | | 75f86f54b1 Version bumped for the 2.0.4 release (#434)
+| * | | 4863020ccd PG-646: pg_stat_monitor hangs in pgsm_store
+| * | | 0a8ac38de9 Version bumped for the 2.0.3 release. (#430)
+...  \ \
+| * | | | 67b3d961ca PG-193: Comment based tags to identify different parameters.
+| * | | | 89614e442b PG-190: Does not show query, if query elapsed time is greater than bucket time.
+| | |/ /
+| |/| |
+| * | | e8bfff127b README Update.
+| * | | 1dce75c621 README Update.
+| * | | f42893472a PG-189: Regression crash in case of PostgreSQL 11.
+...  /
+| * | 56d8375c38 Issue - (#2): Extended pg_stat_statement to provide new features.
+| * | f70ad5ad48 Issue - (#1): Initial Commit for PostgreSQL's (pg_stat_statement).
+| * | 97c67356ca Initial commit
+|  /
+* | 29b46566b0 [pg15] test: fix yb_create_index
+* | d1bc2d8c41 [pg15] test: port TestPgRegressProfile, yb_index_selectivity, yb_pg_insert_conflict
+* |   7cbea2dcb5 [pg15] merge: master branch commit 'b66e31a7b1150c6921a7c0cf7be82af278a948a3' into pg15
+|\ \
+| |/
+|/|
+| * 6c6950f46c Merge commit 'b66e31a7b1150c6921a7c0cf7be82af278a948a3' into pg15-master-merge
+|/|
+| * b66e31a7b1 [#22387] YSQL: Fix Bitmap Scan CBO tests
+| * 676eeada29 [##22388] YSQL: Change name of bitmap_exceeded_work_mem_cost
+| * 0b8deec77a [#22364] YSQL: Enable CREATE/DROP ACCESS METHOD grammar
+```
+
+Note that `pg15-stat-monitor-merge` was a temporary branch on `d57d3b411c` at the time of doing the merge `481d26bf02`.
+Specifying the temporary branch name in the commit title is fine since it conveys the intent and the metadata for the actual commit being merged is already contained in the commit itself.
+
+As for the commit message body, look into the above examples as reference (e.g. `git show --no-patch 71ebe84823`.
+
+#### Cherry-pick commit message
+
+When using `git cherry-pick -x`, the commit message is automatically generated.
+
+In case of cherry-picking for the sake of officially pushing the cherry-picked commits directly (e.g. upstream repositories), if encountering any merge conflicts, put such details somewhere in the commit message.
+In case of cherry-picking but eventually landing a Phorge squash commit, concatenate the commit messages (including titles) and add merge conflict details somewhere in the summary.
+The title should be of the form `[#<GH_issue>] YSQL: import <cherry-picked_commit_title>`, in case of cherry-picking a single commit, or `[#GH_issue>] YSQL: import <general_catchall>` otherwise.
+
+#### Redoing a merge
+
+##### Rerere
+
+When redoing a merge, watch out for the rerere cache.
+Git by default caches merge resolutions you previously did unless otherwise specified.
+If you are not familiar with it, it is generally a bad thing as...
+
+- ...you may have previously done an incorrect resolution, and this time, the incorrect resolution is automatically reapplied.
+- ...these resolutions may be automatic for you but not for others, so you may miss documenting some merge conflict resolutions.
+
+If you find yourself in this state, one way to delete the entire rerere cache is by `rm -rf .git/rr-cache` (if using Git worktrees, adjust accordingly).
+Then, trying to `git merge` or `git cherry-pick` will bring you back to a clean view.
+
+##### Rebase a merge commit
+
+In case you are trying to rebase a merge commit to a newer base, consider the following steps:
+
+1. `git merge` the newer base.
+   Record any new conflicts, and try to also record any conflicts that disappeared since the previous merge, if applicable.
+   You should now have two merge commits.
+1. `git tag merge-backup` this state.
+1. Redo the merge from the new base.
+   Do not bother re-resolving conflicts.
+   Instead, take the state as of `merge-backup`: `git diff -R merge-backup | git apply`.
+   Add the changes and `git merge --continue`.
+   Combine the resolution notes of the previous two merge commits.
+   Remember to cancel out any conflicts that disappeared after the second merge commit.
+
+#### Review
+
+#### File-specific advice
+
+- docs
 - port regress tests
 
 [repo-yugabyte-db]: https://github.com/yugabyte/yugabyte-db
