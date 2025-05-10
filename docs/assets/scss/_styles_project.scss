@@ -31,6 +31,13 @@
 @import "./_yb_tags.scss";
 @import "./_yb_container.scss";
 
+@font-face {
+  font-family: 'SFMonoMedium';
+  src: url('/fonts/sf-mono/SFMonoMedium.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+}
+
 html {
   padding: 0 !important;
 }

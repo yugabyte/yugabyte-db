@@ -9,6 +9,7 @@ menu:
     parent: configuration
     weight: 2100
 type: docs
+body_class: configuration
 ---
 
 Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
@@ -53,6 +54,10 @@ The following sections describe the flags considered relevant to configuring Yug
 
 ##### --flagfile
 
+{{< tags/wrap >}}
+	{{<tags/feature/restart-needed>}}
+{{< /tags/wrap >}}
+
 Specifies the file to load the configuration flags from. The configuration flags must be in the same format as supported by the command line flags.
 
 ##### --version
@@ -71,6 +76,12 @@ The number of comma-separated values should match the total number of YB-Master 
 
 ##### --fs_data_dirs
 
+{{< tags/wrap >}}
+	{{<tags/feature/tp>}} 
+	{{<tags/feature/restart-needed>}} 
+	{{<tags/feature/t-server>}}
+{{< /tags/wrap >}}
+
 Specifies a comma-separated list of mount directories, where yb-tserver will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
 
 Required.
@@ -78,6 +89,12 @@ Required.
 Changing the value of this flag after the cluster has already been created is not supported.
 
 ##### --fs_wal_dirs
+
+{{< tags/wrap >}}
+	{{<tags/feature/deprecated>}}
+	{{<tags/feature/restart-needed>}} 
+	{{<tags/feature/t-server>}}
+{{< /tags/wrap >}}
 
 Specifies a comma-separated list of directories, where yb-tserver will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
@@ -487,11 +504,19 @@ This value must match on all yb-master and yb-tserver configurations of a Yugaby
 
 ##### --post_split_trigger_compaction_pool_max_threads
 
-Deprecated. Use `full_compaction_pool_max_threads`.
+{{< tags/wrap >}}
+	{{<tags/feature/deprecated>}}
+{{< /tags/wrap >}}
+
+Use `full_compaction_pool_max_threads`.
 
 ##### --post_split_trigger_compaction_pool_max_queue_size
 
-Deprecated. Use `full_compaction_pool_max_queue_size`.
+{{< tags/wrap >}}
+	{{<tags/feature/deprecated>}}
+{{< /tags/wrap >}}
+
+Use `full_compaction_pool_max_queue_size`.
 
 ##### --full_compaction_pool_max_threads
 
@@ -693,7 +718,11 @@ Default: `13000`
 
 ##### --ysql_hba_conf
 
-Deprecated. Use `--ysql_hba_conf_csv` instead.
+{{< tags/wrap >}}
+	{{<tags/feature/deprecated>}}
+{{< /tags/wrap >}}
+
+Use `--ysql_hba_conf_csv` instead.
 
 ##### --ysql_hba_conf_csv
 
@@ -721,7 +750,11 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 ##### --ysql_pg_conf
 
-Deprecated. Use `--ysql_pg_conf_csv` instead.
+{{< tags/wrap >}}
+	{{<tags/feature/deprecated>}}
+{{< /tags/wrap >}}
+
+Use `--ysql_pg_conf_csv` instead.
 
 ##### --ysql_pg_conf_csv
 

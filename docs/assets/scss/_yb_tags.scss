@@ -36,6 +36,28 @@
       color: #097345;
     }
 
+    &.restart-needed {
+      background: #E8E9FE;
+      color: #4F4FA4;
+    }
+
+    &.t-server {
+      background: #E5EDFF;
+      color: #2B59C3;
+
+      &::before {
+        content: "";
+        background: url(/icons/t-server.svg) center no-repeat;
+        width: 18px;
+        height: 18px;
+        margin-right: 4px;
+      }
+    }
+
+    &.deprecated {
+      background: #FEEDED;
+      color: #DA1515;
+    }
 
     &.ysql {
       background: #CBCCFB;
@@ -50,6 +72,13 @@
     &:hover {
       text-decoration: none !important;
     }
+  }
+  .tags-row{
+    margin-bottom: 16px;
+    display: flex;
+    flex-flow: wrap;
+    gap: 6px;
+    font-size: 0;
   }
 }
 
@@ -112,7 +141,7 @@
     white-space: normal;
     text-transform: none;
 
-    &:before {
+    &::before {
       position: absolute;
       left: -13px;
       content: "";
