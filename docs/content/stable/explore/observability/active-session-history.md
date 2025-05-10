@@ -48,7 +48,7 @@ You can also use the following flags based on your requirements.
 
 ## Limitations
 
-Note that the following limitations are subject to change as the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+Note that the following limitations are subject to change.
 
 - ASH is available per node and is not aggregated across the cluster.
 - ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.
