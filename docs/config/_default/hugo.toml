@@ -18,7 +18,7 @@ enableGitInfo = true
 [module]
   [module.hugoVersion]
     extended = true
-    min = "0.104.3"
+    min = "0.145.0"
   [[module.imports]]
     path = "github.com/google/docsy"
     disable = false
