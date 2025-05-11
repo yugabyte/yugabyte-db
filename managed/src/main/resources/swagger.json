@@ -4323,6 +4323,23 @@
         }
       ]
     },
+    "BasicAuthCredentials" : {
+      "properties" : {
+        "password" : {
+          "description" : "Password",
+          "type" : "string"
+        },
+        "username" : {
+          "description" : "Username",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "password",
+        "username"
+      ],
+      "type" : "object"
+    },
     "BootstrapBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
@@ -10908,6 +10925,43 @@
         "lines"
       ],
       "type" : "object"
+    },
+    "LokiConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "Loki Config",
+          "properties" : {
+            "authType" : {
+              "description" : "Auth Type",
+              "enum" : [
+                "BasicAuth",
+                "NoAuth"
+              ],
+              "type" : "string"
+            },
+            "basicAuth" : {
+              "$ref" : "#/definitions/BasicAuthCredentials",
+              "description" : "Basic Auth Credentials"
+            },
+            "endpoint" : {
+              "description" : "End Point",
+              "type" : "string"
+            },
+            "organizationID" : {
+              "description" : "Organization/Tenant ID",
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "authType",
+            "endpoint"
+          ],
+          "type" : "object"
+        }
+      ]
     },
     "MaintenanceWindow" : {
       "description" : "Maintenance Window",
@@ -21520,7 +21574,8 @@
             "DATA_DOG",
             "SPLUNK",
             "AWS_CLOUDWATCH",
-            "GCP_CLOUD_MONITORING"
+            "GCP_CLOUD_MONITORING",
+            "LOKI"
           ],
           "type" : "string"
         }

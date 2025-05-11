@@ -1,6 +1,7 @@
 import { FC } from 'react';
 import { toast } from 'react-toastify';
-import { useMutation } from 'react-query';
+import { useMutation, useQuery } from 'react-query';
+import { find } from 'lodash';
 import { useTranslation, Trans } from 'react-i18next';
 import { useForm, FormProvider } from 'react-hook-form';
 import { Box, Typography, MenuItem, Divider } from '@material-ui/core';
@@ -10,10 +11,14 @@ import {
   YBInputField,
   YBRadioGroupField,
   RadioGroupOrientation,
-  YBSelect
+  YBSelect,
+  YBTooltip
 } from '../../../components';
+
 import { YBDropZoneField } from '../../../../components/configRedesign/providerRedesign/components/YBDropZone/YBDropZoneField';
+import { YBFormSelect } from '../../../../components/common/forms/fields';
 import { api } from '../../../utils/api';
+import { api as universeApi } from '../../../../redesign/features/universe/universe-form/utils/api';
 import { createErrorMessage } from '../../universe/universe-form/utils/helpers';
 import { readFileAsText } from '../../../../components/configRedesign/providerRedesign/forms/utils';
 import {
@@ -22,14 +27,17 @@ import {
   ExportLogPayload,
   TPItem
 } from '../utils/types';
-import { TELEMETRY_PROVIDER_OPTIONS, DATADOG_SITES } from '../utils/constants';
+import { TELEMETRY_PROVIDER_OPTIONS, DATADOG_SITES, LOKI_AUTH_TYPES } from '../utils/constants';
 //RBAC
+import { RuntimeConfigKey } from '../../../helpers/constants';
+import { RunTimeConfig } from '../../../../redesign/features/universe/universe-form/utils/dto';
 import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
 import { RBAC_ERR_MSG_NO_PERM } from '../../rbac/common/validator/ValidatorUtils';
 
 //styles
 import { exportLogStyles } from '../utils/ExportLogStyles';
+import InfoIcon from '../../../assets/info-message.svg';
 
 interface ExportLogFormProps {
   open: boolean;
@@ -75,6 +83,15 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
 
   const providerTypeValue = watch('config.type');
   const dataDogSiteValue = watch('config.site');
+  const lokiAuthTypeValue = watch('config.authType');
+
+  const isLokiTelemetryEnabled = (runtimeConfigs: RunTimeConfig) => {
+    return find(runtimeConfigs?.configEntries, (config) => config.key === RuntimeConfigKey.LOKI_TELEMETRY_ALLOW)?.value === 'true';
+  };
+
+  const { data: runtimeConfigs, isLoading: runtimeConfigLoading, isError } = useQuery(RuntimeConfigKey.LOKI_TELEMETRY_ALLOW, () =>
+    universeApi.fetchRunTimeConfigs(true)
+  );
 
   const handleFormSubmit = handleSubmit(async (values) => {
     try {
@@ -117,6 +134,18 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
         payload.config.region = values.config?.region;
         payload.config.roleARN = values.config?.roleARN;
         payload.config.endpoint = values.config?.endpoint;
+      }
+      if (values.config.type == TelemetryProviderType.LOKI) {
+        payload.config.endpoint = values.config?.endpoint;
+
+        payload.config.organizationID = values.config?.organizationID;
+
+        payload.config.authType = values.config?.authType;
+
+        if (values.config.authType === 'BasicAuth') {
+          payload.config.basicAuth = values.config?.basicAuth;
+        }
+
       }
       await createTelemetryProvider.mutateAsync(payload);
     } catch (e) {
@@ -265,6 +294,104 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
         </Box>
       </>
     );
+  };
+
+
+  const renderLokiForm = () => {
+    return (
+      <>
+        <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+        <Box display={'flex'} flexDirection={'row'} alignItems={'center'} mt={3}>
+          <YBLabel>{t('exportAuditLog.lokiEndpoint')}</YBLabel>
+
+        <Box ml={1}>
+          <YBTooltip title={t('exportAuditLog.lokiEndpointTooltip')}><img src={InfoIcon} /></YBTooltip>
+          </Box>
+        </Box>
+          <YBInputField
+            control={control}
+            name="config.endpoint"
+            placeholder= {t('exportAuditLog.lokiEndpointPlaceholder')}
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'LokiForm-EndPoint'
+            }}
+            required={true}
+            rules={{ required: 'This field is required' }}
+          />
+        </Box>
+        <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
+        <Box display={'flex'} flexDirection={'row'} alignItems={'center'} mt={3}>
+            <YBLabel>{t('exportAuditLog.lokiOrganizationID')}</YBLabel>
+            <Box ml={1}>
+              <YBTooltip title={t('exportAuditLog.lokiOrganizationIDTooltip')}>
+                <img src={InfoIcon} alt="Info" style={{ cursor: 'pointer' }} />
+              </YBTooltip>
+              </Box>
+          </Box>
+          <YBInputField
+            control={control}
+            name="config.organizationID"
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'LokiForm-OrganizationID'
+            }}
+          />
+        </Box>
+        {/* Auth Type Selection */}
+        <Box className={classes.mainFieldContainer}>
+            <Typography className={classes.exportToTitle}>
+              {t('exportAuditLog.authType')}
+            </Typography>
+            <YBRadioGroupField
+              name="config.authType"
+              control={control}
+              options={LOKI_AUTH_TYPES}
+              orientation={RadioGroupOrientation.VERTICAL}
+              isDisabled={isViewMode}
+            />
+            {lokiAuthTypeValue === 'BasicAuth' && renderLokiBasicAuthForm()}
+          </Box>
+      </>
+    );
+  };
+
+  const renderLokiBasicAuthForm = () => {
+    {/* Username/Password Fields (Only when Basic Auth selected) */}
+     return (
+      <>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>{t('exportAuditLog.lokiUsername')}</YBLabel>
+          <YBInputField
+            control={control}
+            name="config.basicAuth.username"
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'LokiForm-Username'
+            }}
+            required={true}
+            rules={{ required: 'This field is required' }}
+          />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>{t('exportAuditLog.lokiPassword')}</YBLabel>
+          <YBInputField
+            control={control}
+            name="config.basicAuth.password"
+            fullWidth
+            disabled={isViewMode}
+            inputProps={{
+              'data-testid': 'LokiForm-Password'
+            }}
+            required={true}
+            rules={{ required: 'This field is required' }}
+          />
+        </Box>
+      </>
+    )
   };
 
   const renderAWSWatchForm = () => {
@@ -460,6 +587,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
             {providerTypeValue === TelemetryProviderType.AWS_CLOUDWATCH && renderAWSWatchForm()}
             {providerTypeValue === TelemetryProviderType.GCP_CLOUD_MONITORING &&
               renderGCPCloudForm()}
+            {(providerTypeValue === TelemetryProviderType.LOKI && (runtimeConfigs && isLokiTelemetryEnabled(runtimeConfigs) && !runtimeConfigLoading)) && renderLokiForm()}
           </Box>
         </Box>
       </FormProvider>

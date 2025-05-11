@@ -14,7 +14,8 @@ import lombok.Data;
   @Type(value = DataDogConfig.class, name = "DATA_DOG"),
   @Type(value = SplunkConfig.class, name = "SPLUNK"),
   @Type(value = AWSCloudWatchConfig.class, name = "AWS_CLOUDWATCH"),
-  @Type(value = GCPCloudMonitoringConfig.class, name = "GCP_CLOUD_MONITORING")
+  @Type(value = GCPCloudMonitoringConfig.class, name = "GCP_CLOUD_MONITORING"),
+  @Type(value = LokiConfig.class, name = "LOKI")
 })
 @ApiModel(description = "Telemetry Provider Configuration")
 public class TelemetryProviderConfig {

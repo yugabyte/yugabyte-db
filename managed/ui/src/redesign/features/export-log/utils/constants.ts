@@ -4,7 +4,8 @@ export const TP_FRIENDLY_NAMES = {
   [TelemetryProviderType.DATA_DOG]: 'Datadog',
   [TelemetryProviderType.SPLUNK]: 'Splunk',
   [TelemetryProviderType.AWS_CLOUDWATCH]: 'AWS CloudWatch',
-  [TelemetryProviderType.GCP_CLOUD_MONITORING]: 'GCP Cloud Logging'
+  [TelemetryProviderType.GCP_CLOUD_MONITORING]: 'GCP Cloud Logging',
+  [TelemetryProviderType.LOKI]: 'Loki'
 };
 
 export const TELEMETRY_PROVIDER_OPTIONS = [
@@ -23,6 +24,10 @@ export const TELEMETRY_PROVIDER_OPTIONS = [
   {
     label: 'GCP Cloud Logging',
     value: TelemetryProviderType.GCP_CLOUD_MONITORING
+  },
+  {
+    label: 'Loki',
+    value: TelemetryProviderType.LOKI
   }
 ];
 
@@ -33,4 +38,15 @@ export const DATADOG_SITES = [
   { name: 'EU1', value: 'datadoghq.eu' },
   { name: 'US1-FED', value: 'ddog-gov.com' },
   { name: 'AP1', value: 'ap1.datadoghq.com' }
+];
+
+export const LOKI_AUTH_TYPES = [
+  {
+    label: 'Basic Auth',
+    value: 'BasicAuth'
+  },
+  {
+    label: 'No Auth',
+    value: 'NoAuth'
+  },
 ];

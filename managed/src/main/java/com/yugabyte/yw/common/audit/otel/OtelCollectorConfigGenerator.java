@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
+import com.yugabyte.yw.models.helpers.telemetry.LokiConfig;
 import com.yugabyte.yw.models.helpers.telemetry.SplunkConfig;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
@@ -522,6 +523,41 @@ public class OtelCollectorConfigGenerator {
         // TODO add retry config to GCP provider once it's supported by Otel COllector
         exporters.put(
             exporterName, setExporterCommonConfig(gcpCloudMonitoringExporter, true, false));
+        break;
+      case LOKI:
+        LokiConfig lokiConfig = (LokiConfig) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.LokiExporter lokiExporter =
+            new OtelCollectorConfigFormat.LokiExporter();
+        String endpoint = lokiConfig.getEndpoint();
+        if (endpoint.endsWith("/")) {
+          endpoint = endpoint.substring(0, endpoint.length() - 1);
+        }
+        if (!endpoint.endsWith("/loki/api/v1/push")) {
+          endpoint = endpoint + "/loki/api/v1/push";
+        }
+        lokiExporter.setEndpoint(endpoint);
+        Map<String, String> headers = new HashMap<>();
+        boolean setHeaders = false;
+        if (lokiConfig.getOrganizationID() != null && !lokiConfig.getOrganizationID().isEmpty()) {
+          headers.put("X-Scope-OrgID", lokiConfig.getOrganizationID());
+          setHeaders = true;
+        }
+        if (lokiConfig.getAuthType() == LokiConfig.LokiAuthType.BasicAuth) {
+          String credentials =
+              Base64.getEncoder()
+                  .encodeToString(
+                      (lokiConfig.getBasicAuth().getUsername()
+                              + ":"
+                              + lokiConfig.getBasicAuth().getPassword())
+                          .getBytes());
+          headers.put("Authorization", "Basic " + credentials);
+          setHeaders = true;
+        }
+        if (setHeaders) {
+          lokiExporter.setHeaders(headers);
+        }
+        exporterName = "loki/" + telemetryProvider.getUuid();
+        exporters.put(exporterName, setExporterCommonConfig(lokiExporter, true, true));
         break;
       default:
         throw new IllegalArgumentException(
