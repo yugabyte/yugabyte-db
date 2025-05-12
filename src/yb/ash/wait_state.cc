@@ -494,7 +494,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kIndexWrite:
     case WaitStateCode::kTableWrite:
     case WaitStateCode::kWaitingOnTServer:
-      return WaitStateType::kNetwork;
+      return WaitStateType::kRPCWait;
 
     case WaitStateCode::kOnCpu_Active:
     case WaitStateCode::kOnCpu_Passive:
@@ -517,7 +517,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
-      return WaitStateType::kNetwork;
+      return WaitStateType::kRPCWait;
 
     case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
       return WaitStateType::kWaitOnCondition;
@@ -529,14 +529,14 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kConflictResolution_ResolveConficts:
-      return WaitStateType::kNetwork;
+      return WaitStateType::kRPCWait;
 
     case WaitStateCode::kLockedBatchEntry_Lock:
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
       return WaitStateType::kLock;
 
     case WaitStateCode::kRaft_WaitingForReplication:
-      return WaitStateType::kNetwork;
+      return WaitStateType::kRPCWait;
 
     case WaitStateCode::kRaft_ApplyingEdits:
       return WaitStateType::kCpu;
@@ -579,7 +579,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kYBClient_WaitingOnDocDB:
     case WaitStateCode::kYBClient_LookingUpTablet:
     case WaitStateCode::kYBClient_WaitingOnMaster:
-      return WaitStateType::kNetwork;
+      return WaitStateType::kRPCWait;
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
