@@ -65,6 +65,9 @@ DEFINE_UNKNOWN_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
 TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, unsafe);
 TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, hidden);
 
+DEFINE_test_flag(bool, follower_fail_retryable_register, false,
+                 "Whether the follower will fail on the retryable register");
+
 namespace yb {
 namespace consensus {
 
@@ -701,6 +704,9 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
   } else if (op_type == WRITE_OP) {
     // Leader registers an operation with RetryableRequests even before assigning an op id.
     if (mode == OperationMode::kFollower) {
+      if (PREDICT_FALSE(FLAGS_TEST_follower_fail_retryable_register)) {
+        return STATUS(IllegalState, "Rejected: --TEST_follower_fail_retryable_register is true");
+      }
       auto result = retryable_requests_manager_.retryable_requests().Register(
           round, tablet::IsLeaderSide::kFalse);
       const auto error_msg = "Cannot register retryable request on follower";
