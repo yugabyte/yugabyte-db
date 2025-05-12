@@ -1491,6 +1491,10 @@ void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
   (**driver).ExecuteAsync();
 }
 
+void TabletPeer::SetMvccPropagatedSafeTime(HybridTime ht) {
+  tablet_->mvcc_manager()->SetPropagatedSafeTimeOnFollower(ht);
+}
+
 bool TabletPeer::ShouldApplyWrite() {
   return tablet_->ShouldApplyWrite();
 }
