@@ -135,7 +135,9 @@ client::YBSchema SimpleIntKeyYBSchema();
 // Create a populated TabletServerMap by interrogating the master.
 Result<TabletServerMap> CreateTabletServerMap(
     const master::MasterClusterProxy& proxy, rpc::ProxyCache* cache);
-Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster);
+
+template <typename MiniClusterType>
+Result<TabletServerMap> CreateTabletServerMap(MiniClusterType* cluster);
 
 template <class Getter>
 auto GetForEachReplica(const std::vector<TServerDetails*>& replicas,
