@@ -97,10 +97,10 @@ PG_MODULE_MAGIC;
 #define PGSS_TEXT_FILE	PG_STAT_TMP_DIR "/pgss_query_texts.stat"
 
 /* Magic number identifying the stats file format */
-/* YB_TODO() Postgres 15 uses the following number.
+/* YB: Postgres 15 uses the following number.
 static const uint32 PGSS_FILE_HEADER = 0x20220408;
 */
-static const uint32 PGSS_FILE_HEADER = 0x20230330;
+static const uint32 PGSS_FILE_HEADER = 0x20250425;
 
 /* PostgreSQL major version number, changes in which invalidate all entries */
 static const uint32 PGSS_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
@@ -889,12 +889,15 @@ read_entry_original(int header, FILE *file, FILE *qfile,
 /*
  * Parse in post-histogram pgssEntries from disk, throw out histogram parts if
  * config variables have changed between restarts.
+ * File header version 0x20230330 can no longer be read as the file format has
+ * changed between 0x20230330 and 0x20250425. The stats file is discarded in
+ * pgss_shmem_startup() if the header is not 0x20250425.
  */
 static int
 read_entry_hdr(int header, FILE *file, FILE *qfile,
 			   pgssYbReaderContext *context)
 {
-	Assert(header == 0x20230330);
+	Assert(header == 0x20250425);
 
 	/* TODO: address case where hdr_histogram size changes due to 3p update */
 	int			prev_entry_total_size = (sizeof(pgssEntry) +
@@ -950,7 +953,7 @@ static int
 extended_header_reader(int header, FILE *file,
 					   pgssYbReaderContext *context)
 {
-	if (header != 0x20230330)
+	if (header != 0x20250425)
 		return -1;
 
 	int64_t		temp_yb_hdr_max_value;
@@ -989,6 +992,7 @@ pgssYbReader pgssReaderList[] =
 {
 	{0x20171004, NULL, read_entry_original},
 	{0x20230330, extended_header_reader, read_entry_hdr},
+	{0x20250425, extended_header_reader, read_entry_hdr},
 	{pgssReaderEndMarker, NULL, NULL}
 };
 
@@ -1123,7 +1127,8 @@ pgss_shmem_startup(void)
 		fread(&num, sizeof(int32), 1, file) != 1)
 		goto read_error;
 
-	if (pgver != PGSS_PG_MAJOR_VERSION)
+	if (header != PGSS_FILE_HEADER ||
+		pgver != PGSS_PG_MAJOR_VERSION)
 		goto data_error;
 
 	pgssYbReader *version_reader = NULL;
