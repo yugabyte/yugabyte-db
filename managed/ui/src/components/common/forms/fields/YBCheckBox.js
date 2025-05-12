@@ -7,7 +7,16 @@ import { isValidObject } from '../../../../utils/ObjectUtils';
 
 export default class YBCheckBox extends Component {
   render() {
-    const { input, field, label, checkState, onClick, disabled, dataTestId } = this.props;
+    const {
+      input,
+      field,
+      label,
+      checkState,
+      onClick,
+      disabled,
+      dataTestId,
+      className
+    } = this.props;
     const onCheckClick = (event) => {
       if (input?.onChange) {
         input.onChange(event);
@@ -20,7 +29,7 @@ export default class YBCheckBox extends Component {
       }
     };
     return (
-      <label htmlFor={this.props.name}>
+      <label htmlFor={this.props.name} className={className}>
         <span className="yb-input-checkbox">
           <input
             className="yb-input-checkbox__input"
