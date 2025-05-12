@@ -236,6 +236,8 @@ CREATE INDEX abc
     ON public.example USING btree (new_id);
 ```
 
+---
+
 ### Constraints
 
 #### Exclusion constraints is not supported
@@ -325,6 +327,8 @@ ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_email_key UNIQUE (email) DEFERRABLE;
 ```
 
+---
+
 ### Columns
 
 #### GENERATED ALWAYS AS STORED type column is not supported
@@ -392,6 +396,8 @@ ERROR:  System column "xmin" is not supported yet
 ```
 
 **Workaround**: Use the application layer to manage tracking instead of relying on system columns.
+
+---
 
 ### Other Objects
 
@@ -527,6 +533,8 @@ CREATE FUNCTION public.latin1_to_utf8(src_encoding integer, dest_encoding intege
     AS '/usr/lib/postgresql/12/lib/latin1_to_utf8.so', 'my_latin1_to_utf8';
 ```
 
+---
+
 ### Data Types
 
 #### Unsupported datatypes by YugabyteDB
@@ -548,6 +556,8 @@ CREATE TABLE public.locations (
     geom geometry(Point,4326)
  );
 ```
+
+---
 
 ## Data Manipulation
 
@@ -616,6 +626,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 ```
+
+---
 
 ## Functions and Operators
 
@@ -699,6 +711,8 @@ CREATE TABLE test_jsonb_chk (
     CHECK (data1->'key'<>'{}')
 );
 ```
+
+---
 
 ## Indexes
 
@@ -827,6 +841,8 @@ CREATE INDEX gin_multi_on_json
     ON public.test_gin_json USING gin (text, text1);
 ```
 
+---
+
 ## Concurrency Control
 
 ### Advisory locks is not yet implemented
@@ -911,6 +927,8 @@ yugabyte=# \d test
  val    | text    |           |          | 
 ```
 
+---
+
 ## Extensions
 
 ### PostgreSQL extensions are not supported by target YugabyteDB
@@ -932,6 +950,8 @@ An example schema on the source database is as follows:
 ```sql
 CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 ```
+
+---
 
 ## Server Programming
 
@@ -1167,6 +1187,8 @@ END;
 $$;
 ```
 
+---
+
 ## Postgres 12 And later features
 
 ### PostgreSQL 12 and later features
@@ -1198,6 +1220,8 @@ Apart from these, the following issues are supported in YugabyteDB [v2.25](/prev
 - [Deterministic attribute](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC) in COLLATION objects.
 - [SQL Body in Create function](https://www.postgresql.org/docs/15/sql-createfunction.html#:~:text=a%20new%20session.-,sql_body,-The%20body%20of).
 - [Common Table Expressions (With queries) with MATERIALIZED clause](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-CTE-MATERIALIZATION).
+
+---
 
 ## Migration Process and Tooling Issues
 
@@ -1444,6 +1468,8 @@ CREATE OR REPLACE VIEW public.v1 AS
   FROM public.foo
   GROUP BY foo.n1;
 ```
+
+---
 
 ## Performance Optimizations
 
