@@ -240,6 +240,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // UpdateReplica -> EnqueuePreparesUnlocked on Raft heartbeats.
   void SetPropagatedSafeTime(HybridTime ht) override;
 
+  void SetMvccPropagatedSafeTime(HybridTime ht) override;
+
   // Returns false if it is preferable to don't apply write operation.
   bool ShouldApplyWrite() override;
 
