@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { connect, useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
@@ -13,10 +13,8 @@ import {
   updateOptions
 } from './SecondStep/SecondStep';
 import { ThirdStep } from './ThirdStep/ThirdStep';
-import { YBButton } from '../../common/forms/fields';
 import { ROOT_URL } from '../../../config';
 import { getSupportBundles } from '../../../selector/supportBundle';
-import { isEmptyObject } from '../../../utils/ObjectUtils';
 import {
   createSupportBundle,
   listSupportBundle,
@@ -30,7 +28,7 @@ import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { YBModal } from '../../../redesign/components';
 
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import './UniverseSupportBundle.scss';
+import './UniverseSupportBundleModal.scss';
 
 const stepsObj = {
   firstStep: 'firstStep',
@@ -39,10 +37,9 @@ const stepsObj = {
 };
 
 const POLLING_INTERVAL = 10000; // ten seconds
-export const UniverseSupportBundle = (props) => {
+export const UniverseSupportBundleModal = (props) => {
   const {
     currentUniverse: { universeDetails },
-    button,
     closeModal,
     modal: { showModal, visibleModal }
   } = props;
@@ -135,71 +132,64 @@ export const UniverseSupportBundle = (props) => {
 
   const isSubmitDisabled = steps === stepsObj.secondStep && payload?.components?.length === 0;
   return (
-    <Fragment>
-      {isEmptyObject(button) ? (
-        <YBButton btnText={'Support Bundle'} btnClass={'btn btn-default open-modal-btn'} />
-      ) : (
-        button
-      )}
-      <YBModal
-        className="universe-support-bundle"
-        title="Support Bundle"
-        open={showModal && visibleModal === 'supportBundleModal'}
-        onClose={onClose}
-        overrideHeight="fit-content"
-        cancelLabel="Close"
-        submitLabel={steps === stepsObj.secondStep ? 'Create Bundle' : undefined}
-        onSubmit={
-          steps === stepsObj.secondStep
-            ? () => {
-                saveSupportBundle(universeDetails.universeUUID);
+    <YBModal
+      className="universe-support-bundle"
+      title="Support Bundle"
+      open={showModal && visibleModal === 'supportBundleModal'}
+      onClose={onClose}
+      overrideHeight="fit-content"
+      cancelLabel="Close"
+      submitLabel={steps === stepsObj.secondStep ? 'Create Bundle' : undefined}
+      onSubmit={
+        steps === stepsObj.secondStep
+          ? () => {
+              saveSupportBundle(universeDetails.universeUUID);
+            }
+          : undefined
+      }
+      buttonProps={{ primary: { disabled: isSubmitDisabled } }}
+    >
+      <div className="universe-support-bundle-body">
+        {steps === stepsObj.firstStep && (
+          <FirstStep
+            onCreateSupportBundle={() => {
+              handleStepChange(stepsObj.secondStep);
+            }}
+            universeUUID={universeDetails.universeUUID}
+          />
+        )}
+        {steps === stepsObj.secondStep && (
+          <SecondStep
+            onOptionsChange={(selectedOptions) => {
+              if (selectedOptions) {
+                setPayload(selectedOptions);
+              } else {
+                setPayload(defaultOptions);
               }
-            : undefined
-        }
-        buttonProps={{ primary: { disabled: isSubmitDisabled } }}
-      >
-        <div className="universe-support-bundle-body">
-          {steps === stepsObj.firstStep && (
-            <FirstStep
-              onCreateSupportBundle={() => {
-                handleStepChange(stepsObj.secondStep);
-              }}
-              universeUUID={universeDetails.universeUUID}
-            />
-          )}
-          {steps === stepsObj.secondStep && (
-            <SecondStep
-              onOptionsChange={(selectedOptions) => {
-                if (selectedOptions) {
-                  setPayload(selectedOptions);
-                } else {
-                  setPayload(defaultOptions);
-                }
-              }}
-              payload={payload}
-              universeUUID={universeDetails.universeUUID}
-              isK8sUniverse={isK8sUniverse}
-              universeStatus={getUniverseStatus(props.currentUniverse)}
-            />
-          )}
-          {steps === stepsObj.thirdStep && (
-            <ThirdStep
-              handleDownloadBundle={(bundleUUID) =>
-                handleDownloadBundle(universeDetails.universeUUID, bundleUUID)
-              }
-              handleDeleteBundle={(bundleUUID) =>
-                handleDeleteBundle(universeDetails.universeUUID, bundleUUID)
-              }
-              supportBundles={supportBundles}
-              onCreateSupportBundle={() => {
-                handleStepChange(stepsObj.secondStep);
-              }}
-              universeUUID={universeDetails.universeUUID}
-            />
-          )}
-        </div>
-      </YBModal>
-    </Fragment>
+            }}
+            payload={payload}
+            universeUUID={universeDetails.universeUUID}
+            isK8sUniverse={isK8sUniverse}
+            universeStatus={getUniverseStatus(props.currentUniverse)}
+          />
+        )}
+        {steps === stepsObj.thirdStep && (
+          <ThirdStep
+            handleDownloadBundle={(bundleUUID) =>
+              handleDownloadBundle(universeDetails.universeUUID, bundleUUID)
+            }
+            handleDeleteBundle={(bundleUUID) =>
+              handleDeleteBundle(universeDetails.universeUUID, bundleUUID)
+            }
+            supportBundles={supportBundles}
+            onCreateSupportBundle={() => {
+              handleStepChange(stepsObj.secondStep);
+            }}
+            universeUUID={universeDetails.universeUUID}
+          />
+        )}
+      </div>
+    </YBModal>
   );
 };
 
@@ -242,4 +232,4 @@ function mapStateToProps(state) {
   };
 }
 
-export default connect(mapStateToProps)(UniverseSupportBundle);
+export default connect(mapStateToProps)(UniverseSupportBundleModal);
