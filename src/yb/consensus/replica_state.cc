@@ -756,6 +756,12 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
     SCHECK_EQ(
         split_request.tablet_id(), cmeta_->tablet_id(), InvalidArgument,
         "Received split op for a different tablet.");
+    SCHECK(
+        pending_split_op_id_.empty(), InvalidArgument,
+        Format(
+            "Received split op ($0) while having another split op pending ($1)", round->id(),
+            pending_split_op_id_));
+    pending_split_op_id_ = round->id();
     // TODO(tsplit): if we get failures past this point we can't undo the tablet state.
     // Might be need some tool to be able to remove SPLIT_OP from Raft log.
   }
@@ -1500,8 +1506,17 @@ void ReplicaState::NotifyReplicationFinishedUnlocked(
     const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
     OpIds* applied_op_ids) {
   round->NotifyReplicationFinished(status, leader_term, applied_op_ids);
-
   retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
+  if (OpId::FromPB(round->replicate_msg()->id()) == GetPendingSplitOpIdUnlocked()) {
+    // There are two cases this can happen:
+    // 1 - status is OK, that means operation has been applied by the current peer. This relies on
+    // our current Raft implementation specifics where apply happens inside
+    // ConsensusRound::NotifyReplicationFinished.
+    // 2 - status is an error, that means operation has been aborted by the current peer.
+    //
+    // In both cases operation is no longer pending, so we should clear pending SPLIT_OP id.
+    ClearPendingSplitOpIdUnlocked();
+  }
 }
 
 consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimePoint& now) const {
