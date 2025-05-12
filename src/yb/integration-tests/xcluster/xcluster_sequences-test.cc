@@ -432,6 +432,45 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingWith2Databases
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace2));
 }
 
+TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingAddingNamespace) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  const std::string namespace1{"yugabyte"};
+  const std::string namespace2{"yugabyte2"};
+  ASSERT_OK(SetUpClusters(
+      /*use_different_database_oids=*/false, namespace1, namespace2,
+      /*start_yb_controller_servers=*/true));
+
+  // Start replication with one database.
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace1}));
+  ASSERT_OK(BackupFromProducer({namespace1}));
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(RestoreToConsumer({namespace1}));
+  ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, {namespace1}));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+
+  // Add a second database to the existing replication, bumping
+  // sequences in the middle of the backup/restore step.
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace2));
+  auto source_xcluster_client = client::XClusterClient(*producer_client());
+  auto source_db_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace2));
+  ASSERT_OK(source_xcluster_client.AddNamespaceToOutboundReplicationGroup(
+      kReplicationGroupId, source_db_id));
+  // Wait for checkpointing to finish.
+  ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, source_db_id));
+  ASSERT_OK(BackupFromProducer({namespace2}));
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace2));
+  ASSERT_OK(RestoreToConsumer({namespace2}));
+  // Note that RestoreToConsumer re-creates the namespace so we can't get the ID before now.
+  auto target_db_id = ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace2));
+  ASSERT_OK(AddNamespaceToXClusterReplication(source_db_id, target_db_id));
+
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace2));
+}
+
 TEST_F(XClusterAutomaticModeTest, SequenceReplicationEnsureWalsFails) {
   if (!UseYbController()) {
     GTEST_SKIP() << "This test does not work with yb_backup.py";

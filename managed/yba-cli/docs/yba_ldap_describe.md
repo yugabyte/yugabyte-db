@@ -1,26 +1,26 @@
-## yba oidc get
+## yba ldap describe
 
-Get OIDC configuration for YBA
+Describe LDAP configuration for YBA
 
 ### Synopsis
 
-Get OIDC configuration for YBA
+Describe LDAP configuration for YBA
 
 ```
-yba oidc get [flags]
+yba ldap describe [flags]
 ```
 
 ### Examples
 
 ```
-yba oidc get
+yba ldap describe
 ```
 
 ### Options
 
 ```
-      --user-set-only   [Optional] Only show the attributes that were set by the user explicitly.
-  -h, --help            help for get
+      --user-set-only   [Optional] Only show the fields that were set by the user explicitly.
+  -h, --help            help for describe
 ```
 
 ### Options inherited from parent commands
@@ -42,5 +42,5 @@ yba oidc get
 
 ### SEE ALSO
 
-* [yba oidc](yba_oidc.md)	 - Manage YugabyteDB Anywhere OIDC configuration
+* [yba ldap](yba_ldap.md)	 - Configure LDAP authentication for YBA
 

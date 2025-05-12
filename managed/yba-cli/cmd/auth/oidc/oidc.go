@@ -23,5 +23,5 @@ func init() {
 	OIDCCmd.Flags().SortFlags = false
 	OIDCCmd.AddCommand(configureOIDCCmd)
 	OIDCCmd.AddCommand(disableOIDCCmd)
-	OIDCCmd.AddCommand(getOIDCCmd)
+	OIDCCmd.AddCommand(describeOIDCCmd)
 }

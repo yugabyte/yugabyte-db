@@ -13,12 +13,41 @@
 
 #include "yb/hnsw/hnsw_block_cache.h"
 
+#include <boost/intrusive/list.hpp>
+
 #include "yb/hnsw/block_writer.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
+
+METRIC_DEFINE_counter(table, vector_index_cache_hit, "Vector index block cache hits",
+                      yb::MetricUnit::kCacheHits,
+                      "Number of hits of vector index block cache");
+
+METRIC_DEFINE_counter(table, vector_index_cache_query, "Vector index block cache query",
+                      yb::MetricUnit::kCacheQueries,
+                      "Number of queries of vector index block cache");
+
+METRIC_DEFINE_counter(table, vector_index_read, "Vector index block read bytes",
+                      yb::MetricUnit::kBytes,
+                      "Number of bytes read by vector index block cache");
+
+METRIC_DEFINE_counter(table, vector_index_cache_add, "Vector index block bytes added to cache",
+                      yb::MetricUnit::kBytes,
+                      "Number of bytes added to vector index block cache");
+
+METRIC_DEFINE_counter(table, vector_index_cache_evict,
+                      "Vector index block bytes evicted from cache",
+                      yb::MetricUnit::kBytes,
+                      "Number of bytes evicted from vector index block cache");
+
+METRIC_DEFINE_counter(table, vector_index_cache_remove,
+                      "Vector index block bytes removed from cache",
+                      yb::MetricUnit::kBytes,
+                      "Number of bytes removed from vector index block cache");
 
 namespace yb::hnsw {
 
@@ -151,9 +180,168 @@ void Deserialize(size_t version, Out& out, Args&&... args) {
 
 } // namespace
 
-void BlockCache::Register(FileBlockCachePtr&& file_block_cache) {
-  std::lock_guard guard(mutex_);
-  files_.push_back(std::move(file_block_cache));
+BlockCacheMetrics::BlockCacheMetrics(const MetricEntityPtr& entity)
+    : hit(METRIC_vector_index_cache_hit.Instantiate(entity)),
+      query(METRIC_vector_index_cache_query.Instantiate(entity)),
+      read(METRIC_vector_index_read.Instantiate(entity)),
+      add(METRIC_vector_index_cache_add.Instantiate(entity)),
+      evict(METRIC_vector_index_cache_evict.Instantiate(entity)),
+      remove(METRIC_vector_index_cache_remove.Instantiate(entity)) {
+}
+
+struct CachedBlock : boost::intrusive::list_base_hook<> {
+  BlockCacheShard* shard;
+  size_t end;
+  size_t size;
+  // Guarded by BlockCacheShard mutex.
+  int64_t use_count;
+  std::atomic<const std::byte*> data{nullptr};
+  std::mutex load_mutex;
+  DataBlock content GUARDED_BY(load_mutex);
+
+  Result<const std::byte*> Load(
+      RandomAccessFile& file, MemTracker& mem_tracker, BlockCacheMetrics& metrics) {
+    std::lock_guard lock(load_mutex);
+    auto result = data.load(std::memory_order_acquire);
+    if (result) {
+      return result;
+    }
+    if (!content.empty()) {
+      // It could happen that block is in the process of eviction, in this case we could just
+      // restore data pointing to content instead of reloading it
+      data.store(result = content.data(), std::memory_order_release);
+      return result;
+    }
+    mem_tracker.Consume(size);
+    content.resize(size);
+    Slice read_result;
+    RETURN_NOT_OK(file.Read(end - size, size, &read_result, content.data()));
+    RSTATUS_DCHECK_EQ(
+        read_result.size(), content.size(), Corruption,
+        Format("Wrong number of read bytes in block $0 - $1", end - size, size));
+    metrics.read->IncrementBy(read_result.size());
+    data.store(result = content.data(), std::memory_order_release);
+    return result;
+  }
+
+  void Unload(MemTracker& mem_tracker) {
+    std::lock_guard lock(load_mutex);
+    if (data.load(std::memory_order_acquire)) {
+      // The Load was called during eviction, no need to unload data.
+      return;
+    }
+    content = {};
+    mem_tracker.Release(size);
+  }
+};
+
+class alignas(CACHELINE_SIZE) BlockCacheShard {
+ public:
+  void Init(size_t capacity, BlockCache& block_cache) {
+    capacity_ = capacity;
+    block_cache_ = &block_cache;
+  }
+
+  Result<const std::byte*> Take(CachedBlock& block, RandomAccessFile& file) {
+    block_cache_->metrics().query->Increment();
+    {
+      std::lock_guard lock(mutex_);
+      ++block.use_count;
+      // Remove block from LRU while it is used.
+      if (block.is_linked()) {
+        DCHECK_EQ(block.use_count, 1);
+        RemoveBlockFromLRU(block);
+      }
+
+      auto data = block.data.load(std::memory_order_acquire);
+      if (data) {
+        block_cache_->metrics().hit->Increment();
+        return data;
+      }
+    }
+    return VERIFY_RESULT(
+        block.Load(file, *block_cache_->mem_tracker(), block_cache_->metrics()));
+  }
+
+  void Release(CachedBlock& block) {
+    boost::container::small_vector<CachedBlock*, 10> evicted_blocks;
+    {
+      std::lock_guard lock(mutex_);
+      DCHECK(!block.is_linked());
+      if (--block.use_count != 0) {
+        return;
+      }
+      Evict(block.size, evicted_blocks);
+      block_cache_->metrics().add->IncrementBy(block.size);
+      consumption_ += block.size;
+      lru_.push_back(block);
+    }
+    size_t evicted_bytes = 0;
+    for (auto* evicted_block : evicted_blocks) {
+      evicted_block->Unload(*block_cache_->mem_tracker());
+      evicted_bytes += evicted_block->size;
+    }
+    if (evicted_bytes) {
+      block_cache_->metrics().evict->IncrementBy(evicted_bytes);
+    }
+  }
+
+  void Remove(CachedBlock& block) {
+    std::lock_guard lock(mutex_);
+    DCHECK_EQ(block.use_count, 0);
+    if (block.is_linked()) {
+      RemoveBlockFromLRU(block);
+    }
+  }
+
+ private:
+  using Blocks = boost::intrusive::list<CachedBlock>;
+
+  void RemoveBlockFromLRU(CachedBlock& block) REQUIRES(mutex_) {
+    block_cache_->metrics().remove->IncrementBy(block.size);
+    lru_.erase(lru_.iterator_to(block));
+    consumption_ -= block.size;
+  }
+
+  void Evict(
+      size_t space_required,
+      boost::container::small_vector_base<CachedBlock*>& evicted_blocks) REQUIRES(mutex_) {
+    space_required = std::min(space_required, capacity_);
+    auto it = lru_.begin();
+    while (consumption_ + space_required > capacity_ && it != lru_.end()) {
+      auto& block = *it;
+      ++it;
+      block.data.store(nullptr, std::memory_order_release);
+      lru_.erase(lru_.iterator_to(block));
+      consumption_ -= block.size;
+      evicted_blocks.push_back(&block);
+    }
+  }
+
+  size_t capacity_ = 0;
+  BlockCache* block_cache_ = nullptr;
+  std::mutex mutex_;
+  Blocks lru_ GUARDED_BY(mutex_);
+  size_t consumption_ GUARDED_BY(mutex_) = 0;
+};
+
+BlockCache::BlockCache(
+    Env& env, const MemTrackerPtr& mem_tracker, const MetricEntityPtr& metric_entity,
+    size_t capacity, size_t num_shard_bits)
+    : env_(env),
+      mem_tracker_(mem_tracker),
+      metrics_(std::make_unique<BlockCacheMetrics>(metric_entity)),
+      shards_mask_((1ULL << num_shard_bits) - 1),
+      shards_(std::make_unique<BlockCacheShard[]>(shards_mask_ + 1)) {
+  for (size_t i = 0; i <= shards_mask_; ++i) {
+    shards_[i].Init(capacity >> num_shard_bits, *this);
+  }
+}
+
+BlockCache::~BlockCache() = default;
+
+BlockCacheShard& BlockCache::NextShard() {
+  return shards_[(next_shard_++) & shards_mask_];
 }
 
 DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
@@ -177,28 +365,44 @@ DataBlock FileBlockCacheBuilder::MakeFooter(const Header& header) const {
 }
 
 FileBlockCache::FileBlockCache(
-    std::unique_ptr<RandomAccessFile> file, FileBlockCacheBuilder* builder)
-    : file_(std::move(file)) {
+    BlockCache& block_cache, std::unique_ptr<RandomAccessFile> file,
+    FileBlockCacheBuilder* builder)
+    : block_cache_(block_cache), file_(std::move(file)) {
   if (!builder) {
     return;
   }
   auto& blocks = builder->blocks();
-  blocks_.reserve(blocks.size());
   size_t total_size = 0;
-  for (auto& block : blocks) {
-    total_size += block.size();
-    blocks_.emplace_back(BlockInfo {
-      .end = total_size,
-      .content = std::move(block),
-    });
+  size_t index = 0;
+  AllocateBlocks(blocks.size());
+  for (auto& data : blocks) {
+    total_size += data.size();
+    auto& block = blocks_[index];
+    block.shard = &block_cache_.NextShard();
+    block.end = total_size;
+    block.size = data.size();
+    block.content = std::move(data);
+    block_cache.mem_tracker()->Consume(block.size);
+    block.use_count = 1;
+    block.shard->Release(block);
+    ++index;
   }
   blocks.clear();
 }
 
-FileBlockCache::~FileBlockCache() = default;
+FileBlockCache::~FileBlockCache() {
+  for (size_t i = 0; i != size_; ++i) {
+    blocks_[i].shard->Remove(blocks_[i]);
+  }
+}
+
+void FileBlockCache::AllocateBlocks(size_t size) {
+  size_ = size;
+  blocks_.reset(new CachedBlock[size]);
+}
 
 Result<Header> FileBlockCache::Load() {
-  DCHECK(blocks_.empty());
+  DCHECK_EQ(blocks_, nullptr);
 
   using FooterSizeType = uint64_t;
   auto file_size = VERIFY_RESULT(file_->Size());
@@ -226,20 +430,26 @@ Result<Header> FileBlockCache::Load() {
   SliceReader reader(footer_data);
   size_t version = reader.Read<uint8_t>();
   Deserialize(version, header, reader);
-  blocks_.resize(reader.Left() / sizeof(uint64_t));
+  AllocateBlocks(reader.Left() / sizeof(uint64_t));
   size_t prev_end = 0;
-  for (size_t i = 0; i < blocks_.size(); i++) {
+  for (size_t i = 0; i < size_; i++) {
+    blocks_[i].shard = &block_cache_.NextShard();
     blocks_[i].end = reader.Read<uint64_t>();
-    blocks_[i].content.resize(blocks_[i].end - prev_end);
-    Slice read_result;
-    RETURN_NOT_OK(file_->Read(
-        prev_end, blocks_[i].content.size(), &read_result, blocks_[i].content.data()));
-    RSTATUS_DCHECK_EQ(
-        read_result.size(), blocks_[i].content.size(), Corruption,
-        Format("Wrong number of read bytes in block $0", i));
+    blocks_[i].size = blocks_[i].end - prev_end;
+    blocks_[i].use_count = 0;
     prev_end = blocks_[i].end;
   }
   return header;
+}
+
+Result<const std::byte*> FileBlockCache::Take(size_t index) {
+  auto& block = blocks_[index];
+  return block.shard->Take(block, *file_);
+}
+
+void FileBlockCache::Release(size_t index) {
+  auto& block = blocks_[index];
+  block.shard->Release(block);
 }
 
 } // namespace yb::hnsw

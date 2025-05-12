@@ -10,10 +10,21 @@ Disable LDAP authentication for YBA
 yba ldap disable [flags]
 ```
 
+### Examples
+
+```
+yba ldap disable --reset-fields ldap-host,ldap-port
+```
+
 ### Options
 
 ```
-  -h, --help   help for disable
+      --reset-all              [Optional] Reset all LDAP fields to default values
+      --reset-fields strings   [Optional] Reset specific LDAP fields to default values. Comma separated list of fields. Example: --reset-fields <field1>,<field2>
+                                          Allowed values: ldap-host, ldap-port, ldap-ssl-protocol,tls-version, base-dn, dn-prefix, customer-uuid, search-and-bind-enabled, 
+                                                          search-attribute, search-filter, service-account-dn, default-role,service-account-password, group-attribute, group-search-filter, 
+                                                          group-search-base, group-search-scope, group-use-query, group-use-role-mapping
+  -h, --help                   help for disable
 ```
 
 ### Options inherited from parent commands

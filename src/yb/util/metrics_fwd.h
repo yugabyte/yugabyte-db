@@ -30,6 +30,7 @@ class HistogramPrototype;
 class HistogramSnapshotPB;
 class HdrHistogram;
 class Metric;
+class MetricEntity;
 class MetricEntityPrototype;
 class MetricPrototype;
 class MetricRegistry;
@@ -43,7 +44,8 @@ class StatsOnlyHistogram;
 struct MetricJsonOptions;
 struct MetricPrometheusOptions;
 
-class MetricEntity;
+using CounterPtr = scoped_refptr<Counter>;
+using EventStatsPtr = scoped_refptr<EventStats>;
 using MetricEntityPtr = scoped_refptr<MetricEntity>;
 
 template<typename T>
