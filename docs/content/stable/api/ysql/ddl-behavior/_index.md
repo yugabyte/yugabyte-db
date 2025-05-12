@@ -2,7 +2,7 @@
 title: Behavior of DDL statements [YSQL]
 headerTitle: Behavior of DDL statements
 linkTitle: Behavior of DDL statements
-description: Explains specific aspects of DDL statement behavior in YugabyteDB, contrasting it with Postgres behavior. [YSQL].
+description: Explains specific aspects of DDL statement behavior in YugabyteDB. [YSQL].
 menu:
   stable_api:
     identifier: ddl-behavior
