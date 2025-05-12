@@ -211,7 +211,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kCpu)
   (kDiskIO)
-  (kNetwork)
+  (kRPCWait)
   (kWaitOnCondition)
   (kLock)
 );
