@@ -377,7 +377,7 @@ func (plat Platform) Uninstall(removeData bool) error {
 
 	// Stop running platform service
 	if err := plat.Stop(); err != nil {
-		return err
+		log.Warn("got error when stopping platform, continuing with uninstall: " + err.Error())
 	}
 
 	// Clean up systemd file
@@ -418,8 +418,12 @@ func (plat Platform) Status() (common.Status, error) {
 	status.ServiceFileLoc = plat.SystemdFileLocation
 
 	// Get the service status
-	props := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
+	props, err := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
 		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if err != nil {
+		log.Error("Failed to get status of " + plat.Name() + ": " + err.Error())
+		return status, err
+	}
 	if props["LoadState"] == "not-found" {
 		status.Status = common.StatusNotInstalled
 	} else if props["SubState"] == "running" {
