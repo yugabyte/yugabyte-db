@@ -417,6 +417,24 @@ static bool yb_is_avoid_enquoting_guc_var(char *name)
 	return false;
 }
 
+/*
+ * YB: Compare server state to client state to check for the need of the
+ * reset phase. If no difference found, return 0 to signify no need of reset.
+ */
+static inline int yb_check_reset_needed(kiwi_vars_t *client, kiwi_vars_t *server)
+{
+	int pos = 0;
+	kiwi_var_t *server_var;
+	for (int i = 0; i < server->size; i++) {
+		server_var = &server->vars[i];
+		kiwi_var_t *client_var;
+		client_var = yb_kiwi_vars_get(client, server_var->name);
+		if (!kiwi_var_compare(client_var, server_var))
+			return 1;
+	}
+	return 0;
+}
+
 __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 						     kiwi_vars_t *server,
 						     char *query, int query_len)

@@ -140,6 +140,9 @@ DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
                  "When enabled, table would not be removed from the qualified table list as part "
                  "of the table removal process from CDC stream");
 
+DEFINE_RUNTIME_bool(enable_truncate_cdcsdk_table, false,
+    "When set, enables truncating tables currently part of a CDCSDK Stream");
+
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -972,7 +975,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
 
   stream_id = GenerateNewXreplStreamId();
-  auto se_recover_stream_id = ScopeExit([&stream_id, this] { RecoverXreplStreamId(stream_id); });
+  auto se_recover_stream_id = CancelableScopeExit(
+      [&stream_id, this] { RecoverXreplStreamId(stream_id); });
 
   stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
   stream->mutable_metadata()->StartMutation();
@@ -5340,6 +5344,19 @@ void CatalogManager::RemoveUniverseReplicationFromMap(
     LOG(DFATAL) << "Replication group " << replication_group_id
                  << " was already deleted from in-mem map";
   }
+}
+
+Status CatalogManager::CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req) {
+  // Fail rewrites on tables, and nonconcurrent index backfills, that are part of CDC, except for
+  // TRUNCATEs when FLAGS_enable_truncate_cdcsdk_table is enabled.
+  SharedLock lock(mutex_);
+  const auto table_id = req.old_rewrite_table_id();
+  if (table_id.empty() || !IsTablePartOfCDCSDK(table_id) ||
+      (req.is_truncate() && FLAGS_enable_truncate_cdcsdk_table)) {
+    return Status::OK();
+  }
+
+  return STATUS(NotSupported, "Cannot rewrite a table that is a part of CDC.");
 }
 
 }  // namespace master

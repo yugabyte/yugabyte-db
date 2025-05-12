@@ -583,6 +583,8 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 ## Prepare the target database
 
+Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
+
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
 {{<note title="Important">}}
@@ -753,7 +755,7 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
 
-To add the constraints back, you run the `import schema` command after data import. See [Cutover to the target](#cutover-to-the-target).
+To add the constraints back, you run the `finalize-schema-post-data-import` command after data import. See [Cutover to the target](#cutover-to-the-target).
 
 {{< /note >}}
 
@@ -920,7 +922,7 @@ Perform the following steps as part of the cutover process:
 
     As part of the cutover process, the following occurs in the background:
 
-    1. The initiate cutover to target command stops the export data from source process, followed by the import data to target process after it has imported all the events to the target YugabyteDB database.
+    1. The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to target` phase continues and completes by importing all the exported events into the target YugabyteDB database.
 
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database.
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart the process using the `export data from target` command as suggested in the `import data to target` output.
@@ -940,33 +942,22 @@ The `export data from target` command may result in duplicated events if you res
     ```
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
-
-1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `import schema` with the `post-snapshot-import` flag:
-
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-            --post-snapshot-import true
-    ```
-
-1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them using the following command:
+1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `finalize-schema-post-data-import`. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, you can refresh them by setting the `--refresh-mviews` flag to true.
 
     ```sh
     # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-            --post-snapshot-import true \
-            --refresh-mviews true
+    yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
+       --target-db-host <TARGET_DB_HOST> \
+       --target-db-user <TARGET_DB_USER> \
+       --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+       --target-db-name <TARGET_DB_NAME> \
+       --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+       
     ```
+
+    {{< note title ="Note" >}}
+The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. However, if you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+    {{< /note >}}
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 

@@ -1889,11 +1889,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           totalMigrations + 1, appliedMigrations.size());
       assertRow(new Row(initialMajorVersion, initialMinorVersion, "<baseline>", null),
                 appliedMigrations.get(0));
-      for (int ver = 1; ver <= totalMigrations; ++ver) {
+      for (int i = 1; i <= totalMigrations; ++i) {
         // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
-        Row migrationRow = appliedMigrations.get(ver);
-        final int majorVersion = Math.min(ver, latestMajorVersion) + initialMajorVersion;
-        final int minorVersion = ver - majorVersion + initialMajorVersion;
+        Row migrationRow = appliedMigrations.get(i);
+        final int majorVersion = Math.min(i + initialMajorVersion, latestMajorVersion);
+        final int minorVersion = i - majorVersion + initialMajorVersion;
         assertEquals(majorVersion, migrationRow.getInt(0).intValue());
         assertEquals(minorVersion, migrationRow.getInt(1).intValue());
         String migrationNamePrefix;

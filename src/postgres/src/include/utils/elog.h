@@ -509,7 +509,7 @@ extern int	yb_external_errcode(int sqlerrcode);
 extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args);
 extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args);
 extern int	yb_errdetail_log_from_status(const char *fmt, const size_t nargs, const char **args);
-extern void yb_set_pallocd_error_file_and_func(const char *filename, const char *funcname);
+extern void yb_errlocation_from_status(const char *filename, int lineno, const char *funcname);
 extern sigjmp_buf *yb_get_exception_stack(void);
 extern void yb_set_exception_stack(sigjmp_buf *new_sigjmp_buf);
 extern void yb_reset_error_status(void);

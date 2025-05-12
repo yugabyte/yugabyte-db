@@ -71,6 +71,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
       const tserver::GetTserverCatalogMessageListsRequestPB& req,
       tserver::GetTserverCatalogMessageListsResponsePB *resp) const override;
 
+  Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) override;
+
   client::TransactionPool& TransactionPool() override;
 
   ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;

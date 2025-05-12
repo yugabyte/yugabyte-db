@@ -40,15 +40,18 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
-DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 10 * 1000,
+DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 30 * 1000,
                       "The lifetime of ysql operation lease extensions. The ysql operation lease "
                       "allows tservers to host pg sessions and serve reads and writes to user data "
                       "through the YSQL API.");
@@ -61,6 +64,9 @@ DEFINE_NON_RUNTIME_uint64(object_lock_cleanup_interval_ms, 5000,
 DEFINE_test_flag(
     bool, skip_launch_release_request, false,
     "If true, skip launching the release request after persisting it to in progress requests.");
+
+DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
+    "If true, do not error out if a release request comes in for an unknown transaction.");
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
@@ -121,7 +127,14 @@ class ObjectLockInfoManager::Impl {
   Status UnlockObject(
       ReleaseObjectLockRequestPB&& req, std::optional<LeaderEpoch> leader_epoch = std::nullopt,
       std::optional<StdStatusCallback> callback = std::nullopt);
+  Status UnlockObjectSync(
+      const ReleaseObjectLocksGlobalRequestPB& master_request,
+      tserver::ReleaseObjectLockRequestPB&& tserver_request, CoarseTimePoint deadline);
   void UnlockObject(const TransactionId& txn_id);
+  Status MaybePopulateHostInfo(ReleaseObjectLockRequestPB& req) EXCLUDES(mutex_);
+  Status PopulateHostInfo(const TransactionId& txn_id, ReleaseObjectLockRequestPB& req)
+      EXCLUDES(mutex_);
+  bool IsDdlVerificationInProgress(const TransactionId& txn) const;
 
   Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp,
                           rpc::RpcContext& rpc,
@@ -278,6 +291,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::string LogPrefix() const override;
 
  private:
+  Status DoLaunch();
   void LaunchFrom(size_t from_idx);
   void Done(size_t i, const Status& s);
   void CheckForDone();
@@ -304,6 +318,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   std::optional<uint64_t> requestor_latest_lease_epoch_;
   CoarseTimePoint deadline_;
   const TracePtr trace_;
+  bool launched_ = false;
 };
 
 template <class Req, class Resp>
@@ -378,6 +393,9 @@ AcquireObjectLockRequestPB TserverRequestFor(
   if (master_request.has_propagated_hybrid_time()) {
     req.set_propagated_hybrid_time(master_request.propagated_hybrid_time());
   }
+  if (master_request.has_ash_metadata()) {
+    req.mutable_ash_metadata()->CopyFrom(master_request.ash_metadata());
+  }
   return req;
 }
 
@@ -397,6 +415,9 @@ ReleaseObjectLockRequestPB TserverRequestFor(
     req.set_propagated_hybrid_time(master_request.propagated_hybrid_time());
   }
   req.set_request_id(request_id);
+  if (master_request.has_ash_metadata()) {
+    req.mutable_ash_metadata()->CopyFrom(master_request.ash_metadata());
+  }
   return req;
 }
 
@@ -456,7 +477,11 @@ void ObjectLockInfoManager::UnlockObject(
   auto request_id = impl_->next_request_id();
   auto tserver_req = TserverRequestFor(req, request_id);
   impl_->PopulateDbCatalogVersionCache(tserver_req);
-  auto s = impl_->UnlockObject(std::move(tserver_req));
+  // wait_for_completion is only used to manually release locks through yb-admin.
+  auto s =
+      (req.wait_for_completion()
+           ? impl_->UnlockObjectSync(req, std::move(tserver_req), rpc.GetClientDeadline())
+           : impl_->UnlockObject(std::move(tserver_req)));
   WARN_NOT_OK(s, "Failed to unlock object");
   resp.set_propagated_hybrid_time(impl_->clock()->Now().ToUint64());
   FillErrorIfRequired(s, resp);
@@ -524,6 +549,10 @@ std::shared_ptr<ObjectLockInfo> ObjectLockInfoManager::Impl::GetOrCreateObjectLo
     object_lock_infos_map_.insert({ts_uuid, info});
     return info;
   }
+}
+
+bool ObjectLockInfoManager::Impl::IsDdlVerificationInProgress(const TransactionId& txn) const {
+  return catalog_manager_.HasDdlVerificationState(txn);
 }
 
 bool ObjectLockInfoManager::Impl::TabletServerHasLiveLease(const std::string& ts_uuid) const {
@@ -752,29 +781,78 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   }
 }
 
+Status ObjectLockInfoManager::Impl::UnlockObjectSync(
+    const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLockRequestPB&& tserver_req,
+    CoarseTimePoint deadline) {
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+  // If the txn is scheduled for ddl verification, UnlockObject will be a no-op.
+  // Let us first wait to make sure that it is not queued for ddl verification.
+  RETURN_NOT_OK(Wait(
+      [this, &txn_id] { return !IsDdlVerificationInProgress(txn_id); }, deadline,
+      "Waiting for DDL verification to finish"));
+  auto promise = std::make_shared<std::promise<Status>>();
+  WARN_NOT_OK(
+      UnlockObject(
+          std::move(tserver_req), std::nullopt,
+          [promise](const Status& s) { promise->set_value(s); }),
+      "Failed to unlock object");
+  auto future = promise->get_future();
+  return (
+      future.wait_until(deadline) == std::future_status::ready
+          ? future.get()
+          : STATUS(TimedOut, "Timed out waiting for unlock object to finish"));
+}
+
 Status ObjectLockInfoManager::Impl::UnlockObject(
     ReleaseObjectLockRequestPB&& req, std::optional<LeaderEpoch> leader_epoch,
     std::optional<StdStatusCallback> callback) {
   VLOG(1) << __PRETTY_FUNCTION__ << req.ShortDebugString();
+  if (req.session_host_uuid().empty()) {
+    // session_host_uuid would be unset for release requests that are manually
+    // initiated through yb-admin.
+    auto s = MaybePopulateHostInfo(req);
+    if (!s.ok() && callback) {
+      (*callback)(s);
+    }
+    RETURN_NOT_OK(s);
+  }
   auto unlock_objects = std::make_shared<UpdateAllTServers<ReleaseObjectLockRequestPB>>(
       master_, catalog_manager_, *this, std::move(req), std::move(leader_epoch),
       std::move(callback));
   return unlock_objects->Launch();
 }
 
+Status ObjectLockInfoManager::Impl::MaybePopulateHostInfo(ReleaseObjectLockRequestPB& req) {
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
+  auto res = PopulateHostInfo(txn_id, req);
+  if (!res.ok() && PREDICT_FALSE(FLAGS_TEST_allow_unknown_txn_release_request)) {
+    LOG(INFO) << "Release is request for an unknown txn " << txn_id.ToString()
+              << ". But, we will still proceed";
+    return Status::OK();
+  }
+  return res;
+}
+
+Status ObjectLockInfoManager::Impl::PopulateHostInfo(
+    const TransactionId& txn_id, ReleaseObjectLockRequestPB& req) {
+  LockGuard lock(mutex_);
+  auto it = txn_host_info_map_.find(txn_id);
+  if (it == txn_host_info_map_.end()) {
+    return STATUS(NotFound, "Transaction not found in host session map");
+  }
+  auto& txn_host_info = it->second;
+  req.set_session_host_uuid(txn_host_info.host_session_uuid);
+  req.set_lease_epoch(txn_host_info.lease_epoch);
+  return Status::OK();
+}
+
 void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
   ReleaseObjectLockRequestPB req;
   req.set_txn_id(txn_id.data(), txn_id.size());
-  {
-    LockGuard lock(mutex_);
-    auto it = txn_host_info_map_.find(txn_id);
-    if (it == txn_host_info_map_.end()) {
-      return;
-    }
-    req.set_session_host_uuid(it->second.host_session_uuid);
-    req.set_lease_epoch(it->second.lease_epoch);
-  }
   req.set_request_id(next_request_id());
+  if (!PopulateHostInfo(txn_id, req).ok()) {
+    return;
+  }
   PopulateDbCatalogVersionCache(req);
   WARN_NOT_OK(UnlockObject(std::move(req)), "Failed to enqueue request for unlock object");
 }
@@ -782,7 +860,7 @@ void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
 Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
     const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
     const LeaderEpoch& epoch) {
-  if (!FLAGS_TEST_enable_ysql_operation_lease &&
+  if (!FLAGS_enable_ysql_operation_lease &&
       !FLAGS_TEST_enable_object_locking_for_table_locks) {
     return STATUS(NotSupported, "The ysql lease is currently a test feature.");
   }
@@ -1110,19 +1188,31 @@ std::string UpdateAllTServers<Req>::LogPrefix() const {
 
 template <class Req>
 Status UpdateAllTServers<Req>::Launch() {
+  auto s = DoLaunch();
+  if (!launched_) {
+    DoCallbackAndRespond(s);
+  }
+  return s;
+}
+
+template <class Req>
+Status UpdateAllTServers<Req>::DoLaunch() {
   if (!txn_id_) {
     return STATUS(
         InvalidArgument, "Could not parse txn_id for the request. $0", txn_id_.status().ToString());
-  }
-  VLOG_WITH_PREFIX(2) << " processing request: " << req_.ShortDebugString();
-  auto s = BeforeRpcs();
-  if (!s.ok()) {
-    DoCallbackAndRespond(s);
-    return s;
+  } else if (
+      IsReleaseRequest() && object_lock_info_manager_.IsDdlVerificationInProgress(*txn_id_)) {
+    VLOG_WITH_PREFIX(1) << " is already scheduled for ddl verification. "
+                        << "Ignoring release request, as it will be released by the ddl verifier.";
+    return Status::OK();
   }
 
+  VLOG_WITH_PREFIX(2) << " processing request: " << req_.ShortDebugString();
+  RETURN_NOT_OK(BeforeRpcs());
+
+  // Do this check after the BeforeRpcs() call, to ensure that the request was added to
+  // in progress requests.
   if (PREDICT_FALSE(FLAGS_TEST_skip_launch_release_request) && IsReleaseRequest()) {
-    DoCallbackAndRespond(Status::OK());
     return Status::OK();
   }
 
@@ -1130,6 +1220,7 @@ Status UpdateAllTServers<Req>::Launch() {
   ts_descriptors_ = object_lock_info_manager_.GetAllTSDescriptorsWithALiveLease();
   statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
   LaunchFrom(0);
+  launched_ = true;
   return Status::OK();
 }
 

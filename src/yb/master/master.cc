@@ -712,6 +712,14 @@ Status Master::GetTserverCatalogMessageLists(
   return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
 }
 
+Status Master::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const std::optional<std::string>& message_list) {
+  // This is called during major upgrade when pg_restore executes SQL commands
+  // from the restore script.
+  return Status::OK();
+}
+
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 

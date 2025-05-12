@@ -146,7 +146,7 @@ struct ExternalMiniClusterOptions {
   bool enable_ysql = false;
   bool enable_ysql_auth = false;
   bool enable_ysql_conn_mgr = false;
-  bool wait_for_tservers_to_accept_ysql_connections = false;
+  bool wait_for_tservers_to_accept_ysql_connections = true;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -316,11 +316,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<size_t> GetTabletLeaderIndex(const yb::TabletId& tablet_id, bool require_lease = false);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
-  std::string GetMasterAddresses() const;
+  std::string GetMasterAddresses() const override;
 
   std::string GetTabletServerAddresses() const;
 
-  std::string GetTabletServerHTTPAddresses() const;
+  std::string GetTabletServerHTTPAddresses() const override;
 
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   Status PingMaster(const ExternalMaster* master) const;
@@ -414,6 +414,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Get table server host for ysql conn mgr or pg depending if test running with conn mgr.
   HostPort ysql_hostport(int node_index) const;
 
+  HostPort YsqlHostport() const override {
+    return ysql_hostport(0);
+  }
+
   size_t num_tablet_servers() const {
     return tablet_servers_.size();
   }
@@ -474,9 +478,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Waits until the tablet server with given uuid registers to the master leader.
   Status WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout);
 
-  Status WaitForTabletServersToAcquireYSQLLeases(MonoTime deadline);
-  Status WaitForTabletServersToAcquireYSQLLeases(
-      const std::vector<scoped_refptr<ExternalTabletServer>>& tablet_servers, MonoTime deadline);
+  Status WaitForTabletServersToAcceptYSQLConnection(MonoTime deadline);
+  Status WaitForTabletServersToAcceptYSQLConnection(
+      const std::vector<size_t>& indexes, MonoTime deadline);
 
   // Runs gtest assertions that no servers have crashed.
   void AssertNoCrashes();
@@ -485,7 +489,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // state.
   Status WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
-  Result<tserver::ListTabletsResponsePB> ListTablets(ExternalTabletServer* ts);
+  Result<tserver::ListTabletsResponsePB> ListTablets(
+      ExternalTabletServer* ts, bool user_tablets_only = true);
 
   Result<std::vector<tserver::ListTabletsForTabletServerResponsePB_Entry>> GetTablets(
       ExternalTabletServer* ts);

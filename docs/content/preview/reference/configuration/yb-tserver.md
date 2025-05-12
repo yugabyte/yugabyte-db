@@ -889,6 +889,12 @@ See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If
 
 Default: 1024
 
+##### --ysql_follower_reads_avoid_waiting_for_safe_time
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+Default: `true`
+
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):

@@ -91,6 +91,8 @@ class Schema;
 class BackgroundTask;
 class XClusterSafeTimeTest;
 
+YB_STRONGLY_TYPED_BOOL(UserTabletsOnly);
+
 namespace consensus {
 class RaftConfigPB;
 } // namespace consensus
@@ -309,10 +311,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   }
 
   // Get all of the tablets currently hosted on this server.
-  TabletPeers GetTabletPeers(TabletPtrs* tablet_ptrs = nullptr) const;
+  TabletPeers GetTabletPeers(
+      TabletPtrs* tablet_ptrs = nullptr,
+      UserTabletsOnly user_tablets_only = UserTabletsOnly::kFalse) const;
   // Get all of the tablets currently hosted on this server that belong to a given table.
   TabletPeers GetTabletPeersWithTableId(const TableId& table_id) const;
-  void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
+  void GetTabletPeersUnlocked(
+      TabletPeers* tablet_peers,
+      UserTabletsOnly user_tablets_only =
+          UserTabletsOnly::kFalse) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 
   // Get TabletPeers for all status tablets hosted on this server.
@@ -638,6 +645,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void UpdateCompactFlushRateLimitBytesPerSec();
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
+  PriorityThreadPool* VectorIndexPriorityThreadPool(tablet::VectorIndexPriorityThreadPoolType type);
 
   const CoarseTimePoint start_time_;
 

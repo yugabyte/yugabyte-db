@@ -3550,7 +3550,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * are affected by a trigger, so we should update all indexes.
 			 */
 			if ((TupleDescAttr(tupDesc, resno - 1)->attnotnull &&
-				 relation->rd_id != YBCatalogVersionRelationId) ||
+				 (relation->rd_id != YBCatalogVersionRelationId ||
+				  !yb_is_calling_internal_sql_for_ddl)) ||
 				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, &colrefs, relid))
 			{

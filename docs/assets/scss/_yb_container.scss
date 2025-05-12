@@ -183,11 +183,11 @@ html {
 @media (max-width: 1199px) {
   .td-main {
     .content-parent {
-      // max-width: calc(100% - 250px);max-width
       justify-content: center;
       padding-left: 20px;
       padding-right: 20px;
       margin-left: 0;
+      overflow: hidden;
 
       .content-child {
         max-width: 100%;
@@ -196,7 +196,6 @@ html {
 
       main {
         width: 100%;
-        // max-width: 828px;max-width
       }
     }
   }
@@ -256,12 +255,6 @@ html {
   aside.td-sidebar[style*="width: 4"] + div main:not(:only-child),
   aside.td-sidebar[style*="width: 5"] + div main:not(:only-child) {
     max-width: 100% !important;
-  }
-}
-
-@media (max-width: 1300px) and(min-width: 1200px) {
-  .td-main .content-parent {
-    // padding: 0 85px;padding
   }
 }
 

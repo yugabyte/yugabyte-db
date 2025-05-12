@@ -13,6 +13,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth/ldap"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth/oidc"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/customer"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
@@ -140,7 +141,10 @@ func init() {
 
 	addGroupsCmd(rootCmd)
 	// Add commands to be marked as preview in the list below
-	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd, group.GroupsCmd, ldap.LdapCmd})
+	util.PreviewCommand(
+		rootCmd,
+		[]*cobra.Command{alert.AlertCmd, group.GroupsCmd, ldap.LdapCmd, oidc.OIDCCmd},
+	)
 
 }
 

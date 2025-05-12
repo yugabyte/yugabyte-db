@@ -575,12 +575,6 @@ void AddSupportedFilterPolicy(
   table_options->supported_filter_policies->emplace(filter_policy->Name(), filter_policy);
 }
 
-PriorityThreadPool* GetGlobalPriorityThreadPool() {
-  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
-      GetGlobalRocksDBPriorityThreadPoolSize(), FLAGS_prioritize_tasks_by_disk);
-  return &priority_thread_pool_for_compactions_and_flushes;
-}
-
 } // namespace
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags() {
@@ -637,6 +631,12 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
       << priority_thread_pool_size << ".";
 
   return priority_thread_pool_size;
+}
+
+PriorityThreadPool* GetGlobalPriorityThreadPool() {
+  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
+      GetGlobalRocksDBPriorityThreadPoolSize(), FLAGS_prioritize_tasks_by_disk);
+  return &priority_thread_pool_for_compactions_and_flushes;
 }
 
 void InitRocksDBOptions(

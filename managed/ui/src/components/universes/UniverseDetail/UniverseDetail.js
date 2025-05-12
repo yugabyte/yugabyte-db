@@ -160,7 +160,7 @@ class UniverseDetail extends Component {
   isNewTaskUIEnabled = () => {
     const { featureFlags } = this.props;
     return featureFlags.test.newTaskDetailsUI || featureFlags.released.newTaskDetailsUI;
-  }
+  };
   componentDidMount() {
     const {
       customer: { currentCustomer }
@@ -232,7 +232,11 @@ class UniverseDetail extends Component {
           refetchedUniverseDetails: true
         });
       }
-      if(this.state.refetchedUniverseDetails && currentUniverse?.data?.universeDetails?.updatingTaskUUID === prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID) {
+      if (
+        this.state.refetchedUniverseDetails &&
+        currentUniverse?.data?.universeDetails?.updatingTaskUUID ===
+          prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID
+      ) {
         this.setState({
           refetchedUniverseDetails: false
         });
@@ -869,7 +873,6 @@ class UniverseDetail extends Component {
 
           <DropdownButton
             title="Actions"
-            className={this.showUpgradeMarker() ? 'btn-marked' : ''}
             id="bg-nested-dropdown"
             pullRight
             onToggle={(isOpen) => this.setState({ actionsDropdownOpen: isOpen })}
@@ -1622,9 +1625,7 @@ class UniverseDetail extends Component {
             shouldDisplayTaskButton={true}
           />
         </div>
-        <TaskDetailBanner
-          universeUUID={currentUniverse.data.universeUUID}
-        />
+        <TaskDetailBanner universeUUID={currentUniverse.data.universeUUID} />
         <RollingUpgradeFormContainer
           modalVisible={
             showModal &&

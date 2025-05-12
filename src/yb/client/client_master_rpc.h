@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/ash/wait_state_fwd.h"
+
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 
@@ -142,6 +144,11 @@ class ClientMasterRpcBase : public rpc::Rpc {
  private:
   YBClient::Data* const client_data_;
   rpc::Rpcs::Handle retained_self_;
+  // This is a pointer to the wait state that was created while
+  // processing the inbound call, we use this to update the
+  // threadlocal wait state ptr in the the Finished method when
+  // doing async RPCs to master.
+  const ash::WaitStateInfoPtr wait_state_;
 };
 
 template <class Resp>

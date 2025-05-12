@@ -27,7 +27,7 @@ Suppose that your business sells products in multiple geographies, say the USA, 
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Set up a 3 region RF3 cluster as you need the cluster to be spread across 3 geographies, the US, Europe, and India.
 

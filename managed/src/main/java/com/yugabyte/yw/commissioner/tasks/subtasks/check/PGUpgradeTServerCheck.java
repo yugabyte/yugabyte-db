@@ -24,13 +24,14 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -39,6 +40,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +55,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   private final LocalNodeManager localNodeManager;
   private final AuditService auditService;
 
-  private final int PG_UPGRADE_CHECK_TIMEOUT = 300;
+  private static final String PG_UPGRADE_CHECK_LOG_FILE = "pg_upgrade_check.log";
 
   public static class Params extends ServerSubTaskParams {
     public String ybSoftwareVersion;
@@ -83,7 +85,6 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    NodeDetails node = universe.getTServersInPrimaryCluster().stream().findAny().get();
     boolean isK8sUniverse =
         universe
             .getUniverseDetails()
@@ -91,6 +92,15 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
             .userIntent
             .providerType
             .equals(CloudType.kubernetes);
+    boolean isDedicatedNodeUniverse =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes;
+    // For K8s and dedicated node universe, we can run the check on any node in the primary cluster.
+    // For other universe types, we run the check on the master leader node as pg_catalog is present
+    // on the master leader node.
+    NodeDetails node =
+        isK8sUniverse || isDedicatedNodeUniverse
+            ? universe.getTServersInPrimaryCluster().stream().findAny().get()
+            : universe.getMasterLeaderNode();
 
     try {
       // Clean up the downloaded package from the node.
@@ -138,12 +148,22 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       String packageName = extractPackageName(ybServerPackage);
       String versionName = extractVersionName(ybServerPackage);
       String ybSoftwareDir = nodeUniverseManager.getYbHomeDir(node, universe) + "/yb-software/";
+      Provider provider =
+          Provider.getOrBadRequest(
+              UUID.fromString(
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+      String customTmpDirectory =
+          confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
       nodeUniverseManager
           .runCommand(
               node,
               universe,
               ImmutableList.of(
-                  "rm", "-rf", ybSoftwareDir + packageName, ybSoftwareDir + versionName),
+                  "rm",
+                  "-rf",
+                  ybSoftwareDir + packageName,
+                  ybSoftwareDir + versionName,
+                  customTmpDirectory + "/" + PG_UPGRADE_CHECK_LOG_FILE),
               ShellProcessContext.builder().logCmdOutput(true).build())
           .processErrors();
     }
@@ -258,6 +278,11 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     Architecture arch = universe.getUniverseDetails().arch;
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
     String ybServerPackage = release.getFilePath(arch);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     String pgUpgradeBinaryLocation =
@@ -282,7 +307,6 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     command.add(pgDataDir);
     command.add("--old-host");
     if (primaryCluster.userIntent.enableYSQLAuth) {
-      String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
       command.add(String.format("'$(ls -d -t %s/.yb.* | head -1)'", customTmpDirectory));
     } else {
       command.add(node.cloudInfo.private_ip);
@@ -296,25 +320,29 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     command.add("--username");
     command.add("\"yugabyte\"");
     command.add("--check");
-    // command.add("2>&1");
-    command.add("|");
-    // tee command to capture output and redirect stderr to stdout
-    command.add("tee");
-    command.add("/dev/stderr");
+    command.add(">");
+    command.add(String.format("%s/%s", customTmpDirectory, PG_UPGRADE_CHECK_LOG_FILE));
+    command.add("2>&1");
 
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(true)
-            .timeoutSecs(PG_UPGRADE_CHECK_TIMEOUT)
+            .timeoutSecs(
+                confGetter.getConfForScope(universe, UniverseConfKeys.pgUpgradeCheckTimeoutSec))
             .build();
 
     log.info("Running PG15 upgrade check on node: {} with command: {}", node.nodeName, command);
-    ShellResponse response =
-        nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
-    JsonNode output = parsePGUpgradeOutput(response.extractRunCommandOutput());
+    nodeUniverseManager.runCommand(node, universe, command, context);
+    List<String> readLogsCommand = new ArrayList<>();
+    readLogsCommand.add("cat");
+    readLogsCommand.add(String.format("%s/%s", customTmpDirectory, PG_UPGRADE_CHECK_LOG_FILE));
+    log.info(
+        "Reading PG15 upgrade check logs on node: {} with command: {}", node.nodeName, command);
+    ShellResponse readLogsResponse =
+        nodeUniverseManager.runCommand(node, universe, readLogsCommand, context).processErrors();
+    JsonNode output = parsePGUpgradeOutput(readLogsResponse.extractRunCommandOutput());
     log.info("PG upgrade check output on node: {} is: {}", node.nodeName, output);
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(getTaskUUID());
-    auditService.updateAdditionalDetails(taskInfo.getParentUuid(), output);
+    auditService.updateAdditionalDetails(getUserTaskUUID(), output);
     if (output != null
         && output.has("overallStatus")
         && output.get("overallStatus").asText().equals("Failure, exiting")) {

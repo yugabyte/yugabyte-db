@@ -120,6 +120,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tsan_util.h"
 
@@ -1999,6 +2000,7 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 void YBClient::AcquireObjectLocksGlobalAsync(
     const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
     MonoDelta rpc_timeout) {
+  TRACE_FUNC();
   auto deadline = CoarseMonoClock::Now() + rpc_timeout;
   data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback);
 }
@@ -2006,6 +2008,7 @@ void YBClient::AcquireObjectLocksGlobalAsync(
 void YBClient::ReleaseObjectLocksGlobalAsync(
     const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
     MonoDelta rpc_timeout) {
+  TRACE_FUNC();
   auto deadline = CoarseMonoClock::Now() + rpc_timeout;
   data_->ReleaseObjectLocksGlobalAsync(this, request, deadline, callback);
 }

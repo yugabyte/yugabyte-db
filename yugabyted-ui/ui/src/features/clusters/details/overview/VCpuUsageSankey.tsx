@@ -210,6 +210,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
 
 function CpuSankeyNode(props: any) {
   const classes = useStyles();
+  const { t } = useTranslation();
 
   const { x, y, width, height, index, payload, highlightNodes, totalCores } = props;
   const isLeftNode = index <= 1;
@@ -251,8 +252,8 @@ function CpuSankeyNode(props: any) {
             <tspan dx={16}>{payload.name} {payload.zone && `(${payload.zone})`}</tspan>
           </text>
         </Link>
-        :
-        // Left node
+        : totalCores > 0 ?
+        // Left node if at least 1 core
         <text
           textAnchor='end'
           x={x - 10}
@@ -267,6 +268,18 @@ function CpuSankeyNode(props: any) {
             of {totalCores} {cpuTextSuffix} {/* of number cores */}
           </tspan>
         </text>
+        : index === 0 ?
+        // If 0 cores, only show USAGE, don't show USED/AVAILABLE cores
+        <text
+          textAnchor='end'
+          x={x - 10}
+          y={y + height / 2 + width / 2 - 5}
+          fontSize="13"
+          fontWeight={500}
+        >
+          <tspan fill="#97A5B0">{t('clusterDetail.overview.usage').toUpperCase()}</tspan>
+        </text>
+        : null
       }
     </Layer>
   );

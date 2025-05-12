@@ -105,6 +105,7 @@ class PgWrapper : public ProcessWrapper {
     uint16_t old_version_pg_port;
     std::string new_version_socket_dir;
     uint16_t new_version_pg_port;
+    bool no_statistics;
   };
 
   static Status RunPgUpgrade(const PgUpgradeParams& param);
@@ -171,9 +172,12 @@ class PgSupervisor : public ProcessSupervisor {
 
   void Stop() override;
 
-  const PgProcessConf& conf() const {
-    return conf_;
-  }
+  const PgProcessConf& conf() const { return conf_; }
+
+  // todo(zdrudi): maybe rename this?
+  // what we want is to verify that the process can be started, and then potentially pause it.
+  // So the semantics should maybe be different.
+  Status StartAndMaybePause();
 
   Status ReloadConfig();
   Status UpdateAndReloadConfig();

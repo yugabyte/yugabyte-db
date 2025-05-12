@@ -733,21 +733,13 @@ compileYbaCliBinary := {
 
   ybLog("Generating YBA CLI go binary.")
 
-  val (status1, fileList1) = makeYbaCliPackage("linux", "amd64", baseDirectory.value)
+  val (status1, fileList1) = makeYbaCliPackage("linux", baseDirectory.value)
   completeFileList = fileList1
   status = status1
 
-  val (status2, fileList2) = makeYbaCliPackage("linux", "arm64", baseDirectory.value)
+  val (status2, fileList2) = makeYbaCliPackage("darwin", baseDirectory.value)
   completeFileList = completeFileList ++ fileList2
   status = status max status2
-
-  val (status3, fileList3) = makeYbaCliPackage("darwin", "amd64", baseDirectory.value)
-  completeFileList = completeFileList ++ fileList3
-  status = status max status3
-
-  val (status4, fileList4) = makeYbaCliPackage("darwin", "arm64", baseDirectory.value)
-  completeFileList = completeFileList ++ fileList4
-  status = status max status4
 
 
   (status, completeFileList)
@@ -755,7 +747,7 @@ compileYbaCliBinary := {
 
 compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
 
-def makeYbaCliPackage(goos: String, goarch: String, directory: java.io.File): (Int, Seq[String]) = {
+def makeYbaCliPackage(goos: String, directory: java.io.File): (Int, Seq[String]) = {
 
   var status = 0
   var output = Seq.empty[String]
@@ -765,7 +757,7 @@ def makeYbaCliPackage(goos: String, goarch: String, directory: java.io.File): (I
     line => output :+= line,
     line => println(s"Error: $line")
   )
-  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+  val env = Seq("GOOS" -> goos)
   val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
   status = process.!(processLogger)
   if (status == 0) {
@@ -783,16 +775,14 @@ lazy val cleanYbaCliBinary = taskKey[Int]("Clean YBA CLI Binary")
 cleanYbaCliBinary := {
   ybLog("Cleaning YBA CLI go binary.")
 
-  var status = cleanYbaCliPackage("linux", "amd64", baseDirectory.value)
-  status = cleanYbaCliPackage("linux", "arm64", baseDirectory.value)
-  status = cleanYbaCliPackage("darwin", "amd64", baseDirectory.value)
-  status = cleanYbaCliPackage("darwin", "arm64", baseDirectory.value)
+  var status = cleanYbaCliPackage("linux", baseDirectory.value)
+  status = cleanYbaCliPackage("darwin", baseDirectory.value)
 
   status
 }
 
-def cleanYbaCliPackage(goos: String, goarch: String, directory: java.io.File): Int = {
-  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+def cleanYbaCliPackage(goos: String, directory: java.io.File): Int = {
+  val env = Seq("GOOS" -> goos)
   val status = Process("make clean", new File(directory + "/yba-cli/"), env: _*).!
 
   status
@@ -886,6 +876,9 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
+// Set time zone.
+Universal / javaOptions += "-Duser.timezone=GMT"
+
 Universal / mappings ++= {
   val (status, cliFolders) = compileYbaCliBinary.value
   if (status == 0) {
@@ -931,8 +924,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.102-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b1"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.103-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b2"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

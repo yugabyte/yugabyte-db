@@ -17,6 +17,7 @@
 #include <future>
 #include <map>
 
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/metadata.h"
 
@@ -52,23 +53,29 @@ struct VectorLSMInsertContext {
   const rocksdb::UserFrontiers* frontiers = nullptr;
 };
 
+class VectorLSMMergeFilter {
+ public:
+  virtual ~VectorLSMMergeFilter() = default;
+  virtual rocksdb::FilterDecision Filter(VectorId vector_id) = 0;
+};
+using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
+
 template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions {
   using VectorIndexFactory = vector_index::VectorIndexFactory<Vector, DistanceResult>;
-  using VectorIndexPtr     = vector_index::VectorIndexIfPtr<Vector, DistanceResult>;
-  using VectorIndexPtrs    = std::vector<VectorIndexPtr>;
-  using VectorIndexMerger  = std::function<Status(VectorIndexPtr&, const VectorIndexPtrs&)>;
-
-  using FrontiersFactory = std::function<rocksdb::UserFrontiersPtr()>;
+  using MergeFilterFactory = std::function<VectorLSMMergeFilterPtr()>;
+  using FrontiersFactory   = std::function<rocksdb::UserFrontiersPtr()>;
 
   std::string log_prefix;
   std::string storage_dir;
   VectorIndexFactory vector_index_factory;
   size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
+  rpc::ThreadPool* insert_thread_pool;
+  PriorityThreadPool* compaction_thread_pool;
   FrontiersFactory frontiers_factory;
-  VectorIndexMerger vector_index_merger;
+  MergeFilterFactory vector_merge_filter_factory;
 };
 
 template<IndexableVectorType VectorType,
@@ -130,17 +137,24 @@ class VectorLSM {
   struct MutableChunk;
   using  MutableChunkPtr = std::shared_ptr<MutableChunk>;
 
+ private:
   struct ImmutableChunk;
   using  ImmutableChunkPtr  = std::shared_ptr<ImmutableChunk>;
   using  ImmutableChunkPtrs = std::vector<ImmutableChunkPtr>;
 
- private:
-  friend class VectorLSMInsertTask<Vector, DistanceResult>;
+  class CompactionTask;
+
+  struct CompactionScope;
+
+  friend class  VectorLSMInsertTask<Vector, DistanceResult>;
   friend struct MutableChunk;
 
   const std::string& LogPrefix() const {
     return options_.log_prefix;
   }
+
+  // Utility method to correctly prepare Status instance in case of shutting down.
+  Status DoCheckRunning(const char* file_name, int line_number) const EXCLUDES(mutex_);
 
   // Saves the current mutable chunk to disk and creates a new one.
   Status RollChunk(size_t min_vectors) REQUIRES(mutex_);
@@ -174,20 +188,26 @@ class VectorLSM {
   void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
   void DeleteFile(const VectorLSMFileMetaData& file);
   void ObsoleteFile(std::unique_ptr<VectorLSMFileMetaData>&& file) EXCLUDES(cleanup_mutex_);
-  void ScheduleObsoleteChunksCleanup();
+  void TriggerObsoleteChunksCleanup(bool async);
 
   // Updates compaction scope with a continuos subset of immutable chunks, which consists of
   // first N manifested chunks starting from the very first one (chunk N+1 is not manifested).
   // The flushes and the current manifest updates are not stopped, which means other newer chunks
   // could become manifested while the full compaction is happening, which means it is not allowed
   // to keep iterators to the selected range as they could become invalidated.
-  ImmutableChunkPtrs PickChunksForFullCompaction() const EXCLUDES(mutex_);
+  CompactionScope PickChunksForFullCompaction() const EXCLUDES(mutex_);
 
   // Returns new chunk - a product of input chunks compaction; the new chunk is saved to a disk.
   Result<ImmutableChunkPtr> DoCompaction(const ImmutableChunkPtrs& input_chunks);
 
-  Status DoFullCompaction() EXCLUDES(mutex_);
-  Status ScheduleFullCompaction(StdStatusCallback callback = {});
+  Status DoManualCompaction() EXCLUDES(mutex_);
+  Status ScheduleManualCompaction(StdStatusCallback callback = {});
+
+  void Register(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
+  void Deregister(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
+
+  // Creates compaction task and tries to submit it to the thread pool. Triggres callback only if
+  // compation task has been successfully submitted.
 
   Status TEST_SkipManifestUpdateDuringShutdown() REQUIRES(mutex_);
 
@@ -210,8 +230,6 @@ class VectorLSM {
   bool writing_manifest_ GUARDED_BY(mutex_) = false;
   std::condition_variable_any writing_manifest_done_;
 
-  std::atomic<bool> full_compaction_in_progress_ = false;
-
   bool stopping_ GUARDED_BY(mutex_) = false;
 
   // The map contains only chunks being saved, i.e. chunks in kInMemory and kOnDisk states -- this
@@ -219,10 +237,14 @@ class VectorLSM {
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
   std::condition_variable_any updates_queue_empty_;
 
+  rw_spinlock compaction_tasks_mutex_;
+  std::condition_variable_any compaction_tasks_cv_;
+  std::unordered_set<CompactionTask*> compaction_tasks_ GUARDED_BY(compaction_tasks_mutex_);
+
   // Currently this mutex is used only in DeleteObsoleteChunks, which are not allowed to run in
   // parallel, hence it is enough to use simple spin lock.
   simple_spinlock cleanup_mutex_;
-  std::vector<std::unique_ptr<VectorLSMFileMetaData>> obsolete_files_;
+  std::vector<std::unique_ptr<VectorLSMFileMetaData>> obsolete_files_ GUARDED_BY(cleanup_mutex_);
   std::atomic<bool> obsolete_files_cleanup_in_progress_ = false;
 
   Status failed_status_ GUARDED_BY(mutex_);

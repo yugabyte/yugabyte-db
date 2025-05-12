@@ -148,7 +148,6 @@ message PgsqlPartitionBound {
   optional bool is_inclusive = 2;
 }
 
-// YB_TODO(upgrade): Handle in pg15 upgrade path.
 message PgsqlRandState {
   required uint64 s0 = 1;
   required uint64 s1 = 2;

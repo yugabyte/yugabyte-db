@@ -3049,7 +3049,6 @@ alter_table_cmd:
 				}
 			| alter_generic_options
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action OPTIONS", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_GenericOptions;

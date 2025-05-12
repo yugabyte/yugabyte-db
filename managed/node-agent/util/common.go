@@ -301,6 +301,10 @@ func VersionFile() string {
 	return MustGetHomeDirectory() + "/pkg/version_metadata.json"
 }
 
+func TemplateDir() string {
+	return MustGetHomeDirectory() + "/pkg/templates"
+}
+
 func IsDigits(str string) bool {
 	if str == "" {
 		return false

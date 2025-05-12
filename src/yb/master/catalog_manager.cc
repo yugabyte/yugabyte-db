@@ -495,10 +495,6 @@ DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
 DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
     "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
 
-DEFINE_RUNTIME_bool(
-    enable_truncate_cdcsdk_table, false,
-    "When set, enables truncating tables currently part of a CDCSDK Stream");
-
 DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, true,
     "When set, it enables automatic tablet splitting for tables that are part of a "
     "CDCSDK stream");
@@ -589,11 +585,14 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
-DECLARE_bool(ysql_yb_enable_replica_identity);
+DEFINE_test_flag(int32, system_table_num_tablets, -1,
+    "Number of tablets to use when creating the system tables. "
+    "If -1, the number of tablets will follow the value provided in the CreateTable request.");
 
 DECLARE_bool(enable_pg_cron);
-
+DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace yb {
 namespace master {
@@ -3901,22 +3900,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return result;
   }
 
-  if (!orig_req->old_rewrite_table_id().empty()) {
-    auto table_id = orig_req->old_rewrite_table_id();
-    auto namespace_id = VERIFY_RESULT(GetTableById(table_id))->LockForRead()->namespace_id();
-    auto automatic_ddl_mode = xcluster_manager_->IsNamespaceInAutomaticDDLMode(namespace_id);
-    SharedLock lock(mutex_);
-    // Fail rewrites on tables that are part of CDC or non-automatic mode XCluster replication,
-    // except for TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
-    if ((xcluster_manager_->IsTableReplicated(table_id) && !automatic_ddl_mode)  ||
-        (IsTablePartOfCDCSDK(table_id) &&
-         (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
-      return STATUS(
-          NotSupported,
-          "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication"
-          " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
-    }
-  }
+  RETURN_NOT_OK(xcluster_manager_->ValidateCreateTableRequest(*orig_req));
+  RETURN_NOT_OK(CDCSDKValidateCreateTableRequest(*orig_req));
 
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
@@ -4084,7 +4069,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Assign column-ids that have just been computed and assigned to "index_info".
     if (is_vector_index) {
-      index_info.mutable_vector_idx_options()->set_id(Uuid::Generate().ToString());
+      index_info.mutable_vector_idx_options()->set_id(
+          AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
@@ -11695,6 +11681,10 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
 Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
     const CreateTableRequestPB& request, const Schema& schema,
     const PlacementInfoPB& placement_info) {
+  if (PREDICT_FALSE(FLAGS_TEST_system_table_num_tablets >= 0 &&
+                    request.namespace_().name() == kSystemNamespaceName)) {
+    return FLAGS_TEST_system_table_num_tablets;
+  }
   // Calculate number of tablets to be used. Priorities:
   //   1. Use Internally specified value from 'CreateTableRequestPB::num_tablets'.
   //   2. Use User specified value from
