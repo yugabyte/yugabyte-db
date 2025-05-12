@@ -234,10 +234,17 @@
 
 body.configuration {
   .td-content {
+    h2,
+    .h2,
+    h3,
+    .h3 {
+      margin-top: 96px;
+    }
+
     h5:not(:first-child) {
-      font-family: 'SFMonoMedium';
+      font-family: 'SFMonoSemibold';
       font-size: 16px;
-      font-weight: 600;
+      font-weight: normal;
       line-height: 24px;
       position: relative;
       margin-top: 64px;
@@ -253,10 +260,11 @@ body.configuration {
       }
     }
 
-    header + h5:not(:first-child) ,
-    .main-heading-with-version + h5:not(:first-child) ,
-    h2 + h5:not(:first-child) ,
-    h3 + h5:not(:first-child) ,
+    h5.first-h5,
+    header + h5:not(:first-child),
+    .main-heading-with-version + h5:not(:first-child),
+    h2 + h5:not(:first-child),
+    h3 + h5:not(:first-child),
     h4 + h5:not(:first-child) {
       margin-top: 32px;
 

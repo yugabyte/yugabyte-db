@@ -349,6 +349,28 @@ $(document).ready(() => {
   })();
 
   /**
+   * Check immediate heading before H5 on particular pages to apply divider on them.
+   * Like `/preview/reference/configuration/yb-tserver/`.
+   */
+  (() => {
+    if (document.body.classList.contains('configuration')) {
+      const headings = document.querySelectorAll('.configuration h2, .configuration h3, .configuration h4, .configuration h5');
+      let checkH5 = false;
+
+      headings.forEach(heading => {
+        const tag = heading.tagName;
+
+        if (tag === 'H2' || tag === 'H3' || tag === 'H4') {
+          checkH5 = true;
+        } else if (tag === 'H5' && checkH5) {
+          heading.classList.add('first-h5');
+          checkH5 = false;
+        }
+      });
+    }
+  })();
+
+  /**
    * Add Image Popup.
    */
   (() => {
