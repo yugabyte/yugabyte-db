@@ -47,7 +47,7 @@ import {
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
-import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
+import { UniverseSupportBundleModal } from '../UniverseSupportBundle/UniverseSupportBundleModal';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import { EncryptionInTransit } from '../../../redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
@@ -1267,11 +1267,10 @@ class UniverseDetail extends Component {
                       <i className="fa fa-chevron-right submenu-icon" />
                     </span>
                   </YBMenuItem>
-                  {(featureFlags.test['supportBundle'] ||
-                    featureFlags.released['supportBundle']) && (
-                    <>
-                      <MenuItem divider />
-                      {!universePaused && (
+                  {(featureFlags.test['supportBundle'] || featureFlags.released['supportBundle']) &&
+                    !universePaused && (
+                      <>
+                        <MenuItem divider />
                         <RbacValidator
                           isControl
                           accessRequiredOn={{
@@ -1279,25 +1278,17 @@ class UniverseDetail extends Component {
                             ...ApiPermissionMap.GET_SUPPORT_BUNDLE
                           }}
                         >
-                          <UniverseSupportBundle
-                            currentUniverse={currentUniverse.data}
-                            modal={modal}
-                            closeModal={closeModal}
-                            button={
-                              <YBMenuItem
-                                onClick={showSupportBundleModal}
-                                disabled={isSupportBundleDisabled}
-                              >
-                                <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                  Support Bundles
-                                </YBLabelWithIcon>
-                              </YBMenuItem>
-                            }
-                          />
+                          <YBMenuItem
+                            onClick={showSupportBundleModal}
+                            disabled={isSupportBundleDisabled}
+                          >
+                            <YBLabelWithIcon icon="fa fa-file-archive-o">
+                              Support Bundles
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
                         </RbacValidator>
-                      )}
-                    </>
-                  )}
+                      </>
+                    )}
 
                   <MenuItem divider />
 
@@ -1796,6 +1787,12 @@ class UniverseDetail extends Component {
           nodeNames={nodeNames}
           isUniverseAction={true}
           isReinstall={!isNodeAgentMissing}
+        />
+
+        <UniverseSupportBundleModal
+          currentUniverse={currentUniverse.data}
+          modal={modal}
+          closeModal={closeModal}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>
