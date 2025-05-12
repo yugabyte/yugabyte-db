@@ -638,6 +638,10 @@ YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
   return ToYBCStatus(PgInitSessionImpl(*session_stats));
 }
 
+void YBCPgIncrementIndexRecheckCount() {
+  pgapi->IncrementIndexRecheckCount();
+}
+
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
 
 YBCPgMemctx YBCPgCreateMemctx() {

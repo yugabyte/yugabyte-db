@@ -1690,6 +1690,10 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
   return dml_read.Exec(exec_params);
 }
 
+void PgApiImpl::IncrementIndexRecheckCount() {
+  pg_session_->metrics().RecordRowRemovedByIndexRecheck();
+}
+
 
 //--------------------------------------------------------------------------------------------------
 // Functions.

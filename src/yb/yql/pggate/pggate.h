@@ -615,6 +615,7 @@ class PgApiImpl {
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
+  void IncrementIndexRecheckCount();
 
   //------------------------------------------------------------------------------------------------
   // Functions.

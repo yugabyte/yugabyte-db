@@ -516,6 +516,8 @@ typedef struct PgExecStats {
   int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
   YBCPgExecEventMetric
       storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+
+  uint64_t rows_removed_by_recheck;
 } YBCPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.

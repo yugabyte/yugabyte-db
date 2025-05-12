@@ -3058,6 +3058,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 		/* Do a preliminary check to skip rows we can guarantee don't match. */
 		if (ybIsTupMismatch(tup, ybScan))
 		{
+			YBCPgIncrementIndexRecheckCount();
 			heap_freetuple(tup);
 			continue;
 		}

@@ -1292,7 +1292,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbIsSingleRowModifyTxnPlanned(plannedstmt, queryDesc->estate);
 
 		/* Refresh the session stats before the start of the query */
-		if (es->rpc)
+		if (es->analyze)
 		{
 			YbRefreshSessionStatsBeforeExecution();
 		}
@@ -3767,6 +3767,13 @@ show_instrumentation_count(const char *qlabel, int which,
 	else
 		nfiltered = planstate->instrument->nfiltered1;
 	nloops = planstate->instrument->nloops;
+
+
+	if (IsYugaByteEnabled() && which == 2)
+	{
+		YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
+		nfiltered += yb_instr->rows_removed_by_recheck;
+	}
 
 	/* In text mode, suppress zero counts; they're not interesting enough */
 	if (nfiltered > 0 || es->format != EXPLAIN_FORMAT_TEXT)

@@ -56,6 +56,8 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data);
 
 YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats);
 
+void YBCPgIncrementIndexRecheckCount();
+
 uint64_t YBCPgGetSessionID();
 
 // Initialize YBCPgMemCtx.
