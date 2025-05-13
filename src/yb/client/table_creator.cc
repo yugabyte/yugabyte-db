@@ -60,6 +60,11 @@ YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::internal_table_type(master::InternalTableType internal_type) {
+  internal_table_type_ = internal_type;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::creator_role_name(const RoleName& creator_role_name) {
   creator_role_name_ = creator_role_name;
   return *this;
@@ -282,6 +287,7 @@ Status YBTableCreator::Create() {
   req.set_name(table_name_.table_name());
   table_name_.SetIntoNamespaceIdentifierPB(req.mutable_namespace_());
   req.set_table_type(table_type_);
+  req.set_internal_table_type(internal_table_type_);
   req.set_is_colocated_via_database(is_colocated_via_database_);
 
   if (!creator_role_name_.empty()) {

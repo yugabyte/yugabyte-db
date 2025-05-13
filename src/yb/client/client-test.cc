@@ -173,7 +173,6 @@ constexpr int kNumTablets = 2;
 
 const std::string kKeyspaceName = "my_keyspace";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
-const std::string kPgsqlSchemaName = "my_schema";
 const std::string kPgsqlTableName = "table";
 const std::string kPgsqlTableId = "tableid";
 const std::string kPgsqlNamespaceName = "test_namespace";
@@ -436,7 +435,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     YBSchemaBuilder schema_builder;
     schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
     schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
-    schema_builder.SetSchemaName(kPgsqlSchemaName);
     EXPECT_OK(client_->CreateNamespaceIfNotExists(
         kPgsqlNamespaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
         kNamespaceId));
@@ -2433,9 +2431,8 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   YBSchemaBuilder schema_builder;
   schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
   schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
-  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to use a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
-  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   EXPECT_OK(
       client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL));
@@ -3043,9 +3040,8 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
   YBSchemaBuilder schema_builder;
   schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::INT64);
   schema_builder.AddColumn("value")->Type(DataType::INT64);
-  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to use a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
-  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   ASSERT_OK(schema_builder.Build(&schema));
 

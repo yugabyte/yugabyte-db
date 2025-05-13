@@ -932,7 +932,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
 
     // Double-check schema name here if the previous check was skipped.
     if (is_ysql_table && !has_valid_pgschema_name) {
-      std::string target_schema_name = table_schema_resp.schema().pgschema_name();
+      std::string target_schema_name = table_schema_resp.schema().depricated_pgschema_name();
       if (target_schema_name != source_schema.SchemaName()) {
         table->clear_table_id();
         continue;
