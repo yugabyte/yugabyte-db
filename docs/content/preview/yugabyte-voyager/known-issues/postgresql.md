@@ -1195,7 +1195,7 @@ $$;
 
 **GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
 
-**Description**: If any of these PostgreSQL features for version 12 and later are present in the source schema, the import schema step on the target YugabyteDB will fail as YugabyteDB is currently PG11 compatible.
+**Description**: If any of the following PostgreSQL 12 and later features are present in the source schema, the import schema step on the target YugabyteDB will fail.
 
 - [JSON Constructor functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`, `JSON_OBJECT`, `JSON_OBJECT_AGG`.
 - [JSON query functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
