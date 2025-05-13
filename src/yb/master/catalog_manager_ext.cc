@@ -159,7 +159,7 @@ DEFINE_RUNTIME_bool(
     "safety button in case restore using relfilenode fails.");
 
 DEFINE_RUNTIME_AUTO_bool(
-    enable_export_snapshot_using_relfilenode, kLocalVolatile, false, true,
+    enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
 namespace yb {
 
