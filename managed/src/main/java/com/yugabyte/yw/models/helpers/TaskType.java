@@ -660,6 +660,11 @@ public enum TaskType {
       CustomerTask.TaskType.UpdateOOMServiceState,
       CustomerTask.TargetType.Universe),
 
+  SendUserNotification(
+      com.yugabyte.yw.commissioner.tasks.SendUserNotification.class,
+      CustomerTask.TaskType.SendUserNotification,
+      CustomerTask.TargetType.User),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
