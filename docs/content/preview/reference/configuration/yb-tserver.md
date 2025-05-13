@@ -493,8 +493,6 @@ Deprecated. Use `full_compaction_pool_max_threads`.
 
 Deprecated. Use `full_compaction_pool_max_queue_size`.
 
-Use `full_compaction_pool_max_queue_size`.
-
 ##### --full_compaction_pool_max_threads
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
@@ -724,8 +722,6 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 ##### --ysql_pg_conf
 
 Deprecated. Use `--ysql_pg_conf_csv` instead.
-
-Use `--ysql_pg_conf_csv` instead.
 
 ##### --ysql_pg_conf_csv
 
@@ -1362,7 +1358,7 @@ Default: `900`
 
 Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
 
-Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol.
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
 
 Default: `4194304` (4MB)
 
