@@ -138,3 +138,15 @@ message InstallYbcInput {
 message InstallYbcOutput {
     int32 pid = 1;
 }
+
+message ConfigureServerInput {
+    string remoteTmp = 1;
+    string ybHomeDir = 2;
+    repeated string processes = 3;
+    repeated string mountPoints = 4;
+    uint32 numCoresToKeep = 5;
+}
+
+message ConfigureServerOutput {
+    int32 pid = 1;
+}

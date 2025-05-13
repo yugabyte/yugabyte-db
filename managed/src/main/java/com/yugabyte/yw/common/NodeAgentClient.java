@@ -28,6 +28,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.nodeagent.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.ConfigureServerInput;
+import com.yugabyte.yw.nodeagent.ConfigureServerOutput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceOutput;
 import com.yugabyte.yw.nodeagent.DescribeTaskRequest;
@@ -915,6 +917,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), ServerControlOutput.class);
+  }
+
+  public ConfigureServerOutput runConfigureServer(
+      NodeAgent nodeAgent, ConfigureServerInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setConfigureServerInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ConfigureServerOutput.class);
   }
 
   public InstallSoftwareOutput runInstallSoftware(

@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
@@ -48,6 +49,7 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
@@ -254,6 +256,41 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     return installYbcInputBuilder.build();
   }
 
+  private ConfigureServerInput setUpConfigureServerBits(
+      Universe universe, NodeDetails nodeDetails, Params taskParams, NodeAgent nodeAgent) {
+    ConfigureServerInput.Builder configureServerInputBuilder = ConfigureServerInput.newBuilder();
+    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+
+    configureServerInputBuilder.setRemoteTmp(customTmpDirectory);
+    configureServerInputBuilder.setYbHomeDir(provider.getYbHome());
+    List<String> mountPoints = Arrays.asList("/mnt/d0");
+    if (taskParams.deviceInfo != null && taskParams.deviceInfo.mountPoints != null) {
+      String mountPointsStr = taskParams.deviceInfo.mountPoints;
+      Arrays.stream(mountPointsStr.split(","))
+                          .map(String::trim)
+                          .filter(s -> !s.isEmpty())
+                          .collect(Collectors.toList());
+    }
+    for (String mp : mountPoints) {
+      configureServerInputBuilder.addMountPoints(mp);
+    }
+    if (!nodeDetails.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
+      // For RR we don't setup master
+      configureServerInputBuilder.addProcesses("tserver");
+    } else {
+      configureServerInputBuilder.addProcesses("master");
+      configureServerInputBuilder.addProcesses("tserver");
+    }
+
+    Integer num_cores_to_keep =
+        confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
+    configureServerInputBuilder.setNumCoresToKeep(num_cores_to_keep);
+    return configureServerInputBuilder.build();
+  }
+
   public static class Params extends NodeTaskParams {
     public UpgradeTaskType type = UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
@@ -383,6 +420,10 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         && (taskParams().type == UpgradeTaskType.Everything
             || taskParams().type == UpgradeTaskType.Software)) {
       log.info("Installing software using node agent {}", optional.get());
+      nodeAgentClient.runConfigureServer(
+          optional.get(),
+          setUpConfigureServerBits(universe, nodeDetails, taskParams(), optional.get()),
+          "yugabyte");
       nodeAgentClient.runInstallSoftware(
           optional.get(),
           setupInstallSoftwareBits(universe, nodeDetails, taskParams(), optional.get()),

@@ -2179,6 +2179,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
           }
+          if (taskParam.skipDownloadSoftware) {
+            commandArgs.add("--skip_ansible_configure_playbook");
+          }
           UniverseDefinitionTaskParams.Cluster cluster =
               universe.getCluster(nodeTaskParam.placementUuid);
           Map<String, String> gflags =
