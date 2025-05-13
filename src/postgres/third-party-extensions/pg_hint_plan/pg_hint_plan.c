@@ -618,6 +618,7 @@ static bool yb_enable_internal_hint_test = false;
 static bool yb_internal_hint_test_fail = false;
 static bool yb_use_generated_hints_for_plan = false;
 static bool yb_use_query_id_for_hinting = false;
+static bool yb_enable_hint_table_cache = true;
 
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
 static int recurse_level = 0;		/* recursion level incl. direct SPI calls */
@@ -761,7 +762,8 @@ _PG_init(void)
 {
 	PLpgSQL_plugin	**var_ptr;
 
-	CacheRegisterRelcacheCallback(YbInvalidateHintCacheCallback, (Datum) 0);
+	if (yb_enable_hint_table_cache)
+		CacheRegisterRelcacheCallback(YbInvalidateHintCacheCallback, (Datum) 0);
 
 	/* Define custom GUC variables. */
 	DefineCustomBoolVariable("pg_hint_plan.enable_hint",
@@ -884,6 +886,17 @@ _PG_init(void)
 							&yb_use_query_id_for_hinting,
 							false,
 							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.yb_enable_hint_table_cache",
+							"Enables per-session caching for the hint table.",
+							NULL,
+							&yb_enable_hint_table_cache,
+							true,
+							PGC_BACKEND,
 							0,
 							NULL,
 							NULL,
@@ -2111,7 +2124,7 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	text   *qry;
 	text   *app;
 
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && yb_enable_hint_table_cache)
 	{
 		bool found;
 		elog(DEBUG5, "Looking up hints cache for query: %s, application: '%s'", client_query, client_application);
@@ -6794,6 +6807,12 @@ PG_FUNCTION_INFO_V1(yb_hint_plan_cache_invalidate);
 Datum
 yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
 {
+	if (!yb_enable_hint_table_cache)
+	{
+		elog(DEBUG3, "Hint cache is disabled, skipping cache invalidation");
+		PG_RETURN_DATUM(PointerGetDatum(NULL));
+	}
+
 	if (!CALLED_AS_TRIGGER(fcinfo))
 	{
 		ereport(ERROR, (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
