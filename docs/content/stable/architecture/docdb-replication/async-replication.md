@@ -49,8 +49,8 @@ To better understand how xCluster replication works in practice, check out [xClu
 
 Because there is a useful trade-off between how much consistency is lost and what transactions are allowed, YugabyteDB provides two different modes of asynchronous replication:
 
-- Non-transactional replication. Writes are allowed on the target universe, but reads of recently replicated data can be inconsistent.
-- Transactional replication. Consistency of reads is preserved on the target universe, but writes are not allowed.
+- Non-transactional replication: Writes are allowed on the target universe, but reads of recently replicated data can be inconsistent.
+- Transactional replication: Consistency of reads is preserved on the target universe, but writes are not allowed.
 
 ### Non-transactional replication
 
