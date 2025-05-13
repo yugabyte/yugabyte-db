@@ -369,7 +369,7 @@ Status XClusterSourceManager::CreateOutboundReplicationGroup(
   }
 
   // If we fail anywhere after this we need to return the Id we have reserved.
-  auto se = ScopeExit([this, &replication_group_id]() {
+  auto se = CancelableScopeExit([this, &replication_group_id] {
     std::lock_guard l(outbound_replication_group_map_mutex_);
     outbound_replication_group_map_.erase(replication_group_id);
   });

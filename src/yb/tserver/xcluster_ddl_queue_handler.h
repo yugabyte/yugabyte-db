@@ -13,7 +13,14 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
+
 #include <rapidjson/document.h>
+
 #include "yb/tserver/xcluster_consumer_if.h"
 
 namespace yb {

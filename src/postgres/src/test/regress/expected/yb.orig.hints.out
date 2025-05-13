@@ -624,100 +624,99 @@ where unn1 < 4 and ch1 > ch2;
 
 -- Complex query;
 explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Aggregate
-   ->  Hash Join
-         Hash Cond: (t1.a1 = t1_1.a1)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t2.a2 = t1.a1)
          ->  YB Batched Nested Loop Join
-               Join Filter: (t2.a2 = t1.a1)
-               ->  YB Batched Nested Loop Join
-                     Join Filter: (t3.a3 = t2.a2)
-                     ->  Hash Join
-                           Hash Cond: (t3.a3 = t9.a9)
+               Join Filter: (t3.a3 = t2.a2)
+               ->  Hash Join
+                     Hash Cond: (t1_1.a1 = t3.a3)
+                     ->  Nested Loop
+                           ->  Seq Scan on t10
+                           ->  YB Batched Nested Loop Join
+                                 Join Filter: (t2_1.a2 = t1_1.a1)
+                                 ->  YB Batched Nested Loop Join
+                                       Join Filter: (t3_1.a3 = t2_1.a2)
+                                       ->  Hash Join
+                                             Hash Cond: (t3_1.a3 = t9_1.a9)
+                                             ->  Hash Join
+                                                   Hash Cond: (t3_1.a3 = t4_1.a4)
+                                                   ->  Hash Join
+                                                         Hash Cond: (t3_1.a3 = t8_1.a8)
+                                                         ->  Hash Join
+                                                               Hash Cond: (t3_1.a3 = t6_1.a6)
+                                                               ->  Hash Join
+                                                                     Hash Cond: (t7_1.a7 = t3_1.a3)
+                                                                     ->  Seq Scan on t7 t7_1
+                                                                           Storage Filter: (b7 = 1)
+                                                                     ->  Hash
+                                                                           ->  Seq Scan on t3 t3_1
+                                                               ->  Hash
+                                                                     ->  Seq Scan on t6 t6_1
+                                                         ->  Hash
+                                                               ->  Seq Scan on t8 t8_1
+                                                   ->  Hash
+                                                         ->  Hash Join
+                                                               Hash Cond: (t5_1.a5 = t4_1.a4)
+                                                               ->  Seq Scan on t5 t5_1
+                                                               ->  Hash
+                                                                     ->  Seq Scan on t4 t4_1
+                                             ->  Hash
+                                                   ->  Nested Loop
+                                                         ->  Seq Scan on t10 t10_1
+                                                         ->  Materialize
+                                                               ->  Seq Scan on t9 t9_1
+                                       ->  Memoize
+                                             Cache Key: t9_1.a9
+                                             Cache Mode: logical
+                                             ->  Index Only Scan using t2_a2_idx on t2 t2_1
+                                                   Index Cond: (a2 = ANY (ARRAY[t9_1.a9, $1, $2, ..., $1023]))
+                                 ->  Memoize
+                                       Cache Key: t9_1.a9
+                                       Cache Mode: logical
+                                       ->  Index Only Scan using t1_a1_desc_idx on t1 t1_1
+                                             Index Cond: (a1 = ANY (ARRAY[t9_1.a9, $1025, $1026, ..., $2047]))
+                     ->  Hash
                            ->  Hash Join
                                  Hash Cond: (t3.a3 = t4.a4)
                                  ->  Hash Join
-                                       Hash Cond: (t3.a3 = t8.a8)
+                                       Hash Cond: (t3.a3 = t5.a5)
                                        ->  Hash Join
-                                             Hash Cond: (t3.a3 = t6.a6)
+                                             Hash Cond: (t3.a3 = t8.a8)
                                              ->  Hash Join
-                                                   Hash Cond: (t7.a7 = t3.a3)
-                                                   ->  Seq Scan on t7
-                                                         Storage Filter: (b7 = 1)
+                                                   Hash Cond: (t9.a9 = t3.a3)
+                                                   ->  Seq Scan on t9
                                                    ->  Hash
                                                          ->  Seq Scan on t3
                                              ->  Hash
-                                                   ->  Seq Scan on t6
+                                                   ->  Seq Scan on t8
                                        ->  Hash
-                                             ->  Seq Scan on t8
+                                             ->  Hash Join
+                                                   Hash Cond: (t6.a6 = t5.a5)
+                                                   ->  Seq Scan on t6
+                                                   ->  Hash
+                                                         ->  Seq Scan on t5
                                  ->  Hash
                                        ->  Hash Join
-                                             Hash Cond: (t5.a5 = t4.a4)
-                                             ->  Seq Scan on t5
+                                             Hash Cond: (t7.a7 = t4.a4)
+                                             ->  Seq Scan on t7
+                                                   Storage Filter: (b7 = 1)
                                              ->  Hash
                                                    ->  Seq Scan on t4
-                           ->  Hash
-                                 ->  Nested Loop
-                                       ->  Seq Scan on t10
-                                       ->  Materialize
-                                             ->  Seq Scan on t9
-                     ->  Memoize
-                           Cache Key: t9.a9
-                           Cache Mode: logical
-                           ->  Index Only Scan using t2_a2_idx on t2
-                                 Index Cond: (a2 = ANY (ARRAY[t9.a9, $1, $2, ..., $1023]))
                ->  Memoize
                      Cache Key: t9.a9
                      Cache Mode: logical
-                     ->  Index Only Scan using t1_a1_desc_idx on t1
-                           Index Cond: (a1 = ANY (ARRAY[t9.a9, $1025, $1026, ..., $2047]))
-         ->  Hash
-               ->  YB Batched Nested Loop Join
-                     Join Filter: (t2_1.a2 = t1_1.a1)
-                     ->  YB Batched Nested Loop Join
-                           Join Filter: (t3_1.a3 = t2_1.a2)
-                           ->  Hash Join
-                                 Hash Cond: (t3_1.a3 = t9_1.a9)
-                                 ->  Hash Join
-                                       Hash Cond: (t3_1.a3 = t4_1.a4)
-                                       ->  Hash Join
-                                             Hash Cond: (t3_1.a3 = t8_1.a8)
-                                             ->  Hash Join
-                                                   Hash Cond: (t3_1.a3 = t6_1.a6)
-                                                   ->  Hash Join
-                                                         Hash Cond: (t7_1.a7 = t3_1.a3)
-                                                         ->  Seq Scan on t7 t7_1
-                                                               Storage Filter: (b7 = 1)
-                                                         ->  Hash
-                                                               ->  Seq Scan on t3 t3_1
-                                                   ->  Hash
-                                                         ->  Seq Scan on t6 t6_1
-                                             ->  Hash
-                                                   ->  Seq Scan on t8 t8_1
-                                       ->  Hash
-                                             ->  Hash Join
-                                                   Hash Cond: (t5_1.a5 = t4_1.a4)
-                                                   ->  Seq Scan on t5 t5_1
-                                                   ->  Hash
-                                                         ->  Seq Scan on t4 t4_1
-                                 ->  Hash
-                                       ->  Nested Loop
-                                             ->  Seq Scan on t10 t10_1
-                                             ->  Materialize
-                                                   ->  Seq Scan on t9 t9_1
-                           ->  Memoize
-                                 Cache Key: t9_1.a9
-                                 Cache Mode: logical
-                                 ->  Index Only Scan using t2_a2_idx on t2 t2_1
-                                       Index Cond: (a2 = ANY (ARRAY[t9_1.a9, $2049, $2050, ..., $3071]))
-                     ->  Memoize
-                           Cache Key: t9_1.a9
-                           Cache Mode: logical
-                           ->  Index Only Scan using t1_a1_desc_idx on t1 t1_1
-                                 Index Cond: (a1 = ANY (ARRAY[t9_1.a9, $3073, $3074, ..., $4095]))
- Generated hints: /*+ Leading(((((((((t7 t3) t6) t8) (t5 t4)) (t10 t9)) t2) t1) (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1))) SeqScan(t7) SeqScan(t3) HashJoin(t3 t7) SeqScan(t6) HashJoin(t3 t6 t7) SeqScan(t8) HashJoin(t3 t6 t7 t8) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) HashJoin(t3 t4 t5 t6 t7 t8) SeqScan(t10) SeqScan(t9) NestLoop(t10 t9) HashJoin(t10 t3 t4 t5 t6 t7 t8 t9) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t10 t2 t3 t4 t5 t6 t7 t8 t9) IndexOnlyScan(t1 t1_a1_desc_idx) YbBatchedNL(t1 t10 t2 t3 t4 t5 t6 t7 t8 t9) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_desc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) HashJoin(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */
-(91 rows)
+                     ->  Index Only Scan using t2_a2_idx on t2
+                           Index Cond: (a2 = ANY (ARRAY[t9.a9, $2049, $2050, ..., $3071]))
+         ->  Memoize
+               Cache Key: t9.a9
+               Cache Mode: logical
+               ->  Index Only Scan using t1_a1_desc_idx on t1
+                     Index Cond: (a1 = ANY (ARRAY[t9.a9, $3073, $3074, ..., $4095]))
+ Generated hints: /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_desc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_desc_idx) YbBatchedNL(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */
+(90 rows)
 
 /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_asc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_asc_idx) YbBatchedNL(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
@@ -1087,6 +1086,30 @@ explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and
  Generated hints: /*+ Leading(((t3 t1) t2)) SeqScan(t3) IndexScan(t1 t1_a1_desc_idx) YbBatchedNL(t1 t3) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
+-- Check hint generation for partitioned tables.
+explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
+                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  YB Batched Nested Loop Join
+         Join Filter: (p1.a = p2.a)
+         ->  Append
+               ->  Seq Scan on prt2_p1 p2_1
+               ->  Seq Scan on prt2_p2 p2_2
+               ->  Seq Scan on prt2_p3 p2_3
+         ->  Memoize
+               Cache Key: p2.a
+               Cache Mode: logical
+               ->  Append
+                     ->  Index Only Scan using iprt1_p1_a_asc on prt1_p1 p1_1
+                           Index Cond: (a = ANY (ARRAY[p2.a, $1, $2, ..., $1023]))
+                     ->  Index Only Scan using iprt1_p2_a on prt1_p2 p1_2
+                           Index Cond: (a = ANY (ARRAY[p2.a, $1, $2, ..., $1023]))
+                     ->  Index Only Scan using iprt1_p3_a on prt1_p3 p1_3
+                           Index Cond: (a = ANY (ARRAY[p2.a, $1, $2, ..., $1023]))
+ Generated hints: /*+ Leading((p2 p1)) YbBatchedNL(p1 p2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+(18 rows)
+
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
 SET enable_partitionwise_join to true;
 /*+ Mergejoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
@@ -1153,8 +1176,8 @@ SET enable_partitionwise_join to true;
 -- Turn off join partitioning and try hinting. Should work fine.
 SET enable_partitionwise_join to false;
 /*+ Leading((t2 t1)) HashJoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
-                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                           
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a
    ->  Hash Join
@@ -1171,7 +1194,30 @@ SET enable_partitionwise_join to false;
                            Storage Filter: (b = 0)
                      ->  Seq Scan on prt1_p3 t1_3
                            Storage Filter: (b = 0)
- Generated hints: /*+ HashJoin()  SeqScan(t2)  SeqScan(t2)  SeqScan(t2)  SeqScan(t1)  SeqScan(t1)  SeqScan(t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t2 t1)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+(17 rows)
+
+-- Make sure the internal hint test passes.
+explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Hash Join
+         Hash Cond: (t1.a = t2.b)
+         ->  Append
+               ->  Seq Scan on prt1_p1 t1_1
+                     Storage Filter: (b = 0)
+               ->  Seq Scan on prt1_p2 t1_2
+                     Storage Filter: (b = 0)
+               ->  Seq Scan on prt1_p3 t1_3
+                     Storage Filter: (b = 0)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on prt2_p1 t2_1
+                     ->  Seq Scan on prt2_p2 t2_2
+                     ->  Seq Scan on prt2_p3 t2_3
+ Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
 -- Test hint table using query id instead of query text.
@@ -2017,10 +2063,49 @@ drop cascades to view v2
 drop cascades to view v3
 drop cascades to view v4
 drop cascades to view v5
-ERROR:  relation "command_tag" does not exist
-LINE 1: INSERT INTO command_tag(tag) VALUES (TG_TAG)
-                    ^
-QUERY:  INSERT INTO command_tag(tag) VALUES (TG_TAG)
-CONTEXT:  PL/pgSQL function "has space".record_drop_command() line 3 at SQL statement
+-- Test fix for incorrect pruning of joins.
+drop schema if exists yb26670 cascade;
+NOTICE:  schema "yb26670" does not exist, skipping
+create schema yb26670;
+set search_path to yb26670;
+create table t0(c0 int4range , c1 BIT VARYING(40) );
+create table t1(c0 DECIMAL );
+create table t2(c0 bytea , c1 REAL );
+create table t3(c0 inet , c1 int4range ) WITHOUT OIDS ;
+create table t4(c0 TEXT );
+create temporary view v6(c0) AS (SELECT '132.63.53.50' FROM t2*, t1*, t3, t4*, t0* WHERE lower_inf(((((t0.c0)*(t3.c1)))+(((t3.c1)+(t3.c1))))) LIMIT 2444285747789238479);
+-- Can't generate hints here because the final plan has a join replaced by a RESULT node.
+explain (hints on) SELECT MAX((0.6002056)::MONEY) FROM t1*, ONLY t0, ONLY v6 LEFT OUTER JOIN t4* ON TRUE RIGHT OUTER JOIN t2* ON FALSE GROUP BY - (+ (strpos(t4.c0, v6.c0)));
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ HashAggregate  (cost=27512815.00..27513515.00 rows=40000 width=12)
+   Group Key: (- (+ strpos(c0, c0)))
+   ->  Nested Loop  (cost=0.00..20012815.00 rows=1000000000 width=4)
+         ->  Nested Loop  (cost=0.00..12712.50 rows=1000000 width=64)
+               ->  Nested Loop Left Join  (cost=0.00..110.00 rows=1000 width=64)
+                     Join Filter: false
+                     ->  Seq Scan on t2  (cost=0.00..100.00 rows=1000 width=0)
+                     ->  Result  (cost=0.00..0.00 rows=0 width=64)
+                           One-Time Filter: false
+               ->  Materialize  (cost=0.00..105.00 rows=1000 width=0)
+                     ->  Seq Scan on t1  (cost=0.00..100.00 rows=1000 width=0)
+         ->  Materialize  (cost=0.00..105.00 rows=1000 width=0)
+               ->  Seq Scan on t0  (cost=0.00..100.00 rows=1000 width=0)
+ Generated hints: none
+(14 rows)
+
+SELECT MAX((0.6002056)::MONEY) FROM t1*, ONLY t0, ONLY v6 LEFT OUTER JOIN t4* ON TRUE RIGHT OUTER JOIN t2* ON FALSE GROUP BY - (+ (strpos(t4.c0, v6.c0)));
+ max 
+-----
+(0 rows)
+
+drop schema yb26670 cascade;
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table t0
+drop cascades to table t1
+drop cascades to table t2
+drop cascades to table t3
+drop cascades to table t4
+drop cascades to view v6
 \set ECHO none
 WARNING:  there is no transaction in progress

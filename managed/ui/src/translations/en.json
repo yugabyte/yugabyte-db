@@ -99,10 +99,17 @@
       "yba_ha_last_backup_size_mb": "HA Last Backup Size (MB)"
     },
     "dashboard": {
-      "nodeAgentReminderBanner": {
-        "primaryText": "Automatic installation of node agent failed on some nodes.",
-        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph><paragraph><nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink></paragraph>",
-        "viewNodeAgentsButton": "View Node Agents"
+      "installNodeAgentReminderBanner": {
+        "primaryText": "Node agent needs to be installed on some nodes",
+        "nodeAgentMustBeInstallToUpgradeYba": "Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.",
+        "waysToInstallNodeAgent": "YugabyteDB Anywhere can automatically install node agent on universes that require it, or you can install node agent manually.",
+        "howToManuallyInstallNodeAgent": "To manually install node agent, navigate to the universe and choose Actions>More>Install Node Agent.",
+        "automaticInstallationsInProgress": "Automatic installation of node agent is in progress. Click View Node Agents to see which nodes have node agent installed.",
+        "manuallyUnregisteredNodeAgent": "If you manually removed node agent on any nodes, then you must also manually reinstall by navigating to the universe and choosing Actions>More>Install Node Agent. The automatic installation of node agent will not reinstall node agent on those nodes for you.",
+        "someNodeAgentsAreNotFunctional": "We found some universes where node agent is not functional. Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation by choosing Actions>Reinstall Node Agent.",
+        "learnMoreText": "<nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink>",
+        "viewNodeAgentsButton": "View Node Agents",
+        "enableAutomaticNodeAgentInstallationButton": " Automatically Install Node Agents"
       }
     },
     "universeActions": {
@@ -1747,6 +1754,12 @@
         "CONNECTION_ERROR": "Connection Error",
         "TIMED_OUT": "Timed Out",
         "universePaused": "Universe Paused"
+      },
+      "enableAutomaticNodeAgentInstallationModal": {
+        "title": "Automatically Install Node Agent",
+        "infoText": "<paragraph>YugabyteDB Anywhere can automatically install node agent on universes that require it. Installation is quick and does not impact application or database performance.</paragraph><paragraph>Some universe tasks will be unavailable while installation is in progress. If other tasks are in progress (for example, backups), wait until they complete before starting automatic installation.</paragraph>",
+        "confirmationText": "Type YES to proceeed.",
+        "submitLabel": "Start"
       },
       "installNodeAgentModal": {
         "title": {

@@ -13,15 +13,15 @@ yba oidc disable [flags]
 ### Examples
 
 ```
-yba oidc disable --reset-configs <client-id,client-secret>
+yba oidc disable --reset-fields client-id,client-secret
 ```
 
 ### Options
 
 ```
       --reset-all              [Optional] Reset all OIDC fields to default values
-      --reset-fields strings   [Optional] Reset specific OIDC fields to default values. Comma separated list of fields. Example: --reset-fields <field1,field2>
-                                          Available fields: client-id, client-secret, discovery-url, scope, email-attribute, default-role 
+      --reset-fields strings   [Optional] Reset specific OIDC fields to default values. Comma separated list of fields. Example: --reset-fields <field1>,<field2>
+                                          Allowed values: client-id, client-secret, discovery-url, scope, email-attribute, default-role 
                                           refresh-token-endpoint, provider-configuration, auto-create-user, group-claim
   -h, --help                   help for disable
 ```

@@ -18,6 +18,7 @@ public class PeerInfo {
   }
 
   private List<HostAndPort> lastKnownPrivateIps = new ArrayList<>();
+  private List<HostAndPort> lastKnownBroadcastIps = new ArrayList<>();
   private MemberType memberType;
   private String uuid;
 
@@ -39,6 +40,14 @@ public class PeerInfo {
 
   public void setLastKnownPrivateIps(List<HostAndPort> lastKnownPrivateIps) {
     this.lastKnownPrivateIps = lastKnownPrivateIps;
+  }
+
+  public List<HostAndPort> getLastKnownBroadcastIps() {
+    return lastKnownBroadcastIps;
+  }
+
+  public void setLastKnownBroadcastIps(List<HostAndPort> lastKnownBroadcastIps) {
+    this.lastKnownBroadcastIps = lastKnownBroadcastIps;
   }
 
   public String getUuid() {

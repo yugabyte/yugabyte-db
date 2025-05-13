@@ -5538,7 +5538,12 @@ yb_assign_unique_path_node_id(PlannerInfo *root, Path *path)
 	 * set_dummy_rel_pathlist((). mark_dummy_rel() also creates an Append path
 	 * without a PlannerInfo instance.
 	 */
-	if (root != NULL)
+	if (root == NULL && path->parent != NULL)
+	{
+		root = path->parent->ybRoot;
+	}
+
+	if (root != NULL && root->glob != NULL)
 	{
 		path->ybUniqueId = ybGetNextNodeUid(root->glob);
 
