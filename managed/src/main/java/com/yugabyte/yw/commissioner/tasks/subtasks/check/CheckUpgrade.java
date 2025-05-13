@@ -5,6 +5,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -13,12 +16,15 @@ import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -41,6 +47,8 @@ public class CheckUpgrade extends ServerSubTaskBase {
   private final ReleaseManager releaseManager;
   private final Config appConfig;
   private final AutoFlagUtil autoFlagUtil;
+  private final AuditService auditService;
+  private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   protected CheckUpgrade(
@@ -48,12 +56,16 @@ public class CheckUpgrade extends ServerSubTaskBase {
       Config appConfig,
       GFlagsValidation gFlagsValidation,
       ReleaseManager releaseManager,
-      AutoFlagUtil autoFlagUtil) {
+      AutoFlagUtil autoFlagUtil,
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      AuditService auditService) {
     super(baseTaskDependencies);
     this.appConfig = appConfig;
     this.gFlagsValidation = gFlagsValidation;
     this.releaseManager = releaseManager;
     this.autoFlagUtil = autoFlagUtil;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.auditService = auditService;
   }
 
   public static class Params extends ServerSubTaskParams {
@@ -87,6 +99,33 @@ public class CheckUpgrade extends ServerSubTaskBase {
 
     // Check if YSQL major version upgrade is allowed.
     validateYSQLMajorUpgrade(universe, oldVersion, newVersion);
+
+    // Update the audit details with upgrade info.
+    updateAuditDetails(oldVersion, newVersion);
+  }
+
+  private void updateAuditDetails(String oldVersion, String newVersion) {
+    Audit audit = auditService.getFromTaskUUID(getUserTaskUUID());
+    if (audit == null) {
+      log.info("Audit not found for task UUID: {}", getUserTaskUUID());
+      return;
+    }
+    JsonNode auditDetails = audit.getAdditionalDetails();
+    ObjectNode modifiedNode;
+    if (auditDetails != null) {
+      modifiedNode = auditDetails.deepCopy();
+    } else {
+      ObjectMapper mapper = new ObjectMapper();
+      modifiedNode = mapper.createObjectNode();
+    }
+    modifiedNode.put(
+        "finalizeRequired",
+        String.valueOf(softwareUpgradeHelper.checkUpgradeRequireFinalize(oldVersion, newVersion)));
+    modifiedNode.put(
+        "ysqlMajorVersionUpgrade",
+        String.valueOf(gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, newVersion)));
+
+    auditService.updateAdditionalDetails(getUserTaskUUID(), modifiedNode);
   }
 
   private void validateAutoflag(Universe universe, String newVersion) {
