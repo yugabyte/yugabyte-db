@@ -89,7 +89,7 @@ If you will be using your own custom SSH keys, then ensure that you have them wh
 
 ## GKE service account-based IAM (GCP IAM)
 
-Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account (KSA) in your GKE cluster to act as an IAM service account so that your Kubernetes universes can access GCS for backups.
+Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account ([KSA](https://kubernetes.io/docs/concepts/security/service-accounts/)) in your GKE cluster to act as an IAM service account so that your Kubernetes universes can access GCS for backups.
 
 In GKE, each pod can be associated with a KSA. The KSA is used to authenticate and authorize the pod to interact with other Google Cloud services. An IAM service account is a Google Cloud resource that allows applications to make authorized calls to Google Cloud APIs.
 

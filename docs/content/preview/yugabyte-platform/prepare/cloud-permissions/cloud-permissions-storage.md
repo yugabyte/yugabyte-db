@@ -93,8 +93,8 @@ When backing up to and/or restoring from GCP GCS, YBA and database nodes must be
 
 To grant the required access, you can do one of the following:
 
-- Provide a GCP service account with [IAM roles for cloud storage](https://cloud.google.com/storage/docs/access-control/iam-roles) with the following permissions.
-- Create the VM instances (for both the YBA VM and the DB nodes VMs) with an IAM role with the required permissions.
+- Provide a GCP service account with [IAM roles for cloud storage](https://cloud.google.com/storage/docs/access-control/iam-roles) with the required permissions.
+- Create the VM instances (for both the YBA VM and the DB nodes VMs) with an IAM role that has the required permissions.
 
 The following permissions are required:
 
