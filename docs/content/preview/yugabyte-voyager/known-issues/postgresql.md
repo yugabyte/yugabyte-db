@@ -1189,7 +1189,7 @@ $$;
 
 ---
 
-## Postgres 12 And later features
+## PostgreSQL 12 and later features
 
 ### PostgreSQL 12 and later features
 
