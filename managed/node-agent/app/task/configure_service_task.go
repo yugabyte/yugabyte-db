@@ -82,7 +82,7 @@ func (handler *ConfigureServiceHandler) Handle(
 	)
 
 	util.FileLogger().
-		Infof(ctx, "Starting install/configure earlyoom handler with %v", handler.shellTask.command.RedactCommandArgs())
+		Infof(ctx, "Starting install/configure earlyoom handler with %v", handler.shellTask.cmdInfo.RedactCommandArgs())
 
 	output, err := handler.shellTask.Process(ctx)
 	if err != nil {
