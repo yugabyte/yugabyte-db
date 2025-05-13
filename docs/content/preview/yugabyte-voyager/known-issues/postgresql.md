@@ -46,6 +46,8 @@ CREATE TABLE public.capitals (
 INHERITS (public.cities);
 ```
 
+---
+
 #### Adding primary key to a partitioned table results in an error
 
 **GitHub**: [Issue #612](https://github.com/yugabyte/yb-voyager/issues/612)
@@ -88,6 +90,8 @@ CREATE TABLE public.sales_region (
 )
 PARTITION BY LIST (region);
 ```
+
+---
 
 #### Unsupported ALTER TABLE DDL variants in source schema
 
@@ -138,6 +142,8 @@ ALTER TABLE public.example
     CLUSTER ON example_name_idx;
 ```
 
+---
+
 #### UNLOGGED table is not supported
 
 **GitHub**: [Issue #1129](https://github.com/yugabyte/yugabyte-db/issues/1129)
@@ -171,6 +177,8 @@ CREATE TABLE tbl_unlogged (
   val text
 );
 ```
+
+---
 
 #### Storage parameters on indexes or constraints in the source PostgreSQL
 
@@ -287,6 +295,8 @@ CREATE TRIGGER check_no_time_overlap_trigger
 CREATE INDEX idx_no_time_overlap on public.meeting USING gist(room_id,time_range); -- will error out in target
 ```
 
+---
+
 #### Deferrable constraint on constraints other than foreign keys is not supported
 
 **GitHub**: [Issue #1709](https://github.com/yugabyte/yugabyte-db/issues/1709)
@@ -367,6 +377,8 @@ CREATE TRIGGER compute_height_in_trigger
     EXECUTE FUNCTION compute_height_in();
 ```
 
+---
+
 #### System columns is not yet supported
 
 **GitHub**: [Issue #24843](https://github.com/yugabyte/yugabyte-db/issues/24843)
@@ -413,6 +425,8 @@ CREATE TABLE image (id int, raster lo);
 CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
     FOR EACH ROW EXECUTE FUNCTION lo_manage(raster);
 ```
+
+---
 
 #### VIEW WITH CHECK OPTION is not supported
 
@@ -494,6 +508,8 @@ CREATE TRIGGER trigger_modify_employee_12000
     FOR EACH ROW
     EXECUTE FUNCTION modify_employees_less_than_12000();
 ```
+
+---
 
 #### Create or alter conversion is not supported
 
@@ -640,6 +656,8 @@ CREATE TABLE xid_example (
 );
 ```
 
+---
+
 ### XML functions is not yet supported
 
 **GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
@@ -657,6 +675,8 @@ HINT:  You need to rebuild PostgreSQL using --with-libxml.
 ```
 
 **Workaround**: Convert XML data to JSON format for compatibility with YugabyteDB, or handle XML processing at the application layer before inserting data.
+
+---
 
 ### JSONB subscripting
 
@@ -732,6 +752,8 @@ INSERT INTO list_part VALUES (1,'ACTIVE',100), (2,'RECURRING',20), (3,'EXPIRED',
 CREATE INDEX list_ind ON list_part(status);
 ```
 
+---
+
 ### GiST, BRIN, and SPGIST index types are not supported
 
 **GitHub**: [Issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337)
@@ -752,6 +774,8 @@ An example schema on the source database is as follows:
 ```sql
 CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
 ```
+
+---
 
 ### Indexes on some complex data types are not supported
 
@@ -799,6 +823,8 @@ CREATE INDEX idx_citext ON public.citext_type USING btree (data);
 
 CREATE INDEX idx_json ON public.test_json (data);
 ```
+
+---
 
 ### GIN indexes on multiple columns are not supported
 
@@ -848,6 +874,8 @@ HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_loc
 
 **Workaround**: Implement a custom locking mechanism in the application to coordinate actions without relying on database-level advisory locks.
 
+---
+
 ### Events Listen / Notify
 
 **GitHub**: Issue [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872)
@@ -868,6 +896,8 @@ INSERT INTO my_table (name) VALUES ('Charlie');
 NOTIFY my_table_changes, 'New row added with name: Charlie';
 ```
 
+---
+
 ### Two-Phase Commit
 
 **GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
@@ -879,6 +909,8 @@ ERROR:  PREPARE TRANSACTION not supported yet
 ```
 
 **Workaround**: Currently, there is no workaround.
+
+---
 
 ### DDL operations within the Transaction
 
@@ -985,6 +1017,8 @@ CREATE CONSTRAINT TRIGGER check_unique_username_trigger
     EXECUTE FUNCTION public.check_unique_username();
 ```
 
+---
+
 ### REFERENCING clause for triggers
 
 **GitHub**: [Issue #1668](https://github.com/yugabyte/yugabyte-db/issues/1668)
@@ -1024,6 +1058,8 @@ REFERENCING OLD TABLE AS old_table
 FOR EACH STATEMENT
 EXECUTE FUNCTION log_deleted_projects();
 ```
+
+---
 
 ### BEFORE ROW triggers on partitioned tables
 
@@ -1115,6 +1151,8 @@ FOR EACH ROW
 EXECUTE FUNCTION check_and_modify_val();
 
 ```
+
+---
 
 ### %Type syntax is not supported
 
@@ -1238,6 +1276,8 @@ CREATE TABLE "xyz abc" (id bigint);
 
 The preceding example may hang or result in an error.
 
+---
+
 ### Importing with case-sensitive schema names
 
 **GitHub**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
@@ -1283,6 +1323,8 @@ Suggested changes to the schema can be done using the following steps:
     ```sh
     ALTER SCHEMA "test" RENAME TO "Test";
     ```
+
+---
 
 ### Foreign table in the source database requires SERVER and USER MAPPING
 
@@ -1340,6 +1382,8 @@ OPTIONS (
 
 Suggested change is to manually create the SERVER and USER MAPPING on the target YugabyteDB.
 
+---
+
 ### Unsupported datatypes by Voyager during live migration
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
@@ -1365,6 +1409,8 @@ CREATE TABLE combined_tbl (
 );
 ```
 
+---
+
 ### Data ingestion on XML data type is not supported
 
 **GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
@@ -1387,6 +1433,8 @@ CREATE TABLE xml_example (
       data xml
 );
 ```
+
+---
 
 ### Policies on users in source require manual user creation
 
@@ -1412,6 +1460,8 @@ CREATE TABLE public.z1 (
 CREATE ROLE regress_rls_group;
 CREATE POLICY p2 ON public.z1 TO regress_rls_group USING (((a % 2) = 1));
 ```
+
+---
 
 ### Creation of certain views in the rule.sql file
 
@@ -1488,6 +1538,8 @@ Suggested change to the schema is to add the ASC/DESC clause as follows:
 CREATE INDEX idx_orders_created ON orders(created_at DESC);
 ```
 
+---
+
 ### Hotspots with range-sharded timestamp/date indexes
 
 **Description**: Range-sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, due to the way these values increment. For example, take a column of values `created_at timestamp`. As new values are inserted, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. Then, after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
@@ -1534,6 +1586,8 @@ CREATE INDEX idx_orders_created ON orders(shard_id HASH, created_at DESC);
 
 SELECT * FROM orders WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
 ```
+
+---
 
 ### Redundant indexes
 
