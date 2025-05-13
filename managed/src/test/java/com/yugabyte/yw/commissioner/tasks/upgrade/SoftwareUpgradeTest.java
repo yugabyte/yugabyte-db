@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
@@ -29,6 +30,8 @@ import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -46,6 +49,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -214,6 +218,60 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
+  public void testSoftwareUpgradeBatches() {
+    updateDefaultUniverse(true, OLD_VERSION, 4, 4, 4);
+
+    RuntimeConfigEntry.upsertGlobal("yb.task.upgrade.batch_roll_enabled", "true");
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = NEW_VERSION;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskParams.rollMaxBatchSize = new RollMaxBatchSize();
+    taskParams.rollMaxBatchSize.setPrimaryBatchSize(2);
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
+
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    List<Pair<Integer, UniverseTaskBase.ServerType>> counts = new ArrayList<>();
+    for (int i = 0; i < subTasksByPosition.size(); i++) {
+      List<TaskInfo> subtasks = subTasksByPosition.get(i);
+      log.debug("tt " + subtasks.get(0).getTaskType());
+      if (subtasks.get(0).getTaskType() == TaskType.AnsibleConfigureServers) {
+        Map<String, Object> params = extractParams(subtasks.get(0), Set.of("type", "processType"));
+        log.debug("params " + params);
+        if ("Software".equals(params.get("type"))) {
+          counts.add(
+              new Pair<>(
+                  subtasks.size(),
+                  UniverseTaskBase.ServerType.valueOf(params.get("processType").toString())));
+        }
+      }
+    }
+    assertEquals(
+        Arrays.asList(
+            new Pair<>(12, UniverseTaskBase.ServerType.TSERVER), // Download
+            new Pair<>(9, UniverseTaskBase.ServerType.MASTER), // Inactive
+            new Pair<>(1, UniverseTaskBase.ServerType.MASTER),
+            new Pair<>(1, UniverseTaskBase.ServerType.MASTER),
+            new Pair<>(1, UniverseTaskBase.ServerType.MASTER),
+            new Pair<>(2, UniverseTaskBase.ServerType.TSERVER),
+            new Pair<>(2, UniverseTaskBase.ServerType.TSERVER),
+            new Pair<>(2, UniverseTaskBase.ServerType.TSERVER),
+            new Pair<>(2, UniverseTaskBase.ServerType.TSERVER),
+            new Pair<>(2, UniverseTaskBase.ServerType.TSERVER),
+            new Pair<>(2, UniverseTaskBase.ServerType.TSERVER)),
+        counts);
   }
 
   @Test
