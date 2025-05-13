@@ -65,7 +65,7 @@ DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid
 DEFINE_test_flag(bool, index_read_multiple_partitions, false,
       "Test flag used to simulate tablet spliting by joining tables' partitions.");
 
-DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, 262144,
+DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, 1024 * 1024,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");

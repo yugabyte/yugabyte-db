@@ -68,6 +68,10 @@ class PgSharedMemTest : public PgMiniTestBase {
     }
     return result;
   }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->wait_for_pg = false;
+  }
 };
 
 TEST_F(PgSharedMemTest, Simple) {
@@ -171,6 +175,8 @@ TEST_F(PgSharedMemTest, Crash) {
   ASSERT_OK(conn.Execute("INSERT INTO t (key) VALUES (1)"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_client_crash_on_shared_memory_send) = true;
+  // We do not wait for pg because the wait logic uses a pg connection to verify the tserver is
+  // ready to accept connections.
   ASSERT_OK(RestartCluster());
 
   auto settings = MakeConnSettings();

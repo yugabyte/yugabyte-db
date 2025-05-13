@@ -308,7 +308,7 @@ idempotence
 idmapper
 Iglu
 Immer
-inclusivity
+indexpage
 Ingress
 initdb
 initializer

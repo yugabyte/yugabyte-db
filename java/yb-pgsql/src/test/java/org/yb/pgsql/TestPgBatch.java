@@ -158,8 +158,10 @@ public class TestPgBatch extends BasePgSQLTest {
   public void testSchemaMismatchRetry() throws Throwable {
     setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     setUpTable(2, RR);
-    try (Connection c1 = getConnectionBuilder().connect();
-        Connection c2 = getConnectionBuilder().connect();
+    // Make two connections to different nodes so that disabling heartbeat delay can
+    // cause schema version mismatch error.
+    try (Connection c1 = getConnectionBuilder().withTServer(0).connect();
+        Connection c2 = getConnectionBuilder().withTServer(1).connect();
         Statement s1 = c1.createStatement();
         Statement s2 = c2.createStatement()) {
       // Run UPDATE statement for the sole purpose of a caching catalog version.

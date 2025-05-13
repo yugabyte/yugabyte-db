@@ -298,14 +298,9 @@ TEST_F(ThreadPoolTest, TestOwns) {
 
 TEST_F(ThreadPoolTest, MassEnqueue) {
   constexpr size_t kTotalThreads = 64;
-  TestThreadHolder threads;
   CountDownLatch wait_threads_latch(kTotalThreads);
   CountDownLatch enqueue_tasks_latch(1);
   CountDownLatch task_run_latch{kTotalThreads};
-  ThreadPool pool(ThreadPoolOptions {
-    .name = "test",
-    .max_workers = kTotalThreads,
-  });
 
   class TestTask : public ThreadPoolTask {
    public:
@@ -326,13 +321,21 @@ TEST_F(ThreadPoolTest, MassEnqueue) {
     CountDownLatch& latch_;
   };
 
+  std::vector<TestTask> tasks(kTotalThreads, TestTask(task_run_latch));
+
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalThreads,
+  });
+
+  TestThreadHolder threads;
+
   for (size_t i = 0; i != kTotalThreads; ++i) {
-    threads.AddThreadFunctor([&wait_threads_latch, &enqueue_tasks_latch, &pool, &task_run_latch] {
-      TestTask task(task_run_latch);
+    threads.AddThreadFunctor([&wait_threads_latch, &enqueue_tasks_latch, &pool,  &task = tasks[i]] {
       wait_threads_latch.CountDown();
       enqueue_tasks_latch.Wait();
       pool.Enqueue(&task);
-      task_run_latch.Wait();
+      task.Wait();
     });
   }
 

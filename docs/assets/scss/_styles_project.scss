@@ -31,6 +31,13 @@
 @import "./_yb_tags.scss";
 @import "./_yb_container.scss";
 
+@font-face {
+  font-family: 'SFMonoSemibold';
+  src: url('/fonts/sf-mono/SFMonoSemibold.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
 html {
   padding: 0 !important;
 }

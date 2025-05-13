@@ -107,6 +107,7 @@
 #include "yb/util/ntp_clock.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -827,7 +828,7 @@ Status TabletServer::ProcessLeaseUpdate(
 
 
 Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
-  if (!YSQLLeaseEnabled()) {
+  if (!IsYsqlLeaseEnabled()) {
     return STATUS(NotSupported, "YSQL lease is not enabled");
   }
   auto pg_client_service = pg_client_service_.lock();
@@ -850,9 +851,9 @@ Status TabletServer::RestartPG() const {
   return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
 }
 
-bool TabletServer::YSQLLeaseEnabled() {
+bool TabletServer::IsYsqlLeaseEnabled() {
   return GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
-         GetAtomicFlag(&FLAGS_TEST_enable_ysql_operation_lease);
+         GetAtomicFlag(&FLAGS_enable_ysql_operation_lease);
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
@@ -1085,6 +1086,94 @@ Status TabletServer::GetTserverCatalogMessageLists(
   return Status::OK();
 }
 
+Status TabletServer::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const std::optional<std::string>& message_list) {
+  std::lock_guard l(lock_);
+
+  int shm_index = -1;
+  InvalidationMessagesQueue *db_message_lists = nullptr;
+  auto scope_exit = ScopeExit([this, &shm_index, &db_message_lists, db_oid, new_catalog_version] {
+    if (shm_index >= 0) {
+      shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_catalog_version);
+      InvalidatePgTableCache({{db_oid, new_catalog_version}} /* db_oids_updated */,
+                             {} /* db_oids_deleted */);
+    }
+    // We may have added one more message to the queue that exceeded the max size.
+    if (db_message_lists &&
+        db_message_lists->size() > FLAGS_ysql_max_invalidation_message_queue_size) {
+      db_message_lists->pop_front();
+    }
+  });
+
+  // First, update catalog version.
+  auto it = ysql_db_catalog_version_map_.find(db_oid);
+  if (it == ysql_db_catalog_version_map_.end()) {
+    // If db_oid does not already have an existing entry in ysql_db_catalog_version_map_,
+    // we will not have a way to find out the breaking version, bail out.
+    return Status::OK();
+  }
+  auto& existing_entry = it->second;
+  // Only update the existing entry if new_catalog_version is newer.
+  if (new_catalog_version > existing_entry.current_version) {
+    existing_entry.current_version = new_catalog_version;
+    if (is_breaking_change) {
+      existing_entry.last_breaking_version = new_catalog_version;
+    }
+    UpdateCatalogVersionsFingerprintUnlocked();
+    existing_entry.new_version_ignored_count = 0;
+    shm_index = existing_entry.shm_index;
+    CHECK(shm_index >= 0 &&
+          shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
+      << "shm_index: " << shm_index << ", db_oid: " << db_oid;
+    // We defer the setting of shared memory catalog version to the last to prevent the
+    // case where a PG backend sees the new catalog version in shared memory prematurely
+    // before the message_list is set in ysql_db_invalidation_messages_map_.
+  } else if (new_catalog_version == existing_entry.current_version && is_breaking_change) {
+    // If this new_catalog_version is a breaking change, it must be the same as the
+    // existing one.
+    CHECK_EQ(existing_entry.last_breaking_version, new_catalog_version) << db_oid;
+  }
+
+  // Second, insert the new pair into ysql_db_invalidation_messages_map_[db_oid].
+  auto it2 = ysql_db_invalidation_messages_map_.find(db_oid);
+  if (it2 == ysql_db_invalidation_messages_map_.end()) {
+    // If db_oid does not have an entry yet, bail out. The creation of the entry for
+    // db_oid is managed by heartbeat response.
+    return Status::OK();
+  }
+  const auto cutoff_catalog_version = it2->second.cutoff_catalog_version;
+  if (new_catalog_version <= cutoff_catalog_version) {
+    // This is possible in theory: if the DDL backend that generated the new_catalog_version
+    // has exited after sending out the call to SetTserverCatalogMessageList, and background
+    // task has advanced cutoff_catalog_version forward.
+    return Status::OK();
+  }
+  db_message_lists = &it2->second.queue;
+  // If the queue is empty, of the new_catalog_version is larger than the last version in
+  // the queue (the queue is sorted in catalog version), just append the new pair.
+  if (db_message_lists->empty() || db_message_lists->rbegin()->first < new_catalog_version) {
+    db_message_lists->emplace_back(std::make_pair(new_catalog_version, message_list));
+    return Status::OK();
+  }
+
+  // The queue isn't empty, insert the new pair to the right position. Because db_message_lists
+  // is sorted, we can use std::upper_bound with a custom comparator function to find the right
+  // insertion point.
+  auto comp = [](uint64_t current_version,
+                 const std::pair<uint64_t, std::optional<std::string>>& p) {
+                return current_version < p.first;
+              };
+  auto it3 = std::upper_bound(db_message_lists->begin(), db_message_lists->end(),
+                              new_catalog_version, comp);
+  if (it3 != db_message_lists->end()) {
+    db_message_lists->insert(it3, std::make_pair(new_catalog_version, message_list));
+  } else {
+    // We can reach here if the last version in the queue is the same as new_catalog_version.
+  }
+  return Status::OK();
+}
+
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
     std::lock_guard l(lock_);
@@ -1188,16 +1277,45 @@ void TabletServer::SetYsqlDBCatalogVersions(
         auto new_version_ignored_count =
           RandomUniformInt<uint32_t>(FLAGS_ysql_min_new_version_ignored_count,
                                      FLAGS_ysql_min_new_version_ignored_count + 180);
+        // Because the session that executes the DDL sets its incremented new version in the
+        // local tserver, for this local tserver it is possible the heartbeat response has
+        // not read the latest version from master yet. It is legitimate to see the following
+        // as a WARNING. However we should not see this continuously for new_version_ignored_count
+        // times.
         (existing_entry.new_version_ignored_count >= new_version_ignored_count ?
-         LOG(FATAL) : LOG(DFATAL))
+         LOG(FATAL) : LOG(WARNING))
             << "Ignoring ysql db " << db_oid
             << " catalog version update: new version too old. "
             << "New: " << new_version << ", Old: " << existing_entry.current_version
             << ", ignored count: " << existing_entry.new_version_ignored_count;
       } else {
-        // It is not possible to have same current_version but different last_breaking_version.
-        CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version)
-            << "db_oid: " << db_oid << ", new_version: " << new_version;
+        // It is possible to have same current_version but a newer last_breaking_version.
+        // Following is a scenario that this can happen.
+        // Assuming two newly created databases db1 and db2, both have (1, 1) as their
+        // initial (current_version, last_breaking_version) in ysql_db_catalog_version_map_.
+        // (1) DDL1: a breaking DDL statement executed on a db1 connection yet altering db2
+        // so it only caused db2's current_version and last_breaking_version to increment,
+        // this means db1 still has (1, 1) and db2 now has (2, 2).
+        // (2) DDL2: a non-breaking DDL statement executed on a db2 connection, this means
+        // db1 still has (1, 1) and db2 now has (3, 2).
+        // If DDL1 and DDL2 are executed back-to-back quickly before the master heartbeat
+        // response returns back (2, 2) or (3, 2) to this node, then
+        // For DDL1 because MyDatabaseId (db1) != target database id (db2), we do not perform
+        // the shared memory catalog version optimization.
+        // For DDL2 because MyDatabaseId (db2) == target database id (db2), we do perform
+        // the shared memory catalog version optimization: because DDL2 is non-breaking so
+        // we only set db2's current_version to 3 and leave its last_breaking_version as 1
+        // (see SetTserverCatalogMessageList). So db2's entry now has (3, 1).
+        // After a heartbeat delay, this node receives (3, 2) from the master. The existing
+        // db2's entry has last_breaking_version as 1, but the incoming new_breaking_version
+        // is 2 which is newer than the existing last_breaking_version.
+        if (new_breaking_version > existing_entry.last_breaking_version) {
+          existing_entry.last_breaking_version = new_breaking_version;
+          row_updated = true;
+        } else {
+          CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version)
+              << "db_oid: " << db_oid << ", new_version: " << new_version;
+        }
         existing_entry.new_version_ignored_count = 0;
       }
     } else {
@@ -1304,11 +1422,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     return;
   }
   // After we have updated versions, we compute and update its fingerprint.
-  const auto new_fingerprint =
-      FingerprintCatalogVersions<DbOidToCatalogVersionInfoMap>(ysql_db_catalog_version_map_);
-  catalog_versions_fingerprint_.store(new_fingerprint, std::memory_order_release);
-  VLOG_WITH_FUNC(2) << "databases: " << ysql_db_catalog_version_map_.size()
-                    << ", new fingerprint: " << new_fingerprint;
+  UpdateCatalogVersionsFingerprintUnlocked();
 
   if (catalog_changed) {
     // If we only inserted new rows, then the existing databases do not have
@@ -1330,6 +1444,14 @@ void TabletServer::SetYsqlDBCatalogVersions(
 void TabletServer::ResetCatalogVersionsFingerprint() {
   LOG(INFO) << "reset catalog_versions_fingerprint_";
   catalog_versions_fingerprint_.store(std::nullopt, std::memory_order_release);
+}
+
+void TabletServer::UpdateCatalogVersionsFingerprintUnlocked() {
+  const auto new_fingerprint =
+      FingerprintCatalogVersions<DbOidToCatalogVersionInfoMap>(ysql_db_catalog_version_map_);
+  catalog_versions_fingerprint_.store(new_fingerprint, std::memory_order_release);
+  VLOG_WITH_FUNC(2) << "databases: " << ysql_db_catalog_version_map_.size()
+                    << ", new fingerprint: " << new_fingerprint;
 }
 
 void TabletServer::SetYsqlDBCatalogInvalMessages(
@@ -1453,7 +1575,7 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
     if (incoming_version == existing_version) {
       if (incoming_message_list != it->second) {
         // same version should have same message.
-        LOG(DFATAL) << "message_list mismatch";
+        LOG(DFATAL) << "message_list mismatch: " << existing_version;
       }
       // Advance both "pointers".
       ++it;

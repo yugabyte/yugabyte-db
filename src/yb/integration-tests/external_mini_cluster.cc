@@ -37,6 +37,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <ranges>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -411,14 +412,8 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
     LOG(INFO) << "No need to start tablet servers";
   }
   if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
-    auto ysql_connection_deadline = MonoTime::Now() + kTabletServerRegistrationTimeout;
-    LOG(INFO) << "Waiting for tservers to accept ysql connections.";
-    for (size_t i = 0; i < tablet_servers_.size(); ++i) {
-      RETURN_NOT_OK(Wait([this, i]() -> Result<bool> {
-          auto result = ConnectToDB("yugabyte", i);
-          return result.ok();
-          }, ysql_connection_deadline, "Waiting for tablet servers to accept ysql connections"));
-    }
+    RETURN_NOT_OK(WaitForTabletServersToAcceptYSQLConnection(
+        MonoTime::Now() + kTabletServerRegistrationTimeout));
   }
 
   running_ = true;
@@ -1529,6 +1524,10 @@ Status ExternalMiniCluster::AddTabletServer(
 
   if (wait_for_registration) {
     RETURN_NOT_OK(WaitForTabletServerToRegister(ts->uuid(), kTabletServerRegistrationTimeout));
+    if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
+      RETURN_NOT_OK(WaitForTabletServersToAcceptYSQLConnection(
+          {idx}, MonoTime::Now() + kTabletServerRegistrationTimeout));
+    }
   }
 
   return Status::OK();
@@ -1684,8 +1683,7 @@ Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDel
       for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
         for (auto it = last_unmatched.begin(); it != last_unmatched.end(); ++it) {
           if ((**it).instance_id().permanent_uuid() == e.instance_id().permanent_uuid() &&
-              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno() &&
-              (!e.has_lease_info() || e.lease_info().is_live())) {
+              (**it).instance_id().instance_seqno() == e.instance_id().instance_seqno()) {
             match_count++;
             last_unmatched.erase(it);
             break;
@@ -1728,44 +1726,36 @@ Status ExternalMiniCluster::WaitForTabletServerToRegister(
   return Status::OK();
 }
 
-Status ExternalMiniCluster::WaitForTabletServersToAcquireYSQLLeases(MonoTime deadline) {
-  return WaitForTabletServersToAcquireYSQLLeases(tablet_servers_, deadline);
+Status ExternalMiniCluster::WaitForTabletServersToAcceptYSQLConnection(MonoTime deadline) {
+  auto range = std::ranges::iota_view<size_t, size_t>{0, tablet_servers_.size()};
+  std::vector<size_t> v{range.begin(), range.end()};
+  return WaitForTabletServersToAcceptYSQLConnection(v, deadline);
 }
 
-Status ExternalMiniCluster::WaitForTabletServersToAcquireYSQLLeases(
-    const std::vector<scoped_refptr<ExternalTabletServer>>& tablet_servers, MonoTime deadline) {
-  std::unordered_set<std::string> tservers_without_leases;
-  for (auto now = MonoTime::Now(); now < deadline; now = MonoTime::Now()) {
-    tservers_without_leases.clear();
-    for (const auto& ts : tablet_servers) {
-      tservers_without_leases.insert(ts->id());
-    }
-    for (const auto& ts : tablet_servers) {
-      tserver::GetYSQLLeaseInfoRequestPB req;
-      tserver::GetYSQLLeaseInfoResponsePB resp;
-      rpc::RpcController rpc;
-      rpc.set_timeout(kDefaultTimeout);
-      RETURN_NOT_OK(
-          GetProxy<TabletServerServiceProxy>(ts.get()).GetYSQLLeaseInfo(req, &resp, &rpc));
-      if (resp.has_error()) {
-        if (StatusFromPB(resp.error().status()).IsNotSupported()) {
-          tservers_without_leases.erase(ts->id());
-        }
-        continue;
-      }
-      if (resp.is_live()) {
-        tservers_without_leases.erase(ts->id());
-      }
-    }
-    if (tservers_without_leases.empty()) {
-      return Status::OK();
-    }
-    SleepFor(MonoDelta::FromMilliseconds(100));
+Status ExternalMiniCluster::WaitForTabletServersToAcceptYSQLConnection(
+    const std::vector<size_t>& indexes, MonoTime deadline) {
+  LOG(INFO) << "Waiting for tservers to accept ysql connections.";
+  for (const auto i : indexes) {
+    RETURN_NOT_OK(Wait(
+        [this, i, deadline]() -> Result<bool> {
+          ExternalClusterPGConnectionOptions options;
+          options.tserver_index = i;
+          auto now = MonoTime::Now();
+          if (deadline <= now) {
+            LOG(INFO) << Format("Now is: $0, deadline is: $1", now, deadline);
+            return STATUS(TimedOut, "Deadline passed, skipping connection attempt");
+          }
+          auto secs = std::lround((deadline - now).ToSeconds());
+          if (secs <= 0) {
+            secs = 1;
+          }
+          options.timeout_secs = secs;
+          auto result = ConnectToDB(std::move(options));
+          return result.ok();
+        },
+        deadline, "Waiting for tservers to accept ysql connections"));
   }
-  return STATUS_FORMAT(
-      TimedOut,
-      "$0 tablet server(s) failed to acquire leases, list of tablet servers without leases: $1",
-      tservers_without_leases.size(), tservers_without_leases);
+  return Status::OK();
 }
 
 void ExternalMiniCluster::AssertNoCrashes() {
@@ -2779,6 +2769,7 @@ void StartSecure(
   opts.use_even_ips = true;
   opts.enable_ysql = enable_ysql;
   opts.enable_ysql_auth = enable_ysql;
+  opts.wait_for_tservers_to_accept_ysql_connections = false;
   *cluster = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK((**cluster).Start(messenger->get()));
 }

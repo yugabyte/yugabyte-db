@@ -146,7 +146,7 @@ struct ExternalMiniClusterOptions {
   bool enable_ysql = false;
   bool enable_ysql_auth = false;
   bool enable_ysql_conn_mgr = false;
-  bool wait_for_tservers_to_accept_ysql_connections = false;
+  bool wait_for_tservers_to_accept_ysql_connections = true;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -478,9 +478,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Waits until the tablet server with given uuid registers to the master leader.
   Status WaitForTabletServerToRegister(const std::string& uuid, MonoDelta timeout);
 
-  Status WaitForTabletServersToAcquireYSQLLeases(MonoTime deadline);
-  Status WaitForTabletServersToAcquireYSQLLeases(
-      const std::vector<scoped_refptr<ExternalTabletServer>>& tablet_servers, MonoTime deadline);
+  Status WaitForTabletServersToAcceptYSQLConnection(MonoTime deadline);
+  Status WaitForTabletServersToAcceptYSQLConnection(
+      const std::vector<size_t>& indexes, MonoTime deadline);
 
   // Runs gtest assertions that no servers have crashed.
   void AssertNoCrashes();

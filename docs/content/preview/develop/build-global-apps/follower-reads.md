@@ -30,7 +30,7 @@ Multiple application instances are active and some instances read stale data.
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Suppose you have a [Global Database](../global-database) set up across 3 regions `us-east`, `us-central`, and `us-west`, with leader preference set to `us-east`. Suppose further that you want to run applications in all 3 regions. Read latencies would be similar to the following illustration.
 

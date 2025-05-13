@@ -2093,6 +2093,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .vector_index_thread_pool_provider = [this](auto type) {
           return VectorIndexThreadPool(type);
         },
+        .vector_index_priority_thread_pool_provider = [this](auto type) {
+          return VectorIndexPriorityThreadPool(type);
+        },
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -3555,6 +3558,13 @@ rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThrea
   LOG(INFO) << "Use " << options.max_workers << " for vector index " << type << " thread pool";
   thread_pool_ptr.reset(result = new rpc::ThreadPool(std::move(options)));
   return result;
+}
+
+PriorityThreadPool* TSTabletManager::VectorIndexPriorityThreadPool(
+    tablet::VectorIndexPriorityThreadPoolType type) {
+  // Currently there's only one type of priority thread pool, which is used for compacitons.
+  DCHECK_EQ(type, tablet::VectorIndexPriorityThreadPoolType::kCompaction);
+  return docdb::GetGlobalPriorityThreadPool();
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

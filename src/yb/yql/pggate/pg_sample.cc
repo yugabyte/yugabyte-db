@@ -156,14 +156,16 @@ class PgDocSampleOp : public PgDocReadOp {
     auto* sampling_state = res.mutable_sampling_state();
     VLOG_WITH_PREFIX_AND_FUNC(1) << "Received sampling state: "
                                  << sampling_state->ShortDebugString();
+    SCHECK(sampling_state->has_rand_state(), InvalidArgument,
+           "Invalid sampling state, random state is missing");
     sampling_stats_ = {
       .num_blocks_processed = sampling_state->num_blocks_processed(),
       .num_blocks_collected = sampling_state->num_blocks_collected(),
       .num_rows_processed = sampling_state->samplerows(),
       .num_rows_collected = sampling_state->numrows(),
-  };
+    };
 
-  RETURN_NOT_OK(PgDocReadOp::CompleteProcessResponse());
+    RETURN_NOT_OK(PgDocReadOp::CompleteProcessResponse());
 
     if (active_op_count_ > 0) {
       auto& next_active_op = GetReadOp(0);

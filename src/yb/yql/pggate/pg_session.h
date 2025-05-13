@@ -247,8 +247,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
 
-  void ResetHasWriteOperationsInDdlMode();
-  bool HasWriteOperationsInDdlMode() const;
+  void ResetHasCatalogWriteOperationsInDdlMode();
+  bool HasCatalogWriteOperationsInDdlMode() const;
 
   void SetDdlHasSyscatalogChanges();
 
@@ -347,7 +347,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   BufferingSettings& buffering_settings_;
   PgOperationBuffer buffer_;
 
-  bool has_write_ops_in_ddl_mode_ = false;
+  bool has_catalog_write_ops_in_ddl_mode_ = false;
 
   // This session is upgrading to PG15.
   const bool is_major_pg_version_upgrade_;

@@ -90,7 +90,7 @@ By default, audit logging includes the statement text for all statements in the 
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Using ysqlsh, connect to the database and enable the pgaudit extension on the YugabyteDB cluster as follows:
 

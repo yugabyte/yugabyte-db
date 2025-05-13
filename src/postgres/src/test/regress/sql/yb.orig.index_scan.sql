@@ -213,6 +213,10 @@ select * from test where pk=17;
 EXPLAIN (COSTS OFF) SELECT * from test where pk=25;
 select * from test where pk=25;
 
+-- test a query after first connecting
+\c
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE col3 = ANY('{}');
+
 -- test index scan where the column type does not match value type
 CREATE TABLE pk_real(c0 REAL, PRIMARY KEY(c0 asc));
 INSERT INTO pk_real(c0) VALUES(0.4);

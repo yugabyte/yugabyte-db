@@ -2931,7 +2931,11 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
   int num_successes = 0;
   std::array<PGConn, 2> conns = {
     ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
-    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
+    // For this test, we need to have the DDL connection and DML connection connected to
+    // two nodes in order to have heartbeat delay to cause stale cache which shows catalog
+    // version mismatch symptom.
+    ASSERT_RESULT((pg_ts = cluster_->tablet_server(1),
+                   ConnectToDB(kNamespaceName, true /* simple_query_protocol */))),
   };
 
   ASSERT_OK(conns[0].ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -2996,6 +3000,8 @@ class PgLibPqTestEnumType: public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--TEST_do_not_add_enum_sort_order=true");
+    // The EnumType test kills all postmasters on tservers so it must wait until they are spawned.
+    options->wait_for_tservers_to_accept_ysql_connections = true;
   }
 };
 

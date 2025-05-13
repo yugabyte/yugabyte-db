@@ -35,6 +35,8 @@
 #include "yb/qlexpr/index.h"
 #include "yb/common/schema_pbutil.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
@@ -192,6 +194,10 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
   req.set_tablet_id(tablet_id_);
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(req.mutable_ash_metadata());
+  }
+
   if (tablet_leader_conn_info.has_cloud_info()) {
     // If tablet_leader_conn_info is populated, propagate it to the RBS source (which is a follower
     // in this case) as it will have to request the leader peer to anchor its logs.
@@ -207,8 +213,12 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   // Begin the remote bootstrap session with the remote peer.
   BeginRemoteBootstrapSessionResponsePB resp;
-  auto status =
-      UnwindRemoteError(proxy_->BeginRemoteBootstrapSession(req, &resp, &controller), controller);
+  Status status;
+  {
+    SCOPED_WAIT_STATUS(RemoteBootstrap_StartRemoteSession);
+    status =
+        UnwindRemoteError(proxy_->BeginRemoteBootstrapSession(req, &resp, &controller), controller);
+  }
 
   if (!status.ok()) {
     status = status.CloneAndPrepend(

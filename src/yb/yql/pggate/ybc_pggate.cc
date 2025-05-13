@@ -2195,6 +2195,17 @@ YbcStatus YBCGetTserverCatalogMessageLists(
   return YBCStatusOK();
 }
 
+YbcStatus YBCPgSetTserverCatalogMessageList(
+    YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list) {
+  const auto result = pgapi->SetTserverCatalogMessageList(db_oid, is_breaking_change,
+                                                          new_catalog_version, message_list);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  return YBCStatusOK();
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }

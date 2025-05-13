@@ -38,6 +38,34 @@ namespace yb::hnsw {
 
 struct YbHnswVectorData;
 
+// Provides access to a raw bytes data for a single search.
+// Could be reused between searches using Bind/Release method.
+class SearchCache {
+ public:
+  const std::byte* Data(size_t index);
+
+  void Bind(std::reference_wrapper<const Header> header, FileBlockCache& cache);
+  void Release();
+
+  boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInNonBaseLayer(
+    size_t level, size_t vector);
+  MisalignedPtr<const YbHnswVectorData> VectorHeader(size_t vector);
+  boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInBaseLayer(
+      size_t vector);
+  vector_index::VectorId GetVectorData(size_t vector);
+  const std::byte* CoordinatesPtr(size_t vector);
+
+ private:
+  Slice GetVectorDataSlice(size_t vector);
+  const std::byte* BlockPtr(
+      size_t block, size_t entries_per_block, size_t entry, size_t entry_size);
+
+  const Header* header_ = nullptr;
+  FileBlockCache* file_block_cache_ = nullptr;
+  std::vector<const std::byte*> blocks_;
+  std::vector<size_t> used_blocks_;
+};
+
 struct YbHnswSearchContext {
   using HeapEntry = std::pair<HnswDistanceType, VectorNo>;
 
@@ -56,6 +84,7 @@ struct YbHnswSearchContext {
   Top top;
   ExtraTop extra_top;
   NextQueue next;
+  SearchCache search_cache;
 };
 
 class YbHnsw {
@@ -65,7 +94,8 @@ class YbHnsw {
   using Metric = unum::usearch::metric_punned_t;
   using SearchResult = std::vector<vector_index::VectorWithDistance<DistanceType>>;
 
-  explicit YbHnsw(Metric& metric) : metric_(metric) {}
+  explicit YbHnsw(Metric& metric);
+  ~YbHnsw();
 
   // Imports specified index to YbHnsw structure, also storing this structure to disk.
   Status Import(
@@ -86,36 +116,25 @@ class YbHnsw {
   }
 
  private:
-  std::pair<VectorNo, DistanceType> SearchInNonBaseLayers(const std::byte* query_vector) const;
+  std::pair<VectorNo, DistanceType> SearchInNonBaseLayers(
+      const std::byte* query_vector, SearchCache& cache) const;
   void SearchInBaseLayer(
       const std::byte* query_vector, VectorNo best_vector, DistanceType best_dist,
       size_t max_results, const vector_index::VectorFilter& filter,
       YbHnswSearchContext& context) const;
   SearchResult MakeResult(size_t max_results, YbHnswSearchContext& context) const;
 
-  boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInNonBaseLayer(
-      size_t level, size_t vector) const;
-
-  boost::iterator_range<MisalignedPtr<const VectorNo>> GetNeighborsInBaseLayer(
-      size_t vector) const;
-
-  const std::byte* BlockPtr(
-      size_t block, size_t entries_per_block, size_t entry, size_t entry_size) const;
-
-  Slice GetVectorDataSlice(size_t vector) const;
-  vector_index::VectorId GetVectorData(size_t vector) const;
   DistanceType Distance(const std::byte* lhs, const std::byte* rhs) const;
-  DistanceType Distance(const std::byte* lhs, size_t vector) const;
-  MisalignedPtr<const YbHnswVectorData> VectorHeader(size_t vector) const;
-  const std::byte* CoordinatesPtr(size_t vector) const;
+  DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;
   boost::iterator_range<MisalignedPtr<const CoordinateType>> MakeCoordinates(
       const std::byte* ptr) const;
-  boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(size_t vector) const;
+  boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(
+      size_t vector, SearchCache& cache) const;
 
   Metric& metric_;
   Header header_;
-  std::shared_ptr<BlockCache> block_cache_;
-  FileBlockCache* file_block_cache_ = nullptr;
+  BlockCachePtr block_cache_;
+  FileBlockCachePtr file_block_cache_;
 };
 
 }  // namespace yb::hnsw

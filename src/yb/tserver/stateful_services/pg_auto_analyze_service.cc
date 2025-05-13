@@ -355,6 +355,10 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
       VLOG(1) << "Table not in table_tuple_count_, so skipping: " << table_id;
       continue;
     }
+    if (!table_id_to_name_.contains(table_id)) {
+      VLOG(1) << "Table not in table_id_to_name_, so skipping: " << table_id;
+      continue;
+    }
     double analyze_threshold = FLAGS_ysql_auto_analyze_threshold +
         FLAGS_ysql_auto_analyze_scale_factor * it->second;
     VLOG(2) << "table_id: " << table_id << ", analyze_threshold: " << analyze_threshold;

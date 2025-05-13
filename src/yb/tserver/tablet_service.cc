@@ -237,6 +237,10 @@ DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
 DEFINE_test_flag(
     string, mini_cluster_pg_host_port, "", "The PG host:port used in PostgresMiniclusterTest");
 
+DEFINE_test_flag(
+    int32, clone_pg_schema_inject_latency_ms, 0,
+    "Number of milliseconds the clone state manager will sleep in CloneNamespace.");
+
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
     "If true, setup an error status in AlterSchema and respond success to rpc call. "
     "This failure should not cause the TServer to crash but "
@@ -274,7 +278,7 @@ DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
     "Fail setting retention barrier on newly created tablets");
 
-DEFINE_test_flag(uint32, pg_clone_schema_delay_ms, 0,
+DEFINE_test_flag(uint32, clone_pg_schema_delay_ms, 0,
     "Delay before processing PgCloneSchema request.");
 
 DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
@@ -2218,7 +2222,7 @@ void TabletServiceAdminImpl::ClonePgSchema(
 
 Status TabletServiceAdminImpl::DoClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp) {
-  AtomicFlagSleepMs(&FLAGS_TEST_pg_clone_schema_delay_ms);
+  AtomicFlagSleepMs(&FLAGS_TEST_clone_pg_schema_delay_ms);
 
   // Run ysql_dump to generate the schema of the clone database as of restore time.
   const std::string& target_db_name = req->target_db_name();
@@ -2233,7 +2237,8 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
 
   // Execute the sql script to generate the PG database.
   YsqlshRunner ysqlsh_runner = VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(local_hostport));
-  RETURN_NOT_OK(ysqlsh_runner.ExecuteSqlScript(dump_output, "ysql_dump" /* tmp_file_prefix */));
+  RETURN_NOT_OK(
+      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */));
   LOG(INFO) << Format(
       "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
       req->source_db_name(), target_db_name);
@@ -3050,6 +3055,14 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
         return;
       }
     }
+  }
+
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateMetadata(
+      {.root_request_id = Uuid::Generate(),
+      .query_id = std::to_underlying(ash::FixedQueryId::kQueryIdForRemoteBootstrap)});
+    wait_state->UpdateAuxInfo({.tablet_id = req->tablet_id(), .method = "RemoteBootstrap"});
   }
 
   Status s = tablet_manager_->StartRemoteBootstrap(*req);

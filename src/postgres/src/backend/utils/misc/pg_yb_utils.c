@@ -2700,6 +2700,49 @@ YbCheckNewLocalCatalogVersionOptimization()
 	}
 }
 
+static void
+YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
+										   SharedInvalidationMessage *msgs,
+										   int nmsgs)
+{
+	Assert(OidIsValid(MyDatabaseId));
+
+	const uint64_t new_version = YbGetNewCatalogVersion();
+
+	if (new_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+		return;
+
+	/*
+	 * Do not perform the optimization if there is a gap between the local
+	 * catalog version and the new version. Otherwise, PG backends on this
+	 * node that have the same local catalog version will not be able to
+	 * perform incremental catalog cache refresh because of this gap: it
+	 * takes a heartbeat delay for the gap to be filled. Normally the next
+	 * tserver to master heartbeat response will bring back the missing
+	 * catalog versions and their invalidation messages.
+	 */
+	if (YbGetCatalogCacheVersion() + 1 != new_version)
+		return;
+
+	YbcCatalogMessageList message_list;
+	if (msgs)
+	{
+		message_list.message_list = (char *)msgs;
+		message_list.num_bytes = sizeof(SharedInvalidationMessage) * nmsgs;
+	}
+	else
+	{
+		/* This is a PG null and will force full catalog cache refresh. */
+		message_list.message_list = NULL;
+		message_list.num_bytes = 0;
+	}
+
+	HandleYBStatus(YBCPgSetTserverCatalogMessageList(MyDatabaseId,
+													 is_breaking_change,
+													 new_version,
+													 &message_list));
+}
+
 static int
 YbTotalCommittedPgTxnMessages()
 {
@@ -2781,6 +2824,8 @@ YBCommitTransactionContainingDDL()
 	int			numCatCacheMsgs = 0;
 	int			numRelCacheMsgs = 0;
 	bool		enable_inval_msgs = YbIsInvalidationMessageEnabled();
+	bool		is_breaking_change = false;
+	SharedInvalidationMessage *currentInvalMessages = NULL;
 	if (has_change)
 	{
 		const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(ddl_transaction_state.catalog_modification_aspects.applied);
@@ -2789,7 +2834,6 @@ YBCommitTransactionContainingDDL()
 		SharedInvalidationMessage *catCacheInvalMessages = NULL;
 		SharedInvalidationMessage *relCacheInvalMessages = NULL;
 		/* messages from the current DDL */
-		SharedInvalidationMessage *currentInvalMessages = NULL;
 		SharedInvalidationMessage *currentCatCacheInvalMessages = NULL;
 		SharedInvalidationMessage *currentRelCacheInvalMessages = NULL;
 		if (enable_inval_msgs)
@@ -2890,13 +2934,14 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
+		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 		/*
 		 * We can skip incrementing catalog version if nmsgs is 0.
 		 */
 		increment_done =
 			(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
 			(!enable_inval_msgs || nmsgs > 0) &&
-			YbIncrementMasterCatalogVersionTableEntry(mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
+			YbIncrementMasterCatalogVersionTableEntry(is_breaking_change,
 													  ddl_transaction_state.is_global_ddl,
 													  ddl_transaction_state.original_ddl_command_tag,
 													  currentInvalMessages, nmsgs);
@@ -2925,7 +2970,19 @@ YBCommitTransactionContainingDDL()
 	if (increment_done)
 	{
 		if (enable_inval_msgs && database_oid == MyDatabaseId)
+		{
+			/*
+			 * We only do shared catalog version optimization for MyDatabaseId.
+			 * That is even if the DDL has global impact, we only set the new
+			 * catalog version of MyDatabaseId in shared memory because we do
+			 * not know the new catalog version of any other databases for a
+			 * global impact DDL.
+			 */
+			YbCheckNewSharedCatalogVersionOptimization(is_breaking_change,
+													   currentInvalMessages,
+													   nmsgs);
 			YbCheckNewLocalCatalogVersionOptimization();
+		}
 		else if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
 			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
 		else

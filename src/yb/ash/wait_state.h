@@ -155,6 +155,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
     (kConflictResolution_WaitOnConflictingTxns)
+    (kRemoteBootstrap_FetchData)
+    (kRemoteBootstrap_StartRemoteSession)
+    (kRemoteBootstrap_ReadDataFromFile)
+    (kRemoteBootstrap_RateLimiter)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -201,12 +205,13 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForUncomputedQueryId, 5))
   ((kQueryIdForLogBackgroundSync, 6))
   ((kQueryIdForYSQLBackgroundWorker, 7))
+  ((kQueryIdForRemoteBootstrap, 8))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kCpu)
   (kDiskIO)
-  (kNetwork)
+  (kRPCWait)
   (kWaitOnCondition)
   (kLock)
 );
@@ -251,6 +256,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kIsObjectPartOfXRepl)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
+  (kSetTserverCatalogMessageList)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)

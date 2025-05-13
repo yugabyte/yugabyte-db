@@ -124,31 +124,12 @@ Status ProcessSupervisor::StartProcessUnlocked() {
   return Status::OK();
 }
 
-Status ProcessSupervisor::Start(bool run_process) {
-  std::lock_guard lock(mtx_);
-  std::string process_name = GetProcessName();
-  RETURN_NOT_OK(ExpectStateUnlocked(YbSubProcessState::kNotStarted));
-  RETURN_NOT_OK(PrepareForStart());
-  LOG(INFO) << "Starting "  << process_name << " process";
+Status ProcessSupervisor::Start() {
+  return Init(YbSubProcessState::kRunning);
+}
 
-  if (run_process) {
-    RETURN_NOT_OK(StartProcessUnlocked());
-    state_ = YbSubProcessState::kRunning;
-  } else {
-    RETURN_NOT_OK(InitializeProcessWrapperUnlocked());
-    state_ = YbSubProcessState::kPaused;
-  }
-  std::string thread_name = process_name + " supervisor";
-  auto status = Thread::Create(
-      thread_name, thread_name, &ProcessSupervisor::RunThread,
-      this, &supervisor_thread_);
-  if (!status.ok()) {
-    supervisor_thread_.reset();
-    state_ = YbSubProcessState::kNotStarted;
-    return status;
-  }
-
-  return Status::OK();
+Status ProcessSupervisor::InitPaused() {
+  return Init(YbSubProcessState::kPaused);
 }
 
 Status ProcessSupervisor::InitializeProcessWrapperUnlocked() {
@@ -197,6 +178,7 @@ void ProcessSupervisor::Stop() {
       break;
     } else {
       LOG(WARNING) << GetProcessName() << " did not gracefully exist after " << passed;
+
     }
   }
   supervisor_thread_->Join();
@@ -215,6 +197,34 @@ Status ProcessSupervisor::KillAndChangeState(YbSubProcessState new_state) {
     state_ = new_state;
   }
   cond_.notify_one();
+  return Status::OK();
+}
+
+Status ProcessSupervisor::Init(YbSubProcessState target_state) {
+  if (target_state != YbSubProcessState::kPaused && target_state != YbSubProcessState::kRunning) {
+    return STATUS_FORMAT(
+        InvalidArgument, "First state after kNotStarted must be kRunning or kPaused, not $0",
+        target_state);
+  }
+  std::lock_guard lock(mtx_);
+  std::string process_name = GetProcessName();
+  RETURN_NOT_OK(ExpectStateUnlocked(YbSubProcessState::kNotStarted));
+  RETURN_NOT_OK(PrepareForStart());
+  if (target_state == YbSubProcessState::kRunning) {
+    LOG(INFO) << "Starting " << process_name << " process";
+    RETURN_NOT_OK(StartProcessUnlocked());
+  }
+
+  state_ = target_state;
+  std::string thread_name = process_name + " supervisor";
+  auto status = Thread::Create(
+      thread_name, thread_name, &ProcessSupervisor::RunThread, this, &supervisor_thread_);
+  if (!status.ok()) {
+    supervisor_thread_.reset();
+    state_ = YbSubProcessState::kNotStarted;
+    return status;
+  }
+
   return Status::OK();
 }
 
