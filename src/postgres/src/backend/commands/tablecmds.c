@@ -12730,6 +12730,22 @@ static void
 YbFKTriggerScanEnd(YbFKTriggerScanDesc descr)
 {
 	Assert(descr);
+
+	/*
+	 * destroy the executor's tuple table.  Actually we only care about
+	 * releasing buffer pins and tupdesc refcounts; there's no need to pfree
+	 * the TupleTableSlots, since the containing memory context is about to go
+	 * away anyway.
+	 */
+	ExecResetTupleTable(descr->estate->es_tupleTable, false);
+
+	/*
+	 * No relations should be opened in this estate, still, be conservative and
+	 * call the relation closing functions. They should be no-op.
+	 */
+	ExecCloseResultRelations(descr->estate);
+	ExecCloseRangeTableRelations(descr->estate);
+
 	if (descr->estate)
 		FreeExecutorState(descr->estate);
 	pfree(descr);
