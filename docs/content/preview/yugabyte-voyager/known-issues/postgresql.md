@@ -13,21 +13,7 @@ type: docs
 
 Review limitations and implement suggested workarounds to successfully migrate data from PostgreSQL to YugabyteDB.
 
-Table of Content:
-
-- [Data Definition](#data-definition)
-- [Data Types](#data-types)
-- [Data Manipulation](#data-manipulation)
-- [Functions and Operators](#functions-and-operators)
-- [Indexes](#indexes)
-- [Concurrency Control](#concurrency-control)
-- [Extensions](#extensions)
-- [Server Programming](#server-programming)
-- [Postgres 12 And later features](#postgres-12-and-later-features)
-- [Migration Process and Tooling Issues](#migration-process-and-tooling-issues)
-- [Performance Optimizations](#performance-optimizations)
-
-## Data Definition
+## Data definition
 
 ### Tables
 
@@ -399,7 +385,7 @@ ERROR:  System column "xmin" is not supported yet
 
 ---
 
-### Other Objects
+### Other objects
 
 #### Large Objects and its functions are currently not supported
 
@@ -535,7 +521,7 @@ CREATE FUNCTION public.latin1_to_utf8(src_encoding integer, dest_encoding intege
 
 ---
 
-### Data Types
+### Data types
 
 #### Unsupported datatypes by YugabyteDB
 
@@ -559,7 +545,7 @@ CREATE TABLE public.locations (
 
 ---
 
-## Data Manipulation
+## Data manipulation
 
 ### MERGE command
 
@@ -629,7 +615,7 @@ $$ LANGUAGE plpgsql;
 
 ---
 
-## Functions and Operators
+## Functions and operators
 
 ### XID functions is not supported
 
@@ -843,7 +829,7 @@ CREATE INDEX gin_multi_on_json
 
 ---
 
-## Concurrency Control
+## Concurrency control
 
 ### Advisory locks is not yet implemented
 
@@ -953,7 +939,7 @@ CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 
 ---
 
-## Server Programming
+## Server programming
 
 ### Constraint trigger is not supported
 
@@ -1223,7 +1209,7 @@ Apart from these, the following issues are supported in YugabyteDB [v2.25](/prev
 
 ---
 
-## Migration Process and Tooling Issues
+## Migration process and tooling issues
 
 ### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
 
@@ -1471,7 +1457,7 @@ CREATE OR REPLACE VIEW public.v1 AS
 
 ---
 
-## Performance Optimizations
+## Performance optimizations
 
 ### Hash-sharding with indexes on the timestamp/date columns
 
