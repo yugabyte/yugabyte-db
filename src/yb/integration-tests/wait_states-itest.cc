@@ -1035,6 +1035,11 @@ class AshTestVerifyPgOccurrence : public AshTestVerifyPgOccurrenceBase,
                                   public ::testing::WithParamInterface<ash::WaitStateCode> {
  public:
   AshTestVerifyPgOccurrence() : AshTestVerifyPgOccurrenceBase(GetParam()) {}
+
+ protected:
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->wait_for_pg = false;
+  }
 };
 
 INSTANTIATE_TEST_SUITE_P(
