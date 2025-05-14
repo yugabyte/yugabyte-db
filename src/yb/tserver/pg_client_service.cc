@@ -805,7 +805,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
 
   std::future<Result<OldTxnsRespInfo>> DoGetOldTransactionsForTablet(
       const uint32_t min_txn_age_ms, const uint32_t max_num_txns,
-      const std::shared_ptr<TabletServerServiceProxy>& proxy, const TabletId& tablet_id) {
+      const RemoteTabletServerPtr& remote_ts, const TabletId& tablet_id) {
     auto req = std::make_shared<tserver::GetOldTransactionsRequestPB>();
     req->set_tablet_id(tablet_id);
     req->set_min_txn_age_ms(min_txn_age_ms);
@@ -814,13 +814,14 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
     return MakeFuture<Result<OldTxnsRespInfo>>([&](auto callback) {
       auto resp = std::make_shared<GetOldTransactionsResponsePB>();
       std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
-      proxy->GetOldTransactionsAsync(
+      remote_ts->proxy()->GetOldTransactionsAsync(
           *req.get(), resp.get(), controller.get(),
-          [req, callback, controller, resp] {
+          [req, callback, controller, resp, remote_ts] {
         auto s = controller->status();
         if (!s.ok()) {
-          s = s.CloneAndPrepend(
-              Format("GetOldTransactions request for tablet $0 failed: ", req->tablet_id()));
+          s = s.CloneAndPrepend(Format(
+              "GetOldTransactions request for tablet $0 to tserver $1 failed: ",
+              req->tablet_id(), remote_ts->permanent_uuid()));
           return callback(s);
         }
         callback(OldTxnsRespInfo {
@@ -833,7 +834,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
 
   std::future<Result<OldTxnsRespInfo>> DoGetOldSingleShardWaiters(
       const uint32_t min_txn_age_ms, const uint32_t max_num_txns,
-      const std::shared_ptr<TabletServerServiceProxy>& proxy) {
+      const RemoteTabletServerPtr& remote_ts) {
     auto req = std::make_shared<tserver::GetOldSingleShardWaitersRequestPB>();
     req->set_min_txn_age_ms(min_txn_age_ms);
     req->set_max_num_txns(max_num_txns);
@@ -841,12 +842,14 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
     return MakeFuture<Result<OldTxnsRespInfo>>([&](auto callback) {
       auto resp = std::make_shared<GetOldSingleShardWaitersResponsePB>();
       std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
-      proxy->GetOldSingleShardWaitersAsync(
+      remote_ts->proxy()->GetOldSingleShardWaitersAsync(
           *req.get(), resp.get(), controller.get(),
-          [req, callback, controller, resp] {
+          [req, callback, controller, resp, remote_ts] {
         auto s = controller->status();
         if (!s.ok()) {
-          s = s.CloneAndPrepend("GetOldSingleShardWaiters request failed: ");
+          s = s.CloneAndPrepend(Format(
+              "GetOldSingleShardWaiters request to tserver $0 failed: ",
+              remote_ts->permanent_uuid()));
           return callback(s);
         }
         callback(OldTxnsRespInfo {
@@ -976,17 +979,17 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
       auto proxy = remote_tserver->proxy();
       for (const auto& tablet : txn_status_tablets.global_tablets) {
         res_futures.push_back(
-            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, proxy, tablet));
+            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, remote_tserver, tablet));
         status_tablet_ids.insert(tablet);
       }
       for (const auto& tablet : txn_status_tablets.placement_local_tablets) {
         res_futures.push_back(
-            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, proxy, tablet));
+            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, remote_tserver, tablet));
         status_tablet_ids.insert(tablet);
       }
       // Query for oldest single shard waiting transactions as well.
       res_futures.push_back(
-          DoGetOldSingleShardWaiters(min_txn_age_ms, max_num_txns, proxy));
+          DoGetOldSingleShardWaiters(min_txn_age_ms, max_num_txns, remote_tserver));
     }
     // Limit num transactions to max_num_txns for which lock status is being queried.
     //
@@ -998,10 +1001,13 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
                         OldTxnMetadataVariantComparator> old_txns_pq;
     StatusToPB(Status::OK(), resp->mutable_status());
     for (auto it = res_futures.begin();
-         it != res_futures.end() && resp->status().code() == AppStatusPB::OK; ) {
+         it != res_futures.end() && resp->status().code() == AppStatusPB::OK; ++it) {
       auto res = it->get();
       if (!res.ok()) {
-        return res.status();
+        // A node could be unavailable. We need not fail the pg_locks query if we see at least one
+        // response for all of the status tablets.
+        LOG(INFO) << res.status();
+        continue;
       }
 
       std::visit([&](auto&& old_txns_resp) {
@@ -1009,7 +1015,6 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
           // Ignore leadership and NOT_FOUND errors as we broadcast the request to all tservers.
           if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER ||
               old_txns_resp->error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
-            it = res_futures.erase(it);
             return;
           }
           const auto& s = StatusFromPB(old_txns_resp->error().status());
@@ -1029,7 +1034,6 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator {
             old_txns_pq.pop();
           }
         }
-        it++;
       }, res->resp_ptr);
     }
     if (resp->status().code() != AppStatusPB::OK) {
