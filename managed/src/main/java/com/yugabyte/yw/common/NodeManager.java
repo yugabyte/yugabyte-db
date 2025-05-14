@@ -1044,15 +1044,15 @@ public class NodeManager extends DevopsBase {
         if (!taskParam.skipDownloadSoftware) {
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
-        }
-        if (taskParam.isEnableYbc()) {
-          subcommand.add("--ybc_flags");
-          subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-          subcommand.add("--configure_ybc");
-          subcommand.add("--ybc_package");
-          subcommand.add(ybcPackage);
-          subcommand.add("--ybc_dir");
-          subcommand.add(ybcDir);
+          if (taskParam.isEnableYbc()) {
+            subcommand.add("--ybc_flags");
+            subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+            subcommand.add("--configure_ybc");
+            subcommand.add("--ybc_package");
+            subcommand.add(ybcPackage);
+            subcommand.add("--ybc_dir");
+            subcommand.add(ybcDir);
+          }
         }
         if (!node.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
           // For RR we don't setup master
@@ -1099,9 +1099,11 @@ public class NodeManager extends DevopsBase {
             if (taskParam.isEnableYbc()) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-              subcommand.add("--configure_ybc");
-              subcommand.add("--ybc_package");
-              subcommand.add(ybcPackage);
+              if (!taskParam.skipDownloadSoftware) {
+                subcommand.add("--configure_ybc");
+                subcommand.add("--ybc_package");
+                subcommand.add(ybcPackage);
+              }
               subcommand.add("--ybc_dir");
               subcommand.add(ybcDir);
             }
@@ -1406,12 +1408,12 @@ public class NodeManager extends DevopsBase {
         if (!taskParam.skipDownloadSoftware) {
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
+          subcommand.add("--ybc_package");
+          subcommand.add(ybcPackage);
+          subcommand.add("--configure_ybc");
         }
-        subcommand.add("--ybc_package");
-        subcommand.add(ybcPackage);
         subcommand.add("--ybc_flags");
         subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-        subcommand.add("--configure_ybc");
         subcommand.add("--ybc_dir");
         subcommand.add(ybcDir);
         subcommand.add("--tags");
