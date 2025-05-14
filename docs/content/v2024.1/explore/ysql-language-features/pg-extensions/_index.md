@@ -31,6 +31,8 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | Module | Description |
 | :----- | :---------- |
 | [auto_explain](extension-auto-explain/) | Provides a means for logging execution plans of slow statements automatically. |
+| cube| Implements a data type cube for representing multidimensional cubes. <br/>For more information, see [cube](https://www.postgresql.org/docs/11/cube.html) in the PostgreSQL documentation. |
+| earthdistance| Provides two different approaches to calculating great circle distances on the surface of the Earth. <br/>For more information, see [earthdistance](https://www.postgresql.org/docs/11/earthdistance.html) in the PostgreSQL documentation. |
 | [file_fdw](extension-file-fdw/) | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. |
 | [fuzzystrmatch](extension-fuzzystrmatch/) | Provides several functions to determine similarities and distance between strings. |
 | hstore | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value.<br/>For more information, see [hstore](https://www.postgresql.org/docs/11/hstore.html) in the PostgreSQL documentation. |
