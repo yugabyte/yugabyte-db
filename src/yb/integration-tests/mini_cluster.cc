@@ -1650,7 +1650,7 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster) {
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
   auto peers = ListTabletPeers(cluster, filter);
   for (const auto& peer : peers) {
-    peer->shared_tablet()->TEST_DocDBDumpToLog(tablet::IncludeIntents::kTrue);
+    peer->shared_tablet()->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
   }
 }
 

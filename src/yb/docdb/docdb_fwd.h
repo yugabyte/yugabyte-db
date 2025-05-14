@@ -96,9 +96,10 @@ using DocVectorIndexesPtr = std::shared_ptr<DocVectorIndexes>;
 using DocVectorIndexInsertEntries = std::vector<DocVectorIndexInsertEntry>;
 using DocVectorIndexSearchResult = std::vector<DocVectorIndexSearchResultEntry>;
 
+YB_STRONGLY_TYPED_BOOL(FastBackwardScan);
+YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
-YB_STRONGLY_TYPED_BOOL(FastBackwardScan);
 YB_STRONGLY_TYPED_BOOL(UseVariableBloomFilter);
 
 }  // namespace yb::docdb
