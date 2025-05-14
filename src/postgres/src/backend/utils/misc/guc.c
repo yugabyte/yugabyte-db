@@ -5258,6 +5258,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_test_delay_set_local_tserver_inval_message_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, add a delay before calling YBCPgSetTserverCatalogMessageList."),
+			NULL
+		},
+		&yb_test_delay_set_local_tserver_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_invalidation_message_expiration_secs", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Invalidation messages expiration time in catalog table "
 						 "pg_yb_invalidation_messages."),

@@ -2162,6 +2162,7 @@ bool		yb_test_table_rewrite_keep_old_table = false;
 bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
+int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -2748,6 +2749,8 @@ YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 		message_list.num_bytes = 0;
 	}
 
+	if (yb_test_delay_set_local_tserver_inval_message_ms > 0)
+		pg_usleep(yb_test_delay_set_local_tserver_inval_message_ms * 1000L);
 	HandleYBStatus(YBCPgSetTserverCatalogMessageList(MyDatabaseId,
 													 is_breaking_change,
 													 new_version,
