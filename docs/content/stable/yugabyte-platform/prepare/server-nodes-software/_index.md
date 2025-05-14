@@ -48,7 +48,7 @@ YugabyteDB Anywhere requires the following additional software to be pre-install
 
 #### Python
 
-Install Python 3.8 on the nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
+Install Python 3.6-3.12 on the nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
 
 Install the Python SELinux package corresponding to your version of Python. You can use pip to do this. Ensure the version of pip matches the version of Python.
 
