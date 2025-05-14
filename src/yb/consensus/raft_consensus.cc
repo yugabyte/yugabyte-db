@@ -71,6 +71,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -90,7 +91,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int32(raft_heartbeat_interval_ms, yb::NonTsanVsTsan(500, 1000),
+DEFINE_NON_RUNTIME_int32(raft_heartbeat_interval_ms, yb::NonTsanVsTsan(500, 1000),
              "The heartbeat interval for Raft replication. The leader produces heartbeats "
              "to followers at this interval. The followers expect a heartbeat at this interval "
              "and consider a leader to have failed if it misses several in a row.");
@@ -190,11 +191,23 @@ METRIC_DEFINE_event_stats(
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during RaftConsensus::UpdateRaftConfig");
 
-DEFINE_UNKNOWN_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
+DEFINE_NON_RUNTIME_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
              "Leader lease duration. A leader keeps establishing a new lease or extending the "
              "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
              "leader (i.e. serve up-to-date read requests or acknowledge write requests) until a "
              "lease of this duration has definitely expired on the old leader's side.");
+
+DEFINE_validator(leader_lease_duration_ms,
+    FLAG_DELAYED_COND_VALIDATOR(
+        FLAGS_raft_heartbeat_interval_ms < _value,
+        yb::Format("Must be strictly greater than raft_heartbeat_interval_ms: $0",
+            FLAGS_raft_heartbeat_interval_ms)));
+
+DEFINE_validator(raft_heartbeat_interval_ms,
+    FLAG_DELAYED_COND_VALIDATOR(
+        _value < FLAGS_leader_lease_duration_ms,
+        yb::Format("Must be strictly less than leader_lease_duration_ms: $0",
+            FLAGS_leader_lease_duration_ms)));
 
 DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
