@@ -1052,7 +1052,7 @@ Status TabletServer::GetTserverCatalogMessageLists(
   uint64_t expected_version = ysql_catalog_version + 1;
   std::set<uint64_t> current_versions;
   for (const auto& info : messages_vec) {
-    DCHECK(current_versions.insert(info.first).second);
+    CHECK(current_versions.insert(info.first).second);
     if (info.first <= ysql_catalog_version) {
       continue;
     }
@@ -1150,26 +1150,29 @@ Status TabletServer::SetTserverCatalogMessageList(
     return Status::OK();
   }
   db_message_lists = &it2->second.queue;
-  // If the queue is empty, of the new_catalog_version is larger than the last version in
-  // the queue (the queue is sorted in catalog version), just append the new pair.
-  if (db_message_lists->empty() || db_message_lists->rbegin()->first < new_catalog_version) {
-    db_message_lists->emplace_back(std::make_pair(new_catalog_version, message_list));
-    return Status::OK();
-  }
 
-  // The queue isn't empty, insert the new pair to the right position. Because db_message_lists
-  // is sorted, we can use std::upper_bound with a custom comparator function to find the right
-  // insertion point.
-  auto comp = [](uint64_t current_version,
-                 const std::pair<uint64_t, std::optional<std::string>>& p) {
-                return current_version < p.first;
+  // Insert the new pair to the right position. Because db_message_lists is sorted, we can use
+  // std::lower_bound with a custom comparator function to find the right insertion point.
+  auto comp = [](const std::pair<uint64_t, std::optional<std::string>>& p,
+                 uint64_t current_version) {
+                return p.first < current_version;
               };
-  auto it3 = std::upper_bound(db_message_lists->begin(), db_message_lists->end(),
+  auto it3 = std::lower_bound(db_message_lists->begin(), db_message_lists->end(),
                               new_catalog_version, comp);
-  if (it3 != db_message_lists->end()) {
-    db_message_lists->insert(it3, std::make_pair(new_catalog_version, message_list));
-  } else {
-    // We can reach here if the last version in the queue is the same as new_catalog_version.
+  if (it3 == db_message_lists->end()) {
+    // This means that either the queue is empty, or the new_catalog_version is larger than
+    // the last version in the queue (the queue is sorted in catalog version).
+    VLOG(2) << "appending new version: " << new_catalog_version;
+    db_message_lists->emplace_back(std::make_pair(new_catalog_version, message_list));
+  } else  {
+    // std::lower_bound: returns an iterator pointing to the first element in the range
+    // that is not less than (i.e., greater than or equal to) new_catalog_version.
+    if (it3->first > new_catalog_version) {
+      VLOG(2) << "inserting new version: " << new_catalog_version;
+      db_message_lists->insert(it3, std::make_pair(new_catalog_version, message_list));
+    } else {
+      VLOG(2) << "found existing version: " << new_catalog_version;
+    }
   }
   return Status::OK();
 }
@@ -1518,6 +1521,7 @@ void TabletServer::MergeInvalMessagesIntoQueueUnlocked(
   int start_index, int end_index) {
   DCHECK_LT(start_index, end_index);
 
+  VLOG(2) << "merging inval messages for db: " << db_oid;
   auto it = ysql_db_invalidation_messages_map_.find(db_oid);
   if (it == ysql_db_invalidation_messages_map_.end()) {
     // The db_oid does not exist in ysql_db_invalidation_messages_map_ yet. This is possible
@@ -1573,6 +1577,7 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
 
     // Compare the incoming version with the current existing one.
     if (incoming_version == existing_version) {
+      VLOG(2) << "found existing version " << incoming_version;
       if (incoming_message_list != it->second) {
         // same version should have same message.
         LOG(DFATAL) << "message_list mismatch: " << existing_version;
@@ -1582,6 +1587,7 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
       ++start_index;
     } else if (incoming_version < existing_version) {
       // The incoming version is lower, insert it before it.
+      VLOG(2) << "inserting version " << incoming_version;
       it = db_message_lists->insert(it, std::make_pair(incoming_version, incoming_message_list));
       // After insertion, it points to the newly inserted incoming version, advance it to the
       // original existing version.
@@ -1591,6 +1597,8 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
     } else {
       // The incoming version is higher, move it to the next existing slot in the queue.
       // Keep start_index unchanged so that it can be compared with the next slot in the queue.
+      VLOG(2) << "existing version: " << existing_version
+              << ", higher incoming version: " << incoming_version;
       ++it;
     }
   }
@@ -1601,8 +1609,10 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
     const uint64_t current_version = db_inval_messages.current_version();
     const std::optional<std::string>& message_list = db_inval_messages.has_message_list() ?
         std::optional<std::string>(db_inval_messages.message_list()) : std::nullopt;
+    VLOG(2) << "appending version " << current_version;
     db_message_lists->emplace_back(std::make_pair(current_version, message_list));
   }
+  VLOG(2) << "queue size: " << db_message_lists->size();
   // We may have added more messages to the queue that exceeded the max size.
   while (db_message_lists->size() > FLAGS_ysql_max_invalidation_message_queue_size) {
     db_message_lists->pop_front();
