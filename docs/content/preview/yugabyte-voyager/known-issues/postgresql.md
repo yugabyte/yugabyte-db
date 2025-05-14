@@ -876,28 +876,6 @@ HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_loc
 
 ---
 
-### Events Listen / Notify
-
-**GitHub**: Issue [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872)
-
-**Description**: If your application queries or PL/pgSQL objects rely on **LISTEN/NOTIFY events** in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, LISTEN/NOTIFY events are a no-op in YugabyteDB, and any attempt to use them will trigger a warning instead of performing the expected event-driven operations:
-
-```sql
-WARNING:  LISTEN not supported yet and will be ignored
-```
-
-**Workaround**: Currently, there is no workaround.
-
-**Example:**
-
-```sql
-LISTEN my_table_changes;
-INSERT INTO my_table (name) VALUES ('Charlie');
-NOTIFY my_table_changes, 'New row added with name: Charlie';
-```
-
----
-
 ### Two-Phase Commit
 
 **GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
@@ -972,6 +950,28 @@ CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 ---
 
 ## Server programming
+
+### Events Listen / Notify
+
+**GitHub**: Issue [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872)
+
+**Description**: If your application queries or PL/pgSQL objects rely on **LISTEN/NOTIFY events** in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, LISTEN/NOTIFY events are a no-op in YugabyteDB, and any attempt to use them will trigger a warning instead of performing the expected event-driven operations:
+
+```sql
+WARNING:  LISTEN not supported yet and will be ignored
+```
+
+**Workaround**: Currently, there is no workaround.
+
+**Example:**
+
+```sql
+LISTEN my_table_changes;
+INSERT INTO my_table (name) VALUES ('Charlie');
+NOTIFY my_table_changes, 'New row added with name: Charlie';
+```
+
+---
 
 ### Constraint trigger is not supported
 
