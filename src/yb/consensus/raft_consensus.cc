@@ -202,13 +202,13 @@ DEFINE_validator(leader_lease_duration_ms,
     FLAG_DELAYED_COND_VALIDATOR(
         FLAGS_raft_heartbeat_interval_ms < _value,
         yb::Format("Must be strictly greater than raft_heartbeat_interval_ms: $0",
-          FLAGS_raft_heartbeat_interval_ms)));
+            FLAGS_raft_heartbeat_interval_ms)));
 
 DEFINE_validator(raft_heartbeat_interval_ms,
     FLAG_DELAYED_COND_VALIDATOR(
         _value < FLAGS_leader_lease_duration_ms,
         yb::Format("Must be strictly less than leader_lease_duration_ms: $0",
-          FLAGS_leader_lease_duration_ms)));
+            FLAGS_leader_lease_duration_ms)));
 
 DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
