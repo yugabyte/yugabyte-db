@@ -8397,6 +8397,13 @@ ybGenerateHintStringNode(PlannedStmt *plannedStmt, Plan *plan, StringInfoData *l
 					{
 						Append *append = (Append *) plan;
 
+						char *ybHintAlias = plan->ybHintAlias;
+						if (ybHintAlias != NULL)
+						{
+							ybAppendHintNameDisplayText(ybHintAlias, leadingBuf);
+							*scanList = lappend(*scanList, ybHintAlias);
+						}
+
 						/*
 						 * Recurse on the input blocks.
 						 */
@@ -8404,6 +8411,17 @@ ybGenerateHintStringNode(PlannedStmt *plannedStmt, Plan *plan, StringInfoData *l
 						foreach(lc, append->appendplans)
 						{
 							Plan *subPlan = (Plan *) lfirst(lc);
+
+							if (ybHintAlias != NULL && subPlan->ybHintAlias != NULL &&
+								strcmp(ybHintAlias, subPlan->ybHintAlias) == 0)
+							{
+								/*
+								 * This can happen if we have a partitioned table and are
+								 * appending results from scanning partitions since the
+								 * partitions would have the same alias as the Append.
+								 */
+								continue;
+							}
 
 							char *subPlanHintString = ybGenerateHintStringBlock(plannedStmt, subPlan, maxBlockScanCnt);
 
@@ -8439,6 +8457,10 @@ ybGenerateHintStringNode(PlannedStmt *plannedStmt, Plan *plan, StringInfoData *l
 							plan->ybHintAlias = saveHintAlias;
 
 							recurse = false;
+						}
+						else
+						{
+							generatedHintString = false;
 						}
 					}
 					break;
