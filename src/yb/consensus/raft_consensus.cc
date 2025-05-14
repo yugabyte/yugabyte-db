@@ -201,12 +201,12 @@ DEFINE_NON_RUNTIME_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeader
 DEFINE_validator(leader_lease_duration_ms,
     FLAG_DELAYED_COND_VALIDATOR(
         FLAGS_raft_heartbeat_interval_ms < _value,
-        yb::Format("Must be greater than or equal to raft_heartbeat_interval_ms: $0", FLAGS_raft_heartbeat_interval_ms)));
+        yb::Format("Must be strictly greater than raft_heartbeat_interval_ms: $0", FLAGS_raft_heartbeat_interval_ms)));
 
 DEFINE_validator(raft_heartbeat_interval_ms,
     FLAG_DELAYED_COND_VALIDATOR(
         _value < FLAGS_leader_lease_duration_ms,
-        yb::Format("Must be less than or equal to leader_lease_duration_ms: $0", FLAGS_leader_lease_duration_ms)));
+        yb::Format("Must be strictly less than leader_lease_duration_ms: $0", FLAGS_leader_lease_duration_ms)));
 
 DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
