@@ -66,6 +66,9 @@ DEFINE_RUNTIME_bool(ysql_upgrade_import_stats, false,
 DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
     "Fail the cleanup of the previous version ysql catalog");
 
+DEFINE_test_flag(bool, ysql_block_writes_to_catalog, false,
+    "Block writes to the catalog tables like we would during a ysql major upgrade");
+
 using yb::pgwrapper::PgWrapper;
 
 #define SCHECK_YSQL_ENABLED SCHECK(FLAGS_enable_ysql, IllegalState, "YSQL is not enabled")
@@ -286,6 +289,10 @@ bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
                   << " during ysql major upgrade";
       return false;
     }
+    return is_forced_update;
+  }
+
+  if (FLAGS_TEST_ysql_block_writes_to_catalog) {
     return is_forced_update;
   }
 
