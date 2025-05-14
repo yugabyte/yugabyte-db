@@ -35,6 +35,9 @@
 DEFINE_RUNTIME_int32(xcluster_ddl_queue_max_retries_per_ddl, 5,
     "Maximum number of retries per DDL before we pause processing of the ddl_queue table.");
 
+DEFINE_RUNTIME_uint32(xcluster_ddl_queue_statement_timeout_ms, 0,
+    "Statement timeout to use for executing DDLs from the ddl_queue table. 0 means no timeout.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -404,6 +407,9 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
     setup_query << "SET yb_test_fail_next_ddl TO true;";
   }
+
+  setup_query << Format(
+      "SET statement_timeout TO $0;", FLAGS_xcluster_ddl_queue_statement_timeout_ms);
 
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
   RETURN_NOT_OK(ProcessFailedDDLQuery(RunAndLogQuery(query_info.query), query_info));
