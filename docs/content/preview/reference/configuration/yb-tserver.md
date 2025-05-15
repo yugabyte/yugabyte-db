@@ -11,15 +11,19 @@ menu:
 type: docs
 ---
 
-Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
+The YugabyteDB Tablet Server ([YB-TServer](../../../architecture/yb-tserver/)) is a critical component responsible for managing data storage, processing client requests, and handling replication within a YugabyteDB cluster. It ensures data consistency, fault tolerance, and scalability by storing and serving data as tablets—sharded units of storage distributed across multiple nodes. Proper configuration of the YB-TServer is important to optimize performance, manage system resources effectively, help establish secure communication, and provide high availability (HA).
 
-## Syntax
+This page provides detailed information about various configuration flags available for `yb-tserver`. Each flag allows administrators and developers to fine-tune the server's behavior according to their deployment requirements and performance objectives.
+
+Use the yb-tserver binary and its flags to configure the YB-TServer server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
+
+**Syntax**
 
 ```sh
 yb-tserver [ flags ]
 ```
 
-### Example
+**Example**
 
 ```sh
 ./bin/yb-tserver \
@@ -29,7 +33,7 @@ yb-tserver [ flags ]
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
-### Online help
+**Online help**
 
 To display the online help, run `yb-tserver --help` from the YugabyteDB home directory:
 
@@ -37,19 +41,23 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ./bin/yb-tserver --help
 ```
 
-##### --help
+Use `--helpon` to displays help on modules named by the specified flag value.
 
-Displays help on all flags.
+This page categorizes configuration flags into the following sections, making it easier to navigate:
 
-##### --helpon
-
-Displays help on modules named by the specified flag value.
+| Category                     | Description |
+|------------------------------|-------------|
+| [General Configuration](#general-configuration)        | Basic server setup including overall system settings, logging, and web interface configurations. |
+| [Networking](#networking)                   | Flags that control network interfaces, RPC endpoints, DNS caching, and geo-distribution settings. |
+| [Storage & Data Management](#storage-data-management)    | Parameters for managing data directories, WAL configurations, sharding, CDC, and TTL-based file expiration. |
+| [Performance Tuning](#performance-tuning)           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
+| [Security](#security)                     | Settings for encryption, SSL/TLS, and authentication to secure both node-to-node and client-server communications. |
 
 ## All flags
 
 The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
 
-## General flags
+## General Configuration
 
 ##### --flagfile
 
@@ -59,59 +67,11 @@ Specifies the file to load the configuration flags from. The configuration flags
 
 Shows version and build info, then exits.
 
-##### --tserver_master_addrs
-
-Specifies a comma-separated list of all the YB-Master RPC addresses.
-
-Required.
-
-Default: `127.0.0.1:7100`
-
-The number of comma-separated values should match the total number of YB-Master servers (or the replication factor).
-
-##### --fs_data_dirs
-
-Specifies a comma-separated list of mount directories, where yb-tserver will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
-
-Required.
-
-Changing the value of this flag after the cluster has already been created is not supported.
-
-##### --fs_wal_dirs
-
-Specifies a comma-separated list of directories, where yb-tserver will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
-
-Default: The same value as `--fs_data_dirs`
-
 ##### --max_clock_skew_usec
 
 Specifies the expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment.
 
 Default: `500000` (500,000 µs = 500ms)
-
-##### --rpc_bind_addresses
-
-Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
-
-The values must match on all [yb-master](../yb-master/#rpc-bind-addresses) and yb-tserver configurations.
-
-Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`. For example:
-
-```sh
-egrep -i rpc /home/yugabyte/tserver/conf/server.conf
---rpc_bind_addresses=172.161.x.x:9100
-```
-
-Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) flag is set correctly if the following applies:
-
-- `rpc_bind_addresses` is set to `0.0.0.0`
-- `rpc_bind_addresses` involves public IP addresses such as, for example, `0.0.0.0:9100`, which instructs the server to listen on all available network interfaces.
-
-##### --server_broadcast_addresses
-
-Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
-
-Default: `""`
 
 ##### --tablet_server_svc_queue_length
 
@@ -119,25 +79,240 @@ Specifies the queue size for the tablet server to serve reads and writes from ap
 
 Default: `5000`
 
-##### --dns_cache_expiration_ms
+### PostgreSQL server options
 
-Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
 
-Default: `60000` (1 minute)
+#### Modify configuration parameters
 
-If you change this value from the default, be sure to add the identical value to all YB-Master and YB-TServer configurations.
+You can modify these parameters in the following ways:
 
-##### --use_private_ip
+- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
 
-Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never`, `zone`, `cloud`, and `region`. Based on the values of the [geo-distribution flags](#geo-distribution-flags).
+- Set the option per-database:
 
-Valid values for the policy are:
+    ```sql
+    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ```
 
-- `never` — Always use [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
-- `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
+- Set the option per-role:
 
-Default: `never`
+    ```sql
+    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ```
+
+    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
+
+- Set the option for the current session:
+
+    ```sql
+    SET temp_file_limit=-1;
+    --- alternative way
+    SET SESSION temp_file_limit=-1;
+    ```
+
+    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
+
+    If the surrounding transaction commits, the effects will persist for the whole session.
+
+- Set the option for the current transaction:
+
+    ```sql
+    SET LOCAL temp_file_limit=-1;
+    ```
+
+- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
+
+    ```sql
+    --- To change the minimum transaction age to 5 seconds:
+    SET session yb_locks_min_txn_age = 5000;
+    ```
+
+- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
+
+    ```sql
+    --- To change the maximum number of transactions to display to 10:
+    SET session yb_locks_max_transactions = 10;
+    ```
+
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
+
+#### YSQL configuration parameters
+
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
+
+##### log_line_prefix
+
+YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
+
+- %C = cloud name
+- %R = region / data center name
+- %Z = availability zone / rack name
+- %U = cluster UUID
+- %N = node and cluster name
+- %H = current hostname
+
+For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
+
+##### suppress_nonpg_logs (boolean)
+
+When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
+
+Default: `off`
+
+##### temp_file_limit
+
+Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
+
+Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
+
+You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
+
+Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
+
+Default: `1GB`
+
+##### enable_bitmapscan
+
+PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
+
+Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with `AND` or `OR` operators to create a final bitmap that is used to collect rows from the main table.
+
+Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
+
+Bitmap scans are only supported for LSM indexes.
+
+Default: true
+
+##### yb_enable_bitmapscan
+
+{{<tags/feature/tp>}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+
+| enable_bitmapscan | yb_enable_bitmapscan | Result |
+| :--- | :---  | :--- |
+| true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
+| false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
+
+Default: false
+
+##### yb_bnl_batch_size
+
+Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+Default: 1024
+
+##### yb_enable_batchednl
+
+Enable or disable the query planner's use of batched nested loop join.
+
+Default: true
+
+##### yb_enable_base_scans_cost_model
+
+{{<tags/feature/ea idea="483">}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
+
+Default: false
+
+##### yb_enable_optimizer_statistics
+
+{{<tags/feature/tp>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+
+Default: false
+
+##### yb_fetch_size_limit
+
+{{<tags/feature/tp>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+
+If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
+
+See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If the flag is set, this parameter takes precedence.
+
+Default: 0
+
+##### yb_fetch_row_limit
+
+{{<tags/feature/tp>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+
+See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
+
+Default: 1024
+
+##### yb_use_hash_splitting_by_default
+
+{{<tags/feature/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
+
+Default: true
+
+##### yb_insert_on_conflict_read_batch_size
+
+{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+
+- temporary relations
+- foreign relations
+- system relations
+- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
+
+The higher the number, the more batching is done. 1024 is recommended.
+
+Default: 0 (disabled)
+
+##### yb_read_from_followers
+
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+
+Default: false
+
+##### yb_follower_read_staleness_ms
+
+Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+
+Default: 30000 (30 seconds)
+
+##### default_transaction_read_only
+
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+
+Default: false
+
+##### default_transaction_isolation
+
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+
+See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
+
+Default: `read committed`
+
+##### yb_skip_redundant_update_ops
+
+Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
+
+This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
+
+Default: true
+
+##### yb_read_time
+
+Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
+
+To reset the session to normal behavior (current time), set `yb_read_time` to 0.
+
+Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
+
+Default: 0
+
+
+
+##### --time_source
+
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+
+Default: `""`
+
+### Webserver configuration
 
 ##### --webserver_interface
 
@@ -175,13 +350,7 @@ Location of the `.htpasswd` file containing usernames and hashed passwords, for 
 
 Default: `""`
 
-##### --time_source
-
-Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
-
-Default: `""`
-
-## Logging flags
+### Logging flags
 
 ##### --log_dir
 
@@ -225,140 +394,183 @@ Disable callhome diagnostics.
 
 Default: `true`
 
+### Metric export flags
 
-## Memory division flags
+YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
 
-These flags are used to determine how the RAM of a node is split between the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including the PostgreSQL processes and a [Master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
+##### --export_help_and_type_in_prometheus_metrics
 
-{{< warning title="Warning" >}}
+This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
 
-Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and Master (if present) leaves enough memory on the node for PostgreSQL and any required other processes like monitoring agents, plus the memory needed by the kernel.
-
-{{< /warning >}}
-
-
-### Flags controlling the defaults for the other memory division flags
-
-The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and Master.
-
-##### --use_memory_defaults_optimized_for_ysql
-
-If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
-
-Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
-
-If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
-
-If these defaults are used for both TServer and Master, then a node's available memory is partitioned as follows:
-
-| node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
-| :--- | ---: | ---: | ---: | ---: |
-| TServer %  | 45% | 48% | 57% | 60% |
-| Master %   | 20% | 15% | 10% | 10% |
-| PostgreSQL % | 25% | 27% | 28% | 27% |
-| other %    | 10% | 10% |  5% |  3% |
-
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
-
-For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
-
-The defaults for [flags controlling memory division in a TServer](#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
-
-| flag | default |
-| :--- | :--- |
-| --db_block_cache_size_percentage | 32 |
-| --tablet_overhead_size_percentage | 10 |
-
-The default value of [--db_block_cache_size_percentage](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
-
-### Flags controlling the split of memory among processes
-
-Note that in general these flags will have different values for TServer and Master processes.
-
-##### --memory_limit_hard_bytes
-
-Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
-
-Default: `0`
-
-##### --default_memory_limit_to_ram_ratio
-
-The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
-
-Default: `0.85` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
-
-
-### Flags controlling the split of memory within a TServer
-
-##### --db_block_cache_size_bytes
-
-Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
-
-Default: `-1`
-
-##### --db_block_cache_size_percentage
-
-Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [--db_block_cache_size_bytes](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
-
-Default: `50` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
-
-##### --tablet_overhead_size_percentage
-
-Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
-
-Each tablet replica generally requires 700 MiB of this memory.
-
-Default: `0` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
-
-## Raft flags
-
-With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, `--evict_failed_followers`), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
-
-##### --follower_unavailable_considered_failed_sec
-
-The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is re-replicated elsewhere.
-
-Default: `900` (15 minutes)
-
-The `--follower_unavailable_considered_failed_sec` value should match the value for [--log_min_seconds_to_retain](#log-min-seconds-to-retain).
-
-##### --evict_failed_followers
-
-Failed followers will be evicted from the Raft group and the data will be re-replicated.
+To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
 
 Default: `true`
 
-##### --leader_failure_max_missed_heartbeat_periods
+##### --max_prometheus_metric_entries
 
-The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [--raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
+Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
 
-For read replica clusters, set the value to `10` in all yb-tserver and yb-master configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
-Default: `6`
+Default: `UINT32_MAX`
 
-##### --leader_lease_duration_ms
+## Networking
 
-The leader lease duration, in milliseconds. A leader keeps establishing a new lease or extending the existing one with every consensus update. A new server is not allowed to serve as a leader (that is, serve up-to-date read requests or acknowledge write requests) until a lease of this duration has definitely expired on the old leader's side, or the old leader has explicitly acknowledged the new leader's lease.
+### RPC and binding addresses
 
-This lease allows the leader to safely serve reads for the duration of its lease, even during a network partition. For more information, refer to [Leader leases](../../../architecture/transactions/single-row-transactions/#leader-leases-reading-the-latest-data-in-case-of-a-network-partition).
+##### --tserver_master_addrs
 
-Leader lease duration should be longer than the heartbeat interval, and less than the multiple of `--leader_failure_max_missed_heartbeat_periods` multiplied by `--raft_heartbeat_interval_ms`.
+Specifies a comma-separated list of all the YB-Master RPC addresses.
 
-Default: `2000`
+Required.
 
-##### --max_stale_read_bound_time_ms
+Default: `127.0.0.1:7100`
 
-Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+The number of comma-separated values should match the total number of YB-Master servers (or the replication factor).
 
-In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
+##### --rpc_bind_addresses
 
-Default: `10000` (10 seconds)
+Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
-##### --raft_heartbeat_interval_ms
+The values must match on all [yb-master](../yb-master/#rpc-bind-addresses) and yb-tserver configurations.
 
-The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
+Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`. For example:
 
-Default: `500`
+```sh
+egrep -i rpc /home/yugabyte/tserver/conf/server.conf
+--rpc_bind_addresses=172.161.x.x:9100
+```
+
+Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) flag is set correctly if the following applies:
+
+- `rpc_bind_addresses` is set to `0.0.0.0`
+- `rpc_bind_addresses` involves public IP addresses such as, for example, `0.0.0.0:9100`, which instructs the server to listen on all available network interfaces.
+
+##### --server_broadcast_addresses
+
+Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
+
+Default: `""`
+
+### Private IP and DNS caching
+
+##### --dns_cache_expiration_ms
+
+Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
+
+Default: `60000` (1 minute)
+
+If you change this value from the default, be sure to add the identical value to all YB-Master and YB-TServer configurations.
+
+##### --use_private_ip
+
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never`, `zone`, `cloud`, and `region`. Based on the values of the [geo-distribution flags](#geo-distribution-flags).
+
+Valid values for the policy are:
+
+- `never` — Always use [`--server_broadcast_addresses`](#server-broadcast-addresses).
+- `zone` — Use the private IP inside a zone; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
+- `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
+
+Default: `never`
+
+### Geo-distribution flags
+
+Settings related to managing geo-distributed clusters:
+
+##### --placement_zone
+
+The name of the availability zone, or rack, where this instance is deployed.
+
+{{<tip title="Rack awareness">}}
+For on-premises deployments, consider racks as zones to treat them as fault domains.
+{{</tip>}}
+
+Default: `rack1`
+
+##### --placement_region
+
+Specifies the name of the region, or data center, where this instance is deployed.
+
+Default: `datacenter1`
+
+##### --placement_cloud
+
+Specifies the name of the cloud where this instance is deployed.
+
+Default: `cloud1`
+
+##### --placement_uuid
+
+The unique identifier for the cluster.
+
+Default: `""`
+
+##### --force_global_transactions
+
+If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the YSQL parameter `force_global_transaction = TRUE`.
+
+{{< note title="Global transaction latency" >}}
+
+Avoid setting this flag when possible. All distributed transactions _can_ run without issue as global transactions, but you may have significantly higher latency when committing transactions, because YugabyteDB must achieve consensus across multiple regions to write to `system.transactions`. When necessary, it is preferable to selectively set the YSQL parameter `force_global_transaction = TRUE` rather than setting this flag.
+
+{{< /note >}}
+
+Default: `false`
+
+##### --auto-create-local-transaction-tables
+
+If true, transaction status tables will be created under each YSQL tablespace that has a placement set and contains at least one other table.
+
+Default: `true`
+
+##### --auto-promote-nonlocal-transactions-to-global
+
+If true, local transactions using transaction status tables other than `system.transactions` will be automatically promoted to global transactions using the `system.transactions` transaction status table upon accessing data outside of the local region.
+
+Default: `true`
+
+### Network compression flags
+
+Use the following two flags to configure RPC compression:
+
+##### --enable_stream_compression
+
+Controls whether YugabyteDB uses RPC compression.
+
+Default: `true`
+
+##### --stream_compression_algo
+
+Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
+
+0: No compression (default value)
+
+1: Gzip
+
+2: Snappy
+
+3: LZ4
+
+In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead. However, the default is set to 0, to avoid latency penalty on workloads.
+
+## Storage & Data Management
+
+### Filesystem and WAL directories
+
+##### --fs_data_dirs
+
+Specifies a comma-separated list of mount directories, where yb-tserver will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
+
+Required.
+
+Changing the value of this flag after the cluster has already been created is not supported.
+
+##### --fs_wal_dirs
+
+Specifies a comma-separated list of directories, where yb-tserver will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
+
+Default: The same value as `--fs_data_dirs`
 
 ### Write ahead log (WAL) flags
 
@@ -412,7 +624,7 @@ When the server restarts from a previous crash, if the tablet's last WAL file si
 
 Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
-## Sharding flags
+### Sharding flags
 
 ##### --yb_num_shards_per_tserver
 
@@ -581,63 +793,244 @@ The number of tablet replicas that each GiB reserved by YB-TServers for tablet o
 
 Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
 
-## Geo-distribution flags
 
-Settings related to managing geo-distributed clusters:
+### DDL atomicity flags
 
-##### --placement_zone
+##### ysql_yb_ddl_rollback_enabled
 
-The name of the availability zone, or rack, where this instance is deployed.
+Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will roll back the changes made to the DocDB system catalog.
 
-{{<tip title="Rack awareness">}}
-For on-premises deployments, consider racks as zones to treat them as fault domains.
-{{</tip>}}
+Default: true
 
-Default: `rack1`
+{{< note title="Important" >}}
+In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table (for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
 
-##### --placement_region
-
-Specifies the name of the region, or data center, where this instance is deployed.
-
-Default: `datacenter1`
-
-##### --placement_cloud
-
-Specifies the name of the cloud where this instance is deployed.
-
-Default: `cloud1`
-
-##### --placement_uuid
-
-The unique identifier for the cluster.
-
-Default: `""`
-
-##### --force_global_transactions
-
-If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the YSQL parameter `force_global_transaction = TRUE`.
-
-{{< note title="Global transaction latency" >}}
-
-Avoid setting this flag when possible. All distributed transactions _can_ run without issue as global transactions, but you may have significantly higher latency when committing transactions, because YugabyteDB must achieve consensus across multiple regions to write to `system.transactions`. When necessary, it is preferable to selectively set the YSQL parameter `force_global_transaction = TRUE` rather than setting this flag.
-
+Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes automatically to prevent metadata corruption.
 {{< /note >}}
+
+##### report_ysql_ddl_txn_status_to_master
+
+If set, at the end of a DDL operation the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
+
+Default: true
+
+{{< note title="Important" >}}
+Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.
+
+This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
+{{< /note >}}
+
+##### ysql_ddl_transaction_wait_for_ddl_verification
+
+If set, DDL transactions will wait for DDL verification to complete before returning to the client.
+
+Default: true
+
+{{< note title="Important" >}}
+After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.
+
+When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
+{{< /note >}}
+
+### Change data capture (CDC) flags
+
+To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
+
+##### --yb_enable_cdc_consistent_snapshot_streams
+
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+
+Enable support for creating streams for transactional CDC.
 
 Default: `false`
 
-##### --auto-create-local-transaction-tables
+##### --cdc_state_checkpoint_update_interval_ms
 
-If true, transaction status tables will be created under each YSQL tablespace that has a placement set and contains at least one other table.
+The rate at which CDC state's checkpoint is updated.
+
+Default: `15000`
+
+##### --cdc_ybclient_reactor_threads
+
+The number of reactor threads to be used for processing `ybclient` requests for CDC. Increase to improve throughput on large tablet setups.
+
+Default: `50`
+
+##### --cdc_max_stream_intent_records
+
+Maximum number of intent records allowed in a single CDC batch.
+
+Default: `1000`
+
+##### --cdc_snapshot_batch_size
+
+Number of records fetched in a single batch of snapshot operation of CDC.
+
+Default: `250`
+
+##### --cdc_min_replicated_index_considered_stale_secs
+
+If `cdc_min_replicated_index` hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
+
+Default: `900` (15 minutes)
+
+##### --timestamp_history_retention_interval_sec
+
+Time interval (in seconds) to retain history or older versions of data.
+
+Default: `900` (15 minutes)
+
+##### --update_min_cdc_indices_interval_secs
+
+How often to read the `cdc_state` table to get the minimum applied index for each tablet across all streams. This information is used to correctly keep log files that contain unapplied entries. This is also the rate at which a tablet's minimum replicated index across all streams is sent to the other peers in the configuration. If flag `enable_log_retention_by_op_idx` (default: `true`) is disabled, this flag has no effect.
+
+Default: `60`
+
+##### --cdc_checkpoint_opid_interval_ms
+
+The number of seconds for which the client can go down and the intents will be retained. This means that if a client has not updated the checkpoint for this interval, the intents would be garbage collected.
+
+Default: `60000`
+
+{{< warning title="Warning" >}}
+
+If you are using multiple streams, it is advised that you set this flag to `1800000` (30 minutes).
+
+{{< /warning >}}
+
+##### --log_max_seconds_to_retain
+
+Number of seconds to retain log files. Log files older than this value will be deleted even if they contain unreplicated CDC entries. If 0, this flag will be ignored. This flag is ignored if a log segment contains entries that haven't been flushed to RocksDB.
+
+Default: `86400`
+
+##### --log_stop_retaining_min_disk_mb
+
+Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
+
+Default: `102400`
+
+##### --cdc_intent_retention_ms
+
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+
+Default: `28800000` (8 hours)
+
+##### --cdc_wal_retention_time_secs
+
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
+
+Default: `28800` (8 hours)
+
+##### --cdcsdk_table_processing_limit_per_run
+
+Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
+
+Default: `2`
+
+The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
+
+##### --ysql_yb_default_replica_identity
+
+The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+
+Default: `CHANGE`
+
+##### --cdcsdk_enable_dynamic_table_support
+
+Tables created after the creation of a replication slot are referred as Dynamic tables. This flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
 
 Default: `true`
 
-##### --auto-promote-nonlocal-transactions-to-global
+##### --cdcsdk_publication_list_refresh_interval_secs
 
-If true, local transactions using transaction status tables other than `system.transactions` will be automatically promoted to global transactions using the `system.transactions` transaction status table upon accessing data outside of the local region.
+Interval in seconds at which the table list in the publication will be refreshed.
 
-Default: `true`
+Default: `900`
 
-## xCluster flags
+##### --cdc_stream_records_threshold_size_bytes
+
+Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
+
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
+
+Default: `4194304` (4MB)
+
+##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
+
+Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
+
+Default: `1 MB`
+
+##### --ysql_cdc_active_replication_slot_window_ms
+
+Determines the window in milliseconds in which if a client has consumed the changes of a ReplicationSlot across any tablet, then it is considered to be actively used. ReplicationSlots which haven't been used in this interval are considered to be inactive.
+
+Default: `60000`
+
+##### --cdc_send_null_before_image_if_not_exists
+
+When true, the CDC service returns a null before-image if it is not able to find one.
+
+Default: `false`
+
+##### --cdcsdk_tablet_not_of_interest_timeout_secs
+
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+Default: `14400` (4 hours)
+
+### File expiration based on TTL flags
+
+##### --tablet_enable_ttl_file_filter
+
+Turn on the file expiration for TTL feature.
+
+Default: `false`
+
+##### --rocksdb_max_file_size_for_compaction
+
+For tables with a `default_time_to_live` table property, sets a size threshold at which files will no longer be considered for compaction. Files over this threshold will still be considered for expiration. Disabled if value is `0`.
+
+Ideally, `rocksdb_max_file_size_for_compaction` should strike a balance between expiring data at a reasonable frequency and not creating too many SST files (which can impact read performance). For instance, if 90 days worth of data is stored, consider setting this flag to roughly the size of one day's worth of data.
+
+If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accomodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
+
+Default: `0`
+
+##### --sst_files_soft_limit
+
+Threshold for number of SST files per tablet. When exceeded, writes to a tablet will be throttled until the number of files is reduced.
+
+Default: `24`
+
+##### --sst_files_hard_limit
+
+Threshold for number of SST files per tablet. When exceeded, writes to a tablet will no longer be allowed until the number of files is reduced.
+
+Default: `48`
+
+##### --file_expiration_ignore_value_ttl
+
+When set to true, ignores any value-level TTL metadata when determining file expiration. Helpful in situations where some SST files are missing the necessary value-level metadata (in case of upgrade, for instance).
+
+Default: `false`
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in expiration of live data. Use at your discretion.
+{{< /warning >}}
+
+##### --file_expiration_value_ttl_overrides_table_ttl
+
+When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is helpful for situations where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used.
+
+Default: `false`
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in expiration of live data. Use at your discretion.
+{{< /warning >}}
+
+### xCluster flags
 
 Settings related to managing xClusters.
 
@@ -647,7 +1040,603 @@ The RPC queue size of the xCluster service. Should match the size of [tablet_ser
 
 Default: `5000`
 
-## API flags
+### Packed row flags
+
+The packed row format for the YSQL API is {{<tags/feature/ga>}} as of v2.20.0, and for the YCQL API is {{<tags/feature/tp>}}.
+
+To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
+
+##### --ysql_enable_packed_row
+
+Whether packed row is enabled for YSQL.
+
+Default: `true`
+
+Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
+
+##### --ysql_enable_packed_row_for_colocated_table
+
+Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
+
+Default: `false`
+
+##### --ysql_packed_row_size_limit
+
+Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
+
+Default: `0`
+
+##### --ycql_enable_packed_row
+
+YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+
+Whether packed row is enabled for YCQL.
+
+Default: `false`
+
+##### --ycql_packed_row_size_limit
+
+Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
+
+Default: `0`
+
+### Catalog flags
+
+Catalog flags are {{<tags/feature/ea>}}.
+
+##### ysql_catalog_preload_additional_table_list
+
+Specifies the names of catalog tables (such as `pg_operator`, `pg_proc`, and `pg_amop`) to be preloaded by PostgreSQL backend processes. This flag reduces latency of first query execution of a particular statement on a connection.
+
+Default: `""`
+
+If [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tables) is also specified, the union of the above specified catalog tables and `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` is preloaded.
+
+##### ysql_catalog_preload_additional_tables
+
+When enabled, the PostgreSQL backend processes preload the `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` catalog tables. This flag reduces latency of first query execution of a particular statement on a connection.
+
+Default: `false`
+
+If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional-table-list) is also specified, the union of `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` and the tables specified in `ysql_catalog_preload_additional_table_list` is preloaded.
+
+##### ysql_enable_read_request_caching
+
+Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
+
+Default: `true`
+
+##### ysql_minimal_catalog_caches_preload
+
+Defines what part of the catalog gets cached and preloaded by default. As a rule of thumb, preloading more means lower first-query latency (as most/all necessary metadata will already be in the cache) at a cost of higher per-connection memory. Preloading less of the catalog means less memory though can result in a higher mean first-query latency (as we may need to ad-hoc lookup more catalog entries first time we execute a query). This flag only loads the system catalog tables (but not the user objects) which should keep memory low, while loading all often used objects. Still user-object will need to be loaded ad-hoc, which can make first-query latency a bit higher (most impactful in multi-region clusters).
+
+Default: `false`
+
+##### ysql_use_relcache_file
+
+Controls whether to use the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only this minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduces first query latency.
+
+Default: `true`
+
+##### ysql_yb_toast_catcache_threshold
+
+Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
+
+To minimize performance impact when enabling this flag, set it to 2KB or higher.
+
+Default: -1 (disabled). Minimum: 128 bytes.
+
+
+## Performance Tuning
+
+### Memory division flags
+
+These flags are used to determine how the RAM of a node is split between the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including the PostgreSQL processes and a [Master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
+
+{{< warning title="Warning" >}}
+
+Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and Master (if present) leaves enough memory on the node for PostgreSQL and any required other processes like monitoring agents, plus the memory needed by the kernel.
+
+{{< /warning >}}
+
+
+#### Flags controlling the defaults for the other memory division flags
+
+The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and Master.
+
+##### --use_memory_defaults_optimized_for_ysql
+
+If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
+
+Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
+
+If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
+
+If these defaults are used for both TServer and Master, then a node's available memory is partitioned as follows:
+
+| node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
+| :--- | ---: | ---: | ---: | ---: |
+| TServer %  | 45% | 48% | 57% | 60% |
+| Master %   | 20% | 15% | 10% | 10% |
+| PostgreSQL % | 25% | 27% | 28% | 27% |
+| other %    | 10% | 10% |  5% |  3% |
+
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
+
+For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
+
+The defaults for [flags controlling memory division in a TServer](#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
+
+| flag | default |
+| :--- | :--- |
+| --db_block_cache_size_percentage | 32 |
+| --tablet_overhead_size_percentage | 10 |
+
+The default value of [--db_block_cache_size_percentage](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
+
+#### Flags controlling the split of memory among processes
+
+Note that in general these flags will have different values for TServer and Master processes.
+
+##### --memory_limit_hard_bytes
+
+Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
+
+Default: `0`
+
+##### --default_memory_limit_to_ram_ratio
+
+The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+
+Default: `0.85` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+
+
+#### Flags controlling the split of memory within a TServer
+
+##### --db_block_cache_size_bytes
+
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
+
+Default: `-1`
+
+##### --db_block_cache_size_percentage
+
+Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [--db_block_cache_size_bytes](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
+
+Default: `50` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+
+##### --tablet_overhead_size_percentage
+
+Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
+
+Each tablet replica generally requires 700 MiB of this memory.
+
+Default: `0` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+
+### Raft and consistency/timing flags
+
+With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, `--evict_failed_followers`), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
+
+##### --follower_unavailable_considered_failed_sec
+
+The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is re-replicated elsewhere.
+
+Default: `900` (15 minutes)
+
+The `--follower_unavailable_considered_failed_sec` value should match the value for [--log_min_seconds_to_retain](#log-min-seconds-to-retain).
+
+##### --evict_failed_followers
+
+Failed followers will be evicted from the Raft group and the data will be re-replicated.
+
+Default: `true`
+
+##### --leader_failure_max_missed_heartbeat_periods
+
+The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [--raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
+
+For read replica clusters, set the value to `10` in all yb-tserver and yb-master configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+
+Default: `6`
+
+##### --leader_lease_duration_ms
+
+The leader lease duration, in milliseconds. A leader keeps establishing a new lease or extending the existing one with every consensus update. A new server is not allowed to serve as a leader (that is, serve up-to-date read requests or acknowledge write requests) until a lease of this duration has definitely expired on the old leader's side, or the old leader has explicitly acknowledged the new leader's lease.
+
+This lease allows the leader to safely serve reads for the duration of its lease, even during a network partition. For more information, refer to [Leader leases](../../../architecture/transactions/single-row-transactions/#leader-leases-reading-the-latest-data-in-case-of-a-network-partition).
+
+Leader lease duration should be longer than the heartbeat interval, and less than the multiple of `--leader_failure_max_missed_heartbeat_periods` multiplied by `--raft_heartbeat_interval_ms`.
+
+Default: `2000`
+
+##### --max_stale_read_bound_time_ms
+
+Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+
+In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
+
+Default: `10000` (10 seconds)
+
+##### --raft_heartbeat_interval_ms
+
+The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
+
+Default: `500`
+
+### RocksDB and compaction/performance flags
+
+
+Use the following two flags to select the SSTable compression type:
+
+##### --enable_ondisk_compression
+
+Enable SSTable compression at the cluster level.
+
+Default: `true`
+
+##### --compression_type
+
+Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+
+Default: `Snappy`
+
+If you select an invalid option, the cluster will not come up.
+
+If you change this flag, the change takes effect after you restart the cluster nodes.
+
+Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
+
+##### --regular_tablets_data_block_key_value_encoding
+
+Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix`, `three_shared_parts`.
+
+Default: `shared_prefix`
+
+Only change this flag to `three_shared_parts` after you migrate the whole cluster to the YugabyteDB version that supports it.
+
+##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
+
+Used to control rate of memstore flush and SSTable file compaction.
+
+Default: `1GB` (1 GB/second)
+
+##### --rocksdb_universal_compaction_min_merge_width
+
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+
+Default: `4`
+
+##### --rocksdb_max_background_compactions
+
+Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
+
+Default: `-1`, where the value is calculated at runtime as follows:
+
+- For servers with up to 4 CPU cores, the default value is considered as `1`.
+- For servers with up to 8 CPU cores, the default value is considered as `2`.
+- For servers with up to 32 CPU cores, the default value is considered as `3`.
+- Beyond 32 cores, the default value is considered as `4`.
+
+##### --rocksdb_compaction_size_threshold_bytes
+
+Threshold beyond which a compaction is considered large.
+
+Default: `2GB`
+
+##### --rocksdb_level0_file_num_compaction_trigger
+
+Number of files to trigger level-0 compaction. Set to `-1` if compaction should not be triggered by number of files at all.
+
+Default: `5`.
+
+##### --rocksdb_universal_compaction_size_ratio
+
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+
+Default: `20`
+
+##### --timestamp_history_retention_interval_sec
+
+The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
+
+Default: `900` (15 minutes)
+
+##### --timestamp_syscatalog_history_retention_interval_sec
+
+The time interval, in seconds, to retain history/older versions of the system catalog.
+
+Default: `4 * 3600` (4 hours)
+
+##### --remote_bootstrap_rate_limit_bytes_per_sec
+
+Rate control across all tablets being remote bootstrapped from or to this process.
+
+Default: `256MB` (256 MB/second)
+
+##### --remote_bootstrap_from_leader_only
+
+Based on the value (`true`/`false`) of the flag, the leader decides whether to instruct the new peer to attempt bootstrap from a closest caught-up peer. The leader too could be the closest peer depending on the new peer's geographic placement. Setting the flag to false will enable the feature of remote bootstrapping from a closest caught-up peer. The number of bootstrap attempts from a non-leader peer is limited by the flag [max_remote_bootstrap_attempts_from_non_leader](#max-remote-bootstrap-attempts-from-non-leader).
+
+Default: `false`
+
+{{< note title="Note" >}}
+
+The code for the feature is present from version 2.16 and later, and can be enabled explicitly if needed. Starting from version 2.19, the feature is on by default.
+
+{{< /note >}}
+
+##### --max_remote_bootstrap_attempts_from_non_leader
+
+When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-only) is set to `false` (enabling the feature of bootstrapping from a closest peer), the number of attempts where the new peer tries to bootstrap from a non-leader peer is limited by the flag. After these failed bootstrap attempts for the new peer, the leader peer sets itself as the bootstrap source.
+
+Default: `5`
+
+##### --db_block_cache_num_shard_bits
+
+Number of bits to use for sharding the block cache. The maximum permissible value is 19.
+
+Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores, and so on.)
+
+{{< note title="Note" >}}
+
+Starting from version 2.18, the default is `-1`. Previously it was `4`.
+
+{{< /note >}}
+
+### Concurrency control flags
+
+To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
+
+##### --enable_wait_queues
+
+When set to true, enables in-memory wait queues, deadlock detection, and wait-on-conflict semantics in all YSQL traffic.
+
+Default: `true`
+
+##### --disable_deadlock_detection
+
+When set to true, disables deadlock detection. If `enable_wait_queues=false`, this flag has no effect as deadlock detection is not running anyways.
+
+Default: `false`
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in deadlocks that can't be resolved by YSQL. Use this flag only if the application layer can guarantee deadlock avoidance.
+{{< /warning >}}
+
+##### --wait_queue_poll_interval_ms
+
+If `enable_wait_queues=true`, this controls the rate at which each tablet's wait queue polls transaction coordinators for the status of transactions which are blocking contentious resources.
+
+Default: `100`
+
+### DDL concurrency flags
+
+##### ysql_enable_db_catalog_version_mode
+
+Enable the per database catalog version mode. A DDL statement that
+affects the current database can only increment catalog version for
+that database.
+
+Default: `true`
+
+{{< note title="Important" >}}
+
+In earlier releases, after a DDL statement is executed, if the DDL statement increments the catalog version, then all the existing connections need to refresh catalog caches before
+they execute the next statement. However, when per database catalog version mode is
+enabled, multiple DDL statements can be concurrently executed if each DDL only
+affects its current database and is executed in a separate database. Existing
+connections only need to refresh their catalog caches if they are connected to
+the same database as that of a DDL statement. It is recommended to keep the default value of this flag because per database catalog version mode helps to avoid unnecessary cross-database catalog cache refresh which is considered as an expensive operation.
+
+{{< /note >}}
+
+If you encounter any issues caused by per-database catalog version mode, you can disable per database catalog version mode using the following steps:
+
+1. Shut down the cluster.
+
+1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
+
+1. Execute the following YSQL statements:
+
+    ```sql
+    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
+    SELECT yb_fix_catalog_version_table(false);
+    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
+    ```
+
+To re-enable the per database catalog version mode using the following steps:
+
+1. Execute the following YSQL statements:
+
+    ```sql
+    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
+    SELECT yb_fix_catalog_version_table(true);
+    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
+    ```
+
+1. Shut down the cluster.
+1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
+
+##### enable_heartbeat_pg_catalog_versions_cache
+
+Whether to enable the use of heartbeat catalog versions cache for the
+`pg_yb_catalog_version` table which can help to reduce the number of reads
+from the table. This is beneficial when there are many databases and/or
+many yb-tservers in the cluster.
+
+Note that `enable_heartbeat_pg_catalog_versions_cache` is only used when [ysql_enable_db_catalog_version_mode](#ysql-enable-db-catalog-version-mode) is true.
+
+Default: `false`
+
+{{< note title="Important" >}}
+
+Each YB-TServer regularly sends a heartbeat request to the YB-Master
+leader. As part of the heartbeat response, YB-Master leader reads all the rows
+in the table `pg_yb_catalog_version` and sends the result back in the heartbeat
+response. As there is one row in the table `pg_yb_catalog_version` for each
+database, the cost of reading `table pg_yb_catalog_version` becomes more
+expensive when the number of YB-TServers, or the number of databases goes up.
+
+{{< /note >}}
+
+### Advisory lock flags
+
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+
+To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+
+##### --ysql_yb_enable_advisory_locks
+
+Enables advisory locking.
+
+This value must match on all YB-Master and YB-TServer configurations of a YugabyteDB cluster.
+
+Default: false
+
+##### --num_advisory_locks_tablets
+
+Number of tablets used for the advisory locks table. It must be set before ysql_yb_enable_advisory_locks is set to true on the cluster.
+
+Default: 1
+
+### Other performance tuning options
+
+
+##### --allowed_preview_flags_csv
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning>}}
+Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
+
+##### backfill_index_client_rpc_timeout_ms
+
+Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
+
+Default: 86400000 (1 day)
+
+##### backfill_index_timeout_grace_margin_ms
+
+The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
+
+Default: -1, where the system automatically calculates the value to be approximately 1 second.
+
+##### backfill_index_write_batch_size
+
+The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
+
+Default: 128
+
+## Security
+
+### Security flags for encryption and certificates
+
+For details on enabling encryption in transit, see [Encryption in transit](../../../secure/tls-encryption/).
+
+##### --certs_dir
+
+Directory that contains certificate authority, private key, and certificates for this server.
+
+Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
+
+##### --certs_for_client_dir
+
+The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
+
+Default: `""` (Use the same directory as certs_dir.)
+
+##### --allow_insecure_connections
+
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
+
+Default: `true`
+
+##### --dump_certificate_entries
+
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enable this flag to debug certificate issues.
+
+Default: `false`
+
+##### --use_client_to_server_encryption
+
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
+
+Default: `false`
+
+##### --use_node_to_node_encryption
+
+Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled.
+
+When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
+
+Default: `false`
+
+##### --cipher_list
+
+Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
+```
+
+This allows all ciphers for TLS 1.2 to be accepted, except those matching the category of ciphers omitted.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
+##### --ciphersuite
+
+Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
+
+Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--ciphersuite DEFAULTS:!CHACHA20
+```
+
+This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
+##### --ssl_protocols
+
+Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
+
+Default: An empty string, which is equivalent to allowing all protocols except "ssl2" and "ssl3".
+
+You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
+
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tls12 as follows:
+
+```sh
+--ssl_protocols = tls12
+```
+
+To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set to tls12, tls13, and all available subsequent versions.
+
+```sh
+--ssl_protocols = tls12,tls13
+```
+
+By default, PostgreSQL uses a default minimum version for TLS of v1.2, as set using the [ssl_min_protocol_version](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION) configuration parameter.
+
+As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify a different minimum TLS version for Master and TServer, you should update the `ssl_min_protocol_version` parameter. For example:
+
+```sh
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.3'"
+```
+
+### Authentication and authorization flags
 
 ### YSQL
 
@@ -950,966 +1939,6 @@ Set this flag to `true` to enable a superuser to reset a password.
 Default: `false`
 
 Note that to enable the password reset feature, you must first set the [`use_cassandra_authentication`](#use-cassandra-authentication) flag to false.
-
-## Performance flags
-
-Use the following two flags to select the SSTable compression type:
-
-##### --enable_ondisk_compression
-
-Enable SSTable compression at the cluster level.
-
-Default: `true`
-
-##### --compression_type
-
-Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
-
-Default: `Snappy`
-
-If you select an invalid option, the cluster will not come up.
-
-If you change this flag, the change takes effect after you restart the cluster nodes.
-
-Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
-
-##### --regular_tablets_data_block_key_value_encoding
-
-Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix`, `three_shared_parts`.
-
-Default: `shared_prefix`
-
-Only change this flag to `three_shared_parts` after you migrate the whole cluster to the YugabyteDB version that supports it.
-
-##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
-
-Used to control rate of memstore flush and SSTable file compaction.
-
-Default: `1GB` (1 GB/second)
-
-##### --rocksdb_universal_compaction_min_merge_width
-
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
-
-Default: `4`
-
-##### --rocksdb_max_background_compactions
-
-Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
-
-Default: `-1`, where the value is calculated at runtime as follows:
-
-- For servers with up to 4 CPU cores, the default value is considered as `1`.
-- For servers with up to 8 CPU cores, the default value is considered as `2`.
-- For servers with up to 32 CPU cores, the default value is considered as `3`.
-- Beyond 32 cores, the default value is considered as `4`.
-
-##### --rocksdb_compaction_size_threshold_bytes
-
-Threshold beyond which a compaction is considered large.
-
-Default: `2GB`
-
-##### --rocksdb_level0_file_num_compaction_trigger
-
-Number of files to trigger level-0 compaction. Set to `-1` if compaction should not be triggered by number of files at all.
-
-Default: `5`.
-
-##### --rocksdb_universal_compaction_size_ratio
-
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
-
-Default: `20`
-
-##### --timestamp_history_retention_interval_sec
-
-The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
-
-Default: `900` (15 minutes)
-
-##### --timestamp_syscatalog_history_retention_interval_sec
-
-The time interval, in seconds, to retain history/older versions of the system catalog.
-
-Default: `4 * 3600` (4 hours)
-
-##### --remote_bootstrap_rate_limit_bytes_per_sec
-
-Rate control across all tablets being remote bootstrapped from or to this process.
-
-Default: `256MB` (256 MB/second)
-
-##### --remote_bootstrap_from_leader_only
-
-Based on the value (`true`/`false`) of the flag, the leader decides whether to instruct the new peer to attempt bootstrap from a closest caught-up peer. The leader too could be the closest peer depending on the new peer's geographic placement. Setting the flag to false will enable the feature of remote bootstrapping from a closest caught-up peer. The number of bootstrap attempts from a non-leader peer is limited by the flag [max_remote_bootstrap_attempts_from_non_leader](#max-remote-bootstrap-attempts-from-non-leader).
-
-Default: `false`
-
-{{< note title="Note" >}}
-
-The code for the feature is present from version 2.16 and later, and can be enabled explicitly if needed. Starting from version 2.19, the feature is on by default.
-
-{{< /note >}}
-
-##### --max_remote_bootstrap_attempts_from_non_leader
-
-When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-only) is set to `false` (enabling the feature of bootstrapping from a closest peer), the number of attempts where the new peer tries to bootstrap from a non-leader peer is limited by the flag. After these failed bootstrap attempts for the new peer, the leader peer sets itself as the bootstrap source.
-
-Default: `5`
-
-##### --db_block_cache_num_shard_bits
-
-Number of bits to use for sharding the block cache. The maximum permissible value is 19.
-
-Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores, and so on.)
-
-{{< note title="Note" >}}
-
-Starting from version 2.18, the default is `-1`. Previously it was `4`.
-
-{{< /note >}}
-
-## Network compression flags
-
-Use the following two flags to configure RPC compression:
-
-##### --enable_stream_compression
-
-Controls whether YugabyteDB uses RPC compression.
-
-Default: `true`
-
-##### --stream_compression_algo
-
-Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
-
-0: No compression (default value)
-
-1: Gzip
-
-2: Snappy
-
-3: LZ4
-
-In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead. However, the default is set to 0, to avoid latency penalty on workloads.
-
-## Security flags
-
-For details on enabling encryption in transit, see [Encryption in transit](../../../secure/tls-encryption/).
-
-##### --certs_dir
-
-Directory that contains certificate authority, private key, and certificates for this server.
-
-Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
-
-##### --certs_for_client_dir
-
-The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
-
-Default: `""` (Use the same directory as certs_dir.)
-
-##### --allow_insecure_connections
-
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
-
-Default: `true`
-
-##### --dump_certificate_entries
-
-Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enable this flag to debug certificate issues.
-
-Default: `false`
-
-##### --use_client_to_server_encryption
-
-Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
-
-Default: `false`
-
-##### --use_node_to_node_encryption
-
-Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled.
-
-When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
-
-Default: `false`
-
-##### --cipher_list
-
-Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
-
-```sh
---cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
-```
-
-This allows all ciphers for TLS 1.2 to be accepted, except those matching the category of ciphers omitted.
-
-This flag requires a restart or rolling restart.
-
-Default: `DEFAULTS`
-
-For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
-
-##### --ciphersuite
-
-Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
-
-Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
-
-```sh
---ciphersuite DEFAULTS:!CHACHA20
-```
-
-This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers.
-
-This flag requires a restart or rolling restart.
-
-Default: `DEFAULTS`
-
-For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
-
-##### --ssl_protocols
-
-Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
-
-Default: An empty string, which is equivalent to allowing all protocols except "ssl2" and "ssl3".
-
-You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
-
-You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tls12 as follows:
-
-```sh
---ssl_protocols = tls12
-```
-
-To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set to tls12, tls13, and all available subsequent versions.
-
-```sh
---ssl_protocols = tls12,tls13
-```
-
-By default, PostgreSQL uses a default minimum version for TLS of v1.2, as set using the [ssl_min_protocol_version](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION) configuration parameter.
-
-As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify a different minimum TLS version for Master and TServer, you should update the `ssl_min_protocol_version` parameter. For example:
-
-```sh
---ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.3'"
-```
-
-## Packed row flags
-
-The packed row format for the YSQL API is {{<tags/feature/ga>}} as of v2.20.0, and for the YCQL API is {{<tags/feature/tp>}}.
-
-To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
-
-##### --ysql_enable_packed_row
-
-Whether packed row is enabled for YSQL.
-
-Default: `true`
-
-Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
-
-##### --ysql_enable_packed_row_for_colocated_table
-
-Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
-
-Default: `false`
-
-##### --ysql_packed_row_size_limit
-
-Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
-
-Default: `0`
-
-##### --ycql_enable_packed_row
-
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
-
-Whether packed row is enabled for YCQL.
-
-Default: `false`
-
-##### --ycql_packed_row_size_limit
-
-Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
-
-Default: `0`
-
-## Change data capture (CDC) flags
-
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
-
-##### --yb_enable_cdc_consistent_snapshot_streams
-
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
-
-Enable support for creating streams for transactional CDC.
-
-Default: `false`
-
-##### --cdc_state_checkpoint_update_interval_ms
-
-The rate at which CDC state's checkpoint is updated.
-
-Default: `15000`
-
-##### --cdc_ybclient_reactor_threads
-
-The number of reactor threads to be used for processing `ybclient` requests for CDC. Increase to improve throughput on large tablet setups.
-
-Default: `50`
-
-##### --cdc_max_stream_intent_records
-
-Maximum number of intent records allowed in a single CDC batch.
-
-Default: `1000`
-
-##### --cdc_snapshot_batch_size
-
-Number of records fetched in a single batch of snapshot operation of CDC.
-
-Default: `250`
-
-##### --cdc_min_replicated_index_considered_stale_secs
-
-If `cdc_min_replicated_index` hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
-
-Default: `900` (15 minutes)
-
-##### --timestamp_history_retention_interval_sec
-
-Time interval (in seconds) to retain history or older versions of data.
-
-Default: `900` (15 minutes)
-
-##### --update_min_cdc_indices_interval_secs
-
-How often to read the `cdc_state` table to get the minimum applied index for each tablet across all streams. This information is used to correctly keep log files that contain unapplied entries. This is also the rate at which a tablet's minimum replicated index across all streams is sent to the other peers in the configuration. If flag `enable_log_retention_by_op_idx` (default: `true`) is disabled, this flag has no effect.
-
-Default: `60`
-
-##### --cdc_checkpoint_opid_interval_ms
-
-The number of seconds for which the client can go down and the intents will be retained. This means that if a client has not updated the checkpoint for this interval, the intents would be garbage collected.
-
-Default: `60000`
-
-{{< warning title="Warning" >}}
-
-If you are using multiple streams, it is advised that you set this flag to `1800000` (30 minutes).
-
-{{< /warning >}}
-
-##### --log_max_seconds_to_retain
-
-Number of seconds to retain log files. Log files older than this value will be deleted even if they contain unreplicated CDC entries. If 0, this flag will be ignored. This flag is ignored if a log segment contains entries that haven't been flushed to RocksDB.
-
-Default: `86400`
-
-##### --log_stop_retaining_min_disk_mb
-
-Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
-
-Default: `102400`
-
-##### --cdc_intent_retention_ms
-
-The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
-
-Default: `28800000` (8 hours)
-
-##### --cdc_wal_retention_time_secs
-
-WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
-
-Default: `28800` (8 hours)
-
-##### --cdcsdk_table_processing_limit_per_run
-
-Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
-
-Default: `2`
-
-The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
-
-##### --ysql_yb_default_replica_identity
-
-The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
-
-Default: `CHANGE`
-
-##### --cdcsdk_enable_dynamic_table_support
-
-Tables created after the creation of a replication slot are referred as Dynamic tables. This flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
-
-Default: `true`
-
-##### --cdcsdk_publication_list_refresh_interval_secs
-
-Interval in seconds at which the table list in the publication will be refreshed.
-
-Default: `900`
-
-##### --cdc_stream_records_threshold_size_bytes
-
-Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
-
-Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
-
-Default: `4194304` (4MB)
-
-##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
-
-Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
-
-Default: `1 MB`
-
-##### --ysql_cdc_active_replication_slot_window_ms
-
-Determines the window in milliseconds in which if a client has consumed the changes of a ReplicationSlot across any tablet, then it is considered to be actively used. ReplicationSlots which haven't been used in this interval are considered to be inactive.
-
-Default: `60000`
-
-##### --cdc_send_null_before_image_if_not_exists
-
-When true, the CDC service returns a null before-image if it is not able to find one.
-
-Default: `false`
-
-##### --cdcsdk_tablet_not_of_interest_timeout_secs
-
-Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
-
-Default: `14400` (4 hours)
-
-## File expiration based on TTL flags
-
-##### --tablet_enable_ttl_file_filter
-
-Turn on the file expiration for TTL feature.
-
-Default: `false`
-
-##### --rocksdb_max_file_size_for_compaction
-
-For tables with a `default_time_to_live` table property, sets a size threshold at which files will no longer be considered for compaction. Files over this threshold will still be considered for expiration. Disabled if value is `0`.
-
-Ideally, `rocksdb_max_file_size_for_compaction` should strike a balance between expiring data at a reasonable frequency and not creating too many SST files (which can impact read performance). For instance, if 90 days worth of data is stored, consider setting this flag to roughly the size of one day's worth of data.
-
-If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluster and then it needs to be increased, then it is highly likely that all the existing files on the tablets will become eligible for background compactions and a lot of compaction activity will occur in the system. This can lead to system instability if the concurrent user activity in the system is high. If TTL flags need to be tuned in order to accomodate increased usage on the table, it is better to consider splitting the tablet or increasing the `sst_files_soft_limit` and `sst_files_hard_limit` instead.
-
-Default: `0`
-
-##### --sst_files_soft_limit
-
-Threshold for number of SST files per tablet. When exceeded, writes to a tablet will be throttled until the number of files is reduced.
-
-Default: `24`
-
-##### --sst_files_hard_limit
-
-Threshold for number of SST files per tablet. When exceeded, writes to a tablet will no longer be allowed until the number of files is reduced.
-
-Default: `48`
-
-##### --file_expiration_ignore_value_ttl
-
-When set to true, ignores any value-level TTL metadata when determining file expiration. Helpful in situations where some SST files are missing the necessary value-level metadata (in case of upgrade, for instance).
-
-Default: `false`
-
-{{< warning title="Warning">}}
-Use of this flag can potentially result in expiration of live data. Use at your discretion.
-{{< /warning >}}
-
-##### --file_expiration_value_ttl_overrides_table_ttl
-
-When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is helpful for situations where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used.
-
-Default: `false`
-
-{{< warning title="Warning">}}
-Use of this flag can potentially result in expiration of live data. Use at your discretion.
-{{< /warning >}}
-
-## Concurrency control flags
-
-To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
-
-##### --enable_wait_queues
-
-When set to true, enables in-memory wait queues, deadlock detection, and wait-on-conflict semantics in all YSQL traffic.
-
-Default: `true`
-
-##### --disable_deadlock_detection
-
-When set to true, disables deadlock detection. If `enable_wait_queues=false`, this flag has no effect as deadlock detection is not running anyways.
-
-Default: `false`
-
-{{< warning title="Warning">}}
-Use of this flag can potentially result in deadlocks that can't be resolved by YSQL. Use this flag only if the application layer can guarantee deadlock avoidance.
-{{< /warning >}}
-
-##### --wait_queue_poll_interval_ms
-
-If `enable_wait_queues=true`, this controls the rate at which each tablet's wait queue polls transaction coordinators for the status of transactions which are blocking contentious resources.
-
-Default: `100`
-
-## Metric export flags
-
-YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
-
-##### --export_help_and_type_in_prometheus_metrics
-
-This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
-
-To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
-
-Default: `true`
-
-##### --max_prometheus_metric_entries
-
-Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
-
-To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
-
-Default: `UINT32_MAX`
-
-## Catalog flags
-
-Catalog flags are {{<tags/feature/ea>}}.
-
-##### ysql_catalog_preload_additional_table_list
-
-Specifies the names of catalog tables (such as `pg_operator`, `pg_proc`, and `pg_amop`) to be preloaded by PostgreSQL backend processes. This flag reduces latency of first query execution of a particular statement on a connection.
-
-Default: `""`
-
-If [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tables) is also specified, the union of the above specified catalog tables and `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` is preloaded.
-
-##### ysql_catalog_preload_additional_tables
-
-When enabled, the PostgreSQL backend processes preload the `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` catalog tables. This flag reduces latency of first query execution of a particular statement on a connection.
-
-Default: `false`
-
-If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional-table-list) is also specified, the union of `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` and the tables specified in `ysql_catalog_preload_additional_table_list` is preloaded.
-
-##### ysql_enable_read_request_caching
-
-Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
-
-Default: `true`
-
-##### ysql_minimal_catalog_caches_preload
-
-Defines what part of the catalog gets cached and preloaded by default. As a rule of thumb, preloading more means lower first-query latency (as most/all necessary metadata will already be in the cache) at a cost of higher per-connection memory. Preloading less of the catalog means less memory though can result in a higher mean first-query latency (as we may need to ad-hoc lookup more catalog entries first time we execute a query). This flag only loads the system catalog tables (but not the user objects) which should keep memory low, while loading all often used objects. Still user-object will need to be loaded ad-hoc, which can make first-query latency a bit higher (most impactful in multi-region clusters).
-
-Default: `false`
-
-##### ysql_use_relcache_file
-
-Controls whether to use the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only this minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduces first query latency.
-
-Default: `true`
-
-##### ysql_yb_toast_catcache_threshold
-
-Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
-
-To minimize performance impact when enabling this flag, set it to 2KB or higher.
-
-Default: -1 (disabled). Minimum: 128 bytes.
-
-## DDL concurrency flags
-
-##### ysql_enable_db_catalog_version_mode
-
-Enable the per database catalog version mode. A DDL statement that
-affects the current database can only increment catalog version for
-that database.
-
-Default: `true`
-
-{{< note title="Important" >}}
-
-In earlier releases, after a DDL statement is executed, if the DDL statement increments the catalog version, then all the existing connections need to refresh catalog caches before
-they execute the next statement. However, when per database catalog version mode is
-enabled, multiple DDL statements can be concurrently executed if each DDL only
-affects its current database and is executed in a separate database. Existing
-connections only need to refresh their catalog caches if they are connected to
-the same database as that of a DDL statement. It is recommended to keep the default value of this flag because per database catalog version mode helps to avoid unnecessary cross-database catalog cache refresh which is considered as an expensive operation.
-
-{{< /note >}}
-
-If you encounter any issues caused by per-database catalog version mode, you can disable per database catalog version mode using the following steps:
-
-1. Shut down the cluster.
-
-1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
-
-1. Execute the following YSQL statements:
-
-    ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(false);
-    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
-    ```
-
-To re-enable the per database catalog version mode using the following steps:
-
-1. Execute the following YSQL statements:
-
-    ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(true);
-    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
-    ```
-
-1. Shut down the cluster.
-1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
-
-##### enable_heartbeat_pg_catalog_versions_cache
-
-Whether to enable the use of heartbeat catalog versions cache for the
-`pg_yb_catalog_version` table which can help to reduce the number of reads
-from the table. This is beneficial when there are many databases and/or
-many yb-tservers in the cluster.
-
-Note that `enable_heartbeat_pg_catalog_versions_cache` is only used when [ysql_enable_db_catalog_version_mode](#ysql-enable-db-catalog-version-mode) is true.
-
-Default: `false`
-
-{{< note title="Important" >}}
-
-Each YB-TServer regularly sends a heartbeat request to the YB-Master
-leader. As part of the heartbeat response, YB-Master leader reads all the rows
-in the table `pg_yb_catalog_version` and sends the result back in the heartbeat
-response. As there is one row in the table `pg_yb_catalog_version` for each
-database, the cost of reading `table pg_yb_catalog_version` becomes more
-expensive when the number of YB-TServers, or the number of databases goes up.
-
-{{< /note >}}
-
-## DDL atomicity flags
-
-##### ysql_yb_ddl_rollback_enabled
-
-Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will roll back the changes made to the DocDB system catalog.
-
-Default: true
-
-{{< note title="Important" >}}
-In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table (for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
-
-Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes automatically to prevent metadata corruption.
-{{< /note >}}
-
-##### report_ysql_ddl_txn_status_to_master
-
-If set, at the end of a DDL operation the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
-
-Default: true
-
-{{< note title="Important" >}}
-Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.
-
-This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
-{{< /note >}}
-
-##### ysql_ddl_transaction_wait_for_ddl_verification
-
-If set, DDL transactions will wait for DDL verification to complete before returning to the client.
-
-Default: true
-
-{{< note title="Important" >}}
-After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.
-
-When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
-{{< /note >}}
-
-## Advisory lock flags
-
-Support for advisory locks is {{<tags/feature/tp idea="812">}}.
-
-To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
-
-##### --ysql_yb_enable_advisory_locks
-
-Enables advisory locking.
-
-This value must match on all YB-Master and YB-TServer configurations of a YugabyteDB cluster.
-
-Default: false
-
-##### --num_advisory_locks_tablets
-
-Number of tablets used for the advisory locks table. It must be set before ysql_yb_enable_advisory_locks is set to true on the cluster.
-
-Default: 1
-
-## Advanced flags
-
-##### --allowed_preview_flags_csv
-
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
-
-By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
-
-{{<warning>}}
-Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
-{{</warning>}}
-
-##### backfill_index_client_rpc_timeout_ms
-
-Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
-
-Default: 86400000 (1 day)
-
-##### backfill_index_timeout_grace_margin_ms
-
-The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
-
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
-
-##### backfill_index_write_batch_size
-
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
-
-Default: 128
-
-## PostgreSQL server options
-
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
-
-### Modify configuration parameters
-
-You can modify these parameters in the following ways:
-
-- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
-
-- Set the option per-database:
-
-    ```sql
-    ALTER DATABASE database_name SET temp_file_limit=-1;
-    ```
-
-- Set the option per-role:
-
-    ```sql
-    ALTER ROLE yugabyte SET temp_file_limit=-1;
-    ```
-
-    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
-
-- Set the option for the current session:
-
-    ```sql
-    SET temp_file_limit=-1;
-    --- alternative way
-    SET SESSION temp_file_limit=-1;
-    ```
-
-    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
-
-    If the surrounding transaction commits, the effects will persist for the whole session.
-
-- Set the option for the current transaction:
-
-    ```sql
-    SET LOCAL temp_file_limit=-1;
-    ```
-
-- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
-
-    ```sql
-    --- To change the minimum transaction age to 5 seconds:
-    SET session yb_locks_min_txn_age = 5000;
-    ```
-
-- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
-
-    ```sql
-    --- To change the maximum number of transactions to display to 10:
-    SET session yb_locks_max_transactions = 10;
-    ```
-
-For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
-
-### YSQL configuration parameters
-
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
-
-##### log_line_prefix
-
-YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
-
-- %C = cloud name
-- %R = region / data center name
-- %Z = availability zone / rack name
-- %U = cluster UUID
-- %N = node and cluster name
-- %H = current hostname
-
-For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
-
-##### suppress_nonpg_logs (boolean)
-
-When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
-
-Default: `off`
-
-##### temp_file_limit
-
-Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
-
-Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
-
-You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
-
-Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
-
-Default: `1GB`
-
-##### enable_bitmapscan
-
-PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
-
-Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with `AND` or `OR` operators to create a final bitmap that is used to collect rows from the main table.
-
-Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
-
-Bitmap scans are only supported for LSM indexes.
-
-Default: true
-
-##### yb_enable_bitmapscan
-
-{{<tags/feature/tp>}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
-
-| enable_bitmapscan | yb_enable_bitmapscan | Result |
-| :--- | :---  | :--- |
-| true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
-| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
-| false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
-| false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
-
-Default: false
-
-##### yb_bnl_batch_size
-
-Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
-
-Default: 1024
-
-##### yb_enable_batchednl
-
-Enable or disable the query planner's use of batched nested loop join.
-
-Default: true
-
-##### yb_enable_base_scans_cost_model
-
-{{<tags/feature/ea idea="483">}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
-
-When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
-
-Default: false
-
-##### yb_enable_optimizer_statistics
-
-{{<tags/feature/tp>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
-
-Default: false
-
-##### yb_fetch_size_limit
-
-{{<tags/feature/tp>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
-
-If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
-
-See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If the flag is set, this parameter takes precedence.
-
-Default: 0
-
-##### yb_fetch_row_limit
-
-{{<tags/feature/tp>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
-
-See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
-
-Default: 1024
-
-##### yb_use_hash_splitting_by_default
-
-{{<tags/feature/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
-
-Default: true
-
-##### yb_insert_on_conflict_read_batch_size
-
-{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
-
-- temporary relations
-- foreign relations
-- system relations
-- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
-
-The higher the number, the more batching is done. 1024 is recommended.
-
-Default: 0 (disabled)
-
-##### yb_read_from_followers
-
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
-
-Default: false
-
-##### yb_follower_read_staleness_ms
-
-Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
-
-Default: 30000 (30 seconds)
-
-##### default_transaction_read_only
-
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
-
-Default: false
-
-##### default_transaction_isolation
-
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
-
-See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
-
-Default: `read committed`
-
-##### yb_skip_redundant_update_ops
-
-Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
-
-This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
-
-Default: true
-
-##### yb_read_time
-
-Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
-
-To reset the session to normal behavior (current time), set `yb_read_time` to 0.
-
-Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
-
-Default: 0
 
 ## Admin UI
 
