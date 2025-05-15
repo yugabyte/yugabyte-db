@@ -1330,10 +1330,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 40000;
 
 -- Query Hash: 34415093794c0bee911d97722bd3b015
 EXPLAIN (COSTS OFF) SELECT * FROM t_range_100k where v1 > 50000;
-                QUERY PLAN                 
--------------------------------------------
- Index Scan using tr100kv1 on t_range_100k
-   Index Cond: (v1 > 50000)
+           QUERY PLAN           
+--------------------------------
+ Seq Scan on t_range_100k
+   Storage Filter: (v1 > 50000)
 (2 rows)
 
 -- Query Hash: ac57ffed7f517fe626541e9377a9fb1d
