@@ -59,6 +59,8 @@ class MiniClusterBase {
 
   virtual std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const = 0;
 
+  virtual rpc::ProxyCache& proxy_cache() = 0;
+
  protected:
   virtual ~MiniClusterBase() = default;
 

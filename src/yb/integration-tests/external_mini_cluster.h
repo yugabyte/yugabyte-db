@@ -404,9 +404,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return the client messenger used by the ExternalMiniCluster.
   rpc::Messenger* messenger();
 
-  rpc::ProxyCache& proxy_cache() {
-    return *proxy_cache_;
-  }
+  rpc::ProxyCache& proxy_cache() override { return *proxy_cache_; }
 
   // Get the master leader consensus proxy.
   consensus::ConsensusServiceProxy GetLeaderConsensusProxy();
@@ -467,7 +465,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<size_t> GetSegmentCounts(ExternalTabletServer* ts);
 
   Result<tserver::GetTabletStatusResponsePB> GetTabletStatus(
-      const ExternalTabletServer& ts, const yb::TabletId& tablet_id);
+      const ExternalTabletServer& ts, const TabletId& tablet_id);
+
+  Result<tserver::CheckTserverTabletHealthResponsePB> GetTabletPeerHealth(
+      const ExternalTabletServer& ts, const std::vector<TabletId>& tablet_ids);
 
   Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const yb::TabletId& tablet_id);
   Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const ExternalTabletServer& ts,

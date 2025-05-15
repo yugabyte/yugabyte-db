@@ -748,14 +748,16 @@ string RaftConsensus::ServersInTransitionMessage() {
   const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
   auto servers_in_transition = CountServersInTransition(active_config);
   auto committed_servers_in_transition = CountServersInTransition(committed_config);
-  LOG(INFO) << Substitute("Active config has $0 and committed has $1 servers in transition.",
-                          servers_in_transition, committed_servers_in_transition);
+  LOG_WITH_PREFIX(INFO) << Format(
+      "Active config has $0 and committed has $1 servers in transition.", servers_in_transition,
+      committed_servers_in_transition);
   if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
-    err_msg = Substitute("Leader not ready to step down as there are $0 active config peers"
-                         " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
-                         servers_in_transition, committed_servers_in_transition,
-                         active_config.ShortDebugString(), committed_config.ShortDebugString());
-    LOG(INFO) << err_msg;
+    err_msg = Format(
+        "Leader not ready to step down as there are $0 active config peers"
+        " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
+        servers_in_transition, committed_servers_in_transition, active_config.ShortDebugString(),
+        committed_config.ShortDebugString());
+    LOG_WITH_PREFIX(INFO) << err_msg;
   }
   return err_msg;
 }
@@ -2452,18 +2454,23 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
   //    committed at least one operation in our current term as leader.
   //    See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
   // 2. Ensure there is no other pending change config.
+  // 3. Ensure there is no pending split operation (unless we are just changing role, not
+  //    adding/removing Raft members). See https://github.com/yugabyte/yugabyte-db/issues/26644.
   if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
-      state_->IsConfigChangePendingUnlocked()) {
-    return STATUS_FORMAT(IllegalState,
-                         "Leader is not ready for Config Change, can try again. "
-                         "Type: $0. Has opid: $1. Committed config: $2. "
-                         "Pending config: $3. Current term: $4. Committed op id: $5.",
-                         ChangeConfigType_Name(type),
-                         active_config.has_opid_index(),
-                         state_->GetCommittedConfigUnlocked().ShortDebugString(),
-                         state_->IsConfigChangePendingUnlocked() ?
-                             state_->GetPendingConfigUnlocked().ShortDebugString() : "",
-                         state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked());
+      state_->IsConfigChangePendingUnlocked() ||
+      (type != CHANGE_ROLE && !state_->GetPendingSplitOpIdUnlocked().empty())) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Leader is not ready for Config Change, can try again. "
+        "Type: $0. Has opid: $1. Committed config: $2. "
+        "Pending config: $3. Current term: $4. Committed op id: $5. Pending split op id: $6",
+        ChangeConfigType_Name(type), active_config.has_opid_index(),
+        state_->GetCommittedConfigUnlocked().ShortDebugString(),
+        state_->IsConfigChangePendingUnlocked()
+            ? state_->GetPendingConfigUnlocked().ShortDebugString()
+            : "",
+        state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked(),
+        state_->GetPendingSplitOpIdUnlocked());
   }
   // For sys catalog tablet, additionally ensure that there are no servers currently in transition.
   // If not, it could lead to data loss.
@@ -3563,7 +3570,7 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
 
     // Clear out the pending state (ENG-590).
     if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {
-      WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending state");
+      WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending config");
     }
   } else if (IsChangeConfigOperation(op_type)) {
     // Notify the TabletPeer owner object.

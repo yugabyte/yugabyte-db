@@ -1612,21 +1612,58 @@ Result<std::vector<ListTabletsForTabletServerResponsePB::Entry>> ExternalMiniClu
   return result;
 }
 
-Result<tserver::GetTabletStatusResponsePB> ExternalMiniCluster::GetTabletStatus(
-      const ExternalTabletServer& ts, const yb::TabletId& tablet_id) {
+namespace {
+
+rpc::RpcController DefaultRpcController() {
   rpc::RpcController rpc;
   rpc.set_timeout(kDefaultTimeout);
+  return rpc;
+}
+
+Status StatusFromError(const TabletServerErrorPB& error) {
+  return StatusFromPB(error.status())
+      .CloneAndPrepend(Format("Code $0", TabletServerErrorPB::Code_Name(error.code())));
+}
+
+template<typename Response>
+concept HasTabletServerError = requires(Response response) {
+  { response.error() } -> std::convertible_to<TabletServerErrorPB>;
+};
+
+template <HasTabletServerError Response>
+Result<Response> CheckedResponse(const Response& response) {
+  if (response.has_error()) {
+    return StatusFromError(response.error());
+  }
+  return response;
+}
+
+} // namespace
+
+Result<tserver::GetTabletStatusResponsePB> ExternalMiniCluster::GetTabletStatus(
+      const ExternalTabletServer& ts, const yb::TabletId& tablet_id) {
+  auto rpc = DefaultRpcController();
 
   tserver::GetTabletStatusRequestPB req;
   req.set_tablet_id(tablet_id);
 
   tserver::GetTabletStatusResponsePB resp;
   RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).GetTabletStatus(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status()).CloneAndPrepend(
-        Format("Code $0", TabletServerErrorPB::Code_Name(resp.error().code())));
+  return CheckedResponse(resp);
   }
-  return resp;
+
+Result<tserver::CheckTserverTabletHealthResponsePB> ExternalMiniCluster::GetTabletPeerHealth(
+    const ExternalTabletServer& ts, const std::vector<TabletId>& tablet_ids) {
+  auto rpc = DefaultRpcController();
+
+  tserver::CheckTserverTabletHealthRequestPB req;
+  for (const auto& tablet_id : tablet_ids) {
+    *req.mutable_tablet_ids()->Add() = tablet_id;
+  }
+
+  tserver::CheckTserverTabletHealthResponsePB resp;
+  RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).CheckTserverTabletHealth(req, &resp, &rpc));
+  return CheckedResponse(resp);
 }
 
 Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
@@ -1644,8 +1681,7 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
     // There's a small chance that a leader is changed after GetTabletLeaderIndex() and before
     // GetSplitKey() is started, in this case we should re-attempt.
     if (response.error().code() != TabletServerErrorPB::NOT_THE_LEADER) {
-      return StatusFromPB(response.error().status()).CloneAndPrepend(
-          Format("Code $0", TabletServerErrorPB::Code_Name(response.error().code())));
+      return StatusFromError(response.error());
     }
 
     LOG(WARNING) << Format(
@@ -1666,8 +1702,7 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
   tserver::GetSplitKeyResponsePB resp;
   RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).GetSplitKey(req, &resp, &rpc));
   if (fail_on_response_error && resp.has_error()) {
-    return StatusFromPB(resp.error().status()).CloneAndPrepend(
-        Format("Code $0", TabletServerErrorPB::Code_Name(resp.error().code())));
+    return StatusFromError(resp.error());
   }
   return resp;
 }
@@ -2023,9 +2058,7 @@ Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
   rpc.set_timeout(opts_.timeout);
   RETURN_NOT_OK(master_proxy->RunLeaderElection(req, &resp, &rpc));
   if (resp.has_error()) {
-    return StatusFromPB(resp.error().status())
-               .CloneAndPrepend(Format("Code $0",
-                                           TabletServerErrorPB::Code_Name(resp.error().code())));
+    return StatusFromError(resp.error());
   }
   return Status::OK();
 }
