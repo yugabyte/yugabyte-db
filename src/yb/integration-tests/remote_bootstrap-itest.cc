@@ -2011,6 +2011,9 @@ RemoteBootstrapITest::FindTablet(
 }
 
 TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
+  vector<string> master_flags;
+  master_flags.push_back("--TEST_system_table_num_tablets=3");
+
   vector<string> ts_flags;
   // Enable lazy superblock flush.
   ts_flags.push_back("--lazily_flush_superblock=true");
@@ -2033,7 +2036,7 @@ TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   ts_flags.push_back("--TEST_skip_force_superblock_flush=true");
 
   ASSERT_NO_FATALS(StartCluster(
-      ts_flags, /* master_flags = */ {}, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
+      ts_flags, master_flags, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
   RBSWithLazySuperblockFlush(/* num_tables */ 20);
 }
 
