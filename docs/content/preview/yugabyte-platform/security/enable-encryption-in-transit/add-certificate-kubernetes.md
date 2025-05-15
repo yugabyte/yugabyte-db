@@ -58,7 +58,7 @@ When adding a region, you can specify the Issuer kind, Issuer name, and optional
 
 ### Including the common name
 
-If your certificate issuer (for example, for `aws-privateca-issuer`) requires the certificate to include the common name, set the following [override](../../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides) when you create your universe:
+If your certificate issuer (for example, for `aws-privateca-issuer`) requires the certificate to include the common name, set the following [override](../../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides) for the provider region:
 
 ```yml
 tls:
