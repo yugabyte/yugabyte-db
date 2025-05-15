@@ -43,6 +43,18 @@ In particular, DDL changes made to the Primary universe are automatically replic
 
 In this mode, xCluster replication operates at the YSQL database granularity. This means you only run xCluster management operations when adding and removing databases from replication, and not when tables in the databases are created or dropped.
 
+Keep in mind the following when setting up and using automatic transactional xCluster:
+
+- You can't set up transactional xCluster if any DDLs are running.
+- You can't perform switchover if any DDLs are running. (There are no restrictions on when you may perform failover.)
+  - You must wait for any recently performed DDLs to be replicated.
+  - Any sequence bumps or resets via `pg_catalog_.nextval` or `pg_catalog.setval` done during the drain period will be lost. This should not matter as the resulting sequence numbers cannot be persisted in PostgreSQL. You should not be using setval anyways (see warnings about sequence rewinding).
+
+- There are no restrictions on when you may drop xCluster replication, but the usability of the target database depends on how you do it:
+  - If you stop the workload and wait for replication to drain, you get a perfectly consistent target image.
+  - If you stop DDLs and wait for DDL replication to drain, you can get a target image where different tables can have different staleness, but the PostgreSQL catalog is up to date.
+  - If you don't stop anything, the tables and PostgreSQL catalog can be stale.
+
 ## Set up Automatic mode replication
 
 {{% readfile "includes/automatic-setup.md" %}}
