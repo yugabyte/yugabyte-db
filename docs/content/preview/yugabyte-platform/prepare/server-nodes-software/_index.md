@@ -46,7 +46,7 @@ Note: Only perform this step for [legacy provisioning](./software-on-prem-legacy
 
 Transparent hugepages (THP) should be enabled for optimal performance. Download and run the following script as root:
 
-- [Enable transparent hugepages](https://github.com/yugabyte/yb-support-tools/blob/enable-transparent-huge-pages/enable-transparent-huge-pages/install-yb-enable-transparent-huge-pages-service.sh)
+- [install-yb-enable-transparent-huge-pages-service.sh](/files/install-yb-enable-transparent-huge-pages-service.sh)
 
 <details>
   <summary>More information</summary>
