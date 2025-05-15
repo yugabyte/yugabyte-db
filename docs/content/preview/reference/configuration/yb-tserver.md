@@ -83,6 +83,7 @@ YugabyteDB uses PostgreSQL server configuration parameters to apply server confi
 
 You can modify these parameters in the following ways:
 
+- If a gFlag is available with the same name and `ysql_` prefix, then set the gFlag directly.
 - Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
 
 - Set the option per-database:
