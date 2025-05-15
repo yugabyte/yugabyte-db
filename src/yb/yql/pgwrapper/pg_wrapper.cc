@@ -1332,6 +1332,7 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
+    server_->RegisterPgProcessKiller(std::bind(&PgSupervisor::Pause, this));
   }
 }
 

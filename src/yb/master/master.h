@@ -238,6 +238,7 @@ class Master : public tserver::DbServerBase {
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override {}
+  void RegisterPgProcessKiller(std::function<Status(void)> killer) override {}
 
  protected:
   Status RegisterServices();

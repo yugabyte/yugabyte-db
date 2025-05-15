@@ -25,6 +25,7 @@ class PgWrapperContext {
   virtual ~PgWrapperContext() = default;
   virtual void RegisterCertificateReloader(tserver::CertificateReloader reloader) = 0;
   virtual void RegisterPgProcessRestarter(std::function<Status(void)> restarter) = 0;
+  virtual void RegisterPgProcessKiller(std::function<Status(void)> killer) = 0;
   virtual Status StartSharedMemoryNegotiation() = 0;
   virtual Status StopSharedMemoryNegotiation() = 0;
   virtual int SharedMemoryNegotiationFd() = 0;

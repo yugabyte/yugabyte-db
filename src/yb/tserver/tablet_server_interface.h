@@ -151,6 +151,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const = 0;
 
   virtual Status RestartPG() const = 0;
+
+  virtual Status KillPg() const = 0;
 };
 
 } // namespace tserver

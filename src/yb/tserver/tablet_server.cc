@@ -820,8 +820,7 @@ bool TabletServer::HasBootstrappedLocalLockManager() const {
   return lock_manager && lock_manager->IsBootstrapped();
 }
 
-Status TabletServer::ProcessLeaseUpdate(
-    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
+Status TabletServer::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
   VLOG(2) << __func__;
   auto lock_manager = ts_local_lock_manager();
   if (lease_refresh_info.new_lease() && lock_manager) {
@@ -836,7 +835,7 @@ Status TabletServer::ProcessLeaseUpdate(
   // having it the other way around, and having an old-session that is not reset.
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
-    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info, time);
+    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info);
   }
   return Status::OK();
 }
@@ -858,6 +857,13 @@ Status TabletServer::RestartPG() const {
     return pg_restarter_();
   }
   return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
+}
+
+Status TabletServer::KillPg() const {
+  if (pg_killer_) {
+    return pg_killer_();
+  }
+  return STATUS(IllegalState, "Pg killer callback not registered, cannot restart PG");
 }
 
 bool TabletServer::IsYsqlLeaseEnabled() {
@@ -2087,6 +2093,10 @@ void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
 
 void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restarter) {
   pg_restarter_ = std::move(restarter);
+}
+
+void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
+  pg_killer_ = std::move(killer);
 }
 
 Status TabletServer::StartYSQLLeaseRefresher() {
