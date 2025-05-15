@@ -705,7 +705,7 @@ SELECT * from fk;
 (1 row)
 
 DROP TABLE pk, fk;
--- Test foreign key referencing partitioned table
+--- Test foreign key referencing partitioned table
 -- Base case
 CREATE TABLE pk(id INT PRIMARY KEY) PARTITION BY RANGE(id);
 CREATE TABLE pk_1_100 PARTITION OF pk FOR VALUES FROM (1) TO (100);
@@ -758,7 +758,7 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 CREATE TABLE fk(a INT, c INT, FOREIGN KEY (a, c) REFERENCES pk(a, c));
-INSERT INTO pk VALUES (1, 100, 20, 150);
+INSERT INTO pk VALUES (1, 100, 20, 150), (1, 100, 21, 150);
 INSERT INTO fk VALUES (1, 20);
 INSERT INTO fk VALUES (150, 20); -- should fail
 ERROR:  insert or update on table "fk" violates foreign key constraint "fk_a_c_fkey"
@@ -769,7 +769,16 @@ SELECT * FROM fk;
  1 | 20
 (1 row)
 
-DROP TABLE pk, fk;
+CREATE TABLE fk2(a INT, c INT, FOREIGN KEY (a, c) REFERENCES pk(a, c) DEFERRABLE INITIALLY DEFERRED);
+INSERT INTO fk2 VALUES (1, 20), (1, 21);
+SELECT * FROM fk2;
+ a | c  
+---+----
+ 1 | 20
+ 1 | 21
+(2 rows)
+
+DROP TABLE pk, fk, fk2;
 -- Using index, PK root and leaf partition have different column orders
 CREATE TABLE pk(a INT, b INT, c INT, d INT, PRIMARY KEY(a, b), UNIQUE(a, c)) PARTITION BY RANGE(a);
 CREATE TABLE pk_1_100(a INT NOT NULL, c INT NOT NULL, d INT, b INT NOT NULL);
@@ -840,6 +849,25 @@ SELECT * from fk;
 (1 row)
 
 DROP TABLE pk, pk2, fk;
+-- Test foreign key constraint validation at the time of constraint creation
+CREATE TABLE pk(a INT, b INT, c INT, d INT, PRIMARY KEY(a, c)) PARTITION BY RANGE(a);
+CREATE TABLE pk_1_100 PARTITION OF pk FOR VALUES FROM (1) TO (100);
+INSERT INTO pk VALUES (1, 100, 20, 150);
+CREATE TABLE fk(a INT, c INT);
+INSERT INTO fk VALUES (1, 20);
+ALTER TABLE fk ADD FOREIGN KEY (a, c) REFERENCES pk(a, c);
+DROP TABLE pk, fk;
+CREATE TABLE pk(a INT, b INT, c INT, d INT, PRIMARY KEY(a, c)) PARTITION BY RANGE(a);
+CREATE TABLE pk_1_100(a INT NOT NULL, c INT NOT NULL, d INT, b INT);
+ALTER TABLE pk ATTACH PARTITION pk_1_100 FOR VALUES FROM (1) TO (100);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+INSERT INTO pk VALUES (1, 100, 20, 150);
+CREATE TABLE fk(a INT, c INT);
+INSERT INTO fk VALUES (1, 20);
+ALTER TABLE fk ADD FOREIGN KEY (a, c) REFERENCES pk(a, c);
+DROP TABLE pk, fk;
 -- test updating a subset of foreign constraint keys.
 CREATE TABLE pk(a INT, b INT, PRIMARY KEY (a, b));
 CREATE TABLE fk(a INT, b INT, FOREIGN KEY(a, b) REFERENCES pk);

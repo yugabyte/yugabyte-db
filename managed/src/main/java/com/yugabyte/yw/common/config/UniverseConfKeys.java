@@ -1638,4 +1638,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Have YBC ignore errors during restore. When false, can be overwritten via API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> healthCollectTopKOtherProcessesCount =
+      new ConfKeyInfo<>(
+          "yb.health_checks.collect_other_processes_memory_count",
+          ScopeType.UNIVERSE,
+          "Number of non-yba managed processes to collect memory metrics for",
+          "Number of non-yba managed processes to collect memory metrics for",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> healthCollectTopKOtherProcessesMemThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.other_processes_memory_threshold_percent",
+          ScopeType.UNIVERSE,
+          "Threshold of memory percent for non-yba processes",
+          "Threshold of memory percent for non-yba processes",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -72,6 +72,12 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 		return nil, err
 	}
 
+	if len(h.param.GetSymLinkFolders()) == 0 {
+		err := errors.New("server process is required")
+		util.FileLogger().Error(ctx, err.Error())
+		return nil, err
+	}
+
 	// 1) extract all the names and paths up front
 	pkgName := filepath.Base(ybPkg)
 	pkgFolder := helpers.ExtractArchiveFolderName(pkgName)
@@ -183,7 +189,7 @@ func (h *InstallSoftwareHandler) setupSymlinks(
 	home string,
 	ybSoftwareDir string,
 ) error {
-	processes := []string{"master", "tserver"}
+	processes := h.param.GetSymLinkFolders()
 	files, err := helpers.ListDirectoryContent(ybSoftwareDir)
 	if err != nil {
 		return err

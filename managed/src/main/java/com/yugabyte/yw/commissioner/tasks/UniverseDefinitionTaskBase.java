@@ -2767,7 +2767,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void createStartYbcProcessTasks(Set<NodeDetails> nodesToBeStarted, boolean isSystemd) {
     // Create Start yb-controller tasks for non-systemd only
-    if (!isSystemd) {
+    if (!isSystemd || confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)) {
       createStartYbcTasks(nodesToBeStarted).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
