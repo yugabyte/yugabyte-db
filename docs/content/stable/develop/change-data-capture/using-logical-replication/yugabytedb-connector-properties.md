@@ -480,7 +480,7 @@ No default.
 Specifies the criteria for performing a snapshot when the connector starts:
 
 * `initial` - The connector performs a snapshot only when no offsets have been recorded for the logical server name.
-* `never` - The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The never snapshot mode is useful only when you know all data of interest is still reflected in the WAL.
+* `never` - The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored Log Sequence Number ([LSN](../key-concepts/#lsn-type)) in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The never snapshot mode is useful only when you know all data of interest is still reflected in the WAL.
 * `initial_only` - The connector performs an initial snapshot and then stops, without processing any subsequent changes.
 
 Default: `initial`
