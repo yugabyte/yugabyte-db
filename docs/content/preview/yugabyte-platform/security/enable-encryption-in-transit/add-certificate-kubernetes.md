@@ -50,7 +50,14 @@ Add TLS certificates issued by the cert-manager as follows:
 
 ### Including the common name
 
-If your certificate issuer (for example, for `aws-privateca-issuer`) requires the certificate to include the common name, set the **Common Name Required for Certificates** Universe Runtime Configuration option (config key `yb.tls.cert_manager.common_name_required`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/).
+If your certificate issuer (for example, for `aws-privateca-issuer`) requires the certificate to include the common name, set the following [override](../../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides) when you create your universe:
+
+```yml
+tls:
+  certManager:
+    certificates:
+      commonNameRequired: true
+```
 
 When configured, YugabyteDB Anywhere sets the common name to the name of the service created for the pod, and adds common name to the certificate request sent to cert-manager.
 

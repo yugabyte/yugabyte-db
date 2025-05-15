@@ -379,6 +379,17 @@ tserver:
 
 The Kubernetes `labels` are key-value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to you. For more information, see [Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/) in the Kubernetes documentation.
 
+### Use common name with cert-manager
+
+If your certificate issuer (for example, for `aws-privateca-issuer`) requires the certificate to include the common name, set the following override:
+
+```yml
+tls:
+  certManager:
+    certificates:
+      commonNameRequired: true
+```
+
 ### Preflight check
 
 Preflight check overrides, such as DNS address resolution, disk IO, available port, ulimit:
