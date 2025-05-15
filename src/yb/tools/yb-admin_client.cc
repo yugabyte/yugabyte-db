@@ -726,7 +726,7 @@ Status ClusterAdminClient::LeaderStepDown(
       *(new_proxy ? new_proxy.get() : leader_proxy->get()),
       req));
   if (resp.has_error()) {
-    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
+    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << ": received error "
       << resp.error().ShortDebugString();
     return StatusFromPB(resp.error().status());
   }
