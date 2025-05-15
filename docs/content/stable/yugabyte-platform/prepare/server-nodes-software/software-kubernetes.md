@@ -72,6 +72,12 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm install -n kube-system --version 5.0.0 kube-state-metrics prometheus-community/kube-state-metrics
 ```
 
+## Install cert-manager
+
+You can use [cert-manager](https://cert-manager.io/) to manage certificates for your cluster. To use cert-manager to manage universe certificates, ensure that it is running on your Kubernetes cluster before you create your [Kubernetes provider configuration](../../../configure-yugabyte-platform/kubernetes/).
+
+For more information, refer to [Add certificates](../../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
+
 ## Pull and push YugabyteDB Docker images to private container registry
 
 Due to security concerns, some Kubernetes environments use internal container registries such as  Harbor and Nexus. In this type of setup, YugabyteDB deployment must be able to pull images from and push images to a private registry.
