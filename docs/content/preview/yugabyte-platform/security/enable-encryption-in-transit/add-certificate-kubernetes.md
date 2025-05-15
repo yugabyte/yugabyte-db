@@ -48,6 +48,14 @@ Add TLS certificates issued by the cert-manager as follows:
 
 1. Click **Add** to make the certificate available.
 
+## Configure the provider
+
+After the certificate is added to YugabyteDB Anywhere, configure the Kubernetes provider configuration by following instructions provided in [Configure region and zones](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).
+
+When adding a region, you can specify the Issuer kind, Issuer name, and optionally the Issuer group for each zone.
+
+![Add new region](/images/yp/security/kubernetes-cert-manager-add-region-2024-2-2.png)
+
 ### Including the common name
 
 If your certificate issuer (for example, for `aws-privateca-issuer`) requires the certificate to include the common name, set the following [override](../../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides) when you create your universe:
@@ -60,14 +68,6 @@ tls:
 ```
 
 When configured, YugabyteDB Anywhere sets the common name to the name of the service created for the pod, and adds common name to the certificate request sent to cert-manager.
-
-## Configure the provider
-
-After the certificate is added to YugabyteDB Anywhere, configure the Kubernetes provider configuration by following instructions provided in [Configure region and zones](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).
-
-When adding a region, you can specify the Issuer kind, Issuer name, and optionally the Issuer group for each zone.
-
-![Add new region](/images/yp/security/kubernetes-cert-manager-add-region-2024-2-2.png)
 
 ## Troubleshoot
 
