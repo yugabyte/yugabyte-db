@@ -19,9 +19,9 @@
       "series": "v2.25",
       "alias": "preview",
       "display": "v2.25 (Preview)",
-      "version": "2.25.1.0",
-      "versionShort": "2.25.1",
-      "appVersion": "2.25.1.0-b381",
+      "version": "2.25.2.0",
+      "versionShort": "2.25.2",
+      "appVersion": "2.25.2.0-b359",
       "isStable": false,
       "initialRelease": "2025-01-17"
     },
