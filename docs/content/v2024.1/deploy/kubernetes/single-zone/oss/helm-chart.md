@@ -422,6 +422,15 @@ helm repo update
 helm upgrade yb-demo yugabytedb/yugabyte --version {{<yb-version version="v2024.1" format="short">}} --wait -n yb-demo
 ```
 
+Then finalize the upgrade as follows:
+
+```sh
+kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 promote_auto_flags
+kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 upgrade_ysql
+```
+
+The `upgrade_ysql` command is only needed if YSQL is enabled.
+
 ## Update the configuration of YugabyteDB pods
 
 You can update most settings in the helm chart by running a `helm upgrade` with the new values. By default, this performs a [rolling update](https://github.com/yugabyte/charts/blob/853d7ac744cf6d637b5877f4681940825beda8f6/stable/yugabyte/values.yaml#L60) of the pods.
