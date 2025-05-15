@@ -31,6 +31,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_ddl_client.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
@@ -172,7 +173,7 @@ class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
         [tablet_servers]() -> Result<bool> {
           for (const auto& ts : tablet_servers) {
             auto lease_info = VERIFY_RESULT(ts->server()->GetYSQLLeaseInfo());
-            if (!lease_info.is_live()) {
+            if (!lease_info.is_live) {
               return false;
             }
           }
@@ -1094,6 +1095,45 @@ TEST_F(ExternalObjectLockTest, TServerCanAcquireLocksAfterLeaseExpiry) {
       &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kObjectId3, kLeaseEpoch, nullptr, std::nullopt,
       kTimeout);
   EXPECT_THAT(status, EqualsStatus(BuildLeaseEpochMismatchErrorStatus(kLeaseEpoch, lease_epoch)));
+}
+
+TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
+  auto ts = tablet_server(0);
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+
+  // Acquire a lock on behalf of another ts.
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, tablet_server(1)->uuid(), kTxn1, kDatabaseID, kObjectId, kLeaseEpoch, nullptr,
+      std::nullopt, kTimeout));
+
+  master::MasterDDLClient ddl_client{cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>()};
+
+  // Request a lease refresh on behalf of ts with no lease epoch in the request.
+  // Master should respond with our ts' current lease epoch, the acquired lock entries, and
+  // new_lease.
+  auto info = ASSERT_RESULT(
+      ddl_client.RefreshYsqlLease(ts->uuid(), ts->instance_id().instance_seqno(), {}));
+  ASSERT_TRUE(info.new_lease());
+  ASSERT_EQ(info.lease_epoch(), kLeaseEpoch);
+  ASSERT_TRUE(info.has_ddl_lock_entries());
+  ASSERT_GE(info.ddl_lock_entries().lock_entries_size(), 1);
+
+  // Request a lease refresh on behalf of ts with the incorrect lease epoch in the request.
+  // Expect the master to respond with our ts' current lease epoch, the acquired lock entries, and
+  // new_lease.
+  info =
+      ASSERT_RESULT(ddl_client.RefreshYsqlLease(ts->uuid(), ts->instance_id().instance_seqno(), 0));
+  ASSERT_TRUE(info.new_lease());
+  ASSERT_EQ(info.lease_epoch(), kLeaseEpoch);
+  ASSERT_TRUE(info.has_ddl_lock_entries());
+  ASSERT_GE(info.ddl_lock_entries().lock_entries_size(), 1);
+
+  // Request a lease refresh on behalf of ts with the correct lease epoch in the request.
+  // Expect the master to omit most information and set new_lease to false.
+  info = ASSERT_RESULT(
+      ddl_client.RefreshYsqlLease(ts->uuid(), ts->instance_id().instance_seqno(), kLeaseEpoch));
+  ASSERT_FALSE(info.new_lease());
+  ASSERT_FALSE(info.has_ddl_lock_entries());
 }
 
 class MultiMasterObjectLockTest : public ObjectLockTest {

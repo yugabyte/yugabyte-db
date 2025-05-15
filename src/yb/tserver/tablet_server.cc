@@ -824,7 +824,7 @@ Status TabletServer::ProcessLeaseUpdate(
     const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
   VLOG(2) << __func__;
   auto lock_manager = ts_local_lock_manager();
-  if (lease_refresh_info.has_ddl_lock_entries() && lock_manager) {
+  if (lease_refresh_info.new_lease() && lock_manager) {
     if (lock_manager->IsBootstrapped()) {
       // Reset the local lock manager to bootstrap from the given DDL lock entries.
       lock_manager = ResetAndGetTSLocalLockManager();
@@ -842,7 +842,7 @@ Status TabletServer::ProcessLeaseUpdate(
 }
 
 
-Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
+Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
   if (!IsYsqlLeaseEnabled()) {
     return STATUS(NotSupported, "YSQL lease is not enabled");
   }
@@ -850,13 +850,7 @@ Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
   if (!pg_client_service) {
     RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
   }
-  auto lease_info = pg_client_service->impl.GetYSQLLeaseInfo();
-  GetYSQLLeaseInfoResponsePB resp;
-  resp.set_is_live(lease_info.is_live);
-  if (lease_info.is_live) {
-    resp.set_lease_epoch(lease_info.lease_epoch);
-  }
-  return resp;
+  return pg_client_service->impl.GetYSQLLeaseInfo();
 }
 
 Status TabletServer::RestartPG() const {

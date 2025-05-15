@@ -254,7 +254,7 @@ bool MasterTabletServer::SkipCatalogVersionChecks() {
   return master_->catalog_manager()->SkipCatalogVersionChecks();
 }
 
-Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServer::GetYSQLLeaseInfo() const {
+Result<tserver::YSQLLeaseInfo> MasterTabletServer::GetYSQLLeaseInfo() const {
   return STATUS(InternalError, "Unexpected call of GetYSQLLeaseInfo");
 }
 

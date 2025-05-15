@@ -29,6 +29,7 @@
 
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/ysql_lease.h"
 
 namespace yb {
 
@@ -113,11 +114,6 @@ class TserverXClusterContextIf;
     (GetTableKeyRanges) \
     /**/
 
-
-struct YSQLLeaseInfo {
-  bool is_live;
-  uint64_t lease_epoch;
-};
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
