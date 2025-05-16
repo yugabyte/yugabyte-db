@@ -901,7 +901,7 @@ In case you are trying to rebase a merge commit to a newer base, consider the fo
 ##### Review point-imports
 
 For cherry-picks, compare the original commit's patch with the cherry-pick commit's patch.
-One way to do it is `$difftool <git show <commit_being_cherry-picked>) <(git show <cherry-picked_commit>)`.
+One way to do it is `$difftool <(git show <commit_being_cherry-picked>) <(git show <cherry-picked_commit>)`.
 There is also a tool [analyze_cherry_pick.py](https://gist.github.com/hari90/b65159b6811786023e0f0ea2af448f4a) authored by Hari you can try out.
 
 First, check the [title and summary](#cherry-pick-commit-message)
