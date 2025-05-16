@@ -2064,3 +2064,38 @@ templates:
     annotations:
       summary: >-
         Continuous backups to {{ $labels.affected_backup_locations }} are failing.
+
+  THP_RSS_ISSUE:
+    name: THP Issue Threshold Reached
+    description: Node memory is high AND RSS exceeds 25% of total memory allocated on a universe
+    queryTemplate: count by (universe_uuid) (
+      (avg_over_time(yb_process_memory_kb{type="resident", process="yb-tserver", universe_uuid="__universeUuid__"}[5m]) * 1024
+      - on (universe_uuid, node_name)
+      avg_over_time(generic_current_allocated_bytes{export_type="tserver_export", universe_uuid="__universeUuid__"}[5m])
+      - on (universe_uuid, node_name)
+      avg_over_time(tcmalloc_pageheap_free_bytes{export_type="tserver_export", universe_uuid="__universeUuid__"}[5m])
+      ) / on (universe_uuid, node_name)(node_memory_MemTotal_bytes{universe_uuid="__universeUuid__"}) {{ query_condition }} {{ query_threshold }}
+      and on (universe_uuid, node_name)
+      ((node_memory_MemTotal_bytes{universe_uuid="__universeUuid__"} - on (universe_uuid, node_name) node_memory_MemAvailable_bytes {universe_uuid="__universeUuid__"})
+      / on (universe_uuid, node_name) node_memory_MemTotal_bytes {universe_uuid="__universeUuid__"}) > 0.6
+      ) > 0
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.25
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    thresholdConditionReadOnly: true
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid) ((avg_over_time(yb_process_memory_kb{type='resident', process='yb-tserver', universe_uuid='{{$labels.universe_uuid }}'}[5m]) * 1024 
+        - on (universe_uuid, node_name) avg_over_time(generic_current_allocated_bytes{export_type='tserver_export', universe_uuid='{{$labels.universe_uuid }}'}[5m]) 
+        - on (universe_uuid, node_name) avg_over_time(tcmalloc_pageheap_free_bytes{export_type='tserver_export', universe_uuid='{{$labels.universe_uuid }}'}[5m])) 
+        / on (universe_uuid, node_name) (node_memory_MemTotal_bytes{universe_uuid='{{$labels.universe_uuid }}'}) {{ query_condition }} {{ query_threshold }} 
+        and on (universe_uuid, node_name) ((node_memory_MemTotal_bytes{universe_uuid='{{$labels.universe_uuid }}'} - on (universe_uuid, node_name) node_memory_MemAvailable_bytes {universe_uuid='{{$labels.universe_uuid }}'}) 
+        / on (universe_uuid, node_name) node_memory_MemTotal_bytes {universe_uuid='{{$labels.universe_uuid }}'}) > 0.6) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        RSS statistic for tserver is more than 25% larger than what TCMalloc stats suggest for '{{ $labels.affected_node_names }}' in universe '{{ $labels.source_name }}'.
