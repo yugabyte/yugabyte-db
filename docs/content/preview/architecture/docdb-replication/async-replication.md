@@ -286,7 +286,7 @@ Limitations specific to each scenario and mode are listed below:
 
 - By default, no writes are allowed in the target universe.
 
-  You can allow writes to the target on an exception basis, overriding the default read-only behavior by setting the following YSQL configuration parameter before executing a DML operation:
+  {{<tags/feature/ea idea="2136">}}You can allow writes to the target on an exception basis, overriding the default read-only behavior by setting the following YSQL configuration parameter before executing a DML operation:
 
   ```sql
   SET yb_non_ddl_txn_for_sys_tables_allowed = true
