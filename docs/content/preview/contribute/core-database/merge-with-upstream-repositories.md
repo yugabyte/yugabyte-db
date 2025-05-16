@@ -882,8 +882,17 @@ In case you are trying to rebase a merge commit to a newer base, consider the fo
 
 #### File-specific advice
 
-- docs
-- port regress tests
+- `upstream_repositories.csv`:
+  Make sure the commit hash is updated properly.
+- `src/postgres/doc`:
+  In general, changes here do not matter since this documentation is not built by YugabyteDB.
+  The only place that really matters is `src/postgres/doc/src/sgml/ref` where some text is used by the `\h` command.
+- Regression tests:
+  There are various locations for regression tests, such as `src/postgres/src/test/regress`, `src/postgres/src/test/modules/dummy_seclabel`, `src/postgres/contrib/cube`, `src/postgres/third-party-extensions/pg_hint_plan`, and `src/postgres/yb-extensions/yb_xcluster_ddl_replication`.
+  There are also some different types, such as the isolation regress tests in `src/postgres/src/test/isolation`.
+  Any changes to these tests should be ported to `yb.port.` equivalents.
+  (Note that, at the time of writing, pg_hint_plan is the one exception to this: YB changes are made on the original test directly.)
+  See [build and test](./build-and-test#ysql-regress-tests).
 
 [repo-yugabyte-db]: https://github.com/yugabyte/yugabyte-db
 [repo-thirdparty]: https://github.com/yugabyte/yugabyte-db-thirdparty
