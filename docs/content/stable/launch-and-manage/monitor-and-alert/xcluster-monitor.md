@@ -5,7 +5,7 @@ linkTitle: xCluster
 description: Monitoring the health of xCluster replication
 headContent: Monitoring the state and health of xCluster replication
 menu:
-  preview:
+  stable:
     parent: monitor-and-alert
     identifier: xcluster-monitor
     weight: 110
