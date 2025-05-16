@@ -1105,10 +1105,12 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
       return;
     }
 
+    auto skip_aborting_active_transactions =
+        FLAGS_TEST_enable_object_locking_for_table_locks ||
+        FLAGS_TEST_skip_aborting_active_transactions_during_schema_change;
     // After write operation is paused, active transactions will be aborted for YSQL transactions.
     if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE &&
-        req->should_abort_active_txns() &&
-        !FLAGS_TEST_skip_aborting_active_transactions_during_schema_change) {
+        req->should_abort_active_txns() && !skip_aborting_active_transactions) {
       DCHECK(req->has_transaction_id());
       if (tablet.tablet->transaction_participant() == nullptr) {
         auto status = STATUS(

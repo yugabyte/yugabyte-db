@@ -2869,5 +2869,50 @@ COMMIT;
   ASSERT_EQ(result.size(), 144U);
 }
 
+// https://github.com/yugabyte/yugabyte-db/issues/27170
+TEST_F(PgCatalogVersionTest, InvalMessageDuplicateVersion) {
+  RestartClusterWithInvalMessageEnabled(
+      { "--check_lagging_catalog_versions_interval_secs=1" });
+  // Make two connections on two different nodes.
+  pg_ts = cluster_->tablet_server(0);
+  auto conn1 = ASSERT_RESULT(Connect());
+  pg_ts = cluster_->tablet_server(1);
+  auto conn2 = ASSERT_RESULT(Connect());
+  // Let two concurrent DDLs operate on two tables to avoid any concurrent DDL related
+  // errors to interfere and prevent the case that we are trying to contrive.
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo(id INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE bar(id INT)"));
+  ASSERT_OK(conn1.Execute("SET yb_test_delay_set_local_tserver_inval_message_ms = 3000"));
+  TestThreadHolder thread_holder;
+  auto ddl1 = "ALTER TABLE foo ADD COLUMN val TEXT"s;
+  auto ddl2 = "ALTER TABLE bar ADD COLUMN val TEXT"s;
+  thread_holder.AddThreadFunctor([&conn2, &ddl2] {
+    // Delay 1s so that conn1's ddl1 is executed first.
+    SleepFor(1s);
+    // Statement ddl2 leads to version 3.
+    ASSERT_OK(conn2.Execute(ddl2));
+  });
+
+  // Execute ddl1 on conn1 that increments the catalog version. The 3-second delay caused by
+  // SET yb_test_delay_set_local_tserver_inval_message_ms = 3000 will be long enough for ddl2
+  // on conn2 to complete, and heartbeat should happen to propagate the new version of ddl1
+  // and the new version of ddl2 to the local tserver.
+  // Statement ddl1 leads to version 2.
+  ASSERT_OK(conn1.Execute(ddl1));
+
+  // This wait is needed to reproduce the bug 27170 so that we don't jump to the next
+  // query right away which will trigger calling TabletServer::GetTserverCatalogMessageLists
+  // that also detects the duplication of version 2, causing tserver to FATAL differently
+  // from what we expect to see as in GHI 27170.
+  SleepFor(5s);
+
+  // In pg_yb_invalidation_messages we should see two rows for DB yugabyte: version 2 and
+  // version 3 because version 2 has not expired yet when version 3 was inserted.
+  const auto count = ASSERT_RESULT(conn2.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_invalidation_messages"));
+  ASSERT_EQ(count, 2);
+  thread_holder.Stop();
+}
+
 } // namespace pgwrapper
 } // namespace yb

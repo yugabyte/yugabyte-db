@@ -28,10 +28,7 @@ To test and take advantage of features developed for enhanced PostgreSQL compati
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
 | [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2024.2">}} |
 | [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}} |
-
-| Planned Feature | Flag/Configuration Parameter | EA |
-| :--- | :--- | :--- |
-| [Parallel query](#parallel-query) | | Planned |
+| [Parallel query](#parallel-query) | [yb_enable_parallel_append](../../reference/configuration/yb-tserver/#yb-enable-parallel-append) | {{<release "2024.2.3">}} | v2025.1 |
 
 ## Feature availability
 
@@ -118,13 +115,21 @@ Configuration parameter: `pg_client_use_shared_memory=true`
 
 Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.
 
-## Planned features
-
-The following features are planned for EPCM in future releases.
-
 ### Parallel query
 
-Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
+{{< note title="Note" >}}
+
+Parallel query is {{<tags/feature/ea>}} in v2024.2.3 but has not yet been added to EPCM.
+
+{{< /note >}}
+
+Configuration parameters: `yb_enable_parallel_append=true` `yb_parallel_range_rows`
+
+Enables the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Currently, YugabyteDB supports parallel query for colocated tables. Support for hash- and range-sharded tables is planned. Parallel query provides feature compatibility and improved performance parity.
+
+{{<lead link="../../architecture/transactions/read-committed/">}}
+To learn about parallel queries, see [Parallel queries](../../explore/ysql-language-features/advanced-features/parallel-query/).
+{{</lead>}}
 
 ## Enable EPCM
 

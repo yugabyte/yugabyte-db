@@ -16,7 +16,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
@@ -55,7 +55,9 @@ import com.yugabyte.yw.nodeagent.InstallYbcInput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -72,6 +74,7 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
+  private static final String DEFAULT_CONFIGURE_USER = "yugabyte";
   private final ReleaseManager releaseManager;
 
   @Inject
@@ -79,6 +82,23 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       BaseTaskDependencies baseTaskDependencies, ReleaseManager releaseManager) {
     super(baseTaskDependencies);
     this.releaseManager = releaseManager;
+  }
+
+  private List<String> getMountPoints() {
+    if (StringUtils.isNotBlank(taskParams().deviceInfo.mountPoints)) {
+      return Arrays.stream(taskParams().deviceInfo.mountPoints.split("\\s*,\\s*"))
+          .map(String::trim)
+          .filter(s -> !s.isEmpty())
+          .collect(Collectors.toList());
+    } else if (taskParams().deviceInfo.numVolumes != null
+        && taskParams().getProvider().getCloudCode() != Common.CloudType.onprem) {
+      List<String> mountPoints = new ArrayList<>();
+      for (int i = 0; i < taskParams().deviceInfo.numVolumes; i++) {
+        mountPoints.add("/mnt/d" + i);
+      }
+      return mountPoints;
+    }
+    return Collections.emptyList();
   }
 
   private String getYbPackage(ReleaseContainer release, Architecture arch, Region region) {
@@ -110,25 +130,25 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     installSoftwareInputBuilder.setYbPackage(ybServerPackage);
     if (release.isS3Download(ybServerPackage)) {
       installSoftwareInputBuilder.setS3RemoteDownload(true);
-      String accessKey = System.getenv("AWS_ACCESS_KEY_ID");
-      if (accessKey == null || accessKey.isEmpty()) {
-        // Todo: This will be removed once iTest moves to new release API.
+      String accessKey = envConfig.get("AWS_ACCESS_KEY_ID");
+      if (StringUtils.isEmpty(accessKey)) {
+        // TODO: This will be removed once iTest moves to new release API.
         accessKey = release.getAwsAccessKey(arch);
-        if (accessKey == null) {
-          accessKey = envConfig.get("AWS_ACCESS_KEY_ID");
-        }
       }
-
-      String secretKey = System.getenv("AWS_SECRET_ACCESS_KEY");
-      if (secretKey == null || secretKey.isEmpty()) {
-        secretKey = release.getAwsSecretKey(arch);
-        if (secretKey == null) {
-          secretKey = envConfig.get("AWS_ACCESS_KEY_ID");
-        }
+      if (StringUtils.isEmpty(accessKey)) {
+        accessKey = System.getenv("AWS_ACCESS_KEY_ID");
       }
-
-      if (accessKey != null) {
+      if (StringUtils.isEmpty(accessKey)) {
         installSoftwareInputBuilder.setAwsAccessKey(accessKey);
+      }
+      String secretKey = envConfig.get("AWS_SECRET_ACCESS_KEY");
+      if (StringUtils.isEmpty(secretKey)) {
+        secretKey = release.getAwsSecretKey(arch);
+      }
+      if (StringUtils.isEmpty(secretKey)) {
+        secretKey = System.getenv("AWS_SECRET_ACCESS_KEY");
+      }
+      if (StringUtils.isEmpty(secretKey)) {
         installSoftwareInputBuilder.setAwsSecretKey(secretKey);
       }
     } else if (release.isGcsDownload(ybServerPackage)) {
@@ -142,7 +162,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
               + Paths.get(envConfig.get(GCPCloudImpl.GCE_PROJECT_PROPERTY))
                   .getFileName()
                   .toString(),
-          "yugabyte",
+          DEFAULT_CONFIGURE_USER,
           0,
           null);
       installSoftwareInputBuilder.setGcsCredentialsJson(
@@ -162,7 +182,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
           nodeAgent,
           ybServerPackage,
           customTmpDirectory + "/" + Paths.get(ybServerPackage).getFileName().toString(),
-          "yugabyte",
+          DEFAULT_CONFIGURE_USER,
           0,
           null);
       installSoftwareInputBuilder.setYbPackage(
@@ -237,22 +257,12 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         nodeAgent,
         ybcPackage,
         customTmpDirectory + "/" + Paths.get(ybcPackage).getFileName().toString(),
-        "yugabyte",
+        DEFAULT_CONFIGURE_USER,
         0,
         null);
     installYbcInputBuilder.setRemoteTmp(customTmpDirectory);
     installYbcInputBuilder.setYbHomeDir(provider.getYbHome());
-    List<String> mountPoints = Arrays.asList("/mnt/d0");
-    if (taskParams.deviceInfo != null && taskParams.deviceInfo.mountPoints != null) {
-      String mountPointsStr = taskParams.deviceInfo.mountPoints;
-      Arrays.stream(mountPointsStr.split(","))
-          .map(String::trim)
-          .filter(s -> !s.isEmpty())
-          .collect(Collectors.toList());
-    }
-    for (String mp : mountPoints) {
-      installYbcInputBuilder.addMountPoints(mp);
-    }
+    installYbcInputBuilder.addAllMountPoints(getMountPoints());
     return installYbcInputBuilder.build();
   }
 
@@ -266,21 +276,12 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     configureServerInputBuilder.setRemoteTmp(customTmpDirectory);
     configureServerInputBuilder.setYbHomeDir(provider.getYbHome());
-    List<String> mountPoints = Arrays.asList("/mnt/d0");
-    if (taskParams.deviceInfo != null && taskParams.deviceInfo.mountPoints != null) {
-      String mountPointsStr = taskParams.deviceInfo.mountPoints;
-      Arrays.stream(mountPointsStr.split(","))
-                          .map(String::trim)
-                          .filter(s -> !s.isEmpty())
-                          .collect(Collectors.toList());
-    }
-    for (String mp : mountPoints) {
-      configureServerInputBuilder.addMountPoints(mp);
-    }
+    configureServerInputBuilder.addAllMountPoints(getMountPoints());
     if (!nodeDetails.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
       // For RR we don't setup master
       configureServerInputBuilder.addProcesses("tserver");
     } else {
+      // For dedicated nodes, both are set up.
       configureServerInputBuilder.addProcesses("master");
       configureServerInputBuilder.addProcesses("tserver");
     }
@@ -423,18 +424,18 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       nodeAgentClient.runConfigureServer(
           optional.get(),
           setUpConfigureServerBits(universe, nodeDetails, taskParams(), optional.get()),
-          "yugabyte");
+          DEFAULT_CONFIGURE_USER);
       nodeAgentClient.runInstallSoftware(
           optional.get(),
           setupInstallSoftwareBits(universe, nodeDetails, taskParams(), optional.get()),
-          "yugabyte");
+          DEFAULT_CONFIGURE_USER);
 
       if (taskParams().isEnableYbc()) {
         log.info("Installing YBC using node agent {}", optional.get());
         nodeAgentClient.runInstallYbcSoftware(
             optional.get(),
             setupInstallYbcSoftwareBits(universe, nodeDetails, taskParams(), optional.get()),
-            "yugabyte");
+            DEFAULT_CONFIGURE_USER);
         runServerGFlagsWithNodeAgent(
             optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString());
       }
@@ -550,7 +551,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     }
     ServerGFlagsInput input = builder.putAllGflags(gflags).build();
     log.debug("Setting gflags using node agent: {}", input.getGflagsMap());
-    nodeAgentClient.runServerGFlags(nodeAgent, input, "yugabyte");
+    nodeAgentClient.runServerGFlags(nodeAgent, input, DEFAULT_CONFIGURE_USER);
   }
 
   @Override

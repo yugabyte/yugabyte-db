@@ -24,11 +24,13 @@ You can configure AWS S3 and S3-compatible storage as your backup target.
 By default, the option to use S3 path style access is not available. To ensure that you can use this feature, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enablePathStyleAccess** option.
 {{< /note >}}
 
+### Create an AWS backup configuration
+
 To configure S3 storage, do the following:
 
 1. Navigate to **Integrations** > **Backup** > **Amazon S3**.
 
-1. Click **Create S3 Backup** to access the configuration form shown in the following illustration:
+1. Click **Create S3 Backup**.
 
     ![S3 Backup](/images/yp/cloud-provider-configuration-backup-aws.png)
 
@@ -102,37 +104,11 @@ To create a GCP backup configuration, do the following:
 
 1. Enter the URI of your GCS bucket in the **GCS Bucket** field. For example, `gs://gcp-bucket/test_backups`.
 
-1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
+1. Select **Use GCP IAM** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the GCS backup.
 
-1. Enter the credentials for your account in JSON format in the **GCS Credentials** field.
+1. If **Use GCP IAM** is disabled, enter the credentials for your account in JSON format in the **GCS Credentials** field.
 
 1. Click **Save**.
-
-### GKE service account-based IAM (GCP IAM)
-
-Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account (KSA) in your GKE cluster to act as an IAM service account so that your Kubernetes universes can access GCS for backups.
-
-In GKE, each pod can be associated with a KSA. The KSA is used to authenticate and authorize the pod to interact with other Google Cloud services. An IAM service account is a Google Cloud resource that allows applications to make authorized calls to Google Cloud APIs.
-
-Workload Identity links a KSA to an IAM account using annotations in the KSA. Pods that use the configured KSA automatically authenticate as the IAM service account when accessing Google Cloud APIs.
-
-By using Workload Identity, you avoid the need for manually managing service account keys or tokens in your applications running on GKE. This approach enhances security and simplifies the management of credentials.
-
-- To enable GCP IAM when installing YugabyteDB Anywhere, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
-
-- To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
-
-- To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
-
-**Prerequisites**
-
-- The GKE cluster hosting the pods should have Workload Identity enabled. The worker nodes of this GKE cluster should have the GKE metadata server enabled.
-
-- The IAM service account, which is used to annotate the KSA, should have sufficient permissions to read, write, list, and delete objects in GCS.
-
-- The KSA, which is annotated with the IAM service account, should be present in the same namespace where the pod resources for YugabyteDB Anywhere and YugabyteDB universes are expected. If you have multiple namespaces, each namespace should include the annotated KSA.
-
-For instructions on setting up Workload Identity, see [Use Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the GKE documentation.
 
 ## Network File System
 

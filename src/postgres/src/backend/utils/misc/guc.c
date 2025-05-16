@@ -655,6 +655,7 @@ const struct config_enum_entry yb_batch_detection_mechanism_options[] = {
 const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
 	{"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
 	{"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},
+	{"deferred", YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY, false},
 	{NULL, 0, false}
 };
 
@@ -5269,6 +5270,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_test_delay_set_local_tserver_inval_message_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, add a delay before calling YBCPgSetTserverCatalogMessageList."),
+			NULL
+		},
+		&yb_test_delay_set_local_tserver_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_invalidation_message_expiration_secs", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Invalidation messages expiration time in catalog table "
 						 "pg_yb_invalidation_messages."),
@@ -7015,6 +7026,8 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
 						 " relaxed. Read only statements/transactions do not see read restart errors but"
 						 " may miss recent updates with staleness bounded by clock skew."
+						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
+						 " guarantee is maintained."
 			),
 			0
 		},

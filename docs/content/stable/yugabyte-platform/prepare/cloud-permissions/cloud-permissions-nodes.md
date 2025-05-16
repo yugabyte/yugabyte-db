@@ -48,7 +48,7 @@ type: docs
 
 ## On-premises
 
-Because you are creating the VMs manually, nodes for on-premises providers don't require any cloud permissions.
+Because you are creating the VMs manually (on a private cloud, bare metal, or cloud provider), nodes for on-premises providers don't require any cloud permissions.
 
 With an on-premises provider, permissions against your infrastructure are generally not needed to deploy VMs, modify VMs, and so on.
 

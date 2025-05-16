@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"node-agent/app/task/helpers"
+	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/util"
 	"path/filepath"
@@ -23,25 +24,8 @@ func NewInstallYbcHandler(param *pb.InstallYbcInput, username string) *InstallYb
 	return &InstallYbcHandler{
 		param:    param,
 		username: username,
-		logOut:   util.NewBuffer(MaxBufferCapacity),
+		logOut:   util.NewBuffer(module.MaxBufferCapacity),
 	}
-}
-
-// helper that wraps NewShellTaskWithUser + Process + error logging
-func (h *InstallYbcHandler) runShell(
-	ctx context.Context,
-	desc, shell string,
-	args []string,
-) error {
-	h.logOut.WriteLine("Running install YBC phase: %s", desc)
-	h.shellTask = NewShellTaskWithUser(desc, h.username, shell, args)
-	_, err := h.shellTask.Process(ctx)
-	if err != nil {
-		util.FileLogger().Errorf(ctx,
-			"Install YBC failed [%s]: %s", desc, err)
-		return err
-	}
-	return nil
 }
 
 // CurrentTaskStatus implements the AsyncTask method.
@@ -68,8 +52,8 @@ func (h *InstallYbcHandler) execSetupYBCCommands(
 	*/
 
 	steps := []struct {
-		desc string
-		cmd  string
+		Desc string
+		Cmd  string
 	}{
 		{"clean-ybc-software-dir", fmt.Sprintf("rm -rf %s", ybcSoftwareDir)},
 		{
@@ -104,11 +88,8 @@ func (h *InstallYbcHandler) execSetupYBCCommands(
 		},
 		{"remove-temp-package", fmt.Sprintf("rm -rf %s", ybcPackagePath)},
 	}
-
-	for _, step := range steps {
-		if err := h.runShell(ctx, step.desc, util.DefaultShell, []string{"-c", step.cmd}); err != nil {
-			return err
-		}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
+		return err
 	}
 	return nil
 }
@@ -117,18 +98,20 @@ func (h *InstallYbcHandler) execConfigureYBCCommands(
 	ctx context.Context,
 	ybcSoftwareDir, ybcControllerDir string,
 ) error {
-	mountPoint := ""
-	if len(h.param.GetMountPoints()) > 0 {
-		mountPoint = h.param.GetMountPoints()[0]
+	mountPoints := h.param.GetMountPoints()
+	if len(mountPoints) == 0 {
+		return errors.New("mountPoints is required")
 	}
+	mountPoint := mountPoints[0]
 	steps := []struct {
-		desc string
-		cmd  string
+		Desc string
+		Cmd  string
 	}{
 		{
 			"setup-bin-symlink",
 			fmt.Sprintf(
-				"ln -sf %s %s",
+				"unlink %s > /dev/null 2>&1 || ln -sf %s %s",
+				filepath.Join(ybcControllerDir, "bin"),
 				filepath.Join(ybcSoftwareDir, "bin"),
 				filepath.Join(ybcControllerDir, "bin"),
 			),
@@ -147,9 +130,10 @@ func (h *InstallYbcHandler) execConfigureYBCCommands(
 		{
 			"create-logs-dir-symlinks",
 			fmt.Sprintf(
-				"ln -sf %s %s",
+				"unlink %s > /dev/null 2>&1 || ln -sf %s %s",
+				filepath.Join(ybcControllerDir, "logs"),
 				filepath.Join(mountPoint, "ybc-data/controller/logs"),
-				filepath.Join(ybcControllerDir),
+				filepath.Join(ybcControllerDir, "logs"),
 			),
 		},
 		{
@@ -165,10 +149,8 @@ func (h *InstallYbcHandler) execConfigureYBCCommands(
 		},
 	}
 
-	for _, step := range steps {
-		if err := h.runShell(ctx, step.desc, util.DefaultShell, []string{"-c", step.cmd}); err != nil {
-			return err
-		}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
+		return err
 	}
 	return nil
 }
