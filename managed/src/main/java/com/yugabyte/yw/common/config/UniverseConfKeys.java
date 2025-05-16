@@ -1638,4 +1638,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Have YBC ignore errors during restore. When false, can be overwritten via API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableBackupsDuringDDL =
+      new ConfKeyInfo<>(
+          "yb.backup.enable_backups_during_ddl",
+          ScopeType.UNIVERSE,
+          "Enable backups during DDL",
+          "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
