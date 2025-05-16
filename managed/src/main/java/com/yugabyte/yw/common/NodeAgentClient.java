@@ -382,7 +382,7 @@ public class NodeAgentClient {
       setCorrelationId();
       this.throwable = throwable;
       latch.countDown();
-      log.error("Error encountered for {} - {}", getId(), throwable.getMessage());
+      log.error("Error encountered for {} - {}", getId(), throwable.getMessage(), throwable);
     }
 
     @Override
