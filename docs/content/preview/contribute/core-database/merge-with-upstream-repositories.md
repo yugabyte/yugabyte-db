@@ -898,6 +898,64 @@ In case you are trying to rebase a merge commit to a newer base, consider the fo
 
 #### Review
 
+##### Review point-imports
+
+For cherry-picks, compare the original commit's patch with the cherry-pick commit's patch.
+One way to do it is `$difftool <git show <commit_being_cherry-picked>) <(git show <cherry-picked_commit>)`.
+There is also a tool [analyze_cherry_pick.py](https://gist.github.com/hari90/b65159b6811786023e0f0ea2af448f4a) authored by Hari you can try out.
+
+First, check the [title and summary](#cherry-pick-commit-message)
+
+Then, check the code and resolution notes.
+Line numbers and context may differ.
+Pay attention to things like...
+
+- ...added code being placed in the wrong context (you can expand context of `git show` using `-U50`, for example).
+- ...mismatching whitespace or newlines between the two patches.
+- ...nontrivial differences between the patches that are not explained adequately in the resolution notes.
+
+On top of that, make sure that the Git metadata is proper where it matters.
+For the upstream repository, there should only be the cherry-picked commits.
+If there are any other commits, there should be a good reason for them, and the titles should start with `YB:`.
+Merge conflicts (including logical ones) should generally be resolved and amended into the same commit being cherry-picked.
+
+For [yugabyte/yugabyte-db][repo-yugabyte-db] using the squash embedding strategy,
+
+- if it's a single point-import, Git author information should be preserved.
+- if it's multiple point-imports, the Git author of the latest commit should be the person doing the point-imports.
+
+For [yugabyte/yugabyte-db][repo-yugabyte-db] using the subtree embedding strategy, the person doing the point-imports should be the author of the subtree merge.
+On top of that, there should be a single commit to update `upstream_repositories.csv`.
+There should be no other commits besides the subtree ones.
+
+##### Review direct-descendant or non-direct-descendant merges
+
+For merges, it is best to get an actual merge commit.
+Phorge squashes any Git structure into a single patch, so the merge commit should be obtained through a separate medium such as a GitHub fork.
+In case the final commit will be a squash merge rather than a merge commit, an equivalent throw-away merge commit should be provided for merge purposes.
+If you followed the [cross-repository patch steps](#cross-repository-patch), you may be able to skip some of the early steps here as they are redundant:
+
+1. Check out the [yugabyte/yugabyte-db][repo-yugabyte-db] base commit of this squash merge.
+1. On the upstream repository commit before the upstream merge (which should equal the commit recorded in `upstream_repositories.csv` in [yugabyte/yugabyte-db][repo-yugabyte-db]), sync the content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
+   Use `git add -u` to add all those changes (not the new files), and commit them (commit message does not matter since this is not an official commit).
+1. Check out the [yugabyte/yugabyte-db][repo-yugabyte-db] squash merge commit.
+1. `git merge` the upstream merge commit.
+   Since the merge was already previously done, just sync the new content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
+
+With a merge commit at hand, use `git show --diff-merges=dense-combined` (equivalent to just `git show`) on the merge commit to see the main resolutions.
+Be aware that this doesn't show resolutions where one side of the merge was taken entirely.
+
+On top of that, make sure that the Git metadata is proper where it matters.
+For the upstream repository, there should only be a single merge commit unless the alternate strategy is taken to redo cherry-picks on the new destination.
+
+
+##### Another way to review the merge
+
+A different way to review is to do the entire merge yourself.
+It takes longer but results in a more solid review.
+You can follow the resolution notes of the author while checking it makes sense.
+This also helps make sure the author made clear resolution notes and covered explaining the necessary resolutions.
+
 #### File-specific advice
 
 - `upstream_repositories.csv`:
