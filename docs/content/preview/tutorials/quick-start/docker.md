@@ -153,11 +153,10 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
 {{< note title="Note" >}}
 
-When you start yugabyted with a non-default `--base_dir` value, you must set the `--base_dir` flag for every subsequent yugabyted command.
+By default, yugabyted uses the `/home/user/var` directory. When you start yugabyted with a non-default `--base_dir` value, you must set the `--base_dir` flag for every subsequent yugabyted command.
+
 For example, to get the status of the cluster you just created, you would enter `bin/yugabyted status --base_dir=/home/yugabyte/yb_data`.
-
 {{< /note >}}
-
 
 ## Connect to the database
 
