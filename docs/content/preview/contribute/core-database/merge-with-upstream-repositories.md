@@ -396,6 +396,7 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    Unlike as in `yugabyte/postgres`, the commit structure in `yugabyte/yugabyte-db` does not matter since these changes will eventually be squashed.
    Once all commits are imported, update `src/lint/upstream_repositories.csv`, and create a Phorge revision.
    The Phorge summary should have the upstream postgres commit hashes and their commit messages.
+   In case of YB's point-imports, provide both the cherry-pick's hash and the original commit's hash.
    Add to the summary the merge resolution details that were previously recorded.
 1. Pass review for both the `yugabyte/postgres` imports and the `yugabyte/yugabyte-db` revision.
    Besides general merge review, here are things reviewers should watch out for in the `yugabyte/postgres` review:
@@ -604,6 +605,9 @@ They are not run in `yugabyte/yugabyte-db`, but it is still good to make sure th
 
 ### Cross-repository patch
 
+When using the squash embedding strategy, changes to an upstream repository need to be transferred to [yugabyte/yugabyte-db][repo-yugabyte-db] manually.
+This is a cross-repository patch.
+
 Cherry-picking a change from one repository to another where the prefixes of paths differ is a little tricky.
 It is most commonly done for point-imports of upstream repositories to YugabyteDB.
 
@@ -640,6 +644,20 @@ git remote add local-postgres ~/code/postgres
 git fetch local-postgres tmp-squash
 git cherry-pick --strategy subtree -Xsubtree=src/postgres local-postgres/tmp-squash
 ```
+
+In case of larger direct-descendant and non-direct-descendant merges, cherry-picking merge commits is still possible using the `-m` option.
+However, that should be weighed against an alternate approach to do an actual merge on the upstream repository's side, then transfer the changes over to [yugabyte/yugabyte-db][repo-yugabyte-db]:
+
+1. On the upstream repository commit before the upstream merge (which should equal the commit recorded in `upstream_repositories.csv` in [yugabyte/yugabyte-db][repo-yugabyte-db]), sync the content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
+   YugabyteDB may have introduced new files, which can be ignored for now and merged properly later.
+   What we care about for the merge are existing files that have been overwritten with new content.
+   Use `git add -u` to add all those changes, and commit them (commit message does not matter since this is not an official commit).
+1. `git merge` the upstream merge commit.
+   Since this is a merge commit, Git blame shows upstream commits on one side of the conflict, and on the other side, it shows the YB changes squashed to a single commit created in the previous step.
+   For further reference of the YB changes, consult Git blame in [yugabyte/yugabyte-db][repo-yugabyte-db].
+   As always, keep track of resolution notes somewhere.
+1. After completing the unofficial merge to the best of your ability, sync this new content back to [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory.
+   Now, build can be attempted in [yugabyte/yugabyte-db][repo-yugabyte-db] to catch compilation and test issues, leading to further changes.
 
 In all cases, cross-repository merge conflicts may arise, in which case resolution details should be noted in the commit messages.
 See MERGE.
@@ -846,8 +864,8 @@ As for the commit message body, look into the above examples as reference (e.g. 
 When using `git cherry-pick -x`, the commit message is automatically generated.
 
 In case of cherry-picking for the sake of officially pushing the cherry-picked commits directly (e.g. upstream repositories), if encountering any merge conflicts, put such details somewhere in the commit message.
-In case of cherry-picking but eventually landing a Phorge squash commit, concatenate the commit messages (including titles) and add merge conflict details somewhere in the summary.
-The title should be of the form `[#<GH_issue>] YSQL: import <cherry-picked_commit_title>`, in case of cherry-picking a single commit, or `[#GH_issue>] YSQL: import <general_catchall>` otherwise.
+In case of cherry-picking but eventually landing a Phorge squash commit, concatenate the commit messages (including titles) and add merge conflict details somewhere in the Phorge summary.
+The Phorge title should be of the form `[#<GH_issue>] YSQL: import <cherry-picked_commit_title>`, in case of cherry-picking a single commit, or `[#GH_issue>] YSQL: import <general_catchall>` otherwise.
 
 #### Redoing a merge
 
