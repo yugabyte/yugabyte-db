@@ -6,6 +6,7 @@ description: How to Develop Applications with AI and YugabyteDB
 image:
 headcontent: Add a scalable and highly-available database to your AI projects
 type: indexpage
+showRightNav: true
 cascade:
   unversioned: true
 ---
