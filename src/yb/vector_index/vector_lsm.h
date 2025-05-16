@@ -143,6 +143,7 @@ class VectorLSM {
   using  ImmutableChunkPtrs = std::vector<ImmutableChunkPtr>;
 
   class  CompactionScope;
+  struct CompactionContext;
   class  CompactionTask;
   using  CompactionTaskPtr = std::unique_ptr<CompactionTask>;
 
@@ -173,8 +174,7 @@ class VectorLSM {
   void AcquireManifest() EXCLUDES(mutex_);
   void ReleaseManifest() EXCLUDES(mutex_);
   void ReleaseManifestUnlocked() REQUIRES(mutex_);
-  Result<WritableFile*> RollManifest() EXCLUDES(mutex_);
-  Result<WritableFile*> RollManifestUnlocked() REQUIRES(mutex_);
+  Result<WritableFile*> RollManifest() REQUIRES(mutex_);
 
   // Creates vector index and reserve at least for `min_vectors` entries.
   Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
@@ -201,10 +201,15 @@ class VectorLSM {
   // to keep iterators to the selected range as they could become invalidated.
   CompactionScope PickChunksForFullCompaction() const EXCLUDES(mutex_);
 
+  // TODO(vector_index): update description (covered by #27089).
+  CompactionScope PickChunksForCompaction() const EXCLUDES(mutex_);
+
   // Returns new chunk - a product of input chunks compaction; the new chunk is saved to a disk.
   Result<ImmutableChunkPtr> DoCompactChunks(const ImmutableChunkPtrs& input_chunks);
 
-  Status DoCompact(CompactionScope&& scope) EXCLUDES(mutex_);
+  Status DoCompact(const CompactionContext& context, CompactionScope&& scope) EXCLUDES(mutex_);
+
+  void ScheduleBackgroundCompaction() EXCLUDES(mutex_);
 
   // Creates compaction task and tries to submit it to the thread pool. Triggres callback only if
   // compation task has been successfully submitted.
@@ -214,6 +219,7 @@ class VectorLSM {
 
   void Deregister(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
   void Register(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
+  void RegisterUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
 
   // Requirement: taks must be registered.
   Status SubmitTask(CompactionTaskPtr task);
