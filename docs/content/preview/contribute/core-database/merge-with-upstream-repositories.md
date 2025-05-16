@@ -392,7 +392,7 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    At the end, you should be n commits ahead of `yb-pg<version>`, where n is the number of commits you are point-importing.
    Make a GitHub PR of this through your fork for review.
 1. On the `yugabyte/yugabyte-db` repo, import the commits that are part of the `yugabyte/postgres` repo PR.
-   This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository patch](#cross-repository-patch) for advice.
+   This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository cherry-pick](#cross-repository-cherry-pick) for advice.
    Unlike as in `yugabyte/postgres`, the commit structure in `yugabyte/yugabyte-db` does not matter since these changes will eventually be squashed.
    Once all commits are imported, update `src/lint/upstream_repositories.csv`, and create a Phorge revision.
    The Phorge summary should have the upstream postgres commit hashes and their commit messages.
@@ -437,7 +437,7 @@ An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd5310802
    There should only be the merge commit and no other extraneous commits on top of it.
    Make a GitHub PR of this through your fork for review.
 1. Apply those changes to the `yugabyte/yugabyte-db` repo.
-   See [cross-repository patch](#cross-repository-patch) for details.
+   See [cross-repository cherry-pick](#cross-repository-cherry-pick) for details.
    Update `src/lint/upstream_repositories.csv`, and create a Phorge revision listing all the merge conflict details.
    Ensure that the [author information](#git-author-information) for the latest commit of this Phorge revision is `YugaBot <yugabot@users.noreply.github.com>`.
 1. Pass review for both `yugabyte/postgres` GitHub PR and `yugabyte/yugabyte-db` Phorge revision.
@@ -603,10 +603,10 @@ They are not run in `yugabyte/yugabyte-db`, but it is still good to make sure th
 ( cd src/bin/pg_dump; make check )
 ```
 
-### Cross-repository patch
+### Cross-repository cherry-pick
 
 When using the squash embedding strategy, changes to an upstream repository need to be transferred to [yugabyte/yugabyte-db][repo-yugabyte-db] manually.
-This is a cross-repository patch.
+This is a cross-repository cherry-pick.
 
 Cherry-picking a change from one repository to another where the prefixes of paths differ is a little tricky.
 It is most commonly done for point-imports of upstream repositories to YugabyteDB.
@@ -933,7 +933,7 @@ There should be no other commits besides the subtree ones.
 For merges, it is best to get an actual merge commit.
 Phorge squashes any Git structure into a single patch, so the merge commit should be obtained through a separate medium such as a GitHub fork.
 In case the final commit will be a squash merge rather than a merge commit, an equivalent throw-away merge commit should be provided for merge purposes.
-If you followed the [cross-repository patch steps](#cross-repository-patch), you may be able to skip some of the early steps here as they are redundant:
+If you followed the [cross-repository cherry-pick steps](#cross-repository-cherry-pick), you may be able to skip some of the early steps here as they are redundant:
 
 1. Check out the [yugabyte/yugabyte-db][repo-yugabyte-db] base commit of this squash merge.
 1. On the upstream repository commit before the upstream merge (which should equal the commit recorded in `upstream_repositories.csv` in [yugabyte/yugabyte-db][repo-yugabyte-db]), sync the content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
