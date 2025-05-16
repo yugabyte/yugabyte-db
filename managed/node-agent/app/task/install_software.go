@@ -180,7 +180,7 @@ func (h *InstallSoftwareHandler) setupSymlinks(
 			src := filepath.Join(ybSoftwareDir, f)
 			dst := filepath.Join(targetDir, f)
 			desc := fmt.Sprintf("symlink-%s-to-%s", src, dst)
-			cmd := fmt.Sprintf("unlink %s > /dev/null 2>&1 || ln -sf %s %s", dst, src, dst)
+			cmd := fmt.Sprintf("unlink %s > /dev/null 2>&1; ln -sf %s %s", dst, src, dst)
 			if _, err := module.RunShellCmd(ctx, h.username, desc, cmd, h.logOut); err != nil {
 				return err
 			}
