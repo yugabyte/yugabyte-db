@@ -566,7 +566,7 @@ Otherwise, the author information is generated with your configuration.
 `git commit --amend --reset-author` also regenerates the author information with your configuration.
 Take care not to overwrite the author information when you shouldn't.
 
-For Phorge, if the squash strategy is used for landing, the author information of the latest commit being landed is transferred to the squash commit.
+For Phorge, the author information of the latest commit being landed is transferred to the merge or squash commit constructed by `arc land`.
 
 ### Find PostgreSQL back-patch commits
 
@@ -745,10 +745,9 @@ For example,
 
 The message is definitely changeable, but it may be of best interest to make sure that the auto-generated message appears like you wish it to be as a sanity check that you are doing things correctly.
 
-For the ref, a **full** commit hash is the safest approach.
-Short commit hashes have a risk of collision.
-Tags are preferred since they are more human-readable.
-In any case, the merge commit's second parent is the commit being merged, so this is technically duplicate information.
+For the ref, a **full** commit hash is preferred over short commit hashes, which have a risk of collision.
+Tags are preferred since they are more human-readable, but they should not be used if they may be deleted in the future.
+In any case, the merge commit's second parent is the commit being merged, so this is all technically duplicate information.
 A reason to still care about it is that Phorge merge commit titles are derived from these titles, and the Phorge merge commit is more removed from the commit being merged.
 
 This brings us to the next topic: do not use the template `Merge <ref> into <branch>` if ref or branch are not accurate.
