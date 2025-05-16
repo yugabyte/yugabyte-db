@@ -116,7 +116,7 @@ Enable more efficient communication between YB-TServer and PostgreSQL using shar
 
 {{< note title="Note" >}}
 
-Parallel query is {{<tags/feature/ea>}} in v2024.2.3 but has not yet been added to EPCM.
+Parallel query is {{<tags/feature/ea idea="577">}} in v2024.2.3 but has not yet been added to EPCM.
 
 {{< /note >}}
 
