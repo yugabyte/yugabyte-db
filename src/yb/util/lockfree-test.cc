@@ -388,7 +388,8 @@ TEST(LockfreeTest, QueuePerformance) {
   helper.Perform(0x10, true);
 }
 
-TEST(LockfreeTest, Stack) {
+template <template<class> class Collection>
+void TestIntrusive() {
   constexpr int kNumEntries = 100;
   constexpr int kNumThreads = 5;
 
@@ -396,11 +397,11 @@ TEST(LockfreeTest, Stack) {
     int value;
   };
 
-  LockFreeStack<Entry> stack;
+  Collection<Entry> collection;
   std::vector<Entry> entries(kNumEntries);
   for (int i = 0; i != kNumEntries; ++i) {
     entries[i].value = i;
-    stack.Push(&entries[i]);
+    collection.Push(&entries[i]);
   }
 
   TestThreadHolder holder;
@@ -408,24 +409,24 @@ TEST(LockfreeTest, Stack) {
     // Each thread randomly does one of
     // 1) pull items from shared stack and store it to local set.
     // 2) push random item from local set to shared stack.
-    holder.AddThread([&stack, &stop = holder.stop_flag()] {
+    holder.AddThread([&collection, &stop = holder.stop_flag()] {
       std::vector<Entry*> local;
       while (!stop.load(std::memory_order_acquire)) {
         bool push = !local.empty() && RandomUniformInt(0, 1);
         if (push) {
           size_t index = RandomUniformInt<size_t>(0, local.size() - 1);
-          stack.Push(local[index]);
+          collection.Push(local[index]);
           local[index] = local.back();
           local.pop_back();
         } else {
-          auto entry = stack.Pop();
+          auto entry = collection.Pop();
           if (entry) {
             local.push_back(entry);
           }
         }
       }
       while (!local.empty()) {
-        stack.Push(local.back());
+        collection.Push(local.back());
         local.pop_back();
       }
     });
@@ -435,14 +436,14 @@ TEST(LockfreeTest, Stack) {
 
   std::vector<int> content;
   while (content.size() <= kNumEntries) {
-    auto entry = stack.Pop();
+    auto entry = collection.Pop();
     if (!entry) {
       break;
     }
     content.push_back(entry->value);
   }
 
-  LOG(INFO) << "Content: " << yb::ToString(content);
+  LOG(INFO) << "Content: " << AsString(content);
 
   ASSERT_EQ(content.size(), kNumEntries);
 
@@ -450,6 +451,14 @@ TEST(LockfreeTest, Stack) {
   for (int i = 0; i != kNumEntries; ++i) {
     ASSERT_EQ(content[i], i);
   }
+}
+
+TEST(LockfreeTest, Stack) {
+  TestIntrusive<LockFreeStack>();
+}
+
+TEST(LockfreeTest, SemiFairQueue) {
+  TestIntrusive<SemiFairQueue>();
 }
 
 TEST(LockfreeTest, WriteOnceWeakPtr) {

@@ -41,7 +41,7 @@ namespace {
 
 class Worker;
 
-using TaskQueue = RWQueue<ThreadPoolTask*>;
+using TaskQueue = SemiFairQueue<ThreadPoolTask>;
 using WaitingWorkers = LockFreeStack<Worker>;
 
 struct ThreadPoolShare {
@@ -144,8 +144,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
   ThreadPoolTask* PopTask() {
     // First of all we try to get already queued task, w/o locking.
     // If there is no task, so we could go to waiting state.
-    ThreadPoolTask* task;
-    if (share_.task_queue.pop(task)) {
+    if (auto* task = share_.task_queue.Pop()) {
       return task;
     }
 
@@ -190,8 +189,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
     if (task_) {
       return std::exchange(task_, nullptr);
     }
-    ThreadPoolTask* task;
-    if (share_.task_queue.pop(task)) {
+    if (auto task = share_.task_queue.Pop()) {
       return task;
     }
     return std::nullopt;
@@ -333,7 +331,7 @@ class ThreadPool::Impl {
     {
       std::lock_guard lock(mutex_);
       if (closing_) {
-        CHECK(share_.task_queue.empty());
+        CHECK(share_.task_queue.Empty());
         CHECK(workers_.empty());
         return;
       }
@@ -357,8 +355,7 @@ class ThreadPool::Impl {
         workers_.clear();
       }
     }
-    ThreadPoolTask* task = nullptr;
-    while (share_.task_queue.pop(task)) {
+    while (auto* task = share_.task_queue.Pop()) {
       TaskDone(task, kShuttingDownStatus);
     }
 
