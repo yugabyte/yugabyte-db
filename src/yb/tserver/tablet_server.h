@@ -459,6 +459,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
 
+  void StartTSLocalLockManager() EXCLUDES (lock_);
+
   std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.

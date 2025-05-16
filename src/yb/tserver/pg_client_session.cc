@@ -1080,13 +1080,14 @@ class TransactionProvider {
     }
   }
 
-  Result<const TransactionId&> NextTxnIdForPlain(CoarseTimePoint deadline) {
+  Result<TransactionMetadata> NextTxnMetaForPlain(
+      CoarseTimePoint deadline, bool is_for_release = false) {
+    client::internal::InFlightOpsGroupsWithMetadata ops_info;
     if (!next_plain_) {
       auto txn = Build(deadline, {});
       // Don't execute txn->GetMetadata() here since the transaction is not iniatialized with
       // its full metadata yet, like isolation level.
       Synchronizer synchronizer;
-      client::internal::InFlightOpsGroupsWithMetadata ops_info;
       if (txn->batcher_if().Prepare(
           &ops_info, client::ForceConsistentRead::kFalse, deadline, client::Initial::kFalse,
           synchronizer.AsStdStatusCallback())) {
@@ -1095,7 +1096,20 @@ class TransactionProvider {
       RETURN_NOT_OK(synchronizer.Wait());
       next_plain_.swap(txn);
     }
-    return next_plain_->id();
+    // next_plain_ would be ready at this point i.e status tablet picked.
+    auto txn_meta_res = next_plain_->metadata();
+    if (txn_meta_res.ok()) {
+      return txn_meta_res;
+    }
+    if (!is_for_release) {
+      return txn_meta_res.status();
+    }
+    // If the transaction has already failed due to some reason, we should release the locks.
+    // And also reset next_plain_, so the subsequent ysql transaction would use a new docdb txn.
+    TransactionMetadata txn_meta_for_release;
+    txn_meta_for_release.transaction_id = next_plain_->id();
+    next_plain_ = nullptr;
+    return txn_meta_for_release;
   }
 
  private:
@@ -1195,7 +1209,7 @@ template <typename Request>
 Request AcquireRequestFor(
     const std::string& session_host_uuid, const TransactionId& txn_id, SubTransactionId subtxn_id,
     uint64_t database_id, uint64_t object_id, TableLockType lock_type, uint64_t lease_epoch,
-    ClockBase* clock, CoarseTimePoint deadline) {
+    ClockBase* clock, CoarseTimePoint deadline, const TabletId& status_tablet) {
   auto now = clock->Now();
   Request req;
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
@@ -1214,6 +1228,7 @@ Request AcquireRequestFor(
   lock->set_database_oid(database_id);
   lock->set_object_oid(object_id);
   lock->set_lock_type(lock_type);
+  req.set_status_tablet(status_tablet);
   return req;
 }
 
@@ -1267,7 +1282,8 @@ void ReleaseWithRetries(
   // interval it can safely give up. The Master is responsible for cleaning up the locks for any
   // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
   // used here defaults to 60s, which is much larger than the default lease interval of 15s.
-  auto timeout = MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+  auto deadline = MonoTime::Now() +
+      MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
   if (!lease_validator.IsLeaseValid(release_req->lease_epoch())) {
     LOG(INFO) << "Lease epoch " << release_req->lease_epoch() << " is not valid. Will not retry "
               << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
@@ -1291,7 +1307,7 @@ void ReleaseWithRetries(
           ReleaseWithRetries(client, lease_validator, release_req, attempt + 1);
         }
       },
-      timeout);
+      ToCoarse(deadline));
 }
 
 } // namespace
@@ -2323,12 +2339,13 @@ class PgClientSession::Impl {
     if (setup_session_result.is_plain && setup_session_result.session_data.transaction) {
       RETURN_NOT_OK(setup_session_result.session_data.transaction->GetMetadata(deadline).get());
     }
-    auto& txn_id = setup_session_result.session_data.transaction
-        ? setup_session_result.session_data.transaction->id()
-        : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline));
+    auto txn_meta_res = setup_session_result.session_data.transaction
+        ? setup_session_result.session_data.transaction->GetMetadata(deadline).get()
+        : transaction_provider_.NextTxnMetaForPlain(deadline);
+    RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "txn_id " << txn_id
+        << "txn_id " << txn_meta_res->transaction_id
         << " lock_type: " << AsString(lock_type)
         << " req: " << req.ShortDebugString();
 
@@ -2337,18 +2354,18 @@ class PgClientSession::Impl {
         plain_session_has_exclusive_object_locks_.store(true);
       }
       auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
-          instance_uuid(), txn_id, options.active_sub_transaction_id(), req.database_oid(),
-          req.object_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline);
+          instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
+          req.database_oid(), req.object_oid(), lock_type, lease_epoch_, context_.clock.get(),
+          deadline, txn_meta_res->status_tablet);
       auto status_future = MakeFuture<Status>([&](auto callback) {
-        client_.AcquireObjectLocksGlobalAsync(
-            lock_req, callback,
-            MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms));
+        client_.AcquireObjectLocksGlobalAsync(lock_req, callback, deadline);
       });
       return status_future.get();
     }
     auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
-        instance_uuid(), txn_id, options.active_sub_transaction_id(), req.database_oid(),
-        req.object_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline);
+        instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
+        req.database_oid(), req.object_oid(), lock_type, lease_epoch_, context_.clock.get(),
+        deadline, txn_meta_res->status_tablet);
     return ts_lock_manager()->AcquireObjectLocks(lock_req, deadline);
   }
 
@@ -3169,9 +3186,12 @@ class PgClientSession::Impl {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
     }
+    auto txn_meta_res = txn
+        ? txn->GetMetadata(deadline).get()
+        : transaction_provider_.NextTxnMetaForPlain(deadline, !subtxn_id);
+    RETURN_NOT_OK(txn_meta_res);
     return DoReleaseObjectLocks(
-        txn ? txn->id() : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline)),
-        subtxn_id, deadline, has_exclusive_locks);
+        txn_meta_res->transaction_id, subtxn_id, deadline, has_exclusive_locks);
   }
 
   Status DoReleaseObjectLocks(

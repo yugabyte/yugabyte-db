@@ -2185,7 +2185,7 @@ void CatalogManager::CompleteShutdown() {
   if (async_task_pool_) {
     async_task_pool_->Shutdown();
   }
-
+  object_lock_info_manager_->Shutdown();
   // It's OK if the visitor adds more entries even after we finish; it won't start any new tasks for
   // those entries.
   AbortAndWaitForAllTasks();

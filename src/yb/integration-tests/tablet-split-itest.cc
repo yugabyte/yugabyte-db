@@ -138,6 +138,7 @@ DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(TEST_simulate_long_remote_bootstrap_sec);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);

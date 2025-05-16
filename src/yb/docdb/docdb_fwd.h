@@ -43,6 +43,7 @@ class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class IntentAwareIteratorIf;
 class IntentIterator;
+class LocalWaitingTxnRegistry;
 class LockBatch;
 class ManualHistoryRetentionPolicy;
 class ObjectLockManager;

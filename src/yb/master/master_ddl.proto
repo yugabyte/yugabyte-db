@@ -786,6 +786,7 @@ message AcquireObjectLocksGlobalRequestPB {
   optional fixed64 ignore_after_hybrid_time = 6;
   optional fixed64 propagated_hybrid_time = 7;
   optional AshMetadataPB ash_metadata = 8;
+  optional bytes status_tablet = 9;
 }
 
 message AcquireObjectLocksGlobalResponsePB {

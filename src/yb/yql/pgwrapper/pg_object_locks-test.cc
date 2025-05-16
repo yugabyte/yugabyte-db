@@ -107,8 +107,9 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn1.Execute(lock_stmt_1));
 
-    // In sync point ObjectLockedBatchEntry::Lock, the lock is in waiting state.
-    SyncPoint::GetInstance()->LoadDependency({{"WaitingLock", "ObjectLockedBatchEntry::Lock"}});
+    // In sync point ObjectLockManagerImpl::DoLockSingleEntry, the lock is in waiting state.
+    SyncPoint::GetInstance()->LoadDependency(
+        {{"WaitingLock", "ObjectLockManagerImpl::DoLockSingleEntry"}});
     SyncPoint::GetInstance()->ClearTrace();
     SyncPoint::GetInstance()->EnableProcessing();
 

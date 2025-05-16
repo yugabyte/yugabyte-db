@@ -367,12 +367,6 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
   }
-  if (opts.server_type == TabletServerOptions::kServerType &&
-      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
-  } else {
-    ts_local_lock_manager_ = nullptr;
-  }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
 }
@@ -740,6 +734,8 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(heartbeater_->Start());
 
+  StartTSLocalLockManager();
+
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
   }
@@ -785,6 +781,10 @@ void TabletServer::Shutdown() {
         "Failed to stop table mutation count sender thread");
   }
 
+  if (auto local_lock_manager = ts_local_lock_manager(); local_lock_manager) {
+    local_lock_manager->Shutdown();
+  }
+
   client()->RequestAbortAllRpcs();
 
   tablet_manager_->StartShutdown();
@@ -795,9 +795,24 @@ void TabletServer::Shutdown() {
 }
 
 tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
-  std::lock_guard l(lock_);
-  ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
-  return ts_local_lock_manager_;
+  ts_local_lock_manager()->Shutdown();
+  {
+    std::lock_guard l(lock_);
+    ts_local_lock_manager_.reset();
+  }
+  StartTSLocalLockManager();
+  return ts_local_lock_manager();
+}
+
+void TabletServer::StartTSLocalLockManager() {
+  if (opts_.server_type == TabletServerOptions::kServerType &&
+      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    std::lock_guard l(lock_);
+    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
+        clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
+        tablet_manager_->waiting_txn_pool());
+    ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
+  }
 }
 
 bool TabletServer::HasBootstrappedLocalLockManager() const {
