@@ -1188,6 +1188,10 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
   return new_iter;
 }
 
+InternalIterator* BlockBasedTable::NewIndexIterator(const ReadOptions& read_options) {
+  return NewIndexIterator(read_options, /* input_iter = */ nullptr);
+}
+
 yb::Result<BlockBasedTable::CachableEntry<Block>> BlockBasedTable::RetrieveBlock(
     const ReadOptions& ro, const Slice& index_value,
     const BlockType block_type, const bool use_cache) {

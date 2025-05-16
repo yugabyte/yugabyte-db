@@ -116,6 +116,8 @@ class PlainTableReader: public TableReader {
     return arena_.MemoryAllocatedBytes();
   }
 
+  InternalIterator* NewIndexIterator(const ReadOptions& read_options) override;
+
   PlainTableReader(const ImmutableCFOptions& ioptions,
                    std::unique_ptr<RandomAccessFileReader>&& file,
                    const EnvOptions& env_options,

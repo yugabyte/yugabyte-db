@@ -61,6 +61,10 @@ class MockTableReader : public TableReader {
   InternalIterator* NewIterator(const ReadOptions&, Arena* arena,
                                 bool skip_filters = false) override;
 
+  InternalIterator* NewIndexIterator(const ReadOptions& read_options) override {
+    return nullptr;
+  }
+
   Status Get(const ReadOptions&, const Slice& key, GetContext* get_context,
              bool skip_filters = false) override;
 
