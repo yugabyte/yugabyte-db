@@ -9,6 +9,7 @@ menu:
     parent: configuration
     weight: 2100
 type: docs
+body_class: configuration
 ---
 
 The YugabyteDB Tablet Server ([YB-TServer](../../../architecture/yb-tserver/)) is a critical component responsible for managing data storage, processing client requests, and handling replication within a YugabyteDB cluster. It ensures data consistency, fault tolerance, and scalability by storing and serving data as tablets—sharded units of storage distributed across multiple nodes. Proper configuration of the YB-TServer is important to optimize performance, manage system resources effectively, help establish secure communication, and provide high availability (HA).
