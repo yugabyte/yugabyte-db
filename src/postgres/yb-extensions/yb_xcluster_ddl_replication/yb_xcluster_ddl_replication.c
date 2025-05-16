@@ -52,16 +52,23 @@ typedef enum YbXClusterReplicationRole
 	AUTOMATIC_TARGET = 4,
 } YbXClusterReplicationRole;
 
+static const struct config_enum_entry replication_role_overrides[] = {
+	{"", UNSPECIFIED, /* hidden */ false},
+	{"NONE", UNSPECIFIED, /* hidden */ false},
+	{"UNSPECIFIED", UNSPECIFIED, /* hidden */ true},
+	{"NOT_AUTOMATIC_MODE", NOT_AUTOMATIC_MODE, /* hidden */ true},
+	{"UNAVAILABLE", UNAVAILABLE, /* hidden */ true},
+	{"SOURCE", AUTOMATIC_SOURCE, /* hidden */ false},
+	{"AUTOMATIC_SOURCE", AUTOMATIC_SOURCE, /* hidden */ true},
+	{"TARGET", AUTOMATIC_TARGET, /* hidden */ false},
+	{"AUTOMATIC_TARGET", AUTOMATIC_TARGET, /* hidden */ true},
+	{NULL, 0, false}};
+
 /*
  * Call FetchReplicationRole() at the start of every DDL to fill this variable
  * in before using it.
  */
 static int replication_role = UNAVAILABLE;
-static bool role_override_present = false;
-/*
- * If role_override_present, then this overrides the value of replication_role
- * fetched from the TServer.
- */
 static int replication_role_override = UNSPECIFIED;
 
 /*
@@ -121,12 +128,22 @@ _PG_init(void)
 							   PGC_SUSET,
 							   0,
 							   NULL, NULL, NULL);
+
+	DefineCustomEnumVariable("yb_xcluster_ddl_replication.TEST_replication_role_override",
+								 gettext_noop("Test override for replication role."),
+								 NULL,
+								 &replication_role_override,
+								 UNSPECIFIED,
+								 replication_role_overrides,
+								 PGC_SUSET,
+								 0,
+								 NULL, NULL, NULL);
 }
 
 void
 FetchReplicationRole()
 {
-	if (role_override_present)
+	if (replication_role_override != UNSPECIFIED)
 		replication_role = replication_role_override;
 	else
 		replication_role = YBCGetXClusterRole(MyDatabaseId);
@@ -186,41 +203,6 @@ get_replication_role(PG_FUNCTION_ARGS)
 			break;
 	}
 	PG_RETURN_TEXT_P(cstring_to_text(role_name));
-}
-
-PG_FUNCTION_INFO_V1(TEST_override_replication_role);
-Datum
-TEST_override_replication_role(PG_FUNCTION_ARGS)
-{
-	text       *role_text = PG_GETARG_TEXT_PP(0);
-	char       *role_name = text_to_cstring(role_text);
-
-	if (pg_strcasecmp(role_name, "no_override") == 0 ||
-		pg_strcasecmp(role_name, "") == 0)
-	{
-		role_override_present = false;
-		PG_RETURN_VOID();
-	}
-
-	if (pg_strcasecmp(role_name, "unspecified") == 0)
-		replication_role_override = UNSPECIFIED;
-	else if (pg_strcasecmp(role_name, "unavailable") == 0)
-		replication_role_override = UNAVAILABLE;
-	else if (pg_strcasecmp(role_name, "not_automatic_mode") == 0)
-		replication_role_override = NOT_AUTOMATIC_MODE;
-	else if (pg_strcasecmp(role_name, "source") == 0 ||
-			 pg_strcasecmp(role_name, "automatic_source") == 0)
-		replication_role_override = AUTOMATIC_SOURCE;
-	else if (pg_strcasecmp(role_name, "target") == 0 ||
-			 pg_strcasecmp(role_name, "automatic_target") == 0)
-		replication_role_override = AUTOMATIC_TARGET;
-	else
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid replication role: '%s'", role_name)));
-
-	role_override_present = true;
-	PG_RETURN_VOID();
 }
 
 void
