@@ -1,14 +1,14 @@
 ---
 title: How to Develop LLM Apps with LangChain, OpenAI and YugabyteDB
 headerTitle: LangChain and OpenAI
-linkTitle: LangChain and OpenAI
+linkTitle: LangChain
 description: Learn to build context-aware LLM applications using LangChain and OpenAI.
 image: /images/tutorials/ai/icons/langchain-icon.svg
 headcontent: Query your database using natural language
 menu:
   preview_tutorials:
     identifier: tutorials-ai-langchain-openai
-    parent: tutorials-ai
+    parent: tutorials-ai-rag
     weight: 60
 type: docs
 ---
