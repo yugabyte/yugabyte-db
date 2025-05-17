@@ -23,7 +23,7 @@ To use `pg_hint_plan` effectively, you need a thorough knowledge of how your app
 
 {{< /warning >}}
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Configure pg_hint_plan
 

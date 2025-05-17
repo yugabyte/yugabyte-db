@@ -12,19 +12,11 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
-
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
 
 namespace yb {
-
-class FsManager;
-
-namespace server {
-class ServerBaseOptions;
-}  // namespace server
 
 // ProcessWrapper is just a wrapper class for handling the details regarding running a
 // process (like, the Kill method used and command used for running the process).
@@ -51,36 +43,66 @@ class ProcessWrapper {
   std::optional<Subprocess> proc_;
 };
 
-YB_DEFINE_ENUM(YbSubProcessState, (kNotStarted)(kRunning)(kStopping)(kStopped));
-
 // ProcessSupervisor deals with the lifecycle of process (like, Start() and Stop() methods).
 // ProcessSupervisor starts a separate thread to keep a process running in the background,
 // monitor it and restart it in case it crashes.
+
+// These states apply to the supervisor itself, not the supervised process. They control the
+// behaviour of the monitor thread.
+YB_DEFINE_ENUM(YbSubProcessState, (kNotStarted)(kRunning)(kStopping)(kPaused));
+
+// kNotStarted - the ProcessSupervisor is in this state after construction until Start is called.
+// The monitor thread and the supervised process do not yet exist.
+//   possible state transitions:
+//       kRunning
+//       kStopping
+// kRunning - when Start is called, the ProcessSupervisor transitions to kRunning. It spawns the
+// process and creates a monitor thread. The monitor thread will respawn the supervised process if
+// it dies.
+//   possible state transitions:
+//       kPaused
+//       kStopping
+
+// kPaused - the supervised process is killed and the monitor thread will not respawn it.
+//   possible state transitions:
+//       kRunning
+//       kStopping
+
+// kStopping - the supervised process is sent signals to stop and the monitor thread should stop.
+//   possible state transitions:
+//       (none)
 class ProcessSupervisor {
  public:
   virtual ~ProcessSupervisor() {}
   virtual void Stop();
   Status Start();
+  Status InitPaused();
 
   // Returns the current state of the process.
   YbSubProcessState GetState();
+  Status Restart();
+  Status Pause();
 
  protected:
   virtual std::shared_ptr<ProcessWrapper> CreateProcessWrapper() = 0;
   std::mutex mtx_;
-  std::shared_ptr<ProcessWrapper> process_wrapper_ = NULL;
+  std::shared_ptr<ProcessWrapper> process_wrapper_ = nullptr;
   virtual void PrepareForStop() {}
   virtual Status PrepareForStart() { return Status::OK(); }
   virtual std::string GetProcessName() = 0;
 
  private:
+  Status Init(YbSubProcessState target_state);
   // Compares the expected and current state.
   // Caller function need to lock the mutex before calling the function.
   Status ExpectStateUnlocked(YbSubProcessState state) REQUIRES(mtx_);
 
   // Start a process.
-  // Caller function need to lock the mutex before calling the function.
+  // Caller function needs to lock the mutex before calling the function.
   Status StartProcessUnlocked() REQUIRES(mtx_);
+  Status InitializeProcessWrapperUnlocked() REQUIRES(mtx_);
+
+  Status KillAndChangeState(YbSubProcessState new_state) EXCLUDES(mtx_);
 
   // Current state of the process.
   YbSubProcessState state_ GUARDED_BY(mtx_) = YbSubProcessState::kNotStarted;
@@ -88,16 +110,8 @@ class ProcessSupervisor {
   scoped_refptr<Thread> supervisor_thread_;
 
   CountDownLatch thread_finished_latch_{1};
+  std::condition_variable cond_;
   void RunThread();
-};
-
-struct ProcessWrapperCommonConfig {
-  std::string certs_dir;
-  std::string certs_for_client_dir;
-  std::string cert_base_name;
-  bool enable_tls = false;
-
-  Status SetSslConf(const server::ServerBaseOptions& options, FsManager& fs_manager);
 };
 
 }  // namespace yb

@@ -66,10 +66,11 @@ static const char *pgss_file = "pg_stat_statements.csv";
 static const char *ash_file = "active_session_history.csv";
 static const char *explain_plan_file = "explain_plan.txt";
 static const char *schema_details_file = "schema_details.txt";
-
 static const int32 status_view_file_format_id = 0x20250325;
 static const char *status_view_file_name = "yb_query_diagnostics_status.txt";
 static const char *status_view_tmp_file_name = "yb_query_diagnostics_status.tmp";
+static const char *statistics_file = "statistics.json";
+static const char *extended_statistics_file = "statistics_ext.json";
 
 /* Separates schema details for different tables by 60 '=' */
 const char *schema_details_separator = "============================================================";
@@ -206,9 +207,13 @@ static void FinishBundleProcessing(YbQueryDiagnosticsMetadata *metadata,
 								   YbQueryDiagnosticsStatusType status, const char *description);
 static int	DumpBufferIfHalfFull(char *buffer, size_t max_len, const char *file_name,
 								 const char *folder_path, char *description, slock_t *mutex);
-static int DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description);
+static int DumpActiveSessionHistory(const YbQueryDiagnosticsEntry *entry, char *description);
 static void GetResultsInCsvFormat(StringInfo output_buffer, int num_cols);
 static void GetResultsInTabularFormat(StringInfo output_buffer, int num_cols);
+static void RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry);
+static void YbSaveQueryDiagnosticsStatusView(int code, Datum arg);
+static void YbRestoreQueryDiagnosticsStatusView();
+static char *StatusToString(YbQueryDiagnosticsStatusType status);
 
 /* Function used in gathering bind_variables/constants data */
 static void AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, StringInfo params);
@@ -216,14 +221,18 @@ static void AccumulateBindVariablesOrConstants(YbQueryDiagnosticsEntry *entry, S
 /* Functions used in gathering pg_stat_statements */
 static void PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss,
 						 const char *queryString);
+
+/* Functions used in gathering schema details */
 static void FetchSchemaOids(List *rtable, Oid *schema_oids);
 static bool ExecuteQuery(StringInfo output_buffer, const char *query, int output_format);
-static int	DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details, char *description);
+static int	DescribeOneTable(Oid oid, const char *db_name, StringInfo schema_details,
+							 char *description);
 static void PrintTableAndDatabaseName(Oid oid, const char *db_name, StringInfo schema_details);
-static void RegisterDatabaseConnectionBgWorker(const YbQueryDiagnosticsEntry *entry);
-static void YbSaveQueryDiagnosticsStatusView(int code, Datum arg);
-static void YbRestoreQueryDiagnosticsStatusView();
-static char *StatusToString(YbQueryDiagnosticsStatusType status);
+static int DumpSchemaDetails(const YbQueryDiagnosticsEntry *entry, char *description);
+
+/* Functions used in gathering cbo_stat_dump */
+static int DumpStatistics(const YbQueryDiagnosticsEntry *entry, char *description);
+static int DumpExtendedStatistics(const YbQueryDiagnosticsEntry *entry, char *description);
 
 void
 YbQueryDiagnosticsInstallHook(void)
@@ -995,7 +1004,7 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 							  entry->metadata.params.explain_dist, totaltime_ms);
 
 		/* Fetch schema details only if it is not already fetched */
-		if (entry->schema_oids[0] == 0)
+		if (entry->schema_oids[0] == InvalidOid)
 			FetchSchemaOids(queryDesc->plannedstmt->rtable,
 							entry->schema_oids);
 	}
@@ -1657,7 +1666,7 @@ remove_entry:
 }
 
 static int
-DumpSchemaDetails(YbQueryDiagnosticsEntry *entry, char *description)
+DumpSchemaDetails(const YbQueryDiagnosticsEntry *entry, char *description)
 {
 	StringInfoData schema_details;
 	MemoryContext curr_context = CurrentMemoryContext;
@@ -1693,7 +1702,6 @@ DumpSchemaDetails(YbQueryDiagnosticsEntry *entry, char *description)
 							schema_details.data, description);
 
 		pfree(schema_details.data);
-		pfree(description);
 	}
 	PG_CATCH();
 	{
@@ -1728,7 +1736,7 @@ DumpSchemaDetails(YbQueryDiagnosticsEntry *entry, char *description)
  *		Gathers ASH data using SPI and dumps it to a file.
  */
 static int
-DumpActiveSessionHistory(YbQueryDiagnosticsEntry *entry, char *description)
+DumpActiveSessionHistory(const YbQueryDiagnosticsEntry *entry, char *description)
 {
 	char		query[256];
 	StringInfoData ash_buffer;
@@ -2538,6 +2546,259 @@ YbQueryDiagnosticsMain(Datum main_arg)
 }
 
 /*
+ * BuildRelationFilter
+ *      Builds a SQL filter condition for relations based on the relation OIDs.
+ *
+ */
+static void
+BuildRelationFilter(const YbQueryDiagnosticsEntry *entry, StringInfo filter_string)
+{
+	StringInfoData oid_list;
+	int			oid_count = 0;
+
+	initStringInfo(&oid_list);
+
+	for (int i = 0; i < YB_QD_MAX_SCHEMA_OIDS; i++)
+	{
+		if (entry->schema_oids[i] == InvalidOid)
+			break;
+
+		if (oid_count > 0)
+			appendStringInfoString(&oid_list, ", ");
+
+		appendStringInfo(&oid_list, "%u", entry->schema_oids[i]);
+		oid_count++;
+	}
+
+	appendStringInfo(filter_string,
+						"c.oid in (%s) or c.oid in (select "
+						"indexrelid from pg_index where indrelid in (%s))",
+						oid_list.data, oid_list.data);
+
+	pfree(oid_list.data);
+}
+
+/*
+ * AppendJsonArrayFromBuffer
+ *      Takes a raw buffer containing JSON objects (one per line after a
+ *      header) and appends it as a formatted JSON array under the given key
+ *      to the target buffer.
+ */
+static void
+AppendJsonArrayFromBuffer(StringInfo target_buffer,
+						  const StringInfo source_buffer,
+						  const char *json_key)
+{
+	char	   *line;
+	char	   *saveptr = NULL;
+	bool		first_item = true;
+	const char *header_line = "row_to_json";
+
+	/* Add the key and start the array */
+	appendStringInfo(target_buffer, ",\n    %s: [\n", json_key);
+
+	for (line = strtok_r(source_buffer->data, "\n", &saveptr); line != NULL;
+		 line = strtok_r(NULL, "\n", &saveptr))
+	{
+		/* Skip the header line and empty lines */
+		if (strcmp(line, header_line) == 0 || strlen(line) == 0)
+			continue;
+
+		if (!first_item)
+			appendStringInfoString(target_buffer, ",\n");
+
+		/* Add indentation and the JSON line */
+		appendStringInfo(target_buffer, "        %s", line);
+		first_item = false;
+	}
+
+	/* Close the array (add newline only if items were added) */
+	if (!first_item)
+	  appendStringInfoChar(target_buffer, '\n');
+
+	appendStringInfoString(target_buffer, "    ]");
+}
+
+/*
+ * DumpAndFormatStatistics
+ *      Common function to dump statistics data into a JSON file.
+ *      Takes an array of queries and their corresponding JSON keys.
+ */
+static int
+DumpAndFormatStatistics(const YbQueryDiagnosticsEntry *entry, char *description,
+						const char *file_name, const char **queries, const char **json_key_names,
+						int query_count, bool *needs_relation_filter)
+{
+	StringInfoData relation_names_filter;
+	StringInfoData query;
+	StringInfoData buffer;
+	StringInfoData final_json_buffer;
+	YbQueryDiagnosticsStatusType status = YB_DIAGNOSTICS_SUCCESS;
+
+	/* We need not dump anything if no relations are provided */
+	if (entry->schema_oids[0] == InvalidOid)
+	{
+		YbQueryDiagnosticsAppendToDescription(description,
+											  "No relation OIDs provided for statistics dump;");
+
+		return YB_DIAGNOSTICS_SUCCESS;
+	}
+
+	initStringInfo(&relation_names_filter);
+	initStringInfo(&final_json_buffer);
+	initStringInfo(&query);
+	initStringInfo(&buffer);
+
+	BuildRelationFilter(entry, &relation_names_filter);
+
+	/* Start the final JSON structure */
+	appendStringInfoString(&final_json_buffer, "{\n    \"version\": \"1.0.0\"");
+
+	/* Process each query */
+	for (int i = 0; i < query_count; i++)
+	{
+		/* Format the query with relation filter if needed, otherwise use it as-is */
+		if (needs_relation_filter[i])
+			appendStringInfo(&query, queries[i], relation_names_filter.data);
+		else
+			appendStringInfoString(&query, queries[i]);
+
+		/* Execute query into its temporary buffer */
+		if (!ExecuteQuery(&buffer, query.data, YB_QD_CSV))
+		{
+
+			YbQueryDiagnosticsAppendToDescription("Failed to execute query for %s",
+												  json_key_names[i] + 1); /* Skip the leading quote */
+			status = YB_DIAGNOSTICS_ERROR;
+
+			goto cleanup;
+		}
+
+		/* Append formatted data to the final buffer */
+		AppendJsonArrayFromBuffer(&final_json_buffer, &buffer,
+								  json_key_names[i]);
+
+		resetStringInfo(&query);
+		resetStringInfo(&buffer);
+	}
+
+	appendStringInfoString(&final_json_buffer, "\n}");
+
+	status = DumpToFile(entry->metadata.path, file_name,
+						final_json_buffer.data, description);
+
+cleanup:
+	pfree(query.data);
+	pfree(buffer.data);
+	pfree(relation_names_filter.data);
+	pfree(final_json_buffer.data);
+
+	return status;
+}
+
+/*
+ * DumpStatistics
+ *		Dumps statistics data from pg_statistic and pg_class into a JSON file.
+ *		%s within queries is later replaced with the relation filter condition.
+ */
+static int
+DumpStatistics(const YbQueryDiagnosticsEntry *entry, char *description)
+{
+	const char *queries[] = {
+		"SELECT row_to_json(t) FROM "
+		"(SELECT c.relname, c.relpages, c.reltuples, c.relallvisible, n.nspname "
+		"FROM pg_class c "
+		"JOIN pg_namespace n ON c.relnamespace = n.oid "
+		"AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') "
+		"and (%s) ORDER BY n.nspname, c.relname) t",
+
+		"SELECT row_to_json(t) FROM "
+		"(SELECT n.nspname AS nspname, "
+		"c.relname AS relname, "
+		"a.attname AS attname, "
+		"(SELECT nspname FROM pg_namespace WHERE oid = t.typnamespace) AS typnspname, "
+		"t.typname AS typname, "
+		"s.stainherit, s.stanullfrac, s.stawidth, s.stadistinct, "
+		"s.stakind1, s.stakind2, s.stakind3, s.stakind4, s.stakind5, "
+		"s.staop1, s.staop2, s.staop3, s.staop4, s.staop5, "
+		"s.stanumbers1, s.stanumbers2, s.stanumbers3, s.stanumbers4, s.stanumbers5, "
+		"s.stacoll1, s.stacoll2, s.stacoll3, s.stacoll4, s.stacoll5, "
+		"s.stavalues1, s.stavalues2, s.stavalues3, s.stavalues4, s.stavalues5 "
+		"FROM pg_class c "
+		"JOIN pg_namespace n ON c.relnamespace = n.oid "
+		"AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') and (%s) "
+		"JOIN pg_statistic s ON s.starelid = c.oid "
+		"JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum "
+		"JOIN pg_type t ON a.atttypid = t.oid "
+		"ORDER BY n.nspname, c.relname, a.attname) t"
+	};
+
+	const char *json_key_names[] = {"\"pg_class\"", "\"pg_statistic\""};
+	bool		needs_relation_filter[] = {true, true};
+
+	return DumpAndFormatStatistics(entry, description, statistics_file,
+								   queries, json_key_names, 2 /* query_count */ ,
+								   needs_relation_filter);
+}
+
+/*
+ * DumpExtendedStatistics
+ *		Dumps extended statistics data from pg_statistic_ext and
+ *		pg_statistic_ext_data into a JSON file.
+ *		%s within queries is later replaced with the relation filter condition.
+ */
+static int
+DumpExtendedStatistics(const YbQueryDiagnosticsEntry *entry, char *description)
+{
+	const char *queries[] = {
+		"SELECT row_to_json(t) FROM "
+		"(SELECT c.relname, s.stxname, n.nspname, s.stxowner, s.stxstattarget, "
+		"string_agg(a.attname, ',') AS stxkeys, s.stxkind, s.stxexprs "
+		"FROM pg_class c "
+		"JOIN pg_statistic_ext s ON c.oid = s.stxrelid "
+		"JOIN pg_attribute a ON c.oid = a.attrelid AND a.attnum = ANY(s.stxkeys) "
+		"JOIN pg_namespace n ON c.relnamespace = n.oid "
+		"AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema') and (%s) "
+		"GROUP BY c.relname, s.stxname, n.nspname, s.stxowner, s.stxstattarget, s.stxkind, s.stxexprs "
+		"ORDER BY n.nspname, c.relname, s.stxname) t",
+
+		"SELECT row_to_json(t) FROM "
+		"(SELECT s.stxname, d.stxdinherit, d.stxdndistinct::bytea, "
+		"d.stxddependencies::bytea, d.stxdmcv::bytea, d.stxdexpr "
+		"FROM pg_statistic_ext s "
+		"JOIN pg_statistic_ext_data d ON s.oid = d.stxoid "
+		"ORDER BY s.stxname) t"
+	};
+
+	const char *json_key_names[] = {"\"pg_statistic_ext\"", "\"pg_statistic_ext_data\""};
+	bool		needs_relation_filter[] = {true, false};
+
+	return DumpAndFormatStatistics(entry, description, extended_statistics_file,
+								   queries, json_key_names, 2 /* query_count */ ,
+								   needs_relation_filter);
+}
+
+/*
+ * DumpDataAndLogError
+ *    Dump data by executing the DumpFunction and log any error.
+ *
+ * This helper consolidates error handling for multiple dump operations in the
+ * database connection background worker.
+ */
+static void
+DumpDataAndLogError(const char *data_identifier,
+					int (*DumpFunction)(const YbQueryDiagnosticsEntry *, char *),
+					YbQueryDiagnosticsEntry *entry, char *description)
+{
+	YbQueryDiagnosticsStatusType status = DumpFunction(entry, description);
+
+	if (status == YB_DIAGNOSTICS_ERROR)
+		ereport(LOG,
+				(errmsg("QueryDiagnostics: database connection bgworker "
+						"failed to dump %s", data_identifier)));
+}
+
+/*
  * YbQueryDiagnosticsDatabaseConnectionWorkerMain
  * 		Background worker for dumping schema details, active session history.
  *		Since these operations require query execution, a separate bgworker is
@@ -2551,8 +2812,7 @@ YbQueryDiagnosticsDatabaseConnectionWorkerMain(Datum main_arg)
 					"and active session history")));
 
 	YbQueryDiagnosticsEntry *entry = &database_connection_worker_info->entry;
-	const char	   *database_name = entry->metadata.db_name;
-	YbQueryDiagnosticsStatusType status = YB_DIAGNOSTICS_SUCCESS;
+	const char *database_name = entry->metadata.db_name;
 	char	   *description = palloc0(YB_QD_DESCRIPTION_LEN);
 
 	if (!database_name || !entry)
@@ -2568,11 +2828,22 @@ YbQueryDiagnosticsDatabaseConnectionWorkerMain(Datum main_arg)
 	BackgroundWorkerInitializeConnection(database_name, NULL, 0);
 
 	if (yb_enable_ash)
-		DumpActiveSessionHistory(entry, description);
+		DumpDataAndLogError("active session history", DumpActiveSessionHistory,
+							entry, description);
 
-	status = DumpSchemaDetails(entry, description);
+	DumpDataAndLogError("schema details", DumpSchemaDetails,
+						entry, description);
+	DumpDataAndLogError("statistics", DumpStatistics,
+						entry, description);
+	DumpDataAndLogError("extended statistics", DumpExtendedStatistics,
+						entry, description);
 
-	proc_exit(status == YB_DIAGNOSTICS_SUCCESS ? 0 : 1);
+	ereport(DEBUG1,
+			(errmsg("QueryDiagnostics: database connection bgworker description: %s",
+					description)));
+
+	pfree(description);
+	proc_exit(0);
 }
 
 /*

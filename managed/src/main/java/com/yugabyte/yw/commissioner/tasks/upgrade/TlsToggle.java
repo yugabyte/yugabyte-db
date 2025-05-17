@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -202,13 +203,13 @@ public class TlsToggle extends UpgradeTaskBase {
     }
 
     if (taskParams().isYbcInstalled()) {
-      createStopYbControllerTasks(nodes.tserversList)
+      createStopYbControllerTasks(nodes.getAllNodes())
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-      createYbcFlagsUpdateTasks(nodes.tserversList);
-      createStartYbcTasks(nodes.tserversList)
+      createYbcFlagsUpdateTasks(nodes.getAllNodes().stream().collect(Collectors.toList()));
+      createStartYbcTasks(nodes.getAllNodes())
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(nodes.tserversList)
+      createWaitForYbcServerTask(nodes.getAllNodes())
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }

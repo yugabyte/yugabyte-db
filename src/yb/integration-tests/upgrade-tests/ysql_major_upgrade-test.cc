@@ -1651,4 +1651,41 @@ TEST_F(YsqlMajorUpgradeTest, YbSuperuserRole) {
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 
+TEST_F(YsqlMajorUpgradeTest, Analyze) {
+  constexpr std::string_view kStatsUpdateError =
+      "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade";
+  constexpr std::string_view kNoRandStateError = "Invalid sampling state, random state is missing";
+  using ExpectedErrors = std::optional<const std::vector<std::string_view>>;
+  auto check_analyze = [this](std::optional<size_t> server, ExpectedErrors expected_errors) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(server));
+    auto status = conn.ExecuteFormat("ANALYZE $0", kSimpleTableName);
+    if (!expected_errors) {
+      ASSERT_OK(status);
+    } else {
+      ASSERT_NOK(status);
+      for (const auto& err : *expected_errors) {
+        if (status.ToString().find(err) != std::string::npos) {
+          return;
+        }
+      }
+      FAIL() << "Unexpected error " << status.ToString();
+    }
+  };
+  ASSERT_OK(CreateSimpleTable());
+  check_analyze(kAnyTserver, std::nullopt);
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+  check_analyze(kAnyTserver, {{kStatsUpdateError}});
+  LOG(INFO) << "Restarting yb-tserver " << kMixedModeTserverPg15 << " in current version";
+  auto mixed_mode_pg15_tserver = cluster_->tablet_server(kMixedModeTserverPg15);
+  ASSERT_OK(RestartTServerInCurrentVersion(
+      *mixed_mode_pg15_tserver, /*wait_for_cluster_to_stabilize=*/true));
+  check_analyze(kMixedModeTserverPg11, {{kNoRandStateError, kStatsUpdateError}});
+  check_analyze(kMixedModeTserverPg15, {{kNoRandStateError, kStatsUpdateError}});
+  ASSERT_OK(UpgradeAllTserversFromMixedMode());
+  check_analyze(kAnyTserver, {{kStatsUpdateError}});
+  ASSERT_OK(FinalizeUpgrade());
+  check_analyze(kAnyTserver, std::nullopt);
+}
+
 }  // namespace yb

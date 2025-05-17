@@ -42,14 +42,8 @@ struct LockBatchEntry {
   // For private use by LockManager.
   typename LockManagerTraits<LockManager>::LockedBatchEntry* locked = nullptr;
 
-  // In context of object locking, we need to ignore conflicts with self when obtaining another
-  // mode of lock on an object. The field is set to the transaction's current lock state on the
-  // object and we subtract the same when checking conflicts with the exisitng lock state of the
-  // object.
-  LockState existing_state = 0;
-
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(key, intent_types, existing_state);
+    return YB_STRUCT_TO_STRING(key, intent_types);
   }
 };
 

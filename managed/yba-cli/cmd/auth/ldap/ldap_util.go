@@ -5,6 +5,7 @@
 package ldap
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -15,7 +16,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/scope"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ldap"
 )
 
 type configureLDAPParams struct {
@@ -39,52 +40,101 @@ type configureLDAPParams struct {
 	GroupSearchScope       string
 }
 
-func disableLDAP() {
+func disableLDAP(resetAll bool, keysToReset map[string]bool) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-	deleteKey(authAPI, toggleLDAPKey)
+	ldapConfig := getScopedConfigWithLDAPKeys(authAPI, false /*inherited*/)
+	// Delete the toggle key if present in the config
+	if len(ldapConfig) == 0 {
+		logrus.Warn(formatter.Colorize("No LDAP configuration found.\n", formatter.YellowColor))
+		return
+	}
+	if resetAll {
+		for _, keyConfig := range ldapConfig {
+			logrus.Info(
+				formatter.Colorize(
+					fmt.Sprintf("Deleting key: %s\n", util.LDAPKeyToFlagMap[keyConfig.GetKey()]),
+					formatter.GreenColor,
+				),
+			)
+			key.DeleteGlobalKey(authAPI, keyConfig.GetKey())
+		}
+	} else {
+		for _, keyConfig := range ldapConfig {
+			if _, exists := keysToReset[keyConfig.GetKey()]; exists {
+				logrus.Info(
+					formatter.Colorize(
+						fmt.Sprintf("Deleting key: %s\n", util.LDAPKeyToFlagMap[keyConfig.GetKey()]),
+						formatter.GreenColor,
+					),
+				)
+				key.DeleteGlobalKey(authAPI, keyConfig.GetKey())
+			}
+		}
+	}
+	logrus.Info(
+		formatter.Colorize("LDAP configuration deleted successfully.\n", formatter.GreenColor))
 }
 
 func configureLDAP(params configureLDAPParams) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-	checkAndSetKey(authAPI, toggleLDAPKey, "true")
-	checkAndSetKey(authAPI, ldapHostKey, params.Host)
-	checkAndSetKey(authAPI, ldapPortKey, params.Port)
-	checkAndSetKey(authAPI, ldapTLSVersionKey, params.LdapTLSVersion)
+	key.CheckAndSetGlobalKey(authAPI, util.ToggleLDAPKey, "true")
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPHostKey, params.Host)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPPortKey, params.Port)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPTLSVersionKey, params.LdapTLSVersion)
 	if strings.ToLower(params.LdapSSLProtocol) == util.LDAPWithSSL {
-		checkAndSetKey(authAPI, useLDAPSKey, "true")
-		checkAndSetKey(authAPI, useStartTLSKey, "false")
+		key.CheckAndSetGlobalKey(authAPI, util.UseLDAPSKey, "true")
+		key.CheckAndSetGlobalKey(authAPI, util.UseStartTLSKey, "false")
 	} else if strings.ToLower(params.LdapSSLProtocol) == util.LDAPWithStartTLS {
-		checkAndSetKey(authAPI, useStartTLSKey, "true")
-		checkAndSetKey(authAPI, useLDAPSKey, "false")
+		key.CheckAndSetGlobalKey(authAPI, util.UseStartTLSKey, "true")
+		key.CheckAndSetGlobalKey(authAPI, util.UseLDAPSKey, "false")
 	} else if strings.ToLower(params.LdapSSLProtocol) == util.LDAPWithoutSSL {
-		checkAndSetKey(authAPI, useLDAPSKey, "false")
-		checkAndSetKey(authAPI, useStartTLSKey, "false")
+		key.CheckAndSetGlobalKey(authAPI, util.UseLDAPSKey, "false")
+		key.CheckAndSetGlobalKey(authAPI, util.UseStartTLSKey, "false")
 	}
-	checkAndSetKey(authAPI, ldapBaseDNKey, params.BaseDN)
-	checkAndSetKey(authAPI, ldapDNPrefixKey, params.DNPrefix)
-	checkAndSetKey(authAPI, ldapCustomerUUIDKey, params.CustomerUUID)
-	checkAndSetKey(authAPI, ldapSearchAndBindKey, params.SearchAndBind)
-	checkAndSetKey(authAPI, ldapSearchAttributeKey, params.LdapSearchAttribute)
-	checkAndSetKey(authAPI, ldapSearchFilterKey, params.LdapSearchFilter)
-	checkAndSetKey(authAPI, ldapServiceAccountDNKey, params.ServiceAccountDN)
-	checkAndSetKey(authAPI, ldapServiceAccountPasswordKey, params.ServiceAccountPassword)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPBaseDNKey, params.BaseDN)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPDNPrefixKey, params.DNPrefix)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPCustomerUUIDKey, params.CustomerUUID)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPSearchAndBindKey, params.SearchAndBind)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPSearchAttributeKey, params.LdapSearchAttribute)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPSearchFilterKey, params.LdapSearchFilter)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPServiceAccountDNKey, params.ServiceAccountDN)
+	key.CheckAndSetGlobalKey(
+		authAPI,
+		util.LDAPServiceAccountPasswordKey,
+		params.ServiceAccountPassword,
+	)
 
 	// Group mapping params
-	checkAndSetKey(authAPI, ldapGroupUseRoleMapping, "true")
-	checkAndSetKey(authAPI, ldapDefaultRoleKey, params.DefaultRole)
-	checkAndSetKey(authAPI, ldapGroupAttributeKey, params.GroupAttribute)
-	checkAndSetKey(authAPI, ldapGroupUseQueryKey, params.GroupUseQuery)
-	checkAndSetKey(authAPI, ldapGroupSearchFilterKey, params.GroupSearchFilter)
-	checkAndSetKey(authAPI, ldapGroupSearchBaseKey, params.GroupSearchBase)
-	checkAndSetKey(authAPI, ldapGroupSearchScopeKey, params.GroupSearchScope)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPGroupUseRoleMapping, "true")
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPDefaultRoleKey, params.DefaultRole)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPGroupAttributeKey, params.GroupAttribute)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPGroupUseQueryKey, params.GroupUseQuery)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPGroupSearchFilterKey, params.GroupSearchFilter)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPGroupSearchBaseKey, params.GroupSearchBase)
+	key.CheckAndSetGlobalKey(authAPI, util.LDAPGroupSearchScopeKey, params.GroupSearchScope)
 	logrus.Info(
-		formatter.Colorize("LDAP has been configured successfully.\n", formatter.GreenColor),
+		formatter.Colorize("LDAP configuration updated successfully.\n", formatter.GreenColor),
 	)
-	getLDAPConfig(authAPI)
+	getLDAPConfig(true /*inherited*/)
 }
 
-func getLDAPConfig(authAPI *ybaAuthClient.AuthAPIClient) {
-	r, response, err := authAPI.GetConfig(util.GlobalScopeUUID).IncludeInherited(true).Execute()
+func getLDAPConfig(inherited bool) {
+	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+	ldapConfig := getScopedConfigWithLDAPKeys(authAPI, inherited)
+	if len(ldapConfig) == 0 {
+		logrus.Info(formatter.Colorize("No LDAP configuration found.\n", formatter.YellowColor))
+		return
+	}
+	writeLDAPConfig(ldapConfig)
+}
+
+func getScopedConfigWithLDAPKeys(
+	authAPI *ybaAuthClient.AuthAPIClient,
+	inherited bool,
+) []ybaclient.ConfigEntry {
+	r, response, err := authAPI.GetConfig(util.GlobalScopeUUID).
+		IncludeInherited(inherited).
+		Execute()
 	if err != nil {
 		errMessage := util.ErrorFromHTTPResponse(
 			response,
@@ -92,27 +142,22 @@ func getLDAPConfig(authAPI *ybaAuthClient.AuthAPIClient) {
 			"LDAP config", "Get")
 		logrus.Fatal(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
-	ldapKeys := []ybaclient.ConfigEntry{}
+	ldapKeys := make([]ybaclient.ConfigEntry, 0, len(r.GetConfigEntries()))
 	// Filter out the keys that are not related to LDAP
 	for _, keyConfig := range r.GetConfigEntries() {
-		if strings.HasPrefix(keyConfig.GetKey(), "yb.security.ldap") {
+		if util.IsLDAPKey(keyConfig.GetKey()) {
 			ldapKeys = append(ldapKeys, keyConfig)
 		}
 	}
-	r.ConfigEntries = &ldapKeys
-	fullScopeContext := *scope.NewFullScopeContext()
-	fullScopeContext.Output = os.Stdout
-	fullScopeContext.Format = scope.NewFullScopeFormat(viper.GetString("output"))
-	fullScopeContext.SetFullScope(r)
-	fullScopeContext.Write()
+	return ldapKeys
 }
 
-func checkAndSetKey(authAPI *ybaAuthClient.AuthAPIClient, keyName, value string) {
-	if value != "" {
-		key.SetKey(authAPI, util.GlobalScopeUUID, keyName, value, false /*logSuccess*/)
+func writeLDAPConfig(ldapConfig []ybaclient.ConfigEntry) {
+	logrus.Info(formatter.Colorize("LDAP configuration:\n", formatter.GreenColor))
+	ldapConfigCtx := formatter.Context{
+		Command: "list",
+		Output:  os.Stdout,
+		Format:  ldap.NewLDAPFormat(viper.GetString("output")),
 	}
-}
-
-func deleteKey(authAPI *ybaAuthClient.AuthAPIClient, keyName string) {
-	key.DeleteKey(authAPI, util.GlobalScopeUUID, keyName)
+	ldap.Write(ldapConfigCtx, ldapConfig)
 }

@@ -108,7 +108,6 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.TrustManagerFactory;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.slf4j.Logger;
@@ -3808,7 +3807,6 @@ public class AsyncYBClient implements AutoCloseable {
 
   private SslHandler createSslHandler() {
     try {
-      Security.addProvider(new BouncyCastleProvider());
       CertificateFactory cf = CertificateFactory.getInstance("X.509");
       FileInputStream fis = new FileInputStream(certFile);
       List<X509Certificate> cas;

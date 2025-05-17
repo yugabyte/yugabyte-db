@@ -44,7 +44,6 @@
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_uint32(num_advisory_locks_tablets);
-DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
@@ -98,9 +97,7 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(CreateClient());
-    if (ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_enable_advisory_locks)) {
-      ASSERT_OK(WaitForCreateTableToFinishAndLoadTable());
-    }
+    ASSERT_OK(WaitForCreateTableToFinishAndLoadTable());
   }
 
  protected:
@@ -141,7 +138,6 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
   }
 
   virtual void SetFlags() {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = kNumAdvisoryLocksTablets;
   }
 
@@ -391,25 +387,6 @@ TEST_F(AdvisoryLockTest, Unlock) {
   ASSERT_TRUE(IsStatusLockNotFound(session->TEST_ApplyAndFlush(
       ASSERT_RESULT(MakeUnlockOp(kDefaultLockId)))));
   ASSERT_OK(Commit(txn));
-}
-
-class AdvisoryLocksDisabledTest : public AdvisoryLockTest {
- protected:
-  void SetFlags() override {
-    AdvisoryLockTest::SetFlags();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
-  }
-};
-
-TEST_F_EX(AdvisoryLockTest, ToggleAdvisoryLockFlag, AdvisoryLocksDisabledTest) {
-  // Wait for the background task to run a few times.
-  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * kTimeMultiplier * 3ms);
-  auto res = tserver::YsqlAdvisoryLocksTable(ValueAsFuture(client_.get())).TEST_GetTable();
-  ASSERT_NOK(res);
-  ASSERT_TRUE(res.status().IsNotSupported());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
-  ASSERT_OK(WaitForCreateTableToFinishAndLoadTable());
-  ASSERT_OK(CheckNumTablets());
 }
 
 } // namespace yb

@@ -191,7 +191,7 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    tablet::TabletMetrics* tablet_metrics,
+    const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
@@ -221,14 +221,14 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   auto lock_status = result.lock_batch.status();
   if (!lock_status.ok()) {
     if (tablet_metrics != nullptr) {
-      tablet_metrics->Increment(tablet::TabletCounters::kFailedBatchLock);
+      (*tablet_metrics)->Increment(tablet::TabletCounters::kFailedBatchLock);
     }
     return lock_status.CloneAndAppend(
         Format("Timeout: $0", deadline - ToCoarse(start_time)));
   }
   if (tablet_metrics != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
-    tablet_metrics->Increment(
+    (*tablet_metrics)->Increment(
         tablet::TabletEventStats::kWriteLockLatency,
         make_unsigned(elapsed_time.ToMicroseconds()));
   }

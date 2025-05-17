@@ -47,7 +47,7 @@ func SetKey(
 }
 
 // DeleteKey deletes a key from the scope
-func DeleteKey(authAPI *ybaAuthClient.AuthAPIClient, scope string, key string) {
+func DeleteKey(authAPI *ybaAuthClient.AuthAPIClient, scope string, key string, logSuccess bool) {
 	r, response, err := authAPI.DeleteKey(scope, key).Execute()
 	if err != nil {
 		errMessage := util.ErrorFromHTTPResponse(
@@ -58,8 +58,10 @@ func DeleteKey(authAPI *ybaAuthClient.AuthAPIClient, scope string, key string) {
 	}
 
 	if r.GetSuccess() {
-		logrus.Info(fmt.Sprintf("The key %s of scope %s has been deleted\n",
-			formatter.Colorize(key, formatter.GreenColor), scope))
+		if logSuccess {
+			logrus.Info(fmt.Sprintf("The key %s of scope %s has been deleted\n",
+				formatter.Colorize(key, formatter.GreenColor), scope))
+		}
 	} else {
 		errorMessage := formatter.Colorize(
 			fmt.Sprintf(
@@ -68,4 +70,16 @@ func DeleteKey(authAPI *ybaAuthClient.AuthAPIClient, scope string, key string) {
 			formatter.RedColor)
 		logrus.Errorf("%s", errorMessage)
 	}
+}
+
+// CheckAndSetGlobalKey checks if the value is not empty and sets the key in the global scope
+func CheckAndSetGlobalKey(authAPI *ybaAuthClient.AuthAPIClient, keyName, value string) {
+	if value != "" {
+		SetKey(authAPI, util.GlobalScopeUUID, keyName, value, false /*logSuccess*/)
+	}
+}
+
+// DeleteGlobalKey deletes the key from the global scope
+func DeleteGlobalKey(authAPI *ybaAuthClient.AuthAPIClient, keyName string) {
+	DeleteKey(authAPI, util.GlobalScopeUUID, keyName, false /*logSuccess*/)
 }

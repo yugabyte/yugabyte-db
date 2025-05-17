@@ -74,6 +74,13 @@ struct JobContext;
 struct ExternalSstFileInfo;
 struct RocksDBPriorityThreadPoolMetrics;
 
+namespace internal {
+
+constexpr int kTopDiskCompactionPriority = 100;
+constexpr int kShuttingDownPriority = 200;
+
+} // namespace internal
+
 class DBImpl : public DB {
  public:
   DBImpl(const DBOptions& options, const std::string& dbname);

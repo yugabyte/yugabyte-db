@@ -12,7 +12,7 @@ type: docs
 
 This page explores keyspaces and tables in YCQL using the command line shell ycqlsh.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## YCQL shell
 

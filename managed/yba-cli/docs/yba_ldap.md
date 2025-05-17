@@ -37,5 +37,6 @@ yba ldap [flags]
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 * [yba ldap configure](yba_ldap_configure.md)	 - Configure LDAP authentication for YBA
+* [yba ldap describe](yba_ldap_describe.md)	 - Describe LDAP configuration for YBA
 * [yba ldap disable](yba_ldap_disable.md)	 - Disable LDAP authentication for YBA
 

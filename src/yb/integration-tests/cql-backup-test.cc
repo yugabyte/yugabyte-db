@@ -98,9 +98,6 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
 };
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithoutTSWebUI)) {
-  if (DisableMiniClusterBackupTests()) {
-    return;
-  }
   createTestTable();
 
   // A thread that starts the stopped WebServer after
@@ -117,9 +114,6 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithoutTSWebUI)) {
 }
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupRestoreWithoutTSWebUI)) {
-  if (DisableMiniClusterBackupTests()) {
-    return;
-  }
   createTestTable();
 
   ASSERT_OK(RunBackupCommand(

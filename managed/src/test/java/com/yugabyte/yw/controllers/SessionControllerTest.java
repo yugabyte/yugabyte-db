@@ -227,7 +227,7 @@ public class SessionControllerTest {
         .globalRuntimeConf()
         .setValue("yb.security.oidc_enable_auto_create_users", "false");
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    Users user = ModelFactory.testUser(customer, "test@yugabyte.com");
+    Users user = ModelFactory.testUser(customer, "test@yugabyte.com", Users.Role.Admin);
 
     Result result = route(app, fakeRequest("GET", "/api/third_party_login"));
     assertEquals("Headers:" + result.headers(), SEE_OTHER, result.status());

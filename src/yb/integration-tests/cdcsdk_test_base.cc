@@ -139,7 +139,7 @@ Status CDCSDKTestBase::SetUpWithParams(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = Format("$0:$1", pg_addr, pg_port);
   }
 
-  RETURN_NOT_OK(test_cluster()->StartSync());
+  RETURN_NOT_OK(test_cluster()->Start());
   RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
   RETURN_NOT_OK(WaitForInitDb(test_cluster()));
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
@@ -148,6 +148,8 @@ Status CDCSDKTestBase::SetUpWithParams(
   } else {
     RETURN_NOT_OK(test_cluster_.InitPostgres());
   }
+  auto pg_ts = test_cluster_.mini_cluster_->mini_tablet_server(test_cluster_.pg_ts_idx_);
+  RETURN_NOT_OK(pg_ts->StartPgIfConfigured());
   RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
   cdc_proxy_ = GetCdcProxy();

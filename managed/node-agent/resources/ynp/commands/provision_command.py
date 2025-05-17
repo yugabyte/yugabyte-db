@@ -28,7 +28,7 @@ class OSFamily(Enum):
 class ProvisionCommand(Command):
 
     cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages']
-    onprem_only_modules = ['ConfigureSystemd', 'RebootNode']
+    onprem_only_modules = ['RebootNode']
 
     def __init__(self, config):
         super().__init__(config)

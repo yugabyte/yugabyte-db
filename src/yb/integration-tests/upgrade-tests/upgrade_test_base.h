@@ -45,6 +45,10 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
   static const MonoDelta kNoDelayBetweenNodes;
   void SetUpOptions(ExternalMiniClusterOptions& opts) override;
 
+  void AddUnDefOkAndSetFlag(
+      std::vector<std::string>& flag_list, const std::string& flag_name,
+      const std::string& flag_value);
+
   Status SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType type);
 
   Status StartClusterInOldVersion();

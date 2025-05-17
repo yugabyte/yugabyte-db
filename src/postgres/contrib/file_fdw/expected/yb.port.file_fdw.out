@@ -140,12 +140,7 @@ CREATE FOREIGN TABLE text_csv (
 OPTIONS (format 'text', filename :'filename', null 'NULL');
 SELECT * FROM text_csv; -- ERROR
 ERROR:  COPY force not null available only in CSV mode
--- YB note: Enable ALTER TABLE here and remove DROP/CREATE when #1124 is closed
 ALTER FOREIGN TABLE text_csv OPTIONS (SET format 'csv');
-ERROR:  ALTER action OPTIONS not supported yet
-LINE 1: ALTER FOREIGN TABLE text_csv OPTIONS (SET format 'csv');
-                                     ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 DROP FOREIGN TABLE text_csv;
 CREATE FOREIGN TABLE text_csv (
     word1 text OPTIONS (force_not_null 'true'),
@@ -464,19 +459,10 @@ SELECT * FROM agg_text ORDER BY a;
 -- privilege tests for object
 SET ROLE regress_file_fdw_superuser;
 ALTER FOREIGN TABLE agg_text OWNER TO regress_file_fdw_user;
--- YB note: Change expected output when ALTER TABLE from #1124 is supported
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
-ERROR:  ALTER action OPTIONS not supported yet
-LINE 1: ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
-                                     ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 SET ROLE regress_file_fdw_user;
--- YB note: Change expected output when ALTER TABLE from #1124 is supported
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
-ERROR:  ALTER action OPTIONS not supported yet
-LINE 1: ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
-                                     ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+ERROR:  only superuser or a role with privileges of the pg_read_server_files role may specify the filename option of a file_fdw foreign table
 SET ROLE regress_file_fdw_superuser;
 -- cleanup
 RESET ROLE;

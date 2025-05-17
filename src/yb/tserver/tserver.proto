@@ -154,6 +154,7 @@ message WriteResponsePB {
 
 // A list tablets request
 message ListTabletsRequestPB {
+  optional bool include_user_tablets_only = 1 [ default = false ];
 }
 
 // A list tablets response
@@ -427,6 +428,8 @@ message AcquireObjectLockRequestPB {
   optional uint64 lease_epoch = 5;
   optional fixed64 ignore_after_hybrid_time = 6;
   optional fixed64 propagated_hybrid_time = 7;
+  optional AshMetadataPB ash_metadata = 8;
+  optional bytes status_tablet = 9;
 }
 
 message AcquireObjectLockResponsePB {
@@ -462,6 +465,10 @@ message ReleaseObjectLockRequestPB {
   optional fixed64 propagated_hybrid_time = 6;
 
   optional DBCatalogVersionDataPB db_catalog_version_data = 7;
+  // Used for tracking in-progress DDL unlock requests at the master.
+  optional uint64 request_id = 8;
+  optional AshMetadataPB ash_metadata = 9;
+  optional AppStatusPB abort_status = 10;
 }
 
 message ReleaseObjectLockResponsePB {

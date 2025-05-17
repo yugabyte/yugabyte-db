@@ -28,6 +28,19 @@ Result<std::optional<HybridTime>> TserverXClusterContext::GetSafeTime(
   return safe_time_map_.GetSafeTime(namespace_id);
 }
 
+XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
+    const NamespaceId& namespace_id) const {
+  SharedLock lock(mutex_);
+  if (!have_received_a_heartbeat_) {
+    return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+  }
+  if (auto* xcluster_info_per_namespace = FindOrNull(xcluster_info_per_namespace_, namespace_id)) {
+    return xcluster_info_per_namespace->role();
+  } else {
+    return XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE;
+  }
+}
+
 bool TserverXClusterContext::IsReadOnlyMode(const NamespaceId& namespace_id) const {
   // Namespaces that are part of the safe time belong to an inbound transactional xCluster
   // replication.
@@ -35,7 +48,7 @@ bool TserverXClusterContext::IsReadOnlyMode(const NamespaceId& namespace_id) con
 }
 
 bool TserverXClusterContext::IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const {
-  SharedLock lock(target_namespaces_in_automatic_mode_mutex_);
+  SharedLock lock(mutex_);
   return target_namespaces_in_automatic_mode_.contains(namespace_id);
 }
 
@@ -44,9 +57,20 @@ void TserverXClusterContext::UpdateSafeTimeMap(
   safe_time_map_.Update(safe_time_map);
 }
 
+void TserverXClusterContext::UpdateXClusterInfoPerNamespace(
+    const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
+        xcluster_info_per_namespace) {
+  std::lock_guard lock(mutex_);
+  have_received_a_heartbeat_ = true;
+  xcluster_info_per_namespace_.clear();
+  for (const auto& [namespace_id, info] : xcluster_info_per_namespace) {
+    xcluster_info_per_namespace_[namespace_id] = info;
+  }
+}
+
 void TserverXClusterContext::UpdateTargetNamespacesInAutomaticModeSet(
     const std::unordered_set<NamespaceId>& target_namespaces_in_automatic_mode) {
-  std::lock_guard lock(target_namespaces_in_automatic_mode_mutex_);
+  std::lock_guard lock(mutex_);
   target_namespaces_in_automatic_mode_ = target_namespaces_in_automatic_mode;
 }
 

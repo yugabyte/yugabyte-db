@@ -22,6 +22,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 
 using std::string;
 
@@ -39,6 +40,7 @@ class PgHeapSnapshotTest : public PgMiniTestBase {
 };
 
 TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYsqlHeapSnapshotSimple)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
 

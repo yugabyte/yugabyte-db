@@ -16,7 +16,6 @@
 #include <functional>
 #include <future>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -24,13 +23,10 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/master_heartbeat.fwd.h"
-
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 
@@ -73,8 +69,10 @@ class TserverXClusterContextIf;
     (GetReplicationSlot) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
-    (GetTserverCatalogVersionInfo) \
     (GetTserverCatalogMessageLists) \
+    (SetTserverCatalogMessageList) \
+    (GetTserverCatalogVersionInfo) \
+    (GetXClusterRole) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
@@ -82,7 +80,6 @@ class TserverXClusterContextIf;
     (ListClones) \
     (ListLiveTabletServers) \
     (ListReplicationSlots) \
-    (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
     (GetNewObjectId) \
@@ -112,6 +109,7 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (OpenTable) \
     (GetTableKeyRanges) \
     /**/
 

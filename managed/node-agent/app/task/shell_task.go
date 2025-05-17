@@ -22,12 +22,6 @@ import (
 )
 
 const (
-	// MaxBufferCapacity is the max number of bytes allowed in the buffer
-	// before truncating the first bytes.
-	MaxBufferCapacity = 1000000
-)
-
-const (
 	mountPointsVolume    = "mount_points_volume"
 	mountPointsWritable  = "mount_points_writable"
 	masterHTTPPort       = "master_http_port"
@@ -49,9 +43,7 @@ const (
 // ShellTask handles command execution using module.Command.
 type ShellTask struct {
 	// Name of the task.
-	command  *module.Command
-	stdout   util.Buffer
-	stderr   util.Buffer
+	cmdInfo  *module.CommandInfo
 	exitCode *atomic.Value
 }
 
@@ -63,54 +55,54 @@ func NewShellTask(name string, cmd string, args []string) *ShellTask {
 // NewShellTaskWithUser returns a shell task executor.
 func NewShellTaskWithUser(name string, user string, cmd string, args []string) *ShellTask {
 	return &ShellTask{
-		command:  module.NewCommandWithUser(name, user, cmd, args),
+		cmdInfo: &module.CommandInfo{
+			User:   user,
+			Desc:   name,
+			Cmd:    cmd,
+			Args:   args,
+			StdOut: util.NewBuffer(module.MaxBufferCapacity),
+			StdErr: util.NewBuffer(module.MaxBufferCapacity),
+		},
 		exitCode: &atomic.Value{},
-		stdout:   util.NewBuffer(MaxBufferCapacity),
-		stderr:   util.NewBuffer(MaxBufferCapacity),
 	}
 }
 
 // TaskName returns the name of the shell task.
 func (s *ShellTask) TaskName() string {
-	return s.command.Name()
+	return s.cmdInfo.Desc
 }
 
 // Process runs the the command Task.
 func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
-	util.FileLogger().Debugf(ctx, "Starting the command - %s", s.command.Name())
-	taskStatus := &TaskStatus{Info: s.stdout, ExitStatus: &ExitStatus{Code: 1, Error: s.stderr}}
-	cmd, err := s.command.Create(ctx)
-	if err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Command creation for %s failed - %s", s.command.Name(), err.Error())
-		return taskStatus, err
+	util.FileLogger().Debugf(ctx, "Starting the command - %s", s.cmdInfo.Desc)
+	taskStatus := &TaskStatus{
+		Info:       s.cmdInfo.StdOut,
+		ExitStatus: &ExitStatus{Code: 1, Error: s.cmdInfo.StdErr},
 	}
-	cmd.Stdout = s.stdout
-	cmd.Stderr = s.stderr
 	if util.FileLogger().IsDebugEnabled() {
-		redactedArgs := s.command.RedactCommandArgs()
+		redactedArgs := s.cmdInfo.RedactCommandArgs()
 		util.FileLogger().
-			Debugf(ctx, "Running command %s with args %v", s.command.Cmd(), redactedArgs)
+			Debugf(ctx, "Running command %s with args %v", s.cmdInfo.Cmd, redactedArgs)
 	}
-	err = cmd.Run()
+	err := s.cmdInfo.RunCmd(ctx)
 	if err == nil {
-		taskStatus.Info = s.stdout
+		taskStatus.Info = s.cmdInfo.StdOut
 		taskStatus.ExitStatus.Code = 0
 		if util.FileLogger().IsDebugEnabled() {
 			util.FileLogger().
-				Debugf(ctx, "Command %s executed successfully - %s", s.command.Name(), s.stdout.String())
+				Debugf(ctx, "Command %s executed successfully - %s", s.cmdInfo.Desc, s.cmdInfo.StdOut.String())
 		}
 	} else {
-		taskStatus.ExitStatus.Error = s.stderr
+		taskStatus.ExitStatus.Error = s.cmdInfo.StdErr
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			taskStatus.ExitStatus.Code = exitErr.ExitCode()
 		}
-		if util.FileLogger().IsDebugEnabled() && s.stdout.Len() > 0 {
+		if util.FileLogger().IsDebugEnabled() && s.cmdInfo.StdOut.Len() > 0 {
 			util.FileLogger().
-				Debugf(ctx, "Output for failed command %s - %s", s.command.Name(), s.stdout.String())
+				Debugf(ctx, "Output for failed command %s - %s", s.cmdInfo.Desc, s.cmdInfo.StdOut.String())
 		}
-		errMsg := fmt.Sprintf("%s: %s", err.Error(), s.stderr.String())
-		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.command.Name(), errMsg)
+		errMsg := fmt.Sprintf("%s: %s", err.Error(), s.cmdInfo.StdErr.String())
+		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.cmdInfo.Desc, errMsg)
 	}
 	s.exitCode.Store(taskStatus.ExitStatus.Code)
 	return taskStatus, err
@@ -127,21 +119,21 @@ func (s *ShellTask) CurrentTaskStatus() *TaskStatus {
 	v := s.exitCode.Load()
 	if v == nil {
 		return &TaskStatus{
-			Info: s.stdout,
+			Info: s.cmdInfo.StdOut,
 		}
 	}
 	return &TaskStatus{
-		Info: s.stdout,
+		Info: s.cmdInfo.StdOut,
 		ExitStatus: &ExitStatus{
 			Code:  v.(int),
-			Error: s.stderr,
+			Error: s.cmdInfo.StdErr,
 		},
 	}
 }
 
 // String implements the AsyncTask method.
 func (s *ShellTask) String() string {
-	return s.command.Name()
+	return s.cmdInfo.Desc
 }
 
 // Result returns the result.

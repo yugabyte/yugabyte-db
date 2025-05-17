@@ -904,6 +904,7 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         TargetRecommendations:  models.TargetClusterRecommendationDetails{},
         RecommendedRefactoring: []models.RefactoringCount{},
         AssessmentIssues:       []models.AssessmentCategoryInfo{},
+        Notes:                  []string{},
     }
 
     assessmentReportVisualisationData := <-future
@@ -922,16 +923,18 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     voyagerAssessmentReportResponse.TargetDbVersion =
         assessmentReportVisualisationData.Report.TargetDbVersion
 
-    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
-
+    assessmentReport := assessmentReportVisualisationData.Report
     estimatedTime := int64(math.Round(
         assessmentReport.Sizing.SizingRecommendation.EstimatedTimeInMinForImport))
     voyagerAssessmentReportResponse.Summary.EstimatedMigrationTime =
         fmt.Sprintf("%v Minutes", estimatedTime)
+
+    voyagerAssessmentReportResponse.Notes = assessmentReport.Notes
+
     voyagerAssessmentReportResponse.Summary.MigrationComplexity =
-        assessmentReportVisualisationData.Report.MigrationComplexity
+        assessmentReport.MigrationComplexity
     voyagerAssessmentReportResponse.Summary.MigrationComlexityExplanation =
-        assessmentReportVisualisationData.Report.MigrationComplexityExplanation
+        assessmentReport.MigrationComplexityExplanation
     voyagerAssessmentReportResponse.Summary.Summary =
         assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
 
@@ -941,13 +944,13 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     voyagerAssessmentReportResponse.SourceEnvironment.NoOfConnections = ""
 
     voyagerAssessmentReportResponse.SourceDatabase.TableSize =
-        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableSize
+        assessmentReport.SourceSizeDetails.TotalTableSize
     voyagerAssessmentReportResponse.SourceDatabase.TableRowCount =
-        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableRowCount
+        assessmentReport.SourceSizeDetails.TotalTableRowCount
     voyagerAssessmentReportResponse.SourceDatabase.TotalTableSize =
-        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize
+        assessmentReport.SourceSizeDetails.TotalDBSize
     voyagerAssessmentReportResponse.SourceDatabase.TotalIndexSize =
-        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize
+        assessmentReport.SourceSizeDetails.TotalIndexSize
 
     voyagerAssessmentReportResponse.TargetRecommendations.RecommendationSummary =
         assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
@@ -980,41 +983,54 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         TargetSchemaRecommendation.TotalSizeShardedTables =
         assessmentReportVisualisationData.Report.TargetRecommendations.TotalShardedSize
 
-    dbObjectsMap := map[string]int{}
-    for _, dbObject := range assessmentReportVisualisationData.Report.SchemaSummary.DBObjects {
-        dbObjectsMap[dbObject.ObjectType] = dbObject.TotalCount
+    voyagerAssessmentReportResponse.AssessmentIssues = getAssessmentIssueList(c.logger,
+        assessmentReportVisualisationData.Report)
+
+    // Invalid count depends on 2 things
+    // i.   object_type
+    // ii.  object_name
+    // Using above 2 parameters to calculate invalid count
+    objectTypeObjectNameSet := make(map[string]map[string]struct{})
+
+    for _, assessmentIssueObject := range voyagerAssessmentReportResponse.AssessmentIssues {
+        for _, assessmentIssue := range assessmentIssueObject.Issues {
+            for _, objectData := range assessmentIssue.Objects {
+                objectType := objectData.ObjectType
+                objectName := objectData.ObjectName
+
+                if _, exists := objectTypeObjectNameSet[objectType]; !exists {
+                    objectTypeObjectNameSet[objectType] = make(map[string]struct{})
+                }
+
+                objectTypeObjectNameSet[objectType][objectName] = struct{}{}
+            }
+        }
     }
 
-    dbObjectConversionIssuesMap := map[string]int{}
-    for _, conversionIssue := range assessmentReportVisualisationData.Report.ConversionIssues {
-        count, ok := dbObjectConversionIssuesMap[conversionIssue.ObjectType]
-        if ok {
-            count++
-            dbObjectConversionIssuesMap[conversionIssue.ObjectType] = count
-        } else {
-            dbObjectConversionIssuesMap[conversionIssue.ObjectType] = 1
-        }
+    objectTypeInvalidCountMap := make(map[string]int)
+
+    for objType, objectNameMap := range objectTypeObjectNameSet {
+        count := len(objectNameMap)
+        objectTypeInvalidCountMap[objType] = count
     }
 
     recommendedRefactoringList := []models.RefactoringCount{}
-    for _, dbObject := range assessmentReportVisualisationData.Report.SchemaSummary.DBObjects {
+
+    schemaSummaryDBObjects := assessmentReportVisualisationData.Report.SchemaSummary.DBObjects
+
+    for _, currentDBObject := range schemaSummaryDBObjects {
         var refactorCount models.RefactoringCount
-        refactorCount.SqlObjectType = dbObject.ObjectType
-        refactorCount.Automatic = int32(dbObject.TotalCount - dbObject.InvalidCount)
-        refactorCount.Invalid = int32(dbObject.InvalidCount)
-        issueCount, ok := dbObjectConversionIssuesMap[dbObject.ObjectType]
-        if ok {
-            refactorCount.Manual = int32(issueCount)
-        } else {
-            refactorCount.Manual = 0
-        }
+
+        sqlObjectType := currentDBObject.ObjectType
+        totalCount := currentDBObject.TotalCount
+        invalidCount := objectTypeInvalidCountMap[currentDBObject.ObjectType]
+        refactorCount.Invalid = int32(invalidCount)
+        refactorCount.Automatic = int32(totalCount - invalidCount)
+        refactorCount.SqlObjectType = sqlObjectType
         recommendedRefactoringList = append(recommendedRefactoringList, refactorCount)
     }
 
     voyagerAssessmentReportResponse.RecommendedRefactoring = recommendedRefactoringList
-
-    voyagerAssessmentReportResponse.AssessmentIssues = getAssessmentIssueList(c.logger,
-        assessmentReportVisualisationData.Report)
 
     return ctx.JSON(http.StatusOK, voyagerAssessmentReportResponse)
 }
@@ -1169,23 +1185,23 @@ func (c *Container) GetAssessmentSourceDBDetails(ctx echo.Context) error {
         }
     }
 
-    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
+    assessmentReport := assessmentReportVisualisationData.Report
 
     sqlMetadataList := []models.SqlObjectMetadata{}
     tableIndexList := assessmentReport.TableIndexStats
     setForSchemaObjectPairs := map[string]int{}
     for _, dbObjectStat := range assessmentReport.SchemaSummary.DBObjects {
-        var sqlMetadata1 models.SqlObjectMetadata
+        var sqlMetadata models.SqlObjectMetadata
         allObjectNames := dbObjectStat.ObjectNames
         allObjectNamesArray := strings.Split(allObjectNames, ", ")
         for _, currentObjName := range allObjectNamesArray {
-            sqlMetadata1.SqlType = strings.ToLower(dbObjectStat.ObjectType)
+            sqlMetadata.SqlType = strings.ToLower(dbObjectStat.ObjectType)
 
-            sqlMetadata1.Size = -1
-            sqlMetadata1.Iops = -1
-            sqlMetadata1.ObjectName = currentObjName
+            sqlMetadata.Size = -1
+            sqlMetadata.Iops = -1
+            sqlMetadata.ObjectName = currentObjName
             setForSchemaObjectPairs[strings.ToLower(currentObjName)] = len(sqlMetadataList)
-            sqlMetadataList = append(sqlMetadataList, sqlMetadata1)
+            sqlMetadataList = append(sqlMetadataList, sqlMetadata)
         }
     }
 
@@ -1212,12 +1228,12 @@ func (c *Container) GetAssessmentSourceDBDetails(ctx echo.Context) error {
     sqlObjectsList := []models.SqlObjectCount{}
 
     dbObjectsFromReport :=
-        assessmentReportVisualisationData.Report.AssessmentJsonReport.SchemaSummary.DBObjects
+        assessmentReportVisualisationData.Report.SchemaSummary.DBObjects
     for _, value := range dbObjectsFromReport {
-        var sqlObject1 models.SqlObjectCount
-        sqlObject1.SqlType = value.ObjectType
-        sqlObject1.Count = int32(value.TotalCount)
-        sqlObjectsList = append(sqlObjectsList, sqlObject1)
+        var sqlObject models.SqlObjectCount
+        sqlObject.SqlType = value.ObjectType
+        sqlObject.Count = int32(value.TotalCount)
+        sqlObjectsList = append(sqlObjectsList, sqlObject)
     }
 
     assessmentSourceDBDetails.SqlObjectsCount = sqlObjectsList
@@ -1255,7 +1271,7 @@ func (c *Container) GetTargetRecommendations(ctx echo.Context) error {
         }
     }
 
-    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
+    assessmentReport := assessmentReportVisualisationData.Report
 
     targetRecommendationDetails.NumOfColocatedTables =
         int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))

@@ -11,6 +11,7 @@
 
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <time.h>
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
@@ -120,6 +121,9 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	}
 
 	od_log(&instance->logger, "startup", NULL, NULL, "Starting Odyssey");
+
+	/* YB: seed rng for jitter-close of physical connections */
+	srand((unsigned int)time(NULL));
 
 	char *od_max_query_size = getenv("YB_YSQL_CONN_MGR_MAX_QUERY_SIZE");
 	if (od_max_query_size != NULL)

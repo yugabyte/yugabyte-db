@@ -735,6 +735,16 @@ public class HealthChecker {
       Map<UUID, NodeInstance> nodeInstanceMap =
           NodeInstance.listByUuids(nodeUuids).stream()
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
+      boolean earlyoomEnabled =
+          details.additionalServicesStateData != null
+              && details.additionalServicesStateData.getEarlyoomConfig() != null
+              && details.additionalServicesStateData.getEarlyoomConfig().isEnabled();
+      int topKOtherProcesses =
+          confGetter.getConfForScope(
+              params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesCount);
+      int topKMemThresholdPercent =
+          confGetter.getConfForScope(
+              params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesMemThreshold);
       for (NodeDetails nodeDetails : sortedDetails) {
         NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
         String nodeIdentifier = StringUtils.EMPTY;
@@ -762,6 +772,9 @@ public class HealthChecker {
                 .setTestYsqlshConnectivity(testYsqlshConnectivity)
                 .setTestCqlshConnectivity(testCqlshConnectivity)
                 .setUniverseUuid(params.universe.getUniverseUUID())
+                .setEarlyoomEnabled(earlyoomEnabled)
+                .setTopKOtherProcesses(topKOtherProcesses)
+                .setTopKMemThresholdPercent(topKMemThresholdPercent)
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
           nodeInfo
@@ -1307,7 +1320,11 @@ public class HealthChecker {
     private boolean otelCollectorEnabled;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
+
+    private int topKOtherProcesses;
+    private int topKMemThresholdPercent;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
+    private boolean earlyoomEnabled = false;
   }
 
   @Data

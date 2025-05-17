@@ -136,4 +136,14 @@ Objects in extension "pg_hint_plan"
  table hint_plan.hints
 (2 rows)
 
+ALTER EXTENSION pg_hint_plan UPDATE TO "1.5.1-yb-1.0";
+\dx+ pg_hint_plan
+   Objects in extension "pg_hint_plan"
+            Object description            
+------------------------------------------
+ function hint_plan.yb_cache_invalidate()
+ sequence hint_plan.hints_id_seq
+ table hint_plan.hints
+(3 rows)
+
 DROP EXTENSION pg_hint_plan;

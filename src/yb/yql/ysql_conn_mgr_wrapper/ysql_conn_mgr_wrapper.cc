@@ -36,7 +36,7 @@ DECLARE_int32(ysql_conn_mgr_wait_timeout_ms);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 60,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 180,
     "Specifies the maximum idle (secs) time allowed for database connections created by "
     "the Ysql Connection Manager. If a database connection remains idle without serving a "
     "client connection for a duration equal to or exceeding the value provided, "
@@ -135,6 +135,16 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
     "Enable the use of the dynamic multi-route pooling. "
     "When false, the older static pool sizes are used."
     );
+
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_session_parameters, true,
+    "Optimize usage of session parameters in Ysql Connection Manager. "
+    "If set to false, session parameters are replayed at transaction boundaries for each "
+    "logical connection.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_jitter_time, 120,
+    "Specifies the jitter duration in seconds upto which an idle physical connection may be kept "
+    "open beyond its idle timeout duration. This is to avoid sudden bursts of connections closing "
+    "when dealing with connection burst sceanrios.");
 
 namespace {
 

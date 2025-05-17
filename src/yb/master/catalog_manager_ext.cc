@@ -194,8 +194,8 @@ struct TableWithTabletsEntries {
     table_entry.AppendToString(&output);
     *table_backup_entry->mutable_entry() =
         ToSysRowEntry(table_id, SysRowEntryType::TABLE, std::move(output));
-    if (table_entry.schema().has_pgschema_name() && table_entry.schema().pgschema_name() != "") {
-      table_backup_entry->set_pg_schema_name(table_entry.schema().pgschema_name());
+    if (!table_entry.schema().depricated_pgschema_name().empty()) {
+      table_backup_entry->set_pg_schema_name(table_entry.schema().depricated_pgschema_name());
     }
     for (const auto& tablet_entry : tablets_entries) {
       std::string output;
@@ -567,12 +567,14 @@ Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRe
 Status CatalogManager::RestoreSnapshot(
     const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  LOG(INFO) << "Servicing RestoreSnapshot request: " << req->ShortDebugString();
   auto txn_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
   HybridTime ht;
   if (req->has_restore_ht()) {
     ht = HybridTime(req->restore_ht());
   }
+  LOG(INFO)
+      << "Servicing RestoreSnapshot request: " << txn_snapshot_id
+      << (ht ? Format(" to restore to time ", ht) : "");
   TxnSnapshotRestorationId id = VERIFY_RESULT(
       master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
   resp->set_restoration_id(id.data(), id.size());

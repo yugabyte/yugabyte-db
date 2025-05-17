@@ -50,7 +50,7 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
     if (Util.isOnPremManualProvisioning(universe)) {
-      createRunEnableLinger(universe, universe.getNodes());
+      createRunEnableLinger(universe, universe.getNodes(), null /* shellContext */);
     }
   }
 

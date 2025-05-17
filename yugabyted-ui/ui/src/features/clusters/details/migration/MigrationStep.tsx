@@ -101,6 +101,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
               isFetching={isFetching}
               isNewMigration={isNewMigration}
               voyagerVersion={mAssessmentData?.voyager_version ?? ""}
+              notes={mAssessmentData?.notes ?? []}
             />
           );
         }

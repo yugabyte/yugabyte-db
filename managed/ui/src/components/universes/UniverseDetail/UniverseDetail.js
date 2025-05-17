@@ -47,7 +47,7 @@ import {
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
-import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
+import { UniverseSupportBundleModal } from '../UniverseSupportBundle/UniverseSupportBundleModal';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import { EncryptionInTransit } from '../../../redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
@@ -160,7 +160,7 @@ class UniverseDetail extends Component {
   isNewTaskUIEnabled = () => {
     const { featureFlags } = this.props;
     return featureFlags.test.newTaskDetailsUI || featureFlags.released.newTaskDetailsUI;
-  }
+  };
   componentDidMount() {
     const {
       customer: { currentCustomer }
@@ -232,7 +232,11 @@ class UniverseDetail extends Component {
           refetchedUniverseDetails: true
         });
       }
-      if(this.state.refetchedUniverseDetails && currentUniverse?.data?.universeDetails?.updatingTaskUUID === prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID) {
+      if (
+        this.state.refetchedUniverseDetails &&
+        currentUniverse?.data?.universeDetails?.updatingTaskUUID ===
+          prevProps.universe.currentUniverse.data?.universeDetails?.updatingTaskUUID
+      ) {
         this.setState({
           refetchedUniverseDetails: false
         });
@@ -397,8 +401,7 @@ class UniverseDetail extends Component {
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
     const isProviderNodeAgentEnabled = provider?.details?.enableNodeAgent;
-    const isNodeAgentInstallationPending =
-      universe?.currentUniverse?.data?.universeDetails?.installNodeAgent;
+    const isNodeAgentMissing = universe?.currentUniverse?.data?.universeDetails?.nodeAgentMissing;
 
     let onPremSkipProvisioning = false;
     if (provider && provider.code === 'onprem') {
@@ -869,7 +872,6 @@ class UniverseDetail extends Component {
 
           <DropdownButton
             title="Actions"
-            className={this.showUpgradeMarker() ? 'btn-marked' : ''}
             id="bg-nested-dropdown"
             pullRight
             onToggle={(isOpen) => this.setState({ actionsDropdownOpen: isOpen })}
@@ -1265,11 +1267,10 @@ class UniverseDetail extends Component {
                       <i className="fa fa-chevron-right submenu-icon" />
                     </span>
                   </YBMenuItem>
-                  {(featureFlags.test['supportBundle'] ||
-                    featureFlags.released['supportBundle']) && (
-                    <>
-                      <MenuItem divider />
-                      {!universePaused && (
+                  {(featureFlags.test['supportBundle'] || featureFlags.released['supportBundle']) &&
+                    !universePaused && (
+                      <>
+                        <MenuItem divider />
                         <RbacValidator
                           isControl
                           accessRequiredOn={{
@@ -1277,25 +1278,17 @@ class UniverseDetail extends Component {
                             ...ApiPermissionMap.GET_SUPPORT_BUNDLE
                           }}
                         >
-                          <UniverseSupportBundle
-                            currentUniverse={currentUniverse.data}
-                            modal={modal}
-                            closeModal={closeModal}
-                            button={
-                              <YBMenuItem
-                                onClick={showSupportBundleModal}
-                                disabled={isSupportBundleDisabled}
-                              >
-                                <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                  Support Bundles
-                                </YBLabelWithIcon>
-                              </YBMenuItem>
-                            }
-                          />
+                          <YBMenuItem
+                            onClick={showSupportBundleModal}
+                            disabled={isSupportBundleDisabled}
+                          >
+                            <YBLabelWithIcon icon="fa fa-file-archive-o">
+                              Support Bundles
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
                         </RbacValidator>
-                      )}
-                    </>
-                  )}
+                      </>
+                    )}
 
                   <MenuItem divider />
 
@@ -1519,9 +1512,7 @@ class UniverseDetail extends Component {
                           onClick={showInstallNodeAgentModal}
                         >
                           <YBLabelWithIcon icon="fa fa-plus">
-                            {isNodeAgentInstallationPending
-                              ? 'Install Node Agent'
-                              : 'Reinstall Node Agent'}
+                            {isNodeAgentMissing ? 'Install Node Agent' : 'Reinstall Node Agent'}
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       </RbacValidator>
@@ -1622,9 +1613,7 @@ class UniverseDetail extends Component {
             shouldDisplayTaskButton={true}
           />
         </div>
-        <TaskDetailBanner
-          universeUUID={currentUniverse.data.universeUUID}
-        />
+        <TaskDetailBanner universeUUID={currentUniverse.data.universeUUID} />
         <RollingUpgradeFormContainer
           modalVisible={
             showModal &&
@@ -1797,7 +1786,13 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
           nodeNames={nodeNames}
           isUniverseAction={true}
-          isReinstall={!isNodeAgentInstallationPending}
+          isReinstall={!isNodeAgentMissing}
+        />
+
+        <UniverseSupportBundleModal
+          currentUniverse={currentUniverse.data}
+          modal={modal}
+          closeModal={closeModal}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>

@@ -32,6 +32,9 @@ YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));
 
 class TablespaceParser {
  public:
+
+  static const std::string kWildcardPlacement;
+
   // If fail on fail_on_validation_error is true, the functions below will return an error if the
   // extra validation checks fail. If it is false, then the function will return the replication
   // info and just log a warning. This is required for upgrade safety (and eventually to support the

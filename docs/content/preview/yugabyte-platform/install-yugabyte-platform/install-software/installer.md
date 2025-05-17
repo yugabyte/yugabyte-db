@@ -282,7 +282,7 @@ To use the data disk with a new installation, do the following:
 
 ### Reconfigure
 
-You can use YBA Installer to reconfigure an installed YBA instance.
+You can use YBA Installer to make changes to an installed YBA instance.
 
 To reconfigure an installation, edit the configuration file with your changes, and then run the command as follows:
 
@@ -297,8 +297,8 @@ For more information, refer to [Configuration options](#configuration-options). 
 YBA Installer provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (`platform`, `postgres`, and `prometheus`), or any individual service.
 
 ```sh
-sudo yba-ctl [start, stop, reconfigure]
-sudo yba-ctl [start, stop, reconfigure] prometheus
+sudo yba-ctl [start, stop, restart]
+sudo yba-ctl [start, stop, restart] prometheus
 ```
 
 In addition to the state changing operations, you can use the `status` command to show the status of all YugabyteDB Anywhere services, in addition to other information such as the log and configuration location, versions of each service, and the URL to access the YugabyteDB Anywhere UI.
@@ -437,6 +437,8 @@ YBA Installer [automatically generates](#configure-yba-installer) the file when 
 | sudo | opt/yba-ctl/ |
 | non-sudo | ~/opt/yba-ctl/ |
 
+To make changes to an existing installation, edit the configuration file with your changes and run the [reconfigure](#reconfigure) command. Note that some settings (marked with {{<icon/partial>}}) cannot be changed after installation.
+
 Note that the file must include all fields. Optional fields may be left blank.
 
 ### Configure YBA Installer
@@ -464,6 +466,8 @@ You can configure YugabyteDB Anywhere using the following options.
 | `keyStorePassword` | Password for the Java keystore. Automatically generated if left empty. |
 | `appSecret` | Play framework crypto secret. Automatically generated if left empty. |
 
+#### OAuth
+
 OAuth related settings are described in the following table. With the exception of `useOauth`, they are all optional. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave them empty).
 
 | Option | Description |
@@ -477,18 +481,23 @@ OAuth related settings are described in the following table. With the exception 
 | `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your YBA installation. |
 | `ybOidcEmailAtr` | The OIDC Email Attribute corresponding to the OIDC SSO for your YBA installation. Must be a valid email address. |
 
-Http and Https proxy settings are described in the following table.
+#### Proxy
+
+When configuring proxy values for YBA, all values must be set correctly. On AWS, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the EC2 metadata service.
+
+If you are setting these values on an existing system, run `yba-ctl reconfigure` to set the new values for YBA.
 
 | Option | Description |
 | :--- | :--- |
-| `http_proxy` |            Specify the setting for HTTP_PROXY |
-| `java_http_proxy_port` |  Specify -Dhttp.proxyPort |
-| `java_http_proxy_host` |  Specify -Dhttp.proxyHost |
-| `https_proxy` |           Specify the setting for HTTPS_PROXY |
-| `java_https_proxy_port` | Specify -Dhttps.proxyPort |
-| `java_https_proxy_host` | Specify -Dhttps.proxyHost |
-| `no_proxy` |              Specify the setting for NO_PROXY |
-| `java_non_proxy` |        Specify -Dhttps.nonProxyHosts |
+| `enable` |            A boolean to turn the proxy on or off without having to change further values. If `false`, no proxy settings will be used. |
+| `http_proxy` |            Specify the HTTP_PROXY and http_proxy environment variables, in the form `http://<host>:<port>` |
+| `java_http_proxy_port` |  Specify -Dhttp.proxyPort port value |
+| `java_http_proxy_host` |  Specify -Dhttp.proxyHost as a hostname or IP address |
+| `https_proxy` |           Specify the HTTPS_PROXY and https_proxy environment variables, in the form `https://<host>:<port>` |
+| `java_https_proxy_port` | Specify -Dhttps.proxyPort port |
+| `java_https_proxy_host` | Specify -Dhttps.proxyHost as a hostname or IP address |
+| `no_proxy` |              Specify the NO_PROXY and no_proxy environment variables, as a comma-separated list of URLs and IP addresses that will not be sent to the proxy server. For example, `127.0.0.1,localhost,169.254.169.254` |
+| `java_non_proxy` |        Specify -Dhttps.nonProxyHosts, as a vertical bar (\|) separated list of URLs and IP addresses that will not be sent to the proxy server. For example, `127.0.0.1\|localhost\|169.254.169.254` |
 
 ### Configure Prometheus
 

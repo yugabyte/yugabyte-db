@@ -203,6 +203,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
                          const rpc::ResponseCallback& callback) {
         (proxy->*func)(req, resp, controller, callback);
       });
+  SCOPED_WAIT_STATUS(YBClient_WaitingOnMaster);
   RETURN_NOT_OK(rpcs_.RegisterAndStartStatus(rpc, rpc->RpcHandle()));
   auto result = rpc->synchronizer().Wait();
   if (attempts) {
@@ -1521,8 +1522,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
       resp.partition_schema(), internal::GetSchema(&info->schema), &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
-  if (!resp.schema().pgschema_name().empty()) {
-    info->table_name.set_pgschema_name(resp.schema().pgschema_name());
+  if (!resp.schema().depricated_pgschema_name().empty()) {
+    info->table_name.set_pgschema_name(resp.schema().depricated_pgschema_name());
   }
   info->table_id = resp.identifier().table_id();
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
@@ -2800,6 +2801,8 @@ void YBClient::Data::DoSetMasterServerProxy(CoarseTimePoint deadline,
     return;
   }
 
+  ASH_ENABLE_CONCURRENT_UPDATES();
+  SET_WAIT_STATUS(YBClient_WaitingOnMaster);
   rpcs_.Register(
       std::make_shared<GetLeaderMasterRpc>(
           Bind(&YBClient::Data::LeaderMasterDetermined, Unretained(this)),

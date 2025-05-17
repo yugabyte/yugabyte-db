@@ -558,7 +558,7 @@ void TabletServerPathHandlers::HandleVersionInfoDump(const Webserver::WebRequest
   VersionInfo::GetVersionInfoPB(&version_info);
 
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::PRETTY_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::PRETTY);
 
   jw.Protobuf(version_info);
 }
@@ -849,7 +849,7 @@ void TabletServerPathHandlers::HandleListMasterServers(const Webserver::WebReque
   const Status s = tserver_->ListMasterServers(&list_masters_req, &list_masters_resp);
 
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::PRETTY_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::PRETTY);
   jw.Protobuf(list_masters_resp);
 }
 
@@ -1141,7 +1141,7 @@ void TabletServerPathHandlers::HandleXClusterJSON(
   const auto xcluster_outbound_stream_stats = GetXClusterOutboundStreamStats(tserver_);
   const auto xcluster_inbound_stream_stats = GetXClusterInboundStreamStats(tserver_);
 
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   jw.StartObject();
   if (!xcluster_outbound_stream_stats.empty()) {
@@ -1226,7 +1226,7 @@ void TabletServerPathHandlers::HandleXClusterJSON(
 void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& req,
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   auto tablet_peers = tserver_->tablet_manager()->GetTabletPeers();
 
   jw.StartObject();
@@ -1244,7 +1244,7 @@ void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& re
 void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& req,
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   auto peers = tserver_->tablet_manager()->GetTabletPeers();
   std::sort(peers.begin(), peers.end(), &CompareByTabletId);
@@ -1342,7 +1342,7 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
 void TabletServerPathHandlers::HandleTabletMetaCacheJSON(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
-  JsonWriter writer(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter writer(output, JsonWriter::COMPACT);
   tserver_->WriteServerMetaCacheAsJson(&writer);
 }
 

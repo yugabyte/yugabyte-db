@@ -336,7 +336,7 @@ class MasterSnapshotCoordinator::Impl {
       RETURN_NOT_OK(tablet->snapshots().Create(*sys_catalog_snapshot_data));
     }
 
-    ScheduleOperations(operations, leader_term);
+    PostScheduleOperations(std::move(operations), leader_term);
 
     if (leader_term >= 0 && snapshot_empty) {
       // There could be snapshot for 0 tables, so they should be marked as complete right after
@@ -542,7 +542,7 @@ class MasterSnapshotCoordinator::Impl {
     RETURN_NOT_OK(tablet->ApplyOperation(
         operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
 
-    ScheduleOperations(operations, leader_term);
+    PostScheduleOperations(std::move(operations), leader_term);
     return Status::OK();
   }
 
@@ -1379,6 +1379,14 @@ class MasterSnapshotCoordinator::Impl {
                     MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
+  template <class Operations>
+  void PostScheduleOperations(Operations&& operations, int64_t leader_term) {
+    context_.Scheduler().io_service().post(
+        [this, operations = std::move(operations), leader_term] {
+      ScheduleOperations(operations, leader_term);
+    });
+  }
+
   template <typename Operation>
   void ScheduleOperation(const Operation& operation, const TabletInfoPtr& tablet_info,
                          int64_t leader_term);
@@ -1403,9 +1411,8 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  template <typename TableContainer>
   void SetTaskMetadataForColocatedTable(
-      const TableContainer& table_ids, AsyncTabletSnapshotOp* task) {
+      const std::vector<TableId>& table_ids, AsyncTabletSnapshotOp* task) {
     for (const auto& table_id : table_ids) {
       auto table_info_result = context_.GetTableById(table_id);
       // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
@@ -1437,6 +1444,7 @@ class MasterSnapshotCoordinator::Impl {
     if (!l.IsInitializedAndIsLeader()) {
       return;
     }
+    LongOperationTracker long_operation_tracker("Poll", 1s);
     VLOG(4) << __func__ << "()";
     std::vector<TxnSnapshotId> cleanup_snapshots;
     TabletSnapshotOperations operations;
@@ -2058,8 +2066,8 @@ class MasterSnapshotCoordinator::Impl {
         // from external backups where we don't need to restore the sys catalog.
         auto restoration = std::make_unique<RestorationState>(
             &context_, restoration_id, &snapshot, restore_at,
-            (snapshot.schedule_id().IsNil() ? IsSysCatalogRestored::kTrue :
-                                              IsSysCatalogRestored::kFalse),
+            snapshot.schedule_id().IsNil() ? IsSysCatalogRestored::kTrue :
+                                             IsSysCatalogRestored::kFalse,
             GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
                         FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
         restoration_ptr = restorations_.emplace(std::move(restoration)).first->get();

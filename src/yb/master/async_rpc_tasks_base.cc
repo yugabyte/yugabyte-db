@@ -114,7 +114,7 @@ RetryingRpcTask::RetryingRpcTask(
     : master_(master),
       callback_pool_(callback_pool),
       async_task_throttler_(async_task_throttler),
-      deadline_(start_timestamp_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {}
+      deadline_(UnresponsiveDeadline()) {}
 
 RetryingRpcTask::~RetryingRpcTask() {
   auto state = state_.load(std::memory_order_acquire);
@@ -233,7 +233,11 @@ Status RetryingRpcTask::Run() {
   return Status::OK();
 }
 
-MonoTime RetryingRpcTask::ComputeDeadline() {
+MonoTime RetryingRpcTask::UnresponsiveDeadline() const {
+  return start_timestamp_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms;
+}
+
+MonoTime RetryingRpcTask::ComputeDeadline() const {
   MonoTime timeout = MonoTime::Now();
   timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
   return MonoTime::Earliest(timeout, deadline_);

@@ -56,7 +56,9 @@ YB_DEFINE_ENUM(TabletEventStats,
   (kQlWriteLatency)
   (kWriteOpDurationCommitWaitConsistency)
   (kReadTimeWait)
-  (kTotalWaitQueueTime))
+  (kTotalWaitQueueTime)
+  (kIntentDbWriteThreadJoinDuration)
+  (kIntentDbRemoveThreadJoinDuration))
 
 // Make sure to add new counters to the list in src/yb/yql/pggate/pg_metrics_list.h as well.
 YB_DEFINE_ENUM(TabletCounters,

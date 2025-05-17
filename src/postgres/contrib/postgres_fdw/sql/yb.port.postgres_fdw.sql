@@ -67,12 +67,10 @@ CREATE TABLE "S 1"."T 4" (
 
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 -- YB note: Currently, YugabyteDB doesn't run a background job like PostgreSQL's autovacuum to analyze the tables.
-/*
 ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
-*/ -- YB
 
 INSERT INTO "S 1"."T 1"
 	SELECT id,
@@ -109,10 +107,9 @@ ANALYZE "S 1"."T 4";
 -- ===================================================================
 -- create foreign tables
 -- ===================================================================
--- YB note: set schema_name, table_name, column_name directly here since ALTER TABLE not supported yet, see #1124
 CREATE FOREIGN TABLE ft1 (
 	c0 int,
-	c1 int OPTIONS (column_name 'C 1') NOT NULL, -- YB note: see above
+	c1 int NOT NULL,
 	c2 int NOT NULL,
 	c3 text,
 	c4 timestamptz,
@@ -120,11 +117,11 @@ CREATE FOREIGN TABLE ft1 (
 	c6 varchar(10),
 	c7 char(10) default 'ft1',
 	c8 user_enum
-) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 1'); -- YB note: see above
+) SERVER loopback;
 ALTER FOREIGN TABLE ft1 DROP COLUMN c0;
 
 CREATE FOREIGN TABLE ft2 (
-	c1 int OPTIONS (column_name 'C 1') NOT NULL, -- YB note: see above
+	c1 int NOT NULL,
 	c2 int NOT NULL,
 	cx int,
 	c3 text,
@@ -133,7 +130,7 @@ CREATE FOREIGN TABLE ft2 (
 	c6 varchar(10),
 	c7 char(10) default 'ft2',
 	c8 user_enum
-) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 1', use_remote_estimate 'true'); -- YB note: see above
+) SERVER loopback;
 ALTER FOREIGN TABLE ft2 DROP COLUMN cx;
 
 CREATE FOREIGN TABLE ft4 (
@@ -200,7 +197,6 @@ ALTER SERVER testserver1 OPTIONS (DROP extensions);
 ALTER USER MAPPING FOR public SERVER testserver1
 	OPTIONS (DROP user, DROP password);
 
--- YB note: ALTER TABLE not supported yet, see #1124
 ALTER FOREIGN TABLE ft1 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
@@ -633,8 +629,6 @@ ALTER VIEW v4 OWNER TO regress_view_owner;
 -- cleanup
 DROP OWNED BY regress_view_owner;
 DROP ROLE regress_view_owner;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 
 -- ===================================================================
@@ -782,7 +776,6 @@ select c2, least_agg(c1) from ft1 group by c2 order by c2;
 -- Add function and aggregate into extension
 alter extension postgres_fdw add function least_accum(anyelement, variadic anyarray);
 alter extension postgres_fdw add aggregate least_agg(variadic items anyarray);
--- YB note: option "extensions" not found, see issue #11421
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- Now aggregate will be pushed.  Aggregate will display VARIADIC argument.
@@ -793,7 +786,6 @@ select c2, least_agg(c1) from ft1 where c2 < 100 group by c2 order by c2;
 -- Remove function and aggregate from extension
 alter extension postgres_fdw drop function least_accum(anyelement, variadic anyarray);
 alter extension postgres_fdw drop aggregate least_agg(variadic items anyarray);
--- YB note: option "extensions" not found, see issue #11421
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- Not pushed down as we have dropped objects from extension.
@@ -852,7 +844,6 @@ alter extension postgres_fdw add operator family my_op_family using btree;
 alter extension postgres_fdw add operator public.<^(int, int);
 alter extension postgres_fdw add operator public.=^(int, int);
 alter extension postgres_fdw add operator public.>^(int, int);
--- YB note: option "extensions" not found, see issue #11421
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- Now this will be pushed as sort operator is part of the extension.
@@ -867,7 +858,6 @@ alter extension postgres_fdw drop operator family my_op_family using btree;
 alter extension postgres_fdw drop operator public.<^(int, int);
 alter extension postgres_fdw drop operator public.=^(int, int);
 alter extension postgres_fdw drop operator public.>^(int, int);
--- YB note: option "extensions" not found, see issue #11421
 alter server loopback options (set extensions 'postgres_fdw');
 
 -- This will not be pushed as sort operator is now removed from the extension.
@@ -887,8 +877,6 @@ drop operator public.<^(int, int);
 explain (verbose, costs off)
 select count(t1.c3) from ft2 t1 left join ft2 t2 on (t1.c1 = random() * t2.c2);
 
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 -- Subquery in FROM clause having aggregate
 explain (verbose, costs off)
 select count(*), x.b from ft1, (select c2 a, sum(c1) b from ft1 group by c2) x where ft1.c2 = x.a group by x.b order by 1, 2;
@@ -1026,28 +1014,24 @@ PREPARE st6 AS SELECT * FROM ft1 t1 WHERE t1.c1 = t1.c2;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 PREPARE st7 AS INSERT INTO ft1 (c1,c2,c3) VALUES (1001,101,'foo');
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
--- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
-/*
 ALTER TABLE "S 1"."T 1" RENAME TO "T 0";
 ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 0');
-*/ -- YB
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 EXECUTE st6;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
--- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
-/*
 ALTER TABLE "S 1"."T 0" RENAME TO "T 1";
 ALTER FOREIGN TABLE ft1 OPTIONS (SET table_name 'T 1');
-*/ -- YB
+-- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
+select pg_sleep(1);
 
 PREPARE st8 AS SELECT count(c3) FROM ft1 t1 WHERE t1.c1 === t1.c2;
-/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
 ALTER SERVER loopback OPTIONS (DROP extensions);
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st8;
 EXECUTE st8;
 ALTER SERVER loopback OPTIONS (ADD extensions 'postgres_fdw');
-*/ -- YB
 
 -- cleanup
 DEALLOCATE st1;
@@ -1095,15 +1079,11 @@ DROP FUNCTION f_test(int);
 -- conversion error
 -- ===================================================================
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE int;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 SELECT * FROM ft1 WHERE c1 = 1;  -- ERROR
 SELECT  ft1.c1,  ft2.c2, ft1.c8 FROM ft1, ft2 WHERE ft1.c1 = ft2.c1 AND ft1.c1 = 1; -- ERROR
 SELECT  ft1.c1,  ft2.c2, ft1 FROM ft1, ft2 WHERE ft1.c1 = ft2.c1 AND ft1.c1 = 1; -- ERROR
 SELECT sum(c2), array_agg(c8) FROM ft1 GROUP BY c8; -- ERROR
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 TYPE user_enum;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 -- ===================================================================
 -- subtransaction
@@ -1129,8 +1109,6 @@ COMMIT;
 create table loct3 (f1 text collate "C" unique, f2 text, f3 varchar(10) unique);
 create foreign table ft3 (f1 text collate "C", f2 text, f3 varchar(10))
   server loopback options (table_name 'loct3', use_remote_estimate 'true');
--- YB note: foreign table does not exist, remove when #11684 is fixed
-select pg_sleep(1);
 
 -- can be sent to remote
 explain (verbose, costs off) select * from ft3 where f1 = 'foo';
@@ -1186,8 +1164,6 @@ UPDATE ft2 SET c3 = 'bar' WHERE c1 = 1200 RETURNING tableoid::regclass;
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;                       -- can be pushed down
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 -- Test UPDATE/DELETE with RETURNING on a three-table join
 INSERT INTO ft2 (c1,c2,c3)
@@ -1272,8 +1248,6 @@ SELECT * FROM cte ORDER BY c1;
 -- Test errors thrown on remote side during update
 ALTER TABLE "S 1"."T 1" ADD CONSTRAINT c2positive CHECK (c2 >= 0);
 
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 INSERT INTO ft1(c1, c2) VALUES(11, 12);  -- duplicate key
 INSERT INTO ft1(c1, c2) VALUES(11, 12) ON CONFLICT DO NOTHING; -- works
 INSERT INTO ft1(c1, c2) VALUES(11, 12) ON CONFLICT (c1, c2) DO NOTHING; -- unsupported
@@ -1345,16 +1319,12 @@ SELECT * FROM ft1 ORDER BY c6 ASC NULLS FIRST, c1 OFFSET 15 LIMIT 10;
 
 -- Consistent check constraints provide consistent results
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c2positive CHECK (c2 >= 0);
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 < 0;
 SELECT count(*) FROM ft1 WHERE c2 < 0;
 SET constraint_exclusion = 'on';
 EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 < 0;
 SELECT count(*) FROM ft1 WHERE c2 < 0;
 RESET constraint_exclusion;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 -- check constraint is enforced on the remote side, not locally
 INSERT INTO ft1(c1, c2) VALUES(1111, -2);  -- c2positive
 UPDATE ft1 SET c2 = -c2 WHERE c1 = 1;  -- c2positive
@@ -1362,16 +1332,12 @@ ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2positive;
 
 -- But inconsistent check constraints provide inconsistent results
 ALTER FOREIGN TABLE ft1 ADD CONSTRAINT ft1_c2negative CHECK (c2 < 0);
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 >= 0;
 SELECT count(*) FROM ft1 WHERE c2 >= 0;
 SET constraint_exclusion = 'on';
 EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 WHERE c2 >= 0;
 SELECT count(*) FROM ft1 WHERE c2 >= 0;
 RESET constraint_exclusion;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 -- local check constraint is not actually enforced
 INSERT INTO ft1(c1, c2) VALUES(1111, 2);
 UPDATE ft1 SET c2 = c2 + 1 WHERE c1 = 1;
@@ -1413,9 +1379,7 @@ DROP TABLE base_tbl;
 -- test serial columns (ie, sequence-based defaults)
 -- ===================================================================
 create table loc1 (f1 serial, f2 text);
-/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 alter table loc1 set (autovacuum_enabled = 'false');
-*/ -- YB
 create foreign table rem1 (f1 serial, f2 text)
   server loopback options(table_name 'loc1');
 select pg_catalog.setval('rem1_f1_seq', 10, false);
@@ -1578,8 +1542,6 @@ $$ language plpgsql;
 CREATE TRIGGER trig_row_before_insupd
 BEFORE INSERT OR UPDATE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- The new values should have 'triggered' appended
 INSERT INTO rem1 values(1, 'insert');
@@ -1598,8 +1560,6 @@ DELETE FROM rem1;
 CREATE TRIGGER trig_row_before_insupd2
 BEFORE INSERT OR UPDATE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 INSERT INTO rem1 values(1, 'insert');
 SELECT * from loc1;
@@ -1627,8 +1587,6 @@ $$ language plpgsql;
 CREATE TRIGGER trig_null
 BEFORE INSERT OR UPDATE OR DELETE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trig_null();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- Nothing should have changed.
 INSERT INTO rem1 VALUES (2, 'test2');
@@ -1660,8 +1618,6 @@ FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 
 CREATE TRIGGER trig_local_before BEFORE INSERT OR UPDATE ON loc1
 FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 INSERT INTO rem1(f2) VALUES ('test');
 UPDATE rem1 SET f2 = 'testo';
@@ -2033,8 +1989,6 @@ create trigger loct1_br_insert_trigger before insert on loct1
 	for each row execute procedure br_insert_trigfunc();
 create trigger loct2_br_insert_trigger before insert on loct2
 	for each row execute procedure br_insert_trigfunc();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 insert into itrtest values (1, 'foo') returning *;
@@ -2056,8 +2010,6 @@ create foreign table remp (a int check (a in (1)), b text) server loopback optio
 create table locp (a int check (a in (2)), b text);
 alter table utrtest attach partition remp for values in (1);
 alter table utrtest attach partition locp for values in (2);
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 insert into utrtest values (1, 'foo');
 insert into utrtest values (2, 'qux');
@@ -2164,8 +2116,6 @@ drop table loct2;
 create table loc2 (f1 int, f2 text);
 alter table loc2 set (autovacuum_enabled = 'false');
 create foreign table rem2 (f1 int, f2 text) server loopback options(table_name 'loc2');
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 -- Test basic functionality
 copy rem2 from stdin;
@@ -2179,8 +2129,6 @@ delete from rem2;
 -- Test check constraints
 alter table loc2 add constraint loc2_f1positive check (f1 >= 0);
 alter foreign table rem2 add constraint rem2_f1positive check (f1 >= 0);
--- YB note: constraints don't work immediately, remove pg_sleeps when issue #11598 is fixed
-select pg_sleep(1);
 
 -- check constraint is enforced on the remote side, not locally
 copy rem2 from stdin;
@@ -2194,8 +2142,6 @@ select * from rem2;
 
 alter foreign table rem2 drop constraint rem2_f1positive;
 alter table loc2 drop constraint loc2_f1positive;
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 delete from rem2;
 
@@ -2208,8 +2154,6 @@ create trigger trig_row_before before insert on rem2
 	for each row execute procedure trigger_data(23,'skidoo');
 create trigger trig_row_after after insert on rem2
 	for each row execute procedure trigger_data(23,'skidoo');
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 copy rem2 from stdin;
 1	foo
 2	bar
@@ -2226,8 +2170,6 @@ delete from rem2;
 -- YB note: The following line is changed in the upstream PG 15 test
 create trigger trig_row_before_insert before insert on rem2
 for each row execute procedure trig_row_before_insupdate(); -- YB note: see above
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
@@ -2242,8 +2184,6 @@ delete from rem2;
 
 create trigger trig_null before insert on rem2
 	for each row execute procedure trig_null();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- Nothing happens
 copy rem2 from stdin;
@@ -2259,8 +2199,6 @@ delete from rem2;
 -- Test remote triggers
 create trigger trig_row_before_insert before insert on loc2
 	for each row execute procedure trig_row_before_insupdate();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(1);
 
 -- The new values are concatenated with ' triggered !'
 copy rem2 from stdin;
@@ -2275,8 +2213,6 @@ delete from rem2;
 
 create trigger trig_null before insert on loc2
 	for each row execute procedure trig_null();
--- YB note: triggers don't work immediately, remove once #11555 is fixed
-select pg_sleep(2);
 
 -- Nothing happens
 copy rem2 from stdin;
@@ -2296,8 +2232,6 @@ create trigger rem2_trig_row_after after insert on rem2
 	for each row execute procedure trigger_data(23,'skidoo');
 create trigger loc2_trig_row_before_insert before insert on loc2
 	for each row execute procedure trig_row_before_insupdate();
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 
 copy rem2 from stdin;
 1	foo
@@ -2384,8 +2318,6 @@ CREATE TABLE import_source.t5 (c1 int, c2 text collate "C", "Col" "Colors");
 CREATE SCHEMA import_dest5;
 BEGIN;
 DROP TYPE "Colors" CASCADE;
--- YB note: type dropping in transaction is not respected, should error when issue #11742 is fixed
-select pg_sleep(1);
 IMPORT FOREIGN SCHEMA import_source LIMIT TO (t5)
   FROM SERVER loopback INTO import_dest5;  -- ERROR
 
@@ -2420,10 +2352,8 @@ FROM pg_foreign_table
 WHERE ftrelid = 'table30000'::regclass
 AND ftoptions @> array['fetch_size=30000'];
 
--- YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '60000');
 
-/* YB note: See above
 SELECT COUNT(*)
 FROM pg_foreign_table
 WHERE ftrelid = 'table30000'::regclass
@@ -2433,7 +2363,6 @@ SELECT COUNT(*)
 FROM pg_foreign_table
 WHERE ftrelid = 'table30000'::regclass
 AND ftoptions @> array['fetch_size=60000'];
-*/ -- YB
 
 ROLLBACK;
 
@@ -2445,10 +2374,8 @@ SET enable_partitionwise_join=on;
 CREATE TABLE fprt1 (a int, b int, c varchar) PARTITION BY RANGE(a);
 CREATE TABLE fprt1_p1 (LIKE fprt1);
 CREATE TABLE fprt1_p2 (LIKE fprt1);
-/* YB note: ERROR:  ALTER TABLE not supported yet, uncomment when #1124 is fixed
 ALTER TABLE fprt1_p1 SET (autovacuum_enabled = 'false');
 ALTER TABLE fprt1_p2 SET (autovacuum_enabled = 'false');
-*/ -- YB
 INSERT INTO fprt1_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 2) i;
 INSERT INTO fprt1_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 2) i;
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (0) TO (250)
@@ -2462,10 +2389,8 @@ ANALYZE fprt1_p2;
 CREATE TABLE fprt2 (a int, b int, c varchar) PARTITION BY RANGE(b);
 CREATE TABLE fprt2_p1 (LIKE fprt2);
 CREATE TABLE fprt2_p2 (LIKE fprt2);
-/* YB note: See above
 ALTER TABLE fprt2_p1 SET (autovacuum_enabled = 'false');
 ALTER TABLE fprt2_p2 SET (autovacuum_enabled = 'false');
-*/ -- YB
 INSERT INTO fprt2_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 3) i;
 INSERT INTO fprt2_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 3) i;
 CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
@@ -2473,14 +2398,10 @@ CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
 ALTER TABLE fprt2 ATTACH PARTITION ftprt2_p1 FOR VALUES FROM (0) TO (250);
 CREATE FOREIGN TABLE ftprt2_p2 PARTITION OF fprt2 FOR VALUES FROM (250) TO (500)
 	SERVER loopback OPTIONS (table_name 'fprt2_p2', use_remote_estimate 'true');
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 ANALYZE fprt2;
 ANALYZE fprt2_p1;
 ANALYZE fprt2_p2;
 
--- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
-select pg_sleep(1);
 -- inner join three tables
 EXPLAIN (COSTS OFF)
 SELECT t1.a,t2.b,t3.c FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) INNER JOIN fprt1 t3 ON (t2.b = t3.a) WHERE t1.a % 25 =0 ORDER BY 1,2,3;

@@ -17,7 +17,7 @@ YugabyteDB is designed to run on bare-metal machines, virtual machines (VMs), an
 The nodes that YugabyteDB Anywhere deploys for use in a YugabyteDB database cluster need to be provisioned for use with YugabyteDB, including the following:
 
 - Compatible Linux OS.
-- Other secondary agents, including the node agent, YB-Controller backup agent, and Prometheus Node Exporter for host metrics export.
+- Other secondary agents, including the node agent, YB Controller backup agent, and Prometheus Node Exporter for host metrics export.
 - Additional software and packages, such as Python.
 
 {{<index/block>}}

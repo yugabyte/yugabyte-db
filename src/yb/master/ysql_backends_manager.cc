@@ -761,7 +761,7 @@ std::string BackendsCatalogVersionTS::description() const {
   return "BackendsCatalogVersionTS RPC";
 }
 
-MonoTime BackendsCatalogVersionTS::ComputeDeadline() {
+MonoTime BackendsCatalogVersionTS::ComputeDeadline() const {
   MonoTime timeout = MonoTime::Now() + MonoDelta::FromMilliseconds(
       FLAGS_wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms);
   return MonoTime::Earliest(timeout, deadline_);

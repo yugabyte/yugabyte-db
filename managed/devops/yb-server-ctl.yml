@@ -54,6 +54,11 @@
         - name: Print systemd_prefix
           debug:
             var: systemd_prefix
+        # In certain environments user slice takes a bit longer which causes user level systemd
+        # to fail, this force enables the linger once the VM is started.
+        - name: Enable yugabyte user linger
+          command: loginctl enable-linger yugabyte
+          when: systemd_user.stat.exists
         - block:
           - name: Reload daemon
             shell: "{{ systemd_prefix }} daemon-reload"

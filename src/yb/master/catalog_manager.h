@@ -134,9 +134,9 @@ class YsqlManager;
 
 using PlacementId = std::string;
 
-typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
+using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 
-typedef std::unordered_map<TableId, std::vector<TabletInfoPtr>> TableToTabletInfos;
+using TableToTabletInfos = std::unordered_map<TableId, std::vector<TabletInfoPtr>>;
 
 YB_DEFINE_ENUM(
     CDCSDKStreamCreationState,
@@ -191,7 +191,7 @@ struct YsqlTableDdlTxnState;
 //
 // Thread-safe.
 class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContext {
-  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
+  using NamespaceInfoMap = std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo>>;
 
   class NamespaceNameMapper {
    public:
@@ -518,6 +518,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
+  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);
@@ -1435,8 +1436,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const std::function<Status(UniverseReplicationInfo&)>& add_historical_schema_fn);
 
   // Wait for replication to drain on CDC streams.
-  typedef std::pair<xrepl::StreamId, TabletId> StreamTabletIdPair;
-  typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
+  using StreamTabletIdPair = std::pair<xrepl::StreamId, TabletId>;
+  using StreamTabletIdHash = boost::hash<StreamTabletIdPair>;
   Status WaitForReplicationDrain(
       const WaitForReplicationDrainRequestPB* req,
       WaitForReplicationDrainResponsePB* resp,
@@ -1444,7 +1445,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::vector<SysUniverseReplicationEntryPB> GetAllXClusterUniverseReplicationInfos();
 
-  typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
+  using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr>>;
 
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
@@ -2253,7 +2254,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   UDTypeInfoByNameMap udtype_names_map_ GUARDED_BY(mutex_);
 
   // RedisConfig map: RedisConfigKey -> RedisConfigInfo
-  typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;
+  using RedisConfigInfoMap = std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>>;
   RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
@@ -2416,6 +2417,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status CanSupportAdditionalTabletsForTableCreation(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs);
+
+  Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
 
  private:
   friend class yb::master::ClusterLoadBalancer;
@@ -2991,7 +2994,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     // The processed_tables is used to avoid duplicated processing. Currently it is the set of
     // tables for which delete table has already been called. For PITR, we cannot make duplicate
     // delete table calls.
-    std::vector<scoped_refptr<TableInfo>> tables;
+    std::vector<TableInfoPtr> tables;
     std::unordered_set<TableId> processed_tables;
     // Set of tables whose DocDB schema do not change.
     std::unordered_set<TableId> nochange_tables;
@@ -3062,16 +3065,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_map<ReplicationSlotName, xrepl::StreamId> cdcsdk_replication_slots_to_stream_map_
       GUARDED_BY(mutex_);
 
-  typedef std::unordered_map<xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>
-      UniverseReplicationInfoMap;
+  using UniverseReplicationInfoMap =
+      std::unordered_map<xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>;
   UniverseReplicationInfoMap universe_replication_map_ GUARDED_BY(mutex_);
 
   // List of universe ids to universes that must be deleted
   std::deque<xcluster::ReplicationGroupId> universes_to_clear_ GUARDED_BY(mutex_);
 
-  typedef std::unordered_map<
-      xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationBootstrapInfo>>
-      UniverseReplicationBootstrapInfoMap;
+  using UniverseReplicationBootstrapInfoMap = std::unordered_map<
+      xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationBootstrapInfo>>;
   UniverseReplicationBootstrapInfoMap universe_replication_bootstrap_map_ GUARDED_BY(mutex_);
 
   std::deque<xcluster::ReplicationGroupId> replication_bootstraps_to_clear_ GUARDED_BY(mutex_);

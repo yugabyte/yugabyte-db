@@ -213,7 +213,7 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define ASSERT_STR_EQ(lhs, rhs) do { \
     std::string _lhs = (lhs); \
     std::string _rhs = (rhs); \
-    ASSERT_EQ(lhs, rhs) << "First diff: " << FindFirstDiff(lhs, rhs); \
+    ASSERT_EQ(_lhs, _rhs) << "First diff: " << FindFirstDiff(_lhs, _rhs); \
   } while (0)
 
 #define ASSERT_FILE_EXISTS(env, path) do { \

@@ -131,6 +131,8 @@ static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
+static bool YbHasDdlMadeChanges();
+
 uint64_t
 YBGetActiveCatalogCacheVersion()
 {
@@ -1188,7 +1190,6 @@ typedef struct
 {
 	uint64_t	applied;
 	uint64_t	pending;
-
 } YbCatalogModificationAspects;
 
 typedef struct YbCatalogMessageList
@@ -1242,6 +1243,7 @@ typedef struct
 	List	   *altered_table_ids;
 
 	YbCatalogMessageList *committed_pg_txn_messages;
+	bool force_send_inval_messages;
 } YbDdlTransactionState;
 
 static YbDdlTransactionState ddl_transaction_state = {0};
@@ -1904,20 +1906,6 @@ YBShouldRestartAllChildrenIfOneCrashes()
 	return YBCIsEnvVarTrueWithDefault("FLAGS_yb_pg_terminate_child_backend", true);
 }
 
-bool
-YBShouldLogStackTraceOnError()
-{
-	static int	cached_value = -1;
-
-	if (cached_value != -1)
-	{
-		return cached_value;
-	}
-
-	cached_value = YBCIsEnvVarTrue("YB_PG_STACK_TRACE_ON_ERROR");
-	return cached_value;
-}
-
 const char *
 YBPgErrorLevelToString(int elevel)
 {
@@ -2107,12 +2095,14 @@ int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_nop_alter_role_optimization = true;
 bool		yb_enable_inplace_index_update = true;
-bool		yb_enable_advisory_locks = false;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
 bool		yb_enable_invalidation_messages = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
+
+/* DEPRECATED */
+bool		yb_enable_advisory_locks = true;
 
 
 YBUpdateOptimizationOptions yb_update_optimization_options = {
@@ -2127,7 +2117,9 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
  *------------------------------------------------------------------------------
  */
 
-bool		yb_debug_report_error_stacktrace = false;
+bool		yb_debug_log_docdb_error_backtrace = false;
+
+bool		yb_debug_original_backtrace_format = false;
 
 bool		yb_debug_log_internal_restarts = false;
 
@@ -2157,6 +2149,7 @@ bool		yb_test_table_rewrite_keep_old_table = false;
 bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
+int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -2337,6 +2330,20 @@ YbMemCtxReset(MemoryContext context)
 }
 
 static void
+YBClearDdlTransactionState()
+{
+	if (ddl_transaction_state.altered_table_ids != NIL)
+	{
+		list_free(ddl_transaction_state.altered_table_ids);
+		ddl_transaction_state.altered_table_ids = NIL;
+	}
+
+	ddl_transaction_state = (YbDdlTransactionState)
+	{
+	};
+}
+
+static void
 YBResetDdlState()
 {
 	YbcStatus	status = NULL;
@@ -2362,20 +2369,8 @@ YBResetDdlState()
 		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
 
-	/*
-	 * Free up the altered_table_ids list which is allocated in the
-	 * TopTransactionContext.
-	 */
-	if (ddl_transaction_state.altered_table_ids != NIL)
-	{
-		list_free(ddl_transaction_state.altered_table_ids);
-		ddl_transaction_state.altered_table_ids = NIL;
-	}
-
 	bool use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
-	ddl_transaction_state = (YbDdlTransactionState)
-	{
-	};
+	YBClearDdlTransactionState();
 	YBResetEnableSpecialDDLMode();
 	/*
 	 * If the DDL uses the regular transaction block, then we are not in a
@@ -2706,6 +2701,51 @@ YbCheckNewLocalCatalogVersionOptimization()
 	}
 }
 
+static void
+YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
+										   SharedInvalidationMessage *msgs,
+										   int nmsgs)
+{
+	Assert(OidIsValid(MyDatabaseId));
+
+	const uint64_t new_version = YbGetNewCatalogVersion();
+
+	if (new_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+		return;
+
+	/*
+	 * Do not perform the optimization if there is a gap between the local
+	 * catalog version and the new version. Otherwise, PG backends on this
+	 * node that have the same local catalog version will not be able to
+	 * perform incremental catalog cache refresh because of this gap: it
+	 * takes a heartbeat delay for the gap to be filled. Normally the next
+	 * tserver to master heartbeat response will bring back the missing
+	 * catalog versions and their invalidation messages.
+	 */
+	if (YbGetCatalogCacheVersion() + 1 != new_version)
+		return;
+
+	YbcCatalogMessageList message_list;
+	if (msgs)
+	{
+		message_list.message_list = (char *)msgs;
+		message_list.num_bytes = sizeof(SharedInvalidationMessage) * nmsgs;
+	}
+	else
+	{
+		/* This is a PG null and will force full catalog cache refresh. */
+		message_list.message_list = NULL;
+		message_list.num_bytes = 0;
+	}
+
+	if (yb_test_delay_set_local_tserver_inval_message_ms > 0)
+		pg_usleep(yb_test_delay_set_local_tserver_inval_message_ms * 1000L);
+	HandleYBStatus(YBCPgSetTserverCatalogMessageList(MyDatabaseId,
+													 is_breaking_change,
+													 new_version,
+													 &message_list));
+}
+
 static int
 YbTotalCommittedPgTxnMessages()
 {
@@ -2756,10 +2796,10 @@ YbCopyCommittedPgTxnMessages(SharedInvalidationMessage *currentInvalMessages)
 void
 YBCommitTransactionContainingDDL()
 {
-	const bool	has_write = YBCPgHasWriteOperationsInDdlTxnMode();
+	const bool	has_change = YbHasDdlMadeChanges();
 
 	MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
-									has_write);
+									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
 	if (yb_test_fail_next_ddl)
@@ -2787,7 +2827,9 @@ YBCommitTransactionContainingDDL()
 	int			numCatCacheMsgs = 0;
 	int			numRelCacheMsgs = 0;
 	bool		enable_inval_msgs = YbIsInvalidationMessageEnabled();
-	if (has_write)
+	bool		is_breaking_change = false;
+	SharedInvalidationMessage *currentInvalMessages = NULL;
+	if (has_change)
 	{
 		const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(ddl_transaction_state.catalog_modification_aspects.applied);
 
@@ -2795,7 +2837,6 @@ YBCommitTransactionContainingDDL()
 		SharedInvalidationMessage *catCacheInvalMessages = NULL;
 		SharedInvalidationMessage *relCacheInvalMessages = NULL;
 		/* messages from the current DDL */
-		SharedInvalidationMessage *currentInvalMessages = NULL;
 		SharedInvalidationMessage *currentCatCacheInvalMessages = NULL;
 		SharedInvalidationMessage *currentRelCacheInvalMessages = NULL;
 		if (enable_inval_msgs)
@@ -2896,13 +2937,14 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
+		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 		/*
 		 * We can skip incrementing catalog version if nmsgs is 0.
 		 */
 		increment_done =
 			(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
 			(!enable_inval_msgs || nmsgs > 0) &&
-			YbIncrementMasterCatalogVersionTableEntry(mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
+			YbIncrementMasterCatalogVersionTableEntry(is_breaking_change,
 													  ddl_transaction_state.is_global_ddl,
 													  ddl_transaction_state.original_ddl_command_tag,
 													  currentInvalMessages, nmsgs);
@@ -2913,9 +2955,7 @@ YBCommitTransactionContainingDDL()
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 	bool use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
 
-	ddl_transaction_state = (YbDdlTransactionState)
-	{
-	};
+	YBClearDdlTransactionState();
 
 	if (use_regular_txn_block)
 		HandleYBStatus(YBCPgCommitPlainTransactionContainingDDL(MyDatabaseId, is_silent_altering));
@@ -2933,7 +2973,19 @@ YBCommitTransactionContainingDDL()
 	if (increment_done)
 	{
 		if (enable_inval_msgs && database_oid == MyDatabaseId)
+		{
+			/*
+			 * We only do shared catalog version optimization for MyDatabaseId.
+			 * That is even if the DDL has global impact, we only set the new
+			 * catalog version of MyDatabaseId in shared memory because we do
+			 * not know the new catalog version of any other databases for a
+			 * global impact DDL.
+			 */
+			YbCheckNewSharedCatalogVersionOptimization(is_breaking_change,
+													   currentInvalMessages,
+													   nmsgs);
 			YbCheckNewLocalCatalogVersionOptimization();
+		}
 		else if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
 			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
 		else
@@ -2999,10 +3051,10 @@ YBDecrementDdlNestingLevel()
 	 */
 	if (ddl_transaction_state.nesting_level > 0)
 	{
-		const bool	has_write = YBCPgHasWriteOperationsInDdlTxnMode();
+		const bool	has_change = YbHasDdlMadeChanges();
 
 		MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
-										has_write);
+										has_change);
 	}
 	/*
 	 * The transaction contains DDL statements and uses a separate DDL
@@ -3656,6 +3708,47 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			 */
 			break;
 
+		case T_TransactionStmt:
+			{
+				TransactionStmt *stmt = castNode(TransactionStmt, parsetree);
+				/*
+				 * We make a special case for YSQL upgrade, where we often use
+				 * DML statements writing to catalog tables directly under the GUC
+				 * yb_non_ddl_txn_for_sys_tables_allowed=1. These DML statements
+				 * generate invalidation messages that if ignored can cause stale
+				 * cache problem. We mark a COMMIT statement as ddl so that we
+				 * can capture these DML-generated invalidation messages and send
+				 * them to all PG backends on all the nodes.
+				 */
+				if (IsYsqlUpgrade &&
+					stmt->kind == TRANS_STMT_COMMIT &&
+					/*
+					 * A COMMIT statement itself does not ensure a successful
+					 * commit. If the current transaction is already aborted,
+					 * it is equivalent to a ROLLBACK statement.
+					 */
+					IsTransactionState() &&
+					YbIsInvalidationMessageEnabled() &&
+					/*
+					 * When we have ddl transaction block support, we do not need
+					 * this special case code for YSQL upgrade.
+					 */
+					!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+				{
+					/*
+					 * We assume YSQL upgrade only makes simple use of COMMIT
+					 * so that we can handle invalidation messages correctly.
+					 */
+					if (is_top_level)
+						is_breaking_change = false;
+					else
+						elog(ERROR, "improper nesting level of COMMIT in YSQL upgrade");
+				}
+				else
+					is_ddl = false;
+				break;
+			}
+
 		default:
 			/* Not a DDL operation. */
 			is_ddl = false;
@@ -3670,21 +3763,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 		 */
 		if (ddl_transaction_state.nesting_level == 0 &&
 			!ddl_transaction_state.use_regular_txn_block)
-		{
-			/*
-			 * Free up the altered_table_ids list separately which is allocated
-			 * in the TopTransactionContext.
-			 */
-			if (ddl_transaction_state.altered_table_ids != NIL)
-			{
-				list_free(ddl_transaction_state.altered_table_ids);
-				ddl_transaction_state.altered_table_ids = NIL;
-			}
-
-			ddl_transaction_state = (YbDdlTransactionState)
-			{
-			};
-		}
+			YBClearDdlTransactionState();
 		return (YbDdlModeOptional)
 		{
 		};
@@ -7456,4 +7535,18 @@ YbRefreshMatviewInPlace()
 {
 	return yb_refresh_matview_in_place ||
 		   YBCPgYsqlMajorVersionUpgradeInProgress();
+}
+
+static bool
+YbHasDdlMadeChanges()
+{
+	return YBCPgHasWriteOperationsInDdlTxnMode() ||
+		   ddl_transaction_state.original_node_tag == T_TransactionStmt ||
+		   ddl_transaction_state.force_send_inval_messages;
+}
+
+void
+YbForceSendInvalMessages()
+{
+	ddl_transaction_state.force_send_inval_messages = true;
 }

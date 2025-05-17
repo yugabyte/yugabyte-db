@@ -16,7 +16,7 @@ func IsUserSystemd(username, serverName string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !strings.HasSuffix(serverName, ".service") {
+	if !strings.HasSuffix(serverName, ".service") && !strings.HasSuffix(serverName, ".timer") {
 		serverName = serverName + ".service"
 	}
 	path := filepath.Join(info.User.HomeDir, ".config/systemd/user", serverName)
@@ -30,17 +30,43 @@ func IsUserSystemd(username, serverName string) (bool, error) {
 	return false, err
 }
 
-func ControlServerCmd(username, serverName, controlType string) (string, error) {
+func getUserOptionForUserLevel(username, serverName string) string {
 	userOption := ""
 	if username != "" {
 		yes, err := IsUserSystemd(username, serverName)
 		if err != nil {
-			return "", err
+			return ""
 		}
 		if yes {
 			userOption = "--user "
 		}
 	}
+
+	return userOption
+}
+
+func EnableSystemdUnit(username, serverName string) string {
+	userOption := getUserOptionForUserLevel(username, serverName)
+	return fmt.Sprintf(
+		"systemctl %sdaemon-reload && systemctl %senable %s",
+		userOption,
+		userOption,
+		serverName,
+	)
+}
+
+func StartSystemdUnit(username, serverName string) string {
+	userOption := getUserOptionForUserLevel(username, serverName)
+	return fmt.Sprintf("systemctl %sstart %s", userOption, serverName)
+}
+
+func StopSystemdUnit(username, serverName string) string {
+	userOption := getUserOptionForUserLevel(username, serverName)
+	return fmt.Sprintf("systemctl %s stop %s", userOption, serverName)
+}
+
+func ControlServerCmd(username, serverName, controlType string) (string, error) {
+	userOption := getUserOptionForUserLevel(username, serverName)
 	return fmt.Sprintf(
 		"systemctl %sdaemon-reload && systemctl %senable %s && systemctl %s%s %s",
 		userOption,

@@ -158,12 +158,14 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
+    SetPGCallbacks(&producer_cluster_, producer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&producer_cluster_));
   }
 
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
-    RETURN_NOT_OK(InitPostgres(&consumer_cluster_, pg_ts_idx, consumer_pg_port));
+    SetPGCallbacks(&consumer_cluster_, consumer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&consumer_cluster_));
   }
 
   return Status::OK();
@@ -205,7 +207,8 @@ Status XClusterYsqlTestBase::InitProducerClusterOnly(const MiniClusterOptions& o
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
+    SetPGCallbacks(&producer_cluster_, producer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&producer_cluster_));
   }
 
   return Status::OK();
@@ -232,21 +235,30 @@ Status XClusterYsqlTestBase::InitPostgres(
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
   cluster->pg_supervisor_ =
       std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
-  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+  RETURN_NOT_OK(cluster->pg_supervisor_->StartAndMaybePause());
 
+  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  return OK();
+}
+
+Status XClusterYsqlTestBase::StartPostgres(Cluster* cluster) {
+  auto* pg_ts = cluster->mini_cluster_->mini_tablet_server(cluster->pg_ts_idx_);
+  return pg_ts->StartPgIfConfigured();
+}
+
+void XClusterYsqlTestBase::SetPGCallbacks(Cluster* cluster, uint16_t pg_port) {
+  tserver::MiniTabletServer* const pg_ts =
+      cluster->mini_cluster_->mini_tablet_server(cluster->pg_ts_idx_);
+  CHECK(pg_ts);
   pg_ts->SetPgServerHandlers(
       // start_pg
-      [this, cluster, pg_port = pg_process_conf.pg_port] {
-        return InitPostgres(cluster, cluster->pg_ts_idx_, pg_port);
-      },
+      [this, cluster, pg_port] { return InitPostgres(cluster, cluster->pg_ts_idx_, pg_port); },
       // shutdown_pg
       [cluster] {
         cluster->pg_supervisor_->Stop();
         cluster->pg_supervisor_.reset();
-      });
-
-  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-  return OK();
+      },
+      [cluster] { return cluster->CreatePGConnSettings(); });
 }
 
 std::string XClusterYsqlTestBase::GetCompleteTableName(const YBTableName& table) {

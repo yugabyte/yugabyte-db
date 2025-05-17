@@ -14,6 +14,12 @@ import (
 	"github.com/creack/pty"
 )
 
+const (
+	// MaxBufferCapacity is the max number of bytes allowed in the buffer
+	// before truncating the first bytes.
+	MaxBufferCapacity = 1000000
+)
+
 var (
 	// Parameters in the command that should be redacted.
 	redactParams = map[string]bool{
@@ -24,50 +30,21 @@ var (
 	userVariables = []string{"LOGNAME", "USER", "LNAME", "USERNAME"}
 )
 
-// Command handles command execution.
-type Command struct {
-	// Name of the command.
-	name string
-	cmd  string
-	user string
-	args []string
-}
-
-// NewCommand returns a command instance.
-func NewCommand(name string, cmd string, args []string) *Command {
-	return NewCommandWithUser(name, "", cmd, args)
-}
-
-// NewCommandWithUser returns a command instance.
-func NewCommandWithUser(name string, user string, cmd string, args []string) *Command {
-	return &Command{
-		name: name,
-		user: user,
-		cmd:  cmd,
-		args: args,
-	}
-}
-
-// Name returns the name of the command.
-func (command *Command) Name() string {
-	return command.name
-}
-
-// Cmd returns the command.
-func (command *Command) Cmd() string {
-	return command.cmd
-}
-
-// Args returns the command arguments.
-func (command *Command) Args() []string {
-	return command.args
+// CommandInfo holds command information.
+type CommandInfo struct {
+	User   string
+	Desc   string
+	Cmd    string
+	Args   []string
+	StdOut util.Buffer
+	StdErr util.Buffer
 }
 
 // RedactCommandArgs redacts the command arguments and returns them.
-func (command *Command) RedactCommandArgs() []string {
+func (cmdInfo *CommandInfo) RedactCommandArgs() []string {
 	redacted := []string{}
 	redactValue := false
-	for _, param := range command.args {
+	for _, param := range cmdInfo.Args {
 		if strings.HasPrefix(param, "-") {
 			if _, ok := redactParams[strings.TrimLeft(param, "-")]; ok {
 				redactValue = true
@@ -84,26 +61,126 @@ func (command *Command) RedactCommandArgs() []string {
 	return redacted
 }
 
-// Create returns the exec command with the environment set.
-func (command *Command) Create(ctx context.Context) (*exec.Cmd, error) {
-	userDetail, err := util.UserInfo(command.user)
+// RunCmd runs the command in the command info.
+func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
+	userDetail, err := util.UserInfo(cmdInfo.User)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
-	env, _ := command.userEnv(ctx, userDetail)
-	cmd, err := command.command(ctx, userDetail, command.cmd, command.args...)
+	env, _ := userEnv(ctx, userDetail)
+	cmd, err := createCmd(ctx, userDetail, cmdInfo.Cmd, cmdInfo.Args...)
 	if err != nil {
 		util.FileLogger().
-			Warnf(ctx, "Failed to create command %s. Error: %s", command.name, err.Error())
-		return nil, err
+			Errorf(ctx, "Failed to create command %s. Error: %s", cmdInfo.Desc, err.Error())
+		return err
 	}
 	cmd.Env = append(cmd.Env, env...)
-	return cmd, nil
+	if cmdInfo.StdOut != nil {
+		cmd.Stdout = cmdInfo.StdOut
+	}
+	if cmdInfo.StdErr != nil {
+		cmd.Stderr = cmdInfo.StdErr
+	}
+	return cmd.Run()
 }
 
-func (command *Command) command(
+// RunSteps runs a list of command steps with the specified user and logs the output.
+func RunSteps(
+	ctx context.Context,
+	user string,
+	steps []struct {
+		Desc string
+		Cmd  string
+		Args []string
+	}, logOut util.Buffer) error {
+	cmdInfos := make([]*CommandInfo, len(steps))
+	for i, step := range steps {
+		cmdInfos[i] = &CommandInfo{
+			User:   user,
+			Desc:   step.Desc,
+			Cmd:    step.Cmd,
+			Args:   step.Args,
+			StdOut: util.NewBuffer(MaxBufferCapacity),
+			StdErr: util.NewBuffer(MaxBufferCapacity),
+		}
+	}
+	return createCmds(
+		ctx,
+		user,
+		cmdInfos,
+		func(ctx context.Context, cmdInfo *CommandInfo, cmd *exec.Cmd) error {
+			if logOut != nil {
+				logOut.WriteLine("Running step: %s", cmdInfo.Desc)
+			}
+			err := cmd.Run()
+			if err != nil {
+				util.FileLogger().
+					Errorf(ctx, "Failed to run step %s: %s", cmdInfo.Desc, err.Error())
+				if logOut != nil {
+					logOut.WriteLine("Failed to run step %s: %s", cmdInfo.Desc, err.Error())
+				}
+			}
+			return err
+		})
+}
+
+// RunShellCmd runs a shell command with the specified user.
+func RunShellCmd(
+	ctx context.Context,
+	user, desc, cmdStr string,
+	logOut util.Buffer,
+) (*CommandInfo, error) {
+	cmdInfo := &CommandInfo{
+		User:   user,
+		Desc:   desc,
+		Cmd:    util.DefaultShell,
+		Args:   []string{"-c", cmdStr},
+		StdOut: util.NewBuffer(MaxBufferCapacity),
+		StdErr: util.NewBuffer(MaxBufferCapacity),
+	}
+	if logOut != nil {
+		logOut.WriteLine("Running shell command for %s", desc)
+	}
+	err := cmdInfo.RunCmd(ctx)
+	if err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to run shell command for %s: %s", desc, err.Error())
+		if logOut != nil {
+			logOut.WriteLine("Failed to run shell command for %s: %s", desc, err.Error())
+		}
+	}
+	return cmdInfo, err
+}
+
+// RunShellSteps runs a list of shell command steps with the specified user and logs the output.
+func RunShellSteps(
+	ctx context.Context,
+	user string,
+	steps []struct {
+		Desc string
+		Cmd  string
+	}, logOut util.Buffer) error {
+	cmdSteps := make([]struct {
+		Desc string
+		Cmd  string
+		Args []string
+	}, len(steps))
+	for i, step := range steps {
+		cmdSteps[i] = struct {
+			Desc string
+			Cmd  string
+			Args []string
+		}{step.Desc, util.DefaultShell, []string{"-c", step.Cmd}}
+	}
+	return RunSteps(
+		ctx,
+		user,
+		cmdSteps, logOut)
+}
+
+func createCmd(
 	ctx context.Context,
 	userDetail *util.UserDetail,
 	name string,
@@ -130,14 +207,50 @@ func (command *Command) command(
 	return cmd, nil
 }
 
-func (command *Command) userEnv(
+// createCmds creates commands from the command info list and passes them to the receiver.
+func createCmds(
+	ctx context.Context,
+	user string,
+	infos []*CommandInfo,
+	receiver func(context.Context, *CommandInfo, *exec.Cmd) error,
+) error {
+	userDetail, err := util.UserInfo(user)
+	if err != nil {
+		return err
+	}
+	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
+		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
+	env, _ := userEnv(ctx, userDetail)
+	for _, info := range infos {
+		cmd, err := createCmd(ctx, userDetail, info.Cmd, info.Args...)
+		if err != nil {
+			util.FileLogger().
+				Warnf(ctx, "Failed to create command %s. Error: %s", info.Desc, err.Error())
+			return err
+		}
+		cmd.Env = append(cmd.Env, env...)
+		if info.StdOut != nil {
+			cmd.Stdout = info.StdOut
+		}
+		if info.StdErr != nil {
+			cmd.Stderr = info.StdErr
+		}
+		err = receiver(ctx, info, cmd)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func userEnv(
 	ctx context.Context,
 	userDetail *util.UserDetail,
 ) ([]string, error) {
 	// Approximate capacity of 100.
 	env := make([]string, 0, 100)
 	// Interactive shell to source ~/.bashrc.
-	cmd, err := command.command(ctx, userDetail, "bash")
+	cmd, err := createCmd(ctx, userDetail, "bash")
 	// Create a pseudo tty (non stdin) to act like SSH login.
 	// Otherwise, the child process is stopped because it is a background process.
 	ptty, err := pty.Start(cmd)

@@ -17,6 +17,7 @@ import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -143,6 +144,17 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Parallel DB backups")
   public int parallelDBBackups = 1;
 
+  // False until fully tested.
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Add role exists checks for roles"
+              + " metadata. All GRANT/REVOKE and ALTER sql commands will first check if the role"
+              + " exists")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.1.0.0")
+  @Getter
+  @Setter
+  private Boolean dumpRoleChecks = false;
+
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
 
@@ -189,6 +201,7 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.incrementalBackupFrequency = backupRequestParams.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit =
         backupRequestParams.incrementalBackupFrequencyTimeUnit;
+    // this.useRoles = backupRequestParams.useRoles;
 
     // Deep copy.
     if (backupRequestParams.keyspaceTableList == null) {
