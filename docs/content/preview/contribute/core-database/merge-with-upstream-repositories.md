@@ -502,14 +502,14 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 #### Subtree direct-descendant merge
 
 The steps that follow will use documentdb as a hypothetical example.
-Suppose that YugabyteDB was based off a `yugabyte/documentdb` repo `yb` branch constructed from `v0.102-0` with commit [b896737f53d9eb13e0b397976e1b2edd310cca57](https://github.com/microsoft/documentdb/commit/b896737f53d9eb13e0b397976e1b2edd310cca57) cherry-picked.
+Suppose that YugabyteDB was based off a yugabyte/documentdb repo `yb` branch constructed from `v0.102-0` with commit [b896737f53d9eb13e0b397976e1b2edd310cca57](https://github.com/microsoft/documentdb/commit/b896737f53d9eb13e0b397976e1b2edd310cca57) cherry-picked.
 We are trying to merge to `v0.103-0` (which doesn't exist at the time of writing, but you get the idea of the example).
 
 1. First, determine whether a merge in the upstream repository can be skipped.
    This is only permissible if the current upstream repository referenced commit is not a YugabyteDB commit (e.g. there is no `yb` branch since a `microsoft/documentdb` commit is used directly).
    Then, the target version can directly be used.
    (In this example, this shortcut can not be used.)
-1. Otherwise, switch to a feature branch off the latest `yugabyte/documentdb` repo `yb` branch: `git switch -c merge-documentdb yb`.
+1. Otherwise, switch to a feature branch off the latest yugabyte/documentdb repo `yb` branch: `git switch -c merge-documentdb yb`.
    Then, do `git merge v0.103-0`.
    (It may still be the case that the target version, in this example `v0.103-0`, already has contains all the changes YB imported on top of `v0.102-0`.
    If that is the case, then the merge can be simplified to take exactly the target version: `git merge -X theirs v0.103-0`.)
@@ -529,7 +529,7 @@ A prerequisite for using this alternative is that the target version contains al
 For example, `1.7.0` should contain all commits in `1.3.2`, considering backports as equivalent to each other, and for any commits only in PG `1.3.2`, they are likely irrelevant for PG `1.7.0`.
 This prerequisite generally shouldn't fail since major version upgrades should aim for the latest minor version of a major version.
 
-Suppose that YugabyteDB was based off a `yugabyte/pgaudit` repo `yb-pg11` branch constructed from `1.3.2` with commit [455cde5ec3a4374b18ad551aaabe6d60761b6503](https://github.com/pgaudit/pgaudit/commit/455cde5ec3a4374b18ad551aaabe6d60761b6503) cherry-picked.
+Suppose that YugabyteDB was based off a yugabyte/pgaudit repo `yb-pg11` branch constructed from `1.3.2` with commit [455cde5ec3a4374b18ad551aaabe6d60761b6503](https://github.com/pgaudit/pgaudit/commit/455cde5ec3a4374b18ad551aaabe6d60761b6503) cherry-picked.
 We are trying to merge to `1.7.0`.
 
 1. Ensure `1.3.2` to `1.7.0` satisfies the prerequisite mentioned above.
