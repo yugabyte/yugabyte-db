@@ -38,17 +38,17 @@ That formality primarily comes from [`upstream_repositories.csv`][upstream-repos
 (Naturally, this means that it will not work for external code that is not in the form of a git repository, but in this day and age, that is not likely to happen.)
 This makes it apparent what changes YugabyteDB made against the upstream repository.
 
-In case the commit being tracked is present in the external repository, this may seem trivial to do anyway without [this CSV][upstream-repositories-csv].
+In case the commit being tracked is present in the external repository, this may seem trivial to do anyway without [`upstream_repositories.csv`][upstream-repositories-csv].
 However, YugabyteDB occasionally takes point-imports of external repository commits, such as security fixes.
 To make matters worse, those point-imports can have conflicts on the external repository side, and they could have other conflicts on the [yugabyte-db repository][repo-yugabyte-db] side as well.
 Do that ten or so times, and it becomes difficult to track which changes are made by YugabyteDB and which changes are point-imported.
 The CSV necessitates a single commit tracking what upstream state is being tracked.
 Therefore, in case of port-imports, YugabyteDB must create a fork of the external repository to track the state of the upstream code with the point-imports.
 
-To make matters more complicated, the upstream repository might be tracked differently across [`yugabyte/yugabyte-db`][repo-yugabyte-db] branches.
+To make matters more complicated, the upstream repository might be tracked differently across [yugabyte/yugabyte-db][repo-yugabyte-db] branches.
 For example, pgaudit has different branches for each PG version while pg_cron has a single branch where, at any point, there is multi-version support.
-In case of the former, it is necessary to track separate upstream commits across [`yugabyte/yugabyte-db`][repo-yugabyte-db] branches, and if a fork is required, then a branch should be created for each PG version that YugabyteDB supports, conventionally named `yb-pg<version>`.
-In case of the latter, one may do the same, or a single `yb` branch can be used across all [`yugabyte/yugabyte-db`][repo-yugabyte-db] branches.
+In case of the former, it is necessary to track separate upstream commits across [yugabyte/yugabyte-db][repo-yugabyte-db] branches, and if a fork is required, then a branch should be created for each PG version that YugabyteDB supports, conventionally named `yb-pg<version>`.
+In case of the latter, one may do the same, or a single `yb` branch can be used across all [yugabyte/yugabyte-db][repo-yugabyte-db] branches.
 Branches can be renamed, so if the single `yb` branch ever needs to be split to two, it can switch to the `yb-pg<version>` format from that point.
 It's fine as long as historical commits are not lost so that old commits still have a valid upstream commit that can be referenced.
 
@@ -85,7 +85,7 @@ Pros of using git subtrees over squash merge:
 Cons of using git subtrees over squash merge:
 
 - Get all upstream commit history.
-  This is listed as both a pro and con, the con being it can bloat the `yugabyte/yugabyte-db` repository.
+  This is listed as both a pro and con, the con being it can bloat the [yugabyte/yugabyte-db][repo-yugabyte-db] repository.
 - More complex process which involves more steps.
 - `git subtree` is not built into `git` by default.
 - Git commands using paths do not work well with subtrees.
@@ -105,7 +105,7 @@ The following steps details what has already happened with adding DocumentDB.
 
 1. Find an appropriate upstream repository commit to target.
    Normally, this would correspond to a Git tag as an official release for stability.
-1. Fetch that tag to `yugabyte/yugabyte-db`.
+1. Fetch that tag to [yugabyte/yugabyte-db][repo-yugabyte-db].
 
    ```sh
    git remote add documentdb https://github.com/microsoft/documentdb.git
@@ -116,7 +116,7 @@ The following steps details what has already happened with adding DocumentDB.
 1. Find an appropriate location to embed the repository.
    The common case is PostgreSQL extensions, which belong in `src/postgres/third-party-extensions/<extension_name>`.
 1. Add the subtree.
-   You may want to switch to a new feature branch first, based off the latest `yugabyte/yugabyte-db` `master` branch.
+   You may want to switch to a new feature branch first, based off the latest [yugabyte/yugabyte-db][repo-yugabyte-db] `master` branch.
 
    ```sh
    git fetch origin master:master
@@ -131,15 +131,15 @@ The following steps details what has already happened with adding DocumentDB.
    There should be no merge conflicts since this is a brand new upstream repository in a brand new directory.
    Any modifications to integrate this upstream repository to YugabyteDB should be done as a followup after this whole process.
    In this example, this was done by commit [f8e9b50f83a4561b1314057297e3ba3236c7703c](https://github.com/yugabyte/yugabyte-db/commit/f8e9b50f83a4561b1314057297e3ba3236c7703c).
-1. Add the upstream repository details into `src/lint/upstream_repositories.csv`.
+1. Add the upstream repository details into [`upstream_repositories.csv`][upstream-repositories-csv].
    Commit this single change as one commit on top of the subtree merge commit.
    In this example, this was done by commit [3201d6f146c957b39ce23f3c59e76ca31ffa1a0c](https://github.com/yugabyte/yugabyte-db/commit/3201d6f146c957b39ce23f3c59e76ca31ffa1a0c).
 1. Submit this feature branch as reference for review.
    Phorge is not sufficient since it strips Git metadata.
-   One example of a place to submit this is a personal GitHub fork of `yugabyte/yugabyte-db`.
-   The reviewer should make sure the subtree merge is done properly and that exactly one commit is added after that concerning `src/lint/upstream_repositories.csv`.
+   One example of a place to submit this is a personal GitHub fork of [yugabyte/yugabyte-db][repo-yugabyte-db].
+   The reviewer should make sure the subtree merge is done properly and that exactly one commit is added after that concerning [`upstream_repositories.csv`][upstream-repositories-csv].
 1. Create a Phorge revision of this feature branch for official review.
-   Make sure lint is not skipped to make sure `src/lint/upstream_repositories.csv` is valid.
+   Make sure lint is not skipped to make sure [`upstream_repositories.csv`][upstream-repositories-csv] is valid.
    The reviewer should make sure the latest commit hash of both submissions are exactly equal.
 1. Request permission from @buildteam in the internal slack #eng-infra channel to land a merge commit of this revision.
 1. Land the change using the merge strategy:
@@ -190,8 +190,8 @@ Note that this was done on the `pg15` branch at the time rather than `master`.
    However, in this example, it was done step by step.
    The rest of the steps in this section are related if you want to do it step-by-step.
    Otherwise, skip to the next section.
-1. The remaining steps are equivalent to [before](#adding-a-new-upstream-repository-as-subtree), starting from adding repository details to `src/lint/upstream_repositories.csv`.
-   There is no example commit for the `upstream_repositories.csv` change since it did not exist at the time.
+1. The remaining steps are equivalent to [before](#adding-a-new-upstream-repository-as-subtree), starting from adding repository details to [`upstream_repositories.csv`][upstream-repositories-csv].
+   There is no example commit for the [`upstream_repositories.csv`][upstream-repositories-csv] change since it did not exist at the time.
    There is an example commit for the Phorge revision that was merge landed: [2349d7c2df5a519677b80a8eae902a816f34f95b](https://github.com/yugabyte/yugabyte-db/commit/2349d7c2df5a519677b80a8eae902a816f34f95b).
 
 For updating to the new version, the steps follow in the next section.
@@ -223,8 +223,8 @@ Otherwise, some merge commit parent swapping is suggested to continually improve
 
    All conflicts should be resolved, and build should work after this single subtree merge commit.
    In this example, that commit is [180a1f7613457bc84021f3c8c186adadc92ba626](https://github.com/yugabyte/yugabyte-db/commit/180a1f7613457bc84021f3c8c186adadc92ba626).
-1. The remaining steps are equivalent to [before](#adding-a-new-upstream-repository-as-subtree), starting from adding repository details to `src/lint/upstream_repositories.csv`.
-   There is no example commit for the `upstream_repositories.csv` change since it did not exist at the time.
+1. The remaining steps are equivalent to [before](#adding-a-new-upstream-repository-as-subtree), starting from adding repository details to [`upstream_repositories.csv`][upstream-repositories-csv].
+   There is no example commit for the [`upstream_repositories.csv`][upstream-repositories-csv] change since it did not exist at the time.
    There is an example commit for the Phorge revision that was merge landed: [dd24929b2c26f282221fe4e31d2b93ce60f5dfba](https://github.com/yugabyte/yugabyte-db/commit/dd24929b2c26f282221fe4e31d2b93ce60f5dfba).
 
 ### Subtree illustrations
@@ -381,9 +381,9 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
 #### Squash point-imports
 
 1. Find the appropriate upstream postgres commits.
-   For example, if this import is for `yugabyte/yugabyte-db` repo `2025.1` branch based on PG 15.x, then prioritize using upstream postgres commits on `REL_15_STABLE` over those on `master` because they would have resolved conflicts for us.
+   For example, if this import is for [yugabyte/yugabyte-db][repo-yugabyte-db] repo `2025.1` branch based on PG 15.x, then prioritize using upstream postgres commits on `REL_15_STABLE` over those on `master` because they would have resolved conflicts for us.
    See [here](#find-postgresql-back-patch-commits) for suggestions on how to do this.
-1. Switch to a feature branch off the latest `yugabyte/postgres` repo `yb-pg<version>` branch: `git switch -c import-abc yb-pg<version>`.
+1. Switch to a feature branch off the latest [yugabyte/postgres][repo-postgres] repo `yb-pg<version>` branch: `git switch -c import-abc yb-pg<version>`.
 1. Do `git cherry-pick -x <commit>` for each commit being imported.
    Notice the `-x` to record the commit hash being cherry-picked.
    [Make sure tests pass](#testing-postgresql).
@@ -391,22 +391,22 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    This includes logical merge conflicts which can be found via compilation failure or test failure.
    At the end, you should be n commits ahead of `yb-pg<version>`, where n is the number of commits you are point-importing.
    Make a GitHub PR of this through your fork for review.
-1. On the `yugabyte/yugabyte-db` repo, import the commits that are part of the `yugabyte/postgres` repo PR.
+1. On the [yugabyte/yugabyte-db][repo-yugabyte-db] repo, import the commits that are part of the [yugabyte/postgres][repo-postgres] repo PR.
    This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository cherry-pick](#cross-repository-cherry-pick) for advice.
-   Unlike as in `yugabyte/postgres`, the commit structure in `yugabyte/yugabyte-db` does not matter since these changes will eventually be squashed.
-   Once all commits are imported, update `src/lint/upstream_repositories.csv`, and create a Phorge revision.
+   Unlike as in [yugabyte/postgres][repo-postgres], the commit structure in [yugabyte/yugabyte-db][repo-yugabyte-db] does not matter since these changes will eventually be squashed.
+   Once all commits are imported, update [`upstream_repositories.csv`][upstream-repositories-csv] and create a Phorge revision.
    The Phorge summary should have the upstream postgres commit hashes and their commit messages.
    In case of YB's point-imports, provide both the cherry-pick's hash and the original commit's hash.
    Add to the summary the merge resolution details that were previously recorded.
-1. Pass review for both the `yugabyte/postgres` imports and the `yugabyte/yugabyte-db` revision.
-1. Land the `yugabyte/yugabyte-db` revision.
-   **If there is a merge conflict on `src/lint/upstream_repositories.csv`, then redo the whole process.**
-   It means someone else updated `yb-pg<version>` branch, so `yugabyte/postgres` cherry-picks need to be rebased on latest `yb-pg<version>`, compilation/testing needs to be re-done, and since the commit hashes change, `src/lint/upstream_repositories.csv` needs a new commit hash.
-   Plus, it's safest to re-run tests on `yugabyte/yugabyte-db` after all this adjustment.
-1. Push the `yugabyte/postgres` commits directly onto `yb-pg<version>`: `git push <remote> import-abc:yb-pg<version>`.
+1. Pass review for both the [yugabyte/postgres][repo-postgres] imports and the [yugabyte/yugabyte-db][repo-yugabyte-db] revision.
+1. Land the [yugabyte/yugabyte-db][repo-yugabyte-db] revision.
+   **If there is a merge conflict on [`upstream_repositories.csv`][upstream-repositories-csv], then redo the whole process.**
+   It means someone else updated `yb-pg<version>` branch, so [yugabyte/postgres][repo-postgres] cherry-picks need to be rebased on latest `yb-pg<version>`, compilation/testing needs to be re-done, and since the commit hashes change, [`upstream_repositories.csv`][upstream-repositories-csv] needs a new commit hash.
+   Plus, it's safest to re-run tests on [yugabyte/yugabyte-db][repo-yugabyte-db] after all this adjustment.
+1. Push the [yugabyte/postgres][repo-postgres] commits directly onto `yb-pg<version>`: `git push <remote> import-abc:yb-pg<version>`.
    **Do not use the GitHub PR UI to merge because that changes commit hashes.**
    This should not run into any conflicts; there should be no need for force push.
-   This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
+   This is because any conflicts are expected to be encountered on [yugabyte/yugabyte-db][repo-yugabyte-db] [`upstream_repositories.csv`][upstream-repositories-csv], and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
    **Make sure the commit hashes have not changed when landing to `yb-pg<version>`.**
 1. If backporting to stable branches, the same process should be repeated using the `yb-pg<version>` branch corresponding to that stable branch's PG version.
    The [search for back-patch commits](#find-postgresql-back-patch-commits) should be redone for each PG version.
@@ -414,13 +414,13 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
 #### Squash direct-descendant merge
 
 A direct-descendant merge for PostgreSQL is typically a minor version upgrade.
-An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd531080239c350528da38268ac0fa0e](https://github.com/yugabyte/postgres/commit/12398eddbd531080239c350528da38268ac0fa0e) and [`yugabyte/yugabyte-db` e99df6f4d97e5c002d3c4b89c74a778ad0ac0932](https://github.com/yugabyte/yugabyte-db/commit/e99df6f4d97e5c002d3c4b89c74a778ad0ac0932).
+An example is PG 15.2 to 15.12 as done in [yugabyte/postgres@12398eddbd531080239c350528da38268ac0fa0e](https://github.com/yugabyte/postgres/commit/12398eddbd531080239c350528da38268ac0fa0e) and [yugabyte/yugabyte-db@e99df6f4d97e5c002d3c4b89c74a778ad0ac0932](https://github.com/yugabyte/yugabyte-db/commit/e99df6f4d97e5c002d3c4b89c74a778ad0ac0932).
 
 1. First, determine whether a merge in the upstream repository can be skipped.
    This is only permissible if the current upstream repository referenced commit is not a YugabyteDB commit (e.g. there is no `yb-pg15` branch since a `postgres/postgres` commit is used directly).
    Then, the target version can directly be used.
    (In this example, this shortcut could not be used.)
-1. Otherwise, switch to a feature branch off the latest `yugabyte/postgres` repo `yb-pg<version>` branch: `git switch -c merge-pg yb-pg<version>`.
+1. Otherwise, switch to a feature branch off the latest [yugabyte/postgres][repo-postgres] repo `yb-pg<version>` branch: `git switch -c merge-pg yb-pg<version>`.
    Then, do `git merge REL_15_12`.
    (It may still be the case that the target version, in this example 15.12, already has contains all the changes YB imported on top of 15.2.
    If that is the case, then the merge can be simplified to take exactly the target version: `git merge -X theirs REL_15_12`.
@@ -429,27 +429,27 @@ An example is PG 15.2 to 15.12 as done in [`yugabyte/postgres` 12398eddbd5310802
    Record merge resolutions into the merge commit message.
    There should only be the merge commit and no other extraneous commits on top of it.
    Make a GitHub PR of this through your fork for review.
-1. Apply those changes to the `yugabyte/yugabyte-db` repo.
+1. Apply those changes to the [yugabyte/yugabyte-db][repo-yugabyte-db] repo.
    See [cross-repository cherry-pick](#cross-repository-cherry-pick) for details.
-   Update `src/lint/upstream_repositories.csv`, and create a Phorge revision listing all the merge conflict details.
+   Update [`upstream_repositories.csv`][upstream-repositories-csv], and create a Phorge revision listing all the merge conflict details.
    Ensure that the [author information](#git-author-information) for the latest commit of this Phorge revision is `YugaBot <yugabot@users.noreply.github.com>`.
-1. Pass review for both `yugabyte/postgres` GitHub PR and `yugabyte/yugabyte-db` Phorge revision.
-   If `yugabyte/postgres` needs changes, then commit hashes change, so `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv` must be updated, and re-test on `yugabyte/yugabyte-db` should be considered.
-1. Land the `yugabyte/yugabyte-db` revision.
-   **If there is a merge conflict on `src/lint/upstream_repositories.csv`, then redo the whole process.**
-   It means someone else updated `yb-pg15` branch, so `yugabyte/postgres` merge need to be redone on latest `yb-pg15`, compilation/testing needs to be re-done, and since the commit hashes change, `src/lint/upstream_repositories.csv` needs a new commit hash.
-   Plus, it's safest to re-run tests on `yugabyte/yugabyte-db` after all this adjustment.
-1. Push the `yugabyte/postgres` merge directly onto `yb-pg15`: `git push <remote> merge-pg:yb-pg15`.
+1. Pass review for both [yugabyte/postgres][repo-postgres] GitHub PR and [yugabyte/yugabyte-db][repo-yugabyte-db] Phorge revision.
+   If [yugabyte/postgres][repo-postgres] needs changes, then commit hashes change, so [yugabyte/yugabyte-db][repo-yugabyte-db] [`upstream_repositories.csv`][upstream-repositories-csv] must be updated, and re-test on [yugabyte/yugabyte-db][repo-yugabyte-db] should be considered.
+1. Land the [yugabyte/yugabyte-db][repo-yugabyte-db] revision.
+   **If there is a merge conflict on [`upstream_repositories.csv`][upstream-repositories-csv], then redo the whole process.**
+   It means someone else updated `yb-pg15` branch, so [yugabyte/postgres][repo-postgres] merge need to be redone on latest `yb-pg15`, compilation/testing needs to be re-done, and since the commit hashes change, [`upstream_repositories.csv`][upstream-repositories-csv] needs a new commit hash.
+   Plus, it's safest to re-run tests on [yugabyte/yugabyte-db][repo-yugabyte-db] after all this adjustment.
+1. Push the [yugabyte/postgres][repo-postgres] merge directly onto `yb-pg15`: `git push <remote> merge-pg:yb-pg15`.
    **Do not use the GitHub PR UI to merge because that changes commit hashes.**
    This should not run into any conflicts; there should be no need for force push.
-   This is because any conflicts are expected to be encountered on `yugabyte/yugabyte-db` `src/lint/upstream_repositories.csv`, and if landing that change passes, then no one should have touched `yb-pg15` concurrently.
+   This is because any conflicts are expected to be encountered on [yugabyte/yugabyte-db][repo-yugabyte-db] [`upstream_repositories.csv`][upstream-repositories-csv], and if landing that change passes, then no one should have touched `yb-pg15` concurrently.
    **Make sure the commit hashes have not changed when landing to `yb-pg15`.**
 
 #### Squash non-direct-descendant merge
 
 A non-direct-descendant merge for PostgreSQL is typically a major version upgrade.
-An example is PG 11.2 to 15.2 as _initially_ done in [`yugabyte/yugabyte-db` 55782d561e55ef972f2470a4ae887dd791bb4a97](https://github.com/yugabyte/yugabyte-db/commit/55782d561e55ef972f2470a4ae887dd791bb4a97).
-Note that this was done before `upstream_repositories.csv` was in place, so it lacks formality and should not be looked at as a model example.
+An example is PG 11.2 to 15.2 as _initially_ done in [yugabyte/yugabyte-db@55782d561e55ef972f2470a4ae887dd791bb4a97](https://github.com/yugabyte/yugabyte-db/commit/55782d561e55ef972f2470a4ae887dd791bb4a97).
+Note that this was done before [`upstream_repositories.csv`][upstream-repositories-csv] was in place, so it lacks formality and should not be looked at as a model example.
 
 This merge can technically be handled similarly as [direct-descendant merge](#squash-direct-descendant-merge).
 However, there is a much faster alternative that should be taken.
@@ -462,7 +462,7 @@ The steps below detail a hypothetical merge of PG 15.12 to PG 18.1.
 At the time of writing, YugabyteDB is based off PG 15.12.
 
 1. Ensure PG 15.12 to PG 18.1 satisfies the prerequisite mentioned above.
-1. On the `yugabyte/postgres` repo, identify the point-imports or custom changes on `yb-pg15` that need to be carried over to PG 18.1.
+1. On the [yugabyte/postgres][repo-postgres] repo, identify the point-imports or custom changes on `yb-pg15` that need to be carried over to PG 18.1.
    The total list of point-imports and custom changes can be found using `git log --first-parent --oneline yb-pg15`, ignoring merge commits and excluding anything before the first target minor version for this major version, which is REL_15_2.
 
    - For each point-import commit, determine whether it is already contained in the target version, `REL_18_1`.
@@ -477,10 +477,10 @@ At the time of writing, YugabyteDB is based off PG 15.12.
    If cherry-picking commits, use `-x`.
    For merge conflicts, resolve and amend them to the same commit, describing resolutions within the commit messages themselves.
    The procedure here is very much like the first three steps of [doing point-imports](#squash-point-imports).
-1. Do the same steps as in [direct-descendant merge](#squash-direct-descendant-merge), starting from "Apply those changes to the `yugabyte/yugabyte-db` repo."
-   A difference is that this merge may be so much larger that the initial merge is incomplete and potentially based off an old commit on `yugabyte/yugabyte-db`.
-   This initial merge commit and further development to close the gaps can be done in a separate `pg18` branch on `yugabyte/yugabyte-db`.
-   This is what was done for the PG 15 merge, from `yugabyte/yugabyte-db` [55782d561e55ef972f2470a4ae887dd791bb4a97](https://github.com/yugabyte/yugabyte-db/commit/55782d561e55ef972f2470a4ae887dd791bb4a97) to [eac5ed5d186b492702a0b546bf82ed162da506b0]((https://github.com/yugabyte/yugabyte-db/commit/eac5ed5d186b492702a0b546bf82ed162da506b0).
+1. Do the same steps as in [direct-descendant merge](#squash-direct-descendant-merge), starting from "Apply those changes to the [yugabyte/yugabyte-db][repo-yugabyte-db] repo."
+   A difference is that this merge may be so much larger that the initial merge is incomplete and potentially based off an old commit on [yugabyte/yugabyte-db][repo-yugabyte-db].
+   This initial merge commit and further development to close the gaps can be done in a separate `pg18` branch on [yugabyte/yugabyte-db][repo-yugabyte-db].
+   This is what was done for the PG 15 merge, from [yugabyte/yugabyte-db@55782d561e55ef972f2470a4ae887dd791bb4a97](https://github.com/yugabyte/yugabyte-db/commit/55782d561e55ef972f2470a4ae887dd791bb4a97) to [yugabyte/yugabyte-db@eac5ed5d186b492702a0b546bf82ed162da506b0]((https://github.com/yugabyte/yugabyte-db/commit/eac5ed5d186b492702a0b546bf82ed162da506b0).
 
 ### Embedded via subtree
 
@@ -495,9 +495,9 @@ At the time of writing, YugabyteDB is based off PG 15.12.
    Do any relevant testing if applicable.
    For any merge conflicts, resolve and amend them to that same commit, describing resolutions within the commit messages themselves.
    This includes logical merge conflicts which can be found via compilation failure or test failure.
-   At the end, you should be n commits ahead of the commit in `upstream_repositories.csv`, where n is the number of commits you are point-importing.
+   At the end, you should be n commits ahead of the commit in [`upstream_repositories.csv`][upstream-repositories-csv], where n is the number of commits you are point-importing.
    Make a GitHub PR of this through your fork for review.
-1. On the `yugabyte/yugabyte-db` repo, [subtree merge](#git-subtrees) this branch.
+1. On the [yugabyte/yugabyte-db][repo-yugabyte-db] repo, [subtree merge](#git-subtrees) this branch.
 
 #### Subtree direct-descendant merge
 
@@ -517,7 +517,7 @@ We are trying to merge to `v0.103-0` (which doesn't exist at the time of writing
    Record merge resolutions into the merge commit message.
    There should only be the merge commit and no other extraneous commits on top of it.
    Make a GitHub PR of this through your fork for review.
-1. On the `yugabyte/yugabyte-db` repo, [subtree merge](#git-subtrees) this branch.
+1. On the [yugabyte/yugabyte-db][repo-yugabyte-db] repo, [subtree merge](#git-subtrees) this branch.
 
 #### Subtree non-direct-descendant merge
 
@@ -538,7 +538,7 @@ We are trying to merge to `1.7.0`.
    Then, the target version can directly be used.
    (In this example, this shortcut can not be used.)
 1. Otherwise, follow the steps to identify commits to cherry-pick and create a `yb-pg15` branch as in [squash non-direct-descendant merge](#squash-non-direct-descendant-merge).
-1. On the `yugabyte/yugabyte-db` repo, [subtree merge](#git-subtrees) this branch.
+1. On the [yugabyte/yugabyte-db][repo-yugabyte-db] repo, [subtree merge](#git-subtrees) this branch.
 
 ## General advice
 
@@ -574,11 +574,11 @@ If you are interested in finding whether a certain `REL_15_STABLE` back-patch co
 
 ### Testing PostgreSQL
 
-When doing a point-import or merge of upstream PostgreSQL, often that leads to creating a commit in `yugabyte/postgres` repo.
+When doing a point-import or merge of upstream PostgreSQL, often that leads to creating a commit in [yugabyte/postgres][repo-postgres] repo.
 One should make sure that tests pass after that commit to catch logical merge conflicts.
 
 There are many tests scattered around different Makefiles, generally run using `make check`.
-Ideally, all should pass, but here are a few that one should pay special attention to since `yugabyte/yugabyte-db` also partially uses them:
+Ideally, all should pass, but here are a few that one should pay special attention to since [yugabyte/yugabyte-db][repo-yugabyte-db] also partially uses them:
 
 ```sh
 ./configure
@@ -589,7 +589,7 @@ make check
 ```
 
 There are also `pg_dump` tests.
-They are not run in `yugabyte/yugabyte-db`, but it is still good to make sure they pass:
+They are not run in [yugabyte/yugabyte-db][repo-yugabyte-db], but it is still good to make sure they pass:
 
 ```sh
 ./configure --enable-tap-tests
@@ -607,14 +607,14 @@ It is most commonly done for point-imports of upstream repositories to YugabyteD
 If you are new to it, you may be tempted to copy-paste code changes from one side to the other.
 Please do not do that as it is error-prone.
 
-A smarter way to do it is to get a patch of the upstream changes, prefix all paths to the appropriate location in `yugabyte/yugabyte-db`, then apply that modified patch in `yugabyte/yugabyte-db`.
+A smarter way to do it is to get a patch of the upstream changes, prefix all paths to the appropriate location in [yugabyte/yugabyte-db][repo-yugabyte-db], then apply that modified patch in [yugabyte/yugabyte-db][repo-yugabyte-db].
 It is quite hacky, and it doesn't preserve [Git author information](#git-author-information).
 
 Perhaps the best way to do it is using the subtree merge strategy.
 This requires having the source repository's commit present in the destination repository.
 Then, a cherry-pick can be done directly.
 
-For example, suppose you put up a GitHub PR of a commit that you point-imported on `yugabyte/postgres`.
+For example, suppose you put up a GitHub PR of a commit that you point-imported on [yugabyte/postgres][repo-postgres].
 That commit exists locally in your `postgres` repository, and it also exists in your GitHub fork of `postgres`.
 Either can be used as a remote in order to get the commit: for this example, let's use the fork as that process may be more familiar to people.
 
@@ -641,7 +641,7 @@ git cherry-pick --strategy subtree -Xsubtree=src/postgres local-postgres/tmp-squ
 In case of larger direct-descendant and non-direct-descendant merges, cherry-picking merge commits is still possible using the `-m` option.
 However, that should be weighed against an alternate approach to do an actual merge on the upstream repository's side, then transfer the changes over to [yugabyte/yugabyte-db][repo-yugabyte-db]:
 
-1. On the upstream repository commit before the upstream merge (which should equal the commit recorded in `upstream_repositories.csv` in [yugabyte/yugabyte-db][repo-yugabyte-db]), sync the content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
+1. On the upstream repository commit before the upstream merge (which should equal the commit recorded in [yugabyte/yugabyte-db][repo-yugabyte-db] [`upstream_repositories.csv`][upstream-repositories-csv]), sync the content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
    YugabyteDB may have introduced new files, which can be ignored for now and merged properly later.
    What we care about for the merge are existing files that have been overwritten with new content.
    Use `git add -u` to add all those changes, and commit them (commit message does not matter since this is not an official commit).
@@ -936,7 +936,7 @@ In that case, a throw-away merge commit can be created for review purposes.
 If the author followed the [cross-repository cherry-pick steps](#cross-repository-cherry-pick), the author may be able to skip some of the early steps here as they are redundant:
 
 1. Check out the [yugabyte/yugabyte-db][repo-yugabyte-db] base commit of this squash merge.
-1. On the upstream repository commit before the upstream merge (which should equal the commit recorded in `upstream_repositories.csv` in [yugabyte/yugabyte-db][repo-yugabyte-db]), sync the content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
+1. On the upstream repository commit before the upstream merge (which should equal the commit recorded in [`upstream_repositories.csv`][upstream-repositories-csv] in [yugabyte/yugabyte-db][repo-yugabyte-db]), sync the content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
    Use `git add -u` to add all those changes (not the new files), and commit them (commit message does not matter since this is not an official commit).
 1. Check out the [yugabyte/yugabyte-db][repo-yugabyte-db] squash merge commit.
 1. In the upstream repository, `git merge` the upstream merge commit.
@@ -968,7 +968,7 @@ On top of that, make sure that the Git metadata is proper where it matters.
   The person executing the merge should be the [Git author](#git-author-information) of the merge commit.
 - For [yugabyte/yugabyte-db][repo-yugabyte-db], only the subtree embedding strategy uses merges.
   The person executing the merge should be the [Git author](#git-author-information) of the subtree merge commit.
-  On top of that, there should be a single commit to update `upstream_repositories.csv`.
+  On top of that, there should be a single commit to update [`upstream_repositories.csv`][upstream-repositories-csv].
   There should be no other commits besides the subtree ones.
 
 ##### Another way to review the merge
@@ -980,7 +980,7 @@ This also helps make sure the author made clear resolution notes and covered exp
 
 #### File-specific advice
 
-- `upstream_repositories.csv`:
+- [`upstream_repositories.csv`][upstream-repositories-csv]:
   Make sure the commit hash is updated properly.
 - `src/postgres/doc`:
   In general, changes here do not matter since this documentation is not built by YugabyteDB.
@@ -992,6 +992,7 @@ This also helps make sure the author made clear resolution notes and covered exp
   (Note that, at the time of writing, pg_hint_plan is the one exception to this: YB changes are made on the original test directly.)
   See [build and test](./build-and-test#ysql-regress-tests).
 
-[repo-yugabyte-db]: https://github.com/yugabyte/yugabyte-db
+[repo-postgres]: https://github.com/yugabyte/postgres
 [repo-thirdparty]: https://github.com/yugabyte/yugabyte-db-thirdparty
+[repo-yugabyte-db]: https://github.com/yugabyte/yugabyte-db
 [upstream-repositories-csv]: https://github.com/yugabyte/yugabyte-db/blob/master/src/lint/upstream_repositories.csv
