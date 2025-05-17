@@ -713,17 +713,41 @@
     showSection = true
 
 [[preview_tutorials]]
-  name = "Cloud"
-  weight = 30
-  identifier = "tutorials-cloud"
+  name = "AI"
+  weight = 20
+  identifier = "tutorials-ai"
+  url = "/preview/tutorials/ai/"
   [preview_tutorials.params]
     showSection = true
 
 [[preview_tutorials]]
-  name = "AI"
-  weight = 35
-  identifier = "tutorials-ai"
-  url = "/preview/tutorials/ai/"
+  name = "RAG"
+  weight = 10
+  identifier = "tutorials-ai-rag"
+  parent = "tutorials-ai"
+  [preview_tutorials.params]
+    showSection = true
+
+[[preview_tutorials]]
+  name = "Vector basics"
+  weight = 20
+  identifier = "tutorials-ai-vector"
+  parent = "tutorials-ai"
+  [preview_tutorials.params]
+    showSection = true
+
+[[preview_tutorials]]
+  name = "Agentic"
+  weight = 30
+  identifier = "tutorials-ai-agentic"
+  parent = "tutorials-ai"
+  [preview_tutorials.params]
+    showSection = true
+
+[[preview_tutorials]]
+  name = "Cloud"
+  weight = 30
+  identifier = "tutorials-cloud"
   [preview_tutorials.params]
     showSection = true
 
