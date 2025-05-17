@@ -4415,9 +4415,10 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	}
 
 	ereport(enable_inval_messages ? LOG : DEBUG1,
-			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %u",
+			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d",
 					message_lists.num_lists, local_catalog_version,
-					shared_catalog_version, num_catalog_versions)));
+					shared_catalog_version, catalog_master_version,
+					num_catalog_versions, is_retry)));
 	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
 	YBRefreshCache();
 }

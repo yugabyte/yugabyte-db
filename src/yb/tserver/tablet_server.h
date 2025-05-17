@@ -258,9 +258,19 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
+  void SetYsqlDBCatalogVersionsUnlocked(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data)
+      REQUIRES(lock_);
   void SetYsqlDBCatalogVersions(const tserver::DBCatalogVersionDataPB& db_catalog_version_data)
-      EXCLUDES(lock_) override;
-  void SetYsqlDBCatalogInvalMessages(
+      EXCLUDES(lock_) override {
+    std::lock_guard l(lock_);
+    SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data);
+  }
+  void SetYsqlDBCatalogInvalMessagesUnlocked(
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
+      REQUIRES(lock_);
+  void SetYsqlDBCatalogVersionsWithInvalMessages(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
       EXCLUDES(lock_);
   void ResetCatalogVersionsFingerprint() EXCLUDES(lock_);
