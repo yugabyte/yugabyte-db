@@ -980,9 +980,9 @@ On top of that, make sure that the Git metadata is proper where it matters.
 
 ##### Another way to review the merge
 
-A different way to review is to do the entire merge yourself.
+A different way to review the code and resolution is to do the entire merge yourself.
 It takes longer but results in a more solid review.
-You can follow the resolution notes of the author while checking it makes sense.
+You can use the resolution notes of the author as a cheat sheet to speed up the process.
 This also helps make sure the author made clear resolution notes and covered explaining the necessary resolutions.
 
 #### File-specific advice
