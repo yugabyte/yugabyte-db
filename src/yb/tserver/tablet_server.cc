@@ -1214,10 +1214,9 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
   InvalidatePgTableCache();
 }
 
-void TabletServer::SetYsqlDBCatalogVersions(
+void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   const tserver::DBCatalogVersionDataPB& db_catalog_version_data) {
   DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
-  std::lock_guard l(lock_);
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
@@ -1472,12 +1471,19 @@ void TabletServer::UpdateCatalogVersionsFingerprintUnlocked() {
                     << ", new fingerprint: " << new_fingerprint;
 }
 
-void TabletServer::SetYsqlDBCatalogInvalMessages(
+void TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages(
+    const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
+    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
+  std::lock_guard l(lock_);
+  SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data);
+  SetYsqlDBCatalogInvalMessagesUnlocked(db_catalog_inval_messages_data);
+}
+
+void TabletServer::SetYsqlDBCatalogInvalMessagesUnlocked(
   const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
   if (db_catalog_inval_messages_data.db_catalog_inval_messages_size() == 0) {
     return;
   }
-  std::lock_guard l(lock_);
   uint32_t current_db_oid = 0;
   // ysql_db_invalidation_messages_map_ is just an extended history of pg_yb_invalidation_messages
   // except message_time column. Merge the incoming db_catalog_inval_messages_data from the
