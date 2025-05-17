@@ -408,6 +408,19 @@ ybm cluster encryption update-state \
 Successfully ENABLED encryption at rest for cluster my-sandbox
 ```
 
+## Scale your cluster
+
+Use the `ybm cluster update` command with `--region-info` flag to scale your cluster by adding or removing nodes, cores, and disk size. You can also change the region name. For example, to change the number of nodes in the `us-east-1` region from 3 to 5, and the number of cores from 2 to 1, enter the following command:
+
+```sh
+ybm cluster update \
+  --cluster-name frank-wren \
+  --region-info region=us-east-1,num-nodes=5,num-cores=1,disk-size-gb=10 \
+  --wait
+```
+
+For more information, see [Scale and configure clusters](../../../../cloud-clusters/configure-clusters/)
+
 ## Pause, resume, and terminate
 
 To list your clusters, enter the following command:
