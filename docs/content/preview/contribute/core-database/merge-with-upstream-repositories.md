@@ -863,8 +863,9 @@ As for the commit message body, look into the above examples as reference (e.g. 
 When using `git cherry-pick -x`, the commit message is automatically generated.
 
 In case of cherry-picking for the sake of officially pushing the cherry-picked commits directly (e.g. upstream repositories), if encountering any merge conflicts, put such details somewhere in the commit message.
-In case of cherry-picking but eventually landing a Phorge squash commit, concatenate the commit messages (including titles) and add merge conflict details somewhere in the Phorge summary.
+In case of [cross-repository cherry-picking](#cross-repository-cherry-pick) and eventually landing a Phorge squash commit, concatenate the commit messages (including titles) and add merge conflict details somewhere in the Phorge summary.
 The Phorge title should be of the form `[#<GH_issue>] YSQL: import <cherry-picked_commit_title>`, in case of cherry-picking a single commit, or `[#GH_issue>] YSQL: import <general_catchall>` otherwise.
+In case of [cross-repository cherry-picking](#cross-repository-cherry-pick) an upstream merge commit, it may be more fitting to make the title and summary follow the format of a [merge commit message](#merge-commit-message).
 
 #### Redoing a merge
 
@@ -897,13 +898,37 @@ In case you are trying to rebase a merge commit to a newer base, consider the fo
 
 #### Review
 
-##### Review point-imports
+There are generally two kinds of things you will encounter in review: cherry-picks and merges.
+Here are all the cases:
+
+- [Squash point-import](#squash-point-imports)
+  - Upstream repository to upstream repository: cherry-pick
+  - Upstream repository to [yugabyte/yugabyte-db][repo-yugabyte-db]: cherry-pick
+- [Squash direct-descendant merge](#squash-direct-descendant-merge)
+  - Upstream repository to upstream repository: merge
+  - Upstream repository to [yugabyte/yugabyte-db][repo-yugabyte-db]: cherry-pick
+- [Squash non-direct-descendant merge](#squash-non-direct-descendant-merge)
+  - Upstream repository to upstream repository: cherry-pick or merge (depends on the strategy taken)
+  - Upstream repository to [yugabyte/yugabyte-db][repo-yugabyte-db]: cherry-pick
+- [Subtree point-import](#subtree-point-imports)
+  - Upstream repository to upstream repository: cherry-pick
+  - Upstream repository to [yugabyte/yugabyte-db][repo-yugabyte-db]: merge
+- [Subtree direct-descendant merge](#subtree-direct-descendant-merge)
+  - Upstream repository to upstream repository: merge
+  - Upstream repository to [yugabyte/yugabyte-db][repo-yugabyte-db]: merge
+- [Subtree non-direct-descendant merge](#subtree-non-direct-descendant-merge)
+  - Upstream repository to upstream repository: cherry-pick or merge (depends on the strategy taken)
+  - Upstream repository to [yugabyte/yugabyte-db][repo-yugabyte-db]: merge
+
+##### Review cherry-picks
 
 For cherry-picks, compare the original commit's patch with the cherry-pick commit's patch.
 One way to do it is `$difftool <(git show <commit_being_cherry-picked>) <(git show <cherry-picked_commit>)`.
-There is also a tool [analyze_cherry_pick.py](https://gist.github.com/hari90/b65159b6811786023e0f0ea2af448f4a) authored by Hari you can try out.
+In case this is a cross-repository cherry-pick, `$difftool <(git -C /path/to/upstream_repo show <commit_being_cherry-picked>) <(git -C /path/to/yugabyte_repo show <cherry-picked_commit>)`.
+In case this is a cross-repository cherry-pick of multiple commits and you do not have access to individual cherry-picks, `$difftool <(git -C /path/to/upstream_repo diff <cherry-picks_commit_range>) <(git -C /path/to/yugabyte_repo show ...)`.
+There is also a tool [`analyze_cherry_pick.py`](https://gist.github.com/hari90/b65159b6811786023e0f0ea2af448f4a) authored by Hari you can try out.
 
-First, check the [title and summary](#cherry-pick-commit-message)
+First, check the [title and summary](#cherry-pick-commit-message).
 
 Then, check the code and resolution notes.
 Line numbers and context may differ.
@@ -913,40 +938,45 @@ Pay attention to things like...
 - ...mismatching whitespace or newlines between the two patches.
 - ...nontrivial differences between the patches that are not explained adequately in the resolution notes.
 
-On top of that, make sure that the Git metadata is proper where it matters.
-For the upstream repository, there should only be the cherry-picked commits.
-If there are any other commits, there should be a good reason for them, and the titles should start with `YB:`.
-Merge conflicts (including logical ones) should generally be resolved and amended into the same commit being cherry-picked.
-
-For [yugabyte/yugabyte-db][repo-yugabyte-db] using the squash embedding strategy,
-
-- if it's a single point-import, Git author information should be preserved.
-- if it's multiple point-imports, the Git author of the latest commit should be the person doing the point-imports.
-
-For [yugabyte/yugabyte-db][repo-yugabyte-db] using the subtree embedding strategy, the person doing the point-imports should be the author of the subtree merge.
-On top of that, there should be a single commit to update `upstream_repositories.csv`.
-There should be no other commits besides the subtree ones.
-
-##### Review direct-descendant or non-direct-descendant merges
-
-For merges, it is best to get an actual merge commit.
-Phorge squashes any Git structure into a single patch, so the merge commit should be obtained through a separate medium such as a GitHub fork.
-In case the final commit will be a squash merge rather than a merge commit, an equivalent throw-away merge commit should be provided for merge purposes.
-If you followed the [cross-repository cherry-pick steps](#cross-repository-cherry-pick), you may be able to skip some of the early steps here as they are redundant:
+It may be difficult to compare large [cross-repository patches](#cross-repository-cherry-pick) for direct-descendant or non-direct-descendant squash merges.
+In that case, a throw-away merge commit can be created for review purposes.
+If the author followed the [cross-repository cherry-pick steps](#cross-repository-cherry-pick), the author may be able to skip some of the early steps here as they are redundant:
 
 1. Check out the [yugabyte/yugabyte-db][repo-yugabyte-db] base commit of this squash merge.
 1. On the upstream repository commit before the upstream merge (which should equal the commit recorded in `upstream_repositories.csv` in [yugabyte/yugabyte-db][repo-yugabyte-db]), sync the content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
    Use `git add -u` to add all those changes (not the new files), and commit them (commit message does not matter since this is not an official commit).
 1. Check out the [yugabyte/yugabyte-db][repo-yugabyte-db] squash merge commit.
-1. `git merge` the upstream merge commit.
+1. In the upstream repository, `git merge` the upstream merge commit.
    Since the merge was already previously done, just sync the new content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
+1. [Review](#review-merges) the code and resolution of this merge commit.
+
+On top of that, make sure that the Git metadata is proper where it matters.
+
+- For the upstream repository, there should only be the cherry-picked commits.
+  If there are any other commits, there should be a good reason for them, and the titles should start with `YB:`.
+  Merge conflicts (including logical ones) should generally be resolved and amended into the same commit being cherry-picked.
+  The [Git author information](#git-author-information) should be preserved for cherry-picked commits.
+- For [yugabyte/yugabyte-db][repo-yugabyte-db], only the squash embedding strategy uses cherry-picks.
+  - If it's a single point-import, [Git author information](#git-author-information) should be preserved.
+  - If it's multiple point-imports, the [Git author](#git-author-information) should be the person executing the point-imports.
+  - If it's a direct-descendant or non-direct-descendant merge, the [Git author](#git-author-information) should be `YugaBot <yugabot@users.noreply.github.com>`.
+
+##### Review merges
+
+For merges, it is best to get an actual merge commit.
+Phorge squashes any Git structure into a single patch, so the merge commit should be obtained through a separate medium such as a GitHub fork.
 
 With a merge commit at hand, use `git show --diff-merges=dense-combined` (equivalent to just `git show`) on the merge commit to see the main resolutions.
 Be aware that this doesn't show resolutions where one side of the merge was taken entirely.
 
 On top of that, make sure that the Git metadata is proper where it matters.
-For the upstream repository, there should only be a single merge commit unless the alternate strategy is taken to redo cherry-picks on the new destination.
 
+- For the upstream repository, there should only be a single merge commit.
+  The person executing the merge should be the [Git author](#git-author-information) of the merge commit.
+- For [yugabyte/yugabyte-db][repo-yugabyte-db], only the subtree embedding strategy uses merges.
+  The person executing the merge should be the [Git author](#git-author-information) of the subtree merge commit.
+  On top of that, there should be a single commit to update `upstream_repositories.csv`.
+  There should be no other commits besides the subtree ones.
 
 ##### Another way to review the merge
 
