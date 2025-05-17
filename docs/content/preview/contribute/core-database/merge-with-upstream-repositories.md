@@ -399,13 +399,6 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    In case of YB's point-imports, provide both the cherry-pick's hash and the original commit's hash.
    Add to the summary the merge resolution details that were previously recorded.
 1. Pass review for both the `yugabyte/postgres` imports and the `yugabyte/yugabyte-db` revision.
-   Besides general merge review, here are things reviewers should watch out for in the `yugabyte/postgres` review:
-
-   - Was `-x` used for each cherry-pick?
-   - Was the [commit author metadata](#git-author-information) preserved for each cherry-pick?
-   - Was the commit message preserved for each cherry-pick?
-   - Are there exactly n commits, and are they branched off the latest `yb-pg<version>` commit?
-
 1. Land the `yugabyte/yugabyte-db` revision.
    **If there is a merge conflict on `src/lint/upstream_repositories.csv`, then redo the whole process.**
    It means someone else updated `yb-pg<version>` branch, so `yugabyte/postgres` cherry-picks need to be rebased on latest `yb-pg<version>`, compilation/testing needs to be re-done, and since the commit hashes change, `src/lint/upstream_repositories.csv` needs a new commit hash.
