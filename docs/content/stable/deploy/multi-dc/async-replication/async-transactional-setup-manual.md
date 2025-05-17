@@ -1,13 +1,13 @@
 ---
-title: Set up transactional xCluster replication
-headerTitle: Set up transactional xCluster replication
-linkTitle: Set up replication
-description: Setting up transactional (active-standby) replication between universes
-headContent: Set up transactional replication manually
+title: Set up transactional xCluster
+headerTitle: Set up transactional xCluster
+linkTitle: Setup
+description: Setting up transactional (active-active single-master) replication between two YB universes
+headContent: Set up transactional xCluster replication
 menu:
   stable:
     parent: async-replication-transactional
-    identifier: async-transactional-setup-2-manual
+    identifier: async-transactional-setup-3-manual
     weight: 10
 tags:
   other: ysql
@@ -16,18 +16,20 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../async-transactional-setup-dblevel/" class="nav-link">
-      <i class="icon-shell"></i>
+    <a href="../async-transactional-setup-semi-automatic/" class="nav-link">
       Semi-Automatic
     </a>
   </li>
   <li >
-    <a href="../async-transactional-setup/" class="nav-link active">
-      <i class="icon-shell"></i>
+    <a href="../async-transactional-setup-manual/" class="nav-link active">
       Manual
     </a>
   </li>
 </ul>
+
+{{< warning title="Warning" >}}
+Manual mode xCluster replication is not recommended due to the operational complexity involved.
+{{< /warning >}}
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
@@ -35,12 +37,16 @@ Note that when making DDL changes on universes in manually-configured transactio
 
 ## Set up replication manually
 
+{{< tip >}}
+Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
+{{< /tip >}}
+
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
     <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Local
+      <i class="icon-shell"></i>
+      Manual
     </a>
   </li>
   <li>
