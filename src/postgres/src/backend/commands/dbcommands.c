@@ -3530,7 +3530,7 @@ dbase_redo(XLogReaderState *record)
 	if (info == XLOG_DBASE_CREATE_FILE_COPY)
 	{
 		xl_dbase_create_file_copy_rec *xlrec =
-		(xl_dbase_create_file_copy_rec *) XLogRecGetData(record);
+			(xl_dbase_create_file_copy_rec *) XLogRecGetData(record);
 		char	   *src_path;
 		char	   *dst_path;
 		char	   *parent_path;
@@ -3555,9 +3555,9 @@ dbase_redo(XLogReaderState *record)
 
 		/*
 		 * If the parent of the target path doesn't exist, create it now. This
-		 * enables us to create the target underneath later.  Note that if
-		 * the database dir is not in a tablespace, the parent will always
-		 * exist, so this never runs in that case.
+		 * enables us to create the target underneath later.  Note that if the
+		 * database dir is not in a tablespace, the parent will always exist,
+		 * so this never runs in that case.
 		 */
 		parent_path = pstrdup(dst_path);
 		get_parent_directory(parent_path);
@@ -3603,7 +3603,7 @@ dbase_redo(XLogReaderState *record)
 	else if (info == XLOG_DBASE_CREATE_WAL_LOG)
 	{
 		xl_dbase_create_wal_log_rec *xlrec =
-		(xl_dbase_create_wal_log_rec *) XLogRecGetData(record);
+			(xl_dbase_create_wal_log_rec *) XLogRecGetData(record);
 		char	   *dbpath;
 		char	   *parent_path;
 

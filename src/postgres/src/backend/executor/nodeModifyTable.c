@@ -1069,7 +1069,7 @@ YbExecInsertAct(ModifyTableContext *context,
 			{
 				TupleDesc	tdesc = CreateTupleDescCopy(slot->tts_tupleDescriptor);
 				TupleDesc	plan_tdesc =
-				CreateTupleDescCopy(planSlot->tts_tupleDescriptor);
+					CreateTupleDescCopy(planSlot->tts_tupleDescriptor);
 
 				resultRelInfo->ri_Slots[resultRelInfo->ri_NumSlots] =
 					MakeSingleTupleTableSlot(tdesc, slot->tts_ops);

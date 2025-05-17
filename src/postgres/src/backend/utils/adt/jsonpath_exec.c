@@ -1328,8 +1328,8 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				 */
 				JsonValueList vals = {0};
 				JsonPathExecResult res =
-				executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
-												  false, &vals);
+					executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
+													  false, &vals);
 
 				if (jperIsError(res))
 					return jpbUnknown;
@@ -1339,8 +1339,8 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			else
 			{
 				JsonPathExecResult res =
-				executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
-												  false, NULL);
+					executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
+													  false, NULL);
 
 				if (jperIsError(res))
 					return jpbUnknown;
@@ -1879,7 +1879,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			if (!fmt_txt[i])
 			{
 				MemoryContext oldcxt =
-				MemoryContextSwitchTo(TopMemoryContext);
+					MemoryContextSwitchTo(TopMemoryContext);
 
 				fmt_txt[i] = cstring_to_text(fmt_str[i]);
 				MemoryContextSwitchTo(oldcxt);

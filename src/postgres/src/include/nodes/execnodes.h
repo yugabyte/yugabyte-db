@@ -1326,7 +1326,7 @@ typedef struct EPQStateExtra
 	 * passed to EvalPlanQual().
 	 */
 	bool	   *relsubs_blocked;
-} EPQStateExtra;
+}			EPQStateExtra;
 
 /* ----------------
  *	 ResultState information

@@ -2044,8 +2044,8 @@ postgresGetForeignModifyBatchSize(ResultRelInfo *resultRelInfo)
 {
 	int			batch_size;
 	PgFdwModifyState *fmstate = resultRelInfo->ri_FdwState ?
-	(PgFdwModifyState *) resultRelInfo->ri_FdwState :
-	NULL;
+		(PgFdwModifyState *) resultRelInfo->ri_FdwState :
+		NULL;
 
 	/* should be called only once */
 	Assert(resultRelInfo->ri_BatchSize == 0);

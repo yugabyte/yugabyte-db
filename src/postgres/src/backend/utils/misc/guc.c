@@ -10618,9 +10618,9 @@ set_config_option_ext(const char *name, const char *value,
 						(void) set_config_option_ext("role",
 													 value ? "none" : NULL,
 													 orig_context,
-													  (orig_source == PGC_S_OVERRIDE)
-													  ? PGC_S_DYNAMIC_DEFAULT
-													  : orig_source,
+													 (orig_source == PGC_S_OVERRIDE)
+													 ? PGC_S_DYNAMIC_DEFAULT
+													 : orig_source,
 													 orig_srole,
 													 action,
 													 true,

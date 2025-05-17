@@ -818,6 +818,7 @@ class PostgresBuilder(YbBuildToolBase):
             self.pg_build_root,
             os.path.join(self.pg_build_root, 'contrib'),
             os.path.join(self.pg_build_root, 'src/test/modules/dummy_seclabel'),
+            os.path.join(self.pg_build_root, 'src/tools/pg_bsd_indent'),
         ] + external_extension_dirs
 
         # TODO(#27196): parallelize this for loop.

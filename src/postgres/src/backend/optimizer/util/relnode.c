@@ -1140,7 +1140,7 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 		{
 			/* UPDATE/DELETE/MERGE row identity vars are always needed */
 			RowIdentityVarInfo *ridinfo = (RowIdentityVarInfo *)
-			list_nth(root->row_identity_vars, var->varattno - 1);
+				list_nth(root->row_identity_vars, var->varattno - 1);
 
 			joinrel->reltarget->exprs = lappend(joinrel->reltarget->exprs,
 												var);
