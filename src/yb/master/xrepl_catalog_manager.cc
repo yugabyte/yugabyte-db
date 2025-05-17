@@ -238,7 +238,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
       table = catalog_manager_->tables_->FindTableOrNull(
           xcluster::StripSequencesDataAliasIfPresent(metadata.table_id(0)));
       if (!table) {
-        LOG(ERROR) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
+        LOG(DFATAL) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
         // TODO (#2059): Potentially signals a race condition that table got deleted while stream
         //  was being created.
         // Log error and continue without loading the stream.
@@ -4752,7 +4752,7 @@ Status CatalogManager::ClearFailedReplicationBootstrap() {
     if (bootstrap_info == nullptr) {
       auto error_msg =
           Format("UniverseReplicationBootstrap not found: $0", replication_id.ToString());
-      LOG(ERROR) << error_msg;
+      LOG(WARNING) << error_msg;
       return STATUS(NotFound, error_msg);
     }
   }
@@ -4990,7 +4990,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
 
   auto s = cdc_state_table_->DeleteEntries(entries_to_delete);
   if (!s.ok()) {
-    LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
+    LOG(WARNING) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
   }
 

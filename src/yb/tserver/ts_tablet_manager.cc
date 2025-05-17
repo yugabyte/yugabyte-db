@@ -1998,7 +1998,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   auto s = ConsensusMetadata::Load(
       meta->fs_manager(), tablet_id, meta->fs_manager()->uuid(), &cmeta);
   if (!s.ok()) {
-    LOG(ERROR) << kLogPrefix << "Tablet failed to load consensus meta data: " << s;
+    LOG(DFATAL) << kLogPrefix << "Tablet failed to load consensus meta data: " << s;
     tablet_peer->SetFailed(s);
     return;
   }
@@ -2010,7 +2010,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       tablet_id, fs_manager_, meta->wal_dir());
   s = bootstrap_state_manager->Init();
   if(!s.ok()) {
-    LOG(ERROR) << kLogPrefix << "Tablet failed to init bootstrap state manager: " << s;
+    LOG(DFATAL) << kLogPrefix << "Tablet failed to init bootstrap state manager: " << s;
     tablet_peer->SetFailed(s);
     return;
   }
@@ -2042,7 +2042,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     if (GetAtomicFlag(&FLAGS_TEST_force_single_tablet_failure) &&
         CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
                           true /* expected */, false /* val */)) {
-      LOG(ERROR) << "Setting the state of a tablet to FAILED";
+      LOG(WARNING) << "Setting the state of a tablet to FAILED";
       tablet_peer->SetFailed(STATUS(InternalError, "Setting tablet to failed state for test",
                                     tablet_id));
       return;
@@ -2052,7 +2052,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     // partially created tablet here?
     s = tablet_peer->SetBootstrapping();
     if (!s.ok()) {
-      LOG(ERROR) << kLogPrefix << "Tablet failed to set bootstrapping: " << s;
+      LOG(DFATAL) << kLogPrefix << "Tablet failed to set bootstrapping: " << s;
       tablet_peer->SetFailed(s);
       return;
     }
@@ -2156,8 +2156,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         flush_bootstrap_state_pool());
 
     if (!s.ok()) {
-      LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
-                 << s.ToString();
+      LOG(DFATAL) << kLogPrefix << "Tablet failed to init: " << s.ToString();
       tablet_peer->SetFailed(s);
       return;
     }
@@ -2168,8 +2167,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     TRACE("Starting tablet peer");
     s = tablet_peer->Start(bootstrap_info);
     if (!s.ok()) {
-      LOG(ERROR) << kLogPrefix << "Tablet failed to start: "
-                 << s.ToString();
+      LOG(DFATAL) << kLogPrefix << "Tablet failed to start: " << s;
       tablet_peer->SetFailed(s);
       return;
     }

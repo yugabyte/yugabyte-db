@@ -829,7 +829,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     const auto msg = Format(
         "Received a leader stepdown operation for wrong tablet id: $0, must be: $1",
         tablet_id, this->tablet_id());
-    LOG_WITH_PREFIX(ERROR) << msg;
+    LOG_WITH_PREFIX(DFATAL) << msg;
     StatusToPB(STATUS(IllegalState, msg), resp->mutable_error()->mutable_status());
     return Status::OK();
   }
@@ -3571,7 +3571,7 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
   OperationType op_type = round->replicate_msg()->op_type();
   string op_str = Format("$0 [$1]", OperationType_Name(op_type), round->id());
   if (!IsConsensusOnlyOperation(op_type)) {
-    LOG_WITH_PREFIX(ERROR) << "Unexpected op type: " << op_str;
+    LOG_WITH_PREFIX(DFATAL) << "Unexpected op type: " << op_str;
     return;
   }
   if (!status.ok()) {

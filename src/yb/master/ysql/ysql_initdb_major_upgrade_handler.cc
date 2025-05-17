@@ -359,12 +359,12 @@ void YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgrade(const LeaderEpoch&
     if (update_state_status.ok()) {
       LOG(INFO) << "Ysql major catalog upgrade completed successfully";
     } else {
-      LOG(ERROR) << "Failed to set major version upgrade state: " << update_state_status;
+      LOG(DFATAL) << "Failed to set major version upgrade state: " << update_state_status;
     }
     return;
   }
 
-  LOG(ERROR) << "Ysql major catalog upgrade failed: " << status;
+  LOG(WARNING) << "Ysql major catalog upgrade failed: " << status;
   ERROR_NOT_OK(
       TransitionMajorCatalogUpgradeState(YsqlMajorCatalogUpgradeInfoPB::FAILED, epoch, status),
       "Failed to set major version upgrade state");

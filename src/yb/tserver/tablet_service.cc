@@ -825,7 +825,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       tablet.tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
   DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
-    LOG(ERROR) << "Could not get a good enough safe time " << safe_time.ToString();
+    LOG(WARNING) << "Could not get a good enough safe time " << safe_time.ToString();
     SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
     return;
   }
@@ -1063,11 +1063,11 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
     schema_version = tablet.peer->tablet_metadata()->schema_version(
         req->has_alter_table_id() ? req->alter_table_id() : "");
     if (schema_version == req->schema_version()) {
-      LOG(ERROR) << "The current schema does not match the request schema."
-                 << " version=" << schema_version
-                 << " current-schema=" << tablet_schema.ToString()
-                 << " request-schema=" << req_schema.ToString()
-                 << " (corruption)";
+      LOG(DFATAL) << "The current schema does not match the request schema."
+                  << " version=" << schema_version
+                  << " current-schema=" << tablet_schema.ToString()
+                  << " request-schema=" << req_schema.ToString()
+                  << " (corruption)";
       SetupErrorAndRespond(resp->mutable_error(),
                            STATUS(Corruption, "got a different schema for the same version number"),
                            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
@@ -1077,11 +1077,11 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
 
   // If the current schema is newer than the one in the request reject the request.
   if (schema_version > req->schema_version()) {
-    LOG(ERROR) << "Tablet " << req->tablet_id() << " has a newer schema"
-               << " version=" << schema_version
-               << " req->schema_version()=" << req->schema_version()
-               << "\n current-schema=" << tablet_schema.ToString()
-               << "\n request-schema=" << req_schema.ToString();
+    LOG(WARNING) << "Tablet " << req->tablet_id() << " has a newer schema"
+                 << " version=" << schema_version
+                 << " req->schema_version()=" << req->schema_version()
+                 << "\n current-schema=" << tablet_schema.ToString()
+                 << "\n request-schema=" << req_schema.ToString();
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS_SUBSTITUTE(
@@ -1126,7 +1126,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
       if (tablet.tablet->transaction_participant() == nullptr) {
         auto status = STATUS(
             IllegalState, "Transaction participant is null for tablet " + req->tablet_id());
-        LOG(ERROR) << status;
+        LOG(DFATAL) << status;
         SetupErrorAndRespond(
             resp->mutable_error(),
             status,
@@ -1248,7 +1248,7 @@ void TabletServiceImpl::VerifyTableRowRange(
   const auto safe_time = tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
   DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
-    LOG(ERROR) << "Could not get a good enough safe time " << safe_time.ToString();
+    LOG(DFATAL) << "Could not get a good enough safe time " << safe_time.ToString();
     SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
     return;
   }
@@ -2416,7 +2416,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
                  server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
                  .Connect();
   if (!res.ok()) {
-    LOG_WITH_PREFIX_AND_FUNC(ERROR) << "failed to connect to local postgres: " << res.status();
+    LOG_WITH_PREFIX_AND_FUNC(WARNING) << "failed to connect to local postgres: " << res.status();
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
     return;
   }
@@ -2463,7 +2463,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
     LOG_WITH_PREFIX(INFO) << "Deadline reached: still waiting on " << num_lagging_backends
                           << " backends " << db_ver_tag;
   } else if (!s.ok()) {
-    LOG_WITH_PREFIX_AND_FUNC(ERROR) << "num lagging backends query failed: " << s;
+    LOG_WITH_PREFIX_AND_FUNC(WARNING) << "num lagging backends query failed: " << s;
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
     return;
   }

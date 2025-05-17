@@ -2527,7 +2527,7 @@ Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>*
   master_uuids->clear();
   for (const ServerEntryPB& master : resp.masters()) {
     if (master.has_error()) {
-      LOG_WITH_PREFIX(ERROR) << "Master " << master.ShortDebugString() << " hit error "
+      LOG_WITH_PREFIX(WARNING) << "Master " << master.ShortDebugString() << " hit error "
         << master.error().ShortDebugString();
       return StatusFromPB(master.error());
     }

@@ -1364,8 +1364,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
         ++count;
       }
       if (shm_index == -1) {
-        YB_LOG_EVERY_N_SECS(ERROR, 60) << "Cannot find free db_catalog_versions_ slot, db_oid: "
-                                       << db_oid;
+        YB_LOG_EVERY_N_SECS(WARNING, 60)
+            << "Cannot find free db_catalog_versions_ slot, db_oid: " << db_oid;
         continue;
       }
       // update the newly inserted entry to have the allocated slot.

@@ -437,8 +437,8 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
   if (last_failed_query_ && last_failed_query_->MatchesQueryInfo(query_info)) {
     num_fails_for_this_ddl_++;
     if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
-      LOG_WITH_PREFIX(ERROR) << "Failed to process DDL after " << num_fails_for_this_ddl_
-                             << " retries. Pausing DDL replication.";
+      LOG_WITH_PREFIX(WARNING) << "Failed to process DDL after " << num_fails_for_this_ddl_
+                               << " retries. Pausing DDL replication.";
     }
   } else {
     last_failed_query_ = QueryIdentifier{query_info.ddl_end_time, query_info.query_id};

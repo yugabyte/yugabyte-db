@@ -237,8 +237,8 @@ class TSLocalLockManager::Impl {
     yb::UniqueLock lock(mutex_);
     while (txns_in_progress_.find(txn_id) != txns_in_progress_.end()) {
       if (deadline <= CoarseMonoClock::Now()) {
-        LOG(ERROR) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
-                    << ToString(deadline);
+        LOG(WARNING) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
+                     << ToString(deadline);
         TRACE("Failed to add by deadline.");
         return STATUS_FORMAT(
             TryAgain, "Failed to add txn $0 to in progress txns until deadline: $1", txn_id,

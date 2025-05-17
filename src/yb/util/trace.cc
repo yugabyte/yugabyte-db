@@ -389,7 +389,8 @@ TraceEntry* Trace::NewEntry(
   size_t size = offsetof(TraceEntry, message) + msg_len;
   void* dst = arena->AllocateBytesAligned(size, alignof(TraceEntry));
   if (dst == nullptr) {
-    LOG(ERROR) << "NewEntry(msg_len, " << file_path << ", " << line_number
+    LOG(DFATAL)
+        << "NewEntry(msg_len, " << file_path << ", " << line_number
         << ") received nullptr from AllocateBytes.\n So far:" << DumpToString(true);
     return nullptr;
   }

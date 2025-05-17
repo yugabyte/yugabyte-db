@@ -880,10 +880,11 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 
   const auto& rocksdb_dir = this->rocksdb_dir();
   LOG_WITH_PREFIX(INFO) << "Destroying regular db at: " << rocksdb_dir;
-  rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir, rocksdb_options);
+  auto status = DestroyDB(rocksdb_dir, rocksdb_options);
 
   if (!status.ok()) {
-    LOG_WITH_PREFIX(ERROR) << "Failed to destroy regular DB at: " << rocksdb_dir << ": " << status;
+    LOG_WITH_PREFIX(WARNING)
+        << "Failed to destroy regular DB at: " << rocksdb_dir << ": " << status;
   } else {
     LOG_WITH_PREFIX(INFO) << "Successfully destroyed regular DB at: " << rocksdb_dir;
   }
@@ -899,8 +900,8 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
 
     if (!status.ok()) {
-      LOG_WITH_PREFIX(ERROR) << "Failed to destroy provisional records DB at: " << intents_dir
-                             << ": " << status;
+      LOG_WITH_PREFIX(DFATAL) << "Failed to destroy provisional records DB at: " << intents_dir
+                              << ": " << status;
     } else {
       LOG_WITH_PREFIX(INFO) << "Successfully destroyed provisional records DB at: " << intents_dir;
     }

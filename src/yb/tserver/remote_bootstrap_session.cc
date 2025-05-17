@@ -656,9 +656,9 @@ void RemoteBootstrapSession::InitRateLimiter() {
     rate_limiter_.SetTargetRateUpdater([this]() -> uint64_t {
       DCHECK_GT(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec, 0);
       if (FLAGS_remote_bootstrap_rate_limit_bytes_per_sec <= 0) {
-        YB_LOG_EVERY_N(ERROR, 1000)
-          << "Invalid value for remote_bootstrap_rate_limit_bytes_per_sec: "
-          << FLAGS_remote_bootstrap_rate_limit_bytes_per_sec;
+        YB_LOG_EVERY_N(WARNING, 1000)
+            << "Invalid value for remote_bootstrap_rate_limit_bytes_per_sec: "
+            << FLAGS_remote_bootstrap_rate_limit_bytes_per_sec;
         // Since the rate limiter is initialized, it's expected that the value of
         // FLAGS_remote_bootstrap_rate_limit_bytes_per_sec is greater than 0. Since this is not the
         // case, we'll log an error, and set the rate to 50 MB/s.

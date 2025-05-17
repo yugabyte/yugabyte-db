@@ -1474,7 +1474,7 @@ Status TabletPeer::StartReplicaOperation(
 void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
   auto driver = NewReplicaOperationDriver(nullptr);
   if (!driver.ok()) {
-    LOG_WITH_PREFIX(ERROR) << "Failed to create operation driver to set propagated hybrid time";
+    LOG_WITH_PREFIX(DFATAL) << "Failed to create operation driver to set propagated hybrid time";
     return;
   }
   (**driver).SetPropagatedSafeTime(ht, tablet_->mvcc_manager());
@@ -1754,19 +1754,17 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
     }
 
     switch (peer_pb.member_type()) {
-      case PeerMemberType::OBSERVER:
-        FALLTHROUGH_INTENDED;
+      case PeerMemberType::OBSERVER: [[fallthrough]];
       case PeerMemberType::VOTER:
-        LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
-                   << PeerMemberType_Name(peer_pb.member_type())
-                   << " Not changing its role after remote bootstrap";
+        LOG(WARNING) << "Peer " << peer_pb.permanent_uuid() << " is a "
+                     << PeerMemberType_Name(peer_pb.member_type())
+                     << " Not changing its role after remote bootstrap";
 
         // Even though this is an error, we return Status::OK() so the remote server doesn't
         // tombstone its tablet.
         return Status::OK();
 
-      case PeerMemberType::PRE_OBSERVER:
-        FALLTHROUGH_INTENDED;
+      case PeerMemberType::PRE_OBSERVER: [[fallthrough]];
       case PeerMemberType::PRE_VOTER: {
         consensus::ChangeConfigRequestPB req;
         consensus::ChangeConfigResponsePB resp;

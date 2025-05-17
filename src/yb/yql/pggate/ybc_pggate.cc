@@ -504,7 +504,7 @@ static Result<std::string> GetYbLsnTypeString(
     case tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME:
       return YBC_LSN_TYPE_HYBRID_TIME;
     default:
-      LOG(ERROR) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
+      LOG(DFATAL) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
       return STATUS_FORMAT(
           InternalError, "Received unexpected LSN type $0 for stream $1", yb_lsn_type, stream_id);
   }
@@ -2690,7 +2690,7 @@ void YBCStoreTServerAshSamples(
   acquire_cb_lock_fn(true /* exclusive */);
   if (!result.ok()) {
     // We don't return error status to avoid a restart loop of the ASH collector
-    LOG(ERROR) << result.status();
+    LOG(WARNING) << result.status();
   } else {
     AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
     AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);

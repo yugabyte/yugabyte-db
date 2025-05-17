@@ -784,8 +784,8 @@ class TransactionParticipant::Impl
 
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
-      LOG(ERROR) << "Could not decode transaction details, whose apply record OpId was: "
-                 << data.op_id;
+      LOG(DFATAL) << "Could not decode transaction details, whose apply record OpId was: "
+                  << data.op_id << ": " << id.status();
       return id.status();
     }
 

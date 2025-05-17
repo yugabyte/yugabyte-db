@@ -217,12 +217,8 @@ Status FsTool::PrintLogSegmentHeader(const string& path,
   auto segment_result = ReadableLogSegment::Open(fs_manager_->env(), path);
   if (!segment_result.ok()) {
     auto s = segment_result.status();
-    if (s.IsUninitialized()) {
-      LOG(ERROR) << path << " is not initialized: " << s.ToString();
-      return Status::OK();
-    }
-    if (s.IsCorruption()) {
-      LOG(ERROR) << path << " is corrupt: " << s.ToString();
+    if (s.IsUninitialized() || s.IsCorruption()) {
+      LOG(DFATAL) << path << " is not valid: " << s;
       return Status::OK();
     }
     return s.CloneAndPrepend("Unexpected error reading log segment " + path);

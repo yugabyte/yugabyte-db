@@ -432,7 +432,7 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
     LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
   } else {
     // If any other error, report that!
-    LOG(ERROR) << "Error creating table '" << table_name.ToString() << "': " << status;
+    LOG(WARNING) << "Error creating table '" << table_name.ToString() << "': " << status;
     return status;
   }
   return Status::OK();

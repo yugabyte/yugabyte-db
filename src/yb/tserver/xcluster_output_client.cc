@@ -838,8 +838,8 @@ void XClusterOutputClient::HandleError(const Status& s) {
     LOG_WITH_PREFIX(WARNING) << "Retrying applying replicated record for consumer tablet: "
                              << consumer_tablet_info_.tablet_id << ", reason: " << s;
   } else {
-    LOG_WITH_PREFIX(ERROR) << "Error while applying replicated record: " << s
-                           << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+    LOG_WITH_PREFIX(WARNING) << "Error while applying replicated record: " << s
+                             << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   }
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;

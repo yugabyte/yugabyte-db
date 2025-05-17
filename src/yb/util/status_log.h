@@ -49,7 +49,7 @@
 #define ERROR_NOT_OK(to_call, error_prefix) do { \
     auto&& _s = (to_call); \
     if (PREDICT_FALSE(!_s.ok())) { \
-      YB_LOG(ERROR) << (error_prefix) << ": " << StatusToString(_s);  \
+      YB_LOG(DFATAL) << (error_prefix) << ": " << StatusToString(_s);  \
     } \
   } while (0);
 
@@ -67,6 +67,15 @@
   YB_CHECK(_s.ok()) << (msg) << ": " << StatusToString(_s); \
   } while (0);
 
+#define YB_RETURN_NOT_OK_WITH_WARNING(expr, warning_prefix) \
+  do { \
+    auto&& _s = (expr); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      YB_LOG(WARNING) << (warning_prefix) << ": " << StatusToString(_s); \
+      return MoveStatus(std::move(_s)); \
+    } \
+  } while (0);
+
 // If the status is bad, CHECK immediately, appending the status to the logged message.
 #define YB_CHECK_OK(s) YB_CHECK_OK_PREPEND(s, "Bad status")
 
@@ -77,6 +86,7 @@
 #define LOG_AND_RETURN          YB_LOG_AND_RETURN
 #define CHECK_OK_PREPEND        YB_CHECK_OK_PREPEND
 #define CHECK_OK                YB_CHECK_OK
+#define RETURN_NOT_OK_WITH_WARNING YB_RETURN_NOT_OK_WITH_WARNING
 
 // These are standard glog macros.
 #define YB_LOG              LOG

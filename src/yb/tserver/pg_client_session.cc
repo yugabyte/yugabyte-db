@@ -2446,7 +2446,7 @@ class PgClientSession::Impl {
           // If we failed to report the status of this DDL transaction, we can just log and ignore
           // it, as the poller in the YB-Master will figure out the status of this transaction using
           // the transaction status tablet and PG catalog.
-          ERROR_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
+          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
                       Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
         }
 
@@ -2461,8 +2461,8 @@ class PgClientSession::Impl {
           // (commit.has_value() is false), the purpose is to use the side effect of
           // WaitForDdlVerificationToFinish to trigger the start of a background task to
           // complete the DDL transaction at the DocDB side.
-          ERROR_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
-                       "WaitForDdlVerificationToFinish call failed");
+          WARN_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
+                      "WaitForDdlVerificationToFinish call failed");
         }
       }
     }
@@ -3145,7 +3145,7 @@ class PgClientSession::Impl {
           // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
           // for any table/index that are involved in a DDL transaction and start a background task
           // to complete the DDL transaction at the DocDB side.
-          LOG(ERROR) << "DdlAtomicityFinishTransaction failed: " << status;
+          LOG(DFATAL) << "DdlAtomicityFinishTransaction failed: " << status;
         }
         return MergeStatus(std::move(commit_status), std::move(status));
       }

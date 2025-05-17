@@ -237,9 +237,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   rocksdb::Status rocksdb_write_status = db->Write(write_options(), &rocksdb_write_batch);
 
   if (!rocksdb_write_status.ok()) {
-    LOG(ERROR) << "Failed writing to RocksDB: " << rocksdb_write_status.ToString();
-    return STATUS_SUBSTITUTE(RuntimeError,
-                             "Error writing to RocksDB: $0", rocksdb_write_status.ToString());
+    LOG(DFATAL) << "Failed writing to RocksDB: " << rocksdb_write_status;
+    return rocksdb_write_status.CloneAndPrepend("Error writing to RocksDB");
   }
   return Status::OK();
 }

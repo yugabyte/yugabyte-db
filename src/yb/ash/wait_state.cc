@@ -74,7 +74,7 @@ void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
   }
 
   if (!state) {
-    YB_LOG_EVERY_N_SECS(ERROR, 5) << __func__ << " skipping sleep because WaitStateInfo is null";
+    YB_LOG_EVERY_N_SECS(WARNING, 5) << __func__ << " skipping sleep because WaitStateInfo is null";
     return;
   }
 

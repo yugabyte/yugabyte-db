@@ -1106,7 +1106,7 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
     if (db != nullptr) {
       delete db;
     }
-    return STATUS(IllegalState, rocksdb_open_status.ToString());
+    return rocksdb_open_status;
   }
   regular_db_.reset(db);
   regular_db_->ListenFilesChanged(std::bind(&Tablet::RegularDbFilesChanged, this));
