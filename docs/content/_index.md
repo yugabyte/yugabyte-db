@@ -7,7 +7,6 @@ type: indexpage
 layout: list
 breadcrumbDisable: true
 weight: 1
-showRightNav: true
 unversioned: true
 ---
 
