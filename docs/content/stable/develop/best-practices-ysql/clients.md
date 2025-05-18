@@ -1,3 +1,17 @@
+---
+title: Best practices for YSQL clients
+headerTitle: Best practices
+linkTitle: Best practices
+description: Tips and tricks to build YSQL applications
+headcontent: Tips and tricks to build YSQL applications for high performance and availability
+menu:
+  stable:
+    identifier: best-practices-ysql-clients
+    parent: best-practices-ysql
+    weight: 570
+type: docs
+---
+
 ## Load balance and failover using smart drivers
 
 YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/) provide advanced cluster-aware load-balancing capabilities that enables your applications to send requests to multiple nodes in the cluster just by connecting to one node. You can also set a fallback hierarchy by assigning priority to specific regions and ensuring that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails.
