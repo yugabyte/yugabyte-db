@@ -3984,8 +3984,8 @@ show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
 	ExplainPropertyFloat("Estimated Seeks", NULL,
 						 planinfo->estimated_num_seeks, 0, es);
-	ExplainPropertyFloat("Estimated Nexts", NULL,
-						 planinfo->estimated_num_nexts, 0, es);
+	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL,
+						 planinfo->estimated_num_nexts_prevs, 0, es);
 	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
 						   planinfo->estimated_docdb_result_width, es);
 }

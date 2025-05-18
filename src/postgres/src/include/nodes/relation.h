@@ -1110,8 +1110,9 @@ typedef struct YbPathInfo {
 	List		   *yb_uniqkeys;		/* list keys that are distinct */
 } YbPathInfo;
 
-typedef struct YbPlanInfo {
-	double		estimated_num_nexts;
+typedef struct YbPlanInfo
+{
+	double		estimated_num_nexts_prevs;
 	double		estimated_num_seeks;
 	int 		estimated_docdb_result_width;
 } YbPlanInfo;

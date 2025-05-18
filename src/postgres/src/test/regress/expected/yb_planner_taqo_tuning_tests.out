@@ -370,43 +370,53 @@ EXPLAIN (COSTS OFF) select * from t_range_100k order by id desc limit 50000;
 
 -- Query Hash: 71dd3caa7a09c5c998aebea00ee660b9
 EXPLAIN (COSTS OFF) select * from t_range_100k order by id desc limit 60000;
-                            QUERY PLAN
--------------------------------------------------------------------
+              QUERY PLAN
+--------------------------------------
  Limit
-   ->  Index Scan Backward using t_range_100k_pkey on t_range_100k
-(2 rows)
+   ->  Sort
+         Sort Key: id DESC
+         ->  Seq Scan on t_range_100k
+(4 rows)
 
 -- Query Hash: e0de7a3bdbda621312f9228b7e3e037f
 EXPLAIN (COSTS OFF) select * from t_range_100k order by id desc limit 70000;
-                            QUERY PLAN
--------------------------------------------------------------------
+              QUERY PLAN
+--------------------------------------
  Limit
-   ->  Index Scan Backward using t_range_100k_pkey on t_range_100k
-(2 rows)
+   ->  Sort
+         Sort Key: id DESC
+         ->  Seq Scan on t_range_100k
+(4 rows)
 
 -- Query Hash: cf003cee7f2565711393de7bdd8e8011
 EXPLAIN (COSTS OFF) select * from t_range_100k order by id desc limit 80000;
-                            QUERY PLAN
--------------------------------------------------------------------
+              QUERY PLAN
+--------------------------------------
  Limit
-   ->  Index Scan Backward using t_range_100k_pkey on t_range_100k
-(2 rows)
+   ->  Sort
+         Sort Key: id DESC
+         ->  Seq Scan on t_range_100k
+(4 rows)
 
 -- Query Hash: 4c031d60065425d8f8d6b8c73e7e8619
 EXPLAIN (COSTS OFF) select * from t_range_100k order by id desc limit 90000;
-                            QUERY PLAN
--------------------------------------------------------------------
+              QUERY PLAN
+--------------------------------------
  Limit
-   ->  Index Scan Backward using t_range_100k_pkey on t_range_100k
-(2 rows)
+   ->  Sort
+         Sort Key: id DESC
+         ->  Seq Scan on t_range_100k
+(4 rows)
 
 -- Query Hash: dc90be6cc64fd55c55c71587766b5d46
 EXPLAIN (COSTS OFF) select * from t_range_100k order by id desc limit 100000;
-                            QUERY PLAN
--------------------------------------------------------------------
+              QUERY PLAN
+--------------------------------------
  Limit
-   ->  Index Scan Backward using t_range_100k_pkey on t_range_100k
-(2 rows)
+   ->  Sort
+         Sort Key: id DESC
+         ->  Seq Scan on t_range_100k
+(4 rows)
 
 -- Query Hash: d0f652bb9a03d4d0079382c8a675ddf5
 EXPLAIN (COSTS OFF) SELECT v1 FROM t_char4_100k limit 40960;
