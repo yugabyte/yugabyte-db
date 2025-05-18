@@ -35,3 +35,21 @@ You can set certain flags to increase performance using YugabyteDB in CI and CD 
 - Use colocated databases in YSQL. Colocation lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
 - Set the flag `--replication_factor=1` for test scenarios, as keeping the data three way replicated (default) is not necessary. Reducing that to 1 reduces space usage and increases performance.
 - Use `TRUNCATE table1,table2,table3..tablen;` instead of CREATE TABLE, and DROP TABLE between test cases.
+
+
+## Concurrent DML during a DDL operation
+
+In YugabyteDB, DML is allowed to execute while a DDL statement modifies the schema that is accessed by the DML statement. For example, an `ALTER TABLE <table> .. ADD COLUMN` DDL statement may add a new column while a `SELECT * from <table>` executes concurrently on the same relation. In PostgreSQL, this is typically not allowed because such DDL statements take a table-level exclusive lock that prevents concurrent DML from executing. (Support for similar behavior in YugabyteDB is being tracked in issue {{<issue 11571>}}.)
+
+In YugabyteDB, when a DDL modifies the schema of tables that are accessed by concurrent DML statements, the DML statement may do one of the following:
+1. Operate with the old schema prior to the DDL, or
+2. Operate with the new schema after the DDL completes, or
+3. Encounter temporary errors such as `schema mismatch errors` or `catalog version mismatch`. It is recommended for the client to [retry such operations](https://www.yugabyte.com/blog/retry-mechanism-spring-boot-app/) whenever possible.
+
+Most DDL statements complete quickly, so this is typically not a significant issue in practice. However, [certain kinds of ALTER TABLE DDL statements](../the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) involve making a full copy of the table(s) whose schema is being modified. For these operations, it is not recommended to run any concurrent DML statements on the table being modified by the `ALTER TABLE`, as the effect of such concurrent DML may not be reflected in the table copy.
+
+## Concurrent DDL during a DDL operation
+
+DDL statements that affect entities in different databases can be run concurrently. However, for DDL statements that impact the same database, it is recommended to execute them sequentially.
+
+DDL statements that relate to shared objects, such as roles or tablespaces, are considered as affecting all databases in the cluster, so they should also be run sequentially.
