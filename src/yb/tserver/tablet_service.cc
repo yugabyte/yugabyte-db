@@ -107,6 +107,7 @@
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
+#include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -3666,7 +3667,13 @@ void TabletServiceImpl::ReleaseObjectLocks(
 
 Result<GetYSQLLeaseInfoResponsePB> TabletServiceImpl::GetYSQLLeaseInfo(
     const GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) {
-  return server_->GetYSQLLeaseInfo();
+  auto lease_info = VERIFY_RESULT(server_->GetYSQLLeaseInfo());
+  GetYSQLLeaseInfoResponsePB resp;
+  resp.set_is_live(lease_info.is_live);
+  if (lease_info.is_live) {
+    resp.set_lease_epoch(lease_info.lease_epoch);
+  }
+  return resp;
 }
 
 void TabletServiceImpl::AdminExecutePgsql(

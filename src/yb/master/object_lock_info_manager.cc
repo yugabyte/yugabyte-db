@@ -860,26 +860,41 @@ void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
 Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
     const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
     const LeaderEpoch& epoch) {
-  if (!FLAGS_enable_ysql_operation_lease &&
-      !FLAGS_TEST_enable_object_locking_for_table_locks) {
-    return STATUS(NotSupported, "The ysql lease is currently a test feature.");
+  if (!FLAGS_enable_ysql_operation_lease && !FLAGS_TEST_enable_object_locking_for_table_locks) {
+    return STATUS(NotSupported, "The ysql lease is currently disabled.");
   }
   // Sanity check that the tserver has already registered with the same instance_seqno.
   RETURN_NOT_OK(master_.ts_manager()->LookupTS(req.instance()));
   auto object_lock_info = GetOrCreateObjectLockInfo(req.instance().permanent_uuid());
-  auto lock_opt = object_lock_info->RefreshYsqlOperationLease(req.instance());
-  if (!lock_opt) {
-    resp.mutable_info()->set_new_lease(false);
-    if (req.needs_bootstrap()) {
+  auto lock_variant = object_lock_info->RefreshYsqlOperationLease(req.instance());
+  if (auto* lease_info = std::get_if<SysObjectLockEntryPB::LeaseInfoPB>(&lock_variant)) {
+    resp.mutable_info()->set_lease_epoch(lease_info->lease_epoch());
+    if (!req.has_current_lease_epoch() || lease_info->lease_epoch() != req.current_lease_epoch()) {
       *resp.mutable_info()->mutable_ddl_lock_entries() = ExportObjectLockInfo();
+      // From the master leader's perspective this is not a new lease. But the tserver may not be
+      // aware it has received a new lease because it has not supplied its correct lease epoch.
+      LOG(INFO) << Format(
+          "TS $0 ($1) has provided $3 instead of its actual lease epoch $4 in its ysql op lease "
+          "refresh request. Marking its ysql lease as new",
+          req.instance().permanent_uuid(), req.instance().instance_seqno(),
+          req.has_current_lease_epoch() ? std::to_string(req.current_lease_epoch()) : "<none>",
+          lease_info->lease_epoch());
+      resp.mutable_info()->set_new_lease(true);
+    } else {
+      resp.mutable_info()->set_new_lease(false);
     }
     return Status::OK();
   }
+  auto* lockp = std::get_if<ObjectLockInfo::WriteLock>(&lock_variant);
+  CHECK_NOTNULL(lockp);
   RETURN_NOT_OK(catalog_manager_.sys_catalog()->Upsert(epoch, object_lock_info));
   resp.mutable_info()->set_new_lease(true);
-  resp.mutable_info()->set_lease_epoch(lock_opt->mutable_data()->pb.lease_info().lease_epoch());
-  lock_opt->Commit();
+  resp.mutable_info()->set_lease_epoch(lockp->mutable_data()->pb.lease_info().lease_epoch());
+  lockp->Commit();
   *resp.mutable_info()->mutable_ddl_lock_entries() = ExportObjectLockInfo();
+  LOG(INFO) << Format(
+      "Granting a new ysql op lease to TS $0 ($1). Lease epoch $2", req.instance().permanent_uuid(),
+      req.instance().instance_seqno(), resp.info().lease_epoch());
   return Status::OK();
 }
 
@@ -1048,6 +1063,10 @@ void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs() {
     if (object_info_lock->pb.lease_info().live_lease() &&
         current_time.GetDeltaSince(object_info->last_ysql_lease_refresh()) >
             MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms))) {
+      LOG(INFO) << Format(
+          "Tserver $0, instance seqno $1 with ysql lease epoch $2 has just lost its lease",
+          object_info->id(), object_info_lock->pb.lease_info().instance_seqno(),
+          object_info_lock->pb.lease_info().lease_epoch());
       object_info_lock.mutable_data()->pb.mutable_lease_info()->set_live_lease(false);
       object_infos_to_write.push_back(object_info.get());
       if (object_info_lock->pb.lease_epochs_size() > 0) {

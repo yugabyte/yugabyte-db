@@ -209,7 +209,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(
       const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
-  Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
+  Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override;
 
   static bool IsYsqlLeaseEnabled();

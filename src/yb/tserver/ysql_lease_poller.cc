@@ -22,8 +22,9 @@
 
 #include "yb/server/server_base.proxy.h"
 
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/master_leader_poller.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/condition_variable.h"
@@ -122,7 +123,10 @@ Status YsqlLeasePoller::Poll() {
 
   master::RefreshYsqlLeaseRequestPB req;
   *req.mutable_instance() = server_.instance_pb();
-  req.set_needs_bootstrap(!server_.HasBootstrappedLocalLockManager());
+  auto current_lease_info = VERIFY_RESULT(server_.GetYSQLLeaseInfo());
+  if (current_lease_info.is_live) {
+    req.set_current_lease_epoch(current_lease_info.lease_epoch);
+  }
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   master::RefreshYsqlLeaseResponsePB resp;

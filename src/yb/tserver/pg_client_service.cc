@@ -1919,10 +1919,11 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
   void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
     std::lock_guard lock(mutex_);
     last_lease_refresh_time_ = time;
-    if (lease_refresh_info.new_lease()) {
+    if (lease_refresh_info.new_lease() || lease_epoch_ != lease_refresh_info.lease_epoch()) {
       LOG(INFO) << Format(
-          "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
-          lease_refresh_info.lease_epoch());
+          "Received new lease epoch $0 from the master leader, old lease epoch was $1. Clearing "
+          "all pg sessions.",
+          lease_refresh_info.lease_epoch(), lease_epoch_);
       lease_epoch_ = lease_refresh_info.lease_epoch();
       auto s = tablet_server_.RestartPG();
       if (!s.ok()) {
@@ -2484,7 +2485,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
   PgTxnSnapshotManager txn_snapshot_manager_;
 
   MonoTime last_lease_refresh_time_ GUARDED_BY(mutex_);
-  uint64_t lease_epoch_ GUARDED_BY(mutex_);
+  uint64_t lease_epoch_ GUARDED_BY(mutex_) = 0;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
