@@ -26,11 +26,6 @@ cascade:
     href="google-vertex-ai/"
     icon="/images/tutorials/google/icons/Google-Vertex-AI-Icon.svg">}}
 
-{{<index/item
-    title="Similarity Search with LangChain"
-    body="Build scalable applications with LLM integrations using LangChain and OpenAI."
-    href="ai-langchain-openai/"
-    icon="/images/tutorials/ai/icons/langchain-icon.svg">}}
 {{</index/block>}}
 
 ## Vector basics
@@ -58,4 +53,10 @@ cascade:
     body="Build a scalable RAG (Retrieval-Augmented Generation) app using LlamaIndex and OpenAI."
     href="ai-llamaindex-openai/"
     icon="/images/tutorials/ai/icons/llamaindex-icon.svg">}}
+
+{{<index/item
+    title="Query without SQL using LangChain"
+    body="Build scalable applications with LLM integrations using LangChain and OpenAI."
+    href="ai-langchain-openai/"
+    icon="/images/tutorials/ai/icons/langchain-icon.svg">}}
 {{</index/block>}}
