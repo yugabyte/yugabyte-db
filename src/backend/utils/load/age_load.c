@@ -176,7 +176,7 @@ agtype* create_agtype_from_list_i(char **header, char **fields,
     agtype_in_state result;
     size_t i;
 
-    if (start_index + 1 == fields_len)
+    if (start_index >= fields_len)
     {
         return create_empty_agtype();
     }
