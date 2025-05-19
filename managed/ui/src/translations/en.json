@@ -2415,6 +2415,8 @@
         "expand": "Expand",
         "viewLess": "Collapse",
         "showLog": "YugaWare Log",
+        "expandAll":"Expand All",
+        "collapseAll":"Collapse All",
         "percentComplete": "<b>{{percent}}</b>% Completed"
       },
       "banner": {
