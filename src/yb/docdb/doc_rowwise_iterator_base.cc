@@ -173,11 +173,11 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
   CheckInitOnce();
   is_forward_scan_ = doc_spec.is_forward_scan();
 
-  VLOG(4) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD");
+  VLOG(2) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD");
 
   auto lower_doc_key = VERIFY_RESULT(doc_spec.LowerBound());
   auto upper_doc_key = VERIFY_RESULT(doc_spec.UpperBound());
-  VLOG(4) << "DocKey Bounds " << DocKey::DebugSliceToString(lower_doc_key.AsSlice()) << ", "
+  VLOG(2) << "DocKey Bounds " << DocKey::DebugSliceToString(lower_doc_key.AsSlice()) << ", "
           << DocKey::DebugSliceToString(upper_doc_key.AsSlice());
 
   // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
@@ -195,13 +195,17 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
   } else {
     has_bound_key_ = !lower_doc_key.empty();
     if (has_bound_key_) {
-      bound_key_ = lower_doc_key;
-      // We use kLowest = 0 to mark -Inf bound. But there special entries like transaction apply
-      // record with value > 0.
-      // Since real table rows cannot have key before kNullLow, we could use it as bound
-      // instead of -Inf.
-      if (bound_key_.data()[0] == dockv::KeyEntryTypeAsChar::kLowest) {
-        bound_key_.data()[0] = dockv::KeyEntryTypeAsChar::kNullLow;
+      // We use kLowest = 0 to mark -Inf bound. But there are special entries like
+      // transaction apply record with value > 0.
+      if (lower_doc_key.data()[0] != dockv::KeyEntryTypeAsChar::kLowest) {
+        bound_key_ = lower_doc_key;
+      } else {
+        // Having kLowest set for the very first byte and backward scan direction, means all
+        // the records will meet the bound as there is no record starting with kLowest. Since real
+        // table rows cannot have a key before kNullLow, we could use it as a bound instead of -Inf.
+        bound_key_.Clear();
+        bound_key_.AppendKeyEntryType(dockv::KeyEntryType::kNullLow);
+        VLOG(2) << "Adjusted lower bound to " << bound_key_.ToString() << "";
       }
     }
   }
