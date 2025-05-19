@@ -62,19 +62,29 @@ The following sections describe the flags considered relevant to configuring Yug
 
 ##### --flagfile
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the file to load the configuration flags from. The configuration flags must be in the same format as supported by the command line flags.
 
+Default: `""`
+
 ##### --version
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Shows version and build info, then exits.
 
 ##### --max_clock_skew_usec
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment.
 
 Default: `500000` (500,000 µs = 500ms)
 
 ##### --tablet_server_svc_queue_length
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the queue size for the tablet server to serve reads and writes from applications.
 
@@ -189,7 +199,9 @@ Default: true
 
 ##### yb_enable_bitmapscan
 
-{{<tags/feature/tp>}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{< /tags/wrap >}}
+
+Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
@@ -214,7 +226,9 @@ Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<tags/feature/ea idea="483">}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
+{{< tags/wrap >}}{{<tags/feature/ea idea="483">}}{{< /tags/wrap >}}
+
+Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
 
@@ -222,13 +236,17 @@ Default: false
 
 ##### yb_enable_optimizer_statistics
 
-{{<tags/feature/tp>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{< /tags/wrap >}}
+
+Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
 
 Default: false
 
 ##### yb_fetch_size_limit
 
-{{<tags/feature/tp>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{< /tags/wrap >}}
+
+Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
 
 If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
 
@@ -238,7 +256,9 @@ Default: 0
 
 ##### yb_fetch_row_limit
 
-{{<tags/feature/tp>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{< /tags/wrap >}}
+
+Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
 
@@ -246,13 +266,17 @@ Default: 1024
 
 ##### yb_use_hash_splitting_by_default
 
-{{<tags/feature/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
+{{< tags/wrap >}}{{<tags/feature/ea>}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
+When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
 
 ##### yb_insert_on_conflict_read_batch_size
 
-{{<tags/feature/ea idea="1455">}} Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+{{< tags/wrap >}}{{<tags/feature/ea idea="1455">}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
+Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
 
 - temporary relations
 - foreign relations
@@ -311,6 +335,8 @@ Default: 0
 
 ##### --time_source
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
@@ -331,11 +357,15 @@ Default: `9000`
 
 ##### --webserver_doc_root
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 The monitoring web server home directory..
 
 Default: The `www` directory in the YugabyteDB home directory.
 
 ##### --webserver_certificate_file
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Location of the SSL certificate file (in .pem format) to use for the web server. If empty, SSL is not enabled for the web server.
 
@@ -343,11 +373,15 @@ Default: `""`
 
 ##### --webserver_authentication_domain
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Domain used for `.htpasswd` authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
 
 Default: `""`
 
 ##### --webserver_password_file
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Location of the `.htpasswd` file containing usernames and hashed passwords, for authentication to the web server.
 
@@ -356,6 +390,8 @@ Default: `""`
 ### Logging flags
 
 ##### --log_dir
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 The directory to write yb-tserver log files.
 
@@ -423,6 +459,8 @@ Default: `UINT32_MAX`
 
 ##### --tserver_master_addrs
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
+
 Specifies a comma-separated list of all the YB-Master RPC addresses.
 
 Required.
@@ -432,6 +470,8 @@ Default: `127.0.0.1:7100`
 The number of comma-separated values should match the total number of YB-Master servers (or the replication factor).
 
 ##### --rpc_bind_addresses
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
 
 Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
@@ -451,6 +491,8 @@ Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) f
 
 ##### --server_broadcast_addresses
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 Default: `""`
@@ -459,6 +501,8 @@ Default: `""`
 
 ##### --dns_cache_expiration_ms
 
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
+
 Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
 
 Default: `60000` (1 minute)
@@ -466,6 +510,8 @@ Default: `60000` (1 minute)
 If you change this value from the default, be sure to add the identical value to all YB-Master and YB-TServer configurations.
 
 ##### --use_private_ip
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never`, `zone`, `cloud`, and `region`. Based on the values of the [geo-distribution flags](#geo-distribution-flags).
 
@@ -483,6 +529,8 @@ Settings related to managing geo-distributed clusters:
 
 ##### --placement_zone
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 The name of the availability zone, or rack, where this instance is deployed.
 
 {{<tip title="Rack awareness">}}
@@ -493,17 +541,23 @@ Default: `rack1`
 
 ##### --placement_region
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the name of the region, or data center, where this instance is deployed.
 
 Default: `datacenter1`
 
 ##### --placement_cloud
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the name of the cloud where this instance is deployed.
 
 Default: `cloud1`
 
 ##### --placement_uuid
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 The unique identifier for the cluster.
 
@@ -539,11 +593,15 @@ Use the following two flags to configure RPC compression:
 
 ##### --enable_stream_compression
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Controls whether YugabyteDB uses RPC compression.
 
 Default: `true`
 
 ##### --stream_compression_algo
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
 
@@ -563,13 +621,19 @@ In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of
 
 ##### --fs_data_dirs
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies a comma-separated list of mount directories, where yb-tserver will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
 
 Required.
 
 Changing the value of this flag after the cluster has already been created is not supported.
 
+Default: `""`
+
 ##### --fs_wal_dirs
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies a comma-separated list of directories, where yb-tserver will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
@@ -581,11 +645,15 @@ Ensure that values used for the write ahead log (WAL) in yb-tserver configuratio
 
 ##### --fs_wal_dirs
 
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 The directory where the yb-tserver retains WAL files. May be the same as one of the directories listed in [--fs_data_dirs](#fs-data-dirs), but not a subdirectory of a data directory.
 
 Default: The same as `--fs_data_dirs`
 
 ##### --durable_wal_write
+
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 If set to `false`, the writes to the WAL are synchronized to disk every [interval_durable_wal_write_ms](#interval-durable-wal-write-ms) milliseconds (ms) or every [bytes_durable_wal_write_mb](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
@@ -593,11 +661,15 @@ Default: `false`
 
 ##### --interval_durable_wal_write_ms
 
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 When [--durable_wal_write](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [--bytes_durable_wal_write_mb](#bytes-durable-wal-write-mb), whichever comes first.
 
 Default: `1000`
 
 ##### --bytes_durable_wal_write_mb
+
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 When [--durable_wal_write](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
@@ -605,11 +677,15 @@ Default: `1`
 
 ##### --log_min_seconds_to_retain
 
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
+
 The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted in the given time period.
 
 Default: `900` (15 minutes)
 
 ##### --log_min_segments_to_retain
+
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
 
 The minimum number of WAL segments (files) to retain, regardless of durability requirements. The value must be at least `1`.
 
@@ -617,11 +693,15 @@ Default: `2`
 
 ##### --log_segment_size_mb
 
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
+
 The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reaches the specified size, then a log rollover occurs and a new WAL segment file is created.
 
 Default: `64`
 
 ##### --reuse_unclosed_segment_threshold_bytes
+
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
@@ -630,6 +710,8 @@ Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabl
 ### Sharding flags
 
 ##### --yb_num_shards_per_tserver
+
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
 
 The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
 
@@ -656,6 +738,8 @@ Clusters created using yugabyted always use a default value of `1`.
 {{< /note >}}
 
 ##### --ysql_num_shards_per_tserver
+
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
 
 The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
 
@@ -690,6 +774,8 @@ Default: `60`
 
 ##### --enable_automatic_tablet_splitting
 
+{{< tags/wrap >}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
+
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting).
 
 Default: `true`
@@ -702,11 +788,19 @@ This value must match on all yb-master and yb-tserver configurations of a Yugaby
 
 ##### --post_split_trigger_compaction_pool_max_threads
 
+{{< tags/wrap >}}{{<tags/feature/deprecated>}}{{< /tags/wrap >}}
+
 Deprecated. Use `full_compaction_pool_max_threads`.
+
+Default: `0`
 
 ##### --post_split_trigger_compaction_pool_max_queue_size
 
+{{< tags/wrap >}}{{<tags/feature/deprecated>}}{{< /tags/wrap >}}
+
 Deprecated. Use `full_compaction_pool_max_queue_size`.
+
+Default: `0`
 
 ##### --full_compaction_pool_max_threads
 
@@ -778,6 +872,8 @@ Default: `50`
 
 ##### --ysql_colocate_database_by_default
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
 For more details, see [clusters in colocated tables](../../../explore/colocation/).
@@ -841,6 +937,8 @@ To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{< /tags/wrap >}}
+
 Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
@@ -855,15 +953,17 @@ Default: `15000`
 
 ##### --cdc_ybclient_reactor_threads
 
+{{< tags/wrap >}}{{<tags/feature/deprecated>}}{{< /tags/wrap >}}
+
 The number of reactor threads to be used for processing `ybclient` requests for CDC. Increase to improve throughput on large tablet setups.
 
-Default: `50`
+Default: `0`
 
 ##### --cdc_max_stream_intent_records
 
 Maximum number of intent records allowed in a single CDC batch.
 
-Default: `1000`
+Default: `1680`
 
 ##### --cdc_snapshot_batch_size
 
@@ -935,6 +1035,8 @@ The following set of flags are only relevant for CDC using the PostgreSQL replic
 
 ##### --ysql_yb_default_replica_identity
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
 
 Default: `CHANGE`
@@ -986,6 +1088,8 @@ Default: `14400` (4 hours)
 ### File expiration based on TTL flags
 
 ##### --tablet_enable_ttl_file_filter
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Turn on the file expiration for TTL feature.
 
@@ -1071,6 +1175,8 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{< /tags/wrap >}}
+
 YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
@@ -1148,6 +1254,8 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 ##### --use_memory_defaults_optimized_for_ysql
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
 Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
@@ -1182,11 +1290,15 @@ Note that in general these flags will have different values for TServer and Mast
 
 ##### --memory_limit_hard_bytes
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
 Default: `0`
 
 ##### --default_memory_limit_to_ram_ratio
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
@@ -1221,6 +1333,8 @@ With the exception of flags that have different defaults for yb-master vs yb-tse
 
 ##### --follower_unavailable_considered_failed_sec
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is re-replicated elsewhere.
 
 Default: `900` (15 minutes)
@@ -1229,11 +1343,15 @@ The `--follower_unavailable_considered_failed_sec` value should match the value 
 
 ##### --evict_failed_followers
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Failed followers will be evicted from the Raft group and the data will be re-replicated.
 
 Default: `true`
 
 ##### --leader_failure_max_missed_heartbeat_periods
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [--raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
@@ -1261,22 +1379,27 @@ Default: `10000` (10 seconds)
 
 ##### --raft_heartbeat_interval_ms
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
 
 Default: `500`
 
 ### RocksDB and compaction/performance flags
 
-
 Use the following two flags to select the SSTable compression type:
 
 ##### --enable_ondisk_compression
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Enable SSTable compression at the cluster level.
 
 Default: `true`
 
 ##### --compression_type
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
 
@@ -1289,6 +1412,8 @@ If you change this flag, the change takes effect after you restart the cluster n
 Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
 
 ##### --regular_tablets_data_block_key_value_encoding
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix`, `three_shared_parts`.
 
@@ -1391,11 +1516,15 @@ To learn about Wait-on-Conflict concurrency control, see [Concurrency control](.
 
 ##### --enable_wait_queues
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 When set to true, enables in-memory wait queues, deadlock detection, and wait-on-conflict semantics in all YSQL traffic.
 
 Default: `true`
 
 ##### --disable_deadlock_detection
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 When set to true, disables deadlock detection. If `enable_wait_queues=false`, this flag has no effect as deadlock detection is not running anyways.
 
@@ -1489,6 +1618,8 @@ To learn about advisory locks, see [Advisory locks](../../../explore/transaction
 
 ##### --ysql_yb_enable_advisory_locks
 
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
+
 Enables advisory locking.
 
 This value must match on all YB-Master and YB-TServer configurations of a YugabyteDB cluster.
@@ -1503,8 +1634,9 @@ Default: 1
 
 ### Other performance tuning options
 
-
 ##### --allowed_preview_flags_csv
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
@@ -1514,7 +1646,11 @@ By adding a flag to this list, you explicitly acknowledge and accept any potenti
 Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
 
+Default: `""`
+
 ##### backfill_index_client_rpc_timeout_ms
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
@@ -1530,7 +1666,7 @@ Default: -1, where the system automatically calculates the value to be approxima
 
 The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
 
-Default: 128
+Default: `128`
 
 ## Security
 
@@ -1540,11 +1676,15 @@ For details on enabling encryption in transit, see [Encryption in transit](../..
 
 ##### --certs_dir
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Directory that contains certificate authority, private key, and certificates for this server.
 
 Default: `""` (Uses `<data drive>/yb-data/tserver/data/certs`.)
 
 ##### --certs_for_client_dir
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
 
@@ -1552,11 +1692,15 @@ Default: `""` (Use the same directory as certs_dir.)
 
 ##### --allow_insecure_connections
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
 
 Default: `true`
 
 ##### --dump_certificate_entries
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enable this flag to debug certificate issues.
 
@@ -1564,11 +1708,15 @@ Default: `false`
 
 ##### --use_client_to_server_encryption
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
 
 Default: `false`
 
 ##### --use_node_to_node_encryption
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled.
 
@@ -1577,6 +1725,8 @@ When enabled, [--allow_insecure_connections](#allow-insecure-connections) should
 Default: `false`
 
 ##### --cipher_list
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
 
@@ -1593,6 +1743,8 @@ Default: `DEFAULTS`
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
 ##### --ciphersuite
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
 
@@ -1611,6 +1763,8 @@ Default: `DEFAULTS`
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
 ##### --ssl_protocols
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
 
@@ -1646,6 +1800,8 @@ The following flags support the use of the [YSQL API](../../../api/ysql/):
 
 ##### --enable_ysql
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
+
 Enables the YSQL API.
 
 Default: `true`
@@ -1653,6 +1809,8 @@ Default: `true`
 Ensure that `enable_ysql` values in yb-tserver configurations match the values in yb-master configurations.
 
 ##### --ysql_enable_auth
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Enables YSQL authentication.
 
@@ -1662,6 +1820,8 @@ Default: `false`
 
 ##### --ysql_enable_profile
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
 When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
@@ -1669,6 +1829,8 @@ When YSQL login profiles are enabled, you can set limits on the number of failed
 Default: `false`
 
 ##### --pgsql_proxy_bind_address
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
 
@@ -1678,15 +1840,23 @@ Default: `0.0.0.0:5433`
 
 ##### --pgsql_proxy_webserver_port
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the web server port for YSQL metrics monitoring.
 
 Default: `13000`
 
 ##### --ysql_hba_conf
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{<tags/feature/deprecated>}}{{< /tags/wrap >}}
+
 Deprecated. Use `--ysql_hba_conf_csv` instead.
 
+Default: `""`
+
 ##### --ysql_hba_conf_csv
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` statement and then view the file. Because the file is autogenerated, direct edits are overwritten by the autogenerated content.
 
@@ -1712,9 +1882,15 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 ##### --ysql_pg_conf
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{<tags/feature/deprecated>}}{{< /tags/wrap >}}
+
 Deprecated. Use `--ysql_pg_conf_csv` instead.
 
+Default: `""`
+
 ##### --ysql_pg_conf_csv
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file. If internal quotation marks are required, surround each configuration pair having single quotation marks with double quotation marks.
 
@@ -1728,19 +1904,31 @@ For information on available PostgreSQL server configuration parameters, refer t
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
 
+Default: `""`
+
 ##### --ysql_timezone
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the time zone for displaying and interpreting timestamps.
 
 Default: Uses the YSQL time zone.
 
+Default: `""`
+
 ##### --ysql_datestyle
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the display format for data and time values.
 
 Default: Uses the YSQL display format.
 
+Default: `ISO, MDY`
+
 ##### --ysql_max_connections
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the maximum number of concurrent YSQL connections per node.
 
@@ -1752,7 +1940,11 @@ Some connections are reserved for superusers. The total number of superuser conn
 
 Default: If `ysql_max_connections` is not set, the database startup process will determine the highest number of connections the system can support, from a minimum of 50 to a maximum of 300 (per node).
 
+Default: `0`
+
 ##### --ysql_default_transaction_isolation
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the default transaction isolation level.
 
@@ -1763,6 +1955,8 @@ Default: `READ COMMITTED`
 [Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --yb_enable_read_committed_isolation
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
@@ -1776,6 +1970,8 @@ Default: `true`
 
 ##### --ysql_disable_index_backfill
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
@@ -1783,6 +1979,8 @@ For details on how online index backfill works, see the [Online Index Backfill](
 Default: `false`
 
 ##### --ysql_sequence_cache_method
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies where to cache sequence values.
 
@@ -1796,6 +1994,8 @@ Default: `connection`
 
 ##### --ysql_sequence_cache_minval
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the minimum number of sequence values to cache in the client for every sequence object.
 
 To turn off the default size of cache flag, set the flag to `0`.
@@ -1806,7 +2006,9 @@ Default: `100`
 
 ##### --ysql_yb_fetch_size_limit
 
-{{<tags/feature/tp>}} Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{< /tags/wrap >}}
+
+Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
 
 You can also specify the value as a string. For example, you can set it to `'10MB'`.
 
@@ -1820,7 +2022,9 @@ Default: 0
 
 ##### --ysql_yb_fetch_row_limit
 
-{{<tags/feature/tp>}} Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{< tags/wrap >}}{{<tags/feature/tp>}}{{< /tags/wrap >}}
+
+Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 You should have at least one of row limit or size limit set.
 
@@ -1832,6 +2036,8 @@ Default: 1024
 
 ##### --ysql_log_statement
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the types of YSQL statements that should be logged.
 
 Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/truncate, etc), and `all` (all statements).
@@ -1840,17 +2046,23 @@ Default: `none`
 
 ##### --ysql_log_min_duration_statement
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. Setting the value to `0` prints all statement durations. You can use this flag to help track down unoptimized (or "slow") queries.
 
 Default: `-1` (disables logging statement durations)
 
 ##### --ysql_log_min_messages
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the [severity level](https://www.postgresql.org/docs/15/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of messages to log.
 
 Default: `WARNING`
 
 ##### --enable_pg_cron
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{<tags/feature/t-server>}}{{< /tags/wrap >}}
 
 Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
 
@@ -1860,11 +2072,15 @@ Default: `false`
 
 Specifies the database where pg_cron is to be installed. You can create the database after setting the flag.
 
-The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
+The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database.
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
 
+Default: `yugabyte`
+
 ##### --ysql_output_buffer_size
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
 
@@ -1892,11 +2108,15 @@ The following flags support the use of the [YCQL API](../../../api/ycql/):
 
 ##### --use_cassandra_authentication
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specify `true` to enable YCQL authentication (`username` and `password`), enable YCQL security statements (`CREATE ROLE`, `DROP ROLE`, `GRANT ROLE`, `REVOKE ROLE`, `GRANT PERMISSION`, and `REVOKE PERMISSION`), and enforce permissions for YCQL statements.
 
 Default: `false`
 
 ##### --cql_proxy_bind_address
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Specifies the bind address for the YCQL API.
 
@@ -1904,17 +2124,23 @@ Default: `0.0.0.0:9042` (`127.0.0.1:9042`)
 
 ##### --cql_proxy_webserver_port
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies the port for monitoring YCQL metrics.
 
 Default: `12000`
 
 ##### --cql_table_is_transactional_by_default
 
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
+
 Specifies if YCQL tables are created with transactions enabled by default.
 
 Default: `false`
 
 ##### --ycql_disable_index_backfill
+
+{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
 
@@ -1933,6 +2159,8 @@ Default: `false`
 Set this flag to `true` to enable audit logging for the universe.
 
 For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
+
+Default: `false`
 
 ##### --ycql_allow_non_authenticated_password_reset
 
