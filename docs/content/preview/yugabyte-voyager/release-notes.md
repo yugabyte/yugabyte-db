@@ -13,6 +13,34 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## Versioning
+
+Starting with this release, Voyager uses a new versioning format: `YYYY.M.N` (for example, `2025.5.2`), where:
+
+- `YYYY` represents the release year
+- `M` represents the release month
+- `N` represents the number of the release in that month
+
+The previous version used the old format (`v1.8.17`). This update aligns versioning with our release cadence and makes it easier to track updates over time.
+
+## v2025.5.2 - May 20, 2025
+
+### Enhancements
+
+- Voyager now automatically runs `assess-migration` when `export schema` is executed before it.
+- Performance optimizations will now be reported only in assessment reports, not in schema analysis reports.
+- Assessment Report
+  - The assessment report now includes detailed recommendations related to index design. These help identify potential uneven distribution or hotspot issues in YugabyteDB. Detection includes:
+    - Indexes on low-cardinality columns (e.g., `BOOLEAN` or `ENUM`)
+    - Indexes on columns with a high percentage of `NULL` values
+    - Indexes on columns with a high frequency of a particular value
+- Import Data
+  - The `import-data` command now monitors replication (CDC/xCluster) only for the target database specified in the migration. This avoids false positives caused by replication streams on other databases.
+
+### Bug Fixes
+
+- Fixed an issue where left-padded zeros in PostgreSQL `BIT VARYING` columns were incorrectly omitted during live migration.
+
 ## v1.8.17 - May 6, 2025
 
 ### New Feature
