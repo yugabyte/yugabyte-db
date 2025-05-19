@@ -1437,4 +1437,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Use S3 IAM roles attached to DB node for Backup/Restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckTHPSettings =
+      new ConfKeyInfo<>(
+          "yb.health_checks.check_thp",
+          ScopeType.UNIVERSE,
+          "Whether to check if correct THP settings are applied",
+          "Whether to check if correct Transparent Huge Pages settings are applied",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
