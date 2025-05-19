@@ -2844,7 +2844,9 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
       // itself is not found, we can safely delete the cdc_state entry.
       auto tablet_info_result = GetTabletInfo(entry.tablet_id);
       if (!tablet_info_result.ok()) {
-        keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        LOG_WITH_FUNC(WARNING) << "Did not find tablet info for tablet_id: " << entry.tablet_id
+                               << " , will not delete its cdc_state entry for stream id:"
+                               << entry.stream_id << "in this iteration";
         continue;
       }
 
