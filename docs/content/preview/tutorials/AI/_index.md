@@ -15,13 +15,13 @@ cascade:
 
 {{<index/block>}}
 {{<index/item
-    title="Similarity Search with Azure AI"
+    title="Similarity Search using Azure AI"
     body="Build a scalable generative AI application using YugabyteDB as the database backend."
     href="azure-openai/"
     icon="/images/tutorials/azure/icons/OpenAI-Icon.svg">}}
 
 {{<index/item
-    title="Similarity Search with Google Vertex AI"
+    title="Similarity Search using Google Vertex AI"
     body="Deploy generative AI applications using Google Vertex AI and YugabyteDB."
     href="google-vertex-ai/"
     icon="/images/tutorials/google/icons/Google-Vertex-AI-Icon.svg">}}
@@ -32,13 +32,13 @@ cascade:
 
 {{<index/block>}}
 {{<index/item
-    title="Similarity search with LocalAI"
+    title="Similarity search using LocalAI"
     body="Build an LLM application, hosted locally or on-prem using LocalAI and YugabyteDB."
     href="ai-localai/"
     icon="/images/tutorials/ai/icons/localai-icon.svg">}}
 
 {{<index/item
-    title="Similarity search with Ollama"
+    title="Similarity search using Ollama"
     body="Build an application with a locally-hosted embedding model using Ollama and YugabyteDB."
     href="ai-ollama/"
     icon="/images/tutorials/ai/icons/ollama-icon.svg">}}

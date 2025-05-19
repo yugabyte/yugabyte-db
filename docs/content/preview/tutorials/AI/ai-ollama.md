@@ -1,6 +1,6 @@
 ---
 title: How to Develop AI Apps Locally with Ollama and YugabyteDB
-headerTitle: Similarity search with Ollama
+headerTitle: Similarity search using Ollama
 linkTitle: Similarity search - Ollama
 description: Learn to build LLM applications using Ollama.
 image: /images/tutorials/ai/icons/ollama-icon.svg
