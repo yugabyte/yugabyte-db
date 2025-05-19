@@ -41,6 +41,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
 
+#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -217,7 +218,8 @@ class PgClient {
 
   Status DeleteDBSequences(int64_t db_oid);
 
-  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations);
+  PerformResultFuture PerformAsync(
+      tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics);
 
   Result<bool> CheckIfPitrActive();
 

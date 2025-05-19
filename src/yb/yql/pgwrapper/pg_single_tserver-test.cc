@@ -1249,7 +1249,7 @@ class PgFastBackwardScanOnlyTest
     // A helper to parse some metrics from explain (analyze, dist, debug) output.
     static const auto read_request_pattern = "Storage Read Requests"s;
     auto parse_metrics = [](const std::string& explain_result) {
-      static const auto metric_pattern = "Metric rocksdb_number_db_"s;
+      static const auto metric_pattern = "  Metric rocksdb_number_db_"s;
       std::vector<std::string> metric_lines = strings::Split(
           explain_result, DefaultRowSeparator(),
           [](GStringPiece sp) {

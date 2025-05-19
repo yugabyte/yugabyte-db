@@ -129,7 +129,11 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder workersLaunched(ValueChecker<Long> checker);
 
     // DocDB Metric
-    PlanCheckerBuilder metric(String key, ValueChecker<Double> checker);
+    PlanCheckerBuilder readMetrics(ObjectChecker checker);
+  }
+
+  public interface MetricsCheckerBuilder extends ObjectCheckerBuilder {
+    MetricsCheckerBuilder metric(String key, ValueChecker<Double> checker);
   }
 
   public static final class ExplainAnalyzeOptionsBuilder {

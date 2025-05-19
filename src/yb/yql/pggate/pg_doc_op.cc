@@ -412,7 +412,6 @@ void PgDocOp::RecordRequestMetrics() {
       continue;
     }
     const auto& response_metrics = response->metrics();
-    metrics.RecordRequestMetrics(response_metrics);
 
     // Record the number of DocDB rows read.
     // Index Scans on secondary indexes in colocated tables need special handling: the target
