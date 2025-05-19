@@ -26,6 +26,10 @@ func LoadState() (*State, error) {
 		return state, err
 	}
 	err = handleMigration(state)
+	if err != nil {
+		logging.Error(fmt.Sprintf("could not handle migration: %s", err.Error()))
+		return nil, err
+	}
 	return state, err
 }
 
@@ -34,6 +38,7 @@ func StoreState(state *State) error {
 	// TODO: THis will update the change id even if no changes are made. At this point, we don't
 	// have a way to track if state changes have been made or not.
 	state._internalFields.ChangeID++
+	logging.Debug(fmt.Sprintf("storing state with change id: %d", state._internalFields.ChangeID))
 	sp := filepath.Join(common.YbactlInstallDir(), StateFileName)
 	f, err := fs.Create(sp)
 	if err != nil {
