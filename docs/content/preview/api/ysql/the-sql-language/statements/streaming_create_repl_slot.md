@@ -42,6 +42,12 @@ Decides what to do with the snapshot created during logical slot initialization.
 
 `NOEXPORT_SNAPSHOT` will just use the snapshot for logical decoding as normal but won't do anything else with it.
 
+{{< note title="YSQL default snapshot option" >}}
+
+The default snapshot option in YugabyteDB is `USE_SNAPSHOT` when the preview flag [ysql_enable_pg_export_snapshot](../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization) is enabled. Without the preview flag enabled, this option has no effect itself.
+
+{{< /note >}}
+
 ## Examples
 
 Establish a replication connection to the database `yugabyte`.
