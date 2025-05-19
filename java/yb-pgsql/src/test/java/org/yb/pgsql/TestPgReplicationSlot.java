@@ -83,6 +83,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
+    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
   }
 
