@@ -735,6 +735,8 @@ public class HealthChecker {
       Map<UUID, NodeInstance> nodeInstanceMap =
           NodeInstance.listByUuids(nodeUuids).stream()
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
+      boolean checkTHP =
+          confGetter.getConfForScope(params.universe, UniverseConfKeys.healthCheckTHPSettings);
       for (NodeDetails nodeDetails : sortedDetails) {
         NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
         String nodeIdentifier = StringUtils.EMPTY;
@@ -762,6 +764,7 @@ public class HealthChecker {
                 .setTestYsqlshConnectivity(testYsqlshConnectivity)
                 .setTestCqlshConnectivity(testCqlshConnectivity)
                 .setUniverseUuid(params.universe.getUniverseUUID())
+                .setCheckTHP(checkTHP)
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
           nodeInfo
@@ -1308,6 +1311,8 @@ public class HealthChecker {
     private boolean otelCollectorEnabled;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
+
+    private boolean checkTHP;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
   }
 

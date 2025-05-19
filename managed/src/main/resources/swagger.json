@@ -909,7 +909,8 @@
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
-            "THP_RSS_ISSUE"
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },
@@ -1087,7 +1088,8 @@
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
-            "THP_RSS_ISSUE"
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },
@@ -1361,7 +1363,8 @@
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
-            "THP_RSS_ISSUE"
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },

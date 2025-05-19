@@ -1654,4 +1654,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout for catalog upgrade admin operations in milliseconds",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckTHPSettings =
+      new ConfKeyInfo<>(
+          "yb.health_checks.check_thp",
+          ScopeType.UNIVERSE,
+          "Whether to check if correct THP settings are applied",
+          "Whether to check if correct Transparent Huge Pages settings are applied",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
