@@ -940,7 +940,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);
   return PerformFuture(
-      pg_client_.PerformAsync(&options, std::move(operations)), std::move(relations));
+      pg_client_.PerformAsync(&options, std::move(operations), metrics_),
+      std::move(relations));
 }
 
 InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer(void* plan) {
