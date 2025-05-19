@@ -207,10 +207,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   ConcurrentPointerReference<TServerSharedData> SharedObject() override { return shared_object(); }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
-  Status ProcessLeaseUpdate(
-      const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
+  Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override;
+  Status KillPg() const override;
 
   static bool IsYsqlLeaseEnabled();
   tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
@@ -370,6 +370,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void RegisterCertificateReloader(CertificateReloader reloader) override;
 
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
+
+  void RegisterPgProcessKiller(std::function<Status(void)> killer) override;
 
   Status StartYSQLLeaseRefresher();
 
@@ -623,6 +625,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
   std::function<Status(void)> pg_restarter_;
+  std::function<Status(void)> pg_killer_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;

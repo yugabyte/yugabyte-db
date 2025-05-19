@@ -127,17 +127,19 @@ Status YsqlLeasePoller::Poll() {
   if (current_lease_info.is_live) {
     req.set_current_lease_epoch(current_lease_info.lease_epoch);
   }
+  req.set_local_request_send_time_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                         CoarseMonoClock::now().time_since_epoch())
+                                         .count());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   master::RefreshYsqlLeaseResponsePB resp;
-  MonoTime pre_request_time = MonoTime::Now();
   RETURN_NOT_OK(proxy_->RefreshYsqlLease(req, &resp, &rpc));
   if (RandomActWithProbability(
           GetAtomicFlag(&FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob))) {
     return STATUS_FORMAT(NetworkError, "Pretending to fail ysql lease refresh RPC");
   }
   RETURN_NOT_OK(ResponseStatus(resp));
-  return server_.ProcessLeaseUpdate(resp.info(), pre_request_time);
+  return server_.ProcessLeaseUpdate(resp.info());
 }
 
 MonoDelta YsqlLeasePoller::IntervalToNextPoll(int32_t consecutive_failures) {

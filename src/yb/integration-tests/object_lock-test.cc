@@ -1104,11 +1104,13 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
 
   master::MasterDDLClient ddl_client{cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>()};
 
+  auto lease_refresh_time_ms = MonoTime::Now().GetDeltaSinceMin().ToMilliseconds();
   // Request a lease refresh on behalf of ts with no lease epoch in the request.
   // Master should respond with our ts' current lease epoch, the acquired lock entries, and
   // new_lease.
-  auto info = ASSERT_RESULT(
-      ddl_client.RefreshYsqlLease(ts->uuid(), ts->instance_id().instance_seqno(), {}));
+  auto info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      ts->uuid(), ts->instance_id().instance_seqno(),
+      lease_refresh_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), kLeaseEpoch);
   ASSERT_TRUE(info.has_ddl_lock_entries());
@@ -1117,8 +1119,8 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
   // Request a lease refresh on behalf of ts with the incorrect lease epoch in the request.
   // Expect the master to respond with our ts' current lease epoch, the acquired lock entries, and
   // new_lease.
-  info =
-      ASSERT_RESULT(ddl_client.RefreshYsqlLease(ts->uuid(), ts->instance_id().instance_seqno(), 0));
+  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      ts->uuid(), ts->instance_id().instance_seqno(), lease_refresh_time_ms, 0));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), kLeaseEpoch);
   ASSERT_TRUE(info.has_ddl_lock_entries());
@@ -1126,8 +1128,8 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
 
   // Request a lease refresh on behalf of ts with the correct lease epoch in the request.
   // Expect the master to omit most information and set new_lease to false.
-  info = ASSERT_RESULT(
-      ddl_client.RefreshYsqlLease(ts->uuid(), ts->instance_id().instance_seqno(), kLeaseEpoch));
+  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      ts->uuid(), ts->instance_id().instance_seqno(), lease_refresh_time_ms, kLeaseEpoch));
   ASSERT_FALSE(info.new_lease());
   ASSERT_FALSE(info.has_ddl_lock_entries());
 }
@@ -1216,6 +1218,10 @@ TEST_F(ExternalObjectLockTestOneTS, TabletServerKillsSessionsWhenItAcquiresNewLe
   constexpr std::string_view kTableName = "test_table";
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", kTSIdx));
   ASSERT_OK(conn.Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
+  // Disable the tserver's lease expiry check task so acquiring a new lease is what prompts the
+  // tserver to kill its pg sessions, not the tserver itself deciding its lease has expired.
+  ASSERT_OK(cluster_->SetFlag(
+      tablet_server(kTSIdx), "TEST_enable_ysql_operation_lease_expiry_check", "false"));
   ASSERT_OK(cluster_->SetFlag(tablet_server(kTSIdx), kTServerYsqlLeaseRefreshFlagName, "false"));
   auto cluster_client =
       master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
@@ -1234,6 +1240,44 @@ TEST_F(ExternalObjectLockTestOneTS, TabletServerKillsSessionsWhenItAcquiresNewLe
         return result.status();
       },
       timeout, "Wait for pg session to be killed"));
+  // Once re-acquiring the lease, the tserver should accept new sessions again.
+  ASSERT_OK(WaitFor(
+      [this, kTSIdx]() -> Result<bool> {
+        auto result = cluster_->ConnectToDB("yugabyte", kTSIdx);
+        return result.ok();
+      },
+      timeout, "Wait for tserver to accept new pg sessions"));
+}
+
+TEST_F(ExternalObjectLockTestOneTS, TabletServerKillsSessionsWhenItsLeaseExpires) {
+  constexpr size_t kTSIdx = 0;
+  MonoDelta timeout = MonoDelta::FromSeconds(10);
+  auto ts_uuid = tablet_server(kTSIdx)->uuid();
+  constexpr std::string_view kTableName = "test_table";
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", kTSIdx));
+  ASSERT_OK(conn.Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
+  ASSERT_OK(cluster_->SetFlag(tablet_server(kTSIdx), kTServerYsqlLeaseRefreshFlagName, "false"));
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  ASSERT_OK(WaitFor(
+      [&conn, kTableName]() -> Result<bool> {
+        auto result = conn.FetchRow<int64_t>(Format("SELECT count(*) from $0", kTableName));
+        if (result.ok()) {
+          return false;
+        }
+        if (PGSessionKilledStatus(result.status())) {
+          return true;
+        }
+        return result.status();
+      },
+      timeout, "Wait for pg session to be killed"));
+  // At this point we shouldn't be able to start a new session.
+  ExternalClusterPGConnectionOptions conn_options;
+  conn_options.timeout_secs = 2;
+  auto conn_result = cluster_->ConnectToDB(std::move(conn_options));
+  ASSERT_FALSE(conn_result.ok());
+  ASSERT_OK(
+      cluster_->SetFlag(tablet_server(kTSIdx), kTServerYsqlLeaseRefreshFlagName, "true"));
   // Once re-acquiring the lease, the tserver should accept new sessions again.
   ASSERT_OK(WaitFor(
       [this, kTSIdx]() -> Result<bool> {
@@ -1495,8 +1539,10 @@ bool StatusContainsMessage(const Status& status, std::string_view s) {
 }
 
 bool PGSessionKilledStatus(const Status& status) {
-  constexpr std::string_view message = "server closed the connection unexpectedly";
-  return status.IsNetworkError() && StatusContainsMessage(status, message);
+  constexpr std::string_view closed_message = "server closed the connection unexpectedly";
+  constexpr std::string_view shutdown_message = "Object Lock Manager Shutdown";
+  return status.IsNetworkError() && (StatusContainsMessage(status, closed_message) ||
+                                     StatusContainsMessage(status, shutdown_message));
 }
 
 bool SameCodeAndMessage(const Status& lhs, const Status& rhs) {

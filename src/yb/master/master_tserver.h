@@ -129,7 +129,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
   Status RestartPG() const override {
     return STATUS(NotSupported, "RestartPG not implemented for masters");
   }
-
+  Status KillPg() const override {
+    return STATUS(NotSupported, "KillPg not implemented for masters");
+  }
   const std::string& permanent_uuid() const override;
 
   Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(

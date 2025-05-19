@@ -57,6 +57,13 @@ DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 30 * 1000,
                       "through the YSQL API.");
 TAG_FLAG(master_ysql_operation_lease_ttl_ms, advanced);
 
+DEFINE_RUNTIME_uint64(ysql_operation_lease_ttl_client_buffer_ms, 2 * 1000,
+                      "The difference between the duration masters and tservers use for ysql "
+                      "operation lease TTLs. This is non-zero to account for clock skew and give "
+                      "tservers time to clean up their existing pg sessions before the master "
+                      "leader ignores them for exclusive table lock requests.");
+TAG_FLAG(ysql_operation_lease_ttl_client_buffer_ms, advanced);
+
 DEFINE_NON_RUNTIME_uint64(object_lock_cleanup_interval_ms, 5000,
                           "The interval between runs of the background cleanup task for "
                           "table-level locks held by unresponsive TServers.");
@@ -863,6 +870,14 @@ Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
   if (!FLAGS_enable_ysql_operation_lease && !FLAGS_TEST_enable_object_locking_for_table_locks) {
     return STATUS(NotSupported, "The ysql lease is currently disabled.");
   }
+  if (!req.has_local_request_send_time_ms()) {
+    return STATUS(InvalidArgument, "Missing required local_request_send_time_ms");
+  }
+  auto master_ttl = GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms);
+  auto buffer = GetAtomicFlag(&FLAGS_ysql_operation_lease_ttl_client_buffer_ms);
+  CHECK_GT(master_ttl, buffer);
+  resp.mutable_info()->set_lease_expiry_time_ms(
+      req.local_request_send_time_ms() + master_ttl - buffer);
   // Sanity check that the tserver has already registered with the same instance_seqno.
   RETURN_NOT_OK(master_.ts_manager()->LookupTS(req.instance()));
   auto object_lock_info = GetOrCreateObjectLockInfo(req.instance().permanent_uuid());
