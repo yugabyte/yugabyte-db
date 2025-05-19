@@ -21,7 +21,7 @@ Starting with this release, Voyager uses a new versioning format: `YYYY.M.N` (fo
 - `M` represents the release month
 - `N` represents the number of the release in that month
 
-The previous version used the old format (`v1.8.17`). This update aligns versioning with our release cadence and makes it easier to track updates over time.
+The previous version used the old format (`v1.8.17`). This update aligns versioning with Yugabyte Voyager release cadence and makes it easier to track updates over time.
 
 ## v2025.5.2 - May 20, 2025
 
