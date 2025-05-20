@@ -52,6 +52,7 @@ class SnapshotCoordinator;
 class SnapshotOperation;
 class SplitOperation;
 class TabletMetrics;
+class TabletMetricsHolder;
 class TabletSnapshots;
 class TabletSplitter;
 class TabletStatusListener;

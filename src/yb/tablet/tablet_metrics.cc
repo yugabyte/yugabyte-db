@@ -478,5 +478,7 @@ ScopedTabletMetricsLatencyTracker::~ScopedTabletMetricsLatencyTracker() {
       event_stats_,
       MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds());
 }
+
+
 } // namespace tablet
 } // namespace yb

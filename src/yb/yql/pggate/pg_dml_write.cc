@@ -157,6 +157,7 @@ void PgDmlWrite::AllocWriteRequest() {
   write_req_->dup_table_id(table_id_.GetYbTableId());
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
+  write_req_->set_metrics_capture(PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE);
 
   if (pg_session_->AreCatalogModificationsForceAllowed()) {
     write_req_->set_force_catalog_modifications(true);
