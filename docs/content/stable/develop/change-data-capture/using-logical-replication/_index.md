@@ -81,7 +81,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 ## Limitations
 
-- LSN Comparisons Across Slots.
+- Log Sequence Number ([LSN](../using-logical-replication/key-concepts/#lsn-type)) Comparisons Across Slots.
 
     In the case of YugabyteDB, the LSN  does not represent the byte offset of a WAL record. Hence, arithmetic on LSN and any other usages of the LSN making this assumption will not work. Also, currently, comparison of LSN values from messages coming from different replication slots is not supported.
 

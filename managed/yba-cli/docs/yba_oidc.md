@@ -37,6 +37,6 @@ yba oidc [flags]
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 * [yba oidc configure](yba_oidc_configure.md)	 - Configure OIDC configuration for YBA
+* [yba oidc describe](yba_oidc_describe.md)	 - Describe OIDC configuration for YBA
 * [yba oidc disable](yba_oidc_disable.md)	 - Disable OIDC configuration for YBA
-* [yba oidc get](yba_oidc_get.md)	 - Get OIDC configuration for YBA
 

@@ -32,6 +32,7 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
+#include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/concurrent_value.h"
 
@@ -147,9 +148,11 @@ class TabletServerIf : public LocalTabletServer {
   virtual void SetYsqlDBCatalogVersions(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data) = 0;
 
-  virtual Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const = 0;
+  virtual Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const = 0;
 
   virtual Status RestartPG() const = 0;
+
+  virtual Status KillPg() const = 0;
 };
 
 } // namespace tserver

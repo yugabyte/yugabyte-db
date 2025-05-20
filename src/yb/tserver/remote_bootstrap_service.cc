@@ -586,9 +586,10 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
     num_sessions_serving_data_->Decrement();
     LOG_IF(DFATAL, nsessions_serving_data_.fetch_sub(1, std::memory_order_acq_rel) <= 0)
           << "found nsessions_serving_data_ <= 0 when updating rbs session " << session_id;
-    LOG(ERROR) << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()
-               << " with peer " << session->requestor_uuid() << " failed. session_succeeded = "
-               << session_succeeded;
+    LOG(WARNING)
+        << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()
+        << " with peer " << session->requestor_uuid() << " failed. session_succeeded = "
+        << session_succeeded;
   }
 
   return Status::OK();

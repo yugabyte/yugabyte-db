@@ -69,11 +69,23 @@ func disableOIDC(resetAll bool, keysToReset map[string]bool) {
 	}
 	if resetAll {
 		for _, keyConfig := range oidcConfig {
+			logrus.Info(
+				formatter.Colorize(
+					fmt.Sprintf("Deleting key: %s\n", util.OidcKeyToFlagMap[keyConfig.GetKey()]),
+					formatter.GreenColor,
+				),
+			)
 			key.DeleteGlobalKey(authAPI, keyConfig.GetKey())
 		}
 	} else {
 		for _, keyConfig := range oidcConfig {
 			if _, exists := keysToReset[keyConfig.GetKey()]; exists {
+				logrus.Info(
+					formatter.Colorize(
+						fmt.Sprintf("Deleting key: %s\n", util.OidcKeyToFlagMap[keyConfig.GetKey()]),
+						formatter.GreenColor,
+					),
+				)
 				key.DeleteGlobalKey(authAPI, keyConfig.GetKey())
 			}
 		}

@@ -174,7 +174,7 @@ std::string VarIntToString(const std::string& str_val) {
   VarInt varint;
   auto status = varint.DecodeFromComparable(str_val);
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to decode varint: " << status.message().ToString();
+    LOG(DFATAL) << "Unable to decode varint: " << status.message().ToString();
     return "";
   }
   return varint.ToString();
@@ -184,7 +184,7 @@ std::string DecimalToString(const std::string& str_val) {
   util::Decimal decimal;
   auto status = decimal.DecodeFromComparable(str_val);
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to decode decimal";
+    LOG(DFATAL) << "Unable to decode decimal";
     return "";
   }
   return decimal.ToString();

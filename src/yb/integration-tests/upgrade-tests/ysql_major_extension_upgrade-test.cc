@@ -43,6 +43,8 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Simple) {
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pg_partman")));
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pg_cron")));
   ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pgaudit")));
+  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION cube")));
+  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION earthdistance")));
   ASSERT_OK(UpgradeClusterToCurrentVersion());
 
 }

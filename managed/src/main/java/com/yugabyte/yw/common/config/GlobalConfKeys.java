@@ -476,7 +476,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow CipherTrust KMS",
           "Allow the usage of CipherTrust KMS.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
       new ConfKeyInfo<>(
           "yb.kms.hcv_token_renew_percent",

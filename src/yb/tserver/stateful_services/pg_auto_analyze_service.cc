@@ -410,6 +410,7 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       VLOG_WITH_FUNC(1) << "Deleted or renamed " << dbname << "/" << namespace_id << ", skipping";
       continue;
     }
+
     if (!conn_result) {
       VLOG_WITH_FUNC(1) << "Conn failed: " << conn_result.status();
       return conn_result.status();
@@ -421,6 +422,9 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       YB_LOG_EVERY_N_SECS(INFO, 30) << "Auto analyze is disabled on database " << dbname;
       continue;
     }
+
+    auto s = conn.Execute("SET yb_use_internal_auto_analyze_service_conn=true");
+    RETURN_NOT_OK(s);
 
     // Construct ANALYZE statement and RUN ANALYZE.
     // Try to analyze all tables in batches to minimize the number of catalog version increments.
@@ -477,6 +481,7 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
                   // Need to refresh name cache because the cached table name is outdated.
                   refresh_name_cache_ = true;
                 } else {
+                  // TODO: Fix this, else branch doesn't imply that the table was deleted.
                   VLOG(1) << "Table " << table_name << " was deleted";
                   // Need to remove deleted table entries from the YCQL service table.
                   deleted_tables.push_back(table_id);

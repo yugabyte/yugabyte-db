@@ -45,7 +45,6 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/jsonwriter.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
 using namespace std::placeholders;
@@ -667,13 +666,14 @@ Status XClusterTargetManager::ReportNewAutoFlagConfigVersion(
 }
 
 Status XClusterTargetManager::RefreshLocalAutoFlagConfig(const LeaderEpoch& epoch) {
-  if (!auto_flags_revalidation_needed_) {
-    return Status::OK();
+  if (auto_flags_revalidation_needed_) {
+    RETURN_NOT_OK(DoRefreshLocalAutoFlagConfig(epoch));
+    auto_flags_revalidation_needed_ = false;
   }
+  return Status::OK();
+}
 
-  auto se = ScopeExit([this] { auto_flags_revalidation_needed_ = true; });
-  auto_flags_revalidation_needed_ = false;
-
+Status XClusterTargetManager::DoRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch) {
   auto replication_groups = catalog_manager_.GetAllUniverseReplications();
   if (replication_groups.empty()) {
     return Status::OK();
@@ -694,9 +694,6 @@ Status XClusterTargetManager::RefreshLocalAutoFlagConfig(const LeaderEpoch& epoc
   }
 
   SCHECK(!update_failed, IllegalState, "Failed to handle local AutoFlags config change");
-
-  se.Cancel();
-
   return Status::OK();
 }
 

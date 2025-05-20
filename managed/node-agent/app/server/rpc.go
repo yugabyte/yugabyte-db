@@ -350,6 +350,43 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	installYbcInput := req.GetInstallYbcInput()
+	if installYbcInput != nil {
+		installYbcHandler := task.NewInstallYbcHandler(installYbcInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, installYbcHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running install ybc - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	configureServerInput := req.GetConfigureServerInput()
+	if configureServerInput != nil {
+		configureServerHandler := task.NewConfigureServerHandler(configureServerInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, configureServerHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running configure server - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	installOtelCollectorInput := req.GetInstallOtelCollectorInput()
+	if installOtelCollectorInput != nil {
+		installOtelCollectorHandler := task.NewInstallOtelCollectorHandler(
+			installOtelCollectorInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, installOtelCollectorHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running install otel collector - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, status.Error(codes.Unimplemented, "Unknown task")
 }
 

@@ -869,8 +869,25 @@ IndexStatusPB::BackfillStatus GetBackfillStatus(const IndexInfoPB& index) {
 }
 
 bool IsPgCronJobTable(const CreateTableRequestPB& req) {
-  return req.has_schema() && req.schema().has_pgschema_name() &&
-         req.schema().pgschema_name() == "cron" && req.name() == "job";
+  if (req.has_internal_table_type()) {
+    return req.internal_table_type() == InternalTableType::PG_CRON_JOB_TABLE;
+  }
+
+  // (DEPRECATE_EOL 2.27) In upgrade mode - process request from old TS.
+  return req.has_schema() &&
+         req.schema().depricated_pgschema_name() == "cron" && req.name() == "job";
+}
+
+bool IsXClusterDDLReplicationTable(const CreateTableRequestPB& req) {
+  if (req.has_internal_table_type()) {
+    return req.internal_table_type() == InternalTableType::XCLUSTER_DDL_REPLICATION_TABLE;
+  }
+
+  // (DEPRECATE_EOL 2.27) In upgrade mode - process request from old TS.
+  return req.has_schema() &&
+         req.schema().depricated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         (req.name() == xcluster::kDDLQueueTableName ||
+             req.name() == xcluster::kDDLReplicatedTableName);
 }
 
 Result<QLWriteRequestPB::QLStmtType> ToQLStmtType(
@@ -1277,8 +1294,8 @@ void CatalogManager::ValidateIndexTablesPostLoad(
             IndexStatusPB::BackfillStatus backfill_status) {
           DCHECK(status.ok());
           if (!status.ok()) {
-            LOG(ERROR) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
-                       << "index table " << index_id << ": " << status;
+            LOG(WARNING) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
+                         << "index table " << index_id << ": " << status;
             return;
           }
 
@@ -2168,7 +2185,7 @@ void CatalogManager::CompleteShutdown() {
   if (async_task_pool_) {
     async_task_pool_->Shutdown();
   }
-
+  object_lock_info_manager_->Shutdown();
   // It's OK if the visitor adds more entries even after we finish; it won't start any new tasks for
   // those entries.
   AbortAndWaitForAllTasks();
@@ -3955,7 +3972,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   const bool colocated =
       (is_colocated_via_database || req.has_tablegroup_id() || is_vector_index) &&
       // Any tables created in the xCluster DDL replication extension should not be colocated.
-      schema.SchemaName() != xcluster::kDDLQueuePgSchemaName;
+      !IsXClusterDDLReplicationTable(req);
   SCHECK(!colocated || req.has_table_id(),
          InvalidArgument, "Colocated table should specify a table ID");
 
@@ -5527,7 +5544,7 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   SchemaToPB(schema, metadata->mutable_schema());
   if (FLAGS_TEST_create_table_with_empty_pgschema_name) {
     // Use empty string (default proto val) so that this passes has_pgschema_name() checks.
-    metadata->mutable_schema()->set_pgschema_name("");
+    metadata->mutable_schema()->set_depricated_pgschema_name("");
   }
   partition_schema.ToPB(metadata->mutable_partition_schema());
   // For index table, set index details (indexed table id and whether the index is local).
@@ -7815,7 +7832,8 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
     // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
     // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
-    if (l->table_type() == TableType::PGSQL_TABLE_TYPE && resp->schema().pgschema_name().empty() &&
+    if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+        resp->schema().depricated_pgschema_name().empty() &&
         !table->is_system() && !table->IsSequencesSystemTable() &&
         !table->IsColocationParentTable()) {
       TRACE("Acquired catalog manager lock for schema name lookup");
@@ -7826,7 +7844,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
             "Unable to find schema name for YSQL table $0.$1 due to error: $2",
             table->namespace_name(), table->name(), pgschema_name.ToString());
       } else {
-        resp->mutable_schema()->set_pgschema_name(*pgschema_name);
+        resp->mutable_schema()->set_depricated_pgschema_name(*pgschema_name);
       }
     }
 
@@ -7945,7 +7963,7 @@ Status CatalogManager::GetTablegroupSchema(const GetTablegroupSchemaRequestPB* r
     schema_req.mutable_table()->set_table_id(table_id);
     Status s = GetTableSchema(&schema_req, &schema_resp);
     if (!s.ok() || schema_resp.has_error()) {
-      LOG(ERROR) << "Error while getting table schema: " << s;
+      LOG(WARNING) << "Error while getting table schema: " << s;
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
     }
     resp->add_get_table_schema_response_pbs()->Swap(&schema_resp);
@@ -7981,7 +7999,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
   listTablesReq.set_exclude_system_tables(true);
   Status status = ListTables(&listTablesReq, &ListTablesResp);
   if (!status.ok() || ListTablesResp.has_error()) {
-    LOG(ERROR) << "Error while listing tables: " << status;
+    LOG(WARNING) << "Error while listing tables: " << status;
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
   }
 
@@ -7998,7 +8016,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
       schemaReq.mutable_table()->set_table_id(t.id());
       status = GetTableSchema(&schemaReq, &schemaResp);
       if (!status.ok() || schemaResp.has_error()) {
-        LOG(ERROR) << "Error while getting table schema: " << status;
+        LOG(WARNING) << "Error while getting table schema: " << status;
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
       }
       resp->add_get_table_schema_response_pbs()->Swap(&schemaResp);
@@ -8120,7 +8138,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       table->set_indexed_table_id(table_info->indexed_table_id());
     }
     table->set_state(ltm->pb.state());
-    table->set_pgschema_name(ltm->schema().pgschema_name());
+    table->set_pgschema_name(ltm->schema().depricated_pgschema_name());
     if (table_info->colocated()) {
       table->mutable_colocated_info()->set_colocated(true);
       if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
@@ -8174,7 +8192,7 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
     auto& table_pb = l->pb;
 
     if (!l->started_deleting() && table_pb.namespace_id() == ns->id() &&
-        boost::iequals(table_pb.schema().pgschema_name(), pg_schema_name) &&
+        boost::iequals(table_pb.schema().depricated_pgschema_name(), pg_schema_name) &&
         boost::iequals(table_pb.name(), table_name)) {
       return table;
     }
@@ -9020,9 +9038,9 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
       continue;
     }
     if (xcluster_manager_->IsTableReplicated(table->id())) {
-      LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
-                 << " is under replication"
-                 << ". Cannot delete a database that contains tables under replication.";
+      LOG(WARNING) << "Error deleting database: " << database->id() << ", table: " << table->id()
+                   << " is under replication"
+                   << ". Cannot delete a database that contains tables under replication.";
       return STATUS_FORMAT(
           InvalidCommand, Format(
                               "Table: $0 is under replication. Cannot delete a database that "
@@ -11713,9 +11731,7 @@ Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
               << " primary servers";
   }
 
-  if (schema.SchemaName() == xcluster::kDDLQueuePgSchemaName &&
-      (request.name() == xcluster::kDDLQueueTableName ||
-       request.name() == xcluster::kDDLReplicatedTableName)) {
+  if (IsXClusterDDLReplicationTable(request)) {
     // xCluster DDL queue tables need to be single tablet tables - This ensures that we have a
     // singular stream of DDLs which simplifies ordering guarantees.
     num_tablets = 1;
@@ -12626,10 +12642,10 @@ void CatalogManager::RebuildYQLSystemPartitions() {
       if (system_partitions_tablet_ != nullptr) {
         Status s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
         if (!s.ok()) {
-          LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
+          LOG(WARNING) << "Error rebuilding system.partitions: " << s.ToString();
         }
       } else {
-        LOG(ERROR) << "Error finding system.partitions vtable.";
+        LOG(WARNING) << "Error finding system.partitions vtable.";
       }
     }
   }

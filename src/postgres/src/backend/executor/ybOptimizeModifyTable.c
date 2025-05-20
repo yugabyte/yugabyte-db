@@ -214,7 +214,8 @@ YBAreDatumsStoredIdentically(Datum lhs,
  * ----------------------------------------------------------------------------
  */
 static bool
-YBIsColumnModified(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
+YBIsColumnModified(Relation rel, HeapTuple oldtuple,
+				   TupleTableSlot *newtupleslot,
 				   const FormData_pg_attribute *attdesc)
 {
 	const AttrNumber attnum = attdesc->attnum;
@@ -225,9 +226,9 @@ YBIsColumnModified(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 
 	bool		old_is_null = false;
 	bool		new_is_null = false;
-	TupleDesc	relTupdesc = RelationGetDescr(rel);
-	Datum		old_value = heap_getattr(oldtuple, attnum, relTupdesc, &old_is_null);
-	Datum		new_value = heap_getattr(newtuple, attnum, relTupdesc, &new_is_null);
+	Datum		old_value = heap_getattr(oldtuple, attnum,
+										 RelationGetDescr(rel), &old_is_null);
+	Datum		new_value = slot_getattr(newtupleslot, attnum, &new_is_null);
 
 	return ((old_is_null != new_is_null) ||
 			(!old_is_null &&
@@ -248,7 +249,8 @@ YBIsColumnModified(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
  * ----------------------------------------------------------------
  */
 static void
-YBComputeExtraUpdatedCols(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
+YBComputeExtraUpdatedCols(Relation rel, HeapTuple oldtuple,
+						  TupleTableSlot *newtupleslot,
 						  Bitmapset *updated_cols, Bitmapset **modified_cols,
 						  Bitmapset **unmodified_cols,
 						  bool is_update_optimization_enabled,
@@ -318,7 +320,7 @@ YBComputeExtraUpdatedCols(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 			!bms_is_member(bms_idx, trig_cond_cols))
 			continue;
 
-		if (YBIsColumnModified(rel, oldtuple, newtuple, attdesc))
+		if (YBIsColumnModified(rel, oldtuple, newtupleslot, attdesc))
 			*modified_cols = bms_add_member(*modified_cols, bms_idx);
 		else
 			*unmodified_cols = bms_add_member(*unmodified_cols, bms_idx);
@@ -382,7 +384,7 @@ YbUpdateHandleUnmodifiedEntity(YbUpdateAffectedEntities *affected_entities,
  */
 static YbSkippableEntities *
 YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
-						  HeapTuple newtuple, Bitmapset **modified_cols,
+						  TupleTableSlot *newtupleslot, Bitmapset **modified_cols,
 						  Bitmapset **unmodified_cols,
 						  YbUpdateAffectedEntities *affected_entities,
 						  YbSkippableEntities *skip_entities)
@@ -445,7 +447,7 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
 																 idx);
 
 			if (!YbIsColumnComparisonAllowed(*modified_cols, *unmodified_cols) ||
-				YBIsColumnModified(rel, oldtuple, newtuple, attdesc))
+				YBIsColumnModified(rel, oldtuple, newtupleslot, attdesc))
 			{
 				/*
 				 * If we have already exceeded the max number of columns
@@ -502,7 +504,7 @@ YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
 											 ResultRelInfo *resultRelInfo,
 											 EState *estate,
 											 HeapTuple oldtuple,
-											 HeapTuple newtuple,
+											 TupleTableSlot *newtupleslot,
 											 Bitmapset **updated_cols,
 											 bool beforeRowUpdateTriggerFired)
 {
@@ -549,7 +551,7 @@ YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
 
 	if (mtstate->yb_is_update_optimization_enabled)
 	{
-		YbComputeModifiedEntities(resultRelInfo, oldtuple, newtuple,
+		YbComputeModifiedEntities(resultRelInfo, oldtuple, newtupleslot,
 								  &modified_cols, &unmodified_cols,
 								  plan->yb_update_affected_entities,
 								  &estate->yb_skip_entities);
@@ -557,7 +559,7 @@ YbComputeModifiedColumnsAndSkippableEntities(ModifyTableState *mtstate,
 
 	if (beforeRowUpdateTriggerFired)
 	{
-		YBComputeExtraUpdatedCols(rel, oldtuple, newtuple, *updated_cols,
+		YBComputeExtraUpdatedCols(rel, oldtuple, newtupleslot, *updated_cols,
 								  &modified_cols, &unmodified_cols,
 								  mtstate->yb_is_update_optimization_enabled,
 								  (plan->operation == CMD_INSERT &&

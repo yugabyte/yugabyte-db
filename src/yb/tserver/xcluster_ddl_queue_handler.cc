@@ -35,6 +35,9 @@
 DEFINE_RUNTIME_int32(xcluster_ddl_queue_max_retries_per_ddl, 5,
     "Maximum number of retries per DDL before we pause processing of the ddl_queue table.");
 
+DEFINE_RUNTIME_uint32(xcluster_ddl_queue_statement_timeout_ms, 0,
+    "Statement timeout to use for executing DDLs from the ddl_queue table. 0 means no timeout.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -405,6 +408,9 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
     setup_query << "SET yb_test_fail_next_ddl TO true;";
   }
 
+  setup_query << Format(
+      "SET statement_timeout TO $0;", FLAGS_xcluster_ddl_queue_statement_timeout_ms);
+
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
   RETURN_NOT_OK(ProcessFailedDDLQuery(RunAndLogQuery(query_info.query), query_info));
   RETURN_NOT_OK(
@@ -431,8 +437,8 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
   if (last_failed_query_ && last_failed_query_->MatchesQueryInfo(query_info)) {
     num_fails_for_this_ddl_++;
     if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
-      LOG_WITH_PREFIX(ERROR) << "Failed to process DDL after " << num_fails_for_this_ddl_
-                             << " retries. Pausing DDL replication.";
+      LOG_WITH_PREFIX(WARNING) << "Failed to process DDL after " << num_fails_for_this_ddl_
+                               << " retries. Pausing DDL replication.";
     }
   } else {
     last_failed_query_ = QueryIdentifier{query_info.ddl_end_time, query_info.query_id};
@@ -482,10 +488,9 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   if (pg_conn_ && FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     return Status::OK();
   }
-  auto se = ScopeExit([this] { pg_conn_.reset(); });
   // Create pg connection if it doesn't exist.
   CoarseTimePoint deadline = CoarseMonoClock::Now() + local_client_->default_rpc_timeout();
-  pg_conn_ = std::make_unique<pgwrapper::PGConn>(
+  auto pg_conn = std::make_unique<pgwrapper::PGConn>(
       VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline)));
 
   std::stringstream query;
@@ -505,9 +510,9 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
         << xcluster::kDDLQueueDDLEndTimeColumn << " = $1 AND " << xcluster::kDDLQueueQueryIdColumn
         << " = $2);";
 
-  RETURN_NOT_OK(pg_conn_->Execute(query.str()));
+  RETURN_NOT_OK(pg_conn->Execute(query.str()));
 
-  se.Cancel();
+  pg_conn_ = std::move(pg_conn);
   return Status::OK();
 }
 

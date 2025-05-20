@@ -35,6 +35,10 @@ struct Config {
   uint64_t connectivity_base = 0;
   uint64_t connectivity = 0;
   uint64_t expansion_search = 0; // TODO(vector_index) Don't need to store it.
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(connectivity_base, connectivity, expansion_search);
+  }
 };
 
 struct LayerInfo {
@@ -62,6 +66,12 @@ struct Header {
   std::vector<LayerInfo> layers;
 
   void Init(const unum::usearch::index_dense_gt<vector_index::VectorId>& index);
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        dimensions, vector_data_size, entry, max_level, config, max_block_size,
+        max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers);
+  }
 };
 
 } // namespace yb::hnsw

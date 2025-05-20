@@ -180,6 +180,8 @@ public class CommonUtils {
           entry('9', '\''),
           entry(' ', '\''));
 
+  public static final String FIPS_ENABLED = "yb.fips.enabled";
+
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
    *

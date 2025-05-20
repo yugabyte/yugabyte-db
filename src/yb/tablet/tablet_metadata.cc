@@ -132,7 +132,6 @@ std::string MakeTableInfoLogPrefix(
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kIntentsDirName = "intents";
 const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
@@ -880,10 +879,11 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 
   const auto& rocksdb_dir = this->rocksdb_dir();
   LOG_WITH_PREFIX(INFO) << "Destroying regular db at: " << rocksdb_dir;
-  rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir, rocksdb_options);
+  auto status = DestroyDB(rocksdb_dir, rocksdb_options);
 
   if (!status.ok()) {
-    LOG_WITH_PREFIX(ERROR) << "Failed to destroy regular DB at: " << rocksdb_dir << ": " << status;
+    LOG_WITH_PREFIX(WARNING)
+        << "Failed to destroy regular DB at: " << rocksdb_dir << ": " << status;
   } else {
     LOG_WITH_PREFIX(INFO) << "Successfully destroyed regular DB at: " << rocksdb_dir;
   }
@@ -899,8 +899,8 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
 
     if (!status.ok()) {
-      LOG_WITH_PREFIX(ERROR) << "Failed to destroy provisional records DB at: " << intents_dir
-                             << ": " << status;
+      LOG_WITH_PREFIX(DFATAL) << "Failed to destroy provisional records DB at: " << intents_dir
+                              << ": " << status;
     } else {
       LOG_WITH_PREFIX(INFO) << "Successfully destroyed provisional records DB at: " << intents_dir;
     }
@@ -934,7 +934,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
   std::lock_guard lock(data_mutex_);
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
-  const auto intents_dir = docdb::GetStorageDir(rocksdb_dir, kIntentsDirName);
+  const auto intents_dir = docdb::GetStorageDir(rocksdb_dir, docdb::kIntentsDirName);
   return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
       !fs_manager_->env()->FileExists(rocksdb_dir) &&
       !fs_manager_->env()->FileExists(intents_dir);
@@ -2445,7 +2445,7 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
 }
 
 std::string RaftGroupMetadata::intents_rocksdb_dir() const {
-  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kIntentsDirName);
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, docdb::kIntentsDirName);
 }
 
 std::string RaftGroupMetadata::snapshots_dir() const {

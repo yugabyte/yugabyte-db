@@ -13,7 +13,11 @@
 
 #include "yb/tserver/pg_create_table.h"
 
+#include "yb/cdc/xcluster_types.h"
+
 #include "yb/client/client.h"
+#include "yb/client/schema.h"  // YB_TODO(#12770): TO BE DELETED AFTER REWORKING
+                               //                  PG-SCHEMA-NAME USAGE IN CDC
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 
@@ -131,11 +135,15 @@ Status PgCreateTable::Exec(
     }
     schema_builder_.SetTableProperties(table_properties);
   }
-  if (!req_.schema_name().empty()) {
-    schema_builder_.SetSchemaName(req_.schema_name());
-  }
 
   RETURN_NOT_OK(schema_builder_.Build(&schema));
+
+  // YB_TODO(#12770): TO BE DELETED AFTER REWORKING PG-SCHEMA-NAME USAGE IN CDC
+  if (!req_.schema_name().empty()) {
+    client::internal::GetSchema(&schema).SetSchemaName(req_.schema_name());
+  }
+  // \YB_TODO(#12770)
+
   const auto split_rows = VERIFY_RESULT(BuildSplitRows(schema));
 
   // Create table.
@@ -152,6 +160,10 @@ Status PgCreateTable::Exec(
   if (req_.is_shared_table()) {
     table_creator->is_pg_shared_table();
   }
+  if (req_.schema_name() == "cron" && req_.table_name() == "job") {
+    table_creator->internal_table_type(master::InternalTableType::PG_CRON_JOB_TABLE);
+  }
+
   if (hash_schema_) {
     table_creator->hash_schema(*hash_schema_);
   } else if (!req_.is_pg_catalog_table()) {
@@ -199,6 +211,11 @@ Status PgCreateTable::Exec(
     if (req_.skip_index_backfill()) {
       table_creator->skip_index_backfill(true);
     }
+  }
+
+  // If the table was created in the xCluster DDL replication extension.
+  if (req_.schema_name() == xcluster::kDDLQueuePgSchemaName) {
+    table_creator->internal_table_type(master::InternalTableType::XCLUSTER_DDL_REPLICATION_TABLE);
   }
 
   if (xcluster_source_table_id_.IsValid()) {
@@ -415,7 +432,7 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
     LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
   } else {
     // If any other error, report that!
-    LOG(ERROR) << "Error creating table '" << table_name.ToString() << "': " << status;
+    LOG(WARNING) << "Error creating table '" << table_name.ToString() << "': " << status;
     return status;
   }
   return Status::OK();

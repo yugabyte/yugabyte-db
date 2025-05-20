@@ -52,6 +52,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -67,10 +68,6 @@
 using namespace std::literals;
 
 namespace yb {
-
-namespace master {
-class MiniMaster;
-}
 
 namespace server {
 class SkewedClockDeltaChanger;
@@ -277,7 +274,14 @@ class MiniCluster : public MiniClusterBase {
   Status WaitForLoadBalancerToStabilize(MonoDelta timeout);
 
   template <typename T>
-  Result<T> GetLeaderMasterProxy();
+  Result<T> GetLeaderMasterProxy() {
+    return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
+  }
+
+  template <typename T>
+  T GetMasterProxy() {
+    return T(proxy_cache_.get(), mini_master()->bound_rpc_addr());
+  }
 
   std::string GetClusterId() { return options_.cluster_id; }
 
@@ -291,6 +295,8 @@ class MiniCluster : public MiniClusterBase {
   }
 
   std::string GetTabletServerHTTPAddresses() const override;
+
+  rpc::ProxyCache& proxy_cache() override { return *proxy_cache_; }
 
  private:
 
@@ -500,11 +506,6 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster);
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
-
-template <typename T>
-Result<T> MiniCluster::GetLeaderMasterProxy() {
-  return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
-}
 
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
 

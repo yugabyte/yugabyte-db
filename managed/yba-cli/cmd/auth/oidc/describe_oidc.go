@@ -9,13 +9,13 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
-// getOIDCCmd is used to get OIDC authentication configuration for YBA
-var getOIDCCmd = &cobra.Command{
-	Use:     "get",
-	Aliases: []string{"show", "describe"},
-	Short:   "Get OIDC configuration for YBA",
-	Long:    "Get OIDC configuration for YBA",
-	Example: `yba oidc get`,
+// describeOIDCCmd is used to get OIDC authentication configuration for YBA
+var describeOIDCCmd = &cobra.Command{
+	Use:     "describe",
+	Aliases: []string{"show", "get"},
+	Short:   "Describe OIDC configuration for YBA",
+	Long:    "Describe OIDC configuration for YBA",
+	Example: `yba oidc describe`,
 	Run: func(cmd *cobra.Command, args []string) {
 		showInherited := !util.MustGetFlagBool(cmd, "user-set-only")
 		getOIDCConfig(showInherited /*inherited*/)
@@ -23,7 +23,7 @@ var getOIDCCmd = &cobra.Command{
 }
 
 func init() {
-	getOIDCCmd.Flags().SortFlags = false
-	getOIDCCmd.Flags().Bool("user-set-only", false,
+	describeOIDCCmd.Flags().SortFlags = false
+	describeOIDCCmd.Flags().Bool("user-set-only", false,
 		"[Optional] Only show the attributes that were set by the user explicitly.")
 }

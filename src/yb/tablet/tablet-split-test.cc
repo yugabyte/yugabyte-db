@@ -134,9 +134,9 @@ TEST_F(TabletSplitTest, SplitTablet) {
           << docdb::DocDBDebugDumpToStr(
                  tablet()->doc_db(), &tablet()->GetSchemaPackingProvider(),
                  docdb::IncludeBinary::kTrue);
-  const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
+  const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
-  tablet()->TEST_DocDBDumpToContainer(IncludeIntents::kTrue, &source_docdb_dump);
+  tablet()->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &source_docdb_dump);
 
   std::unordered_set<std::string> source_rows;
   for (const auto& row : ASSERT_RESULT(SelectAll(tablet().get()))) {
@@ -183,7 +183,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       split_tablet->metadata()->ToSuperBlock(&super_block);
       ASSERT_EQ(split_tablet->tablet_id(), super_block.kv_store().kv_store_id());
     }
-    const auto split_docdb_dump_str = split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);
+    const auto split_docdb_dump_str = split_tablet->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
 
     // Before compaction underlying DocDB dump should be the same.
     ASSERT_EQ(source_docdb_dump_str, split_docdb_dump_str);
@@ -207,12 +207,12 @@ TEST_F(TabletSplitTest, SplitTablet) {
     ASSERT_OK(split_tablet->ForceManualRocksDBCompact());
 
     VLOG(1) << split_tablet->tablet_id() << " compacted:" << std::endl
-            << split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);
+            << split_tablet->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
 
     // After compaction split tablets' RocksDB instances should have no overlap and no unexpected
     // data.
     std::unordered_set<std::string> split_docdb_dump;
-    split_tablet->TEST_DocDBDumpToContainer(IncludeIntents::kTrue, &split_docdb_dump);
+    split_tablet->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &split_docdb_dump);
     for (const auto& entry : split_docdb_dump) {
       ASSERT_EQ(source_docdb_dump.erase(entry), 1);
     }

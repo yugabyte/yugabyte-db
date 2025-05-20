@@ -1026,7 +1026,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 	 */
 	if (IsYBRelation(rel))
 	{
-		if (rel->rd_rel->reltuples < 0)
+		if (rel->rd_rel->reltuples < 0 || yb_ignore_stats)
 		{
 			*tuples = YBC_DEFAULT_NUM_ROWS;
 		}

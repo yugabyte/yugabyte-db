@@ -238,7 +238,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
       table = catalog_manager_->tables_->FindTableOrNull(
           xcluster::StripSequencesDataAliasIfPresent(metadata.table_id(0)));
       if (!table) {
-        LOG(ERROR) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
+        LOG(DFATAL) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
         // TODO (#2059): Potentially signals a race condition that table got deleted while stream
         //  was being created.
         // Log error and continue without loading the stream.
@@ -722,7 +722,7 @@ Status CatalogManager::BackfillMetadataForXRepl(
       // is not present without backfilling it to master's disk or tservers.
       // Skip this check for colocated parent tables as they do not have pgschema names.
       if (!IsColocationParentTableId(table_id) &&
-          (backfill_required || table_lock->schema().pgschema_name().empty())) {
+          (backfill_required || table_lock->schema().depricated_pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
         string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table_id, table_lock.data()));
         VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;
@@ -975,7 +975,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
 
   stream_id = GenerateNewXreplStreamId();
-  auto se_recover_stream_id = ScopeExit([&stream_id, this] { RecoverXreplStreamId(stream_id); });
+  auto se_recover_stream_id = CancelableScopeExit(
+      [&stream_id, this] { RecoverXreplStreamId(stream_id); });
 
   stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
   stream->mutable_metadata()->StartMutation();
@@ -2729,7 +2730,9 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
       // itself is not found, we can safely delete the cdc_state entry.
       auto tablet_info_result = GetTabletInfo(entry.tablet_id);
       if (!tablet_info_result.ok()) {
-        keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        LOG_WITH_FUNC(WARNING) << "Did not find tablet info for tablet_id: " << entry.tablet_id
+                               << " , will not delete its cdc_state entry for stream id:"
+                               << entry.stream_id << "in this iteration";
         continue;
       }
 
@@ -4751,7 +4754,7 @@ Status CatalogManager::ClearFailedReplicationBootstrap() {
     if (bootstrap_info == nullptr) {
       auto error_msg =
           Format("UniverseReplicationBootstrap not found: $0", replication_id.ToString());
-      LOG(ERROR) << error_msg;
+      LOG(WARNING) << error_msg;
       return STATUS(NotFound, error_msg);
     }
   }
@@ -4989,7 +4992,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
 
   auto s = cdc_state_table_->DeleteEntries(entries_to_delete);
   if (!s.ok()) {
-    LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
+    LOG(WARNING) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
   }
 

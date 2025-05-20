@@ -1491,7 +1491,7 @@ void VectorLSM<Vector, DistanceResult>::DeleteFile(const VectorLSMFileMetaData& 
   if (status.ok()) {
     LOG_WITH_PREFIX(INFO) << "Deleted file " << path;
   } else {
-    LOG_WITH_PREFIX(ERROR) << "Failed to delete file " << path << ", status: " << status;
+    LOG_WITH_PREFIX(DFATAL) << "Failed to delete file " << path << ", status: " << status;
   }
 }
 

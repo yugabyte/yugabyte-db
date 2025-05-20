@@ -19,11 +19,16 @@ type ServerControlHandler struct {
 	taskStatus *atomic.Value
 	param      *pb.ServerControlInput
 	username   string
+	logOut     util.Buffer
 }
 
 // ServerControlHandler returns a new instance of ServerControlHandler.
 func NewServerControlHandler(param *pb.ServerControlInput, username string) *ServerControlHandler {
-	return &ServerControlHandler{param: param, username: username}
+	return &ServerControlHandler{
+		param:    param,
+		username: username,
+		logOut:   util.NewBuffer(module.MaxBufferCapacity),
+	}
 }
 
 // CurrentTaskStatus implements the AsyncTask method.
@@ -41,22 +46,21 @@ func (handler *ServerControlHandler) String() string {
 func (handler *ServerControlHandler) Handle(
 	ctx context.Context,
 ) (*pb.DescribeTaskResponse, error) {
-	var shellTask *ShellTask
 	if handler.param.GetNumVolumes() > 0 {
 		cmd := "df | awk '{{print $6}}' | egrep '^/mnt/d[0-9]+' | wc -l"
 		util.FileLogger().Infof(ctx, "Running command %v", cmd)
-		shellTask = NewShellTaskWithUser(
-			handler.String(),
+		cmdInfo, err := module.RunShellCmd(
+			ctx,
 			handler.username,
-			util.DefaultShell,
-			[]string{"-c", cmd},
+			"getNumVolumes",
+			cmd,
+			handler.logOut,
 		)
-		status, err := shellTask.Process(ctx)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Server control failed in %v - %s", cmd, err.Error())
 			return nil, err
 		}
-		count, err := strconv.Atoi(strings.TrimSpace(status.Info.String()))
+		count, err := strconv.Atoi(strings.TrimSpace(cmdInfo.StdOut.String()))
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Failed to parse output of command %v - %s", cmd, err.Error())
@@ -79,13 +83,13 @@ func (handler *ServerControlHandler) Handle(
 	}
 	if yes {
 		lingerCmd := fmt.Sprintf("loginctl enable-linger %s", handler.username)
-		shellTask = NewShellTaskWithUser(
-			handler.String(),
+		_, err := module.RunShellCmd(
+			ctx,
 			handler.username,
-			util.DefaultShell,
-			[]string{"-c", lingerCmd},
+			"loginctl enable-linger",
+			lingerCmd,
+			handler.logOut,
 		)
-		_, err = shellTask.Process(ctx)
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Server control failed in %v - %s", lingerCmd, err.Error())
@@ -102,14 +106,8 @@ func (handler *ServerControlHandler) Handle(
 		util.FileLogger().Errorf(ctx, "Failed to get server control command - %s", err.Error())
 		return nil, err
 	}
-	shellTask = NewShellTaskWithUser(
-		handler.String(),
-		handler.username,
-		util.DefaultShell,
-		[]string{"-c", cmd},
-	)
 	util.FileLogger().Infof(ctx, "Running command %v", cmd)
-	_, err = shellTask.Process(ctx)
+	_, err = module.RunShellCmd(ctx, handler.username, "serverControl", cmd, handler.logOut)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Server control failed in %v - %s", cmd, err.Error())
 		return nil, err

@@ -2063,7 +2063,7 @@ class WaitQueue::Impl {
       }
       filter = [&res, &resume_status](const auto& waiter) {
         const auto& opt_serial_no = waiter->GetPgSessionRequestVersion();
-        if (opt_serial_no && *opt_serial_no < res->pg_session_req_version) {
+        if (opt_serial_no && res.ok() && *opt_serial_no < res->pg_session_req_version) {
           resume_status = STATUS_EC_FORMAT(
               Expired, TransactionError(TransactionErrorCode::kDeadlock),
               "Couldn't acquire locks due to a potential deadlock");

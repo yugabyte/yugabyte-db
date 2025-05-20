@@ -65,6 +65,8 @@ class MiniClusterBase {
 
   virtual std::string GetTabletServerHTTPAddresses() const = 0;
 
+  virtual rpc::ProxyCache& proxy_cache() = 0;
+
  protected:
   virtual ~MiniClusterBase() = default;
 

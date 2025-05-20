@@ -233,6 +233,8 @@ class XClusterTargetManager {
       const SysClusterConfigEntryPB& cluster_config_pb) const;
 
   Status RefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
+  Status DoRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
+
 
   // Populate the response with the errors for the given replication group.
   Status PopulateReplicationGroupErrors(

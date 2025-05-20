@@ -322,7 +322,7 @@ void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
   auto s = data.client()->GetTabletsAndUpdateCache(
       table_name, 0, &tablets, &partitions, &locations);
   if (!s.ok()) {
-    LOG(ERROR) << "Error getting tablets: " << s.message();
+    LOG(DFATAL) << "Error getting tablets: " << s.message();
     return;
   }
   vector<string> response, ts_info;
@@ -717,7 +717,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
     session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       if (!s.ok()) {
-        LOG(ERROR) << "Reading from src during a Rename failed. " << s;
+        LOG(DFATAL) << "Reading from src during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
       } else {
         retained_self->BeginWriteDest();
@@ -824,7 +824,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
     session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       if (!s.ok()) {
-        LOG(ERROR) << "Writing to dest during a Rename failed. " << s;
+        LOG(DFATAL) << "Writing to dest during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
         return;
       }
@@ -844,7 +844,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
     session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       if (!s.ok()) {
-        LOG(ERROR) << "Updating ttl for dest during a Rename failed. " << s;
+        LOG(DFATAL) << "Updating ttl for dest during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
         return;
       }
@@ -858,7 +858,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
     session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       if (!s.ok()) {
-        LOG(ERROR) << "Deleting src during a Rename failed. " << s;
+        LOG(DFATAL) << "Deleting src during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
         return;
       }

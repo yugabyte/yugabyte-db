@@ -22,7 +22,7 @@ import { ReactComponent as AddIcon } from '../../../../redesign/assets/add2.svg'
 import { ReactComponent as EditIcon } from '../../../../redesign/assets/edit2.svg';
 import { EditCustomPrometheusQueriesModal } from '../../../../redesign/features/universe/universe-actions/support-bundle/EditCustomPrometheusQueriesModal';
 import { formatBytes } from '../../../xcluster/ReplicationUtils';
-import { fetchEstimatedSupportBundleSize } from '../UniverseSupportBundle';
+import { fetchEstimatedSupportBundleSize } from '../UniverseSupportBundleModal';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 
 momentLocalizer(moment);

@@ -59,7 +59,16 @@ var createUniverseCmd = &cobra.Command{
 		}
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 		if enableVolumeEncryption {
-			cmd.MarkFlagRequired("kms-config")
+			kmsConfigName := v1.GetString("kms-config")
+			if len(strings.TrimSpace(kmsConfigName)) == 0 {
+				cmd.Help()
+				logrus.Fatalln(
+					formatter.Colorize(
+						"No kms config name found while enabling volume encryption\n",
+						formatter.RedColor,
+					),
+				)
+			}
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -110,6 +119,15 @@ var createUniverseCmd = &cobra.Command{
 							formatter.Colorize(clientRootCACertUUID, formatter.GreenColor)), "\n")
 				}
 			}
+			if len(clientRootCACertUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf(
+						"Client root certificate %s not found\n",
+						clientRootCA,
+					),
+					formatter.RedColor,
+				))
+			}
 		}
 
 		rootCACertUUID := ""
@@ -117,7 +135,6 @@ var createUniverseCmd = &cobra.Command{
 
 		// find the root certficate UUID from the name
 		if len(rootCA) != 0 {
-
 			for _, c := range certs {
 				if strings.Compare(c.GetLabel(), rootCA) == 0 {
 					rootCACertUUID = c.GetUuid()
@@ -127,6 +144,10 @@ var createUniverseCmd = &cobra.Command{
 							formatter.Colorize(rootCACertUUID, formatter.GreenColor)), "\n")
 				}
 			}
+			if len(rootCACertUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf("Root certificate %s not found\n", rootCA), formatter.RedColor))
+			}
 		}
 
 		kmsConfigUUID := ""
@@ -135,10 +156,7 @@ var createUniverseCmd = &cobra.Command{
 
 		if enableVolumeEncryption {
 			opType = util.EnableOpType
-			kmsConfigName, err := cmd.Flags().GetString("kms-config")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
+			kmsConfigName := v1.GetString("kms-config")
 			// find kmsConfigUUID from the name
 			kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
 			if err != nil {
@@ -162,6 +180,10 @@ var createUniverseCmd = &cobra.Command{
 						}
 					}
 				}
+			}
+			if len(kmsConfigUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf("KMS config %s not found\n", kmsConfigName), formatter.RedColor))
 			}
 		}
 

@@ -519,12 +519,27 @@ Status WaitUntilNumberOfAliveTServersEqual(int n_tservers,
                                      n_tservers, timeout.ToMilliseconds()));
 }
 
-Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster) {
-  auto proxy = cluster->num_masters() > 1
-      ? cluster->GetLeaderMasterProxy<master::MasterClusterProxy>()
-      : cluster->GetMasterProxy<master::MasterClusterProxy>();
-  return CreateTabletServerMap(proxy, &cluster->proxy_cache());
+// TODO: switch ExternalMiniCluster::GetLeaderMaster* to return error if leader is not elected to
+// unify with MiniCluster.
+Result<master::MasterClusterProxy> GetLeaderMasterClusterProxy(MiniCluster* cluster) {
+  return cluster->num_masters() > 1
+             ? VERIFY_RESULT(cluster->GetLeaderMasterProxy<master::MasterClusterProxy>())
+             : cluster->GetMasterProxy<master::MasterClusterProxy>();
 }
+
+Result<master::MasterClusterProxy> GetLeaderMasterClusterProxy(ExternalMiniCluster* cluster) {
+  return cluster->num_masters() > 1 ? cluster->GetLeaderMasterProxy<master::MasterClusterProxy>()
+                                    : cluster->GetMasterProxy<master::MasterClusterProxy>();
+}
+
+template <typename MiniClusterType>
+Result<TabletServerMap> CreateTabletServerMap(MiniClusterType* cluster) {
+  return CreateTabletServerMap(
+      VERIFY_RESULT(GetLeaderMasterClusterProxy(cluster)), &cluster->proxy_cache());
+}
+
+template Result<TabletServerMap> CreateTabletServerMap(MiniCluster* cluster);
+template Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster);
 
 Result<TabletServerMap> CreateTabletServerMap(
     const master::MasterClusterProxy& proxy, rpc::ProxyCache* proxy_cache) {

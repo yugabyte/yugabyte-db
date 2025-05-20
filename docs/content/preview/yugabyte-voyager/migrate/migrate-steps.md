@@ -180,6 +180,8 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
 
 ```
 
+Note that if the source database is PostgreSQL and you haven't already run `assess-migration`, the schema is also assessed and a migration assessment report is generated.
+
 Refer to [export schema](../../reference/schema-migration/export-schema/) for details about the arguments.
 
 #### Analyze schema

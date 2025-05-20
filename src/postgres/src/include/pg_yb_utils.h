@@ -704,6 +704,11 @@ extern bool yb_test_inval_message_portability;
 extern int yb_test_delay_after_applying_inval_message_ms;
 
 /*
+ * If > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.
+ */
+extern int yb_test_delay_set_local_tserver_inval_message_ms;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -764,6 +769,8 @@ extern bool yb_enable_docdb_vector_type;
 extern bool yb_silence_advisory_locks_not_supported_error;
 
 extern bool yb_skip_data_insert_for_xcluster_target;
+
+extern bool yb_force_early_ddl_serialization;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for

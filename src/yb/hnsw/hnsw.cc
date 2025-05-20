@@ -21,6 +21,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
@@ -90,15 +91,10 @@ class YbHnswBuilder {
       const std::string& path)
       : index_(index), block_cache_(block_cache), path_(path) {}
 
-  Result<std::pair<FileBlockCache*, Header>> Build() {
+  Result<std::pair<FileBlockCachePtr, Header>> Build() {
     header_.Init(index_);
     PrepareVectors();
-    VLOG_WITH_FUNC(4)
-        << "Size: " << index_.size() << ", max level: " << header_.max_level << ", dimensions: "
-        << header_.dimensions << ", connectivity: " << header_.config.connectivity
-        << ", connectivity_base: " << header_.config.connectivity_base
-        << ", expansion_search: " << header_.config.expansion_search << ", layers: "
-        << AsString(header_.layers);
+    VLOG_WITH_FUNC(4) << "Size: " << index_.size() << ", header: " << header_.ToString();
 
     auto tmp_path = path_ + ".tmp";
     RETURN_NOT_OK(block_cache_.env().NewWritableFile(tmp_path, &out_));
@@ -113,10 +109,9 @@ class YbHnswBuilder {
     RETURN_NOT_OK(block_cache_.env().RenameFile(tmp_path, path_));
     std::unique_ptr<RandomAccessFile> file;
     RETURN_NOT_OK(block_cache_.env().NewRandomAccessFile(path_, &file));
-    auto file_block_cache = std::make_unique<FileBlockCache>(std::move(file), &builder_);
-    auto result = file_block_cache.get();
-    block_cache_.Register(std::move(file_block_cache));
-    return std::pair(result, header_);
+    auto file_block_cache = std::make_unique<FileBlockCache>(
+        block_cache_, std::move(file), &builder_);
+    return std::pair(std::move(file_block_cache), header_);
   }
 
  private:
@@ -366,6 +361,11 @@ void Header::Init(const unum::usearch::index_dense_gt<vector_index::VectorId>& i
   max_vectors_per_non_base_block = CalcMaxVectorsPerLayerBlock(max_block_size, config.connectivity);
 }
 
+YbHnsw::YbHnsw(Metric& metric) : metric_(metric) {
+}
+
+YbHnsw::~YbHnsw() = default;
+
 Status YbHnsw::Import(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
     BlockCachePtr block_cache) {
@@ -379,17 +379,18 @@ Status YbHnsw::Init(const std::string& path, BlockCachePtr block_cache) {
   block_cache_ = std::move(block_cache);
   std::unique_ptr<RandomAccessFile> file;
   RETURN_NOT_OK(block_cache_->env().NewRandomAccessFile(path, &file));
-  auto file_block_cache = std::make_unique<FileBlockCache>(std::move(file));
-  header_ = VERIFY_RESULT(file_block_cache->Load());
-  file_block_cache_ = file_block_cache.get();
-  block_cache_->Register(std::move(file_block_cache));
+  file_block_cache_ = std::make_unique<FileBlockCache>(*block_cache_, std::move(file));
+  header_ = VERIFY_RESULT(file_block_cache_->Load());
   return Status::OK();
 }
 
 YbHnsw::SearchResult YbHnsw::Search(
     const std::byte* query_vector, size_t max_results, const vector_index::VectorFilter& filter,
     YbHnswSearchContext& context) const {
-  auto [best_vector, best_dist] = SearchInNonBaseLayers(query_vector);
+  context.search_cache.Bind(header_, *file_block_cache_);
+  auto se = ScopeExit([&context] { context.search_cache.Release(); });
+  auto [best_vector, best_dist] = SearchInNonBaseLayers(
+      query_vector, context.search_cache);
   SearchInBaseLayer(query_vector, best_vector, best_dist, max_results, filter, context);
   return MakeResult(max_results, context);
 }
@@ -402,23 +403,23 @@ YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext&
   SearchResult result;
   result.reserve(top.size());
   for (auto [distance, vector] : top) {
-    result.emplace_back(GetVectorData(vector), distance);
+    result.emplace_back(context.search_cache.GetVectorData(vector), distance);
   }
   return result;
 }
 
 std::pair<VectorNo, YbHnsw::DistanceType> YbHnsw::SearchInNonBaseLayers(
-    const std::byte* query_vector) const {
+    const std::byte* query_vector, SearchCache& cache) const {
   auto best_vector = header_.entry;
-  auto best_dist = Distance(query_vector, best_vector);
+  auto best_dist = Distance(query_vector, best_vector, cache);
   VLOG_WITH_FUNC(4) << "best_vector: " << best_vector << ", best_dist: " << best_dist;
 
   for (auto level = header_.max_level; level > 0;) {
     auto updated = false;
     VLOG_WITH_FUNC(4)
         << "level: " << level << ", best_vector: " << best_vector << ", best_dist: " << best_dist;
-    for (auto neighbor : GetNeighborsInNonBaseLayer(level, best_vector)) {
-      auto neighbor_dist = Distance(query_vector, neighbor);
+    for (auto neighbor : cache.GetNeighborsInNonBaseLayer(level, best_vector)) {
+      auto neighbor_dist = Distance(query_vector, neighbor, cache);
       VLOG_WITH_FUNC(4)
           << "level: " << level << ", neighbor: " << neighbor << ", neighbor_dist: "
           << neighbor_dist;
@@ -447,6 +448,7 @@ void YbHnsw::SearchInBaseLayer(
   visited.clear();
   auto& next = context.next;
   next.clear();
+  auto& cache = context.search_cache;
 
   // We will visit at least entry vector and its neighbors.
   // So could use the following as initial capacity for visited.
@@ -456,7 +458,7 @@ void YbHnsw::SearchInBaseLayer(
   auto extra_top_limit = std::max<size_t>(
     header_.config.expansion_search, max_results) - max_results;
   next.push({best_dist, best_vector});
-  if (!filter || filter(GetVectorData(best_vector))) {
+  if (!filter || filter(cache.GetVectorData(best_vector))) {
     top.push({best_dist, best_vector});
   }
   visited.set(best_vector);
@@ -468,19 +470,19 @@ void YbHnsw::SearchInBaseLayer(
       break;
     }
     next.pop();
-    auto neighbors = GetNeighborsInBaseLayer(vector);
+    auto neighbors = cache.GetNeighborsInBaseLayer(vector);
     visited.reserve(visited.size() + std::ranges::size(neighbors));
 
     for (auto neighbor : neighbors) {
       if (visited.set(neighbor)) {
         continue;
       }
-      auto neighbor_dist = Distance(query_vector, neighbor);
+      auto neighbor_dist = Distance(query_vector, neighbor, cache);
 
       if (top.size() < top_limit || extra_top.size() < extra_top_limit ||
           neighbor_dist < best_dist) {
         next.push({neighbor_dist, neighbor});
-        if (!filter || filter(GetVectorData(neighbor))) {
+        if (!filter || filter(cache.GetVectorData(neighbor))) {
           if (top.size() == top_limit) {
             auto extra_push = top.top().first;
             if (neighbor_dist < extra_push) {
@@ -503,11 +505,56 @@ void YbHnsw::SearchInBaseLayer(
   }
 }
 
-boost::iterator_range<MisalignedPtr<const VectorNo>> YbHnsw::GetNeighborsInBaseLayer(
-    size_t vector) const {
+YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs) const {
+  using unum::usearch::byte_t;
+  return metric_(pointer_cast<const byte_t*>(lhs), pointer_cast<const byte_t*>(rhs));
+}
+
+YbHnsw::DistanceType YbHnsw::Distance(
+    const std::byte* lhs, size_t vector, SearchCache& cache) const {
+  return Distance(lhs, cache.CoordinatesPtr(vector));
+}
+
+boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeCoordinates(
+    const std::byte* ptr) const {
+  auto start = MisalignedPtr<const CoordinateType>(ptr);
+  return boost::make_iterator_range(start, start + header_.dimensions);
+}
+
+boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
+    size_t vector, SearchCache& cache) const {
+  return MakeCoordinates(cache.CoordinatesPtr(vector));
+}
+
+const std::byte* SearchCache::Data(size_t index) {
+  auto& block = blocks_[index];
+  if (block) {
+    return block;
+  }
+  auto data = CHECK_RESULT(file_block_cache_->Take(index));
+  used_blocks_.push_back(index);
+  return block = data;
+}
+
+void SearchCache::Bind(std::reference_wrapper<const Header> header, FileBlockCache& cache) {
+  DCHECK(used_blocks_.empty());
+  header_ = &header.get();
+  file_block_cache_ = &cache;
+  blocks_.resize(cache.size());
+}
+
+void SearchCache::Release() {
+  for (auto block : used_blocks_) {
+    blocks_[block] = nullptr;
+    file_block_cache_->Release(block);
+  }
+  used_blocks_.clear();
+}
+
+boost::iterator_range<MisalignedPtr<const VectorNo>> SearchCache::GetNeighborsInBaseLayer(
+    size_t vector) {
   auto vector_data = VectorHeader(vector);
-  auto base_ptr = file_block_cache_->Data(*YB_MISALIGNED_PTR(
-      vector_data, VectorData, base_layer_neighbors_block));
+  auto base_ptr = Data(*YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_block));
   auto begin = *YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_begin);
   auto end = *YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_end);
   return boost::make_iterator_range(
@@ -515,13 +562,19 @@ boost::iterator_range<MisalignedPtr<const VectorNo>> YbHnsw::GetNeighborsInBaseL
       MisalignedPtr<const VectorNo>(base_ptr + end * kNeighborSize));
 }
 
-boost::iterator_range<MisalignedPtr<const VectorNo>> YbHnsw::GetNeighborsInNonBaseLayer(
-    size_t level, size_t vector) const {
-  auto max_vectors_per_block = header_.max_vectors_per_non_base_block;
+MisalignedPtr<const VectorData> SearchCache::VectorHeader(size_t vector) {
+  return MisalignedPtr<const VectorData>(BlockPtr(
+      header_->vector_data_block, header_->vector_data_amount_per_block, vector,
+      header_->vector_data_size));
+}
+
+boost::iterator_range<MisalignedPtr<const VectorNo>> SearchCache::GetNeighborsInNonBaseLayer(
+    size_t level, size_t vector) {
+  auto max_vectors_per_block = header_->max_vectors_per_non_base_block;
   auto block_index = vector / max_vectors_per_block;
   vector %= max_vectors_per_block;
-  auto& layer = header_.layers[level];
-  auto base_ptr = file_block_cache_->Data(layer.block + block_index);
+  auto& layer = header_->layers[level];
+  auto base_ptr = Data(layer.block + block_index);
   auto finish = Load<NeighborsRefType, HnswEndian>(base_ptr + vector * kNeighborsRefSize);
   auto start = vector > 0
       ? Load<NeighborsRefType, HnswEndian>(base_ptr + (vector - 1) * kNeighborsRefSize) : 0;
@@ -540,54 +593,28 @@ boost::iterator_range<MisalignedPtr<const VectorNo>> YbHnsw::GetNeighborsInNonBa
   return result;
 }
 
-const std::byte* YbHnsw::BlockPtr(
-    size_t block, size_t entries_per_block, size_t entry, size_t entry_size) const {
+const std::byte* SearchCache::BlockPtr(
+    size_t block, size_t entries_per_block, size_t entry, size_t entry_size) {
   block += entry / entries_per_block;
   entry %= entries_per_block;
-  return file_block_cache_->Data(block) + entry * entry_size;
+  return Data(block) + entry * entry_size;
 }
 
-Slice YbHnsw::GetVectorDataSlice(size_t vector) const {
+Slice SearchCache::GetVectorDataSlice(size_t vector) {
   auto vector_data = VectorHeader(vector);
-  auto base_ptr = file_block_cache_->Data(
+  auto base_ptr = Data(
       *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_block));
   auto begin = *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_begin);
   auto end = *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_end);
   return Slice(base_ptr + begin, base_ptr + end);
 }
 
-vector_index::VectorId YbHnsw::GetVectorData(size_t vector) const {
+vector_index::VectorId SearchCache::GetVectorData(size_t vector) {
   return vector_index::TryFullyDecodeVectorId(GetVectorDataSlice(vector));
 }
 
-YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs) const {
-  using unum::usearch::byte_t;
-  return metric_(pointer_cast<const byte_t*>(lhs), pointer_cast<const byte_t*>(rhs));
-}
-
-YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, size_t vector) const {
-  return Distance(lhs, CoordinatesPtr(vector));
-}
-
-MisalignedPtr<const VectorData> YbHnsw::VectorHeader(size_t vector) const {
-  return MisalignedPtr<const VectorData>(BlockPtr(
-      header_.vector_data_block, header_.vector_data_amount_per_block, vector,
-      header_.vector_data_size));
-}
-
-const std::byte* YbHnsw::CoordinatesPtr(size_t vector) const {
+const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
   return VectorHeader(vector).raw() + offsetof(VectorData, coordinates);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeCoordinates(
-    const std::byte* ptr) const {
-  auto start = MisalignedPtr<const CoordinateType>(ptr);
-  return boost::make_iterator_range(start, start + header_.dimensions);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
-    size_t vector) const {
-  return MakeCoordinates(CoordinatesPtr(vector));
 }
 
 }  // namespace yb::hnsw

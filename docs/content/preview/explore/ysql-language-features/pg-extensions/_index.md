@@ -36,6 +36,8 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | Module | Description |
 | :----- | :---------- |
 | [auto_explain](extension-auto-explain/) | Provides a means for logging execution plans of slow statements automatically. |
+| cube| Implements a data type cube for representing multidimensional cubes. <br/>For more information, see [cube](https://www.postgresql.org/docs/15/cube.html) in the PostgreSQL documentation. |
+| earthdistance| Provides two different approaches to calculating great circle distances on the surface of the Earth. <br/>For more information, see [earthdistance](https://www.postgresql.org/docs/15/earthdistance.html) in the PostgreSQL documentation. |
 | [file_fdw](extension-file-fdw/) | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. |
 | [fuzzystrmatch](extension-fuzzystrmatch/) | Provides several functions to determine similarities and distance between strings. |
 | hstore | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value.<br/>For more information, see [hstore](https://www.postgresql.org/docs/15/hstore.html) in the PostgreSQL documentation. |
@@ -55,7 +57,7 @@ YugabyteDB supports the following additional extensions, some of which you must 
 
 | <div style="width:120px">Extension</div> | <div style="width:100px">Status</div> | Description |
 | :-------- | :----- | :---------- |
-| [Anonymizer](extension-pganon/) {{<tags/feature/tp idea="1497">}}| Pre-bundled | Mask or replace personally identifiable information (PII) or commercially sensitive data in a database. |
+| [Anonymizer](extension-pganon/) {{<tags/feature/ea idea="1497">}}| Pre-bundled | Mask or replace personally identifiable information (PII) or commercially sensitive data in a database. |
 | [HypoPG](extension-hypopg/) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries without consuming any actual resources. |
 | Orafce | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB.<br/>For more information, see the [Orafce](https://github.com/orafce/orafce) documentation. |
 | [PGAudit](../../../secure/audit-logging/audit-logging-ysql/) | Pre-bundled | The PostgreSQL Audit Extension (pgaudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. |

@@ -1208,7 +1208,7 @@ void MasterPathHandlers::HandleAllTables(
       if (result.ok()) {
         table_row[kYsqlOid] = std::to_string(*result);
       } else {
-        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+        LOG(WARNING) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
 
       const auto& schema = table_locked->schema();
@@ -1400,7 +1400,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
       if (result.ok()) {
         table_row.ysql_oid = std::to_string(*result);
       } else {
-        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+        LOG(WARNING) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
 
       const auto& schema = table_locked->schema();

@@ -158,6 +158,7 @@ Master::Master(const MasterOptions& opts)
       state_(kStopped),
       metric_entity_cluster_(
           METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
+      master_tablet_server_(new MasterTabletServer(this, metric_entity())),
       sys_catalog_(new SysCatalogTable(this, metric_registry_.get())),
       ts_manager_(new TSManager(*sys_catalog_)),
       catalog_manager_(new CatalogManager(this, sys_catalog_.get())),
@@ -175,8 +176,7 @@ Master::Master(const MasterOptions& opts)
       test_async_rpc_manager_(new TestAsyncRpcManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
       opts_(opts),
-      maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_tablet_server_(new MasterTabletServer(this, metric_entity())) {
+      maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit), mem_tracker()));
 
@@ -361,7 +361,7 @@ Status Master::StartAsync() {
 void Master::InitCatalogManagerTask() {
   Status s = InitCatalogManager();
   if (!s.ok()) {
-    LOG(ERROR) << ToString() << ": Unable to init master catalog manager: " << s.ToString();
+    LOG(WARNING) << ToString() << ": Unable to init master catalog manager: " << s;
   }
   init_status_.set_value(s);
 }
