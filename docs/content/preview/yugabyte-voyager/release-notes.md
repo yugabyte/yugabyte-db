@@ -29,7 +29,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`:
 
 ### Enhancements
 
-- Voyager now automatically runs `assess-migration` when `export schema` is executed before it.
+- If you run `export schema` without first running `assess-migration`, Voyager will now automatically run assess the migration before exporting the schema for PostgreSQL source databases.
 - Performance optimizations are now reported only in assessment reports, not in schema analysis reports.
 - Assessment Report
   - The assessment report now includes detailed recommendations related to index design to help you identify potential uneven distribution or hotspot issues in YugabyteDB. This includes:
