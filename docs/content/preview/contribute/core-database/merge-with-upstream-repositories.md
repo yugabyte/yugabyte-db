@@ -383,6 +383,8 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
 1. Find the appropriate upstream postgres commits.
    For example, if this import is for [yugabyte/yugabyte-db][repo-yugabyte-db] repo `2025.1` branch based on PG 15.x, then prioritize using upstream postgres commits on `REL_15_STABLE` over those on `master` because they would have resolved conflicts for us.
    See [here](#find-postgresql-back-patch-commits) for suggestions on how to do this.
+   If there are too many upstream postgres commits to consider, it may be worth looking into an alternative of taking file states as of a certain commit.
+   Make sure to properly document such actions in the commit messages.
 1. Switch to a feature branch off the latest [yugabyte/postgres][repo-postgres] repo `yb-pg<version>` branch: `git switch -c import-abc yb-pg<version>`.
 1. Do `git cherry-pick -x <commit>` for each commit being imported.
    Notice the `-x` to record the commit hash being cherry-picked.
