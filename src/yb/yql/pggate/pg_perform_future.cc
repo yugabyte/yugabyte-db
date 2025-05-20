@@ -19,6 +19,8 @@
 #include "yb/common/pgsql_error.h"
 
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
 namespace {
@@ -68,6 +70,10 @@ Result<PerformFuture::Data> PerformFuture::Get(PgSession& session) {
   // Make sure Valid method will return false before thread will be blocked on call future.get()
   // This requirement is not necessary after fixing of #12884.
   auto future = std::move(future_);
+  auto check_timeout = MonoDelta::FromMilliseconds(FLAGS_ysql_check_for_interrupt_interval_ms);
+  while (!pggate::WaitFor(future, check_timeout)) {
+    YBCCheckForInterrupts();
+  }
   auto result = pggate::Get(&future);
   RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session.TrySetCatalogReadPoint(result.catalog_read_time);

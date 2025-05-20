@@ -78,6 +78,9 @@ YbcWaitEventInfo PgstatReportWaitStartNoOp(YbcWaitEventInfo info) {
   return info;
 }
 
+void CheckForInterruptsNoOp() {
+}
+
 // Not defined locally in PggateTest::Init to avoid asan use-after-return error
 bool yb_enable_ash = false;
 
@@ -151,6 +154,7 @@ Status PggateTest::Init(
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
+  callbacks.CheckForInterrupts = &CheckForInterruptsNoOp;
 
   ash_config.yb_enable_ash = &yb_enable_ash;
 

@@ -573,6 +573,13 @@ const YbcPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
 }
 
+void YBCCheckForInterrupts() {
+  LOG_IF(FATAL, !is_main_thread())
+      << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+
+  pgapi->pg_callbacks()->CheckForInterrupts();
+}
+
 YbcStatus YBCValidateJWT(const char *token, const YbcPgJwtAuthOptions *options) {
   const std::string token_value(DCHECK_NOTNULL(token));
   std::vector<std::string> identity_claims;

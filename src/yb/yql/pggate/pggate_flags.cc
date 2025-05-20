@@ -141,6 +141,12 @@ DEFINE_validator(ysql_select_parallelism, FLAG_NE_VALUE_VALIDATOR(0));
 DEFINE_UNKNOWN_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
 
+DEFINE_RUNTIME_int64(ysql_check_for_interrupt_interval_ms, 100,
+    "Interval in milliseconds between PgGate checks for Postgres interrupts while waiting for "
+    "a DocDB response. Periodic checks enable prompt reaction to interrupts like "
+    "statement timeouts, query cancellation and shutdown requests");
+DEFINE_validator(ysql_check_for_interrupt_interval_ms, FLAG_GT_VALUE_VALIDATOR(0));
+
 DEPRECATE_FLAG(int32, ysql_max_read_restart_attempts, "12_2023");
 
 DEPRECATE_FLAG(int32, ysql_max_write_restart_attempts, "12_2023");

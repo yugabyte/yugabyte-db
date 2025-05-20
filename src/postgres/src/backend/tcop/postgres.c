@@ -3608,6 +3608,11 @@ ProcessInterrupts(void)
 		ProcessLogHeapSnapshotInterrupt();
 }
 
+void YbCheckForInterrupts()
+{
+	CHECK_FOR_INTERRUPTS();
+}
+
 
 /*
  * IA64-specific code to fetch the AR.BSP register for stack depth checks.
