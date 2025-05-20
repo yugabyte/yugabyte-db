@@ -4205,7 +4205,7 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
 	Bitmapset  *matched = NULL;
 
 	/* bail out immediately if the table has no extended statistics */
-	if (!rel->statlist)
+	if (!rel->statlist || (rel->is_yb_relation && yb_ignore_stats))
 		return false;
 
 	/* Determine the attnums we're looking for */
@@ -5152,7 +5152,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 	vardata->atttype = exprType(node);
 	vardata->atttypmod = exprTypmod(node);
 
-	if (onerel)
+	if (onerel && !(onerel->is_yb_relation && yb_ignore_stats))
 	{
 		/*
 		 * We have an expression in vars of a single relation.  Try to match
@@ -5299,6 +5299,9 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 	}
 	else if (rte->rtekind == RTE_RELATION)
 	{
+		if (vardata->rel->is_yb_relation && yb_ignore_stats)
+			return;
+
 		/*
 		 * Plain table or parent of an inheritance appendrel, so look up the
 		 * column in pg_statistic

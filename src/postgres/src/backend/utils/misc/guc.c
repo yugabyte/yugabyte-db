@@ -238,6 +238,10 @@ static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSour
 static void check_reserved_prefixes(const char *varName);
 static List *reserved_class_prefix = NIL;
 
+static void assign_yb_enable_cbo(int new_value, void *extra);
+static void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
+static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
+
 static const char *show_tcmalloc_sample_period(void);
 static void assign_tcmalloc_sample_period(int newval, void *extra);
 
@@ -500,6 +504,20 @@ const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
   {"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
   {"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},
   {NULL, 0, false}
+};
+
+static const struct config_enum_entry yb_cost_model_options[] = {
+	{"off", YB_COST_MODEL_OFF, false},
+	{"on", YB_COST_MODEL_ON, false},
+	{"legacy_mode", YB_COST_MODEL_LEGACY, false},
+	{"legacy_stats_mode", YB_COST_MODEL_LEGACY_STATS, false},
+	{"true", YB_COST_MODEL_ON, true},
+	{"false", YB_COST_MODEL_OFF, true},
+	{"yes", YB_COST_MODEL_ON, true},
+	{"no", YB_COST_MODEL_OFF, true},
+	{"1", YB_COST_MODEL_ON, true},
+	{"0", YB_COST_MODEL_OFF, true},
+	{NULL, 0, false}
 };
 
 /*
@@ -2413,17 +2431,21 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
 	{
 		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables use of the PostgreSQL selectivity estimation which utilizes "
 			"table statistics collected with ANALYZE. When disabled, a simpler heuristics based "
-			"selectivity estimation is used."),
+			"selectivity estimation is used."
+			"  DEPRECATED: This settting is deprecated and will be removed in a future release."
+			"  Use \"yb_enable_cbo\" instead."),
 			NULL
 		},
 		&yb_enable_optimizer_statistics,
 		false,
-		NULL, NULL, NULL
+		NULL, assign_yb_enable_optimizer_statistics, NULL
 	},
+
 	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported expressions down to DocDB for evaluation."),
@@ -2581,12 +2603,14 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_base_scans_cost_model", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables YB cost model for Sequential and Index scans. "
-			              "This feature is currently in preview."),
+						 "  DEPRECATED: This setting is deprecated and will "
+						 "be removed in a future release."
+						 "  Use \"yb_enable_cbo\" instead."),
 			NULL
 		},
 		&yb_enable_base_scans_cost_model,
 		false,
-		NULL, NULL, NULL
+		NULL, assign_yb_enable_base_scans_cost_model, NULL
 	},
 
 	{
@@ -5843,6 +5867,15 @@ static struct config_enum ConfigureNamesEnum[] =
 		YB_STRICT_READ_AFTER_COMMIT_VISIBILITY,
 		yb_read_after_commit_visibility_options,
 		yb_check_no_txn, NULL, NULL
+	},
+
+	{
+		{"yb_enable_cbo", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable YB cost model."),
+			NULL
+		},
+		&yb_enable_cbo, YB_COST_MODEL_LEGACY, yb_cost_model_options,
+		NULL, assign_yb_enable_cbo, NULL
 	},
 
 	/* End-of-list marker */
@@ -13217,6 +13250,53 @@ assign_ysql_upgrade_mode(bool newval, void *extra)
 	 * created by initdb rather than by user.
 	 */
 	allowSystemTableMods = newval;
+}
+
+static void
+assign_yb_enable_cbo(int new_value, void *extra)
+{
+	yb_enable_base_scans_cost_model = false;
+	yb_enable_optimizer_statistics = false;
+	yb_ignore_stats = false;
+
+	switch(new_value)
+	{
+		case YB_COST_MODEL_OFF:
+			yb_ignore_stats = true;
+			break;
+
+		case YB_COST_MODEL_ON:
+			yb_enable_base_scans_cost_model = true;
+			break;
+
+		case YB_COST_MODEL_LEGACY:
+			break;
+
+		case YB_COST_MODEL_LEGACY_STATS:
+			yb_enable_optimizer_statistics = true;
+			break;
+	}
+}
+
+static void
+assign_yb_enable_optimizer_statistics(bool new_value, void *extra)
+{
+	yb_enable_optimizer_statistics = new_value;
+	yb_enable_cbo = (new_value? YB_COST_MODEL_LEGACY_STATS:
+							(yb_enable_base_scans_cost_model? YB_COST_MODEL_ON:
+							 YB_COST_MODEL_LEGACY));
+	yb_ignore_stats = false;
+}
+
+static void
+assign_yb_enable_base_scans_cost_model(bool new_value, void *extra)
+{
+	yb_enable_base_scans_cost_model = new_value;
+	yb_enable_cbo = (new_value? YB_COST_MODEL_ON:
+							(yb_enable_optimizer_statistics?
+							 YB_COST_MODEL_LEGACY_STATS:
+							 YB_COST_MODEL_LEGACY));
+	yb_ignore_stats = false;
 }
 
 static bool
