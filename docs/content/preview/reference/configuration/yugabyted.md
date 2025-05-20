@@ -87,6 +87,14 @@ For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For e
 $ ./bin/yugabyted start -h
 ```
 
+## Base directory
+
+By default, yugabyted uses the `/home/user/var` directory to store data, configurations, and logs.
+
+You can change the base directory when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster.
+
+When simulating running a multi-node cluster on your desktop machine (for testing and development, and running examples), you must specify a different base directory for each node (refer to [Create a local multi-node cluster](#create-a-local-multi-node-cluster)). When running subsequent commands on local multi-node clusters, you must also specify the `--base-dir` flag.
+
 ## Commands
 
 The following commands are available:
@@ -309,7 +317,7 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 #### point_in_time_recovery
 
@@ -423,7 +431,7 @@ For example, to create a new read replica cluster, execute the following command
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --rf *read-replica-replication-factor*
 : Replication factor for the read replica cluster.
@@ -457,7 +465,7 @@ Change the replication factor and also specify the placement constraint:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --rf *read-replica-replication-factor*
 : Replication factor for the read replica cluster.
@@ -481,7 +489,7 @@ For example, delete a read replica cluster using the following command:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 -----
 
@@ -577,7 +585,7 @@ Use the `yugabyted demo destroy` sub-command to shut down the yugabyted single-n
 : Print the help message and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server to connect to or destroy.
+: The base directory of the yugabyted server to connect to or destroy.
 
 -----
 
@@ -599,7 +607,7 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that needs to be destroyed.
+: The base directory of the yugabyted server that needs to be destroyed.
 
 -----
 
@@ -629,7 +637,7 @@ yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --upgrade_ysql_timeout *upgrade_timeout_in_ms*
 : Custom timeout for the YSQL upgrade in milliseconds. Default timeout is 60 seconds.
@@ -684,7 +692,7 @@ Determine the status of a restore task:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --cloud_storage_uri *cloud_storage_location*
 : Cloud location to store the backup data files.
@@ -908,7 +916,7 @@ Usage: yugabyted status [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose status is desired.
+: The base directory of the yugabyted server that you want to get the status of.
 
 -----
 
@@ -928,7 +936,7 @@ Usage: yugabyted stop [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that needs to be stopped.
+: The base directory of the yugabyted server that needs to be stopped.
 
 --upgrade *bool*
 :  Stop the node for version upgrade. Default: `false`.
@@ -968,7 +976,7 @@ For example, to upgrade the YSQL catalog of a cluster, you would execute the fol
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the YSQL catalog upgrade in milliseconds.
@@ -990,7 +998,7 @@ For example, to finalize an upgrade to a cluster, you would execute the followin
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the upgrade finalize operation in milliseconds.
@@ -1011,7 +1019,7 @@ For example, to verify the compatibility of a cluster with a new version, you wo
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the version check in milliseconds.
@@ -1034,7 +1042,7 @@ Usage: yugabyted version [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose version is desired.
+: The base directory of the yugabyted server that you want to get the status of.
 
 ### xcluster
 
@@ -1081,7 +1089,7 @@ The `create_checkpoint` command outputs directions for bootstrapping the databas
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --databases *xcluster-databases*
 : Comma-separated list of databases to be added to the replication.
@@ -1114,7 +1122,7 @@ The `add_to_checkpoint` command outputs directions for bootstrapping the databas
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --databases *xcluster-databases*
 : Comma separated list of databases to be added to existing replication.
@@ -1141,7 +1149,7 @@ For example, to set up xCluster replication between two clusters, run the follow
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1173,7 +1181,7 @@ For example, to add new databases to an existing xCluster replication between tw
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1210,7 +1218,7 @@ To display the status of a specific xCluster replication, run the following comm
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --replication_id *xcluster-replication-id*
 : The replication ID of the xCluster replication whose status you want to output.
@@ -1234,7 +1242,7 @@ For example, delete an xCluster replication using the following command:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1262,7 +1270,7 @@ For example, remove a database from an xCluster replication using the following 
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The base directory of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
