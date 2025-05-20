@@ -150,3 +150,19 @@ message ConfigureServerInput {
 message ConfigureServerOutput {
     int32 pid = 1;
 }
+
+message InstallOtelCollectorInput {
+    string ybHomeDir = 1;
+    repeated string mountPoints = 2;
+    string otelColPackagePath = 3;
+    string ycqlAuditLogLevel = 4;
+    string otelColConfigFile = 5;
+    string otelColAwsAccessKey = 6;
+    string otelColAwsSecretKey = 7;
+    string otelColGcpCredsFile = 8;
+    string remoteTmp = 9;
+}
+
+message InstallOtelCollectorOutput {
+    int32 pid = 1;
+}

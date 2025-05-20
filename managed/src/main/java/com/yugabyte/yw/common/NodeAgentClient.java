@@ -39,6 +39,8 @@ import com.yugabyte.yw.nodeagent.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.FileInfo;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorOutput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareOutput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
@@ -953,6 +955,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), InstallYbcOutput.class);
+  }
+
+  public InstallOtelCollectorOutput runInstallOtelCollector(
+      NodeAgent nodeAgent, InstallOtelCollectorInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setInstallOtelCollectorInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), InstallOtelCollectorOutput.class);
   }
 
   public ServerGFlagsOutput runServerGFlags(
