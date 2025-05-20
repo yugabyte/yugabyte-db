@@ -980,6 +980,7 @@ On top of that, make sure that the Git metadata is proper where it matters.
   The person executing the merge should be the [Git author](#git-author-information) of the subtree merge commit.
   On top of that, there should be a single commit to update [`upstream_repositories.csv`][upstream-repositories-csv].
   There should be no other commits besides the subtree ones.
+  Make sure the subtree merge commit parent ordering is optimal: `git blame` should show more upstream commits compared to the reverse parent ordering, and if either ordering is equivalent, non-reversed parent ordering should be preferred.
 
 ##### Another way to review the merge
 
