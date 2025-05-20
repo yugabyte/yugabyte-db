@@ -25,7 +25,7 @@ func TestShellTaskProcess(t *testing.T) {
 	}
 
 	if result.Info.String() != "test\n" {
-		t.Fatalf("Unexpected result")
+		t.Fatalf("Unexpected result: %s", result.Info.String())
 	}
 }
 

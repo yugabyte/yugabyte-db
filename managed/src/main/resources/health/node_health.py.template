@@ -1627,7 +1627,6 @@ class NodeChecker():
 
 
     def check_ddl_atomicity_internal(self, recheck_table_uuids):
-        logging.info("Checking DDL atomicity on node {}".format(self.node))
         e = self._new_entry("DDL atomicity")
         metric = Metric.from_definition(YB_DDL_ATOMICITY_CHECK)
         tables_with_errors = []

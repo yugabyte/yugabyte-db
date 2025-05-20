@@ -2149,6 +2149,7 @@ bool		yb_test_table_rewrite_keep_old_table = false;
 bool		yb_test_collation = false;
 bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
+int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -2165,6 +2166,8 @@ bool		yb_use_hash_splitting_by_default = true;
 bool		yb_skip_data_insert_for_xcluster_target = false;
 
 bool		yb_enable_extended_sql_codes = false;
+
+bool		yb_force_early_ddl_serialization = true;
 
 const char *
 YBDatumToString(Datum datum, Oid typid)
@@ -2456,6 +2459,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 				YbSendParameterStatusForConnectionManager("yb_force_catalog_update_on_next_ddl",
 														  "false");
 		}
+		YbMaybeLockMasterCatalogVersion(mode);
 	}
 
 	++ddl_transaction_state.nesting_level;
@@ -2737,6 +2741,8 @@ YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 		message_list.num_bytes = 0;
 	}
 
+	if (yb_test_delay_set_local_tserver_inval_message_ms > 0)
+		pg_usleep(yb_test_delay_set_local_tserver_inval_message_ms * 1000L);
 	HandleYBStatus(YBCPgSetTserverCatalogMessageList(MyDatabaseId,
 													 is_breaking_change,
 													 new_version,
@@ -3904,6 +3910,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		(ddl_mode.value == YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT ||
 		 !*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
 
+	elog(DEBUG3, "is_ddl %d", is_ddl);
 	PG_TRY();
 	{
 		if (is_ddl)
@@ -3930,7 +3937,10 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			if (use_separate_ddl_transaction)
 				YBIncrementDdlNestingLevel(ddl_mode.value);
 			else
+			{
 				YBSetDdlState(ddl_mode.value);
+				YbMaybeLockMasterCatalogVersion(ddl_mode.value);
+			}
 
 			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
 				YbIsClientYsqlConnMgr() &&
@@ -6628,19 +6638,14 @@ YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy)
 {
 	LockWaitPolicy result = pg_wait_policy;
 
-	if (XactIsoLevel == XACT_REPEATABLE_READ && pg_wait_policy == LockWaitError)
-	{
-		/* The user requested NOWAIT, which isn't allowed in RR. */
-		elog(WARNING,
-			 "Setting wait policy to NOWAIT which is not allowed in "
-			 "REPEATABLE READ isolation (GH issue #12166)");
-	}
-
-	if (IsolationIsSerializable())
+	if (!YBCPgIsDdlMode() && IsolationIsSerializable())
 	{
 		/*
 		 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable
 		 * isolation level.
+		 *
+		 * The !YBCPgIsDdlMode() check is to avoid the warning for DDLs because they try to acquire a
+		 * row lock on the catalog version with LockWaitError for Fail-on-Conflict semantics.
 		 */
 		if (pg_wait_policy == LockWaitSkip || pg_wait_policy == LockWaitError)
 			elog(WARNING,

@@ -60,6 +60,7 @@ message SubmitTaskRequest {
         ServerGFlagsInput serverGFlagsInput = 8;
         InstallYbcInput installYbcInput = 9;
         ConfigureServerInput configureServerInput = 10;
+        InstallOtelCollectorInput installOtelCollectorInput = 11;
     }
 }
 
@@ -83,6 +84,7 @@ message DescribeTaskResponse {
         ServerGFlagsOutput serverGFlagsOutput = 8;
         InstallYbcOutput installYbcOutput = 9;
         ConfigureServerOutput configureServerOutput = 10;
+        InstallOtelCollectorOutput installOtelCollectorOutput = 11;
     }
 }
 

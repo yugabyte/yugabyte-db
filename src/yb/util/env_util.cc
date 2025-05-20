@@ -121,7 +121,7 @@ std::pair<Status, std::string> FindRootDir(const std::string& search_for_dir) {
 std::string GetRootDir(const std::string& search_for_dir) {
   auto [status, path] = FindRootDir(search_for_dir);
   if (!status.ok()) {
-    LOG(ERROR) << status.ToString();
+    LOG(WARNING) << status;
   }
   return path;
 }

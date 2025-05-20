@@ -151,7 +151,7 @@ class RpcsCollector : public Collector {
     auto url = Substitute("http://$0/rpcz", yb::ToString(*addr_));
     auto status = curl_.FetchURL(url, &buf);
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to read url " << url;
+      LOG(WARNING) << "Unable to read url " << url;
       return;
     }
 
@@ -258,9 +258,9 @@ std::string CallHome::BuildJson() {
   rapidjson::Reader reader;
   rapidjson::StringStream ss(str.c_str());
   if (!reader.Parse<rapidjson::kParseDefaultFlags>(ss, writer)) {
-    LOG(ERROR) << "Unable to parse json. Error: " << reader.GetParseErrorCode() << " at offset "
-               << reader.GetErrorOffset() << " in string "
-               << str.substr(reader.GetErrorOffset(), 10);
+    LOG(WARNING) << "Unable to parse json. Error: " << reader.GetParseErrorCode() << " at offset "
+                 << reader.GetErrorOffset() << " in string "
+                 << str.substr(reader.GetErrorOffset(), 10);
     return str;
   }
 

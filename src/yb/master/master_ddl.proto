@@ -786,6 +786,7 @@ message AcquireObjectLocksGlobalRequestPB {
   optional fixed64 ignore_after_hybrid_time = 6;
   optional fixed64 propagated_hybrid_time = 7;
   optional AshMetadataPB ash_metadata = 8;
+  optional bytes status_tablet = 9;
 }
 
 message AcquireObjectLocksGlobalResponsePB {
@@ -815,7 +816,10 @@ message ReleaseObjectLocksGlobalResponsePB {
 
 message RefreshYsqlLeaseRequestPB {
   optional NodeInstancePB instance = 1;
-  optional bool needs_bootstrap = 2;
+  // The current lease epoch of the tserver making this request.
+  // Unset if the tserver doesn't think it has a live lease.
+  optional uint64 current_lease_epoch = 2;
+  optional uint64 local_request_send_time_ms = 3;
 }
 
 message RefreshYsqlLeaseInfoPB {
@@ -824,6 +828,7 @@ message RefreshYsqlLeaseInfoPB {
   // TODO: If this ends up being too big, consider adding a way to break this up
   // into multiple messages.
   optional tserver.DdlLockEntriesPB ddl_lock_entries = 3;
+  optional uint64 lease_expiry_time_ms = 4;
 }
 
 message RefreshYsqlLeaseResponsePB {

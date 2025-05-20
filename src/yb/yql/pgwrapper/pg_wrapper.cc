@@ -807,9 +807,8 @@ Status PgWrapper::Start() {
     }
   }
 #else
-  if (FLAGS_yb_enable_valgrind) {
-    LOG(ERROR) << "yb_enable_valgrind is ON, but Yugabyte was not compiled with Valgrind support.";
-  }
+  LOG_IF(DFATAL, FLAGS_yb_enable_valgrind)
+      << "yb_enable_valgrind is ON, but Yugabyte was not compiled with Valgrind support.";
 #endif
 
   vector<string> postgres_argv {
@@ -1152,9 +1151,7 @@ Status PgWrapper::InitDbForYSQL(
   LOG(INFO)
       << "initdb took "
       << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_time).count() << " ms";
-  if (!initdb_status.ok()) {
-    LOG(ERROR) << "initdb failed: " << initdb_status;
-  }
+  ERROR_NOT_OK(initdb_status, "initdb failed");
   return initdb_status;
 }
 
@@ -1277,7 +1274,7 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
   }
 
   if (postgres_pid == 0) {
-    LOG(ERROR) << strings::Substitute(
+    LOG(WARNING) << Format(
         "Error reading postgres process ID from lock file $0. $1 $2", lock_file,
         ErrnoToString(errno), errno);
   } else {
@@ -1335,6 +1332,7 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));
+    server_->RegisterPgProcessKiller(std::bind(&PgSupervisor::Pause, this));
   }
 }
 
@@ -1466,15 +1464,15 @@ key_t PgSupervisor::GetYsqlConnManagerStatsShmkey() {
     if (shmid < 0) {
       switch (errno) {
         case EACCES:
-          LOG(ERROR) << "Unable to create shared memory segment, not authorised to create shared "
-                        "memory segment";
+          LOG(DFATAL) << "Unable to create shared memory segment, not authorised to create shared "
+                         "memory segment";
           return -1;
         case ENOSPC:
-          LOG(ERROR)
+          LOG(DFATAL)
               << "Unable to create shared memory segment, no space left.";
           return -1;
         case ENOMEM:
-          LOG(ERROR)
+          LOG(DFATAL)
               << "Unable to create shared memory segment, no memory left";
           return -1;
         default:

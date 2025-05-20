@@ -43,25 +43,8 @@ func NewConfigureServerHandler(
 	return &ConfigureServerHandler{
 		param:    param,
 		username: username,
-		logOut:   util.NewBuffer(MaxBufferCapacity),
+		logOut:   util.NewBuffer(module.MaxBufferCapacity),
 	}
-}
-
-// helper that wraps NewShellTaskWithUser + Process + error logging
-func (h *ConfigureServerHandler) runShell(
-	ctx context.Context,
-	desc, shell string,
-	args []string,
-) (*TaskStatus, error) {
-	h.logOut.WriteLine("Running configure server phase: %s", desc)
-	h.shellTask = NewShellTaskWithUser(desc, h.username, shell, args)
-	result, err := h.shellTask.Process(ctx)
-	if err != nil {
-		util.FileLogger().Errorf(ctx,
-			"configure server failed [%s]: %s", desc, err)
-		return nil, err
-	}
-	return result, nil
 }
 
 // CurrentTaskStatus implements the AsyncTask method.
@@ -100,18 +83,12 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	yb_metrics_dir := filepath.Join(h.param.GetRemoteTmp(), "yugabyte/metrics")
 	cmd := "systemctl show node_exporter | grep -oP '(?<=--collector.textfile.directory=)[^ ]+' | head -n1"
 	h.logOut.WriteLine("Determing the node_exporter textfile directory")
-	shellTask := NewShellTaskWithUser(
-		h.String(),
-		h.username,
-		util.DefaultShell,
-		[]string{"-c", cmd},
-	)
-	status, err := shellTask.Process(ctx)
+	cmdInfo, err := module.RunShellCmd(ctx, h.username, h.String(), cmd, h.logOut)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", cmd, err.Error())
 		return nil, err
 	}
-	if status.Info.String() != yb_metrics_dir {
+	if cmdInfo.StdOut.String() != yb_metrics_dir {
 		yb_metrics_dir = filepath.Join(home, "metrics")
 	}
 
@@ -149,14 +126,14 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 }
 
 func (h *ConfigureServerHandler) configureProcess(ctx context.Context, home, process string) error {
-	mountPoint := ""
-	if len(h.param.GetMountPoints()) > 0 {
-		mountPoint = h.param.GetMountPoints()[0]
+	mountPoints := h.param.GetMountPoints()
+	if len(mountPoints) == 0 {
+		return errors.New("mountPoints is required")
 	}
-
+	mountPoint := mountPoints[0]
 	steps := []struct {
-		desc string
-		cmd  string
+		Desc string
+		Cmd  string
 	}{
 		{
 			fmt.Sprintf("make-yb-%s-conf-dir", process),
@@ -169,18 +146,16 @@ func (h *ConfigureServerHandler) configureProcess(ctx context.Context, home, pro
 		{
 			"symlink-logs-to-yb-logs",
 			fmt.Sprintf(
-				"ln -sf %s %s",
+				"unlink %s > /dev/null 2>&1; ln -sf %s %s",
+				filepath.Join(home, process, "logs"),
 				filepath.Join(mountPoint, "yb-data/", process, "logs"),
 				filepath.Join(home, process, "logs"),
 			),
 		},
 	}
 
-	for _, step := range steps {
-		_, err := h.runShell(ctx, step.desc, util.DefaultShell, []string{"-c", step.cmd})
-		if err != nil {
-			return err
-		}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
+		return err
 	}
 	return nil
 }
@@ -189,15 +164,8 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context, home
 	for _, unit := range SystemdUnits {
 		cmd := module.EnableSystemdUnit(h.username, unit)
 		h.logOut.WriteLine("Running configure server phase: %s", cmd)
-
-		shellTask := NewShellTaskWithUser(
-			h.String(),
-			h.username,
-			util.DefaultShell,
-			[]string{"-c", cmd},
-		)
 		util.FileLogger().Infof(ctx, "Running command %v", cmd)
-		_, err := shellTask.Process(ctx)
+		_, err := module.RunShellCmd(ctx, h.username, h.String(), cmd, h.logOut)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", cmd, err.Error())
 			return err
@@ -206,15 +174,8 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context, home
 		if unit != "network-online.target" && unit[len(unit)-6:] == "timer" {
 			startCmd := module.StartSystemdUnit(h.username, unit)
 			h.logOut.WriteLine("Running configure server phase: %s", startCmd)
-
-			shellTask = NewShellTaskWithUser(
-				h.String(),
-				h.username,
-				util.DefaultShell,
-				[]string{"-c", startCmd},
-			)
 			util.FileLogger().Infof(ctx, "Running command %v", startCmd)
-			_, err := shellTask.Process(ctx)
+			_, err = module.RunShellCmd(ctx, h.username, h.String(), startCmd, h.logOut)
 			if err != nil {
 				util.FileLogger().
 					Errorf(ctx, "Configure server failed in %v - %s", cmd, err.Error())
@@ -236,20 +197,13 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context, home
 
 	// Link network-online.target if required
 	linkCmd := fmt.Sprintf("systemctl --user link %s/network-online.target", unitDir)
-	shellTask := NewShellTaskWithUser(
-		h.String(),
-		h.username,
-		util.DefaultShell,
-		[]string{"-c", linkCmd},
-	)
 	h.logOut.WriteLine("Running configure server phase: %s", linkCmd)
 	util.FileLogger().Infof(ctx, "Running command %v", linkCmd)
-	_, err = shellTask.Process(ctx)
+	_, err = module.RunShellCmd(ctx, h.username, h.String(), linkCmd, h.logOut)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", linkCmd, err.Error())
 		return err
 	}
-
 	return nil
 }
 
@@ -334,32 +288,29 @@ func (h *ConfigureServerHandler) execShellCommands(
 	ctx context.Context,
 	home string,
 ) error {
-	mountPoint := ""
-	if len(h.param.GetMountPoints()) > 0 {
-		mountPoint = h.param.GetMountPoints()[0]
+	mountPoints := h.param.GetMountPoints()
+	if len(mountPoints) == 0 {
+		return errors.New("mountPoints is required")
 	}
-
+	mountPoint := mountPoints[0]
 	steps := []struct {
-		desc string
-		cmd  string
+		Desc string
+		Cmd  string
 	}{
 		{"make-yb-bin-dir", fmt.Sprintf("mkdir -p %s", filepath.Join(home, "bin"))},
 		{"make-cores-dir", fmt.Sprintf("mkdir -p %s", filepath.Join(mountPoint, "cores"))},
 		{
 			"symlink-cores-to-yb-cores",
 			fmt.Sprintf(
-				"ln -sf %s %s",
+				"unlink %s > /dev/null 2>&1; ln -sf %s %s",
+				filepath.Join(home, "cores"),
 				filepath.Join(mountPoint, "cores"),
 				filepath.Join(home, "cores"),
 			),
 		},
 	}
-
-	for _, step := range steps {
-		_, err := h.runShell(ctx, step.desc, util.DefaultShell, []string{"-c", step.cmd})
-		if err != nil {
-			return err
-		}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
+		return err
 	}
 	return nil
 }

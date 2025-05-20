@@ -372,6 +372,21 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	installOtelCollectorInput := req.GetInstallOtelCollectorInput()
+	if installOtelCollectorInput != nil {
+		installOtelCollectorHandler := task.NewInstallOtelCollectorHandler(
+			installOtelCollectorInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, installOtelCollectorHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running install otel collector - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, status.Error(codes.Unimplemented, "Unknown task")
 }
 

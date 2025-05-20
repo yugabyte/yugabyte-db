@@ -696,6 +696,7 @@ class TransactionParticipant::Impl
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
+    VLOG_WITH_PREFIX(2) << "Abort transaction: " << id;
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator_result = LockAndFind(
@@ -784,8 +785,8 @@ class TransactionParticipant::Impl
 
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
-      LOG(ERROR) << "Could not decode transaction details, whose apply record OpId was: "
-                 << data.op_id;
+      LOG(DFATAL) << "Could not decode transaction details, whose apply record OpId was: "
+                  << data.op_id << ": " << id.status();
       return id.status();
     }
 

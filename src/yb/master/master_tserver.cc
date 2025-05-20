@@ -148,8 +148,7 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
     master_->catalog_manager()->GetYsqlDBCatalogVersion(
         db_oid, current_version, last_breaking_version);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not get YSQL catalog version for master's tserver API: "
-               << s.ToUserMessage();
+    LOG(WARNING) << "Could not get YSQL catalog version for master's tserver API: " << s;
     fill_vers();
   }
 }
@@ -255,7 +254,7 @@ bool MasterTabletServer::SkipCatalogVersionChecks() {
   return master_->catalog_manager()->SkipCatalogVersionChecks();
 }
 
-Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServer::GetYSQLLeaseInfo() const {
+Result<tserver::YSQLLeaseInfo> MasterTabletServer::GetYSQLLeaseInfo() const {
   return STATUS(InternalError, "Unexpected call of GetYSQLLeaseInfo");
 }
 

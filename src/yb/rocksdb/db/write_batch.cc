@@ -251,7 +251,7 @@ uint32_t WriteBatch::ComputeContentFlags() const {
   if ((rv & ContentFlags::DEFERRED) != 0) {
     BatchContentClassifier classifier;
     auto status = Iterate(&classifier);
-    LOG_IF(ERROR, !status.ok()) << "Iterate failed during ComputeContentFlags: " << status;
+    LOG_IF(WARNING, !status.ok()) << "Iterate failed during ComputeContentFlags: " << status;
     rv = classifier.content_flags;
 
     // this method is conceptually const, because it is performing a lazy

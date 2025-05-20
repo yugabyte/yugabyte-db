@@ -18,15 +18,21 @@
 #include <memory>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/transaction.pb.h"
-#include "yb/docdb/object_lock_manager.h"
-#include "yb/dockv/value_type.h"
+#include "yb/common/transaction.h"
+
 #include "yb/server/clock.h"
+#include "yb/server/server_fwd.h"
+
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver.pb.h"
-#include "yb/util/status.h"
 
-namespace yb::tserver {
+#include "yb/util/status_callback.h"
+
+namespace yb {
+
+class ThreadPool;
+
+namespace tserver {
 
 YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 
@@ -49,7 +55,9 @@ YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 // it with all exisitng DDL (global) locks.
 class TSLocalLockManager {
  public:
-  TSLocalLockManager(const server::ClockPtr& clock, TabletServerIf* server);
+  TSLocalLockManager(
+      const server::ClockPtr& clock, TabletServerIf* tablet_server,
+      server::RpcServerBase& messenger_server, ThreadPool* thread_pool);
   ~TSLocalLockManager();
 
   // Tries acquiring object locks with the specified modes and registers them against the given
@@ -73,6 +81,10 @@ class TSLocalLockManager {
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       WaitForBootstrap wait = WaitForBootstrap::kTrue);
 
+  void AcquireObjectLocksAsync(
+      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
+      StdStatusCallback&& callback, WaitForBootstrap wait = WaitForBootstrap::kTrue);
+
   // When subtxn id is set, releases all locks tagged against <txn, subtxn>. Else releases all
   // object locks owned by <txn>.
   //
@@ -80,19 +92,29 @@ class TSLocalLockManager {
   // lock modes on a key multiple times, and will unlock them all with a single unlock rpc.
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline);
+
+  void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
+
+  void Shutdown();
+
   void DumpLocksToHtml(std::ostream& out);
 
   Status BootstrapDdlObjectLocks(const tserver::DdlLockEntriesPB& resp);
 
   bool IsBootstrapped() const;
+
+  server::ClockPtr clock() const;
+
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;
   void TEST_MarkBootstrapped();
-  server::ClockPtr clock() const;
+  std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
+      TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
 
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
 
-} // namespace yb::tserver
+}  // namespace tserver
+}  // namespace yb

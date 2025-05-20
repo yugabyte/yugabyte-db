@@ -112,7 +112,9 @@ public class NodeDetails {
     Provisioned(DELETE, ADD),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
     SoftwareInstalled(START, DELETE, ADD),
-    // Set after the YB software is upgraded via Rolling Restart.
+    // Set after the YB master software is upgraded via Rolling Restart.
+    UpgradeMasterSoftware(),
+    // Set after the YB tserver software is upgraded via Rolling Restart.
     UpgradeSoftware(),
     // set when software version is rollback.
     RollbackUpgrade(),
@@ -435,6 +437,7 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
+        || state == NodeState.UpgradeMasterSoftware
         || state == NodeState.FinalizeUpgrade
         || state == NodeState.RollbackUpgrade
         || state == NodeState.UpdateGFlags

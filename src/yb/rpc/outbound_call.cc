@@ -621,7 +621,7 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
         CHECK(!err_pb);
       }
     } else {
-      LOG_WITH_PREFIX(ERROR)
+      LOG_WITH_PREFIX(DFATAL)
           << "SetFailed failed to set call state. Existing status_: " << status_
           << ", attempting to set status to: " << status;
       if (status_.ok()) {

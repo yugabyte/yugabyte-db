@@ -19,6 +19,7 @@ import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -100,13 +101,8 @@ public class WSClientRefresher implements CustomTrustStoreListener {
     ConfigValue ybWsOverrides = runtimeConfigFactory.globalRuntimeConf().getValue(ybWsConfigPath);
     Config customWsConfig = ConfigFactory.empty().withValue("play.ws", ybWsOverrides);
 
-    // Add the custom CA truststore config if applicable.
-    List<Map<String, String>> ybaStoreConfig = customCAStoreManager.getPemStoreConfig();
-    if (!ybaStoreConfig.isEmpty() && !customCAStoreManager.isEnabled()) {
-      log.warn("Skipping to add YBA's custom trust-store config as the feature is disabled");
-    }
-
-    if (!ybaStoreConfig.isEmpty() && customCAStoreManager.isEnabled()) {
+    List<Map<String, String>> ybaStoreConfig = new ArrayList<>();
+    if (customCAStoreManager.isEnabled()) {
       // Add JRE default cert paths as well in this case.
       ybaStoreConfig.add(customCAStoreManager.getJavaDefaultConfig());
       ybaStoreConfig.addAll(customCAStoreManager.getYBAJavaKeyStoreConfig());

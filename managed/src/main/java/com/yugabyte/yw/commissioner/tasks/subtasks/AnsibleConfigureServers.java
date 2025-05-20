@@ -13,35 +13,21 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.Params;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
-import com.yugabyte.yw.common.ReleaseContainer;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -49,22 +35,12 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
-import com.yugabyte.yw.nodeagent.ConfigureServerInput;
-import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
-import com.yugabyte.yw.nodeagent.InstallYbcInput;
-import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -72,223 +48,14 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
-  private final ReleaseManager releaseManager;
+  private static final String DEFAULT_CONFIGURE_USER = "yugabyte";
+  private final NodeAgentRpcPayload nodeAgentRpcPayload;
 
   @Inject
   protected AnsibleConfigureServers(
-      BaseTaskDependencies baseTaskDependencies, ReleaseManager releaseManager) {
+      BaseTaskDependencies baseTaskDependencies, NodeAgentRpcPayload nodeAgentRpcPayload) {
     super(baseTaskDependencies);
-    this.releaseManager = releaseManager;
-  }
-
-  private String getYbPackage(ReleaseContainer release, Architecture arch, Region region) {
-    String ybServerPackage = null;
-    if (release != null) {
-      if (arch != null) {
-        ybServerPackage = release.getFilePath(arch);
-      } else {
-        ybServerPackage = release.getFilePath(region);
-      }
-    }
-
-    return ybServerPackage;
-  }
-
-  private InstallSoftwareInput.Builder fillYbReleaseMetadata(
-      Universe universe,
-      Provider provider,
-      NodeDetails node,
-      String ybSoftwareVersion,
-      Region region,
-      Architecture arch,
-      InstallSoftwareInput.Builder installSoftwareInputBuilder,
-      NodeAgent nodeAgent,
-      String customTmpDirectory) {
-    Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(provider);
-    ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
-    String ybServerPackage = getYbPackage(release, arch, region);
-    installSoftwareInputBuilder.setYbPackage(ybServerPackage);
-    if (release.isS3Download(ybServerPackage)) {
-      installSoftwareInputBuilder.setS3RemoteDownload(true);
-      String accessKey = System.getenv("AWS_ACCESS_KEY_ID");
-      if (accessKey == null || accessKey.isEmpty()) {
-        // Todo: This will be removed once iTest moves to new release API.
-        accessKey = release.getAwsAccessKey(arch);
-        if (accessKey == null) {
-          accessKey = envConfig.get("AWS_ACCESS_KEY_ID");
-        }
-      }
-
-      String secretKey = System.getenv("AWS_SECRET_ACCESS_KEY");
-      if (secretKey == null || secretKey.isEmpty()) {
-        secretKey = release.getAwsSecretKey(arch);
-        if (secretKey == null) {
-          secretKey = envConfig.get("AWS_ACCESS_KEY_ID");
-        }
-      }
-
-      if (accessKey != null) {
-        installSoftwareInputBuilder.setAwsAccessKey(accessKey);
-        installSoftwareInputBuilder.setAwsSecretKey(secretKey);
-      }
-    } else if (release.isGcsDownload(ybServerPackage)) {
-      installSoftwareInputBuilder.setGcsRemoteDownload(true);
-      // Upload the Credential json to the remote host.
-      nodeAgentClient.uploadFile(
-          nodeAgent,
-          envConfig.get(GCPCloudImpl.GCE_PROJECT_PROPERTY),
-          customTmpDirectory
-              + "/"
-              + Paths.get(envConfig.get(GCPCloudImpl.GCE_PROJECT_PROPERTY))
-                  .getFileName()
-                  .toString(),
-          "yugabyte",
-          0,
-          null);
-      installSoftwareInputBuilder.setGcsCredentialsJson(
-          customTmpDirectory
-              + "/"
-              + Paths.get(envConfig.get(GCPCloudImpl.GCE_PROJECT_PROPERTY))
-                  .getFileName()
-                  .toString());
-    } else if (release.isHttpDownload(ybServerPackage)) {
-      installSoftwareInputBuilder.setHttpRemoteDownload(true);
-      if (StringUtils.isNotBlank(release.getHttpChecksum())) {
-        installSoftwareInputBuilder.setHttpPackageChecksum(release.getHttpChecksum().toLowerCase());
-      }
-    } else if (release.hasLocalRelease()) {
-      // Upload the release to the node.
-      nodeAgentClient.uploadFile(
-          nodeAgent,
-          ybServerPackage,
-          customTmpDirectory + "/" + Paths.get(ybServerPackage).getFileName().toString(),
-          "yugabyte",
-          0,
-          null);
-      installSoftwareInputBuilder.setYbPackage(
-          customTmpDirectory + "/" + Paths.get(ybServerPackage).getFileName().toString());
-    }
-    if (!node.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
-      // For RR we don't setup master
-      installSoftwareInputBuilder.addSymLinkFolders("tserver");
-    } else {
-      installSoftwareInputBuilder.addSymLinkFolders("tserver");
-      installSoftwareInputBuilder.addSymLinkFolders("master");
-    }
-    installSoftwareInputBuilder.setRemoteTmp(customTmpDirectory);
-    installSoftwareInputBuilder.setYbHomeDir(provider.getYbHome());
-    return installSoftwareInputBuilder;
-  }
-
-  private InstallSoftwareInput setupInstallSoftwareBits(
-      Universe universe, NodeDetails nodeDetails, Params taskParams, NodeAgent nodeAgent) {
-    InstallSoftwareInput.Builder installSoftwareInputBuilder = InstallSoftwareInput.newBuilder();
-    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-    String customTmpDirectory =
-        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
-    installSoftwareInputBuilder =
-        fillYbReleaseMetadata(
-            universe,
-            provider,
-            nodeDetails,
-            taskParams.ybSoftwareVersion,
-            taskParams.getRegion(),
-            universe.getUniverseDetails().arch,
-            installSoftwareInputBuilder,
-            nodeAgent,
-            customTmpDirectory);
-
-    return installSoftwareInputBuilder.build();
-  }
-
-  private InstallYbcInput setupInstallYbcSoftwareBits(
-      Universe universe, NodeDetails nodeDetails, Params taskParams, NodeAgent nodeAgent) {
-    InstallYbcInput.Builder installYbcInputBuilder = InstallYbcInput.newBuilder();
-    ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams.ybSoftwareVersion);
-    String ybServerPackage =
-        getYbPackage(release, universe.getUniverseDetails().arch, taskParams.getRegion());
-    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-    String customTmpDirectory =
-        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
-    String ybcPackage = null;
-    Pair<String, String> ybcPackageDetails =
-        Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
-    String stableYbc = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
-    ReleaseManager.ReleaseMetadata releaseMetadata =
-        releaseManager.getYbcReleaseByVersion(
-            stableYbc, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
-    if (releaseMetadata == null) {
-      throw new RuntimeException(
-          String.format("Ybc package metadata: %s cannot be empty with ybc enabled", stableYbc));
-    }
-    if (universe.getUniverseDetails().arch != null) {
-      ybcPackage = releaseMetadata.getFilePath(universe.getUniverseDetails().arch);
-    } else {
-      // Fallback to region in case arch is not present
-      ybcPackage = releaseMetadata.getFilePath(taskParams.getRegion());
-    }
-    if (StringUtils.isBlank(ybcPackage)) {
-      throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
-    }
-    installYbcInputBuilder.setYbcPackage(ybcPackage);
-    nodeAgentClient.uploadFile(
-        nodeAgent,
-        ybcPackage,
-        customTmpDirectory + "/" + Paths.get(ybcPackage).getFileName().toString(),
-        "yugabyte",
-        0,
-        null);
-    installYbcInputBuilder.setRemoteTmp(customTmpDirectory);
-    installYbcInputBuilder.setYbHomeDir(provider.getYbHome());
-    List<String> mountPoints = Arrays.asList("/mnt/d0");
-    if (taskParams.deviceInfo != null && taskParams.deviceInfo.mountPoints != null) {
-      String mountPointsStr = taskParams.deviceInfo.mountPoints;
-      Arrays.stream(mountPointsStr.split(","))
-          .map(String::trim)
-          .filter(s -> !s.isEmpty())
-          .collect(Collectors.toList());
-    }
-    for (String mp : mountPoints) {
-      installYbcInputBuilder.addMountPoints(mp);
-    }
-    return installYbcInputBuilder.build();
-  }
-
-  private ConfigureServerInput setUpConfigureServerBits(
-      Universe universe, NodeDetails nodeDetails, Params taskParams, NodeAgent nodeAgent) {
-    ConfigureServerInput.Builder configureServerInputBuilder = ConfigureServerInput.newBuilder();
-    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-    String customTmpDirectory =
-        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
-
-    configureServerInputBuilder.setRemoteTmp(customTmpDirectory);
-    configureServerInputBuilder.setYbHomeDir(provider.getYbHome());
-    List<String> mountPoints = Arrays.asList("/mnt/d0");
-    if (taskParams.deviceInfo != null && taskParams.deviceInfo.mountPoints != null) {
-      String mountPointsStr = taskParams.deviceInfo.mountPoints;
-      Arrays.stream(mountPointsStr.split(","))
-                          .map(String::trim)
-                          .filter(s -> !s.isEmpty())
-                          .collect(Collectors.toList());
-    }
-    for (String mp : mountPoints) {
-      configureServerInputBuilder.addMountPoints(mp);
-    }
-    if (!nodeDetails.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
-      // For RR we don't setup master
-      configureServerInputBuilder.addProcesses("tserver");
-    } else {
-      configureServerInputBuilder.addProcesses("master");
-      configureServerInputBuilder.addProcesses("tserver");
-    }
-
-    Integer num_cores_to_keep =
-        confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
-    configureServerInputBuilder.setNumCoresToKeep(num_cores_to_keep);
-    return configureServerInputBuilder.build();
+    this.nodeAgentRpcPayload = nodeAgentRpcPayload;
   }
 
   public static class Params extends NodeTaskParams {
@@ -408,7 +175,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         && (taskParams().type == UpgradeTaskType.GFlags
             || taskParams().type == UpgradeTaskType.YbcGFlags)) {
       log.info("Updating gflags using node agent {}", optional.get());
-      runServerGFlagsWithNodeAgent(optional.get(), universe, nodeDetails);
+      nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
+          optional.get(), universe, nodeDetails, taskParams());
       return;
     }
     // Execute the ansible command.
@@ -422,21 +190,35 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       log.info("Installing software using node agent {}", optional.get());
       nodeAgentClient.runConfigureServer(
           optional.get(),
-          setUpConfigureServerBits(universe, nodeDetails, taskParams(), optional.get()),
-          "yugabyte");
+          nodeAgentRpcPayload.setUpConfigureServerBits(
+              universe, nodeDetails, taskParams(), optional.get()),
+          DEFAULT_CONFIGURE_USER);
       nodeAgentClient.runInstallSoftware(
           optional.get(),
-          setupInstallSoftwareBits(universe, nodeDetails, taskParams(), optional.get()),
-          "yugabyte");
+          nodeAgentRpcPayload.setupInstallSoftwareBits(
+              universe, nodeDetails, taskParams(), optional.get()),
+          DEFAULT_CONFIGURE_USER);
 
       if (taskParams().isEnableYbc()) {
         log.info("Installing YBC using node agent {}", optional.get());
         nodeAgentClient.runInstallYbcSoftware(
             optional.get(),
-            setupInstallYbcSoftwareBits(universe, nodeDetails, taskParams(), optional.get()),
-            "yugabyte");
-        runServerGFlagsWithNodeAgent(
-            optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString());
+            nodeAgentRpcPayload.setupInstallYbcSoftwareBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            DEFAULT_CONFIGURE_USER);
+        nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
+            optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
+      }
+      if (taskParams().otelCollectorEnabled && taskParams().auditLogConfig != null) {
+        AuditLogConfig config = taskParams().auditLogConfig;
+        if (!((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
+            && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled()))) {
+          nodeAgentClient.runInstallOtelCollector(
+              optional.get(),
+              nodeAgentRpcPayload.setupInstallOtelCollectorBits(
+                  universe, nodeDetails, taskParams(), optional.get()),
+              DEFAULT_CONFIGURE_USER);
+        }
       }
     }
 
@@ -484,73 +266,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         setNodeStatus(NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build());
       }
     }
-  }
-
-  private void runServerGFlagsWithNodeAgent(
-      NodeAgent nodeAgent, Universe universe, NodeDetails nodeDetails) {
-    String processType = taskParams().getProperty("processType");
-    if (!processType.equals(ServerType.CONTROLLER.toString())
-        && !processType.equals(ServerType.MASTER.toString())
-        && !processType.equals(ServerType.TSERVER.toString())) {
-      throw new RuntimeException("Invalid processType: " + processType);
-    }
-    runServerGFlagsWithNodeAgent(nodeAgent, universe, nodeDetails, processType);
-  }
-
-  private void runServerGFlagsWithNodeAgent(
-      NodeAgent nodeAgent, Universe universe, NodeDetails nodeDetails, String processType) {
-    String serverName = processType.toLowerCase();
-    String serverHome =
-        Paths.get(nodeUniverseManager.getYbHomeDir(nodeDetails, universe), serverName).toString();
-    boolean useHostname =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
-            || !Util.isIpAddress(nodeDetails.cloudInfo.private_ip);
-    UserIntent userIntent = getNodeManager().getUserIntentFromParams(universe, taskParams());
-    ServerGFlagsInput.Builder builder =
-        ServerGFlagsInput.newBuilder()
-            .setServerHome(serverHome)
-            .setServerName(serverHome)
-            .setServerName(serverName);
-    Map<String, String> gflags =
-        new HashMap<>(
-            GFlagsUtil.getAllDefaultGFlags(
-                taskParams(), universe, userIntent, useHostname, config, confGetter));
-    if (processType.equals(ServerType.CONTROLLER.toString())) {
-      // TODO Is the check taskParam.isEnableYbc() required here?
-      Map<String, String> ybcFlags =
-          GFlagsUtil.getYbcFlags(
-              universe, taskParams(), confGetter, config, taskParams().ybcGflags);
-      // Override for existing keys as this has higher precedence.
-      gflags.putAll(ybcFlags);
-    } else if (processType.equals(ServerType.MASTER.toString())
-        || processType.equals(ServerType.TSERVER.toString())) {
-      // Override for existing keys as this has higher precedence.
-      gflags.putAll(taskParams().gflags);
-      getNodeManager()
-          .processGFlags(config, universe, nodeDetails, taskParams(), gflags, useHostname);
-      if (!config.getBoolean("yb.cloud.enabled")) {
-        if (gflags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
-          String hbaConfValue = gflags.get(GFlagsUtil.YSQL_HBA_CONF_CSV);
-          if (hbaConfValue.contains(GFlagsUtil.JWT_AUTH)) {
-            Path tmpDirectoryPath =
-                FileUtils.getOrCreateTmpDirectory(
-                    confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
-            Path localGflagFilePath =
-                tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
-            String providerUUID = userIntent.provider;
-            String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-            String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
-            nodeAgentClient.uploadFile(nodeAgent, localGflagFilePath.toString(), remoteGFlagPath);
-          }
-        }
-      }
-      if (taskParams().resetMasterState) {
-        builder.setResetMasterState(true);
-      }
-    }
-    ServerGFlagsInput input = builder.putAllGflags(gflags).build();
-    log.debug("Setting gflags using node agent: {}", input.getGflagsMap());
-    nodeAgentClient.runServerGFlags(nodeAgent, input, "yugabyte");
   }
 
   @Override

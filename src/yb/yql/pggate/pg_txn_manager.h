@@ -202,7 +202,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // On a transaction conflict error we want to recreate the transaction with the same priority as
   // the last transaction. This avoids the case where the current transaction gets a higher priority
   // and cancels the other transaction.
-  uint64_t priority_ = 0;
+  std::optional<uint64_t> priority_;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
   bool snapshot_read_time_is_used_ = false;
