@@ -1,120 +1,120 @@
 -- Tests for package DBMS_RANDOM
 SELECT dbms_random.initialize(8);
- initialize
+ initialize 
 ------------
-
+ 
 (1 row)
 
 SELECT dbms_random.normal()::numeric(10, 8);
-   normal
+   normal    
 -------------
  -3.83566924
 (1 row)
 
 SELECT dbms_random.normal()::numeric(10, 8);
-   normal
+   normal    
 -------------
  -1.62292887
 (1 row)
 
 SELECT dbms_random.seed(8);
- seed
+ seed 
 ------
-
+ 
 (1 row)
 
 SELECT dbms_random.random();
-   random
+   random    
 -------------
  -2147214734
 (1 row)
 
 SELECT dbms_random.seed('test');
- seed
+ seed 
 ------
-
+ 
 (1 row)
 
 SELECT dbms_random.string('U',5);
- string
+ string 
 --------
  TPZXT
 (1 row)
 
 SELECT dbms_random.string('P',2);
- string
+ string 
 --------
  3a
 (1 row)
 
 SELECT dbms_random.string('x',4);
- string
+ string 
 --------
  ZCHL
 (1 row)
 
 SELECT dbms_random.string('a',2);
- string
+ string 
 --------
  Hm
 (1 row)
 
 SELECT dbms_random.string('l',3);
- string
+ string 
 --------
  sdq
 (1 row)
 
 SELECT dbms_random.seed(5);
- seed
+ seed 
 ------
-
+ 
 (1 row)
 
 SELECT dbms_random.value()::numeric(10, 8);
-   value
+   value    
 ------------
  0.00003913
 (1 row)
 
 SELECT dbms_random.value(10,15)::numeric(10, 8);
-    value
+    value    
 -------------
  13.28844470
 (1 row)
 
 SELECT dbms_random.terminate();
- terminate
+ terminate 
 -----------
-
+ 
 (1 row)
 
 SELECT dbms_random.string('u', 10);
-   string
+   string   
 ------------
  UHRCGKKRXP
 (1 row)
 
 SELECT dbms_random.string('l', 10);
-   string
+   string   
 ------------
  eegqjbxicl
 (1 row)
 
 SELECT dbms_random.string('a', 10);
-   string
+   string   
 ------------
  XHmHxoeACQ
 (1 row)
 
 SELECT dbms_random.string('x', 10);
-   string
+   string   
 ------------
  B8ON5SYT8W
 (1 row)
 
 SELECT dbms_random.string('p', 10);
-   string
+   string   
 ------------
  QD];eb;tLx
 (1 row)
@@ -122,7 +122,8 @@ SELECT dbms_random.string('p', 10);
 SELECT dbms_random.string('uu', 10); -- error
 ERROR:  this first parameter value is more than 1 characters long
 SELECT dbms_random.string('w', 10);
-   string
+   string   
 ------------
  EJUVLMOHNN
 (1 row)
+
