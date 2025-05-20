@@ -78,7 +78,7 @@ See the pros and cons in the following section.
 Pros of using git subtrees over squash merge:
 
 - Get all upstream commit history.
-  This makes git blame lookup more convenient.
+  This makes `git blame` lookup more convenient.
 - Direct merge commits.
   Not only is performing the merge easier and less prone to error, but the history it leaves behind is clearer and easier to review.
 
@@ -653,8 +653,8 @@ However, that should be weighed against an alternate approach to do an actual me
    What we care about for the merge are existing files that have been overwritten with new content.
    Use `git add -u` to add all those changes, and commit them (commit message does not matter since this is not an official commit).
 1. `git merge` the upstream merge commit.
-   Since this is a merge commit, Git blame shows upstream commits on one side of the conflict, and on the other side, it shows the YB changes squashed to a single commit created in the previous step.
-   For further reference of the YB changes, consult Git blame in [yugabyte/yugabyte-db][repo-yugabyte-db].
+   Since this is a merge commit, `git blame` shows upstream commits on one side of the conflict, and on the other side, it shows the YB changes squashed to a single commit created in the previous step.
+   For further reference of the YB changes, consult `git blame` in [yugabyte/yugabyte-db][repo-yugabyte-db].
    As always, keep track of resolution notes somewhere.
 1. After completing the unofficial merge to the best of your ability, sync this new content back to [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory.
    Now, build can be attempted in [yugabyte/yugabyte-db][repo-yugabyte-db] to catch compilation and test issues, leading to further changes.
