@@ -39,7 +39,13 @@ However, on-premises cron-based universes must be upgraded manually. To do this,
 
 To upgrade a running on-premises universe to automatic provisioning, follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
 
-If you have on-premises universes with legacy provisioning and transparent hugepages (THP) are not enabled, you must enable them. THP settings will automatically be set when you upgrade to automatic provisioning.
+### Transparent hugepages
+
+Transparent hugepages (THP) should be enabled on nodes for optimal performance. Future versions of YugabyteDB Anywhere will flag universes without THP as unhealthy.
+
+YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to use THP.
+
+For on-premises universes, THP settings will be set when you upgrade to automatic provisioning.
 
 ## Node agent
 

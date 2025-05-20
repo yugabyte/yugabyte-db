@@ -32,9 +32,7 @@ YugabyteDB Anywhere will attempt to automatically update universes. If it is una
 
 ## Transparent hugepages
 
-If you have on-premises universes with legacy provisioning and transparent hugepages (THP) are not enabled, you must enable them. For more information, refer to [Transparent hugepages](../../prepare/server-nodes-software/#transparent-hugepages).
-
-The simplest way to update THP settings for a running universe is to follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
+Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by following the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
 
 ## Review major changes in previous YugabyteDB releases
 
