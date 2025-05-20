@@ -1,14 +1,16 @@
 ---
 title: Build Scalable Generative AI Applications with Azure OpenAI and YugabyteDB
-headerTitle: Build scalable generative AI applications with Azure OpenAI and YugabyteDB
-linkTitle: Azure OpenAI
+headerTitle: Similarity search using Azure OpenAI
+linkTitle: Similarity search - Azure
 description: Build scalable generative AI applications with Azure OpenAI and YugabyteDB
 image: /images/tutorials/azure/icons/OpenAI-Icon.svg
 headcontent: Use YugabyteDB as the database backend for Azure OpenAI applications
+aliases:
+  - /tutorials/azure/azure-openai/
 menu:
   preview_tutorials:
     identifier: tutorials-azure-openai
-    parent: tutorials-azure
+    parent: tutorials-ai-rag
     weight: 40
 type: docs
 ---
