@@ -1099,7 +1099,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
         // as writing to ysql catalog so we can avoid incrementing the catalog version.
         has_catalog_write_ops_in_ddl_mode_ =
             has_catalog_write_ops_in_ddl_mode_ ||
-            (is_ddl && !IsReadOnly(*op) && is_ysql_catalog_table);
+            (is_ddl && op->is_write() && is_ysql_catalog_table);
         return runner.Apply(table, op);
     };
   RETURN_NOT_OK(processor(first_table_op));
