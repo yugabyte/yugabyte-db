@@ -37,6 +37,12 @@ However, on-premises cron-based universes must be upgraded manually. To do this,
 
 [Legacy provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) workflows have been deprecated. Provision nodes for on-premises universes using the `node-agent-provision.sh` script. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
+To upgrade a running on-premises universe to automatic provisioning, follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
+
+If you have on-premises universes with legacy provisioning and transparent hugepages (THP) are not enabled, you must enable them. THP settings will automatically be set when you upgrade to automatic provisioning.
+
+## Node agent
+
 YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
 
 To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions>Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
