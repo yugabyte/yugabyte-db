@@ -30,6 +30,12 @@ YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later requ
 
 YugabyteDB Anywhere will attempt to automatically update universes. If it is unable to update a universe, make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by clicking **Actions>Install Node Agent**.
 
+## Transparent hugepages
+
+If you have on-premises universes with legacy provisioning and transparent hugepages (THP) are not enabled, you may want to enable them. For more information, refer to [Transparent hugepages](../../prepare/server-nodes-software/#transparent-hugepages).
+
+The simplest way to update THP settings for a running universe is to follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
+
 ## Review major changes in previous YugabyteDB releases
 
 {{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
