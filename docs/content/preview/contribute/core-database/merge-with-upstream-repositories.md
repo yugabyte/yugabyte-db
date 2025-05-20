@@ -954,7 +954,7 @@ If the author followed the [cross-repository cherry-pick steps](#cross-repositor
 On top of that, make sure that the Git metadata is proper where it matters.
 
 - For the upstream repository, there should only be the cherry-picked commits.
-  If there are any other commits, there should be a good reason for them, and the commit subjects (a.k.a. titles) should start with `YB:`.
+  If there are any other commits, there should be a good reason for them, and the commit titles should start with `YB:`.
   Merge conflicts (including logical ones) should generally be resolved and amended into the same commit being cherry-picked.
   The [Git author information](#git-author-information) should be preserved for cherry-picked commits.
 - For [yugabyte/yugabyte-db][repo-yugabyte-db], only the squash embedding strategy uses cherry-picks.
