@@ -672,19 +672,13 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
-{{< note title="Automatic schema assessment in PostgreSQL" >}}
-
-For PostgreSQL source, if `assess-migration` is not already run, the schema is assessed and a migration assessment report is generated.
-
-{{< /note >}}
-
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
 {{< note title="Usage for source_db_schema" >}}
 
 The `source_db_schema` argument specifies the schema of the source database.
 
-- For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
+For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
 
 {{< /note >}}
 
@@ -701,6 +695,8 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-schema <SOURCE_DB_SCHEMA>
 
 ```
+
+Note that if the source database is PostgreSQL and you haven't already run `assess-migration`, the schema is assessed and a migration assessment report is generated.
 
 Refer to [export schema](../../reference/schema-migration/export-schema/) for details about the arguments.
 
