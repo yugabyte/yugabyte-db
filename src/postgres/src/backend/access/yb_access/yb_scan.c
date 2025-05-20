@@ -784,31 +784,34 @@ YbIsScanningEmbeddedIdx(Relation table, Relation index)
 	yb_table_properties_table = YbGetTableProperties(table);
 
 	/*
-	 * - All system tables and indexes are specially colocated to the sys
-	 *   catalog tablet.
-	 * - Some indexes may use copartitioning, which shards the table and index
-	 *   together.
+	 * There are a few cases where embedding happens.
+	 * 1. System table: all system tables and indexes are specially colocated
+	 *    to the sys catalog tablet.
+	 * 2. Copartitioning: some indexes may use copartitioning, which shards the
+	 *    table and index together.
 	 */
 	is_embedded = (IsSystemRelation(table) ||
-				   yb_table_properties_table->is_colocated ||
 				   (index && index->rd_indam->yb_amiscopartitioned));
 
 	/*
-	 * - If ysql_enable_colocated_tables_with_tablespaces, check that the table
-	 *   and index are in the same colocation tablet using tablegroup_oid.
-	 *   - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
-	 *     should not be a pass condition.
-	 * - Else, simply check for colocation of the table because the index
-	 *   should follow the table.
-	 *   - TODO(#25940): index being NULL or pk index should not be a pass
-	 *     condition.
-	 * - TODO(#25940): the gflag could be turned on/off in the lifetime of
-	 *   a cluster, so it shouldn't even be involved in this logic.  Everything
-	 *   should be validated, likely using the tablegroup_oid check, assuming
-	 *   that holds even when indexes are created when the flag is false.
+	 * 3. Colocation: the table and index may be colocated to the same tablet:
+	 *    - If ysql_enable_colocated_tables_with_tablespaces, check that the
+	 *      table and index are in the same colocation tablet using
+	 *      tablegroup_oid.
+	 *      - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
+	 *        should not be a pass condition.
+	 *    - Else, simply check for colocation of the table because the index
+	 *      should follow the table.
+	 *      - TODO(#25940): index being NULL or pk index should not be a pass
+	 *        condition.
+	 *    - TODO(#25940): the gflag could be turned on/off in the lifetime of
+	 *      a cluster, so it shouldn't even be involved in this logic.
+	 *      Everything should be validated, likely using the tablegroup_oid
+	 *      check, assuming that holds even when indexes are created when the
+	 *      flag is false.
 	 */
 	if (*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces)
-		is_embedded &= (yb_table_properties_table->is_colocated &&
+		is_embedded |= (yb_table_properties_table->is_colocated &&
 						((index && index->rd_index->indisprimary) ||
 						 (index &&
 						  (YbGetTableProperties(index)->tablegroup_oid ==
