@@ -66,11 +66,7 @@ The following sections describe the flags considered relevant to configuring Yug
 
 Specifies the file to load the configuration flags from. The configuration flags must be in the same format as supported by the command line flags.
 
-Default: `""`
-
 ##### --version
-
-{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Shows version and build info, then exits.
 
@@ -331,8 +327,6 @@ Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a 
 
 Default: 0
 
-
-
 ##### --time_source
 
 {{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
@@ -356,8 +350,6 @@ The port for monitoring the web server.
 Default: `9000`
 
 ##### --webserver_doc_root
-
-{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 The monitoring web server home directory..
 
@@ -629,8 +621,6 @@ Required.
 
 Changing the value of this flag after the cluster has already been created is not supported.
 
-Default: `""`
-
 ##### --fs_wal_dirs
 
 {{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
@@ -640,6 +630,8 @@ Specifies a comma-separated list of directories, where yb-tserver will store wri
 Default: The same value as `--fs_data_dirs`
 
 ### Write ahead log (WAL) flags
+
+In a typical deployment, the values used for write ahead log (WAL) flags in `yb-tserver` configurations should align with those in [`yb-master`](../yb-master/#raft-flags) configurations.
 
 Ensure that values used for the write ahead log (WAL) in yb-tserver configurations match the values for yb-master configurations.
 
@@ -792,15 +784,11 @@ This value must match on all yb-master and yb-tserver configurations of a Yugaby
 
 Deprecated. Use `full_compaction_pool_max_threads`.
 
-Default: `0`
-
 ##### --post_split_trigger_compaction_pool_max_queue_size
 
 {{< tags/wrap >}}{{<tags/feature/deprecated>}}{{< /tags/wrap >}}
 
 Deprecated. Use `full_compaction_pool_max_queue_size`.
-
-Default: `0`
 
 ##### --full_compaction_pool_max_threads
 
@@ -892,7 +880,6 @@ The number of tablet replicas that each GiB reserved by YB-TServers for tablet o
 
 Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
 
-
 ### DDL atomicity flags
 
 ##### ysql_yb_ddl_rollback_enabled
@@ -957,13 +944,13 @@ Default: `15000`
 
 The number of reactor threads to be used for processing `ybclient` requests for CDC. Increase to improve throughput on large tablet setups.
 
-Default: `0`
+Default: `50`
 
 ##### --cdc_max_stream_intent_records
 
 Maximum number of intent records allowed in a single CDC batch.
 
-Default: `1680`
+Default: `1000`
 
 ##### --cdc_snapshot_batch_size
 
@@ -1247,7 +1234,6 @@ Ensure you do not _oversubscribe memory_ when changing these flags: make sure th
 
 {{< /warning >}}
 
-
 #### Flags controlling the defaults for the other memory division flags
 
 The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and Master.
@@ -1304,7 +1290,6 @@ The percentage of available RAM to use for this process if [--memory_limit_hard_
 
 Default: `0.85` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
-
 #### Flags controlling the split of memory within a TServer
 
 ##### --db_block_cache_size_bytes
@@ -1329,7 +1314,7 @@ Default: `0` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defau
 
 ### Raft and consistency/timing flags
 
-With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, `--evict_failed_followers`), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-tserver configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
+With the exception of flags that have different defaults between `yb-master` and `yb-tserver` (for example, `--evict_failed_followers`), the values used for Raft-related flags in `yb-tserver` configurations should match those in [`yb-master`](../yb-master/#raft-flags) configurations in a typical deployment.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -1412,8 +1397,6 @@ If you change this flag, the change takes effect after you restart the cluster n
 Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
 
 ##### --regular_tablets_data_block_key_value_encoding
-
-{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix`, `three_shared_parts`.
 
@@ -1646,8 +1629,6 @@ By adding a flag to this list, you explicitly acknowledge and accept any potenti
 Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
 
-Default: `""`
-
 ##### backfill_index_client_rpc_timeout_ms
 
 {{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
@@ -1666,7 +1647,7 @@ Default: -1, where the system automatically calculates the value to be approxima
 
 The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
 
-Default: `128`
+Default: 128
 
 ## Security
 
@@ -1715,8 +1696,6 @@ Use client-to-server (client-to-node) encryption to protect data in transit betw
 Default: `false`
 
 ##### --use_node_to_node_encryption
-
-{{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
 
 Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [--use_node_to_node_encryption](../yb-master/#use-node-to-node-encryption) setting enabled.
 
@@ -1852,8 +1831,6 @@ Default: `13000`
 
 Deprecated. Use `--ysql_hba_conf_csv` instead.
 
-Default: `""`
-
 ##### --ysql_hba_conf_csv
 
 {{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
@@ -1886,8 +1863,6 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 Deprecated. Use `--ysql_pg_conf_csv` instead.
 
-Default: `""`
-
 ##### --ysql_pg_conf_csv
 
 {{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
@@ -1904,8 +1879,6 @@ For information on available PostgreSQL server configuration parameters, refer t
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
 
-Default: `""`
-
 ##### --ysql_timezone
 
 {{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
@@ -1914,8 +1887,6 @@ Specifies the time zone for displaying and interpreting timestamps.
 
 Default: Uses the YSQL time zone.
 
-Default: `""`
-
 ##### --ysql_datestyle
 
 {{< tags/wrap >}}{{<tags/feature/restart-needed>}}{{< /tags/wrap >}}
@@ -1923,8 +1894,6 @@ Default: `""`
 Specifies the display format for data and time values.
 
 Default: Uses the YSQL display format.
-
-Default: `ISO, MDY`
 
 ##### --ysql_max_connections
 
@@ -1939,8 +1908,6 @@ Any active, idle in transaction, or idle in session connection counts toward the
 Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL server parameter](#postgresql-server-options). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
 
 Default: If `ysql_max_connections` is not set, the database startup process will determine the highest number of connections the system can support, from a minimum of 50 to a maximum of 300 (per node).
-
-Default: `0`
 
 ##### --ysql_default_transaction_isolation
 
@@ -2072,11 +2039,9 @@ Default: `false`
 
 Specifies the database where pg_cron is to be installed. You can create the database after setting the flag.
 
-The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database.
+The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
-
-Default: `yugabyte`
 
 ##### --ysql_output_buffer_size
 
@@ -2159,8 +2124,6 @@ Default: `false`
 Set this flag to `true` to enable audit logging for the universe.
 
 For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
-
-Default: `false`
 
 ##### --ycql_allow_non_authenticated_password_reset
 
