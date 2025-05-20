@@ -190,7 +190,7 @@ Note that this was done on the `pg15` branch at the time rather than `master`.
    However, in this example, it was done step by step.
    The rest of the steps in this section are related if you want to do it step-by-step.
    Otherwise, skip to the next section.
-1. The remaining steps are equivalent to [before](#adding-a-new-upstream-repository-as-subtree), starting from adding repository details to [`upstream_repositories.csv`][upstream-repositories-csv].
+1. The remaining steps are equivalent to [adding a new upstream repository as subtree](#adding-a-new-upstream-repository-as-subtree), starting from adding repository details to [`upstream_repositories.csv`][upstream-repositories-csv].
    There is no example commit for the [`upstream_repositories.csv`][upstream-repositories-csv] change since it did not exist at the time.
    There is an example commit for the Phorge revision that was merge landed: [2349d7c2df5a519677b80a8eae902a816f34f95b](https://github.com/yugabyte/yugabyte-db/commit/2349d7c2df5a519677b80a8eae902a816f34f95b).
 
