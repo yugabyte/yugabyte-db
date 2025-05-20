@@ -3671,13 +3671,10 @@ void TabletServiceImpl::AcquireObjectLocks(
     SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
   }
-  auto s = ts_local_lock_manager->AcquireObjectLocks(*req, context.GetClientDeadline());
-  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-  if (!s.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), s, &context);
-  } else {
-    context.RespondSuccess();
-  }
+  const auto deadline = context.GetClientDeadline();
+  ts_local_lock_manager->AcquireObjectLocksAsync(
+      *req, deadline,
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 }
 
 void TabletServiceImpl::ReleaseObjectLocks(

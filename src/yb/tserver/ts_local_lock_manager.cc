@@ -329,25 +329,6 @@ TSLocalLockManager::TSLocalLockManager(
 
 TSLocalLockManager::~TSLocalLockManager() {}
 
-// TODO: Remove this method and enforce callers supply a callback func.
-Status TSLocalLockManager::AcquireObjectLocks(
-    const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-    WaitForBootstrap wait) {
-  if (VLOG_IS_ON(4)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(4) << "Dumping current state Before acquire : " << output.str();
-  }
-  auto ret = impl_->AcquireObjectLocks(req, deadline, wait);
-  if (VLOG_IS_ON(3)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(3) << "Acquire " << (ret.ok() ? "succeded" : "failed")
-            << ". Dumping current state After acquire : " << output.str();
-  }
-  return ret;
-}
-
 void TSLocalLockManager::AcquireObjectLocksAsync(
     const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
     StdStatusCallback&& callback, WaitForBootstrap wait) {
