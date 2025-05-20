@@ -1454,9 +1454,9 @@ templates:
   YSQL_OP_P99_LATENCY:
     name: YSQL P99 latency is high
     description: P99 latency of YSQL operations is above threshold
-    queryTemplate: max by (universe_uuid)
+    queryTemplate: max by (universe_uuid) (max by (universe_uuid, node_name)
       (rpc_latency{universe_uuid="__universeUuid__",server_type="yb_ysqlserver",service_type="SQLProcessor",
-      service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions",quantile="p99"})
+      service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions",quantile="p99"}))
       {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
@@ -1481,11 +1481,11 @@ templates:
   YSQL_OP_AVG_LATENCY:
     name: YSQL average latency is high
     description: Average latency of YSQL operations is above threshold
-    queryTemplate: (sum by (universe_uuid, service_method)(rate(rpc_latency_sum{universe_uuid="__universeUuid__",export_type="ysql_export",
+    queryTemplate: max by (universe_uuid) ((sum by (universe_uuid, service_method, node_name)(rate(rpc_latency_sum{universe_uuid="__universeUuid__",export_type="ysql_export",
       server_type="yb_ysqlserver",service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions"}[5m]))
-      / sum by (universe_uuid, service_method)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="ysql_export",server_type="yb_ysqlserver",
+      / sum by (universe_uuid, service_method, node_name)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="ysql_export",server_type="yb_ysqlserver",
       service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions"}[5m])))
-      / 1000 {{ query_condition }} {{ query_threshold }}
+      / 1000) {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.max_ysql_opavg_latency
@@ -1495,12 +1495,18 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range $index, $element := query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name) ((sum by (universe_uuid, service_method, node_name)
+        (rate(rpc_latency_sum{universe_uuid='{{ $labels.universe_uuid }}',export_type='ysql_export',
+        server_type='yb_ysqlserver',service_type='SQLProcessor',service_method=~'SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions'}[5m]))
+        / sum by (universe_uuid, service_method, node_name)(rate(rpc_latency_count{universe_uuid='{{ $labels.universe_uuid }}',export_type='ysql_export',server_type='yb_ysqlserver',
+        service_type='SQLProcessor',service_method=~'SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions'}[5m])))
+        / 1000) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average YSQL operations latency for universe '{{ $labels.source_name }}'
-        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms.
+
+        Affected nodes: {{ $labels.affected_node_names }}
 
   YSQL_THROUGHPUT:
     name: YSQL throughput is high
@@ -1554,11 +1560,11 @@ templates:
   YCQL_OP_AVG_LATENCY:
     name: YCQL average latency is high
     description: Average latency of YCQL operations is above threshold
-    queryTemplate: (sum by (service_method)(rate(rpc_latency_sum{universe_uuid="__universeUuid__",export_type="cql_export",server_type="yb_cqlserver",
+    queryTemplate: max by (universe_uuid) ((sum by (universe_uuid, service_method, node_name)(rate(rpc_latency_sum{universe_uuid="__universeUuid__",export_type="cql_export",server_type="yb_cqlserver",
       service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction"}[5m]))
-      / sum by (service_method)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="cql_export",server_type="yb_cqlserver",
+      / sum by (universe_uuid, service_method, node_name)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="cql_export",server_type="yb_cqlserver",
       service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction"}[5m])))
-      / 1000 {{ query_condition }} {{ query_threshold }}
+      / 1000) {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.max_ycql_opavg_latency
@@ -1568,19 +1574,24 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range $index, $element := query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name) ((sum by (universe_uuid, service_method, node_name)(rate(rpc_latency_sum{universe_uuid='{{ $labels.universe_uuid }}',
+        export_type='cql_export',server_type='yb_cqlserver',service_type='SQLProcessor',service_method=~'SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction'}[5m]))
+        / sum by (universe_uuid, service_method, node_name)(rate(rpc_latency_count{universe_uuid='{{ $labels.universe_uuid }}',export_type='cql_export',server_type='yb_cqlserver',
+        service_type='SQLProcessor',service_method=~'SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction'}[5m])))
+        / 1000) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average YCQL operations latency for universe '{{ $labels.source_name }}'
-        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms.
+
+        Affected nodes: {{ $labels.affected_node_names }}
 
   YCQL_OP_P99_LATENCY:
     name: YCQL P99 latency is high
     description: P99 latency of YCQL operations is above threshold
-    queryTemplate: max by (universe_uuid)(rpc_latency{universe_uuid="__universeUuid__",server_type="yb_cqlserver",
+    queryTemplate: max by (universe_uuid) (max by (universe_uuid, node_name)(rpc_latency{universe_uuid="__universeUuid__",server_type="yb_cqlserver",
       service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction",quantile="p99"})
-      /1000 {{ query_condition }} {{ query_threshold }}
+      / 1000) {{ query_condition }} {{ query_threshold }}
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.max_ycql_p99_latency
@@ -1748,9 +1759,9 @@ templates:
   TABLET_SERVER_AVG_READ_LATENCY:
     name: Tablet server average read latency is high
     description: Average read latency of tablet server is above threshold
-    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])))
-      / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])) * 1000)
-      / 1000 {{ query_condition }} {{ query_threshold }}
+    queryTemplate: max by (universe_uuid) ((avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])))
+      / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])))
+      / 1000) {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: false
     defaultThresholdMap:
       SEVERE:
@@ -1763,12 +1774,12 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "
         (avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])))
-        / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])) * 1000)
+        / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])))
         / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average read latency of tablet server for universe '{{ $labels.source_name }}'
-        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms.
 
         Affected nodes: {{ $labels.affected_node_names }}
 
@@ -1776,9 +1787,9 @@ templates:
   TABLET_SERVER_AVG_WRITE_LATENCY:
     name: Tablet server average write latency is high
     description: Average write latency of tablet server is above threshold
-    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])))
-      / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])) * 1000)
-      / 1000 {{ query_condition }} {{ query_threshold }}
+    queryTemplate: max by (universe_uuid) ((avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])))
+      / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])))
+      / 1000) {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: false
     defaultThresholdMap:
       SEVERE:
@@ -1791,12 +1802,12 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "
         (avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])))
-        / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])) * 1000)
+        / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])))
         / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average write latency of tablet server for universe '{{ $labels.source_name }}'
-        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms.
 
         Affected nodes: {{ $labels.affected_node_names }}
 
