@@ -149,6 +149,12 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
+{{< note title="Automatic schema assessment in PostgreSQL" >}}
+
+For PostgreSQL source, if `assess-migration` is not already run, the schema is assessed and a migration assessment report is generated.
+
+{{< /note >}}
+
 {{< note title="Renaming index names for MySQL" >}}
 
 YugabyteDB Voyager renames the indexes for MySQL migrations while exporting the schema.
