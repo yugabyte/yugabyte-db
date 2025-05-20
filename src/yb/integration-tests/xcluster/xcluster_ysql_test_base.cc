@@ -610,18 +610,19 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
   return VerifyWrittenRecords(producer_table->name(), consumer_table->name());
 }
 
-Status XClusterYsqlTestBase::VerifyWrittenRecords(ExpectNoRecords expect_no_records) {
-    return VerifyWrittenRecords(
-        producer_table_->name(), consumer_table_->name(), expect_no_records);
+Status XClusterYsqlTestBase::VerifyWrittenRecords(
+    ExpectNoRecords expect_no_records, CheckColumnCounts check_col_counts) {
+  return VerifyWrittenRecords(
+      producer_table_->name(), consumer_table_->name(), expect_no_records, check_col_counts);
 }
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
     const YBTableName& producer_table_name, const YBTableName& consumer_table_name,
-    ExpectNoRecords expect_no_records) {
+    ExpectNoRecords expect_no_records, CheckColumnCounts check_col_counts) {
   int prod_row_count, cons_row_count = 0, prod_col_count = 0, cons_col_count = 0;
   const Status s = LoggedWaitFor(
       [this, producer_table_name, consumer_table_name, &prod_row_count, &cons_row_count,
-          &prod_col_count, &cons_col_count, expect_no_records]()-> Result<bool> {
+       &prod_col_count, &cons_col_count, expect_no_records, check_col_counts]() -> Result<bool> {
         auto producer_results =
             VERIFY_RESULT(ScanToStrings(producer_table_name, &producer_cluster_));
         prod_row_count = PQntuples(producer_results.get());
@@ -638,6 +639,9 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
         }
         prod_col_count = PQnfields(producer_results.get());
         cons_col_count = PQnfields(consumer_results.get());
+        SCHECK(
+            !check_col_counts || prod_col_count == cons_col_count, Corruption,
+            Format("Expected $0 columns but got $1 columns", prod_col_count, cons_col_count));
         int col_count = std::min(prod_col_count, cons_col_count);
         for (int row = 0; row < prod_row_count; ++row) {
           for (int col = 0; col < col_count; ++col) {
@@ -848,15 +852,20 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
 
   // Verify single value inserts are replicated correctly and can be read
   ASSERT_OK(InsertRowsInProducer(51, 52));
-  ASSERT_OK(VerifyWrittenRecords());
+  auto verify_written_records_without_column_counts = [this]() {
+    // Don't check column counts as they are different now.
+    return VerifyWrittenRecords(ExpectNoRecords::kFalse, CheckColumnCounts::kFalse);
+  };
+
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // 5. Verify batch inserts are replicated correctly and can be read
   ASSERT_OK(InsertGenerateSeriesOnProducer(52, 100));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // Verify transactional inserts are replicated correctly and can be read
   ASSERT_OK(InsertTransactionalBatchOnProducer(101, 150));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // Alter the table on the producer side by adding the same column and insert some rows
   // and verify
@@ -910,7 +919,7 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
   ASSERT_OK(consumer_cluster()->FlushTablets());
 
   ASSERT_OK(InsertRowsInProducer(301, 350));
-  ASSERT_OK(VerifyWrittenRecords(nullptr, nullptr));
+  ASSERT_OK(verify_written_records_without_column_counts());
 }
 
 Status XClusterYsqlTestBase::SetUpWithParams(

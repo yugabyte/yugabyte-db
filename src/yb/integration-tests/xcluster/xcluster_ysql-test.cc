@@ -2072,7 +2072,8 @@ TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
     }
   }
 
-  ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
+  // Skip checking column counts since consumer has an additional column.
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kFalse, CheckColumnCounts::kFalse));
 }
 
 void PrepareChangeRequest(
@@ -2759,7 +2760,7 @@ TEST_F(XClusterYsqlTest, InsertUpdateDeleteTransactionsWithUnevenTabletPartition
     ASSERT_OK(p_conn.ExecuteFormat(
         "DELETE FROM $0 WHERE $1 >= $2 AND $1 <= $3", table_name, kKeyColumnName, start, end));
     ASSERT_OK(p_conn.Execute("COMMIT"));
-    }
+  }
 
   ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
 }

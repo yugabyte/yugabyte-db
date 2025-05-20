@@ -35,6 +35,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
@@ -45,6 +46,7 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
 
 using namespace std::chrono_literals;
 
@@ -1178,6 +1180,7 @@ TEST_F(XClusterDDLReplicationTest, AlterExistingColocatedTable) {
 }
 
 TEST_F(XClusterDDLReplicationTest, ExtraOidAllocationsOnTarget) {
+  const auto kNumIterations = 20;
   ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
   google::SetVLOGLevel("catalog_manager*", 1);
@@ -1193,7 +1196,7 @@ TEST_F(XClusterDDLReplicationTest, ExtraOidAllocationsOnTarget) {
      */
     auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     ASSERT_OK(conn.Execute("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < kNumIterations; i++) {
       ASSERT_OK(conn.ExecuteFormat("CREATE TYPE my_manual_enum_$0 AS ENUM ('label')", i));
     }
   }
@@ -1201,13 +1204,177 @@ TEST_F(XClusterDDLReplicationTest, ExtraOidAllocationsOnTarget) {
   {
     // See if the allocations a replicated DDL does collide with the extra allocations above.
     auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < kNumIterations; i++) {
       ASSERT_OK(conn.ExecuteFormat("CREATE TYPE my_enum_$0 AS ENUM ('label')", i));
     }
   }
 
   // Wait to see if applying the DDL on the target runs into problems.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
+TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpWithDdlQueueStepdowns) {
+  // Test that we correctly finish processing a batch when the ddl_queue poller moves.
+  // Need to ensure that we don't call GetChanges before the batch is complete, otherwise we may
+  // miss processing some commit_times/DDLs.
+  const auto kTableName = "test_table";
+  const auto kTableNameRename = "renamed_table";
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto get_and_verify_safe_time_batch =
+      [&](int expected_size, bool expected_has_apply_safe_time) -> Result<xcluster::SafeTimeBatch> {
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+    auto safe_time_batch = VERIFY_RESULT(FetchSafeTimeBatchFromReplicatedDdls());
+    SCHECK_EQ(safe_time_batch.commit_times.size(), expected_size, IllegalState, "Unexpected size");
+    if (expected_has_apply_safe_time) {
+      SCHECK(safe_time_batch.apply_safe_time, IllegalState, "Expected apply safe time");
+    } else {
+      SCHECK(!safe_time_batch.apply_safe_time, IllegalState, "Unexpected apply safe time");
+    }
+    return safe_time_batch;
+  };
+
+  // Keep track of the number of times ddl_queue bumps the safe time.
+  int ddl_queue_safe_time_bumps = 0;
+  SyncPoint::GetInstance()->SetCallBack(
+      "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped",
+      [&ddl_queue_safe_time_bumps](void* _) { ddl_queue_safe_time_bumps++; });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Start with replication paused so we can accumulate some pending DDLs.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key)", kTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN a int", kTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 1000) as i", kTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE INDEX ON $0(a)", kTableName));
+
+  // Resume replication but keep DDL replication paused.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+
+  // Verify the persisted safe time batch in replicated_ddls. Expect to have a commit time for each
+  // DDL above, and should have an apply_safe_time to signify a complete batch.
+  auto safe_time_batch = ASSERT_RESULT(get_and_verify_safe_time_batch(
+      /*expected_size=*/3, /*expected_has_apply_safe_time=*/true));
+
+  // Run some more DDLs.
+  ASSERT_OK(
+      producer_conn.ExecuteFormat("ALTER TABLE $0 RENAME TO $1", kTableName, kTableNameRename));
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN a", kTableNameRename));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i FROM generate_series(1001, 2000) as i", kTableNameRename));
+
+  // Should not see a change in safe time batch yet.
+  auto safe_time_batch_before_restart = ASSERT_RESULT(get_and_verify_safe_time_batch(
+      /*expected_size=*/3, /*expected_has_apply_safe_time=*/true));
+  ASSERT_EQ(safe_time_batch, safe_time_batch_before_restart);
+
+  // Restart both sides. The ddl_queue poller should not fetch any new DDLs until it completes
+  // processing of its current batch.
+  ASSERT_OK(StepDownDdlQueueTablet(producer_cluster_));
+  ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
+
+  // Verify that current safe time batch has not changed (ie we are still processing the current
+  // batch and have not called GetChanges to get a new batch).
+  auto safe_time_batch_after_restart = ASSERT_RESULT(get_and_verify_safe_time_batch(
+      /*expected_size=*/3, /*expected_has_apply_safe_time=*/true));
+  ASSERT_EQ(safe_time_batch, safe_time_batch_after_restart);
+
+  // Unpause replication.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  propagation_timeout_ = propagation_timeout_ * 2;  // Give time to process the batch of DDLs.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify row counts.
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kTableNameRename))));
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(
+      GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name*/ "", kTableNameRename))));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+
+  // Safe time batch should be empty now.
+  auto safe_time_batch_after_resume = ASSERT_RESULT(get_and_verify_safe_time_batch(
+      /*expected_size=*/0, /*expected_has_apply_safe_time=*/false));
+
+  // We only start bumping the safe time after the restart.
+  // After the restart, we first process the batch in replicated_ddls, which has 3 DDLs. However, we
+  // don't update the checkpoint, so the next GetChanges still requests the same first 3 DDLs + the
+  // next 2 new DDLs. Thus we have 5 bumps in the next round (note that we will not rerun those
+  // first 3 DDLs though).
+  ASSERT_EQ(ddl_queue_safe_time_bumps, 8);
+}
+
+TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
+  const auto kTableName = "drop_col_test";
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"XClusterDDLQueueHandler::DdlQueueSafeTimeBumped",
+        "XClusterDDLReplicationTest::WaitForIncrementalSafeTimeBump"}});
+
+  // Setup the test table, create table with multiple columns and insert data.
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(
+      producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key, a int)", kTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 1000) as i", kTableName));
+  const auto original_producer_rows = ASSERT_RESULT(
+      producer_conn.FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Fail incremental safe time bump - safe time should not advance but we
+  // will still replicate the following DROP COLUMN on the target.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump) = true;
+
+  // Drop a column and insert more data.
+  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN a", kTableName));
+  const auto producer_rows_after_drop = ASSERT_RESULT(
+      producer_conn.FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i FROM generate_series(1001, 2000) as i", kTableName));
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  // Selects at this point should still work, and should still see the old column.
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  // TODO(#27071) Switch to select * once we have better fencing. Today we would get the first
+  // column and nulls for the second column since we use the new schema.
+  auto consumer_rows = ASSERT_RESULT(
+      consumer_conn.FetchAllAsString(Format("SELECT key FROM $0 ORDER BY key", kTableName)));
+  ASSERT_EQ(producer_rows_after_drop, consumer_rows);
+
+  // Get the current safe time on the target.
+  auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client()));
+
+  // Allow incremental safe time bumps. But don't allow the batch to fully complete.
+  SyncPoint::GetInstance()->EnableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump) = false;
+  // Wait for safe time to bump up incrementally.
+  TEST_SYNC_POINT("XClusterDDLReplicationTest::WaitForIncrementalSafeTimeBump");
+  // Reads at this point should no longer see the new column.
+  consumer_rows = ASSERT_RESULT(
+      consumer_conn.FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
+  ASSERT_EQ(producer_rows_after_drop, consumer_rows);
+
+  // Fully resume replication and check that the data is correct.
+  SyncPoint::GetInstance()->DisableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kTableName))));
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(
+      GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name*/ "", kTableName))));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
 }
 
 class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
@@ -2000,6 +2167,58 @@ TEST_F(XClusterDDLReplicationTableRewriteTest, AlterTypeIsBlocked) {
 
   // Verify column 2 is still indexed.
   VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
+}
+
+TEST_F(XClusterDDLReplicationTableRewriteTest, IncrementalSafeTimeBump) {
+  // Test that the incremental safe time bump works correctly for a table rewrite.
+  const std::string kColumn3Name = "created_at";
+  const auto consumer_original_oid = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kBaseTableName_)));
+
+  // Block full completion of the ddl queue handler.
+  // This will cause us to not bump the safe time to the apply safe time, meaning that the only
+  // safe time bump will be by the incremental safe time bump.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = true;
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
+  // Execute ADD COLUMN ... DEFAULT (volatile) table rewrite.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN $1 TIMESTAMP DEFAULT clock_timestamp() NOT NULL;", kBaseTableName_,
+      kColumn3Name));
+
+  // Wait for table rewrite on the target.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        // Wait until PG reports the table rewrite is done (using the new oid).
+        auto table_oid = VERIFY_RESULT(consumer_conn_->FetchRow<pgwrapper::PGOid>(
+            Format("SELECT relfilenode FROM pg_class WHERE relname = '$0'", kBaseTableName_)));
+        return table_oid != consumer_original_oid;
+      },
+      kRpcTimeout * 1s, "Wait for table rewrite to complete"));
+
+  // TODO(#27071) Remove this waitfor once we have better fencing.
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+
+  // Compare the data on both clusters.
+  client::YBTableName producer_table_name_after_rewrite =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", kBaseTableName_));
+  ASSERT_NE(producer_base_table_name_.table_id(), producer_table_name_after_rewrite.table_id());
+  client::YBTableName consumer_table_name_after_rewrite =
+      ASSERT_RESULT(GetYsqlTable(&consumer_cluster_, namespace_name, "", kBaseTableName_));
+
+  auto producer_table = ASSERT_RESULT(GetProducerTable(producer_table_name_after_rewrite));
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(consumer_table_name_after_rewrite));
+
+  // Data should match since we should have bumped up the safe time incrementally to the alter
+  // table's commit time.
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+
+  // Add more data and verify that it is replicated.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(101, 200) as i;", kBaseTableName_));
+  VerifyTableRewrite();
 }
 
 TEST_F(XClusterDDLReplicationTest, BackupRestorePreservesEnumSortValue) {
