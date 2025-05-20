@@ -380,18 +380,24 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
 
 #### Squash point-imports
 
-1. Find the appropriate upstream postgres commits.
+1. If the upstream repository is currently not forked by YugabyteDB, ask yourself whether this point-import is necessary: if you instead merge to a newer version, you avoid the need to make a YugabyteDB fork.
+   In this example, there already exists a [yugabyte/postgres][repo-postgres] fork.
+1. In case there's no YugabyteDB fork, that needs to be created and [a new branch added to it](#how-upstream-repositories-are-tracked).
+   Again, [yugabyte/postgres][repo-postgres] fork already exists.
+   If using pgaudit as an example instead, `git switch -c yb-pg<version> "$(grep pgaudit src/lint/upstream_repositories.csv | cut -d, -f4)"`.
+1. Switch to a feature branch off the commit listed in [`upstream_repositories.csv`][upstream-repositories-csv].
+   In this example, that should be equivalent to the latest [yugabyte/postgres][repo-postgres] repo `yb-pg<version>` branch: `git switch -c import-abc yb-pg<version>`.
+1. Find the appropriate upstream commits.
    For example, if this import is for [yugabyte/yugabyte-db][repo-yugabyte-db] repo `2025.1` branch based on PG 15.x, then prioritize using upstream postgres commits on `REL_15_STABLE` over those on `master` because they would have resolved conflicts for us.
    See [here](#find-postgresql-back-patch-commits) for suggestions on how to do this.
-   If there are too many upstream postgres commits to consider, it may be worth looking into an alternative of taking file states as of a certain commit.
-   Make sure to properly document such actions in the commit messages.
-1. Switch to a feature branch off the latest [yugabyte/postgres][repo-postgres] repo `yb-pg<version>` branch: `git switch -c import-abc yb-pg<version>`.
+   If there are too many upstream commits to consider, it may be worth looking into the alternative of taking file states as of a certain commit instead.
 1. Do `git cherry-pick -x <commit>` for each commit being imported.
    Notice the `-x` to record the commit hash being cherry-picked.
-   [Make sure tests pass](#testing-postgresql).
    For any merge conflicts, resolve and amend them to that same commit, describing resolutions within the commit messages themselves.
    This includes logical merge conflicts which can be found via compilation failure or test failure.
-   At the end, you should be n commits ahead of `yb-pg<version>`, where n is the number of commits you are point-importing.
+   In case of authoring new commits (for example, taking file states as of a certain commit), start the commit with `YB:`, and properly document the actions taken.
+   Make sure [tests pass](#testing-postgresql) at each individual commit.
+   At the end, you should be n commits ahead of the commit in [`upstream_repositories.csv`][upstream-repositories-csv], where n is the number of commits you are point-importing, unless more new commits are authored.
    Make a GitHub PR of this through your fork for review.
 1. On the [yugabyte/yugabyte-db][repo-yugabyte-db] repo, import the commits that are part of the [yugabyte/postgres][repo-postgres] repo PR.
    This is not as straightforward as a cherry-pick since it is across different repositories: see [cross-repository cherry-pick](#cross-repository-cherry-pick) for advice.
@@ -410,8 +416,12 @@ At the time of writing, PostgreSQL uses the squash embedding strategy.
    This should not run into any conflicts; there should be no need for force push.
    This is because any conflicts are expected to be encountered on [yugabyte/yugabyte-db][repo-yugabyte-db] [`upstream_repositories.csv`][upstream-repositories-csv], and if landing that change passes, then no one should have touched `yb-pg<version>` concurrently.
    **Make sure the commit hashes have not changed when landing to `yb-pg<version>`.**
-1. If backporting to stable branches, the same process should be repeated using the `yb-pg<version>` branch corresponding to that stable branch's PG version.
-   The [search for back-patch commits](#find-postgresql-back-patch-commits) should be redone for each PG version.
+1. If backporting to stable branches,
+
+   - ...if the PG version is the same, the backport can be performed just like any other backport by cherry-picking the original commit.
+   - ...if the PG version is different and a single multi-PG-version compatible `yb` branch is used in the upstream repository, same thing.
+   - ...otherwise, the same process should be repeated using the `yb-pg<version>` branch corresponding to that stable branch's PG version.
+     In particular, the [search for back-patch commits](#find-postgresql-back-patch-commits) should be redone for that PG version.
 
 #### Squash direct-descendant merge
 
@@ -488,18 +498,13 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 
 #### Subtree point-imports
 
-1. If this subtree is currently not forked by YugabyteDB, ask yourself whether this point-import is necessary.
-   If you instead merge to a newer version, you avoid the need to make a YugabyteDB fork.
-1. If there is no YugabyteDB fork, that needs to be created and [a new branch added to it](#how-upstream-repositories-are-tracked).
-   Using pgaudit as an example, `git switch -c yb-pg15 "$(grep pgaudit src/lint/upstream_repositories.csv | cut -d, -f4)"`.
-1. Do `git cherry-pick -x <commit>` for each commit being imported.
-   Notice the `-x` to record the commit hash being cherry-picked.
-   Do any relevant testing if applicable.
-   For any merge conflicts, resolve and amend them to that same commit, describing resolutions within the commit messages themselves.
-   This includes logical merge conflicts which can be found via compilation failure or test failure.
-   At the end, you should be n commits ahead of the commit in [`upstream_repositories.csv`][upstream-repositories-csv], where n is the number of commits you are point-importing.
-   Make a GitHub PR of this through your fork for review.
+1. Follow the [steps for squash point-imports](#squash-point-imports) up until modifying the [yugabyte/yugabyte-db][repo-yugabyte-db] repo.
 1. On the [yugabyte/yugabyte-db][repo-yugabyte-db] repo, [subtree merge](#git-subtrees) this branch.
+1. If backporting to stable branches,
+
+   - ...if the PG version is the same, the previously constructed subtree commit can be reused for [subtree merge](#git-subtrees).
+   - ...if the PG version is different and a single multi-PG-version compatible `yb` branch is used in the upstream repository, same thing.
+   - ...otherwise, the same process should be repeated using the `yb-pg<version>` branch corresponding to that stable branch's PG version.
 
 #### Subtree direct-descendant merge
 
@@ -948,7 +953,7 @@ If the author followed the [cross-repository cherry-pick steps](#cross-repositor
 On top of that, make sure that the Git metadata is proper where it matters.
 
 - For the upstream repository, there should only be the cherry-picked commits.
-  If there are any other commits, there should be a good reason for them, and the titles should start with `YB:`.
+  If there are any other commits, there should be a good reason for them, and the commit subjects (a.k.a. titles) should start with `YB:`.
   Merge conflicts (including logical ones) should generally be resolved and amended into the same commit being cherry-picked.
   The [Git author information](#git-author-information) should be preserved for cherry-picked commits.
 - For [yugabyte/yugabyte-db][repo-yugabyte-db], only the squash embedding strategy uses cherry-picks.
