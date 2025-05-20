@@ -21,8 +21,11 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`:
 - `M` is the release month
 - `N` is the number of the release in that month
 
-
 ## v2025.5.2 - May 20, 2025
+
+### New Features
+
+- Added support for using a config file to manage parameters in offline migration using `yb-voyager`.
 
 ### Enhancements
 
