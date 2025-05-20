@@ -57,7 +57,7 @@ New repositories ought to be registered in here.
 Old repositories should be migrated into the CSV over time.
 Today, all repositories under `src/postgres` are tracked in the CSV.
 By using the CSV, several linter rules have been made to ensure YugabyteDB stays aligned with the upstream repositories.
-Note: as of today, there is no foolproof linter check that the CSV is updated properly whenever a merge with an upstream repository is made.
+Note: as of today, there is no foolproof linter check that the CSV is updated properly whenever a merge with an upstream repository is made ([issue #27023](https://github.com/yugabyte/yugabyte-db/issues/27023) may help close that gap).
 
 ### How upstream repositories are embedded
 
