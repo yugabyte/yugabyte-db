@@ -1224,7 +1224,9 @@ public class YbcBackupUtil {
 
     // Only skip ignore errors if requested by the user AND the backup supports 'dump_role_checks'.
     extendedArgsBuilder.setIgnoreRestoreErrors(true);
-    if (successMarker.dumpRoleChecks && !backupStorageInfo.getIgnoreErrors()) {
+    if (successMarker.dumpRoleChecks != null
+        && successMarker.dumpRoleChecks
+        && !backupStorageInfo.getIgnoreErrors()) {
       extendedArgsBuilder.setIgnoreRestoreErrors(false);
     }
 
