@@ -856,7 +856,8 @@ See the latest three commits of the following example (`git log --oneline --grap
 Note that `pg15-stat-monitor-merge` was a temporary branch on `d57d3b411c` at the time of doing the merge `481d26bf02`.
 Specifying the temporary branch name in the commit title is fine since it conveys the intent and the metadata for the actual commit being merged is already contained in the commit itself.
 
-As for the commit message body, look into the above examples as reference (e.g. `git show --no-patch 71ebe84823`.
+As for the commit message body, look into the above examples as reference (e.g. `git show --no-patch 71ebe84823`).
+Make sure that the information on what is being merged from what repository (if applicable) is clearly stated.
 
 #### Cherry-pick commit message
 
@@ -928,7 +929,7 @@ In case this is a cross-repository cherry-pick, `$difftool <(git -C /path/to/ups
 In case this is a cross-repository cherry-pick of multiple commits and you do not have access to individual cherry-picks, `$difftool <(git -C /path/to/upstream_repo diff <cherry-picks_commit_range>) <(git -C /path/to/yugabyte_repo show ...)`.
 There is also a tool [`analyze_cherry_pick.py`](https://gist.github.com/hari90/b65159b6811786023e0f0ea2af448f4a) authored by Hari you can try out.
 
-First, check the [title and summary](#cherry-pick-commit-message).
+First, check the [commit message](#cherry-pick-commit-message).
 
 Then, check the code and resolution notes.
 Line numbers and context may differ.
@@ -948,7 +949,7 @@ If the author followed the [cross-repository cherry-pick steps](#cross-repositor
 1. Check out the [yugabyte/yugabyte-db][repo-yugabyte-db] squash merge commit.
 1. In the upstream repository, `git merge` the upstream merge commit.
    Since the merge was already previously done, just sync the new content of [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory here.
-1. [Review](#review-merges) the code and resolution of this merge commit.
+1. [Review](#review-merges) the code and resolution of this merge commit, ignoring the commit message since this is a throw-away commit.
 
 On top of that, make sure that the Git metadata is proper where it matters.
 
@@ -966,7 +967,9 @@ On top of that, make sure that the Git metadata is proper where it matters.
 For merges, it is best to get an actual merge commit.
 Phorge squashes any Git structure into a single patch, so the merge commit should be obtained through a separate medium such as a GitHub fork.
 
-With a merge commit at hand, use `git show --diff-merges=dense-combined` (equivalent to just `git show`) on the merge commit to see the main resolutions.
+First, check the [commit message](#merge-commit-message).
+
+Then, use `git show --diff-merges=dense-combined` (equivalent to just `git show`) on the merge commit to see the main resolutions.
 Be aware that this doesn't show resolutions where one side of the merge was taken entirely.
 
 On top of that, make sure that the Git metadata is proper where it matters.
