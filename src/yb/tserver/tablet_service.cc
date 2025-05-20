@@ -511,6 +511,8 @@ class WriteQueryCompletionCallback {
 
     TRACE("Write completing with status $0", yb::ToString(status));
 
+    CopyMetricsToPgsqlResponse();
+
     if (!status.ok()) {
       if (leader_term_set_in_request_ && status.IsAborted() &&
           status.message().Contains("Operation submitted in term")) {
@@ -551,6 +553,16 @@ class WriteQueryCompletionCallback {
  private:
   TabletServerErrorPB* get_error() const {
     return response_->mutable_error();
+  }
+
+  void CopyMetricsToPgsqlResponse() const {
+    auto tablet_metrics = query_->scoped_tablet_metrics();
+    auto statistics = query_->scoped_statistics();
+
+    if (auto* resp = query_->GetPgsqlResponseForMetricsCapture()) {
+      tablet_metrics.CopyToPgsqlResponse(resp);
+      statistics.CopyToPgsqlResponse(resp);
+    }
   }
 
   tablet::TabletPeerPtr tablet_peer_;

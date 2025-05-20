@@ -316,6 +316,9 @@ message PgsqlWriteRequestPB {
   // data. Bypass this check when we know its safe.
   // Valid cases are InitDB, pg_upgrade, and temp tables.
   optional bool force_catalog_modifications = 27;
+
+  // What metric changes to return in response.
+  optional PgsqlMetricsCaptureType metrics_capture = 28;
 }
 
 //--------------------------------------------------------------------------------------------------
