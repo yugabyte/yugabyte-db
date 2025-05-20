@@ -1684,9 +1684,9 @@ CREATE INDEX idx_order_status_order_id on orders (order_id, status); --reorderin
 
 **Description**:
 
-In YugabyteDB, the columns specified in the [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index) statement are of three kinds: sharding, clustering, and covering. For more details, refer to the documentation for [secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/). By default, the sharding strategy is HASH unless [Postgres Compatibility mode](./../../develop/postgresql-compatibility/) is enabled, in which case RANGE is the default strategy.
+In YugabyteDB, the columns specified in the [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index) statement are of three kinds: sharding, clustering, and covering. For more details, refer to the documentation for [secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/). The sharding strategy is HASH by default unless [Postgres Compatibility mode](./../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
 
-The index must be designed in a way that the data is evenly distributed among all the nodes and is performant as per the query patterns.
+Design the index to evenly distribute data across all nodes and optimize performance based on query patterns
 
 If an index is created on a column with a high percentage of NULL values, all NULL entries will be stored in a single tablet. This concentration can create a hotspot, leading to performance degradation.
 
@@ -1741,9 +1741,9 @@ CREATE INDEX idx_users_middle_name_user_id on users (middle_name ASC, user_id);
 
 **Description**:
 
-In YugabyteDB, the columns specified in the [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index) statement are of three kinds: sharding, clustering, and covering. For more details, refer to the documentation for [secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/). By default, the sharding strategy is HASH. If [Postgres Compatibility mode](./../../develop/postgresql-compatibility/) is enabled, RANGE is the default sharding strategy.
+In YugabyteDB, the columns specified in the [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index) statement are of three kinds: sharding, clustering, and covering. For more details, refer to the documentation for [secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/). The sharding strategy is HASH by default unless [Postgres Compatibility mode](./../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
 
-The index must be designed in a way that the data is evenly distributed among all the nodes and is performant as per the query patterns.
+Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
 
 If the index is designed for a column with a high percentage of a particular value in the data, it can create a hotspot issue. All the data for that value will reside on a single tablet, which will become a hotspot for this value in the queries and, hence, cause performance degradation.
 
