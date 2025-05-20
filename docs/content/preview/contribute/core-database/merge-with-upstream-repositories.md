@@ -101,7 +101,7 @@ There is currently no strong preference for one over the other, though currently
 
 When trying to introduce a new upstream repository using the subtree embedding strategy, it is pretty straightforward.
 
-The following steps details what has already happened with adding DocumentDB.
+The following steps detail what has already been done to add DocumentDB.
 
 1. Find an appropriate upstream repository commit to target.
    Normally, this would correspond to a Git tag as an official release for stability.
