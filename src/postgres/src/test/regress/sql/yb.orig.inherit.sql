@@ -12,4 +12,7 @@ ALTER TABLE parent DROP CONSTRAINT parent_pkey;
 ALTER TABLE parent DROP CONSTRAINT parent_uniq_c1;
 \d+ parent
 \d+ child
+-- Test combining alter table cmds with inherit #27263
+ALTER TABLE child NO INHERIT parent, ADD COLUMN c3 int;
+SELECT * FROM child;
 DROP TABLE parent, child;

@@ -1820,21 +1820,23 @@ YBCPrepareAlterTable(List **subcmds,
 	handles = lappend(handles, db_handle);
 	ListCell   *lcmd;
 	int			col = 1;
-	bool		needsYBAlter = false;
+	bool		needs_yb_alter = false;
 
 	for (int cmd_idx = 0; cmd_idx < subcmds_size; ++cmd_idx)
 	{
 		foreach(lcmd, subcmds[cmd_idx])
 		{
+			bool subcmd_needs_yb_alter = false;
 			handles = YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd),
 											  rel, handles, &col,
-											  &needsYBAlter, rollbackHandle,
+											  &subcmd_needs_yb_alter, rollbackHandle,
 											  isPartitionOfAlteredTable);
+			needs_yb_alter |= subcmd_needs_yb_alter;
 		}
 	}
 	relation_close(rel, NoLock);
 
-	if (!needsYBAlter)
+	if (!needs_yb_alter)
 	{
 		return NULL;
 	}
