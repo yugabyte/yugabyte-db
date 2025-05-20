@@ -575,7 +575,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
                             table_name,
                             internal::GetSchema(schema),
                             internal::GetSchema(info.schema));
-        LOG(ERROR) << msg;
+        LOG(WARNING) << msg;
         return STATUS(AlreadyPresent, msg);
       }
 
@@ -593,7 +593,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
               table_name.ToString(),
               partition_schema.DebugString(internal::GetSchema(schema)),
               info.partition_schema.DebugString(internal::GetSchema(info.schema)));
-          LOG(ERROR) << msg;
+          LOG(WARNING) << msg;
           return STATUS(AlreadyPresent, msg);
         }
       }
@@ -901,7 +901,7 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                             table_name,
                             internal::GetSchema(ybschema),
                             internal::GetSchema(info.schema));
-        LOG(ERROR) << msg;
+        LOG(WARNING) << msg;
         return STATUS(AlreadyPresent, msg);
       }
 
@@ -1522,8 +1522,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
       resp.partition_schema(), internal::GetSchema(&info->schema), &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
-  if (!resp.schema().pgschema_name().empty()) {
-    info->table_name.set_pgschema_name(resp.schema().pgschema_name());
+  if (!resp.schema().depricated_pgschema_name().empty()) {
+    info->table_name.set_pgschema_name(resp.schema().depricated_pgschema_name());
   }
   info->table_id = resp.identifier().table_id();
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
@@ -2827,7 +2827,7 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
       out.str(master_server_addr);
       out.str(" ");
     }
-    LOG(ERROR) << out.str();
+    LOG(DFATAL) << out.str();
     return STATUS(InvalidArgument, "master addresses cannot be empty");
   }
 

@@ -111,6 +111,7 @@ DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 
 namespace yb {
 
@@ -2181,6 +2182,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1));
 
   // 2. Setup replication.

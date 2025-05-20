@@ -718,10 +718,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
       // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
       // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
       // happen under normal circumstances.
-      LOG_WITH_PREFIX(ERROR) << "Error trying to read ahead of the log "
-                                      << "while preparing peer request: "
-                                      << s.ToString() << ". Destination peer: "
-                                      << peer_uuid;
+      LOG_WITH_PREFIX(DFATAL)
+          << "Error trying to read ahead of the log while preparing peer request: "
+          << s << ". Destination peer: " << peer_uuid;
       return s;
     } else {
       LOG_WITH_PREFIX(FATAL) << "Error reading the log while preparing peer request: "
@@ -1886,7 +1885,7 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
   std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
   if (peer == nullptr) {
-    LOG(ERROR) << "Invalid peer UUID: " << peer_uuid;
+    LOG(WARNING) << "Invalid peer UUID: " << peer_uuid;
     return false;
   }
   const bool peer_can_be_leader = peer->last_received >= queue_state_.majority_replicated_op_id;
@@ -1902,7 +1901,7 @@ OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {
   std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
   if (peer == nullptr) {
-    LOG(ERROR) << "Invalid peer UUID: " << uuid;
+    LOG(WARNING) << "Invalid peer UUID: " << uuid;
     return OpId::Min();
   }
   return peer->last_received;

@@ -59,7 +59,7 @@ class IoThreadPool::Impl {
     auto deadline = std::chrono::steady_clock::now() + 15s;
     while (!io_service_.stopped()) {
       if (std::chrono::steady_clock::now() >= deadline) {
-        LOG(ERROR) << "Io service failed to stop";
+        LOG(WARNING) << "Io service failed to stop";
         io_service_.stop();
         break;
       }
@@ -74,7 +74,7 @@ class IoThreadPool::Impl {
   void Execute() {
     boost::system::error_code ec;
     io_service_.run(ec);
-    LOG_IF(ERROR, ec) << "Failed to run io service: " << ec;
+    LOG_IF(DFATAL, ec) << "Failed to run io service: " << ec;
   }
 
   std::string name_;

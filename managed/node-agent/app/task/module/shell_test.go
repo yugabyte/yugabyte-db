@@ -10,7 +10,6 @@ import (
 )
 
 func TestCommandEnv(t *testing.T) {
-	command := NewCommand("test_env", "echo", []string{"test"})
 	ctx := context.Background()
 	currentUser, err := user.Current()
 	if err != nil {
@@ -20,7 +19,7 @@ func TestCommandEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env, err := command.userEnv(ctx, userDetail)
+	env, err := userEnv(ctx, userDetail)
 	if err != nil {
 		t.Fatal(err)
 	}

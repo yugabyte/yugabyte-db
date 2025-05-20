@@ -511,11 +511,11 @@ Result<Schema> TableInfo::GetSchema() const {
 }
 
 bool TableInfo::has_pgschema_name() const {
-  return LockForRead()->schema().has_pgschema_name();
+  return LockForRead()->schema().has_depricated_pgschema_name();
 }
 
 const string TableInfo::pgschema_name() const {
-  return LockForRead()->schema().pgschema_name();
+  return LockForRead()->schema().depricated_pgschema_name();
 }
 
 bool TableInfo::has_pg_type_oid() const {
@@ -1211,13 +1211,13 @@ Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
 
 bool PersistentTableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().depricated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLQueueTableName;
 }
 
 bool PersistentTableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().depricated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLReplicatedTableName;
 }
 
@@ -1351,8 +1351,8 @@ std::string DdlLogEntry::id() const {
 // ObjectLockInfo
 // ================================================================================================
 
-std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLease(
-    const NodeInstancePB& instance) {
+std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance) {
   auto l = LockForWrite();
   {
     std::lock_guard l(mutex_);
@@ -1360,7 +1360,7 @@ std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLea
   }
   if (l->pb.lease_info().live_lease() &&
       l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
-    return std::nullopt;
+    return l->pb.lease_info();
   }
   auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
   lease_info.set_live_lease(true);

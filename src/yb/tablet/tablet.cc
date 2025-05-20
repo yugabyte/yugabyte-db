@@ -812,7 +812,7 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
                         Format("Failed to create RocksDB tablet directory $0", db_dir));
 
   RETURN_NOT_OK_PREPEND(
-      fs->CreateDirIfMissingAndSync(docdb::GetStorageDir(db_dir, kIntentsDirName)),
+      fs->CreateDirIfMissingAndSync(docdb::GetStorageDir(db_dir, docdb::kIntentsDirName)),
       Format("Failed to create RocksDB tablet intents directory $0", db_dir));
 
   RETURN_NOT_OK(snapshots_->CreateDirectories(db_dir, fs));
@@ -1106,7 +1106,7 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
     if (db != nullptr) {
       delete db;
     }
-    return STATUS(IllegalState, rocksdb_open_status.ToString());
+    return rocksdb_open_status;
   }
   regular_db_.reset(db);
   regular_db_->ListenFilesChanged(std::bind(&Tablet::RegularDbFilesChanged, this));
@@ -1122,7 +1122,7 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
 
   const auto& db_dir = metadata()->rocksdb_dir();
 
-  auto intents_dir = docdb::GetStorageDir(db_dir, kIntentsDirName);
+  auto intents_dir = docdb::GetStorageDir(db_dir, docdb::kIntentsDirName);
   LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << intents_dir;
   rocksdb::Options intents_rocksdb_options(common_options);
   intents_rocksdb_options.compaction_context_factory = {};
@@ -1736,6 +1736,13 @@ Status Tablet::WriteTransactionalBatch(
   RequestScope request_scope = VERIFY_RESULT(CreateRequestScope());
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+
+  const auto duration = write_batch.GetWriteGroupJoinDuration();
+  if (duration > MonoDelta::kZero) {
+    // Track only if the duration is positive so we know how many write has non-zero duration.
+    metrics_->Increment(TabletEventStats::kIntentDbWriteThreadJoinDuration,
+                        duration.ToMicroseconds());
+  }
 
   last_batch_data.hybrid_time = hybrid_time;
   last_batch_data.next_write_id = writer.intra_txn_write_id();
@@ -2361,6 +2368,13 @@ Status Tablet::RemoveIntentsImpl(
       docdb::ConsensusFrontiers frontiers;
       InitFrontiers(data, frontiers);
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
+
+      const auto duration = intents_write_batch.GetWriteGroupJoinDuration();
+      if (duration > MonoDelta::kZero) {
+        // Track only if the duration is positive so we know how many write has non-zero duration.
+        metrics_->Increment(TabletEventStats::kIntentDbRemoveThreadJoinDuration,
+                            duration.ToMicroseconds());
+      }
 
       if (!context.apply_state().active()) {
         break;
@@ -4100,7 +4114,7 @@ Status Tablet::ForceRocksDBCompact(
   return Status::OK();
 }
 
-std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
+std::string Tablet::TEST_DocDBDumpStr(docdb::IncludeIntents include_intents) {
   if (!regular_db_) return "";
 
   if (!include_intents) {
@@ -4112,7 +4126,7 @@ std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
 }
 
 void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::unordered_set<std::string>* out) {
+    docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
   if (!include_intents) {
@@ -4123,7 +4137,7 @@ void Tablet::TEST_DocDBDumpToContainer(
   return docdb::DocDBDebugDumpToContainer(doc_db(), &GetSchemaPackingProvider(), out);
 }
 
-void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
+void Tablet::TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents) {
   if (!regular_db_) {
     LOG_WITH_PREFIX(INFO) << "No RocksDB to dump";
     return;

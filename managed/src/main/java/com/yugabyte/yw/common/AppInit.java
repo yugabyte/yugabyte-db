@@ -50,6 +50,7 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Principal;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding;
@@ -62,6 +63,8 @@ import io.ebean.PagedList;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
+import java.security.Provider;
+import java.security.Security;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +72,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
+import org.bouncycastle.crypto.fips.FipsStatus;
 import play.Application;
 import play.Environment;
 
@@ -363,6 +368,26 @@ public class AppInit {
           log.debug("Fixing up file paths a second time.");
           fileDataService.fixUpPaths(storagePath);
           releaseManager.fixFilePaths();
+        }
+
+        if (config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+          if (FipsStatus.isReady()) {
+            log.info("FipsStatus.isReady = true");
+          } else {
+            throw new RuntimeException("FipsStatus.isReady = false");
+          }
+          if (CryptoServicesRegistrar.isInApprovedOnlyMode()) {
+            log.info("CryptoServicesRegistrar.isInApprovedOnlyMode = true");
+          } else {
+            throw new RuntimeException("CryptoServicesRegistrar.isInApprovedOnlyMode = false");
+          }
+          Provider[] providers = Security.getProviders();
+          log.info("Following providers are installed:");
+          if (providers != null) {
+            for (int i = 0; i < providers.length; i++) {
+              log.info("{}: {}", i, providers[i].getName());
+            }
+          }
         }
 
         log.info("AppInit completed");

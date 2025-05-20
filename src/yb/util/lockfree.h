@@ -179,8 +179,8 @@ class LockFreeStack {
     CHECK(IsAcceptableAtomicImpl(head_));
   }
 
-  void Clear() {
-    head_.store(nullptr, std::memory_order_release);
+  bool Empty() const {
+    return head_.load(boost::memory_order_relaxed).pointer == nullptr;
   }
 
   void Push(T* value) {
@@ -221,6 +221,48 @@ class LockFreeStack {
   } __attribute__((aligned(16)));
 
   boost::atomic<Head> head_{Head{nullptr, 0}};
+};
+
+// SemiFairQueue does not guarantee that pushed values will be popped in exactly the same order
+// as they were pushed.
+// But order will be the same as long as the consumer keeps up with the producer.
+// This is useful to implement thread pool, since it does not guarantee exact task execution order.
+// A single stack is not suitable for thread pool because older tasks would get starved.
+// SemiFairQueue uses two stacks to sort the tasks in the correct order with a high enough
+// probability.
+template <class T>
+class SemiFairQueue {
+ public:
+  bool Empty() const {
+    return write_stack_.Empty() && read_stack_.Empty();
+  }
+
+  void Push(T* value) {
+    write_stack_.Push(value);
+  }
+
+  T* Pop() {
+    auto result = read_stack_.Pop();
+    if (result) {
+      return result;
+    }
+    result = write_stack_.Pop();
+    if (!result) {
+      return nullptr;
+    }
+    for (;;) {
+      auto next = write_stack_.Pop();
+      if (!next) {
+        return result;
+      }
+      read_stack_.Push(result);
+      result = next;
+    }
+  }
+
+ private:
+  LockFreeStack<T> write_stack_;
+  LockFreeStack<T> read_stack_;
 };
 
 // A weak pointer that can only be written to once, but can be read and written in a lock-free way.

@@ -50,7 +50,7 @@ Before you create a Kubernetes provider, perform the following:
 - Create a `yugabyte-platform-universe-management` service account.
 - Create a `kubeconfig` file of the service account you created to configure access to the Kubernetes cluster.
 
-Refer to [To deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes/).
+See [To deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes/).
 
 ## Configure Kubernetes
 
@@ -124,7 +124,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YBA uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
-1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer kind, enter the issuer name, and optionally provide the issuer group. For more information, refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
+1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer kind, enter the issuer name, and optionally provide the issuer group. For more information, refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
 
 If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
 
@@ -378,6 +378,17 @@ tserver:
 ```
 
 The Kubernetes `labels` are key-value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to you. For more information, see [Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/) in the Kubernetes documentation.
+
+### Use common name with cert-manager
+
+If your certificate issuer (for example, for `aws-privateca-issuer`) requires the certificate to include the common name, set the following override:
+
+```yml
+tls:
+  certManager:
+    certificates:
+      commonNameRequired: true
+```
 
 ### Preflight check
 

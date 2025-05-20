@@ -476,9 +476,9 @@ class PgClient::Impl : public BigDataFetcher {
           // the next user activity will trigger a FATAL anyway. This is done specifically to avoid
           // log spew of the warning message below in cases where the session is idle (ie. no other
           // RPCs are being sent to the tserver).
-          LOG(ERROR) << "Heartbeat failed. Connection needs to be reset. "
-                     << "Shutting down heartbeating mechanism due to unknown session "
-                     << session_id_;
+          LOG(DFATAL) << "Heartbeat failed. Connection needs to be reset. "
+                      << "Shutting down heartbeating mechanism due to unknown session "
+                      << session_id_;
           heartbeat_poller_.Shutdown();
           return;
         }

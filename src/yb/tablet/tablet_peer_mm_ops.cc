@@ -98,7 +98,7 @@ void LogGCOp::Perform() {
   Status s = tablet_peer_->RunLogGC();
   if (!s.ok()) {
     s = s.CloneAndPrepend("Unexpected error while running Log GC from TabletPeer");
-    LOG(ERROR) << s.ToString();
+    LOG(DFATAL) << s.ToString();
   }
 
   sem_.unlock();

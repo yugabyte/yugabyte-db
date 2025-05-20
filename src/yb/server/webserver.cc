@@ -546,7 +546,7 @@ Status Webserver::Impl::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) cons
         break;
       }
       default: {
-        LOG(ERROR) << "Unexpected address family: " << sockaddrs[i]->ss_family;
+        LOG(DFATAL) << "Unexpected address family: " << sockaddrs[i]->ss_family;
         RSTATUS_DCHECK(false, IllegalState, "Unexpected address family");
         break;
       }

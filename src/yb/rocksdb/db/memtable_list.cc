@@ -326,9 +326,9 @@ void MemTableList::PickMemtablesToFlush(
           }
           all_memtables_logged = true;
         }
-        LOG(ERROR) << "Failed when checking if memtable can be flushed (will still flush it): "
-                   << filter_result.status() << ". Memtable: " << m->ToString()
-                   << ss.str();
+        LOG(DFATAL) << "Failed when checking if memtable can be flushed (will still flush it): "
+                    << filter_result.status() << ". Memtable: " << m->ToString()
+                    << ss.str();
         // Still flush the memtable so that this error does not keep occurring.
       }
     }

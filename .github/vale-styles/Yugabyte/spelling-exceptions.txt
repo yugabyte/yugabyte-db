@@ -300,6 +300,8 @@ hotfix
 hotfixed
 hotfixes
 hotfixing
+hotspot
+hotspots
 http
 https
 Hudi
@@ -352,6 +354,7 @@ Klar
 Knative
 Kramdown
 Kroki
+Kube
 Kubecost
 kubectl
 Kubernetes

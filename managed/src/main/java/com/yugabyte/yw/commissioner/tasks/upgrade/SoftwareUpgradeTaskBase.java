@@ -60,6 +60,13 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return NodeState.UpgradeSoftware;
   }
 
+  @Override
+  protected NodeState getNodeState(Set<ServerType> processTypes) {
+    return getSingle(processTypes) == ServerType.MASTER
+        ? NodeState.UpgradeMasterSoftware
+        : NodeState.UpgradeSoftware;
+  }
+
   protected UpgradeContext getUpgradeContext(String targetSoftwareVersion) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)

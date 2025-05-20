@@ -17,6 +17,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -31,18 +32,23 @@ import lombok.extern.slf4j.Slf4j;
 
 @Singleton
 @Slf4j
-public class Pkcs12TrustStoreManager implements TrustStoreManager {
+public class YBATrustStoreManager implements TrustStoreManager {
 
-  public static final String TRUSTSTORE_FILE_NAME = "ybPkcs12CaCerts";
+  public static final String JVM_DEFAULT_KEYSTORE_TYPE = "JKS";
+
+  public static final String BCFKS_TRUSTSTORE_FILE_NAME = "ybBcfksCaCerts";
+
+  public static final String PKCS12_TRUSTSTORE_FILE_NAME = "ybPkcs12CaCerts";
   private static final String YB_JAVA_HOME_PATHS = "yb.wellKnownCA.trustStore.javaHomePaths";
 
   private final RuntimeConfGetter runtimeConfGetter;
 
-  @Inject Config config;
+  private final Config config;
 
   @Inject
-  public Pkcs12TrustStoreManager(RuntimeConfGetter runtimeConfGetter) {
+  public YBATrustStoreManager(RuntimeConfGetter runtimeConfGetter, Config config) {
     this.runtimeConfGetter = runtimeConfGetter;
+    this.config = config;
   }
 
   /** Creates a trust-store with only custom CA certificates in pkcs12 format. */
@@ -54,20 +60,20 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       boolean suppressErrors)
       throws KeyStoreException, CertificateException, IOException, PlatformServiceException {
 
-    log.debug("Trying to update YBA's pkcs12 truststore ...");
+    log.debug("Trying to update YBA's truststore ...");
     // Get the existing trust bundle.
-    String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
-    log.debug("Updating truststore {}", trustStorePath);
+    TrustStoreInfo trustStoreInfo = getYbaTrustStoreInfo(trustStoreHome);
+    log.debug("Updating truststore {}", trustStoreInfo);
 
-    boolean doesTrustStoreExist = new File(trustStorePath).exists();
+    boolean doesTrustStoreExist = new File(trustStoreInfo.getPath()).exists();
     KeyStore trustStore = null;
     if (!doesTrustStoreExist) {
-      File trustStoreFile = new File(trustStorePath);
+      File trustStoreFile = new File(trustStoreInfo.getPath());
       trustStoreFile.createNewFile();
-      log.debug("Created an empty YBA pkcs12 trust-store");
+      log.debug("Created an empty YBA trust-store");
     }
 
-    trustStore = getTrustStore(trustStorePath, trustStorePassword, !doesTrustStoreExist);
+    trustStore = getTrustStore(trustStoreInfo, trustStorePassword, !doesTrustStoreExist);
     if (trustStore == null) {
       String errMsg = "Truststore cannot be null";
       log.error(errMsg);
@@ -87,11 +93,14 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       trustStore.setCertificateEntry(alias, certificates.get(i));
     }
     // Update the trust store in file-system.
-    saveTrustStore(trustStorePath, trustStore, trustStorePassword);
-    log.debug("Truststore '{}' now has a certificate with alias '{}'", trustStorePath, certAlias);
+    saveTrustStore(trustStoreInfo, trustStore, trustStorePassword);
+    log.debug(
+        "Truststore '{}' now has a certificate with alias '{}'",
+        trustStoreInfo.getPath(),
+        certAlias);
 
     // Backup up YBA's pkcs12 trust store in DB.
-    FileData.addToBackup(Collections.singletonList(trustStorePath));
+    FileData.addToBackup(Collections.singletonList(trustStoreInfo.getPath()));
 
     log.info("Custom CA certificate added in YBA's pkcs12 trust-store");
     return !doesTrustStoreExist;
@@ -107,9 +116,9 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       throws IOException, KeyStoreException, CertificateException {
 
     // Get the existing trust bundle.
-    String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
-    log.debug("Trying to replace cert {} in YBA's pkcs12 truststore {}", certAlias, trustStorePath);
-    KeyStore trustStore = getTrustStore(trustStorePath, trustStorePassword, false);
+    TrustStoreInfo trustStoreInfo = getYbaTrustStoreInfo(trustStoreHome);
+    log.debug("Trying to replace cert {} in YBA's truststore {}", certAlias, trustStoreInfo);
+    KeyStore trustStore = getTrustStore(trustStoreInfo, trustStorePassword, false);
     if (trustStore == null) {
       String errMsg = "Truststore cannot be null";
       log.error(errMsg);
@@ -141,34 +150,36 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       String alias = certAlias + "-" + i;
       trustStore.setCertificateEntry(alias, newCertificates.get(i));
     }
-    saveTrustStore(trustStorePath, trustStore, trustStorePassword);
+    saveTrustStore(trustStoreInfo, trustStore, trustStorePassword);
 
     // Backup up YBA's pkcs12 trust store in DB.
-    FileData.addToBackup(Collections.singletonList(trustStorePath));
+    FileData.addToBackup(Collections.singletonList(trustStoreInfo.getPath()));
 
-    log.info("Truststore '{}' updated with new cert at alias '{}'", trustStorePath, certAlias);
+    log.info(
+        "Truststore '{}' updated with new cert at alias '{}'", trustStoreInfo.getPath(), certAlias);
   }
 
   private void saveTrustStore(
-      String trustStorePath, KeyStore trustStore, char[] trustStorePassword) {
+      TrustStoreInfo trustStoreInfo, KeyStore trustStore, char[] trustStorePassword) {
     if (trustStore != null) {
-      try (FileOutputStream storeOutputStream = new FileOutputStream(trustStorePath)) {
+      try (FileOutputStream storeOutputStream = new FileOutputStream(trustStoreInfo.getPath())) {
         trustStore.store(storeOutputStream, trustStorePassword);
-        log.debug("Trust store written to {}", trustStorePath);
+        log.debug("Trust store written to {}", trustStoreInfo.getPath());
       } catch (IOException
           | KeyStoreException
           | NoSuchAlgorithmException
           | CertificateException e) {
-        String msg = String.format("Failed to save certificate to %s", trustStorePath);
+        String msg = String.format("Failed to save certificate to %s", trustStoreInfo.getPath());
         log.error(msg, e);
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
       }
     }
   }
 
-  protected KeyStore getTrustStore(String trustStorePath, char[] trustStorePassword, boolean init) {
-    try (FileInputStream storeInputStream = new FileInputStream(trustStorePath)) {
-      KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+  protected KeyStore getTrustStore(
+      TrustStoreInfo trustStoreInfo, char[] trustStorePassword, boolean init) {
+    try (FileInputStream storeInputStream = new FileInputStream(trustStoreInfo.getPath())) {
+      KeyStore trustStore = KeyStore.getInstance(trustStoreInfo.getType());
       if (init) {
         trustStore.load(null, trustStorePassword);
       } else {
@@ -183,13 +194,13 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
     }
   }
 
-  protected KeyStore maybeGetTrustStore(String trustStorePath, char[] trustStorePassword) {
+  protected KeyStore getTrustStore(String trustStorePath, char[] trustStorePassword, String type) {
     KeyStore trustStore = null;
     try (FileInputStream storeInputStream = new FileInputStream(trustStorePath)) {
-      trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+      trustStore = KeyStore.getInstance(type);
       trustStore.load(storeInputStream, trustStorePassword);
     } catch (Exception e) {
-      log.warn(String.format("Couldn't get pkcs12 trust store: %s", e.getLocalizedMessage()));
+      throw new RuntimeException("Couldn't load trust store " + trustStorePath, e);
     }
     return trustStore;
   }
@@ -203,8 +214,8 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       throws KeyStoreException, IOException, CertificateException {
     log.info("Removing cert {} from YBA's pkcs12 truststore ...", certAlias);
 
-    String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
-    KeyStore trustStore = getTrustStore(trustStorePath, trustStorePassword, false);
+    TrustStoreInfo trustStoreInfo = getYbaTrustStoreInfo(trustStoreHome);
+    KeyStore trustStore = getTrustStore(trustStoreInfo, trustStorePassword, false);
     List<Certificate> certificates = getX509Certificate(certPath);
     for (int i = 0; i < certificates.size(); i++) {
       String alias = certAlias + "-" + i;
@@ -221,40 +232,13 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
         trustStore.deleteEntry(alias);
       }
     }
-    saveTrustStore(trustStorePath, trustStore, trustStorePassword);
-    log.debug("Truststore '{}' now does not have a CA certificate '{}'", trustStorePath, certAlias);
+    saveTrustStore(trustStoreInfo, trustStore, trustStorePassword);
+    log.debug(
+        "Truststore '{}' now does not have a CA certificate '{}'",
+        trustStoreInfo.getPath(),
+        certAlias);
 
     log.info("Custom CA certs deleted in YBA's pkcs12 truststore");
-  }
-
-  public String getYbaTrustStorePath(String trustStoreHome) {
-    // Get the existing trust bundle.
-    return getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
-  }
-
-  public String getYbaTrustStoreType() {
-    String storeType = KeyStore.getDefaultType();
-    log.debug("The trust-store type is {}", storeType); // pkcs12
-    return storeType;
-  }
-
-  public boolean isTrustStoreEmpty(String caStorePathStr, char[] trustStorePassword) {
-    KeyStore trustStore = maybeGetTrustStore(caStorePathStr, trustStorePassword);
-    if (trustStore == null) {
-      return true;
-    } else {
-      try {
-        log.debug("There are {} entries in pkcs12 trust-store", trustStore.size());
-        if (trustStore.size() == 0) {
-          return true;
-        }
-      } catch (KeyStoreException e) {
-        String msg = "Failed to get size of pkcs12 trust-store";
-        log.error(msg, e.getLocalizedMessage());
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
-      }
-    }
-    return false;
   }
 
   // ------------- methods for Java defaults ----------------
@@ -296,7 +280,7 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
     for (String javaPath : javaHomePaths) {
       if (Files.exists(Paths.get(javaPath))) {
         javaSSLConfigMap.put("path", javaPath);
-        javaSSLConfigMap.put("type", KeyStore.getDefaultType()); // pkcs12
+        javaSSLConfigMap.put("type", JVM_DEFAULT_KEYSTORE_TYPE); // pkcs12
       }
     }
     log.info("Java SSL config is:{}", javaSSLConfigMap);
@@ -311,8 +295,10 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
     // NOTE: If adding any custom path, we must add the ordered default path as well, if they exist.
     if (javaxNetSslMap != null) {
       javaStore =
-          maybeGetTrustStore(
-              javaxNetSslMap.get("path"), javaxNetSslMap.get("password").toCharArray());
+          getTrustStore(
+              javaxNetSslMap.get("path"),
+              javaxNetSslMap.get("password").toCharArray(),
+              JVM_DEFAULT_KEYSTORE_TYPE);
       return javaStore;
     }
 
@@ -320,9 +306,22 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
     log.debug("Java home cert paths are {}", javaHomePaths);
     for (String javaPath : javaHomePaths) {
       if (Files.exists(Paths.get(javaPath))) {
-        javaStore = maybeGetTrustStore(javaPath, null);
+        javaStore = getTrustStore(javaPath, null, "JKS");
+        break;
       }
     }
     return javaStore;
+  }
+
+  public TrustStoreInfo getYbaTrustStoreInfo(String trustStoreHome) {
+    // Get the existing trust bundle.
+    String trustStorePath = getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_FILE_NAME);
+    if (Files.exists(Path.of(trustStorePath))) {
+      // PKSC12 bundle for backward compatibility
+      return new TrustStoreInfo(trustStorePath, "PKCS12");
+    }
+    // BCFKS bundle for fresh installed YBAs to simplify FIPS migration
+    return new TrustStoreInfo(
+        getTrustStorePath(trustStoreHome, BCFKS_TRUSTSTORE_FILE_NAME), "BCFKS");
   }
 }

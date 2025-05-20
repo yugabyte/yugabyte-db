@@ -107,8 +107,9 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn1.Execute(lock_stmt_1));
 
-    // In sync point ObjectLockedBatchEntry::Lock, the lock is in waiting state.
-    SyncPoint::GetInstance()->LoadDependency({{"WaitingLock", "ObjectLockedBatchEntry::Lock"}});
+    // In sync point ObjectLockManagerImpl::DoLockSingleEntry, the lock is in waiting state.
+    SyncPoint::GetInstance()->LoadDependency(
+        {{"WaitingLock", "ObjectLockManagerImpl::DoLockSingleEntry"}});
     SyncPoint::GetInstance()->ClearTrace();
     SyncPoint::GetInstance()->EnableProcessing();
 
@@ -427,13 +428,16 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
 class PgObjectLocksTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    opts->extra_tserver_flags.emplace_back("--TEST_enable_object_locking_for_table_locks=true");
+    const bool table_locks_enabled = EnableTableLocks();
+    opts->extra_tserver_flags.emplace_back(
+        yb::Format("--TEST_enable_object_locking_for_table_locks=$0", table_locks_enabled));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
-    opts->extra_master_flags.emplace_back("--TEST_enable_object_locking_for_table_locks=true");
+    opts->extra_master_flags.emplace_back(
+        yb::Format("--TEST_enable_object_locking_for_table_locks=$0", table_locks_enabled));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
@@ -442,7 +446,52 @@ class PgObjectLocksTest : public LibPqTestBase {
   int GetNumTabletServers() const override {
     return 3;
   }
+
+  virtual bool EnableTableLocks() const {
+    return true;
+  }
 };
+
+class PgObjectLocksTestAbortTxns : public PgObjectLocksTest,
+                                   public ::testing::WithParamInterface<bool> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_colocate_database_by_default=true");
+    opts->extra_master_flags.emplace_back("--ysql_colocate_database_by_default=true");
+  }
+
+  bool EnableTableLocks() const override {
+    return GetParam();
+  }
+};
+
+TEST_P(PgObjectLocksTestAbortTxns, TestDDLAbortsTxns) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE testdb with colocation=true"));
+
+  auto conn1 = ASSERT_RESULT(ConnectToDB("testdb"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT) with (colocated=true)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test2(k INT PRIMARY KEY, v INT) with (colocated=true)"));
+
+  ASSERT_OK(conn1.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+
+  auto conn2 = ASSERT_RESULT(ConnectToDB("testdb"));
+  ASSERT_OK(conn2.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE test2 ADD COLUMN v1 INT"));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+
+  if (EnableTableLocks()) {
+    ASSERT_OK(conn1.Execute("COMMIT"));
+  } else {
+    ASSERT_NOK(conn1.Execute("COMMIT"));
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(
+    TableLocksEnabled, PgObjectLocksTestAbortTxns, ::testing::Bool(),
+    ::testing::PrintToStringParamName());
 
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;

@@ -226,7 +226,8 @@ void TabletMetadataValidator::Impl::DoValidate() {
 
     auto sync_result = SyncWithMaster();
     if (!sync_result.ok()) {
-      LOG_WITH_PREFIX(ERROR) << "Failed to sync with the master, status: " << sync_result.status();
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to sync with the master, status: " << sync_result.status();
       break;
     }
 
@@ -240,8 +241,8 @@ bool TabletMetadataValidator::Impl::HandleMasterResponse(
   VLOG_WITH_PREFIX_AND_FUNC(2) << "response: " << response.ShortDebugString();
 
   if (response.has_error()) {
-    LOG_WITH_PREFIX(ERROR) << "Failed to get backfilling status from the master, "
-                           << "error: " << response.error().ShortDebugString();
+    LOG_WITH_PREFIX(WARNING) << "Failed to get backfilling status from the master, "
+                             << "error: " << response.error().ShortDebugString();
     return false; // Will try during next period.
   }
 
@@ -531,7 +532,7 @@ void TabletMetadataValidator::Impl::TriggerMetadataUpdate(
     // has been changed from the last flush (some operation has been applied), but this cannot be
     // guaranteed as no raft opeation is used for retain_delete_markers recovery.
     auto status = tablet_meta->Flush();
-    LOG_IF_WITH_PREFIX(ERROR, !status.ok())
+    LOG_IF_WITH_PREFIX(WARNING, !status.ok())
         << "Tablet " << index_tablet_id << " metadata flush failed: " << status;
 
     if (status.ok()) {

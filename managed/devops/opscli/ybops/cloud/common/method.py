@@ -1353,6 +1353,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                  help="Path to GCP credentials file used for logs export.")
         self.parser.add_argument('--ycql_audit_log_level', default=None,
                                  help="YCQL audit log level.")
+        self.parser.add_argument('--skip_ansible_configure_playbook', action="store_true",
+                                 help="If specified will not run the ansible playbooks.")
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1696,7 +1698,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             if delete_paths:
                 self.extra_vars["delete_paths"] = delete_paths
         # If we are just rotating certs, we don't need to do any configuration changes.
-        if not rotate_certs:
+        if not rotate_certs and not args.skip_ansible_configure_playbook:
             self.cloud.setup_ansible(args).run(
                 "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 

@@ -29,6 +29,7 @@
 #include "yb/rocksdb/util/random.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
 
 namespace rocksdb {
@@ -242,9 +243,11 @@ void WriteThread::JoinBatchGroup(Writer* w) {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:Wait", w);
 
   if (!linked_as_leader) {
+    auto start = yb::MonoTime::Now();
     AwaitState(w,
                STATE_GROUP_LEADER | STATE_PARALLEL_FOLLOWER | STATE_COMPLETED,
                &ctx);
+    w->batch->SetWriteGroupJoinDuration(yb::MonoTime::Now() - start);
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:DoneWaiting", w);
   }
 }

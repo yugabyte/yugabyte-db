@@ -151,13 +151,13 @@ public class VaultPKITest extends FakeDBApplication {
     X509Certificate caCert =
         CertificateHelper.convertStringToX509Cert(((VaultPKI) certProvider).getCACertificate());
     PublicKey k = caCert.getPublicKey();
-    cert.verify(k, "BC");
+    cert.verify(k);
 
     // verify by fetching ca from mountPath.
     caCert = ((VaultPKI) certProvider).getCACertificateFromVault();
     assertNotEquals("", caCert);
     k = caCert.getPublicKey();
-    cert.verify(k, "BC");
+    cert.verify(k);
   }
 
   @Test

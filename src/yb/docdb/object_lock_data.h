@@ -36,6 +36,14 @@ struct ObjectLockOwner {
     req->set_subtxn_id(subtxn_id);
   }
 
+  template<class T>
+  void PopulateReleaseRequest(T* req, bool release_all = true) const {
+    req->set_txn_id(txn_id.data(), txn_id.size());
+    if (!release_all) {
+      req->set_subtxn_id(subtxn_id);
+    }
+  }
+
   YB_STRUCT_DEFINE_HASH(ObjectLockOwner, txn_id, subtxn_id);
 
   auto operator<=>(const ObjectLockOwner&) const = default;

@@ -111,6 +111,7 @@ message InstallSoftwareInput {
     string iTestS3PackagePath = 9;
     string remoteTmp = 10;
     string ybHomeDir = 11;
+    repeated string symLinkFolders = 12;
 }
 
 message InstallSoftwareOutput {
@@ -125,4 +126,43 @@ message ServerGFlagsInput {
 }
 
 message ServerGFlagsOutput {
+}
+
+message InstallYbcInput {
+    string ybcPackage = 1;
+    string remoteTmp = 2;
+    string ybHomeDir = 3;
+    repeated string mountPoints = 4;
+}
+
+message InstallYbcOutput {
+    int32 pid = 1;
+}
+
+message ConfigureServerInput {
+    string remoteTmp = 1;
+    string ybHomeDir = 2;
+    repeated string processes = 3;
+    repeated string mountPoints = 4;
+    uint32 numCoresToKeep = 5;
+}
+
+message ConfigureServerOutput {
+    int32 pid = 1;
+}
+
+message InstallOtelCollectorInput {
+    string ybHomeDir = 1;
+    repeated string mountPoints = 2;
+    string otelColPackagePath = 3;
+    string ycqlAuditLogLevel = 4;
+    string otelColConfigFile = 5;
+    string otelColAwsAccessKey = 6;
+    string otelColAwsSecretKey = 7;
+    string otelColGcpCredsFile = 8;
+    string remoteTmp = 9;
+}
+
+message InstallOtelCollectorOutput {
+    int32 pid = 1;
 }

@@ -367,12 +367,6 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
   }
-  if (opts.server_type == TabletServerOptions::kServerType &&
-      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
-  } else {
-    ts_local_lock_manager_ = nullptr;
-  }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
 }
@@ -740,6 +734,8 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(heartbeater_->Start());
 
+  StartTSLocalLockManager();
+
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
   }
@@ -785,6 +781,10 @@ void TabletServer::Shutdown() {
         "Failed to stop table mutation count sender thread");
   }
 
+  if (auto local_lock_manager = ts_local_lock_manager(); local_lock_manager) {
+    local_lock_manager->Shutdown();
+  }
+
   client()->RequestAbortAllRpcs();
 
   tablet_manager_->StartShutdown();
@@ -795,9 +795,24 @@ void TabletServer::Shutdown() {
 }
 
 tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
-  std::lock_guard l(lock_);
-  ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
-  return ts_local_lock_manager_;
+  ts_local_lock_manager()->Shutdown();
+  {
+    std::lock_guard l(lock_);
+    ts_local_lock_manager_.reset();
+  }
+  StartTSLocalLockManager();
+  return ts_local_lock_manager();
+}
+
+void TabletServer::StartTSLocalLockManager() {
+  if (opts_.server_type == TabletServerOptions::kServerType &&
+      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    std::lock_guard l(lock_);
+    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
+        clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
+        tablet_manager_->waiting_txn_pool());
+    ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
+  }
 }
 
 bool TabletServer::HasBootstrappedLocalLockManager() const {
@@ -805,11 +820,10 @@ bool TabletServer::HasBootstrappedLocalLockManager() const {
   return lock_manager && lock_manager->IsBootstrapped();
 }
 
-Status TabletServer::ProcessLeaseUpdate(
-    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
+Status TabletServer::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
   VLOG(2) << __func__;
   auto lock_manager = ts_local_lock_manager();
-  if (lease_refresh_info.has_ddl_lock_entries() && lock_manager) {
+  if (lease_refresh_info.new_lease() && lock_manager) {
     if (lock_manager->IsBootstrapped()) {
       // Reset the local lock manager to bootstrap from the given DDL lock entries.
       lock_manager = ResetAndGetTSLocalLockManager();
@@ -821,13 +835,13 @@ Status TabletServer::ProcessLeaseUpdate(
   // having it the other way around, and having an old-session that is not reset.
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
-    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info, time);
+    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info);
   }
   return Status::OK();
 }
 
 
-Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
+Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
   if (!IsYsqlLeaseEnabled()) {
     return STATUS(NotSupported, "YSQL lease is not enabled");
   }
@@ -835,13 +849,7 @@ Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
   if (!pg_client_service) {
     RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
   }
-  auto lease_info = pg_client_service->impl.GetYSQLLeaseInfo();
-  GetYSQLLeaseInfoResponsePB resp;
-  resp.set_is_live(lease_info.is_live);
-  if (lease_info.is_live) {
-    resp.set_lease_epoch(lease_info.lease_epoch);
-  }
-  return resp;
+  return pg_client_service->impl.GetYSQLLeaseInfo();
 }
 
 Status TabletServer::RestartPG() const {
@@ -849,6 +857,13 @@ Status TabletServer::RestartPG() const {
     return pg_restarter_();
   }
   return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
+}
+
+Status TabletServer::KillPg() const {
+  if (pg_killer_) {
+    return pg_killer_();
+  }
+  return STATUS(IllegalState, "Pg killer callback not registered, cannot restart PG");
 }
 
 bool TabletServer::IsYsqlLeaseEnabled() {
@@ -1052,7 +1067,7 @@ Status TabletServer::GetTserverCatalogMessageLists(
   uint64_t expected_version = ysql_catalog_version + 1;
   std::set<uint64_t> current_versions;
   for (const auto& info : messages_vec) {
-    DCHECK(current_versions.insert(info.first).second);
+    CHECK(current_versions.insert(info.first).second);
     if (info.first <= ysql_catalog_version) {
       continue;
     }
@@ -1150,26 +1165,29 @@ Status TabletServer::SetTserverCatalogMessageList(
     return Status::OK();
   }
   db_message_lists = &it2->second.queue;
-  // If the queue is empty, of the new_catalog_version is larger than the last version in
-  // the queue (the queue is sorted in catalog version), just append the new pair.
-  if (db_message_lists->empty() || db_message_lists->rbegin()->first < new_catalog_version) {
-    db_message_lists->emplace_back(std::make_pair(new_catalog_version, message_list));
-    return Status::OK();
-  }
 
-  // The queue isn't empty, insert the new pair to the right position. Because db_message_lists
-  // is sorted, we can use std::upper_bound with a custom comparator function to find the right
-  // insertion point.
-  auto comp = [](uint64_t current_version,
-                 const std::pair<uint64_t, std::optional<std::string>>& p) {
-                return current_version < p.first;
+  // Insert the new pair to the right position. Because db_message_lists is sorted, we can use
+  // std::lower_bound with a custom comparator function to find the right insertion point.
+  auto comp = [](const std::pair<uint64_t, std::optional<std::string>>& p,
+                 uint64_t current_version) {
+                return p.first < current_version;
               };
-  auto it3 = std::upper_bound(db_message_lists->begin(), db_message_lists->end(),
+  auto it3 = std::lower_bound(db_message_lists->begin(), db_message_lists->end(),
                               new_catalog_version, comp);
-  if (it3 != db_message_lists->end()) {
-    db_message_lists->insert(it3, std::make_pair(new_catalog_version, message_list));
-  } else {
-    // We can reach here if the last version in the queue is the same as new_catalog_version.
+  if (it3 == db_message_lists->end()) {
+    // This means that either the queue is empty, or the new_catalog_version is larger than
+    // the last version in the queue (the queue is sorted in catalog version).
+    VLOG(2) << "appending new version: " << new_catalog_version;
+    db_message_lists->emplace_back(std::make_pair(new_catalog_version, message_list));
+  } else  {
+    // std::lower_bound: returns an iterator pointing to the first element in the range
+    // that is not less than (i.e., greater than or equal to) new_catalog_version.
+    if (it3->first > new_catalog_version) {
+      VLOG(2) << "inserting new version: " << new_catalog_version;
+      db_message_lists->insert(it3, std::make_pair(new_catalog_version, message_list));
+    } else {
+      VLOG(2) << "found existing version: " << new_catalog_version;
+    }
   }
   return Status::OK();
 }
@@ -1346,8 +1364,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
         ++count;
       }
       if (shm_index == -1) {
-        YB_LOG_EVERY_N_SECS(ERROR, 60) << "Cannot find free db_catalog_versions_ slot, db_oid: "
-                                       << db_oid;
+        YB_LOG_EVERY_N_SECS(WARNING, 60)
+            << "Cannot find free db_catalog_versions_ slot, db_oid: " << db_oid;
         continue;
       }
       // update the newly inserted entry to have the allocated slot.
@@ -1518,6 +1536,7 @@ void TabletServer::MergeInvalMessagesIntoQueueUnlocked(
   int start_index, int end_index) {
   DCHECK_LT(start_index, end_index);
 
+  VLOG(2) << "merging inval messages for db: " << db_oid;
   auto it = ysql_db_invalidation_messages_map_.find(db_oid);
   if (it == ysql_db_invalidation_messages_map_.end()) {
     // The db_oid does not exist in ysql_db_invalidation_messages_map_ yet. This is possible
@@ -1573,6 +1592,7 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
 
     // Compare the incoming version with the current existing one.
     if (incoming_version == existing_version) {
+      VLOG(2) << "found existing version " << incoming_version;
       if (incoming_message_list != it->second) {
         // same version should have same message.
         LOG(DFATAL) << "message_list mismatch: " << existing_version;
@@ -1582,6 +1602,7 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
       ++start_index;
     } else if (incoming_version < existing_version) {
       // The incoming version is lower, insert it before it.
+      VLOG(2) << "inserting version " << incoming_version;
       it = db_message_lists->insert(it, std::make_pair(incoming_version, incoming_message_list));
       // After insertion, it points to the newly inserted incoming version, advance it to the
       // original existing version.
@@ -1591,6 +1612,8 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
     } else {
       // The incoming version is higher, move it to the next existing slot in the queue.
       // Keep start_index unchanged so that it can be compared with the next slot in the queue.
+      VLOG(2) << "existing version: " << existing_version
+              << ", higher incoming version: " << incoming_version;
       ++it;
     }
   }
@@ -1601,8 +1624,10 @@ void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
     const uint64_t current_version = db_inval_messages.current_version();
     const std::optional<std::string>& message_list = db_inval_messages.has_message_list() ?
         std::optional<std::string>(db_inval_messages.message_list()) : std::nullopt;
+    VLOG(2) << "appending version " << current_version;
     db_message_lists->emplace_back(std::make_pair(current_version, message_list));
   }
+  VLOG(2) << "queue size: " << db_message_lists->size();
   // We may have added more messages to the queue that exceeded the max size.
   while (db_message_lists->size() > FLAGS_ysql_max_invalidation_message_queue_size) {
     db_message_lists->pop_front();
@@ -2068,6 +2093,10 @@ void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
 
 void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restarter) {
   pg_restarter_ = std::move(restarter);
+}
+
+void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
+  pg_killer_ = std::move(killer);
 }
 
 Status TabletServer::StartYSQLLeaseRefresher() {

@@ -47,6 +47,7 @@ Use the [xcluster status](../../../reference/configuration/yugabyted/#status-1) 
 ```
 
 Example output:
+
 ```output
 Outbound xCluster Replications:
 
@@ -64,7 +65,6 @@ Outbound xCluster Replications:
 +------------------------------------------------------------------------------------------+
 
 No Inbound xCluster replications found for this cluster.
-
 ```
 
   </div>
@@ -127,13 +127,13 @@ In transactional xCluster replication setups, the current xCluster safe time is 
 <div class="tab-content">
   <div id="yugabyted-safe-time" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-safe-time-tab">
 
-
 ```sh
 ./bin/yugabyted xcluster status \
     [--replication_id <replication_id>]
 ```
 
 Example output:
+
 ```output
 No Outbound xCluster replications found for this cluster.
 Inbound xCluster Replications:
@@ -153,6 +153,7 @@ Inbound xCluster Replications:
 |                             : Safe Time Skew(micro secs): 0.81                           |
 +------------------------------------------------------------------------------------------+
 ```
+
   </div>
 
   <div id="local-safe-time" class="tab-pane fade " role="tabpanel" aria-labelledby="local-safe-time-tab">
@@ -165,6 +166,7 @@ Inbound xCluster Replications:
   ```
 
   Example output:
+
   ```output
   [
       {

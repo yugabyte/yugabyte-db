@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.encryption.HashBuilder;
 import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
+import com.yugabyte.yw.common.encryption.bc.Pbkdf2HmacSha256Hasher;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
@@ -42,6 +43,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +59,9 @@ public class Users extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
 
-  private static final HashBuilder hasher = new BcOpenBsdHasher();
+  private static final HashBuilder bcryptHasher = new BcOpenBsdHasher();
+
+  private static final HashBuilder pbkdf2Hasher = new Pbkdf2HmacSha256Hasher();
 
   private static final KeyLock<UUID> usersLock = new KeyLock<>();
 
@@ -146,7 +150,7 @@ public class Users extends Model {
   private String passwordHash;
 
   public void setPassword(String password) {
-    this.setPasswordHash(Users.hasher.hash(password));
+    this.setPasswordHash(Users.pbkdf2Hasher.hash(password));
   }
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -359,12 +363,14 @@ public class Users extends Model {
    */
   public static Users authWithPassword(String email, String password) {
     Users users = Users.find.query().where().eq("email", email).findOne();
-
-    if (users != null && Users.hasher.isValid(password, users.getPasswordHash())) {
-      return users;
-    } else {
-      return null;
+    if (users != null && StringUtils.isNotEmpty(users.getPasswordHash())) {
+      HashBuilder hashBuilder =
+          users.getPasswordHash().startsWith("4.") ? Users.pbkdf2Hasher : Users.bcryptHasher;
+      if (hashBuilder.isValid(password, users.getPasswordHash())) {
+        return users;
+      }
     }
+    return null;
   }
 
   /**
@@ -416,7 +422,7 @@ public class Users extends Model {
   }
 
   public String upsertApiToken(Long version) {
-    String apiTokenFormatVersion = "3";
+    String apiTokenFormatVersion = "4";
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
@@ -427,7 +433,7 @@ public class Users extends Model {
         throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
       }
       String apiTokenUnhashed = UUID.randomUUID().toString();
-      apiToken = Users.hasher.hash(apiTokenUnhashed);
+      apiToken = Users.pbkdf2Hasher.hash(apiTokenUnhashed);
 
       apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
       save();
@@ -489,6 +495,7 @@ public class Users extends Model {
     // 1. apiToken (older format)
     // 2. apiTokenFormatVersion$userUUID$apiToken (version 2 $ seperated format)
     // 3. apiTokenFormatVersion.userUUID.apiToken (version 3 . seperated format)
+    // 4. apiTokenFormatVersion.userUUID.apiToken (version 4 . seperated format - using PBKDF2)
     // The 3rd format is better for shell based clients because dot is easier to escape than dollar
     // The first format would lead to performance degradation in the case of more than 10 users
     // Recommended to reissue the token (which will follow the third format)
@@ -498,22 +505,28 @@ public class Users extends Model {
     boolean disableV1APIToken = runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableV1APIToken);
     try {
       boolean isOldFormat = true;
+      boolean isPBKDF2 = false;
       String regexSeparator = "";
-      if (apiToken.startsWith("2$", 0)) {
+      if (apiToken.startsWith("2$")) {
         regexSeparator = "\\$";
         isOldFormat = false;
-      } else if (apiToken.startsWith("3.", 0)) {
+      } else if (apiToken.startsWith("3.")) {
         regexSeparator = "\\.";
         isOldFormat = false;
+      } else if (apiToken.startsWith("4.")) {
+        regexSeparator = "\\.";
+        isOldFormat = false;
+        isPBKDF2 = true;
       }
       if (!isOldFormat) {
+        HashBuilder hashBuilder = isPBKDF2 ? Users.pbkdf2Hasher : Users.bcryptHasher;
         // to authenticate new format of api token = apiTokenFormatVersion.userUUID.apiTokenUnhashed
         String[] parts = apiToken.split(regexSeparator);
         UUID userUUID = UUID.fromString(parts[1]);
         String apiTokenUnhashed = parts[2];
         Users userWithToken = find.query().where().eq("uuid", userUUID).findOne();
         if (userWithToken != null) {
-          if (Users.hasher.isValid(apiTokenUnhashed, userWithToken.getApiToken())) {
+          if (hashBuilder.isValid(apiTokenUnhashed, userWithToken.getApiToken())) {
             return userWithToken;
           }
         }
@@ -529,7 +542,7 @@ public class Users extends Model {
           List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
           long startTime = System.currentTimeMillis();
           for (Users user : usersList) {
-            if (Users.hasher.isValid(apiToken, user.getApiToken())) {
+            if (Users.bcryptHasher.isValid(apiToken, user.getApiToken())) {
               LOG.info(
                   "Authentication using API token. Completed time: {} ms",
                   System.currentTimeMillis() - startTime);

@@ -38,7 +38,7 @@ However, asynchronous replication can be beneficial in certain scenarios:
 
 - **Low write latency**: With synchronous replication, each write must reach a consensus across a majority of data centers. This can add tens or even hundreds of milliseconds of extra latency for writes in a multi-region deployment. xCluster reduces this latency by eliminating the need for immediate consensus across regions.
 - **Only two data centers needed**: With synchronous replication, to tolerate the failure of `f` fault domains, you need at least `2f + 1` fault domains. Therefore, to survive the loss of one data center, a minimum of three data centers is required, which can increase operational costs. For more details, see [fault tolerance](../replication/#fault-tolerance). With xCluster, you can achieve multi-region deployments with only two data centers.
-- **Disaster recovery**: xCluster utilizes independent YugabyteDB universes in each region that can function independently of each other. This setup allows for quick failover with minimal data loss in the event of a regional outage caused by hardware or software issues.
+- **Disaster recovery**: xCluster uses independent YugabyteDB universes in each region that can function independently of each other. This setup allows for quick failover with minimal data loss in the event of a regional outage caused by hardware or software issues.
 
 Asynchronous xCluster replication has the following drawbacks:
 
@@ -198,11 +198,11 @@ xCluster currently supports active-active single-master and active-active multi-
 
 ### Active-active single-master
 
-In this setup, replication is unidirectional from a source universe to a target universe, typically located in different data centers or regions. The source universe can handle both reads and writes, while the target universe is read-only. Since only the source universe can accept writes, this mode is referred to as single-master. Note that within the source universe, all nodes can serve writes.
+In this setup, replication is unidirectional from a source universe to a target universe, typically located in different data centers or regions. The source universe can handle both reads and writes, while the target universe is read-only. Because only the source universe can accept writes, this mode is referred to as single-master. Note that in the source universe, all nodes can serve writes.
 
 These deployments are typically used for serving low-latency reads from the target universes and for disaster recovery purposes. When the primary purpose is disaster recovery, these deployments are referred to as active-standby, as the target universe is on standby to take over if the source universe fails.
 
-Transactional mode is generally preferred here because it ensures consistency even if the source universe is lost. However, non-transactional mode can also be used depending on the specific requirements and trade-offs.
+Transactional mode is generally preferred for this deployment because it ensures consistency even if the source universe is lost. However, non-transactional mode can also be used depending on the specific requirements and trade-offs.
 
 {{<lead link="https://youtu.be/6rmrcVQqb0o?si=4CuiByQGLaNzhdn_">}}
 To learn more, watch [Disaster Recovery in YugabyteDB](https://youtu.be/6rmrcVQqb0o?si=4CuiByQGLaNzhdn_)
@@ -216,7 +216,7 @@ The following diagram shows an example of this deployment:
 
 In a multi-master deployment, data replication is bidirectional between two universes, allowing both universes to perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. This mode implements last-writer-wins, where if the same key is updated in both universes around the same time, the write with the larger timestamp overrides the other one. This deployment mode is called multi-master because both universes serve writes.
 
-The multi-master deployment utilizes bidirectional replication, which involves two unidirectional replication streams operating in non-transactional mode. Special measures are taken to assign timestamps that ensure last-writer-wins semantics, and data received from the replication stream is not re-replicated.
+The multi-master deployment uses bidirectional replication, which involves two unidirectional replication streams operating in non-transactional mode. Special measures are taken to assign timestamps that ensure last-writer-wins semantics, and data received from the replication stream is not re-replicated.
 
 The following diagram illustrates this deployment:
 
@@ -233,7 +233,6 @@ The following deployment scenarios are not yet supported:
 - _Daisy chaining_: This involves connecting a series of universes, for example: `A -> B -> C`
 
 - _Star_: This involves connecting all universes to each other, for example: `A <-> B <-> C <-> A`
-
 
 ## Limitations
 
@@ -285,7 +284,20 @@ Limitations specific to each scenario and mode are listed below:
 
 ### Transactional
 
-- No writes are allowed in the target universe.
+- By default, no writes are allowed in the target universe.
+
+  {{<tags/feature/ea idea="2136">}}You can allow writes to the target on an exception basis, overriding the default read-only behavior by setting the following YSQL configuration parameter before executing a DML operation:
+
+  ```sql
+  SET yb_non_ddl_txn_for_sys_tables_allowed = true
+  ```
+
+  This is intended strictly for specialized use cases, such as enabling tools like Flyway to update maintenance tables (for example, schema version trackers) on the replica.
+
+  {{< warning title="Important" >}}
+Improper use can compromise replication consistency and lead to data divergence. Use this setting only when absolutely necessary and with a clear understanding of its implications.
+  {{< /warning >}}
+
 - YCQL is not yet supported.
 - In Semi-automatic and Manual modes, schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables) for more information.
 

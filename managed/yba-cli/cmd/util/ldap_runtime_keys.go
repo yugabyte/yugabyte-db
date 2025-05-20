@@ -14,7 +14,7 @@ const (
 	LDAPTLSVersionKey             = "yb.security.ldap.ldap_tls_protocol"
 	LDAPBaseDNKey                 = "yb.security.ldap.ldap_basedn"
 	LDAPDNPrefixKey               = "yb.security.ldap.ldap_dn_prefix"
-	LDAPCustomerUUIDKey           = "yb.security.ldap.ldap_customer_uuid"
+	LDAPCustomerUUIDKey           = "yb.security.ldap.ldap_customeruuid"
 	LDAPSearchAndBindKey          = "yb.security.ldap.use_search_and_bind"
 	LDAPSearchAttributeKey        = "yb.security.ldap.ldap_search_attribute"
 	LDAPSearchFilterKey           = "yb.security.ldap.ldap_search_filter"

@@ -503,14 +503,18 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<tserver::CheckTserverTabletHealthResponsePB> GetTabletPeerHealth(
       const ExternalTabletServer& ts, const std::vector<TabletId>& tablet_ids);
 
-  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const yb::TabletId& tablet_id);
-  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const ExternalTabletServer& ts,
-      const yb::TabletId& tablet_id, bool fail_on_response_error = true);
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const TabletId& tablet_id);
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(
+      const ExternalTabletServer& ts, const TabletId& tablet_id,
+      bool fail_on_response_error = true);
 
   // Flushes all tablets if tablets_ids is empty.
   Status FlushTabletsOnSingleTServer(
-      ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-      tserver::FlushTabletsRequestPB_Operation operation);
+      size_t idx, const std::vector<TabletId>& tablet_ids);
+  Status CompactTabletsOnSingleTServer(
+      size_t idx, const std::vector<TabletId>& tablet_ids);
+  Status LogGCOnSingleTServer(
+      size_t idx, const std::vector<TabletId>& tablet_ids, bool rollover);
 
   Status WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
@@ -621,6 +625,9 @@ class ExternalMiniCluster : public MiniClusterBase {
  protected:
   friend class UpgradeTestBase;
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
+
+  Result<size_t> LaunchTabletServer(
+    bool start_cql_proxy, const std::vector<std::string>& extra_flags, int num_drives);
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
@@ -779,7 +786,12 @@ class ExternalTabletServer : public ExternalDaemon {
   Status Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       bool set_proxy_addrs = true,
-      std::vector<std::pair<std::string, std::string>> extra_flags = {});
+      const std::vector<std::pair<std::string, std::string>>& extra_flags = {});
+
+  Status Launch(
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      bool set_proxy_addrs = true,
+      const std::vector<std::pair<std::string, std::string>>& extra_flags = {});
 
   void UpdateMasterAddress(const std::vector<HostPort>& master_addrs);
 
@@ -848,7 +860,16 @@ class ExternalTabletServer : public ExternalDaemon {
                                     const MetricPrototype* metric_proto,
                                     const char* value_field) const;
 
+  Status FlushTablets(const std::vector<TabletId>& tablet_ids);
+  Status CompactTablets(const std::vector<TabletId>& tablet_ids);
+  Status LogGC(const std::vector<TabletId>& tablet_ids, bool rollover);
+
  protected:
+  template <class F>
+  Status ExecuteFlushTablets(
+      const std::vector<TabletId>& tablet_ids, tserver::FlushTabletsRequestPB::Operation operation,
+      const F& f);
+
   Status DeleteServerInfoPaths() override;
 
   bool ServerInfoPathsExist() override;
