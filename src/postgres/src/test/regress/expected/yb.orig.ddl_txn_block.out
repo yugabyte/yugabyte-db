@@ -262,3 +262,20 @@ CREATE SEQUENCE regtest_seq;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 DROP SEQUENCE regtest_seq;
 COMMIT;
+CREATE TABLE test11(id INT PRIMARY KEY, val TEXT);
+INSERT INTO test11 VALUES (1, 'text');
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+TRUNCATE test11;
+TRUNCATE test11;
+SELECT * FROM test11;
+ id | val 
+----+-----
+(0 rows)
+
+ROLLBACK;
+SELECT * FROM test11;
+ id | val  
+----+------
+  1 | text
+(1 row)
+

@@ -34,6 +34,8 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
     builder.enablePgTransactions(true);
     builder.addCommonTServerFlag("ysql_log_statement", "all");
     builder.addCommonTServerFlag("TEST_ysql_yb_ddl_transaction_block_enabled", "true");
+    builder.addCommonTServerFlag("TEST_enable_object_locking_for_table_locks", "true");
+    builder.addMasterFlag("TEST_enable_object_locking_for_table_locks", "true");
   }
 
   @Test
