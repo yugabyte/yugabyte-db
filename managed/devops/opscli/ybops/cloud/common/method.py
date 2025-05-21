@@ -364,7 +364,7 @@ class AbstractInstancesMethod(AbstractMethod):
                 "node_agent_ip": host_info["private_ip"],
                 "node_agent_port": self.extra_vars["node_agent_port"]
             }
-        raise YBOpsRuntimeError("Unknown connction type: {}".format(connection_type))
+        raise YBOpsRuntimeError("Unknown connection type: {}".format(connection_type))
 
     def get_server_ports_to_check(self, args):
         server_ports = []
@@ -1569,7 +1569,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
         else:
-            logging.warn("Local Directory Tarball Path not specified skipping")
+            logging.warning("Local Directory Tarball Path not specified skipping")
             return
 
         if args.install_third_party_packages:
@@ -2173,7 +2173,7 @@ class RunHooks(AbstractInstancesMethod):
         remove_command = "rm " + os.path.join(args.remote_tmp_dir, os.path.basename(args.hook_path))
         rc, _, stderr = remote_exec_command(self.extra_vars, remove_command)
         if rc:
-            logging.warn("Failed deleting custom hook:\n" + ''.join(stderr))
+            logging.warning("Failed deleting custom hook:\n" + ''.join(stderr))
 
 
 class WaitForConnection(AbstractInstancesMethod):
