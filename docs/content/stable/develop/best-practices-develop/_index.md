@@ -18,19 +18,19 @@ type: indexpage
 
   {{<index/item
     title="Data modeling and performance"
-    body="Tips and tricks for building YSQL applications."
+    body="Tips for designing efficient, high-performance YSQL applications."
     href="data-modeling-perf/"
     icon="fa-thin fa-square-binary">}}
 
   {{<index/item
     title="Managing clients"
-    body="Tips and tricks for administering YSQL clients."
+    body="Best practices for managing connections, balancing load across nodes, and handling failovers."
     href="clients/"
     icon="fa-thin fa-cloud-binary">}}
 
   {{<index/item
     title="Database administration"
-    body="Tips and tricks for administering YSQL databases."
+    body="Fine-tune YugabyteDB deployments for better reliability, performance, and operational efficiency."
     href="administration/"
     icon="fa-thin fa-user-tie-hair">}}
 

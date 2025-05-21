@@ -16,17 +16,17 @@ To build high-performance and scalable applications using YCQL, developers shoul
 
 ## Global secondary indexes
 
-Indexes use multi-shard transactional capability of YugabyteDB and are global and strongly consistent (ACID). To add secondary indexes, you need to create tables with [transactions enabled](../../api/ycql/ddl_create_table/#table-properties-1). They can also be used as materialized views by using the [`INCLUDE` clause](../../api/ycql/ddl_create_index#included-columns).
+Indexes use multi-shard transactional capability of YugabyteDB and are global and strongly consistent (ACID). To add secondary indexes, you need to create tables with [transactions enabled](../../../api/ycql/ddl_create_table/#table-properties-1). They can also be used as materialized views by using the [`INCLUDE` clause](../../../api/ycql/ddl_create_index#included-columns).
 
 ## Unique indexes
 
-YCQL supports [unique indexes](../../api/ycql/ddl_create_index#unique-index). A unique index disallows duplicate values from being inserted into the indexed columns.
+YCQL supports [unique indexes](../../../api/ycql/ddl_create_index#unique-index). A unique index disallows duplicate values from being inserted into the indexed columns.
 
 ## Covering indexes
 
 When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the index. This can result in multiple random reads across the main table.
 
-Sometimes, a better way is to include the other columns that you're querying that are not part of the index using the [`INCLUDE` clause](../../api/ycql/ddl_create_index/#included-columns). When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
+Sometimes, a better way is to include the other columns that you're querying that are not part of the index using the [`INCLUDE` clause](../../../api/ycql/ddl_create_index/#included-columns). When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
 This turns a (possible) random read from the main table to just a filter on the index.
 
@@ -36,7 +36,7 @@ For operations like `UPDATE ... IF EXISTS` and `INSERT ... IF NOT EXISTS` that r
 
 ## JSONB
 
-YugabyteDB supports the [`jsonb`](../../api/ycql/type_jsonb/) data type to model JSON data, which does not have a set schema and might change often. You can use JSONB to group less accessed columns of a table. YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
+YugabyteDB supports the [`jsonb`](../../../api/ycql/type_jsonb/) data type to model JSON data, which does not have a set schema and might change often. You can use JSONB to group less accessed columns of a table. YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
 
 {{< note title="Use JSONB columns only when necessary" >}}
 
@@ -46,13 +46,13 @@ YugabyteDB supports the [`jsonb`](../../api/ycql/type_jsonb/) data type to model
 
 ## Increment and decrement numeric types
 
-In YugabyteDB, YCQL extends Apache Cassandra to add increment and decrement operators for integer data types. [Integers](../../api/ycql/type_int) can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. YugabyteDB implements CAS(compare-and-set) operations in one round trip, compared to four for Apache Cassandra.
+In YugabyteDB, YCQL extends Apache Cassandra to add increment and decrement operators for integer data types. [Integers](../../../api/ycql/type_int) can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. YugabyteDB implements CAS(compare-and-set) operations in one round trip, compared to four for Apache Cassandra.
 
 ## Expire older records automatically with TTL
 
-YCQL supports automatic expiration of data using the [TTL feature](../../api/ycql/ddl_create_table/#use-table-property-to-define-the-default-expiration-time-for-rows). You can set a retention policy for data at table/row/column level and the older data is automatically purged from the database.
+YCQL supports automatic expiration of data using the [TTL feature](../../../api/ycql/ddl_create_table/#use-table-property-to-define-the-default-expiration-time-for-rows). You can set a retention policy for data at table/row/column level and the older data is automatically purged from the database.
 
-If configuring TTL for a time series dataset or any dataset with a table-level TTL, it is recommended for CPU and space efficiency to expire older files directly by using TTL-specific configuration options. More details can be found in [Efficient data expiration for TTL](../learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl).
+If configuring TTL for a time series dataset or any dataset with a table-level TTL, it is recommended for CPU and space efficiency to expire older files directly by using TTL-specific configuration options. More details can be found in [Efficient data expiration for TTL](../../learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl).
 
 {{<note title="Note">}}
 TTL does not apply to transactional tables and so, its unsupported in that context.
@@ -60,7 +60,7 @@ TTL does not apply to transactional tables and so, its unsupported in that conte
 
 ## Use YugabyteDB drivers
 
-Use YugabyteDB-specific [client drivers](../../drivers-orms/) because they are cluster- and partition-aware, and support `jsonb` columns.
+Use YugabyteDB-specific [client drivers](../../../drivers-orms/) because they are cluster- and partition-aware, and support `jsonb` columns.
 
 ## Leverage connection pooling in the YCQL client
 
@@ -88,22 +88,22 @@ Collections are designed for storing small sets of values that are not expected 
 
 ## Collections with many elements
 
-Each element inside a collection ends up as a [separate key value](../../architecture/docdb/data-model#examples) in DocDB adding per-element overhead.
+Each element inside a collection ends up as a [separate key value](../../../architecture/docdb/data-model#examples) in DocDB adding per-element overhead.
 
 If your collections are immutable, or you update the whole collection in full, consider using the `JSONB` data type. An alternative would also be to use ProtoBuf or FlatBuffers and store the serialized data in a `BLOB` column.
 
 ## Use partition_hash for large table scans
 
-`partition_hash` function can be used for querying a subset of the data to get approximate row counts or to break down full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
+`partition_hash` function can be used for querying a subset of the data to get approximate row counts or to break down full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
 
 ## TRUNCATE tables instead of DELETE
 
-[TRUNCATE](../../api/ycql/dml_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ycql/dml_delete/) which inserts a _delete marker_ for each row in transactions and they are removed from storage when a compaction runs.
+[TRUNCATE](../../../api/ycql/dml_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../../api/ycql/dml_delete/) which inserts a _delete marker_ for each row in transactions and they are removed from storage when a compaction runs.
 
 ## Memory and tablet limits
 
-If you are not using YSQL, ensure the [use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-master/#use-memory-defaults-optimized-for-ysql) flag is set to false. This flag optimizes YugabyteDB's memory setup for YSQL, reserving a considerable amount of memory for PostgreSQL; if you are not using YSQL then that memory is wasted when it could be helping improve performance by allowing more data to be cached.
+If you are not using YSQL, ensure the [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-master/#use-memory-defaults-optimized-for-ysql) flag is set to false. This flag optimizes YugabyteDB's memory setup for YSQL, reserving a considerable amount of memory for PostgreSQL; if you are not using YSQL then that memory is wasted when it could be helping improve performance by allowing more data to be cached.
 
 Note that although the default setting is false, when creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false.
 
-See [Memory division flags](../../reference/configuration/yb-tserver/#memory-division-flags) for more information.
+See [Memory division flags](../../../reference/configuration/yb-tserver/#memory-division-flags) for more information.

@@ -12,11 +12,11 @@ menu:
 type: docs
 ---
 
-Designing efficient, high-performance YSQL applications requires thoughtful data modeling and a deep understanding of how YugabyteDB handles distributed workloads. This guide offers a collection of best practices, from leveraging colocation and indexing techniques to optimizing transactions and parallelizing queries, that can help you build scalable, globally distributed applications with low latency and high availability. Whether you're developing new applications or tuning existing ones, these tips will help you make the most of YSQL's capabilities
+Designing efficient, high-performance YSQL applications requires thoughtful data modeling and an understanding of how YugabyteDB handles distributed workloads. This guide offers a collection of best practices, from leveraging colocation and indexing techniques to optimizing transactions and parallelizing queries, that can help you build scalable, globally distributed applications with low latency and high availability. Whether you're developing new applications or tuning existing ones, these tips will help you make the most of YSQL's capabilities
 
 ## Use application patterns
 
-Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, choose a suitable design pattern for your application from a suite of battle-tested design paradigms, including [Global database](../build-global-apps/global-database), [Multi-master](../build-global-apps/active-active-multi-master), [Standby cluster](../build-global-apps/active-active-single-master), [Duplicate indexes](../build-global-apps/duplicate-indexes), [Follower reads](../build-global-apps/follower-reads), and more. You can also combine these patterns as per your needs.
+Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, choose a suitable design pattern for your application from a suite of battle-tested design paradigms, including [Global database](../../build-global-apps/global-database), [Multi-master](../../build-global-apps/active-active-multi-master), [Standby cluster](../../build-global-apps/active-active-single-master), [Duplicate indexes](../../build-global-apps/duplicate-indexes), [Follower reads](../../build-global-apps/follower-reads), and more. You can also combine these patterns as per your needs.
 
 {{<lead link="../build-global-apps">}}
 For more details, see [Build global applications](../../build-global-apps).
@@ -238,7 +238,7 @@ For consistent latency or performance, it is recommended to size columns in the 
 [TRUNCATE](../../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table data and is much faster than [DELETE](../../../api/ysql/the-sql-language/statements/dml_delete/), which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
 
 {{<warning>}}
-Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE is not MVCC-safe. For more details, see [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/).
+Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE is not MVCC-safe. For more details, see [TRUNCATE](../../../api/ysql/the-sql-language/statements/ddl_truncate/).
 {{</warning>}}
 
 ## Minimize the number of tablets you need
@@ -251,8 +251,7 @@ You can try one of the following methods to reduce the number of tablets:
 
 - Use [colocation](../../../explore/colocation/) to group small tables into 1 tablet.
 - Reduce number of tablets-per-table using the [--ysql_num_shards_per_tserver](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
-- Use the [SPLIT INTO](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
+- Use the [SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
 - Start with few tablets and use [automatic tablet splitting](../../../architecture/docdb-sharding/tablet-splitting/).
 
 Note that multiple tablets can allow work to proceed in parallel so you may not want every table to have only one tablet.
-

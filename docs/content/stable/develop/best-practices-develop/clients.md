@@ -16,7 +16,7 @@ Client-side configuration plays a critical role in the performance, scalability,
 
 ## Load balance and failover using smart drivers
 
-YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/) provide advanced cluster-aware load-balancing capabilities that enables your applications to send requests to multiple nodes in the cluster just by connecting to one node. You can also set a fallback hierarchy by assigning priority to specific regions and ensuring that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails.
+YugabyteDB [smart drivers](../../../drivers-orms/smart-drivers/) provide advanced cluster-aware load-balancing capabilities that enable your applications to send requests to multiple nodes in the cluster by connecting to one node. You can also set a fallback hierarchy by assigning priority to specific regions and ensuring that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails.
 
 {{<lead link="https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver">}}
 For more information, see [Load balancing with smart drivers](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver).
@@ -28,10 +28,10 @@ When a cluster is expanded, newly added nodes do not automatically start to rece
 
 ## Scale your application with connection pools
 
-Set up different pools with different load balancing policies as needed for your application to scale by using popular pooling solutions such as HikariCP and Tomcat along with YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/).
+Set up different pools with different load balancing policies as needed for your application to scale by using popular pooling solutions such as HikariCP and Tomcat along with YugabyteDB [smart drivers](../../../drivers-orms/smart-drivers/).
 
-{{<lead link="../../drivers-orms/smart-drivers/#connection-pooling">}}
-For more information, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
+{{<lead link="../../../drivers-orms/smart-drivers/#connection-pooling">}}
+For more information, see [Connection pooling](../../../drivers-orms/smart-drivers/#connection-pooling).
 {{</lead>}}
 
 ### Database migrations and connection pools
@@ -46,7 +46,5 @@ YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tag
 
 For more information, refer to the following:
 
-- [YSQL Connection Manager](../../explore/going-beyond-sql/connection-mgr-ysql/)
+- [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/)
 - [Built-in Connection Manager Turns Key PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
-
-

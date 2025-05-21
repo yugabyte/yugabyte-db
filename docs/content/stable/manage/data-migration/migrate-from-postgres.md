@@ -248,7 +248,7 @@ For more details, see [Live migration with fall-back](/preview/yugabyte-voyager/
 When porting an existing PostgreSQL application to YugabyteDB you can follow a set of best practices to get the best out of your new deployment.
 
 {{<lead link="../../../develop/best-practices-ysql/">}}
-For a full list of tips and tricks for high performance and availability, see [Best practices](../../../develop/best-practices-ysql/).
+For a full list of tips and tricks for high performance and availability, see [Best practices](../../../develop/best-practices-develop/).
 {{</lead>}}
 
 ### Retry transactions on conflicts
