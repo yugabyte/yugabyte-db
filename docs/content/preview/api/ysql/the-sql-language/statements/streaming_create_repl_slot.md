@@ -44,7 +44,7 @@ Decides what to do with the snapshot created during logical slot initialization.
 
 {{< note title="YSQL default snapshot option" >}}
 
-The default snapshot option in YugabyteDB is `USE_SNAPSHOT` when the preview flag [ysql_enable_pg_export_snapshot](../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization) is enabled. Without the preview flag enabled, specifying the option at the time of slot creation will not have any effect.
+These options are only available if the preview flag [ysql_enable_pg_export_snapshot](../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization) is set to true. When the flag is true, USE_SNAPSHOT is the default behavior. If the flag is not set, the snapshot options are not applicable and will be ignored.
 
 {{< /note >}}
 
