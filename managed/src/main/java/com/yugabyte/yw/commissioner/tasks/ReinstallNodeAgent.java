@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -85,11 +86,29 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
       createCheckSshConnectionTasks(nodeDetails)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       if (Util.isOnPremManualProvisioning(universe)) {
+        ShellProcessContext shellContext =
+            ShellProcessContext.builder().useSshConnectionOnly(true).build();
         // Check if user systemd is possible.
-        createRunEnableLinger(
+        createRunEnableLingerTask(universe, nodeDetails, shellContext);
+        // Check if root systemd is managing yb-node-agent.service.
+        List<String> cmd =
+            ImmutableList.of(
+                "bash",
+                "-c",
+                "systemctl list-unit-files yb-node-agent.service || echo 'NOT_FOUND'");
+        createRunNodeCommandTask(
             universe,
             nodeDetails,
-            ShellProcessContext.builder().useSshConnectionOnly(true).build());
+            cmd,
+            (n, r) -> {
+              String output =
+                  r.processErrors("Failed to run command " + cmd).extractRunCommandOutput();
+              if (!output.contains("NOT_FOUND")) {
+                throw new RuntimeException(
+                    "Root systemd is already managing node agent. Only user systemd is supported");
+              }
+            },
+            shellContext);
       }
       Lists.partition(nodeDetails, parallelism)
           .forEach(
