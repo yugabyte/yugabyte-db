@@ -287,4 +287,4 @@ LangChain provides a powerful toolkit to application developers seeking LLM inte
 
 For more information about LangChain, see the [LangChain documentation](https://python.langchain.com/docs/get_started/introduction).
 
-If you would like to learn more on integrating OpenAI with YugabyteDB, check out the [Azure OpenAI](../../azure/azure-openai/) tutorial.
+If you would like to learn more on integrating OpenAI with YugabyteDB, check out the [Azure OpenAI](../azure-openai/) tutorial.
