@@ -696,7 +696,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <rowbounds> YbRowBounds
 %type <splitopt> SplitClause YbOptSplit
 %type <str>		OptTableSpaceLocation opt_for_bfinstr partition_key row_key
-				read_time row_key_end row_key_start
+				read_time row_key_end row_key_start yb_opt_alias
 
 
 /*
@@ -8636,6 +8636,18 @@ access_method_clause:
 			| /*EMPTY*/								{ $$ = IsYugaByteEnabled() ? NULL : DEFAULT_INDEX_TYPE;	}
 		;
 
+yb_opt_alias:
+			AS ColId
+				{
+					if (!IsBinaryUpgrade)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("syntax error at or near \"AS\"")));
+					$$ = $2;
+				}
+			| /* empty */								{ $$ = NULL; }
+		;
+
 yb_index_params: index_elem
 				{
 					$$ = list_make1($1);
@@ -8674,24 +8686,24 @@ yb_index_params: index_elem
 
 
 index_elem_options:
-	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
+	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
 			$$ = makeNode(IndexElem);
 			$$->name = NULL;
 			$$->expr = NULL;
-			$$->indexcolname = NULL;
+			$$->indexcolname = $5;
 			$$->collation = $1;
 			$$->opclass = $2;
 			$$->opclassopts = NIL;
 			$$->ordering = $3;
 			$$->nulls_ordering = $4;
 		}
-	| opt_collate any_name reloptions opt_yb_index_sort_order opt_nulls_order
+	| opt_collate any_name reloptions opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
 			$$ = makeNode(IndexElem);
 			$$->name = NULL;
 			$$->expr = NULL;
-			$$->indexcolname = NULL;
+			$$->indexcolname = $6;
 			$$->collation = $1;
 			$$->opclass = $2;
 			$$->opclassopts = $3;
