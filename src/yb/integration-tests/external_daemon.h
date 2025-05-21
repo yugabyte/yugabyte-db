@@ -259,6 +259,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
     return std::make_unique<T>(proxy_cache_, bound_rpc_addr());
   }
 
+  Status WaitProcessReady();
+
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
   virtual ~ExternalDaemon();
@@ -281,6 +283,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   void FlushCoverage();
 
   std::string ProcessNameAndPidStr();
+
+  std::string DefaultOutputPrefix();
 
   const std::string daemon_id_;
   rpc::Messenger* messenger_;

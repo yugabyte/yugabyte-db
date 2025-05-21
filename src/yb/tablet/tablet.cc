@@ -812,7 +812,7 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
                         Format("Failed to create RocksDB tablet directory $0", db_dir));
 
   RETURN_NOT_OK_PREPEND(
-      fs->CreateDirIfMissingAndSync(docdb::GetStorageDir(db_dir, kIntentsDirName)),
+      fs->CreateDirIfMissingAndSync(docdb::GetStorageDir(db_dir, docdb::kIntentsDirName)),
       Format("Failed to create RocksDB tablet intents directory $0", db_dir));
 
   RETURN_NOT_OK(snapshots_->CreateDirectories(db_dir, fs));
@@ -1122,7 +1122,7 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
 
   const auto& db_dir = metadata()->rocksdb_dir();
 
-  auto intents_dir = docdb::GetStorageDir(db_dir, kIntentsDirName);
+  auto intents_dir = docdb::GetStorageDir(db_dir, docdb::kIntentsDirName);
   LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << intents_dir;
   rocksdb::Options intents_rocksdb_options(common_options);
   intents_rocksdb_options.compaction_context_factory = {};
@@ -4097,7 +4097,7 @@ Status Tablet::ForceRocksDBCompact(
   return Status::OK();
 }
 
-std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
+std::string Tablet::TEST_DocDBDumpStr(docdb::IncludeIntents include_intents) {
   if (!regular_db_) return "";
 
   if (!include_intents) {
@@ -4109,7 +4109,7 @@ std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
 }
 
 void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::unordered_set<std::string>* out) {
+    docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
   if (!include_intents) {
@@ -4120,7 +4120,7 @@ void Tablet::TEST_DocDBDumpToContainer(
   return docdb::DocDBDebugDumpToContainer(doc_db(), &GetSchemaPackingProvider(), out);
 }
 
-void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
+void Tablet::TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents) {
   if (!regular_db_) {
     LOG_WITH_PREFIX(INFO) << "No RocksDB to dump";
     return;

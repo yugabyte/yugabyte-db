@@ -919,7 +919,7 @@ Status Log::AsyncAppend(
   return Status::OK();
 }
 
-Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const OpId& committed_op_id,
                                   RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback) {
   auto batch = CreateBatchFromAllocatedOperations(msgs);
@@ -1527,7 +1527,7 @@ uint32_t Log::wal_retention_secs() const {
       wal_retention_secs;
 }
 
-yb::OpId Log::GetLatestEntryOpId() const {
+OpId Log::GetLatestEntryOpId() const {
   return last_synced_entry_op_id_.load(boost::memory_order_acquire);
 }
 
@@ -1535,7 +1535,7 @@ int64_t Log::GetMinReplicateIndex() const {
   return min_replicate_index_.load(std::memory_order_acquire);
 }
 
-yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta duration) {
+OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
   if (FLAGS_TEST_log_consider_all_ops_safe || all_op_ids_safe_) {
     return min_allowed;
   }
@@ -1556,7 +1556,7 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
         break;
       }
       if (duration) {
-        return yb::OpId();
+        return OpId();
       }
       // TODO(bogdan): If the log is closed at this point, consider refactoring to return status
       // and fail cleanly.

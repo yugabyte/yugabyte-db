@@ -2922,7 +2922,7 @@ PeerRole RaftConsensus::GetActiveRole() const {
   return state_->GetActiveRoleUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLatestOpIdFromLog() {
+OpId RaftConsensus::GetLatestOpIdFromLog() {
   return log_->GetLatestEntryOpId();
 }
 
@@ -3518,22 +3518,22 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
   }
 }
 
-yb::OpId RaftConsensus::GetLastReceivedOpId() {
+OpId RaftConsensus::GetLastReceivedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastReceivedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLastCommittedOpId() {
+OpId RaftConsensus::GetLastCommittedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetCommittedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLastAppliedOpId() {
+OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetAllAppliedOpId() {
+OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
 }
 

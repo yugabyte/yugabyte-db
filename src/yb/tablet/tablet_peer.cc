@@ -787,37 +787,44 @@ std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
 }
 
 void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
-  std::lock_guard lock(lock_);
-  DCHECK(status_pb_out != nullptr);
-  DCHECK(status_listener_.get() != nullptr);
-  const auto disk_size_info = GetOnDiskSizeInfo();
-  status_pb_out->set_tablet_id(status_listener_->tablet_id());
-  status_pb_out->set_namespace_name(status_listener_->namespace_name());
-  status_pb_out->set_table_name(status_listener_->table_name());
-  status_pb_out->set_table_id(status_listener_->table_id());
-  status_pb_out->set_last_status(status_listener_->last_status());
-  status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
-  status_pb_out->set_state(state_);
-  status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
-  auto tablet = tablet_;
-  if (tablet) {
-    status_pb_out->set_table_type(tablet->table_type());
-    auto vector_index_finished_backfills = tablet->vector_indexes().FinishedBackfills();
-    if (vector_index_finished_backfills) {
-      *status_pb_out->mutable_vector_index_finished_backfills() =
-          std::move(*vector_index_finished_backfills);
+  std::shared_ptr<RaftConsensus> consensus;
+  {
+    std::lock_guard lock(lock_);
+    DCHECK(status_pb_out != nullptr);
+    DCHECK(status_listener_.get() != nullptr);
+    const auto disk_size_info = GetOnDiskSizeInfo();
+    status_pb_out->set_tablet_id(status_listener_->tablet_id());
+    status_pb_out->set_namespace_name(status_listener_->namespace_name());
+    status_pb_out->set_table_name(status_listener_->table_name());
+    status_pb_out->set_table_id(status_listener_->table_id());
+    status_pb_out->set_last_status(status_listener_->last_status());
+    status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
+    status_pb_out->set_state(state_);
+    status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
+    auto tablet = tablet_;
+    if (tablet) {
+      status_pb_out->set_table_type(tablet->table_type());
+      auto vector_index_finished_backfills = tablet->vector_indexes().FinishedBackfills();
+      if (vector_index_finished_backfills) {
+        *status_pb_out->mutable_vector_index_finished_backfills() =
+            std::move(*vector_index_finished_backfills);
+      }
     }
+    disk_size_info.ToPB(status_pb_out);
+    // Set hide status of the tablet.
+    status_pb_out->set_is_hidden(meta_->hidden());
+    status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
+    for (const auto& table : meta_->GetAllColocatedTables()) {
+      status_pb_out->add_colocated_table_ids(table);
+    }
+    consensus = consensus_;
   }
-  disk_size_info.ToPB(status_pb_out);
-  // Set hide status of the tablet.
-  status_pb_out->set_is_hidden(meta_->hidden());
-  status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
-  for (const auto& table : meta_->GetAllColocatedTables()) {
-    status_pb_out->add_colocated_table_ids(table);
+  if (consensus) {
+    consensus->log()->GetLatestEntryOpId().ToPB(status_pb_out->mutable_last_op_id());
   }
 }
 
-Status TabletPeer::RunLogGC() {
+Status TabletPeer::RunLogGC(bool rollover) {
   if (!CheckRunning().ok()) {
     return Status::OK();
   }
@@ -832,6 +839,9 @@ Status TabletPeer::RunLogGC() {
     LOG_WITH_PREFIX(INFO) << __func__ << ": " << details;
   } else {
      min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  }
+  if (rollover) {
+    RETURN_NOT_OK(log_->AllocateSegmentAndRollOver());
   }
   int32_t num_gced = 0;
   return log_->GC(min_log_index, &num_gced);

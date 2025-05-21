@@ -2038,7 +2038,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     case FlushTabletsRequestPB::LOG_GC:
       for (const auto& tablet : tablet_peers) {
         resp->set_failed_tablet_id(tablet->tablet_id());
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->RunLogGC(), resp, &context);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->RunLogGC(req->rollover()), resp, &context);
         resp->clear_failed_tablet_id();
       }
       break;

@@ -229,9 +229,6 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Status SplitTablet(const std::string& tablet_id);
 
-  Status FlushTabletsOnSingleTServer(
-      size_t tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction);
-
   Result<std::set<TabletId>> GetTestTableTabletIds(size_t tserver_idx);
 
   Result<std::set<TabletId>> GetTestTableTabletIds();
