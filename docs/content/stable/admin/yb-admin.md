@@ -1723,13 +1723,13 @@ This feature is {{<tags/feature/tp>}}. Use the [yb_enable_cdc_consistent_snapsho
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace-name> EXPLICIT CHANGE USE_SNAPSHOT
+    create_change_data_stream ysql.<namespace-name> [EXPLICIT] [<before-image-mode>] [USE_SNAPSHOT | NOEXPORT_SNAPSHOT]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
 * EXPLICIT: Checkpointing type on the server.
-* CHANGE: Record type indicating to the server that the stream should send only the new values of the changed columns.
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. Refer to [Before image modes](../../develop/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
 * USE_SNAPSHOT: Snapshot option indicating intention of client to consume the snapshot. If you don't want the client to consume the snapshot, use the NOEXPORT_SNAPSHOT option.
 
 For example:
