@@ -539,7 +539,7 @@ The `yb-voyager export schema` command extracts the schema from the source datab
 
 The `source_db_schema` argument specifies the schema of the source database.
 
-- For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
+For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
 
 {{< /note >}}
 
@@ -556,6 +556,8 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-schema <SOURCE_DB_SCHEMA>
 
 ```
+
+Note that if the source database is PostgreSQL and you haven't already run `assess-migration`, the schema is also assessed and a migration assessment report is generated.
 
 Refer to [export schema](../../reference/schema-migration/export-schema/) for details about the arguments.
 
@@ -618,7 +620,7 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
 
-To add the constraints back, you run the `import schema` command after data import. See [Cutover to the target](#cutover-to-the-target).
+To add the constraints back, you run the `finalize-schema-post-data-import` command after data import. See [Cutover to the target](#cutover-to-the-target).
 
 {{< /note >}}
 
@@ -788,8 +790,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
-    The initiate cutover to target command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
-
+    The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to target` phase continues and completes by importing all the exported events into the target YugabyteDB database.
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
@@ -799,32 +800,21 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `import schema` with the `post-snapshot-import` flag:
+1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `finalize-schema-post-data-import`. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, you can refresh them by setting the `--refresh-mviews` flag to true.
 
     ```sh
     # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-            --post-snapshot-import true
+    yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
+       --target-db-host <TARGET_DB_HOST> \
+       --target-db-user <TARGET_DB_USER> \
+       --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+       --target-db-name <TARGET_DB_NAME> \
+       --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
     ```
 
-1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them using the following command:
-
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-            --post-snapshot-import true \
-            --refresh-mviews true
-    ```
+    {{< note title ="Note" >}}
+The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+    {{< /note >}}
 
 ### Verify migration
 

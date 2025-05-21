@@ -447,7 +447,7 @@ void DocDBLoadGenerator::VerifySnapshot(const InMemDocDbState& snapshot) {
   flashback_state.CaptureAt(doc_db(), snap_ht);
   const bool is_match = flashback_state.EqualsAndLogDiff(snapshot);
   if (!is_match) {
-    LOG(ERROR) << details_msg << "\nDOCDB SNAPSHOT VERIFICATION FAILED, DOCDB STATE:";
+    LOG(WARNING) << details_msg << "\nDOCDB SNAPSHOT VERIFICATION FAILED, DOCDB STATE:";
     fixture_->DocDBDebugDumpToConsole();
   }
   ASSERT_TRUE(is_match) << details_msg;
@@ -490,15 +490,13 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(
         mismatch_line_numbers.push_back(i + 1);
       }
     }
-    LOG(ERROR) << "Assertion failure"
-               << "\nExpected DocDB contents:\n\n" << expected_str << "\n"
-               << "\nActual DocDB contents:\n\n" << debug_dump_str << "\n"
-               << "\nExpected # of lines: " << expected_lines.size()
-               << ", actual # of lines: " << actual_lines.size()
-               << "\nLines not matching: " << AsString(mismatch_line_numbers)
-               << "\nPlease check if source files have trailing whitespace and remove it.";
-
-    FAIL();
+    FAIL() << "Assertion failure"
+           << "\nExpected DocDB contents:\n\n" << expected_str << "\n"
+           << "\nActual DocDB contents:\n\n" << debug_dump_str << "\n"
+           << "\nExpected # of lines: " << expected_lines.size()
+           << ", actual # of lines: " << actual_lines.size()
+           << "\nLines not matching: " << AsString(mismatch_line_numbers)
+           << "\nPlease check if source files have trailing whitespace and remove it.";
   }
 }
 

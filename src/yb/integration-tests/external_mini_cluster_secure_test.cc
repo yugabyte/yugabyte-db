@@ -20,6 +20,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/string_util.h"
@@ -38,12 +39,6 @@ namespace yb {
 class ExternalMiniClusterSecureTest :
     public MiniClusterTestWithClient<ExternalMiniCluster> {
  public:
-
-  void SetUp(bool enable_ysql) {
-    enable_ysql_ = enable_ysql;
-    ExternalMiniClusterSecureTest::SetUp();
-  }
-
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
@@ -183,7 +178,8 @@ class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterS
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
     // TODO: enable ysql after #26138 is fixed
-    ExternalMiniClusterSecureTest::SetUp(false);
+    enable_ysql_ = false;
+    ExternalMiniClusterSecureTest::SetUp();
   }
 };
 
@@ -195,6 +191,11 @@ TEST_F_EX(ExternalMiniClusterSecureTest, YbTools, ExternalMiniClusterSecureWithC
 
 class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest {
  public:
+  void SetUp() override {
+    enable_ysql_ = false;
+    ExternalMiniClusterSecureTest::SetUp();
+  }
+
   void SetUpFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = JoinPathSegments(GetTestDataDirectory(), "certs");
 
@@ -294,10 +295,14 @@ class ExternalMiniClusterSecureWithInterCATest : public ExternalMiniClusterSecur
         "-p", cluster_->ysql_hostport(0).port(),
         sslparam, "-c", "select now();"
     );
-    LOG(INFO) << "Running " << ToString(ysqlsh_command);
-    Subprocess proc(ysqlsh_command[0], ysqlsh_command);
-    proc.SetEnv("PGPASSWORD", "yugabyte");
-    ASSERT_OK(proc.Run());
+    ASSERT_OK(WaitFor([&ysqlsh_command] {
+      LOG(INFO) << "Running " << ToString(ysqlsh_command);
+      Subprocess proc(ysqlsh_command[0], ysqlsh_command);
+      proc.SetEnv("PGPASSWORD", "yugabyte");
+      auto status = proc.Run();
+      WARN_NOT_OK(status, "Failed executing ysqlsh");
+      return status.ok();
+    }, 10s * kTimeMultiplier, "Connected to ysqlsh"));
   }
 };
 

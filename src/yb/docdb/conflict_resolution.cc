@@ -89,9 +89,10 @@ using TransactionConflictInfoMap = std::unordered_map<TransactionId,
                                                       TransactionIdHash>;
 
 Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
-                          const char* reason, tablet::TabletMetrics* tablet_metrics) {
-  tablet_metrics->Increment(tablet::TabletCounters::kTransactionConflicts);
-  return (STATUS(TryAgain, Format("$0 conflicts with $1 transaction: $2", our_id, reason, other_id),
+                          const std::string& reason,
+                          const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics) {
+  (*tablet_metrics)->Increment(tablet::TabletCounters::kTransactionConflicts);
+  return (STATUS(TryAgain, Format("$0 conflicts with $1: $2", our_id, reason, other_id),
                  Slice(), TransactionError(TransactionErrorCode::kConflict)));
 }
 
@@ -126,7 +127,7 @@ class ConflictResolverContext {
 
   virtual int64_t GetTxnStartUs() const = 0;
 
-  virtual tablet::TabletMetrics* GetTabletMetrics() = 0;
+  virtual const std::shared_ptr<tablet::TabletMetrics*>& GetTabletMetrics() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
@@ -664,7 +665,7 @@ class WaitOnConflictResolver : public ConflictResolver {
 
     if (wait_start_time_.Initialized()) {
       const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(wait_start_time_);
-      context_->GetTabletMetrics()->Increment(
+      (*context_->GetTabletMetrics())->Increment(
           tablet::TabletEventStats::kTotalWaitQueueTime,
           make_unsigned(elapsed_time.ToMicroseconds()));
     }
@@ -907,12 +908,12 @@ class StrongConflictChecker {
   StrongConflictChecker(const TransactionId& transaction_id,
                         HybridTime read_time,
                         ConflictResolver* resolver,
-                        tablet::TabletMetrics* tablet_metrics,
+                        const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
                         KeyBytes* buffer)
       : transaction_id_(transaction_id),
         read_time_(read_time),
         resolver_(*resolver),
-        tablet_metrics_(*tablet_metrics),
+        tablet_metrics_(tablet_metrics),
         buffer_(*buffer)
   {}
 
@@ -984,7 +985,7 @@ class StrongConflictChecker {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
-          tablet_metrics_.Increment(tablet::TabletCounters::kTransactionConflicts);
+          (*tablet_metrics_)->Increment(tablet::TabletCounters::kTransactionConflicts);
           return STATUS_EC_FORMAT(
               TryAgain, TransactionError(TransactionErrorCode::kConflict),
               "$0 conflict with concurrently committed data. Value write after transaction start: "
@@ -1010,7 +1011,7 @@ class StrongConflictChecker {
   const TransactionId& transaction_id_;
   const HybridTime read_time_;
   ConflictResolver& resolver_;
-  tablet::TabletMetrics& tablet_metrics_;
+  std::shared_ptr<tablet::TabletMetrics*> tablet_metrics_;
   KeyBytes& buffer_;
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
@@ -1022,12 +1023,12 @@ class ConflictResolverContextBase : public ConflictResolverContext {
   ConflictResolverContextBase(const DocOperations& doc_ops,
                               HybridTime resolution_ht,
                               int64_t txn_start_us,
-                              tablet::TabletMetrics* tablet_metrics,
+                              const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
                               ConflictManagementPolicy conflict_management_policy)
       : doc_ops_(doc_ops),
         resolution_ht_(resolution_ht),
         txn_start_us_(txn_start_us),
-        tablet_metrics_(*tablet_metrics),
+        tablet_metrics_(tablet_metrics),
         conflict_management_policy_(conflict_management_policy) {
   }
 
@@ -1047,8 +1048,8 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     return txn_start_us_;
   }
 
-  tablet::TabletMetrics* GetTabletMetrics() override {
-    return &tablet_metrics_;
+  const std::shared_ptr<tablet::TabletMetrics*>& GetTabletMetrics() override {
+    return tablet_metrics_;
   }
 
   ConflictManagementPolicy GetConflictManagementPolicy() const override {
@@ -1084,7 +1085,10 @@ class ConflictResolverContextBase : public ConflictResolverContext {
       if (our_priority <= their_priority) {
         return MakeConflictStatus(
             our_transaction_id, transaction.id,
-            our_priority == their_priority ? "same priority" : "higher priority",
+            our_priority == their_priority ?
+              Format("same priority transaction (pri: $0)", our_priority) :
+              Format("higher priority transaction (our pri: $0, their pri: $1)",
+                     our_priority, their_priority),
             GetTabletMetrics());
       }
     }
@@ -1103,7 +1107,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 
   bool fetched_metadata_for_transactions_ = false;
 
-  tablet::TabletMetrics& tablet_metrics_;
+  std::shared_ptr<tablet::TabletMetrics*> tablet_metrics_;
 
   const ConflictManagementPolicy conflict_management_policy_;
 };
@@ -1116,7 +1120,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                                      HybridTime resolution_ht,
                                      HybridTime read_time,
                                      int64_t txn_start_us,
-                                     tablet::TabletMetrics* tablet_metrics,
+                                     const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
                                      ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
             doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy),
@@ -1282,7 +1286,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
           return MakeConflictStatus(
-            *transaction_id_, transaction_data.id, "committed", GetTabletMetrics());
+            *transaction_id_, transaction_data.id, "committed transaction", GetTabletMetrics());
         }
       }
     }
@@ -1357,7 +1361,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
   OperationConflictResolverContext(const DocOperations* doc_ops,
                                    HybridTime resolution_ht,
                                    int64_t txn_start_us,
-                                   tablet::TabletMetrics* tablet_metrics,
+                                   const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
                                    ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
             *doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy) {
@@ -1445,7 +1449,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    const DocDB& doc_db,
                                    PartialRangeKeyIntents partial_range_key_intents,
                                    TransactionStatusManager* status_manager,
-                                   tablet::TabletMetrics* tablet_metrics,
+                                   const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
                                    bool is_advisory_lock_request,
@@ -1491,7 +1495,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
-                                 tablet::TabletMetrics* tablet_metrics,
+                                 const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
                                  LockBatch* lock_batch,
                                  WaitQueue* wait_queue,
                                  CoarseTimePoint deadline,

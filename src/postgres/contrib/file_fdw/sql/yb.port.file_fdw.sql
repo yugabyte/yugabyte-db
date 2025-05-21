@@ -123,7 +123,6 @@ CREATE FOREIGN TABLE text_csv (
 ) SERVER file_server
 OPTIONS (format 'text', filename :'filename', null 'NULL');
 SELECT * FROM text_csv; -- ERROR
--- YB note: Enable ALTER TABLE here and remove DROP/CREATE when #1124 is closed
 ALTER FOREIGN TABLE text_csv OPTIONS (SET format 'csv');
 DROP FOREIGN TABLE text_csv;
 CREATE FOREIGN TABLE text_csv (
@@ -262,10 +261,8 @@ SELECT * FROM agg_text ORDER BY a;
 -- privilege tests for object
 SET ROLE regress_file_fdw_superuser;
 ALTER FOREIGN TABLE agg_text OWNER TO regress_file_fdw_user;
--- YB note: Change expected output when ALTER TABLE from #1124 is supported
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
 SET ROLE regress_file_fdw_user;
--- YB note: Change expected output when ALTER TABLE from #1124 is supported
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
 SET ROLE regress_file_fdw_superuser;
 

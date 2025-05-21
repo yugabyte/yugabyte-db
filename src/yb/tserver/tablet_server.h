@@ -207,12 +207,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   ConcurrentPointerReference<TServerSharedData> SharedObject() override { return shared_object(); }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
-  Status ProcessLeaseUpdate(
-      const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
-  Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
+  Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
+  Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override;
+  Status KillPg() const override;
 
-  static bool YSQLLeaseEnabled();
+  static bool IsYsqlLeaseEnabled();
   tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
   bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 
@@ -264,6 +264,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
       EXCLUDES(lock_);
   void ResetCatalogVersionsFingerprint() EXCLUDES(lock_);
+  void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
   uint32_t get_oid_cache_invalidations_count() const override {
     return oid_cache_invalidations_count_.load();
@@ -322,6 +323,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       const tserver::GetTserverCatalogMessageListsRequestPB& req,
       tserver::GetTserverCatalogMessageListsResponsePB* resp) const override;
 
+  Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) override;
+
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
   rpc::Messenger* GetMessenger(ash::Component component) const override;
@@ -365,6 +370,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void RegisterCertificateReloader(CertificateReloader reloader) override;
 
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
+
+  void RegisterPgProcessKiller(std::function<Status(void)> killer) override;
 
   Status StartYSQLLeaseRefresher();
 
@@ -453,6 +460,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
+
+  void StartTSLocalLockManager() EXCLUDES (lock_);
 
   std::atomic<bool> initted_{false};
 
@@ -586,7 +595,21 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void DoGarbageCollectionOfInvalidationMessages(
       const std::map<uint32_t, std::vector<uint64_t>>& db_local_catalog_versions_map,
-      std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions);
+      std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions,
+      std::map<uint32_t, uint64_t> *db_cutoff_catalog_versions);
+  void ClearInvalidationMessageQueueUnlocked(
+      const std::vector<uint64_t>& local_catalog_versions,
+      InvalidationMessagesInfo *info) REQUIRES(lock_);
+  void MergeInvalMessagesIntoQueueUnlocked(
+      uint32_t db_oid,
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      int start_index,
+      int end_index) REQUIRES(lock_);
+  void DoMergeInvalMessagesIntoQueueUnlocked(
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      int start_index,
+      int end_index,
+      InvalidationMessagesQueue *db_message_lists) REQUIRES(lock_);
 
   std::string log_prefix_;
 
@@ -604,6 +627,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
   std::function<Status(void)> pg_restarter_;
+  std::function<Status(void)> pg_killer_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;

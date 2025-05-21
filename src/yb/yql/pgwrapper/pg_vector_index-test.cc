@@ -118,11 +118,13 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     return conn;
   }
 
-  Status CreateIndex(PGConn& conn) {
+  Status CreateIndex(
+       PGConn& conn, const std::string& index_name = kVectorIndexName,
+       std::optional<vector_index::DistanceKind> distance_kind = std::nullopt) {
     return conn.ExecuteFormat(
         "CREATE INDEX $1 ON test USING ybhnsw (embedding $0) "
             "WITH (ef_construction = 256, m = 32, m0 = 128)",
-        VectorOpsName(), kVectorIndexName);
+        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name);
   }
 
   Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
@@ -172,7 +174,12 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
 
   const char* VectorOpsName() const {
     using vector_index::DistanceKind;
-    switch (distance_kind_) {
+    return VectorOpsName(distance_kind_);
+  }
+
+  static const char* VectorOpsName(vector_index::DistanceKind distance_kind) {
+    using vector_index::DistanceKind;
+    switch (distance_kind) {
       case DistanceKind::kL2Squared:
         return "vector_l2_ops";
       case DistanceKind::kInnerProduct:
@@ -180,7 +187,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       case DistanceKind::kCosine:
         return "vector_cosine_ops";
     }
-    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind_);
+    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
   }
 
   const char* VectorOp() const {
@@ -894,6 +901,9 @@ TEST_P(PgVectorIndexTest, Backup) {
   ASSERT_OK(cluster_->StartYbControllerServers());
 
   TestManyRows(AddFilter::kFalse);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateIndex(conn, "vi_cos", vector_index::DistanceKind::kCosine));
 
   tools::TmpDirProvider tmp_dir;
   ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, "ysql." + DbName()));

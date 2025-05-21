@@ -186,6 +186,11 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
   return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
+bool CatalogManager::HasDdlVerificationState(const TransactionId& txn) const {
+  LockGuard lock(ddl_txn_verifier_mutex_);
+  return ysql_ddl_txn_verfication_state_map_.contains(txn);
+}
+
 Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
                                                   const string& pb_txn_id,
                                                   std::optional<bool> is_committed,
@@ -703,7 +708,7 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
       std::vector<TableId> remove_table_ids;
       for (const auto& table : verifier_state->tables) {
         table_ids.push_back(table->id());
-        const auto& pb_txn_id = table->LockForRead()->pb_transaction_id();
+        auto pb_txn_id = table->LockForRead()->pb_transaction_id();
         if (pb_txn_id.empty()) {
           // The table involved in ddl transaction txn_id has already finalized
           // with a new schema version, but verifier_state for txn_id isn't

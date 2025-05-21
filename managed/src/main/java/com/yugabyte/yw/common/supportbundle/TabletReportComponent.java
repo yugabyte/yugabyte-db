@@ -69,12 +69,7 @@ public class TabletReportComponent implements SupportBundleComponent {
     try {
       String masterLeaderHost = universe.getMasterLeaderHostText();
       int masterHttpPort = universe.getMasterLeaderNode().masterHttpPort;
-      String protocol =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt
-              ? "https"
-              : "http";
-      String url =
-          String.format("%s://%s:%d/dump-entities", protocol, masterLeaderHost, masterHttpPort);
+      String url = String.format("http://%s:%d/dump-entities", masterLeaderHost, masterHttpPort);
       log.info("Querying url {} for dump entities.", url);
       JsonNode response = apiHelper.getRequest(url);
       if (response.has("error")) {

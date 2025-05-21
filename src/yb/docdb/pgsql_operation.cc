@@ -2221,6 +2221,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
   // Current number of rows to skip before collecting next one for sample
   double rowstoskip = sampling_state.rowstoskip();
   // Variables for the random numbers generator
+  SCHECK(sampling_state.has_rand_state(), InvalidArgument,
+         "Invalid sampling state, random state is missing");
   YbgPrepareMemoryContext();
   YbgReservoirState rstate = NULL;
   YbgSamplerCreate(

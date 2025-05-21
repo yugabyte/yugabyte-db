@@ -35,11 +35,21 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(TEST_assert_olm_empty_locks_map);
+DECLARE_bool(TEST_olm_skip_scheduling_waiter_resumption);
+DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
+
 using namespace std::literals;
 
+using yb::docdb::IntentTypeSetAdd;
+using yb::docdb::LockState;
 using yb::docdb::ObjectLockOwner;
+using yb::docdb::ObjectLockPrefix;
 
 namespace yb::tserver {
+
+using LockStateMap = std::unordered_map<ObjectLockPrefix, LockState>;
 
 auto kTxn1 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 auto kTxn2 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
@@ -50,27 +60,20 @@ constexpr auto kObject1 = 1;
 
 class TSLocalLockManagerTest : public TabletServerTestBase {
  protected:
-  TSLocalLockManagerTest() {
-    auto ts = TabletServerTestBase::CreateMiniTabletServer();
-    CHECK_OK(ts);
-    mini_server_.reset(ts->release());
-    lm_ = std::make_unique<tserver::TSLocalLockManager>(
-        new server::HybridClock(), mini_server_->server());
-    lm_->TEST_MarkBootstrapped();
-  }
-
-  std::unique_ptr<tserver::MiniTabletServer> mini_server_;
-  std::unique_ptr<tserver::TSLocalLockManager> lm_;
-
   void SetUp() override {
-    YBTest::SetUp();
-    ASSERT_OK(lm_->clock()->Init());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_assert_olm_empty_locks_map) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_skip_sending_wait_for_probes) = true;
+    TabletServerTestBase::SetUp();
+    StartTabletServer();
+    lm_ = CHECK_NOTNULL(mini_server_->server()->ts_local_lock_manager());
+    lm_->TEST_MarkBootstrapped();
   }
 
   Status LockObjects(
       const ObjectLockOwner& owner, uint64_t database_id, const std::vector<uint64_t>& object_ids,
       const std::vector<TableLockType>& lock_types,
-      CoarseTimePoint deadline = CoarseTimePoint::max()) {
+      CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr) {
     SCHECK_EQ(object_ids.size(), lock_types.size(), IllegalState, "Expected equal sizes");
     tserver::AcquireObjectLockRequestPB req;
     owner.PopulateLockRequest(&req);
@@ -80,27 +83,38 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       lock->set_object_oid(object_ids[i]);
       lock->set_lock_type(lock_types[i]);
     }
-    return lm_->AcquireObjectLocks(req, deadline);
+    req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    Synchronizer synchronizer;
+    lm_->AcquireObjectLocksAsync(req, deadline, synchronizer.AsStdStatusCallback());
+    RETURN_NOT_OK(synchronizer.Wait());
+    if (!state_map) {
+      return Status::OK();
+    }
+    auto res = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
+    for (auto& lock_batch_entry : res.lock_batch) {
+      (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+    }
+    return Status::OK();
   }
 
   Status LockObject(
       const ObjectLockOwner& owner, uint64_t database_id, uint64_t object_id,
-      TableLockType lock_type, CoarseTimePoint deadline = CoarseTimePoint::max()) {
-    return LockObjects(owner, database_id, {object_id}, {lock_type}, deadline);
+      TableLockType lock_type, CoarseTimePoint deadline = CoarseTimePoint::max(),
+      LockStateMap* state_map = nullptr) {
+    return LockObjects(owner, database_id, {object_id}, {lock_type}, deadline, state_map);
   }
 
-  Status ReleaseObjectLock(
+  Status ReleaseLocksForSubtxn(
       const ObjectLockOwner& owner, CoarseTimePoint deadline = CoarseTimePoint::max()) {
     tserver::ReleaseObjectLockRequestPB req;
-    owner.PopulateLockRequest(&req);
+    owner.PopulateReleaseRequest(&req, false /* release all locks */);
     return lm_->ReleaseObjectLocks(req, deadline);
   }
 
   Status ReleaseAllLocksForTxn(
       const ObjectLockOwner& owner, CoarseTimePoint deadline = CoarseTimePoint::max()) {
     tserver::ReleaseObjectLockRequestPB req;
-    req.set_txn_id(owner.txn_id.data(), owner.txn_id.size());
-    req.set_subtxn_id(owner.subtxn_id);
+    owner.PopulateReleaseRequest(&req);
     return lm_->ReleaseObjectLocks(req, deadline);
   }
 
@@ -111,6 +125,8 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
   size_t WaitingLocksSize() const {
     return lm_->TEST_WaitingLocksSize();
   }
+
+  std::shared_ptr<tserver::TSLocalLockManager> lm_;
 };
 
 TEST_F(TSLocalLockManagerTest, TestLockAndRelease) {
@@ -119,7 +135,7 @@ TEST_F(TSLocalLockManagerTest, TestLockAndRelease) {
     ASSERT_GE(GrantedLocksSize(), 1);
     ASSERT_EQ(WaitingLocksSize(), 0);
 
-    ASSERT_OK(ReleaseObjectLock(kTxn1));
+    ASSERT_OK(ReleaseAllLocksForTxn(kTxn1));
     ASSERT_EQ(GrantedLocksSize(), 0);
     ASSERT_EQ(WaitingLocksSize(), 0);
   }
@@ -175,7 +191,7 @@ TEST_F(TSLocalLockManagerTest, TestWaitersAndBlocker) {
   ASSERT_GE(WaitingLocksSize(), 1);
 
   for (int i = 0; i < kNumReaders; i++) {
-    ASSERT_OK(ReleaseObjectLock(reader_txns[i]));
+    ASSERT_OK(ReleaseAllLocksForTxn(reader_txns[i]));
     if (i + 1 < kNumReaders) {
       ASSERT_NE(status_future.wait_for(0s), std::future_status::ready);
     }
@@ -192,12 +208,12 @@ TEST_F(TSLocalLockManagerTest, TestWaitersAndBlocker) {
   }
   ASSERT_EQ(waiters_blocked.count(), 5);
 
-  ASSERT_OK(ReleaseObjectLock(kTxn1));
+  ASSERT_OK(ReleaseAllLocksForTxn(kTxn1));
   ASSERT_TRUE(waiters_blocked.WaitFor(2s * kTimeMultiplier));
   ASSERT_EQ(GrantedLocksSize(), kNumReaders);
   thread_holder.WaitAndStop(2s * kTimeMultiplier);
   for (int i = 0; i < kNumReaders; i++) {
-    ASSERT_OK(ReleaseObjectLock(reader_txns[i]));
+    ASSERT_OK(ReleaseAllLocksForTxn(reader_txns[i]));
   }
 }
 
@@ -214,6 +230,7 @@ TEST_F(TSLocalLockManagerTest, TestSessionIgnoresLockConflictWithSelf) {
   // {1, kWeakObjectLock}
   // {1, kStrongObjectLock}
   ASSERT_EQ(GrantedLocksSize(), 2);
+  ASSERT_OK(ReleaseAllLocksForTxn(kTxn1));
 }
 
 // The below test asserts that the lock manager signals the corresponding condition variable on
@@ -227,8 +244,9 @@ TEST_F(TSLocalLockManagerTest, TestWaitersSignaledOnEveryRelease) {
   });
   ASSERT_NE(status_future.wait_for(1s * kTimeMultiplier), std::future_status::ready);
 
-  ASSERT_OK(ReleaseObjectLock(kTxn2));
+  ASSERT_OK(ReleaseAllLocksForTxn(kTxn2));
   ASSERT_OK(status_future.get());
+  ASSERT_OK(ReleaseAllLocksForTxn(kTxn1));
 }
 
 #ifndef NDEBUG
@@ -250,7 +268,7 @@ TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
   ASSERT_EQ(GrantedLocksSize(), 4);
 
   SyncPoint::GetInstance()->LoadDependency({
-    {"ObjectLockedBatchEntry::Lock", "TestFailedLockRpcSemantics"}});
+    {"ObjectLockManagerImpl::DoLockSingleEntry", "TestFailedLockRpcSemantics"}});
   SyncPoint::GetInstance()->ClearTrace();
   SyncPoint::GetInstance()->EnableProcessing();
 
@@ -272,13 +290,14 @@ TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
 
   ASSERT_OK(ReleaseAllLocksForTxn(kTxn1));
   ASSERT_EQ(GrantedLocksSize(), 1);
+  ASSERT_OK(ReleaseAllLocksForTxn(kTxn2));
 }
 
 TEST_F(TSLocalLockManagerTest, TestReleaseWaitingLocks) {
   ASSERT_OK(LockObject(kTxn1, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"ObjectLockedBatchEntry::Lock", "TestReleaseWaitingLocks"}});
+      {{"ObjectLockManagerImpl::DoLockSingleEntry", "TestReleaseWaitingLocks"}});
   SyncPoint::GetInstance()->ClearTrace();
   SyncPoint::GetInstance()->EnableProcessing();
 
@@ -293,6 +312,8 @@ TEST_F(TSLocalLockManagerTest, TestReleaseWaitingLocks) {
   ASSERT_TRUE(status_future.valid());
   ASSERT_OK(ReleaseAllLocksForTxn(kTxn2));
   ASSERT_NOK(status_future.get());
+  ASSERT_OK(ReleaseAllLocksForTxn(kTxn2));
+  ASSERT_OK(ReleaseAllLocksForTxn(kTxn1));
 }
 #endif // NDEBUG
 
@@ -321,8 +342,9 @@ TEST_F(TSLocalLockManagerTest, TestDowngradeDespiteExclusiveLockWaiter) {
           docdb::DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
 
       if (is_conflicting) {
-        SyncPoint::GetInstance()->LoadDependency(
-            {{"ObjectLockedBatchEntry::Lock", "TestDowngradeDespiteExclusiveLockWaiter"}});
+        SyncPoint::GetInstance()->LoadDependency({
+            {"ObjectLockManagerImpl::DoLockSingleEntry",
+                 "TestDowngradeDespiteExclusiveLockWaiter"}});
         SyncPoint::GetInstance()->ClearTrace();
         SyncPoint::GetInstance()->EnableProcessing();
 
@@ -356,5 +378,75 @@ TEST_F(TSLocalLockManagerTest, TestDowngradeDespiteExclusiveLockWaiter) {
     }
   }
 }
+
+TEST_F(TSLocalLockManagerTest, TestSanity) {
+  const auto kNumConns = 30;
+  const auto kNumbObjects = 5;
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < kNumConns; i++) {
+    thread_holder.AddThreadFunctor([&, &stop = thread_holder.stop_flag()]() {
+      LockStateMap state_map;
+      auto owner = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+      while (!stop) {
+        LockStateMap prev = state_map;
+        auto deadline = CoarseMonoClock::Now() + 2s;
+        unsigned int seed = SeedRandom();
+        auto lock_type = TableLockType((rand_r(&seed) % TableLockType_MAX) + 1);
+        auto failed = false;
+        while(!failed && rand_r(&seed) % 3) {
+          failed = !LockObject(
+              owner, kDatabase1, rand_r(&seed) % kNumbObjects, lock_type, deadline,
+              &state_map).ok();
+        }
+        if (failed) {
+          ASSERT_OK(ReleaseLocksForSubtxn(owner, deadline));
+          state_map = prev;
+        }
+        owner.subtxn_id++;
+        auto actual_state_map = lm_->TEST_GetLockStateMapForTxn(owner.txn_id);
+        for (auto& [key, state] : state_map) {
+          auto it = actual_state_map.find(key);
+          ASSERT_TRUE(it != actual_state_map.end());
+          ASSERT_EQ(it->second, state);
+          actual_state_map.erase(it);
+        }
+        for (auto& [_, state] : actual_state_map) {
+          ASSERT_EQ(state, 0);
+        }
+        if (rand_r(&seed) % 3) {
+          ASSERT_OK(ReleaseAllLocksForTxn(owner, deadline));
+          state_map.clear();
+          owner.subtxn_id = 1;
+        }
+      }
+      ASSERT_OK(ReleaseAllLocksForTxn(owner, CoarseTimePoint::max()));
+    });
+  }
+  thread_holder.WaitAndStop(45s);
+}
+
+#ifndef NDEBUG
+TEST_F(TSLocalLockManagerTest, TestWaiterResetsStateDuringShutdown) {
+  ASSERT_OK(LockObject(kTxn1, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"ObjectLockManagerImpl::DoLockSingleEntry", "TestWaiterResetsStateDuringShutdown"}});
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto status_future = std::async(std::launch::async, [&]() {
+    return LockObject(
+        kTxn2, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE, CoarseMonoClock::Now() + 10s);
+  });
+  DEBUG_ONLY_TEST_SYNC_POINT("TestWaiterResetsStateDuringShutdown");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_skip_scheduling_waiter_resumption) = true;
+  ASSERT_OK(ReleaseAllLocksForTxn(kTxn1, CoarseTimePoint::max()));
+  mini_server_->Shutdown();
+  auto status = status_future.get();
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Object Lock Manager shutting down");
+}
+#endif
 
 } // namespace yb::tserver

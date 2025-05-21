@@ -13,18 +13,27 @@
 
 #pragma once
 
-#include <iosfwd>
-#include <string>
-#include <vector>
-
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/object_lock_data.h"
+#include "yb/docdb/lock_util.h"
 
-#include "yb/util/monotime.h"
-#include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/tostring.h"
+#include "yb/server/server_fwd.h"
 
-namespace yb::docdb {
+#include "yb/util/status_callback.h"
+
+namespace yb {
+
+class ThreadPool;
+
+namespace docdb {
+
+struct LockData {
+  DetermineKeysToLockResult<ObjectLockManager> key_to_lock;
+  CoarseTimePoint deadline;
+  ObjectLockOwner object_lock_owner;
+  TabletId status_tablet;
+  MonoTime start_time;
+  StdStatusCallback callback;
+};
 
 // Helper struct used for keying table/object locks of a transaction.
 struct TrackedLockEntryKey {
@@ -50,32 +59,32 @@ class ObjectLockManagerImpl;
 // server maintains an instance of the ObjectLockManager.
 class ObjectLockManager {
  public:
-  ObjectLockManager();
+  ObjectLockManager(ThreadPool* thread_pool, server::RpcServerBase& server);
   ~ObjectLockManager();
 
-  // Attempt to lock a batch of keys and track the lock against the given object_lock_owner key. The
-  // call may be blocked waiting for other conflicting locks to be released. If the entries don't
-  // exist, they are created. On success, the lock state is exists in-memory until an explicit
-  // release is called (or the process restarts).
-  //
-  // Returns false if was not able to acquire lock until deadline.
-  MUST_USE_RESULT bool Lock(
-      LockBatchEntries<ObjectLockManager>& key_to_intent_type, CoarseTimePoint deadline,
-      const ObjectLockOwner& object_lock_owner);
-
-  // Release the batch of locks, if they were acquired at the first place.
-  void Unlock(const std::vector<TrackedLockEntryKey>& lock_entry_keys);
+  // Attempt to lock a batch of keys and track the lock against data.object_lock_owner key. The
+  // callback is executed with failure if the locks aren't able to be acquired within the deadline.
+  void Lock(LockData&& data);
 
   // Release all locks held against the given object_lock_owner.
-  void Unlock(const ObjectLockOwner& object_lock_owner);
+  void Unlock(const ObjectLockOwner& object_lock_owner, Status resume_with_status);
+
+  void Poll();
+
+  void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
+
+  void Shutdown();
 
   void DumpStatusHtml(std::ostream& out);
 
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;
+  std::unordered_map<ObjectLockPrefix, LockState>
+      TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
 
  private:
   std::unique_ptr<ObjectLockManagerImpl> impl_;
 };
 
-}  // namespace yb::docdb
+}  // namespace docdb
+}  // namespace yb

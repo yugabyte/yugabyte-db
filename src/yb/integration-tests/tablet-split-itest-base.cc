@@ -830,16 +830,6 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
   return Status::OK();
 }
 
-Status TabletSplitExternalMiniClusterITest::FlushTabletsOnSingleTServer(
-    size_t tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction) {
-  auto tserver = cluster_->tablet_server(tserver_idx);
-  auto flush_op_type = is_compaction ?
-      tserver::FlushTabletsRequestPB::COMPACT :
-      tserver::FlushTabletsRequestPB::FLUSH;
-  RETURN_NOT_OK(cluster_->FlushTabletsOnSingleTServer(tserver, tablet_ids, flush_op_type));
-  return Status::OK();
-}
-
 Result<std::set<TabletId>> TabletSplitExternalMiniClusterITest::GetTestTableTabletIds(
     size_t tserver_idx) {
   std::set<TabletId> tablet_ids;
@@ -1032,7 +1022,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
   if (change_split_boundary) {
     RETURN_NOT_OK(WriteRows(kNumRows * 2, kNumRows));
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-      RETURN_NOT_OK(FlushTabletsOnSingleTServer(i, {tablet_id}, false));
+      RETURN_NOT_OK(cluster_->FlushTabletsOnSingleTServer(i, {tablet_id}));
     }
   }
 

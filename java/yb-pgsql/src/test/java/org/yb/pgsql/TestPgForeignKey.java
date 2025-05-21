@@ -41,13 +41,6 @@ public class TestPgForeignKey extends BasePgSQLTest {
     return flagMap;
   }
 
-  @After
-  public void cleanUpAfter() throws Exception {
-    // For this test tear down entire cluster between tests.
-    tearDownAfter();
-    pgInitialized = false;
-  }
-
   private void checkRows(Statement statement,
                          String table_name,
                          Set<Row> expectedRows) throws Exception {

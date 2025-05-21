@@ -695,3 +695,12 @@ func GetFlagValueAsStringIfSet(cmd *cobra.Command, flagName string) string {
 	}
 	return ""
 }
+
+// IsValidJSON checks if the given string is a valid JSON
+func IsValidJSON(str string) error {
+	var js json.RawMessage
+	if err := json.Unmarshal([]byte(str), &js); err != nil {
+		return err
+	}
+	return nil
+}

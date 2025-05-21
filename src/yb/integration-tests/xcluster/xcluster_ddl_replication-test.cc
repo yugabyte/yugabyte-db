@@ -40,6 +40,7 @@
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
+DECLARE_int32(ysql_sequence_cache_minval);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
@@ -1396,6 +1397,78 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingDDL) {
     LOG(INFO) << "tables on B:\n" << b_result;
   }
   ASSERT_EQ(a_result, b_result);
+}
+
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingSequenceBump) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sequence_cache_minval) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
+
+  const int kInitialSequenceValue = 7777700;
+
+  // Set up replication from A to B.
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Create a sequence on A, let its creation replicate then bump it
+  // 10 times but do not let the bumps replicate via pausing
+  // replication.
+  {
+    auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(
+        conn_A.ExecuteFormat("CREATE SEQUENCE my_sequence START WITH $0;", kInitialSequenceValue));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    ASSERT_OK(ToggleUniverseReplication(
+        consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+
+    // Consume 10 sequence values, bumping last_value to kInitialSequenceValue+9 on producer.
+    for (int i = 0; i < 10; i++) {
+      ASSERT_OK(conn_A.FetchRowAsString("SELECT pg_catalog.nextval('my_sequence');"));
+    }
+  }
+
+  // Switch the replication direction unpausing the replication and
+  // letting the bumps through in the middle.
+  {
+    LOG(INFO) << "===== Beginning switchover: checkpoint B";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(CheckpointReplicationGroup(
+        kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+
+    LOG(INFO) << "===== Switchover: set up replication from B to A";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(CreateReplicationFromCheckpoint(
+        cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
+
+    LOG(INFO) << "===== Resuming replication from A to B";
+    SetReplicationDirection(ReplicationDirection::AToB);
+    ASSERT_OK(ToggleUniverseReplication(
+        consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+
+    LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
+    SetReplicationDirection(ReplicationDirection::AToB);
+    ASSERT_OK(DeleteOutboundReplicationGroup());
+
+    LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+        ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+
+    LOG(INFO) << "===== Switchover done";
+  }
+
+  // Finally verify that the bumps were not lost.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  {
+    auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    auto final = ASSERT_RESULT(conn_A.FetchRow<int64_t>("SELECT last_value FROM my_sequence;"));
+    EXPECT_EQ(final, kInitialSequenceValue + 9);
+  }
+  {
+    auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    auto final = ASSERT_RESULT(conn_B.FetchRow<int64_t>("SELECT last_value FROM my_sequence;"));
+    EXPECT_EQ(final, kInitialSequenceValue + 9);
+  }
 }
 
 TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {

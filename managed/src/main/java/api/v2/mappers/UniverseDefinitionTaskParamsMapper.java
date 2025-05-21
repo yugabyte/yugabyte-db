@@ -254,6 +254,7 @@ public interface UniverseDefinitionTaskParamsMapper {
     @ValueMapping(target = "PROVISIONED", source = "Provisioned"),
     @ValueMapping(target = "SOFTWAREINSTALLED", source = "SoftwareInstalled"),
     @ValueMapping(target = "UPGRADESOFTWARE", source = "UpgradeSoftware"),
+    @ValueMapping(target = "UPGRADEMASTERSOFTWARE", source = "UpgradeMasterSoftware"),
     @ValueMapping(target = "ROLLBACKUPGRADE", source = "RollbackUpgrade"),
     @ValueMapping(target = "FINALIZEUPGRADE", source = "FinalizeUpgrade"),
     @ValueMapping(target = "UPDATEGFLAGS", source = "UpdateGFlags"),

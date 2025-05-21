@@ -284,7 +284,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testAlteredTableInLegacyColocatedDB() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -395,7 +394,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testMixedLegacyColocatedDatabase() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -546,7 +544,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testLegacyColocatedDBWithColocationIdAlreadySet() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -897,7 +894,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testLegacyColocatedDatabaseRestoreToOriginalDB() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -2123,7 +2119,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testLegacyColocatedMateralizedViewBackup() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -2609,7 +2604,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testLegacyColocatedDBMigration() throws Exception {
-    markClusterNeedsRecreation();
     // Create a backup of a legacy colocated database.
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
@@ -2694,7 +2688,6 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testLegacyColocatedDBWithNoColocatedTablesMigration() throws Exception {
     // This unit test tests for an edge case where a legacy colocated database doesn't contain any
     // colocated table.
-    markClusterNeedsRecreation();
     // Create a backup of a legacy colocated database.
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),

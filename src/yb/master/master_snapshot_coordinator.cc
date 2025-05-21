@@ -336,7 +336,7 @@ class MasterSnapshotCoordinator::Impl {
       RETURN_NOT_OK(tablet->snapshots().Create(*sys_catalog_snapshot_data));
     }
 
-    ScheduleOperations(operations, leader_term);
+    PostScheduleOperations(std::move(operations), leader_term);
 
     if (leader_term >= 0 && snapshot_empty) {
       // There could be snapshot for 0 tables, so they should be marked as complete right after
@@ -542,7 +542,7 @@ class MasterSnapshotCoordinator::Impl {
     RETURN_NOT_OK(tablet->ApplyOperation(
         operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
 
-    ScheduleOperations(operations, leader_term);
+    PostScheduleOperations(std::move(operations), leader_term);
     return Status::OK();
   }
 
@@ -991,7 +991,7 @@ class MasterSnapshotCoordinator::Impl {
             if (FLAGS_TEST_fatal_on_snapshot_verify) {
               LOG(DFATAL) << error_msg;
             } else {
-              LOG(ERROR) << error_msg;
+              LOG(WARNING) << error_msg;
             }
           }
 
@@ -1379,6 +1379,14 @@ class MasterSnapshotCoordinator::Impl {
                     MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
+  template <class Operations>
+  void PostScheduleOperations(Operations&& operations, int64_t leader_term) {
+    context_.Scheduler().io_service().post(
+        [this, operations = std::move(operations), leader_term] {
+      ScheduleOperations(operations, leader_term);
+    });
+  }
+
   template <typename Operation>
   void ScheduleOperation(const Operation& operation, const TabletInfoPtr& tablet_info,
                          int64_t leader_term);
@@ -1436,6 +1444,7 @@ class MasterSnapshotCoordinator::Impl {
     if (!l.IsInitializedAndIsLeader()) {
       return;
     }
+    LongOperationTracker long_operation_tracker("Poll", 1s);
     VLOG(4) << __func__ << "()";
     std::vector<TxnSnapshotId> cleanup_snapshots;
     TabletSnapshotOperations operations;

@@ -224,7 +224,7 @@ void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_cod
     case rpc::ErrorStatusPB::FATAL_VERSION_MISMATCH: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_UNAUTHORIZED: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_UNKNOWN: {
-      LOG(ERROR) << "Unexpected error status: "
+      LOG(WARNING) << "Unexpected error status: "
                  << rpc::ErrorStatusPB::RpcErrorCodePB_Name(error_code);
       ErrorResponse(stream_id_, ErrorResponse::Code::SERVER_ERROR, "Server error")
           .Serialize(compression_scheme, &msg);

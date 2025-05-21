@@ -309,7 +309,7 @@ TEST_P(PgPackedRowTest, Random) {
       continue;
     }
     std::unordered_set<std::string> values;
-    peer->tablet()->TEST_DocDBDumpToContainer(tablet::IncludeIntents::kTrue, &values);
+    peer->tablet()->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &values);
     std::vector<std::string> sorted_values(values.begin(), values.end());
     std::sort(sorted_values.begin(), sorted_values.end());
     for (const auto& line : sorted_values) {
@@ -805,7 +805,7 @@ TEST_P(PgPackedRowTest, CleanupIntentDocHt) {
     if (!peer->tablet()->regular_db()) {
       continue;
     }
-    auto dump = peer->tablet()->TEST_DocDBDumpStr(tablet::IncludeIntents::kTrue);
+    auto dump = peer->tablet()->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
     LOG(INFO) << "Dump: " << dump;
     ASSERT_EQ(dump.find("intent doc ht"), std::string::npos);
   }

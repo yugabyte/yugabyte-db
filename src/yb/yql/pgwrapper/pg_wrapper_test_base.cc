@@ -44,6 +44,7 @@ void PgWrapperTestBase::SetUp() {
 
   ExternalMiniClusterOptions opts;
   opts.enable_ysql = true;
+  opts.wait_for_tservers_to_accept_ysql_connections = false;
 
   // With ysql_num_shards_per_tserver=1 and 3 tservers we'll be creating 3 tablets per table, which
   // is enough for most tests.

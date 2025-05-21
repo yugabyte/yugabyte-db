@@ -387,13 +387,25 @@ public class Schedule extends Model {
   }
 
   private void updateNewBackupScheduleTimes() {
-    ScheduleTask lastTask = ScheduleTask.getLastTask(this.getScheduleUUID());
     // nextScheduleTaskTime should be updated first since
     // ScheduleUtil.nextExpectedIncrementTaskTime uses it.
-    if (lastTask == null || Util.isTimeExpired(nextExpectedTaskTime(lastTask.getScheduledTime()))) {
-      this.nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
+    if (StringUtils.isBlank(this.cronExpression)) {
+      if (nextScheduleTaskTime == null) {
+        LOG.info("No last task found for schedule {}, trigger immediately", this.getScheduleUUID());
+        this.nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
+      } else if (Util.isTimeExpired(nextScheduleTaskTime)) {
+        LOG.debug("Schedule {} is expired, calculate next run", this.getScheduleUUID());
+        this.nextScheduleTaskTime = nextExpectedTaskTime(nextScheduleTaskTime);
+      } else {
+        LOG.debug(
+            "Schedule {} is not expired, next run is {}",
+            this.getScheduleUUID(),
+            this.nextScheduleTaskTime);
+      }
     } else {
-      this.nextScheduleTaskTime = nextExpectedTaskTime(lastTask.getScheduledTime());
+      LOG.debug("always update nextScheduleTaskTime for cron expression");
+      // null is fine as the lastScheduledTime is not used for cron
+      this.nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
     }
     Date nextExpectedIncrementScheduleTaskTime = null;
     long incrementalBackupFrequency =
@@ -406,7 +418,7 @@ public class Schedule extends Model {
 
   // Toggle Schedule state
   public static Schedule toggleBackupSchedule(
-      UUID customerUUID, UUID scheduleUUID, State newState) {
+      UUID customerUUID, UUID scheduleUUID, State newState, Boolean immediateBackup) {
     ScheduleUpdater updater =
         s -> {
           if (newState == s.status) {
@@ -417,6 +429,23 @@ public class Schedule extends Model {
           }
           s.updateStatus(newState);
           if (newState == State.Active) {
+            // Run a full backup if requested and if the schedule is expired.
+            if (s.nextScheduleTaskTime != null
+                && Util.isTimeExpired(s.nextScheduleTaskTime)
+                && immediateBackup
+                && s.getTaskType() == TaskType.CreateBackup) {
+              LOG.debug("found expired CreateBackup schedule, setting backlog status to true");
+              s.updateBacklogStatus(true);
+            }
+            if (s.nextIncrementScheduleTaskTime != null
+                && Util.isTimeExpired(s.nextIncrementScheduleTaskTime)
+                && immediateBackup
+                && s.getTaskType() == TaskType.CreateBackup) {
+              LOG.debug(
+                  "found expired CreateBackup incremental schedule, setting increment backlog"
+                      + " status to true");
+              s.updateIncrementBacklogStatus(true);
+            }
             s.updateNewBackupScheduleTimes();
           }
         };
@@ -862,7 +891,14 @@ public class Schedule extends Model {
     long nextScheduleTime;
     if (StringUtils.isBlank(this.cronExpression)) {
       if (lastScheduledTime != null) {
-        nextScheduleTime = lastScheduledTime.getTime() + this.frequency;
+        // Get the next schedule time by adding the frequency to the last scheduled time.
+        // Because we can be multiple iterations out of date, use the formula:
+        // floor((currTime - lastTime) / frequency) missed - then +1 to add the next iteration.
+        Date currDate = new Date();
+        nextScheduleTime =
+            ((Math.floorDiv(currDate.getTime() - lastScheduledTime.getTime(), frequency) + 1)
+                    * frequency)
+                + lastScheduledTime.getTime();
       } else {
         // The task will be definitely executed under 2 minutes (scheduler frequency).
         return new Date();

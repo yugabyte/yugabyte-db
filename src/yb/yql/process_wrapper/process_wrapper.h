@@ -75,7 +75,8 @@ class ProcessSupervisor {
  public:
   virtual ~ProcessSupervisor() {}
   virtual void Stop();
-  Status Start(bool run_process = true);
+  Status Start();
+  Status InitPaused();
 
   // Returns the current state of the process.
   YbSubProcessState GetState();
@@ -91,6 +92,7 @@ class ProcessSupervisor {
   virtual std::string GetProcessName() = 0;
 
  private:
+  Status Init(YbSubProcessState target_state);
   // Compares the expected and current state.
   // Caller function need to lock the mutex before calling the function.
   Status ExpectStateUnlocked(YbSubProcessState state) REQUIRES(mtx_);

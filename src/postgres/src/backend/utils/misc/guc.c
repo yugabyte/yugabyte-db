@@ -286,6 +286,14 @@ static void assign_tcmalloc_sample_period(int newval, void *extra);
 static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 static void check_reserved_prefixes(const char *varName);
+static void assign_yb_enable_cbo(int new_value, void *extra);
+static void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
+static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
+
+
+static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
+
+static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -650,12 +658,27 @@ const struct config_enum_entry yb_batch_detection_mechanism_options[] = {
 const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
 	{"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
 	{"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},
+	{"deferred", YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY, false},
 	{NULL, 0, false}
 };
 
 const struct config_enum_entry yb_sampling_algorithm_options[] = {
 	{"full_table_scan", YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN, false},
 	{"block_based_sampling", YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry yb_cost_model_options[] = {
+	{"off", YB_COST_MODEL_OFF, false},
+	{"on", YB_COST_MODEL_ON, false},
+	{"legacy_mode", YB_COST_MODEL_LEGACY, false},
+	{"legacy_stats_mode", YB_COST_MODEL_LEGACY_STATS, false},
+	{"true", YB_COST_MODEL_ON, true},
+	{"false", YB_COST_MODEL_OFF, true},
+	{"yes", YB_COST_MODEL_ON, true},
+	{"no", YB_COST_MODEL_OFF, true},
+	{"1", YB_COST_MODEL_ON, true},
+	{"0", YB_COST_MODEL_OFF, true},
 	{NULL, 0, false}
 };
 
@@ -2316,12 +2339,23 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_debug_report_error_stacktrace", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Append stacktrace information for error messages."),
+		{"yb_debug_log_docdb_error_backtrace", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Append stacktrace information to errors received from DocDB."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_debug_report_error_stacktrace,
+		&yb_debug_log_docdb_error_backtrace,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_debug_original_backtrace_format", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Use original Postgres functions to create and format the stacktrace"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_debug_original_backtrace_format,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2383,8 +2417,9 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
-			gettext_noop("Silence the advisory locks not supported error message."),
-			gettext_noop("Enable this with high caution. It was added to avoid disruption for users who were "
+			gettext_noop("Silence the advisory locks error message."),
+			gettext_noop("Enable this with high caution. When enabled, advisory lock requests will silently succeed "
+						 "without actually executing the lock request. It was added to avoid disruption for users who were "
 						 "already using advisory locks but seeing success messages without the lock really being "
 						 "acquired. Such users should take the necessary steps to modify their application to "
 						 "remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
@@ -2393,7 +2428,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_silence_advisory_locks_not_supported_error,
 		false,
-		NULL, NULL, NULL
+		NULL, assign_yb_silence_advisory_locks_not_supported_error, NULL
 	},
 
 	{
@@ -2813,17 +2848,22 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
 	{
 		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables use of the PostgreSQL selectivity estimation which utilizes "
 						 "table statistics collected with ANALYZE. When disabled, a simpler heuristics based "
-						 "selectivity estimation is used."),
+						 "selectivity estimation is used."
+						 "  DEPRECATED: This settting is deprecated and will "
+						 "be removed in a future release."
+						 "  Use \"yb_enable_cbo\" instead."),
 			NULL
 		},
 		&yb_enable_optimizer_statistics,
 		false,
-		NULL, NULL, NULL
+		NULL, assign_yb_enable_optimizer_statistics, NULL
 	},
+
 	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported expressions down to DocDB for evaluation."),
@@ -2981,12 +3021,14 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_enable_base_scans_cost_model", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables YB cost model for Sequential and Index scans. "
-						 "This feature is currently in preview."),
+						 "  DEPRECATED: This setting is deprecated and will "
+						 "be removed in a future release."
+						 "  Use \"yb_enable_cbo\" instead."),
 			NULL
 		},
 		&yb_enable_base_scans_cost_model,
 		false,
-		NULL, NULL, NULL
+		NULL, assign_yb_enable_base_scans_cost_model, NULL
 	},
 
 	{
@@ -3183,12 +3225,13 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_enable_advisory_locks", PGC_SIGHUP, LOCK_MANAGEMENT,
-			gettext_noop("Enable advisory lock feature"),
+			gettext_noop("DEPRECATED - Enable advisory lock feature"),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_advisory_locks,
-		false,
+		true,
+		check_yb_enable_advisory_locks, NULL, NULL
 	},
 
 	{
@@ -3348,6 +3391,37 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_query_diagnostics_disable_database_connection_bgworker,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_use_internal_auto_analyze_service_conn", PGC_USERSET, AUTOVACUUM,
+			gettext_noop("[Internal Only GUC] - Help a backend identify that this is a connection from "
+						 "the internal Auto-Analyze service"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_use_internal_auto_analyze_service_conn,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_force_early_ddl_serialization", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("If object locking is off (i.e., "
+						 "TEST_enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
+						 "conflict error on the catalog version increment at the end after doing all the work. "
+						 "Setting this flag enables a fail-fast strategy by locking the catalog version at the "
+						 "start of DDLs, causing conflict errors to occur before useful work is done. This "
+						 "flag is only applicable without object locking. If object locking is enabled, it "
+						 "ensures that concurrent DDLs block on each other for serialization. Also, this flag "
+						 "is valid only if ysql_enable_db_catalog_version_mode and "
+						 "yb_enable_invalidation_messages are enabled."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_force_early_ddl_serialization,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -5251,6 +5325,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_test_delay_set_local_tserver_inval_message_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, add a delay before calling YBCPgSetTserverCatalogMessageList."),
+			NULL
+		},
+		&yb_test_delay_set_local_tserver_inval_message_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_invalidation_message_expiration_secs", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Invalidation messages expiration time in catalog table "
 						 "pg_yb_invalidation_messages."),
@@ -6997,6 +7081,8 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
 						 " relaxed. Read only statements/transactions do not see read restart errors but"
 						 " may miss recent updates with staleness bounded by clock skew."
+						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
+						 " guarantee is maintained."
 			),
 			0
 		},
@@ -7019,6 +7105,16 @@ static struct config_enum ConfigureNamesEnum[] =
 		YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING,
 		yb_sampling_algorithm_options,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_cbo", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable YB cost model."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_cbo, YB_COST_MODEL_LEGACY, yb_cost_model_options,
+		NULL, assign_yb_enable_cbo, NULL
 	},
 
 	/* End-of-list marker */
@@ -15676,6 +15772,53 @@ assign_ysql_upgrade_mode(bool newval, void *extra)
 	allowSystemTableMods = newval;
 }
 
+static void
+assign_yb_enable_cbo(int new_value, void *extra)
+{
+	yb_enable_base_scans_cost_model = false;
+	yb_enable_optimizer_statistics = false;
+	yb_ignore_stats = false;
+
+	switch(new_value)
+	{
+		case YB_COST_MODEL_OFF:
+			yb_ignore_stats = true;
+			break;
+
+		case YB_COST_MODEL_ON:
+			yb_enable_base_scans_cost_model = true;
+			break;
+
+		case YB_COST_MODEL_LEGACY:
+			break;
+
+		case YB_COST_MODEL_LEGACY_STATS:
+			yb_enable_optimizer_statistics = true;
+			break;
+	}
+}
+
+static void
+assign_yb_enable_optimizer_statistics(bool new_value, void *extra)
+{
+	yb_enable_optimizer_statistics = new_value;
+	yb_enable_cbo = (new_value? YB_COST_MODEL_LEGACY_STATS:
+							(yb_enable_base_scans_cost_model? YB_COST_MODEL_ON:
+							 YB_COST_MODEL_LEGACY));
+	yb_ignore_stats = false;
+}
+
+static void
+assign_yb_enable_base_scans_cost_model(bool new_value, void *extra)
+{
+	yb_enable_base_scans_cost_model = new_value;
+	yb_enable_cbo = (new_value? YB_COST_MODEL_ON:
+							(yb_enable_optimizer_statistics?
+							 YB_COST_MODEL_LEGACY_STATS:
+							 YB_COST_MODEL_LEGACY));
+	yb_ignore_stats = false;
+}
+
 static bool
 check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source)
 {
@@ -15846,6 +15989,27 @@ yb_set_neg_catcache_ids(const char *newval, void *extra)
 	{
 		YbSetAdditionalNegCacheIds(neg_cache_ids_list);
 		list_free(neg_cache_ids_list);
+	}
+}
+
+static bool
+check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source)
+{
+	ereport(WARNING,
+			(errmsg("the parameter \"yb_enable_advisory_locks\" is deprecated, "
+					"toggle the runtime flag \"ysql_yb_enable_advisory_locks\" instead.")));
+	return true; /* still allow usage, but warn */
+}
+
+static void
+assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra)
+{
+	if (newval)
+	{
+		ereport(WARNING,
+				(errmsg("enable this with high caution. When enabled, advisory lock requests will silently succeed "
+						"without actually executing the lock request. It was added to avoid disruption for users who were "
+						"already using advisory locks but seeing success messages without the lock really being acquired.")));
 	}
 }
 

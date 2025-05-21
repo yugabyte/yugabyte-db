@@ -24,6 +24,7 @@
 #include "yb/common/opid.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/dockv/dockv_fwd.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/master/master_replication.pb.h"
@@ -42,6 +43,7 @@ struct SchemaDetails {
 // We will maintain a map for each stream, tablet pait. The schema details will correspond to the
 // the current 'running' schema.
 using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
+using TableSchemaPackingStorage = std::unordered_map<TableId, dockv::SchemaPackingStorage>;
 using consensus::HaveMoreMessages;
 
 struct CDCThroughputMetrics {
@@ -83,6 +85,7 @@ Status GetChangesForCDCSDK(
     GetChangesResponsePB* resp,
     uint64_t* commit_timestamp,
     SchemaDetailsMap* cached_schema_details,
+    TableSchemaPackingStorage* schema_packing_storages,
     OpId* last_streamed_op_id,
     const int64_t& safe_hybrid_time_req,
     const std::optional<uint64_t> consistent_snapshot_time,

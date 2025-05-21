@@ -17,7 +17,7 @@ type: indexpage
   {{<index/item
     title="Google Vertex AI"
     body="Deploy generative AI applications using Google Vertex AI and YugabyteDB."
-    href="google-vertex-ai/"
+    href="../ai/google-vertex-ai/"
     icon="/images/tutorials/google/icons/Google-Vertex-AI-Icon.svg">}}
 
 {{</index/block>}}

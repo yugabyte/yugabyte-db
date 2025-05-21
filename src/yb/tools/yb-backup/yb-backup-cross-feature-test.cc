@@ -2627,12 +2627,9 @@ TEST_P(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
        "create"}));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(0, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(1, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(2, {}));
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
@@ -2643,12 +2640,9 @@ TEST_P(
   ASSERT_NO_FATALS(
       InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(0, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(1, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(2, {}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

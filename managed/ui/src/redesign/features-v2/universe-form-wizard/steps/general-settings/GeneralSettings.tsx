@@ -19,7 +19,6 @@ import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { GeneralSettingsValidationSchema } from './ValidationSchema';
 import { useTranslation } from 'react-i18next';
-import { styled, Typography } from '@material-ui/core';
 import { ProviderConfigurationField } from '../../fields/provider-configuration/ProviderConfiguration';
 import { DatabaseVersionField } from '../../fields/database-version/DatabaseVersion';
 import { CloudField } from '../../fields/provider/ProviderSelect';
@@ -30,8 +29,6 @@ import { generateUniqueName } from '../../../../helpers/utils';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 
 const CONTROL_WIDTH = '480px';
-
-
 
 export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [{ generalSettings }, { moveToNextPage, saveGeneralSettings }] = (useContext(
@@ -53,7 +50,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
           moveToNextPage();
         })();
       },
-      onPrev: () => { }
+      onPrev: () => {}
     }),
     []
   );

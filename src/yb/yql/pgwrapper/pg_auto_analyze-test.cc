@@ -13,6 +13,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -35,6 +36,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -52,6 +54,8 @@ DECLARE_uint32(ysql_auto_analyze_batch_size);
 DECLARE_bool(TEST_sort_auto_analyze_target_table_ids);
 DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
+DECLARE_int64(TEST_delay_after_table_analyze_ms);
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 using namespace std::chrono_literals;
 
@@ -74,8 +78,8 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_table_mutation_counter) = true;
 
     // Set low values for the node level mutation reporting and the cluster level persisting
-    // intervals ensures that the aggregate mutations are frequently applied to the underlying YCQL
-    // table, hence capping the test time low.
+    // intervals. This ensures that the aggregate mutations are frequently applied to the underlying
+    // YCQL table, hence capping the test time low.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 10;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
     google::SetVLOGLevel("pg_auto_analyze_service", 2);
@@ -198,10 +202,34 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     return Status::OK();
   }
 
-  Result<TableId> GetTableId(const std::string& filter) {
-    auto tables = VERIFY_RESULT(client_->ListTables(/* filter */ filter));
-    SCHECK_EQ(1, tables.size(), IllegalState, "Expected exactly one table");
-    return tables.front().table_id();
+  Result<TableId> GetTableId(const std::string& table_name, const std::string& dbname = "") {
+    auto tables = VERIFY_RESULT(client_->ListTables(table_name /* filter */,
+                                                    false /* exclude_ysql */,
+                                                    dbname /* ysql_db_filter */));
+    int count = 0;
+    TableId table_id;
+    for (auto& table : tables) {
+      if (table.table_name() == table_name) {
+        ++count;
+        table_id = table.table_id();
+      }
+    }
+    SCHECK_EQ(1, count, IllegalState, "Expected exactly one table");
+    return table_id;
+  }
+
+  Status WaitForTableMutationsCleanUp(std::vector<TableId> ids) {
+    RETURN_NOT_OK(WaitFor([this, &ids]() -> Result<bool> {
+      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
+      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
+      for (auto& id : ids) {
+        if (table_mutations_in_cql_table.contains(id))
+          return false;
+      }
+      return true;
+    }, 120s * kTimeMultiplier, "Check mutations count of deleted tables"));
+
+    return Status::OK();
   }
 };
 
@@ -659,12 +687,7 @@ TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount) {
                                table_name3));
 
   // Verify the mutations count of tables is deleted from the service table.
-  ASSERT_OK(WaitFor([this, &table_id, &table_id2]() -> Result<bool> {
-      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
-      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
-      return !table_mutations_in_cql_table.contains(table_id)
-             && !table_mutations_in_cql_table.contains(table_id2);
-  }, 120s * kTimeMultiplier, "Check mutations count of deleted tables"));
+  ASSERT_OK(WaitForTableMutationsCleanUp({table_id, table_id2}));
 }
 
 TEST_F(PgAutoAnalyzeTest, MutationsCleanupWhenNoNameCacheRefresh) {
@@ -688,11 +711,7 @@ TEST_F(PgAutoAnalyzeTest, MutationsCleanupWhenNoNameCacheRefresh) {
       {{table_id, 2}}));
 
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE test"));
-  ASSERT_OK(WaitFor([this, &table_id]() -> Result<bool> {
-      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
-      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
-      return !table_mutations_in_cql_table.contains(table_id);
-  }, 120s * kTimeMultiplier, "Check mutations count of deleted table"));
+  ASSERT_OK(WaitForTableMutationsCleanUp({table_id}));
 }
 
 // Test that auto analyze service cleans up deleted tables' mutations count
@@ -754,12 +773,7 @@ TEST_F(PgAutoAnalyzeTest, DeletedTableFoundDuringAnalyzeCommand) {
   LOG(INFO) << "Wait no mutations: " << table_id << " and " << table_id2;
 
   // Verify the mutations count of tables is deleted from the service table.
-  ASSERT_OK(WaitFor([this, &table_id, &table_id2]() -> Result<bool> {
-      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
-      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
-      return !table_mutations_in_cql_table.contains(table_id)
-             && !table_mutations_in_cql_table.contains(table_id2);
-  }, 120s * kTimeMultiplier, "Check mutations count of deleted tables"));
+  ASSERT_OK(WaitForTableMutationsCleanUp({table_id, table_id2}));
 
   LOG(INFO) << "Test done";
 }
@@ -914,6 +928,115 @@ TEST_F(PgAutoAnalyzeTest, DisableAndReEnableAutoAnalyze) {
   // Re-enable auto analyze.
   ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE $0 SET yb_disable_auto_analyze='off'", db_name));
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 100));
+}
+
+// Test for one edge case where auto analyze persistently analyzes a deleted table whose mutations
+// count satisfies its analyze threshold before deletion.
+// Imagine we have a table called test_tbl and its analyze threshold is 20.
+// One example scenario is:
+// In auto analyze service periodic task iteration 1:
+// (1) test_tbl mutations count increases 15 (ReadTableMutations)
+// (2) table_id_to_name_ loads its name into cache (GetTablePGSchemaAndName)
+// (3) table_tuple_count_ loads its reltuples (FetchUnknownReltuples)
+// In subsequent periodic task iteration 2:
+// (1) test_tbl mutations count increases 5 -> 20 in total (ReadTableMutations)
+// (2) delete test_tbl
+// (3) table_id_to_name_ erases its name from cache (GetTablePGSchemaAndName)
+// (4) deleted test_tbl satisfies its analyze threshold (DetermineTablesForAnalyze)
+// (5) auto analyze service tries to analyze deleted test_tbl, but its name isn't in
+//     table_id_to_name_ cache (DoAnalyzeOnCandidateTables)
+TEST_F(PgAutoAnalyzeTest, MutationsCleanupForDeletedAnalyzeTargetTable) {
+  google::SetVLOGLevel("pg_auto_analyze_service", 5);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  const std::string db_name = "yugabyte";
+  auto conn = ASSERT_RESULT(Connect());
+  // Disable auto analyze from running ANALYZEs.
+  ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE $0 SET yb_disable_auto_analyze='on'", db_name));
+  const std::string table_name = "test_tbl";
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name));
+  const auto table_id = ASSERT_RESULT(GetTableId(table_name));
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn, table_name] {
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(1, 15) AS s",
+                                     table_name));
+      },
+      {{table_id, 15}}));
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn, table_name] {
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(16, 20) AS s",
+                                     table_name));
+      },
+      {{table_id, 5}}));
+  const auto pg_class_id = ASSERT_RESULT(GetTableId("pg_class", db_name));
+  const auto pg_db_role_setting_id = ASSERT_RESULT(GetTableId("pg_db_role_setting"));
+
+  // DROP TABLE modifies pg_class resulting in the name cache table_id_to_name_ being refreshed.
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn, table_name, db_name] {
+        ASSERT_OK(conn.Execute("BEGIN"));
+        ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+        // Re-enable auto analyze.
+        ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE $0 SET yb_disable_auto_analyze='off'",
+                                     db_name));
+        ASSERT_OK(conn.Execute("COMMIT"));
+      },
+      {{pg_class_id, 2}, {pg_db_role_setting_id, 1}}));
+
+  ASSERT_OK(WaitForTableMutationsCleanUp({table_id}));
+}
+
+TEST_F(PgAutoAnalyzeTest, DDLsInParallelWithAutoAnalyze) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_after_table_analyze_ms) = 10;
+  // Explicitly disable object locking. With object locking, concurrent DDLs will be handled
+  // without relying on catalog version increments.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto db_name = "abc";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db_name));
+  conn = ASSERT_RESULT(ConnectToDB(db_name));
+  const std::string table_name = "test_tbl";
+  const std::string table2_name = "test_tbl2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, v1 INT DEFAULT 5, PRIMARY KEY(h1))", table_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, v1 INT DEFAULT 5, PRIMARY KEY(h1))", table2_name));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, db_name, table_name, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(ConnectToDB(db_name));
+    auto num_inserts = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      auto status = conn.ExecuteFormat("INSERT INTO $0 (h1) VALUES ($1)", table_name, num_inserts);
+      if (status.ToString().find("schema version mismatch") == std::string::npos) {
+        ASSERT_OK(status);
+        num_inserts++;
+      }
+    }
+    ASSERT_OK(WaitFor([&conn, table_name, num_inserts]() -> Result<bool> {
+          const std::string format_query = "SELECT reltuples FROM pg_class WHERE relname = '$0'";
+          auto res = VERIFY_RESULT(conn.FetchFormat(format_query, table_name));
+          auto tuples = VERIFY_RESULT(GetValue<float>(res.get(), 0, 0));
+          LOG(INFO) << "Saw " << tuples << " reltuples";
+          return num_inserts == tuples;
+        }, 10s * kTimeMultiplier,
+        Format("Check expected reltuples vs actual reltuples (%0)", num_inserts)));
+  });
+
+  // Perform DDLs on another table to avoid read restart errors.
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 0"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX idx ON $0 (v1)", table2_name));
+  ASSERT_OK(conn.ExecuteFormat("DROP INDEX idx"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v2 INT", table2_name));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN v2", table2_name));
+
+  thread_holder.Stop();
+  thread_holder.JoinAll();
 }
 
 } // namespace pgwrapper

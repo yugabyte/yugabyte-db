@@ -564,7 +564,7 @@ class NodeChecker():
                  is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
-                 enable_earlyoom):
+                 enable_earlyoom, topk_other_processes, topk_mem_threshold_percent):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -603,6 +603,8 @@ class NodeChecker():
         self.master_leader_url = master_leader_url
         self.enable_earlyoom = enable_earlyoom
         self.verbose = verbose
+        self.topk_other_processes = topk_other_processes
+        self.topk_mem_threshold_percent = topk_mem_threshold_percent
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -1625,7 +1627,6 @@ class NodeChecker():
 
 
     def check_ddl_atomicity_internal(self, recheck_table_uuids):
-        logging.info("Checking DDL atomicity on node {}".format(self.node))
         e = self._new_entry("DDL atomicity")
         metric = Metric.from_definition(YB_DDL_ATOMICITY_CHECK)
         tables_with_errors = []
@@ -1964,6 +1965,31 @@ class NodeChecker():
             return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
                                            has_error=True, metrics = metrics)
 
+
+    def check_other_process_stats(self):
+        metric = Metric.from_definition(YB_PROCESS_MEMORY_KB)
+        e = self._new_metric_entry("Per-process topK other check")
+        top_k = self.topk_other_processes
+        threshold = self.topk_mem_threshold_percent
+        try:
+            res = self._load_top_k_by_mem_pids(top_k, threshold)
+            other_label = Label("subtype", "other")
+            virtual_label = Label('type', 'virtual')
+            proportional_label = Label('type', 'proportional')
+            resident_label = Label('type', 'resident')
+            for process_name in res.keys():
+                stat = res[process_name]['total_stat']
+                process = Label("process", process_name)
+                metric.add_value(stat['resident_memory_kb'], labels=[process, other_label,
+                                                                     resident_label])
+                metric.add_value(stat['virtual_memory_kb'], labels=[process, other_label,
+                                                                    virtual_label])
+            return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+        except Exception as ex:
+            return e.fill_and_return_entry(["Failed to parse other stats: {}".format(str(ex))],
+                                           has_error=True, metrics = [metric])
+
+
     def check_systemd_unit_preexec_present(self):
         e = self._new_entry("Systemd unit preexec check")
         services = ["yb-master.service", "yb-tserver.service"]
@@ -2073,6 +2099,42 @@ class NodeChecker():
                 return True
         return False
 
+
+    def _load_top_k_by_mem_pids(self, k, threshold):
+        used_pids = []
+        for proc in self.current_process_results.keys():
+            proc_results = self.current_process_results[proc]
+            if proc != "version" and "process_map" in proc_results.keys():
+                used_pids.extend(list(proc_results['process_map'].keys()))
+        result = {}
+        cmd = "ps -eo pid,ppid,comm,%mem --sort=-%mem"
+        output = self._check_output(cmd)
+        for line in output.splitlines()[1:]:
+            if len(result.keys()) >= k:
+                break
+            split = line.split()
+            pid = split[0]
+            ppid = split[1]
+            if pid in used_pids or ppid in used_pids:
+                continue
+            command = split[2]
+            mem_pct = float(split[3])
+            if threshold > 0 and mem_pct < threshold:
+                break
+            used_pids.append(pid)
+            if command in result.keys():
+                command = "{}_{}".format(command, pid)
+            self.verbose_log("checking {} with pid {}".format(command, pid))
+            pidlist = self._get_subprocess_pids(pid)
+            pidlist.append(pid)
+            stats = self._load_per_process_metrics_by_pids("", pid, pidlist)
+            if (stats['total_stat']['resident_memory_kb'] == 0
+                    and stats['total_stat']['virtual_memory_kb'] == 0):
+                continue
+            result[command] = stats
+        return result
+
+
     def _load_per_process_metrics(self, process_name):
         root_pid = self.get_process_pid_by_name(process_name)
         if root_pid is None:
@@ -2087,6 +2149,10 @@ class NodeChecker():
             if postgre_pid is not None:
                 pid_list.remove(postgre_pid)
                 pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
+        return self._load_per_process_metrics_by_pids(process_name, root_pid, pid_list)
+
+
+    def _load_per_process_metrics_by_pids(self, process_name, root_pid, pid_list):
         total_stat = self._get_empty_proc_results()
         prev_process_map = {}
         if process_name in self.prev_process_results.keys():
@@ -2097,7 +2163,11 @@ class NodeChecker():
 
         process_map = {}
         for cur_pid in pid_list:
-            stat = self._get_process_stats_by_pid(cur_pid)
+            stat = self._get_empty_proc_results()
+            try:
+                stat = self._get_process_stats_by_pid(cur_pid)
+            except Exception as e:
+                pass
             # Calculating the sum with current state
             total_stat = self._merge_proc_results(stat, total_stat)
             # We need to substract pid stats from prev run
@@ -2168,14 +2238,21 @@ class NodeChecker():
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
         stat = self._check_output(cmd).strip()
-        stat_list = stat.split('\n')
-        for stat in stat_list:
-            lst = stat.split(' ')
-            if len(lst) > 0:
-                if lst[0] == 'Pss:':
-                    res['proportional_memory_kb'] += int(lst[len(lst) - 2])
-                if lst[0] == 'Rss:':
-                    res['resident_memory_kb'] += int(lst[len(lst) - 2])
+        if "permission denied" in stat.lower():
+            # This is less precise, but we cannot use smaps for processes with diff user.
+            psstat = self._check_output("ps -o rss -p {} --no-headers".format(pid)).strip()
+            lst = psstat.split(' ')
+            if len(lst) > 0 and lst[0].isdigit():
+                res['resident_memory_kb'] += int(lst[0])
+        else:
+            stat_list = stat.split('\n')
+            for stat in stat_list:
+                lst = stat.split(' ')
+                if len(lst) > 0:
+                    if lst[0] == 'Pss:':
+                        res['proportional_memory_kb'] += int(lst[len(lst) - 2])
+                    if lst[0] == 'Rss:':
+                        res['resident_memory_kb'] += int(lst[len(lst) - 2])
 
         cmd = 'cat /proc/{}/io'.format(pid)
         stat = self._check_output(cmd).strip()
@@ -2544,6 +2621,8 @@ class NodeInfo:
         self.enable_earlyoom = data["earlyoomEnabled"]
         self.clockSyncServiceRequired = data.get("clockSyncServiceRequired", True)
         self.clockbound_enabled = data["clockboundEnabled"]
+        self.topk_other_processes = data["topKOtherProcesses"]
+        self.topk_mem_threshold_percent = data["topKMemThresholdPercent"]
 
 
 def main():
@@ -2593,7 +2672,7 @@ def main():
         n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
-        n.enable_earlyoom)
+        n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
     coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
@@ -2708,6 +2787,9 @@ def main():
         coordinator.add_check(checker, "check_clockbound_sync_status")
 
     coordinator.add_check(checker, "check_process_stats", TOTAL)
+    if n.topk_other_processes > 0:
+        # This should be run after TOTAL is calculated (we don't want it to be included in total).
+        coordinator.add_check(checker, "check_other_process_stats")
 
     entries = coordinator.run()
     for e in entries:

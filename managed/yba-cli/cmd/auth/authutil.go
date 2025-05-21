@@ -49,7 +49,7 @@ func authWriteConfigFile(r ybaclient.SessionInfo) {
 	}
 	logrus.Infof(
 		formatter.Colorize(
-			fmt.Sprintf("Configuration file '%v' sucessfully updated.\n",
+			fmt.Sprintf("Configuration file '%v' successfully updated.\n",
 				configFileUsed), formatter.GreenColor))
 
 	sessionCtx := formatter.Context{

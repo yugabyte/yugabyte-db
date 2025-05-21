@@ -233,6 +233,10 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
 
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change,
+      uint64_t new_catalog_version, const std::optional<std::string>& message_list);
+
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
 

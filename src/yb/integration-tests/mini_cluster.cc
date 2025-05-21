@@ -110,6 +110,7 @@ DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(fs_data_dirs);
 DECLARE_string(use_private_ip);
+DECLARE_bool(TEST_enable_ysql_operation_lease_expiry_check);
 
 namespace yb {
 
@@ -217,6 +218,11 @@ Status MiniCluster::StartAsync(
   // We are testing public/private IPs using mini cluster. So set mode to 'cloud'.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "cloud";
 
+  // todo(zdrudi): There are currently use after free issues with how the minicluster handles the
+  // pg process. The background ysql lease checker can call a method on a null pointer. This is only
+  // an issue in the test harness so we disable the tserver's ysql op lease check for miniclusters.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
+
   // This dictates the RF of newly created tables.
   SetAtomicFlag(options_.num_tablet_servers >= 3 ? 3 : 1, &FLAGS_replication_factor);
   FLAGS_memstore_size_mb = 16;
@@ -250,7 +256,9 @@ Status MiniCluster::StartAsync(
     }
   } else {
     for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
-      RETURN_NOT_OK(tablet_server->Start());
+      RETURN_NOT_OK(tablet_server->Start(
+          tserver::WaitTabletsBootstrapped::kTrue,
+          tserver::WaitToAcceptPgConnections(options_.wait_for_pg)));
     }
   }
 
@@ -369,7 +377,7 @@ Status MiniCluster::RestartSync() {
 
   LOG(INFO) << "Restart tablet server(s)...";
   for (auto& tablet_server : mini_tablet_servers_) {
-    CHECK_OK(tablet_server->Restart());
+    CHECK_OK(tablet_server->Restart(tserver::WaitToAcceptPgConnections(options_.wait_for_pg)));
     CHECK_OK(tablet_server->WaitStarted());
   }
   LOG(INFO) << "Restart master server(s)...";
@@ -760,25 +768,15 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
       auto descs = (*leader)->ts_manager().GetAllDescriptors();
-      auto leases = (*leader)->catalog_manager_impl().object_lock_info_manager()->GetLeaseInfos();
       if (live_only || descs.size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
-        size_t match_count = std::ranges::count_if(
-            descs, [&mini_cluster_tservers, &live_only, &leases](const auto& desc) {
+        size_t match_count =
+            std::ranges::count_if(descs, [&mini_cluster_tservers, &live_only](const auto& desc) {
               auto it = mini_cluster_tservers.find(desc->permanent_uuid());
-              bool present_and_live = it != mini_cluster_tservers.end() &&
-                                      it->second == desc->latest_seqno() &&
-                                      desc->has_tablet_report() && (!live_only || desc->IsLive());
-              if (!present_and_live || !FLAGS_TEST_enable_object_locking_for_table_locks) {
-                return present_and_live;
-              }
-              auto leases_it = leases.find(desc->permanent_uuid());
-              if (leases_it == leases.end()) {
-                return false;
-              }
-              return leases_it->second.live_lease();
+              return it != mini_cluster_tservers.end() && it->second == desc->latest_seqno() &&
+                     desc->has_tablet_report() && (!live_only || desc->IsLive());
             });
 
         if (match_count == count) {
@@ -1658,7 +1656,7 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster) {
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
   auto peers = ListTabletPeers(cluster, filter);
   for (const auto& peer : peers) {
-    peer->shared_tablet()->TEST_DocDBDumpToLog(tablet::IncludeIntents::kTrue);
+    peer->shared_tablet()->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
   }
 }
 

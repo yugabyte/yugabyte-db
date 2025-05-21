@@ -16,7 +16,7 @@ Secondary indexes can be created with a JSONB datatype column in YCQL. Secondary
 
 The following section describes secondary indexes with JSONB column in YCQL using examples.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Create table
 

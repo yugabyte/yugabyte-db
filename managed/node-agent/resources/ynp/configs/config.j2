@@ -114,5 +114,4 @@ earlyoom_args = {{ ynp_config['ynp'].earlyoom_args | default('') }}
 
 {%- if 'extra' in ynp_config and ynp_config.extra.is_ybm %}
 [ConfigureYBMAMI]
-[ConfigureTailscale]
 {%- endif %}

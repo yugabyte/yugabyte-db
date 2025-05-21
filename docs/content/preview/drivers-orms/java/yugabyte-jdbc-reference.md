@@ -183,7 +183,7 @@ This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It st
 Next, you use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 
 {{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
+The driver requires YugabyteDB v2.7.2.0 or later, and Java 8 or above.
 {{< /note>}}
 
 ### Install YugabyteDB and create a local cluster
@@ -303,7 +303,7 @@ To use the samples, complete the following steps:
   ```
 
   {{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher.
+The driver requires YugabyteDB v2.7.2.0 or later.
   {{< /note>}}
 
   The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.

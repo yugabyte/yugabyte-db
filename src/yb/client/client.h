@@ -673,10 +673,10 @@ class YBClient {
 
   void AcquireObjectLocksGlobalAsync(
       const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-      MonoDelta rpc_timeout);
+      CoarseTimePoint deadline);
   void ReleaseObjectLocksGlobalAsync(
       const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-      MonoDelta rpc_timeout);
+      CoarseTimePoint deadline);
 
   // Update a CDC stream's options.
   Status UpdateCDCStream(

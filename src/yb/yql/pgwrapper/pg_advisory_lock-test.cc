@@ -79,7 +79,6 @@ class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) =
         kExpiredSessionCleanupMs / 2;
@@ -370,6 +369,22 @@ TEST_F(PgAdvisoryLockTest, VerifyLockTimeout) {
   Status result = conn2_session_lock_future.get();
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.ToString(), "Timed out waiting for Acquire Advisory Lock");
+}
+
+TEST_F(PgAdvisoryLockTest, ToggleAdvisoryLockFlag) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(10);"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
+  // Verify that lock attempts fail with advisory lock disabled error.
+  auto s = conn.Fetch("SELECT pg_advisory_lock(10);");
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "ERROR:  advisory locks are disabled");
+  // Unlock should succeed, this because it ensures that any acquired advisory locks can
+  // still be released even if user disables the ysql_yb_enable_advisory_locks flag at runtime
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
+  // Verify that unlock attempt return false because the lock is already released.
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
 }
 
 } // namespace yb::pgwrapper

@@ -476,7 +476,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow CipherTrust KMS",
           "Allow the usage of CipherTrust KMS.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
       new ConfKeyInfo<>(
           "yb.kms.hcv_token_renew_percent",
@@ -1659,6 +1659,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Node Agent Configure Server",
           "Enable or disable server configuration RPCs in node agent. Defaults to ansible if it is"
               + " disabled.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
+      new ConfKeyInfo<>(
+          "yb.task.enable_task_runtime_info_on_retry",
+          ScopeType.GLOBAL,
+          "Enable Task Runtime Info on Retry",
+          "Use the runtime info from the previously failed task on retry",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

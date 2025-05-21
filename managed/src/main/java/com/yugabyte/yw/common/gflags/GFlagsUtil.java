@@ -1883,4 +1883,16 @@ public class GFlagsUtil {
     }
     return DEFAULT_LOG_LINE_PREFIX;
   }
+
+  public static boolean isYsqlAuthEnabled(Universe universe, NodeDetails node) {
+    Map<String, String> gflags =
+        GFlagsUtil.getGFlagsForNode(
+            node,
+            ServerType.TSERVER,
+            universe.getUniverseDetails().getPrimaryCluster(),
+            universe.getUniverseDetails().clusters);
+    return universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth
+        || (gflags.containsKey(YSQL_ENABLE_AUTH)
+            && gflags.get(YSQL_ENABLE_AUTH).equalsIgnoreCase("true"));
+  }
 }

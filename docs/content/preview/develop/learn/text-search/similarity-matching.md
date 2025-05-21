@@ -20,7 +20,7 @@ Similarity matching works by determining how similar two different strings are. 
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Create the following table:
 

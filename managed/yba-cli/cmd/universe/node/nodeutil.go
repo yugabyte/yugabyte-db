@@ -122,19 +122,39 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 			Format:  universe.NewNodesFormat(viper.GetString("output")),
 		}
 
-		nodeInstance, response, err := authAPI.GetNodeDetails(universeUUID, nodeName).Execute()
+		if !isNodeRemovingOperation(operation) {
+			nodeInstance, response, err := authAPI.GetNodeDetails(universeUUID, nodeName).Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Node",
+					fmt.Sprintf("%s - Fetch Nodes", operation))
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+
+			nodeInstanceList := make([]ybaclient.NodeDetailsResp, 0)
+			nodeInstanceList = append(nodeInstanceList, nodeInstance)
+
+			universe.NodeWrite(nodesCtx, nodeInstanceList)
+			return
+		}
+		nodesCtx.Command = "list"
+
+		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node",
-				fmt.Sprintf("%s - Fetch Nodes", operation))
+
+			errMessage := util.ErrorFromHTTPResponse(
+				response, err,
+				"Node",
+				fmt.Sprintf("%s - List Universes", operation))
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		nodeInstanceList := make([]ybaclient.NodeDetailsResp, 0)
-		nodeInstanceList = append(nodeInstanceList, nodeInstance)
-
-		universe.NodeWrite(nodesCtx, nodeInstanceList)
+		selectedUniverse := r[0]
+		details := selectedUniverse.GetUniverseDetails()
+		nodes := details.GetNodeDetailsSet()
+		universe.NodeWrite(nodesCtx, nodes)
 		return
 	}
+
 	logrus.Infoln(msg + "\n")
 
 	taskCtx := formatter.Context{
@@ -144,4 +164,9 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 	}
 	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
+}
+
+func isNodeRemovingOperation(operation string) bool {
+	operation = strings.ToLower(operation)
+	return strings.EqualFold(operation, "replace") || strings.EqualFold(operation, "decommission")
 }

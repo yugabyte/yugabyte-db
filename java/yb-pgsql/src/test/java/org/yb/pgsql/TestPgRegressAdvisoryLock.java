@@ -28,24 +28,6 @@ public class TestPgRegressAdvisoryLock extends BasePgRegressTestPorted {
     return 1800;
   }
 
-  @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("ysql_pg_conf_csv", "yb_enable_advisory_locks=true");
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_advisory_locks");
-    flagMap.put("ysql_yb_enable_advisory_locks", "true");
-    return flagMap;
-  }
-
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_pg_conf_csv", "yb_enable_advisory_locks=true");
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_advisory_locks");
-    flagMap.put("ysql_yb_enable_advisory_locks", "true");
-    return flagMap;
-  }
-
   @Test
   public void testPgRegressAdvisoryLock() throws Exception {
     runPgRegressTest("yb_pg_advisory_lock_schedule");

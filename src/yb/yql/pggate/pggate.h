@@ -160,6 +160,10 @@ class PgApiImpl {
   Result<bool> CatalogVersionTableInPerdbMode();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change,
+      uint64_t new_catalog_version, const YbcCatalogMessageList *message_list);
+
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;

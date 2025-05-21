@@ -527,22 +527,7 @@ Status TabletSnapshots::RestoreCheckpoint(
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
 
-    {
-      auto& env = this->env();
-      auto children = VERIFY_RESULT(env.GetChildren(db_dir, ExcludeDots::kTrue));
-      for (const auto& child : children) {
-        if (!child.starts_with(docdb::kVectorIndexDirPrefix)) {
-          continue;
-        }
-        auto source_dir = JoinPathSegments(db_dir, child);
-        if (!env.DirExists(source_dir)) {
-          continue;
-        }
-        auto dest_dir = docdb::GetStorageDir(db_dir, child);
-        LOG_WITH_PREFIX(INFO) << "Moving " << source_dir << " => " << dest_dir;
-        RETURN_NOT_OK(env.RenameFile(source_dir, dest_dir));
-      }
-    }
+    RETURN_NOT_OK(MoveChildren(this->env(), db_dir, docdb::IncludeIntents::kFalse));
 
     auto tablet_metadata_file = TabletMetadataFile(db_dir);
     if (env().FileExists(tablet_metadata_file)) {
@@ -721,8 +706,8 @@ Status TabletSnapshots::CreateCheckpoint(
 
 Status TabletSnapshots::DoCreateCheckpoint(
     const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in) {
-  auto temp_intents_dir = docdb::GetStorageDir(dir, kIntentsDirName);
-  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, kIntentsDirName);
+  auto temp_intents_dir = docdb::GetStorageDir(dir, docdb::kIntentsDirName);
+  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, docdb::kIntentsDirName);
 
   if (has_intents_db()) {
     RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));

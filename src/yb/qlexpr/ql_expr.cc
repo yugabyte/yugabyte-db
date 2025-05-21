@@ -490,7 +490,7 @@ Status QLExprExecutor::EvalCondition(const QLConditionPB& condition,
 
     case QL_OP_LIKE: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_LIKE:
-      LOG(ERROR) << "Internal error: illegal or unknown operator " << condition.op();
+      LOG(DFATAL) << "Internal error: illegal or unknown operator " << condition.op();
       break;
 
     case QL_OP_NOOP:
@@ -733,7 +733,7 @@ Status QLExprExecutor::EvalCondition(
 
     case QL_OP_LIKE: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_LIKE:
-      LOG(ERROR) << "Internal error: illegal or unknown operator " << condition.op();
+      LOG(DFATAL) << "Internal error: illegal or unknown operator " << condition.op();
       break;
 
     case QL_OP_NOOP:

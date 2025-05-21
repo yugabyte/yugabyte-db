@@ -422,26 +422,13 @@ static inline int od_backend_startup(od_server_t *server,
 			if (is_authenticating)
 			{
 				/*
-				 * Skip writing variables that shouldn't be sent to the 
-				 * transactional backend here.
-				 *
-				 * The server_encoding and is_superuser are internal GUC
-				 * variables that would throw errors if we tried to replay them
-				 * on the transactional backends.
-				 *
-				 * We skip session_authorization as well because it is redundant
+				 * Skip setting session_authorization because it is redundant
 				 * to do so. Both the auth-backend and the transactional backend
 				 * will be set with the same user.
 				 */
-				if ((yb_od_streq(name, name_len,
-						 "server_encoding",
-						 sizeof("server_encoding")) ||
-				     yb_od_streq(name, name_len,
-					 	 "is_superuser",
-						 sizeof("is_superuser")) ||
-				     yb_od_streq(name, name_len,
+				if (yb_od_streq(name, name_len,
 					     "session_authorization",
-					     sizeof("session_authorization")))) {
+					     sizeof("session_authorization"))) {
 					machine_msg_free(msg);
 					break;
 				}

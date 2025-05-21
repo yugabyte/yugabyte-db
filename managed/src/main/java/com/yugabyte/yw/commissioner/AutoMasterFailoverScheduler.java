@@ -270,8 +270,11 @@ public class AutoMasterFailoverScheduler {
             FailoverJobConfig jobConfig = s.getJobConfig();
             return !universeUuids.contains(jobConfig.getUniverseUuid());
           });
-    } catch (Exception e) {
-      log.error("Error in deleting master failover schedules {}", e.getMessage());
+    } catch (Throwable t) {
+      log.error("Error in deleting master failover schedules {}", t.getMessage());
+      if (t instanceof Error) {
+        throw (Error) t;
+      }
     }
   }
 

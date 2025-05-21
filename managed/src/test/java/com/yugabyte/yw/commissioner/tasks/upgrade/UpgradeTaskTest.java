@@ -52,7 +52,6 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -139,7 +138,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.UpdateClusterUserIntent,
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.WaitStartingFromTime);
+          TaskType.WaitStartingFromTime,
+          TaskType.UpdateUniverseFields);
 
   @Override
   @Before
@@ -390,47 +390,6 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         });
   }
 
-  private void printTaskSequence(
-      int startPosition,
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      List<TaskType> expectedTaskTypes,
-      Map<Integer, Map<String, Object>> expectedParams,
-      int failedPosition) {
-    log.debug("Expected:");
-    for (int i = 0; i < expectedTaskTypes.size(); i++) {
-      log.debug(
-          "#"
-              + i
-              + " "
-              + expectedTaskTypes.get(i)
-              + " "
-              + expectedParams.getOrDefault(i, Collections.emptyMap()));
-    }
-    log.debug("Actual:");
-    int maxPosition = subTasksByPosition.keySet().stream().max(Integer::compare).get();
-    for (int i = 0; i < maxPosition - startPosition; i++) {
-      int position = startPosition + i;
-      String suff = "";
-      if (position == failedPosition) {
-        suff = "Failed!! ->";
-      }
-      String task;
-      String taskParams;
-      List<TaskInfo> taskInfos = subTasksByPosition.get(position);
-      Set<String> keySet = expectedParams.getOrDefault(i, Collections.emptyMap()).keySet();
-      if (taskInfos != null) {
-        TaskInfo taskInfo = taskInfos.get(0);
-        task = taskInfo.getTaskType().toString();
-        taskParams = extractParams(taskInfo, keySet).toString();
-      } else {
-        task = "-";
-        taskParams = "";
-      }
-      log.debug(suff + "#" + i + " " + task + " " + taskParams);
-    }
-    log.debug("------");
-  }
-
   protected Map<String, Object> extractParams(TaskInfo task, Set<String> keys) {
     Map<String, Object> result = new HashMap<>();
     for (String key : keys) {
@@ -457,9 +416,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   }
 
   protected void updateDefaultUniverseTo5Nodes(boolean enableYSQL, String ybSoftwareVersion) {
+    updateDefaultUniverse(enableYSQL, ybSoftwareVersion, 2, 1, 2);
+  }
+
+  protected void updateDefaultUniverse(
+      boolean enableYSQL, String ybSoftwareVersion, Integer... countInAz) {
+    int numNodes = Arrays.stream(countInAz).reduce(Integer::sum).get();
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.numNodes = 5;
+    userIntent.numNodes = numNodes;
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = ybSoftwareVersion;
     userIntent.accessKeyCode = "demo-access";
@@ -468,9 +433,11 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.provider = defaultProvider.getUuid().toString();
 
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 2, false);
-    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 2, false);
+    List<UUID> azUUIDs = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
+    int idx = 0;
+    for (Integer num : countInAz) {
+      PlacementInfoUtil.addPlacementZone(azUUIDs.get(idx++), pi, 1, num, idx % 2 == 0);
+    }
 
     defaultUniverse =
         Universe.saveDetails(

@@ -12,12 +12,7 @@ menu:
 type: docs
 ---
 
-For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region universe. In a synchronized multi-region universe, a minimum of three nodes are [replicated](../../../architecture/docdb-replication/replication/) across three regions with a replication factor (RF) of 3. In the event of a region failure, the universe continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
-
-This deployment provides the following advantages:
-
-- Resilience - putting the universe nodes in different regions provides a higher degree of failure independence.
-- Consistency - all writes are synchronously replicated. Transactions are globally consistent.
+For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region universe.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -40,13 +35,20 @@ This deployment provides the following advantages:
   </li>
 </ul>
 
+In a synchronized multi-region universe, a minimum of three nodes are [replicated](../../../architecture/docdb-replication/replication/) across three regions with a replication factor (RF) of 3. In the event of a region failure, the universe continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
+
+This deployment provides the following advantages:
+
+- Resilience - putting the universe nodes in different regions provides a higher degree of failure independence.
+- Consistency - all writes are synchronously replicated. Transactions are globally consistent.
+
 ## Create a synchronized multi-region universe
 
 Before you can [create a multi-region universe in YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-region/), you need to [install](../../../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configure](../../../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application, connect it, and then [start a workload](../../#start-a-read-and-write-workload).
+Follow the [setup instructions](../../cluster-setup-anywhere/#set-up-yb-workload-simulator) to install the YB Workload Simulator application, connect it, and then [start a workload](../../#start-a-read-and-write-workload).
 
 To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 

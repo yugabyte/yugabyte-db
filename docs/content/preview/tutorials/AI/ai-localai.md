@@ -1,14 +1,14 @@
 ---
 title: How to Develop LLM Apps with LocalAI and YugabyteDB
-headerTitle: Build LLM applications using LocalAI and YugabyteDB
-linkTitle: LocalAI
+headerTitle: Similarity search using LocalAI
+linkTitle: Similarity search - LocalAI
 description: Learn to build LLM applications using LocalAI.
 image: /images/tutorials/ai/icons/localai-icon.svg
 headcontent: Use YugabyteDB as the database backend for LLM applications
 menu:
   preview_tutorials:
     identifier: tutorials-ai-localai
-    parent: tutorials-ai
+    parent: tutorials-ai-vector
     weight: 60
 type: docs
 ---

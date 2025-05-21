@@ -79,6 +79,7 @@ void ClientMasterRpcBase::NewLeaderMasterDeterminedCb(const Status& status) {
 void ClientMasterRpcBase::Finished(const Status& status) {
   ADOPT_TRACE(trace_.get());
   ADOPT_WAIT_STATE(wait_state_);
+  SET_WAIT_STATUS(OnCpu_Passive);
   SCOPED_WAIT_STATUS(OnCpu_Active);
   auto resp_status = ResponseStatus();
   if (status.ok() && !resp_status.ok()) {

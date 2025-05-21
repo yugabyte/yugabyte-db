@@ -518,6 +518,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
+  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
       REQUIRES(ddl_txn_verifier_mutex_);
@@ -2416,6 +2417,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status CanSupportAdditionalTabletsForTableCreation(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs);
+
+  Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
 
  private:
   friend class yb::master::ClusterLoadBalancer;

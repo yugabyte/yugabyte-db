@@ -81,6 +81,32 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         // This is for both the following cases:
         // 1. Universe key creation when no universe key exists on the universe.
         // 2. Universe key rotation if the given KMS config equals the active one.
+
+        // Check if we are able to decrypt the current active universe key as a validation step.
+        if (numKeys > 0 && activeKmsHistory != null) {
+          KmsConfig kmsConfig = KmsConfig.getOrBadRequest(kmsConfigUUID);
+          byte[] keyRef = Base64.getDecoder().decode(activeKmsHistory.getUuid().keyRef);
+          if (keyManager
+                  .getServiceInstance(kmsConfig.getKeyProvider().name())
+                  .validateConfigForUpdate(
+                      universeUUID,
+                      kmsConfigUUID,
+                      keyRef,
+                      activeKmsHistory.encryptionContext,
+                      universe.getUniverseDetails().encryptionAtRestConfig,
+                      kmsConfig.getAuthConfig())
+              == null) {
+            String errMsg =
+                String.format(
+                    "Error validating the active KMS History with KMS config '%s' for universe '%s'"
+                        + " before generating universe key. Possibly the master key is recreated"
+                        + " with the same name or has invalid settings to decrypt the active"
+                        + " universe key.",
+                    kmsConfigUUID, universeUUID);
+            log.error(errMsg);
+            throw new RuntimeException(errMsg);
+          }
+        }
         EncryptionKey universeKeyRef =
             keyManager.generateUniverseKey(
                 kmsConfigUUID, universeUUID, taskParams().encryptionAtRestConfig);

@@ -21,6 +21,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 | :--------------- | :------------- | :------------- | :---- |
 | AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} | Default for YugabyteDB Anywhere-deployed nodes |
+| Amazon Linux 2023 | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2024.2.3 and later |
 | Oracle Linux 8   | {{<icon/yes>}} |                | |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | |
 | Red Hat Enterprise Linux 8 CIS Hardened | {{<icon/yes>}} |      | |

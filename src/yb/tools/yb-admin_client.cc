@@ -1631,6 +1631,22 @@ Status ClusterAdminClient::LaunchBackfillIndexForTable(const YBTableName& table_
   return Status::OK();
 }
 
+Status ClusterAdminClient::ReleaseObjectLocksGlobal(
+    const TransactionId& txn_id, uint32_t subtxn_id) {
+  master::ReleaseObjectLocksGlobalRequestPB req;
+  req.set_txn_id(txn_id.data(), txn_id.size());
+  if (subtxn_id != 0) {
+    req.set_subtxn_id(subtxn_id);
+  }
+  req.set_wait_for_completion(true);
+  const auto resp = VERIFY_RESULT(
+      InvokeRpc(&master::MasterDdlProxy::ReleaseObjectLocksGlobal, *master_ddl_proxy_, req));
+  if (resp.has_error()) {
+    return STATUS(RemoteError, resp.error().DebugString());
+  }
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id) {
   master::GetTabletLocationsRequestPB req;
   req.add_tablet_ids(tablet_id);

@@ -36,6 +36,7 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -52,7 +53,8 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
 
 DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
-    "Pg client heartbeat interval in ms.");
+    "Pg client heartbeat interval in ms. Needs to be greater than 1000ms.");
+DEFINE_validator(pg_client_heartbeat_interval_ms, FLAG_GT_VALUE_VALIDATOR(1000));
 
 DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
@@ -474,9 +476,9 @@ class PgClient::Impl : public BigDataFetcher {
           // the next user activity will trigger a FATAL anyway. This is done specifically to avoid
           // log spew of the warning message below in cases where the session is idle (ie. no other
           // RPCs are being sent to the tserver).
-          LOG(ERROR) << "Heartbeat failed. Connection needs to be reset. "
-                     << "Shutting down heartbeating mechanism due to unknown session "
-                     << session_id_;
+          LOG(DFATAL) << "Heartbeat failed. Connection needs to be reset. "
+                      << "Shutting down heartbeating mechanism due to unknown session "
+                      << session_id_;
           heartbeat_poller_.Shutdown();
           return;
         }
@@ -1176,6 +1178,25 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) {
+    tserver::PgSetTserverCatalogMessageListRequestPB req;
+    tserver::PgSetTserverCatalogMessageListResponsePB resp;
+    req.set_db_oid(db_oid);
+    req.set_is_breaking_change(is_breaking_change);
+    req.set_new_catalog_version(new_catalog_version);
+    if (message_list.has_value()) {
+      req.mutable_message_list()->set_message_list(message_list.value());
+    }
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::SetTserverCatalogMessageList,
+        req, resp, ash::PggateRPC::kSetTserverCatalogMessageList));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp;
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -1459,6 +1480,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   rpc::RpcController* PrepareHeartbeatController() {
     heartbeat_controller_.Reset();
+    // Should update the flag validator if the 1s grace period is changed.
     heartbeat_controller_.set_timeout(FLAGS_pg_client_heartbeat_interval_ms * 1ms - 1s);
     return &heartbeat_controller_;
   }
@@ -1774,6 +1796,13 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
 Result<tserver::PgGetTserverCatalogMessageListsResponsePB> PgClient::GetTserverCatalogMessageLists(
     uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
   return impl_->GetTserverCatalogMessageLists(db_oid, ysql_catalog_version, num_catalog_versions);
+}
+
+Result<tserver::PgSetTserverCatalogMessageListResponsePB> PgClient::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change,
+    uint64_t new_catalog_version, const std::optional<std::string>& message_list) {
+  return impl_->SetTserverCatalogMessageList(db_oid, is_breaking_change,
+                                             new_catalog_version, message_list);
 }
 
 Status PgClient::EnumerateActiveTransactions(

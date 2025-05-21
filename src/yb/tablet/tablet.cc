@@ -735,7 +735,9 @@ Tablet::Tablet(const TabletInitData& data)
 
   snapshots_ = std::make_unique<TabletSnapshots>(this);
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
-      this, data.vector_index_thread_pool_provider);
+      this,
+      data.vector_index_thread_pool_provider,
+      data.vector_index_priority_thread_pool_provider);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 
@@ -810,7 +812,7 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
                         Format("Failed to create RocksDB tablet directory $0", db_dir));
 
   RETURN_NOT_OK_PREPEND(
-      fs->CreateDirIfMissingAndSync(docdb::GetStorageDir(db_dir, kIntentsDirName)),
+      fs->CreateDirIfMissingAndSync(docdb::GetStorageDir(db_dir, docdb::kIntentsDirName)),
       Format("Failed to create RocksDB tablet intents directory $0", db_dir));
 
   RETURN_NOT_OK(snapshots_->CreateDirectories(db_dir, fs));
@@ -1104,7 +1106,7 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
     if (db != nullptr) {
       delete db;
     }
-    return STATUS(IllegalState, rocksdb_open_status.ToString());
+    return rocksdb_open_status;
   }
   regular_db_.reset(db);
   regular_db_->ListenFilesChanged(std::bind(&Tablet::RegularDbFilesChanged, this));
@@ -1120,7 +1122,7 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
 
   const auto& db_dir = metadata()->rocksdb_dir();
 
-  auto intents_dir = docdb::GetStorageDir(db_dir, kIntentsDirName);
+  auto intents_dir = docdb::GetStorageDir(db_dir, docdb::kIntentsDirName);
   LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << intents_dir;
   rocksdb::Options intents_rocksdb_options(common_options);
   intents_rocksdb_options.compaction_context_factory = {};
@@ -1734,6 +1736,13 @@ Status Tablet::WriteTransactionalBatch(
   RequestScope request_scope = VERIFY_RESULT(CreateRequestScope());
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+
+  const auto duration = write_batch.GetWriteGroupJoinDuration();
+  if (duration > MonoDelta::kZero) {
+    // Track only if the duration is positive so we know how many write has non-zero duration.
+    metrics_->Increment(TabletEventStats::kIntentDbWriteThreadJoinDuration,
+                        duration.ToMicroseconds());
+  }
 
   last_batch_data.hybrid_time = hybrid_time;
   last_batch_data.next_write_id = writer.intra_txn_write_id();
@@ -2359,6 +2368,13 @@ Status Tablet::RemoveIntentsImpl(
       docdb::ConsensusFrontiers frontiers;
       InitFrontiers(data, frontiers);
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
+
+      const auto duration = intents_write_batch.GetWriteGroupJoinDuration();
+      if (duration > MonoDelta::kZero) {
+        // Track only if the duration is positive so we know how many write has non-zero duration.
+        metrics_->Increment(TabletEventStats::kIntentDbRemoveThreadJoinDuration,
+                            duration.ToMicroseconds());
+      }
 
       if (!context.apply_state().active()) {
         break;
@@ -3004,10 +3020,13 @@ Status Tablet::BackfillIndexesForYsql(
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
-  auto conn = VERIFY_RESULT(pgwrapper::CreateInternalPGConnBuilder(
-                                pgsql_proxy_bind_address, database_name, postgres_auth_key,
-                                backfill_params.modified_deadline)
-                                .Connect());
+  auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
+                          pgsql_proxy_bind_address, database_name, postgres_auth_key,
+                          backfill_params.modified_deadline)
+                          .Connect();
+  // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
+  auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
+      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
 
   // Construct query string.
   std::string index_oids;
@@ -3669,6 +3688,10 @@ Status Tablet::ModifyFlushedFrontier(
     const docdb::ConsensusFrontier& frontier,
     rocksdb::FrontierModificationMode mode,
     FlushFlags flags) {
+  // We should always flush RocksDBs before modifying their frontiers, otherwise if we crash between
+  // frontier is modified and regular DB is flushed we can lose data because of skipping ops replay
+  // during local bootstrap.
+  RETURN_NOT_OK(Flush(FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents));
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
@@ -3723,7 +3746,7 @@ Status Tablet::ModifyFlushedFrontier(
     RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(frontier.Clone(), mode));
   }
 
-  return Flush(FlushMode::kAsync, flags);
+  return Status::OK();
 }
 
 Status Tablet::Truncate(TruncateOperation* operation) {
@@ -4091,7 +4114,7 @@ Status Tablet::ForceRocksDBCompact(
   return Status::OK();
 }
 
-std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
+std::string Tablet::TEST_DocDBDumpStr(docdb::IncludeIntents include_intents) {
   if (!regular_db_) return "";
 
   if (!include_intents) {
@@ -4103,7 +4126,7 @@ std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
 }
 
 void Tablet::TEST_DocDBDumpToContainer(
-    IncludeIntents include_intents, std::unordered_set<std::string>* out) {
+    docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
   if (!include_intents) {
@@ -4114,7 +4137,7 @@ void Tablet::TEST_DocDBDumpToContainer(
   return docdb::DocDBDebugDumpToContainer(doc_db(), &GetSchemaPackingProvider(), out);
 }
 
-void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
+void Tablet::TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents) {
   if (!regular_db_) {
     LOG_WITH_PREFIX(INFO) << "No RocksDB to dump";
     return;

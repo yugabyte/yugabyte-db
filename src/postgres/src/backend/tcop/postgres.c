@@ -4347,7 +4347,7 @@ YBRefreshCache()
 }
 
 static void
-YBRefreshCacheWrapper(uint64_t catalog_master_version)
+YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 {
 	uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
 	uint64_t local_catalog_version = YbGetCatalogCacheVersion();
@@ -4357,8 +4357,10 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version)
 	const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
 	if (enable_inval_messages)
 	{
-		if (catalog_master_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+		if (is_retry &&
+			catalog_master_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 			catalog_master_version = YbGetMasterCatalogVersion();
+
 		if (shared_catalog_version < catalog_master_version)
 		{
 			YbUpdateLastKnownCatalogCacheVersion(catalog_master_version);
@@ -4574,7 +4576,7 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 		/* Refresh cache now so that the retry uses latest version. */
 		if (need_global_cache_refresh)
-			YBRefreshCacheWrapper(catalog_master_version);
+			YBRefreshCacheWrapper(catalog_master_version, true /* is_retry */ );
 
 		*need_retry = true;
 	}
@@ -4776,7 +4778,8 @@ YBCheckSharedCatalogCacheVersion()
 						__func__, shared_catalog_version)));
 	}
 	if (need_global_cache_refresh)
-		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED);
+		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
+							  false /* is_retry */ );
 }
 
 /*
@@ -6159,7 +6162,8 @@ PostgresMain(const char *dbname, const char *username)
 				long		stats_timeout;
 
 				if (yb_need_cache_refresh)
-					YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED);
+					YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
+										  true /* is_retry */ );
 
 				/*
 				 * Process incoming notifies (including self-notifies), if

@@ -89,6 +89,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_bootstrap_intent_ht_filter);
+DECLARE_bool(ysql_allow_duplicating_repeatable_read_queries);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
@@ -906,6 +907,8 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
 }
 
 TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_allow_duplicating_repeatable_read_queries) = true;
+
   const std::string kTableName = "key_value";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(
@@ -2730,25 +2733,29 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode {
 };
 
 TEST_F(PgRecursiveAbortTest, AbortOnTserverFailure) {
-  PGConn conn1 = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn1.Execute("CREATE TABLE t1 (k INT)"));
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
 
   // Validate that "connection refused" from tserver during a transaction does not produce a PANIC.
-  ASSERT_OK(conn1.StartTransaction(SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.StartTransaction(SNAPSHOT_ISOLATION));
   // Run a command to ensure that the transaction is created in the backend.
-  ASSERT_OK(conn1.Execute("INSERT INTO t1 VALUES (1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
   auto handle = MockFinishTransaction(MockAbortFailure);
-  auto status = conn1.Execute("CREATE TABLE t2 (k INT)");
+  auto status = conn.Execute("CREATE TABLE t2 (k INT)");
   ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_EQ(conn1.ConnStatus(), CONNECTION_BAD);
-
-  // Validate that aborting a transaction does not produce a PANIC.
-  PGConn conn2 = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn2.StartTransaction(SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn2.Execute("INSERT INTO t1 VALUES (1)"));
-  status = conn2.Execute("ABORT");
-  ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_EQ(conn1.ConnStatus(), CONNECTION_BAD);
+  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
 }
 
-} // namespace yb::pgwrapper
+TEST_F(PgRecursiveAbortTest, MockAbortFailure) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
+  ASSERT_OK(conn.StartTransaction(SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  // Validate that aborting a transaction does not produce a PANIC.
+  auto handle = MockFinishTransaction(MockAbortFailure);
+  auto status = conn.Execute("ABORT");
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+}
+
+}  // namespace yb::pgwrapper
