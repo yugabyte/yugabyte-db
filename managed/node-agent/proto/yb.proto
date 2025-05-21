@@ -166,3 +166,12 @@ message InstallOtelCollectorInput {
 message InstallOtelCollectorOutput {
     int32 pid = 1;
 }
+
+message SetupCGroupInput {
+    string ybHomeDir = 1;
+    uint32 pgMaxMemMb = 2;
+}
+
+message SetupCGroupOutput {
+    int32 pid = 1;
+}

@@ -61,6 +61,7 @@ message SubmitTaskRequest {
         InstallYbcInput installYbcInput = 9;
         ConfigureServerInput configureServerInput = 10;
         InstallOtelCollectorInput installOtelCollectorInput = 11;
+        SetupCGroupInput setupCGroupInput = 12;
     }
 }
 
@@ -85,6 +86,7 @@ message DescribeTaskResponse {
         InstallYbcOutput installYbcOutput = 9;
         ConfigureServerOutput configureServerOutput = 10;
         InstallOtelCollectorOutput installOtelCollectorOutput = 11;
+        SetupCGroupOutput setupCGroupOutput = 12;
     }
 }
 

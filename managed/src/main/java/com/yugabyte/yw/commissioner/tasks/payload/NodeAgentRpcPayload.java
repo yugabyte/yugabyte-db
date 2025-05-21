@@ -46,6 +46,7 @@ import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
+import com.yugabyte.yw.nodeagent.SetupCGroupInput;
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -531,5 +532,20 @@ public class NodeAgentRpcPayload {
     ServerGFlagsInput input = builder.putAllGflags(gflags).build();
     log.debug("Setting gflags using node agent: {}", input.getGflagsMap());
     nodeAgentClient.runServerGFlags(nodeAgent, input, DEFAULT_CONFIGURE_USER);
+  }
+
+  public SetupCGroupInput setupSetupCGroupBits(
+      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+    SetupCGroupInput.Builder setupSetupCGroupBuilder = SetupCGroupInput.newBuilder();
+    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+
+    setupSetupCGroupBuilder.setYbHomeDir(provider.getYbHome());
+    if (taskParams instanceof AnsibleConfigureServers.Params) {
+      AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
+      setupSetupCGroupBuilder.setPgMaxMemMb(params.cgroupSize);
+    }
+
+    return setupSetupCGroupBuilder.build();
   }
 }

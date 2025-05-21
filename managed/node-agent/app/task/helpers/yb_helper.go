@@ -20,10 +20,11 @@ type Release struct {
 
 // OSInfo represents parsed OS release info
 type OSInfo struct {
-	ID     string // e.g., "ubuntu"
-	Family string // e.g., "debian"
-	Pretty string // e.g., "Ubuntu 22.04.4 LTS"
-	Arch   string // e.g., "x86_64"
+	ID      string // e.g., "ubuntu"
+	Family  string // e.g., "debian"
+	Pretty  string // e.g., "Ubuntu 22.04.4 LTS"
+	Arch    string // e.g., "x86_64"
+	Version string // e.g., "22"
 }
 
 var releaseFormat = regexp.MustCompile(`yugabyte[-_]([\d]+\.[\d]+\.[\d]+\.[\d]+-[a-z0-9]+)`)
@@ -95,11 +96,15 @@ func GetOSInfo() (*OSInfo, error) {
 			val := strings.Trim(keyVal[1], `"`)
 			switch key {
 			case "ID":
-				info.ID = val
+				info.ID = strings.ToLower(val)
 			case "ID_LIKE":
-				info.Family = val
+				info.Family = strings.ToLower(val)
 			case "PRETTY_NAME":
 				info.Pretty = val
+			case "VERSION_ID":
+				if parts := strings.SplitN(val, ".", 2); len(parts) > 0 {
+					info.Version = parts[0]
+				}
 			}
 		}
 	}
@@ -108,4 +113,9 @@ func GetOSInfo() (*OSInfo, error) {
 	}
 	info.Arch = runtime.GOARCH
 	return info, nil
+}
+
+func IsRhel9(osInfo *OSInfo) bool {
+	return (strings.Contains(osInfo.Family, "rhel") || strings.Contains(osInfo.ID, "rhel")) &&
+		osInfo.Version == "9"
 }

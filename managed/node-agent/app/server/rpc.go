@@ -387,6 +387,21 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	setupCGroupInput := req.GetSetupCGroupInput()
+	if setupCGroupInput != nil {
+		SetupCgroupHandler := task.NewSetupCgroupHandler(
+			setupCGroupInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, SetupCgroupHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running setup cGroup - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, status.Error(codes.Unimplemented, "Unknown task")
 }
 

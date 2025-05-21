@@ -220,6 +220,13 @@ public class AnsibleConfigureServers extends NodeTaskBase {
               DEFAULT_CONFIGURE_USER);
         }
       }
+      if (taskParams().cgroupSize > 0) {
+        nodeAgentClient.runSetupCGroupInput(
+            optional.get(),
+            nodeAgentRpcPayload.setupSetupCGroupBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            DEFAULT_CONFIGURE_USER);
+      }
     }
 
     if (taskParams().type == UpgradeTaskType.Everything && !taskParams().updateMasterAddrsOnly) {
