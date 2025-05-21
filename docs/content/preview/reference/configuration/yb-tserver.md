@@ -12,11 +12,28 @@ type: docs
 body_class: configuration
 ---
 
-The YugabyteDB Tablet Server ([YB-TServer](../../../architecture/yb-tserver/)) is a critical component responsible for managing data storage, processing client requests, and handling replication within a YugabyteDB cluster. It ensures data consistency, fault tolerance, and scalability by storing and serving data as tablets—sharded units of storage distributed across multiple nodes. Proper configuration of the YB-TServer is important to optimize performance, manage system resources effectively, help establish secure communication, and provide high availability (HA).
+The YugabyteDB Tablet Server ([YB-TServer](../../../architecture/yb-tserver/)) is a critical component responsible for managing data storage, processing client requests, and handling replication in a YugabyteDB cluster. It ensures data consistency, fault tolerance, and scalability by storing and serving data as tablets (sharded units of storage distributed across multiple nodes). Proper configuration of the YB-TServer is important to optimize performance, manage system resources effectively, help establish secure communication, and provide high availability (HA).
 
-This page provides detailed information about various configuration flags available for `yb-tserver`. Each flag allows administrators and developers to fine-tune the server's behavior according to their deployment requirements and performance objectives.
+This reference provides detailed information about various flags available for configuring the YB-TServers in a YugabyteDB cluster. Use these flags to fine-tune the server's behavior according to your deployment requirements and performance objectives.
 
-Use the yb-tserver binary and its flags to configure the YB-TServer server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
+Use the yb-tserver binary and its flags to configure the YB-TServer server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
+
+Flags are organized in the following categories.
+
+| Category                     | Description |
+|------------------------------|-------------|
+| [General configuration](#general-configuration)        | Basic server setup including overall system settings, logging, and web interface configurations. |
+| [Networking](#networking)                   | Flags that control network interfaces, RPC endpoints, DNS caching, and geo-distribution settings. |
+| [Storage and data management](#storage-data-management)    | Parameters for managing data directories, WAL configurations, sharding, CDC, and TTL-based file expiration. |
+| [Performance tuning](#performance-tuning)           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
+| [Security](#security)                     | Settings for encryption, SSL/TLS, and authentication to secure both node-to-node and client-server communications. |
+
+**Legend**
+
+Flags with specific characteristics are highlighted using the following badges:
+
+- {{% tags/feature/restart-needed %}} – A restart of the server is required for the flag to take effect. For example, if the flag is used on *yb-master*, you need to restart only *yb-master*. If the flag is used on both the *yb-master* and *yb-tserver*, restart both services.
+- {{% tags/feature/t-server %}} – The flag must have the same value across all *yb-master* and *yb-tserver* nodes.
 
 **Syntax**
 
@@ -43,23 +60,6 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ```
 
 Use `--helpon` to displays help on modules named by the specified flag value.
-
-This page categorizes configuration flags into the following sections, making it easier to navigate:
-
-| Category                     | Description |
-|------------------------------|-------------|
-| [General Configuration](#general-configuration)        | Basic server setup including overall system settings, logging, and web interface configurations. |
-| [Networking](#networking)                   | Flags that control network interfaces, RPC endpoints, DNS caching, and geo-distribution settings. |
-| [Storage & Data Management](#storage-data-management)    | Parameters for managing data directories, WAL configurations, sharding, CDC, and TTL-based file expiration. |
-| [Performance Tuning](#performance-tuning)           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
-| [Security](#security)                     | Settings for encryption, SSL/TLS, and authentication to secure both node-to-node and client-server communications. |
-
-**Legend**
-
-The following badges describe the requirements or whether any action is needed when updating or using a flag.
-
-* {{% tags/feature/restart-needed %}} – Indicates that a restart is required for the flag to take effect. For example, if the flag is used on *yb-master*, you need to restart only *yb-master*. If the flag is used on both the *yb-master* and *yb-tserver* components, restart both services.
-* {{% tags/feature/t-server %}} – The flag must have the same value across all *yb-master* and *yb-tserver* nodes.
 
 ## All flags
 
@@ -105,7 +105,7 @@ YugabyteDB uses PostgreSQL server configuration parameters to apply server confi
 
 You can modify these parameters in the following ways:
 
-- If a gFlag is available with the same name and `ysql_` prefix, then set the gFlag directly.
+- If a flag is available with the same name and `ysql_` prefix, then set the flag directly.
 
 - Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
 
@@ -1610,8 +1610,10 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
+Default: `false`
 {{% /tags/wrap %}}
+
+When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
@@ -1656,8 +1658,10 @@ Maximum amount of memory this process should use in bytes, that is, its hard mem
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `0.85` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `0.85`
 {{% /tags/wrap %}}
+
+The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
@@ -1678,8 +1682,10 @@ Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to
 {{% tags/wrap %}}
 
 
-Default: `50` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `50`
 {{% /tags/wrap %}}
+
+The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [--db_block_cache_size_bytes](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
 
@@ -1688,8 +1694,10 @@ Percentage of the process' hard memory limit to use for the shared RocksDB block
 {{% tags/wrap %}}
 
 
-Default: `0` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `0`
 {{% /tags/wrap %}}
+
+The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
@@ -1830,10 +1838,12 @@ Compactions run only if there are at least `rocksdb_universal_compaction_min_mer
 {{% tags/wrap %}}
 
 
-Default: `-1`, where the value is calculated at runtime as follows:
+Default: `-1`
 {{% /tags/wrap %}}
 
 Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
+
+The default of `-1` means that the value is calculated at runtime as follows:
 
 - For servers with up to 4 CPU cores, the default value is considered as `1`.
 - For servers with up to 8 CPU cores, the default value is considered as `2`.
@@ -2494,7 +2504,7 @@ See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter
 
 {{% tags/wrap %}}
 {{<tags/feature/tp>}}
-Default: 1024
+Default: `1024`
 {{% /tags/wrap %}}
 
 Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
@@ -2574,7 +2584,7 @@ As long as no data has been flushed from the buffer, the database can retry quer
 {{% tags/wrap %}}
 
 
-Default: 1024
+Default: `1024`
 {{% /tags/wrap %}}
 
 Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
@@ -2670,6 +2680,7 @@ Set this flag to `true` to enable a superuser to reset a password.
 
 Note that to enable the password reset feature, you must first set the [`use_cassandra_authentication`](#use-cassandra-authentication) flag to false.
 
+<!--
 ## Admin UI
 
 The Admin UI for the YB-TServer is available at `http://localhost:9000`.
@@ -2697,3 +2708,4 @@ List of all tablets managed by this specific instance.
 List of all utilities available to debug the performance of this specific instance.
 
 ![tserver-debug](/images/admin/tserver-debug.png)
+-->
