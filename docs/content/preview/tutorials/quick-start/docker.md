@@ -153,7 +153,7 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
 {{< note title="Base directory" >}}
 
-yugabyted uses `/home/user/var` by default to store data, configurations, and logs. You can change the base directory when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster.
+yugabyted uses `$HOME/var` by default to store data, configurations, and logs. You can change the base directory when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster.
 
 For example, to get the status of the cluster you just created, you would enter `bin/yugabyted status --base_dir=/home/yugabyte/yb_data`.
 {{< /note >}}
