@@ -135,6 +135,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.DeleteClusterFromUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
