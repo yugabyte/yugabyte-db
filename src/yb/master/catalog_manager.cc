@@ -3952,12 +3952,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   const bool is_vector_index = req.index_info().has_vector_idx_options();
-  const bool colocated =
-      (is_colocated_via_database || req.has_tablegroup_id() || is_vector_index) &&
-      // Any tables created in the xCluster DDL replication extension should not be colocated.
-      schema.SchemaName() != xcluster::kDDLQueuePgSchemaName;
-  SCHECK(!colocated || req.has_table_id(),
-         InvalidArgument, "Colocated table should specify a table ID");
+  const bool colocated = is_colocated_via_database || req.has_tablegroup_id() || is_vector_index;
+  SCHECK(
+      !colocated || req.has_table_id(), InvalidArgument,
+      "Colocated table should specify a table ID");
 
   // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
   // specified for indexes on colocated tables.

@@ -8,13 +8,13 @@ CREATE TABLE yb_xcluster_ddl_replication.ddl_queue(
   ddl_end_time bigint NOT NULL,
   query_id bigint NOT NULL,
   yb_data jsonb NOT NULL,
-  PRIMARY KEY (ddl_end_time, query_id));
+  PRIMARY KEY (ddl_end_time, query_id)) WITH (COLOCATION = false);
 
 CREATE TABLE yb_xcluster_ddl_replication.replicated_ddls(
   ddl_end_time bigint NOT NULL,
   query_id bigint NOT NULL,
   yb_data jsonb NOT NULL,
-  PRIMARY KEY (ddl_end_time, query_id));
+  PRIMARY KEY (ddl_end_time, query_id)) WITH (COLOCATION = false);
 
 /* ------------------------------------------------------------------------- */
 /* Create routines for user of extension. */
