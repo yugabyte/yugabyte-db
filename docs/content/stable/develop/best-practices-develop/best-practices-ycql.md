@@ -16,7 +16,7 @@ To build high-performance and scalable applications using YCQL, developers shoul
 
 ## Global secondary indexes
 
-Indexes use multi-shard transactional capability of YugabyteDB and are global and strongly consistent (ACID). To add secondary indexes, you need to create tables with [transactions enabled](../../../api/ycql/ddl_create_table/#table-properties-1). They can also be used as materialized views by using the [`INCLUDE` clause](../../../api/ycql/ddl_create_index#included-columns).
+Indexes use multi-shard transactional capability of YugabyteDB and are global and strongly consistent (ACID). To add secondary indexes, you need to create tables with [transactions enabled](../../../api/ycql/ddl_create_table/#table). They can also be used as materialized views by using the [INCLUDE clause](../../../api/ycql/ddl_create_index#included-columns).
 
 ## Unique indexes
 
@@ -26,7 +26,7 @@ YCQL supports [unique indexes](../../../api/ycql/ddl_create_index#unique-index).
 
 When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the index. This can result in multiple random reads across the main table.
 
-Sometimes, a better way is to include the other columns that you're querying that are not part of the index using the [`INCLUDE` clause](../../../api/ycql/ddl_create_index/#included-columns). When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
+Sometimes, a better way is to include the other columns that you're querying that are not part of the index using the [INCLUDE clause](../../../api/ycql/ddl_create_index/#included-columns). When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
 This turns a (possible) random read from the main table to just a filter on the index.
 
@@ -36,11 +36,11 @@ For operations like `UPDATE ... IF EXISTS` and `INSERT ... IF NOT EXISTS` that r
 
 ## JSONB
 
-YugabyteDB supports the [`jsonb`](../../../api/ycql/type_jsonb/) data type to model JSON data, which does not have a set schema and might change often. You can use JSONB to group less accessed columns of a table. YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
+YugabyteDB supports the [JSONB](../../../api/ycql/type_jsonb/) data type to model JSON data, which does not have a set schema and might change often. You can use JSONB to group less accessed columns of a table. YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
 
 {{< note title="Use JSONB columns only when necessary" >}}
 
-`jsonb` columns are slower to read and write compared to normal columns. They also take more space because they need to store keys in strings and make keeping data consistency more difficult. A good schema design is to keep most columns as regular columns or collections, and use `jsonb` only for truly dynamic values. Don't create a `data jsonb` column where you store everything; instead, use a `dynamic_data jsonb` column with the others being primitive columns.
+JSONB columns are slower to read and write compared to normal columns. They also take more space because they need to store keys in strings and make keeping data consistency more difficult. A good schema design is to keep most columns as regular columns or collections, and use JSONB only for truly dynamic values. Don't create a `data jsonb` column where you store everything; instead, use a `dynamic_data jsonb` column with the others being primitive columns.
 
 {{< /note >}}
 
@@ -90,7 +90,7 @@ Collections are designed for storing small sets of values that are not expected 
 
 Each element inside a collection ends up as a [separate key value](../../../architecture/docdb/data-model#examples) in DocDB adding per-element overhead.
 
-If your collections are immutable, or you update the whole collection in full, consider using the `JSONB` data type. An alternative would also be to use ProtoBuf or FlatBuffers and store the serialized data in a `BLOB` column.
+If your collections are immutable, or you update the whole collection in full, consider using the JSONB data type. An alternative would also be to use ProtoBuf or FlatBuffers and store the serialized data in a BLOB column.
 
 ## Use partition_hash for large table scans
 
