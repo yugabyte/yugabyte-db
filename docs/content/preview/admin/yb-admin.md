@@ -1723,13 +1723,13 @@ This feature is {{<tags/feature/tp>}}. Use the [yb_enable_cdc_consistent_snapsho
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace-name> EXPLICIT CHANGE USE_SNAPSHOT
+    create_change_data_stream ysql.<namespace-name> [EXPLICIT] [<before-image-mode>] [USE_SNAPSHOT | NOEXPORT_SNAPSHOT]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
-* EXPLICIT: Checkpointing type on the server.
-* CHANGE: Record type indicating to the server that the stream should send only the new values of the changed columns.
+* EXPLICIT: Checkpointing type on the server. See [Creating stream in EXPLICIT checkpointing mode](#creating-stream-in-explicit-checkpointing-mode).
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. See [Enabling before image](#enabling-before-image).
 * USE_SNAPSHOT: Snapshot option indicating intention of client to consume the snapshot. If you don't want the client to consume the snapshot, use the NOEXPORT_SNAPSHOT option.
 
 For example:
@@ -1749,13 +1749,13 @@ To create a change data capture (CDC) DB stream which also supports sending the 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace-name> EXPLICIT <before-image-mode>
+    create_change_data_stream ysql.<namespace-name> [EXPLICIT] <before-image-mode>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
-* EXPLICIT: Checkpointing type on the server.
-* *before-image-mode*: Record type indicating the stream should include the before image.
+* EXPLICIT: Checkpointing type on the server. See [Creating stream in EXPLICIT checkpointing mode](#creating-stream-in-explicit-checkpointing-mode).
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. Refer to [Before image modes](../../develop/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
 
 A successful operation of the above command returns a message with a DB stream ID:
 
