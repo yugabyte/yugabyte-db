@@ -1,14 +1,16 @@
 ---
 title: Build Scalable Generative AI Applications with Google Vertex AI and YugabyteDB
-headerTitle: Build scalable generative AI applications with Google Vertex AI and YugabyteDB
-linkTitle: Google Vertex AI
+headerTitle: Similarity search using Google Vertex AI
+linkTitle: Similarity search - Google Vertex
 description: Build scalable generative AI applications with Google Vertex AI and YugabyteDB
 image: /images/tutorials/google/icons/Google-Vertex-AI-Icon.svg
 headcontent: Use YugabyteDB as the database backend for Google Vertex AI applications
+aliases:
+  - /tutorials/google/google-vertex-ai/
 menu:
   preview_tutorials:
     identifier: tutorials-google-vertex-ai
-    parent: tutorials-google
+    parent: tutorials-ai-rag
     weight: 40
 type: docs
 ---
@@ -201,4 +203,4 @@ The Google Vertex AI service simplifies the process of designing, building, and 
 
 With the help of the PostgreSQL pgvector extension, YugabyteDB enhances the scalability of these applications by distributing data and embeddings across a cluster of nodes, facilitating similarity searches on a large scale.
 
-To learn how to run this application using Azure, see [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](../../azure/azure-openai/).
+To learn how to run this application using Azure, see [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](../azure-openai/).

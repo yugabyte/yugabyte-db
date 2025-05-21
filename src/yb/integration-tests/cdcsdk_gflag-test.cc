@@ -17,7 +17,7 @@
 #include "yb/util/test_macros.h"
 
 DECLARE_int32(cdc_snapshot_batch_size);
-DECLARE_int32(cdc_max_stream_intent_records);
+DECLARE_uint64(cdc_max_stream_intent_records);
 
 namespace yb {
 namespace cdc {

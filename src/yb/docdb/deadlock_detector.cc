@@ -992,7 +992,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           detector->deadlock_size_->Increment(resp.deadlocked_txn_ids_size());
           auto waiter_or_status = FullyDecodeTransactionId(resp.deadlocked_txn_ids(0));
           if (!waiter_or_status.ok()) {
-            LOG(ERROR) << "Failed to decode transaction id in detected deadlock!";
+            LOG(DFATAL) << "Failed to decode transaction id in detected deadlock!";
           } else {
             const auto& waiter = *waiter_or_status;
             auto deadlock_msg = ConstructDeadlockedMessage(waiter, resp);

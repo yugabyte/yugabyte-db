@@ -3628,6 +3628,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     } else {
       backupTableParams.backupList = backupTableParamsList;
     }
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableBackupsDuringDDL)) {
+      backupTableParams.setEnableBackupsDuringDDL(true);
+    }
     return backupTableParams;
   }
 
@@ -4181,6 +4184,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
                       .currentYbcTaskId;
               backupYbcParams.scheduleRetention = scheduleRetention;
+              backupYbcParams.setEnableBackupsDuringDDL(backupParams.getEnableBackupsDuringDDL());
+              backupYbcParams.setRevertToPreRolesBehaviour(
+                  backupParams.getRevertToPreRolesBehaviour());
               task.initialize(backupYbcParams);
               task.setUserTaskUUID(getUserTaskUUID());
               subTaskGroup.addSubTask(task);

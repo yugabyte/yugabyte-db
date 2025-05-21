@@ -84,15 +84,17 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       lock->set_lock_type(lock_types[i]);
     }
     req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
-    auto s = lm_->AcquireObjectLocks(req, deadline);
-    if (!state_map || !s.ok()) {
-      return s;
+    Synchronizer synchronizer;
+    lm_->AcquireObjectLocksAsync(req, deadline, synchronizer.AsStdStatusCallback());
+    RETURN_NOT_OK(synchronizer.Wait());
+    if (!state_map) {
+      return Status::OK();
     }
     auto res = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
     for (auto& lock_batch_entry : res.lock_batch) {
       (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
     }
-    return s;
+    return Status::OK();
   }
 
   Status LockObject(

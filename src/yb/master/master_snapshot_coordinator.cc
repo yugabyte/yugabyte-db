@@ -991,7 +991,7 @@ class MasterSnapshotCoordinator::Impl {
             if (FLAGS_TEST_fatal_on_snapshot_verify) {
               LOG(DFATAL) << error_msg;
             } else {
-              LOG(ERROR) << error_msg;
+              LOG(WARNING) << error_msg;
             }
           }
 

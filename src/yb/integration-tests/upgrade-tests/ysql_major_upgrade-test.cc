@@ -1688,4 +1688,39 @@ TEST_F(YsqlMajorUpgradeTest, Analyze) {
   check_analyze(kAnyTserver, std::nullopt);
 }
 
+TEST_F(YsqlMajorUpgradeTest, EnumTypes) {
+  ASSERT_OK(ExecuteStatements({
+    "CREATE TYPE color AS ENUM ('red', 'green', 'blue', 'yellow')",
+    "CREATE TABLE paint_log (id serial, shade color) PARTITION BY HASH (shade)",
+    "CREATE TABLE paint_log_p0 PARTITION OF paint_log FOR VALUES WITH (MODULUS 2, REMAINDER 0)",
+    "CREATE TABLE paint_log_p1 PARTITION OF paint_log FOR VALUES WITH (MODULUS 2, REMAINDER 1)",
+    "INSERT INTO paint_log (shade) VALUES ('red'), ('green'), ('blue'), ('yellow')"
+  }));
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  auto type_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+    "SELECT oid FROM pg_type WHERE typname = 'color'"));
+
+  const auto fetch_partition_data = [&](const std::string& partition) {
+    return conn.FetchRows<int, std::string>(
+        Format("SELECT id, shade::text FROM $0 ORDER BY shade", partition));
+  };
+
+  const auto fetch_enum_data = [&]() {
+    return conn.FetchRows<pgwrapper::PGOid, float, std::string>(Format(
+        "SELECT oid, enumsortorder, enumlabel FROM pg_enum WHERE enumtypid = $0"
+        " ORDER BY enumsortorder", type_oid));
+  };
+
+  auto paint_log_p0_res = ASSERT_RESULT(fetch_partition_data("paint_log_p0"));
+  auto paint_log_p1_res = ASSERT_RESULT(fetch_partition_data("paint_log_p1"));
+  auto enum_oids = ASSERT_RESULT(fetch_enum_data());
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_partition_data("paint_log_p0")), paint_log_p0_res);
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_partition_data("paint_log_p1")), paint_log_p1_res);
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_enum_data()), enum_oids);
+}
+
 }  // namespace yb

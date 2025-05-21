@@ -114,15 +114,15 @@ Result<VTableDataPtr> PeersVTable::RetrieveData(
     // result, skip 'remote_endpoint' in the results.
     auto private_ip = entry.ts_ips.private_ip_future.get();
     if (!private_ip.ok()) {
-      LOG(ERROR) << "Failed to get private ip from " << entry.ts_info.ShortDebugString()
-                 << ": " << private_ip.status();
+      LOG(WARNING) << "Failed to get private ip from " << entry.ts_info.ShortDebugString()
+                   << ": " << private_ip.status();
       continue;
     }
 
     auto public_ip = entry.ts_ips.public_ip_future.get();
     if (!public_ip.ok()) {
-      LOG(ERROR) << "Failed to get public ip from " << entry.ts_info.ShortDebugString()
-                 << ": " << public_ip.status();
+      LOG(WARNING) << "Failed to get public ip from " << entry.ts_info.ShortDebugString()
+                   << ": " << public_ip.status();
       continue;
     }
 

@@ -687,8 +687,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null,
                       false /* usePreviousGflagsChecksum */,
                       null /* previousGflagsChecksumMap */,
-                      true, /* useNewMasterDiskSize */
-                      true /* useNewTserverDiskSize */,
+                      false, /* useNewMasterDiskSize */
+                      false /* useNewTserverDiskSize */,
                       ysqlMajorVersionUpgradeState));
 
               if (sType.equals(ServerType.EITHER)) {
@@ -764,8 +764,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null,
                       false /* usePreviousGflagsChecksum */,
                       null /* previousGflagsChecksumMap */,
-                      true, /* useNewMasterDiskSize */
-                      true /* useNewTserverDiskSize */,
+                      false, /* useNewMasterDiskSize */
+                      false /* useNewTserverDiskSize */,
                       ysqlMajorVersionUpgradeState));
             });
     getRunnableTask().addSubTaskGroup(helmUpgrade);
@@ -1114,8 +1114,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       ybcSoftwareVersion,
                       false,
                       null,
-                      true /* useNewMasterDiskSize */,
-                      true /* useNewTserverDiskSize */,
+                      false /* useNewMasterDiskSize */,
+                      false /* useNewTserverDiskSize */,
                       ysqlMajorVersionUpgradeState),
               commandType.getSubTaskGroupName(),
               UserTaskDetails.SubTaskGroupType.Provisioning,
@@ -2076,8 +2076,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             ybcSoftwareVersion,
             usePreviousGflagsChecksum,
             previousGflagsChecksumMap,
-            true /* useNewMasterDiskSize */,
-            true /* useNewTserverDiskSize */,
+            false /* useNewMasterDiskSize */,
+            false /* useNewTserverDiskSize */,
             ysqlMajorVersionUpgradeState));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
@@ -2121,8 +2121,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         ybcSoftwareVersion,
         false /* usePreviousGflagsChecksum */,
         null /* previousGflagsChecksumMap */,
-        true, /* useNewMasterDiskSize */
-        true /* useNewTserverDiskSize */,
+        false, /* useNewMasterDiskSize */
+        false /* useNewTserverDiskSize */,
         null /* ysqlMajorVersionUpgradeState */);
   }
 
@@ -2173,9 +2173,30 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.azOverrides = azOverrides;
     params.universeName = universeName;
     // sending in the entire taskParams only for selected commandTypes that need it
-    if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
+    if (commandType == CommandType.HELM_INSTALL) {
       params.universeDetails = taskParams();
       params.universeConfig = universe.getConfig();
+    } else if (commandType == CommandType.HELM_UPGRADE) {
+      params.universeConfig = universe.getConfig();
+      if (useNewMasterDiskSize || useNewTserverDiskSize) {
+        // Only update the deviceInfo all other things remain same
+        params.universeDetails = universe.getUniverseDetails();
+        if (useNewTserverDiskSize) {
+          if (isReadOnlyCluster) {
+            params.universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo =
+                taskParams().getReadOnlyClusters().get(0).userIntent.deviceInfo;
+          } else {
+            params.universeDetails.getPrimaryCluster().userIntent.deviceInfo =
+                taskParams().getPrimaryCluster().userIntent.deviceInfo;
+          }
+        }
+        if (useNewMasterDiskSize) {
+          params.universeDetails.getPrimaryCluster().userIntent.masterDeviceInfo =
+              taskParams().getPrimaryCluster().userIntent.masterDeviceInfo;
+        }
+      } else {
+        params.universeDetails = taskParams();
+      }
     }
 
     if (masterAddresses != null) {

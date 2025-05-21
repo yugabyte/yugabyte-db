@@ -650,7 +650,7 @@ bool XClusterPoller::IsStuck() const {
 
   const auto lag = MonoTime::Now() - last_task_schedule_time_;
   if (lag > 1s * GetAtomicFlag(&FLAGS_xcluster_poller_task_delay_considered_stuck_secs)) {
-    LOG_WITH_PREFIX(ERROR) << "XCluster Poller has not executed any tasks for " << lag.ToString();
+    LOG_WITH_PREFIX(DFATAL) << "XCluster Poller has not executed any tasks for " << lag.ToString();
     return true;
   }
   return false;

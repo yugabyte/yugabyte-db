@@ -49,6 +49,9 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+/* YB includes */
+#include "optimizer/cost.h"
+
 /*
  * To avoid consuming too much memory during analysis and/or too much space
  * in the resulting pg_statistic rows, we ignore varlena datums that are wider
@@ -2032,6 +2035,9 @@ statext_clauselist_selectivity(PlannerInfo *root, List *clauses, int varRelid,
 							   bool is_or)
 {
 	Selectivity sel;
+
+	if (rel->is_yb_relation && yb_ignore_stats)
+		return 1.0;
 
 	/* First, try estimating clauses using a multivariate MCV list. */
 	sel = statext_mcv_clauselist_selectivity(root, clauses, varRelid, jointype,

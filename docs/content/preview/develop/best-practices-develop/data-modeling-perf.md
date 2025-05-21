@@ -1,25 +1,25 @@
 ---
-title: Best practices for YSQL applications
-headerTitle: Best practices
-linkTitle: Best practices
-description: Tips and tricks to build YSQL applications
-headcontent: Tips and tricks to build YSQL applications for high performance and availability
+title: Best practices for Data Modeling and performance of YSQL applications
+headerTitle: Best practices for Data Modeling and performance of YSQL applications
+linkTitle: YSQL data modeling
+description: Tips and tricks for building YSQL applications
+headcontent: Tips and tricks for building YSQL applications
 menu:
-  stable:
-    identifier: best-practices-ysql
-    parent: develop
-    weight: 570
+  preview:
+    identifier: data-modeling-perf
+    parent: best-practices-develop
+    weight: 10
 type: docs
 ---
 
-{{<api-tabs>}}
+Designing efficient, high-performance YSQL applications requires thoughtful data modeling and an understanding of how YugabyteDB handles distributed workloads. This guide offers a collection of best practices, from leveraging colocation and indexing techniques to optimizing transactions and parallelizing queries, that can help you build scalable, globally distributed applications with low latency and high availability. Whether you're developing new applications or tuning existing ones, these tips will help you make the most of YSQL's capabilities
 
 ## Use application patterns
 
-Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, choose a suitable design pattern for your application from a suite of battle-tested design paradigms, including [Global database](../build-global-apps/global-database), [Multi-master](../build-global-apps/active-active-multi-master), [Standby cluster](../build-global-apps/active-active-single-master), [Duplicate indexes](../build-global-apps/duplicate-indexes), [Follower reads](../build-global-apps/follower-reads), and more. You can also combine these patterns as per your needs.
+Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, choose a suitable design pattern for your application from a suite of battle-tested design paradigms, including [Global database](../../build-global-apps/global-database), [Multi-master](../../build-global-apps/active-active-multi-master), [Standby cluster](../../build-global-apps/active-active-single-master), [Duplicate indexes](../../build-global-apps/duplicate-indexes), [Follower reads](../../build-global-apps/follower-reads), and more. You can also combine these patterns as per your needs.
 
 {{<lead link="../build-global-apps">}}
-For more details, see [Build global applications](../build-global-apps).
+For more details, see [Build global applications](../../build-global-apps).
 {{</lead>}}
 
 ## Colocation
@@ -27,14 +27,14 @@ For more details, see [Build global applications](../build-global-apps).
 Colocated tables optimize latency and performance for data access by reducing the need for additional trips across the network for small tables. Additionally, it reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and their storage per node.
 
 {{<lead link="../../explore/colocation/">}}
-For more details, see [Colocation](../../explore/colocation/).
+For more details, see [Colocation](../../../explore/colocation/).
 {{</lead>}}
 
 ## Faster reads with covering indexes
 
 When a query uses an index to look up rows faster, the columns that are not present in the index are fetched from the original table. This results in additional round trips to the main table leading to increased latency.
 
-Use [covering indexes](../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/) to store all the required columns needed for your queries in the index. Indexing converts a standard Index-Scan to an [Index-Only-Scan](https://dev.to/yugabyte/boosts-secondary-index-queries-with-index-only-scan-5e7j).
+Use [covering indexes](../../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/) to store all the required columns needed for your queries in the index. Indexing converts a standard Index-Scan to an [Index-Only-Scan](https://dev.to/yugabyte/boosts-secondary-index-queries-with-index-only-scan-5e7j).
 
 {{<lead link="https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#avoid-trips-to-the-table-with-covering-indexes">}}
 For more details, see [Avoid trips to the table with covering indexes](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#avoid-trips-to-the-table-with-covering-indexes).
@@ -45,7 +45,7 @@ For more details, see [Avoid trips to the table with covering indexes](https://w
 A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the WHERE clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
 
 {{<lead link="../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/">}}
-For more details, see [Partial indexes](../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/).
+For more details, see [Partial indexes](../../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/).
 {{</lead>}}
 
 ## Distinct keys with unique indexes
@@ -55,14 +55,14 @@ If you need values in some of the columns to be unique, you can specify your ind
 When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a NULL value is treated as a distinct value, you can have multiple NULL values in a column with a unique index.
 
 {{<lead link="../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/">}}
-For more details, see [Unique indexes](../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/).
+For more details, see [Unique indexes](../../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/).
 {{</lead>}}
 
 ## Faster sequences with server-level caching
 
 Sequences in databases automatically generate incrementing numbers, perfect for generating unique values like order numbers, user IDs, check numbers, and so on. They prevent multiple application instances from concurrently generating duplicate values. However, generating sequences on a database that is spread across regions could have a latency impact on your applications.
 
-Enable [server-level caching](../../api/ysql/exprs/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
+Enable [server-level caching](../../../api/ysql/exprs/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
 
 {{<lead link="https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76">}}
 For a demo, see the YugabyteDB Friday Tech Talk on [Scaling sequences with server-level caching](https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76).
@@ -85,15 +85,15 @@ UPDATE txndemo SET v = v + 3 WHERE k=1 RETURNING v;
 ```
 
 {{<lead link="../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
-For more details, see [Fast single-row transactions](../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions).
+For more details, see [Fast single-row transactions](../../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions).
 {{</lead>}}
 
 ## Delete older data quickly with partitioning
 
-Use [table partitioning](../../explore/ysql-language-features/advanced-features/partitions/) to split your data into multiple partitions according to date so that you can quickly delete older data by dropping the partition.
+Use [table partitioning](../../../explore/ysql-language-features/advanced-features/partitions/) to split your data into multiple partitions according to date so that you can quickly delete older data by dropping the partition.
 
 {{<lead link="../data-modeling/common-patterns/timeseries/partitioning-by-time/">}}
-For more details, see [Partition data by time](../data-modeling/common-patterns/timeseries/partitioning-by-time/).
+For more details, see [Partition data by time](../../data-modeling/common-patterns/timeseries/partitioning-by-time/).
 {{</lead>}}
 
 ## Use the right data types for partition keys
@@ -163,47 +163,12 @@ SELECT * FROM products;
 ```
 
 {{<lead link="../../explore/ysql-language-features/data-manipulation">}}
-For more information, see [Data manipulation](../../explore/ysql-language-features/data-manipulation).
+For more information, see [Data manipulation](../../../explore/ysql-language-features/data-manipulation).
 {{</lead>}}
-
-## Load balance and failover using smart drivers
-
-YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/) provide advanced cluster-aware load-balancing capabilities that enables your applications to send requests to multiple nodes in the cluster just by connecting to one node. You can also set a fallback hierarchy by assigning priority to specific regions and ensuring that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails.
-
-{{<lead link="https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver">}}
-For more information, see [Load balancing with smart drivers](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver).
-{{</lead>}}
-
-## Make sure the application uses new nodes
-
-When a cluster is expanded, newly added nodes do not automatically start to receive client traffic. Regardless of the language of the driver or whether you are using a smart driver, the application must either explicitly request new connections or, if it is using a pooling solution, it can configure the pooler to recycle connections periodically (for example, by setting maxLifetime and/or idleTimeout).
-
-## Scale your application with connection pools
-
-Set up different pools with different load balancing policies as needed for your application to scale by using popular pooling solutions such as HikariCP and Tomcat along with YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/).
-
-{{<lead link="../../drivers-orms/smart-drivers/#connection-pooling">}}
-For more information, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
-{{</lead>}}
-
-### Database migrations and connection pools
-
-In some cases, connection pools may trigger unexpected errors while running a sequence of database migrations or other DDL operations.
-
-Because YugabyteDB is distributed, it can take a while for the result of a DDL to fully propagate to all caches on all nodes in a cluster. As a result, after a DDL statement completes, the next DDL statement that runs right afterwards on a different PostgreSQL connection may, in rare cases, see errors such as `duplicate key value violates unique constraint "pg_attribute_relid_attnum_index"` (see issue {{<issue 12449>}}). It is recommended to use a single connection while running a sequence of DDL operations, as is common with application migration scripts with tools such as Flyway or Active Record.
-
-## Use YSQL Connection Manager
-
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<tags/feature/ea idea="1368">}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
-
-For more information, refer to the following:
-
-- [YSQL Connection Manager](../../explore/going-beyond-sql/connection-mgr-ysql/)
-- [Built-in Connection Manager Turns Key PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
 
 ## Re-use query plans with prepared statements
 
-Whenever possible, use [prepared statements](../../api/ysql/the-sql-language/statements/perf_prepare/) to ensure that YugabyteDB can re-use the same query plan and eliminate the need for a server to parse the query on each operation.
+Whenever possible, use [prepared statements](../../../api/ysql/the-sql-language/statements/perf_prepare/) to ensure that YugabyteDB can re-use the same query plan and eliminate the need for a server to parse the query on each operation.
 
 {{<warning title="Avoid explicit PREPARE or EXECUTE">}}
 
@@ -228,12 +193,12 @@ For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroe
 Use BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE for batch or long-running jobs, which need a consistent snapshot of the database without interfering, or being interfered with by other transactions.
 
 {{<lead link="../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs">}}
-For more details, see [Large scans and batch jobs](../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs).
+For more details, see [Large scans and batch jobs](../../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs).
 {{</lead>}}
 
 ## JSONB datatype
 
-Use the [JSONB](../../api/ysql/datatypes/type_json) datatype to model JSON data; that is, data that doesn't have a set schema but has a truly dynamic schema.
+Use the [JSONB](../../../api/ysql/datatypes/type_json) datatype to model JSON data; that is, data that doesn't have a set schema but has a truly dynamic schema.
 
 JSONB in YSQL is the same as the [JSONB datatype in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
 
@@ -257,12 +222,8 @@ YSQL also supports JSONB expression indexes, which can be used to speed up data 
 For large or batch SELECT or DELETE that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
 
 {{<lead link="../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries">}}
-For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
+For more details, see [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
 {{</lead>}}
-
-## Single availability zone (AZ) deployments
-
-In single AZ deployments, you need to set the [yb-tserver](../../reference/configuration/yb-tserver) flag `--durable_wal_write=true` to not lose data if the whole data center goes down (For example, power failure).
 
 ## Row size limit
 
@@ -274,43 +235,23 @@ For consistent latency or performance, it is recommended to size columns in the 
 
 ## TRUNCATE tables instead of DELETE
 
-[TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table data and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/), which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
+[TRUNCATE](../../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table data and is much faster than [DELETE](../../../api/ysql/the-sql-language/statements/dml_delete/), which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
 
 {{<warning>}}
-Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE is not MVCC-safe. For more details, see [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/).
+Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE is not MVCC-safe. For more details, see [TRUNCATE](../../../api/ysql/the-sql-language/statements/ddl_truncate/).
 {{</warning>}}
 
 ## Minimize the number of tablets you need
 
 Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [allowing for tablet replica overheads](#allowing-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
 
-Each table and index consists of several tablets based on the [--ysql_num_shards_per_tserver](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
+Each table and index consists of several tablets based on the [--ysql_num_shards_per_tserver](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 
 You can try one of the following methods to reduce the number of tablets:
 
-- Use [colocation](../../explore/colocation/) to group small tables into 1 tablet.
-- Reduce number of tablets-per-table using the [--ysql_num_shards_per_tserver](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
-- Use the [SPLIT INTO](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
-- Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/).
+- Use [colocation](../../../explore/colocation/) to group small tables into 1 tablet.
+- Reduce number of tablets-per-table using the [--ysql_num_shards_per_tserver](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
+- Use the [SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
+- Start with few tablets and use [automatic tablet splitting](../../../architecture/docdb-sharding/tablet-splitting/).
 
 Note that multiple tablets can allow work to proceed in parallel so you may not want every table to have only one tablet.
-
-## Allow for tablet replica overheads
-
-Although you can manually provision the amount of memory each TServer uses using flags ([--memory_limit_hard_bytes](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [--default_memory_limit_to_ram_ratio](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio)), this can be tricky as you need to take into account how much memory the kernel needs, along with the PostgreSQL processes and any Master process that is going to be colocated with the TServer.
-
-Accordingly, you should use the [--use_memory_defaults_optimized_for_ysql](../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag, which gives good memory division settings for using YSQL, optimized for your node's size.
-
-If this flag is true, then the [memory division flag defaults](../../reference/configuration/yb-tserver/#memory-division-flags) change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
-
-Note that although the default setting is false, when creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false.
-
-## Settings for CI and CD integration tests
-
-You can set certain flags to increase performance using YugabyteDB in CI and CD automated test scenarios as follows:
-
-- Point the flags `--fs_data_dirs`, and `--fs_wal_dirs` to a RAMDisk directory to make DML, DDL, cluster creation, and cluster deletion faster, ensuring that data is not written to disk.
-- Set the flag `--yb_num_shards_per_tserver=1`. Reducing the number of shards lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
-- Use colocated databases in YSQL. Colocation lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
-- Set the flag `--replication_factor=1` for test scenarios, as keeping the data three way replicated (default) is not necessary. Reducing that to 1 reduces space usage and increases performance.
-- Use `TRUNCATE table1,table2,table3..tablen;` instead of CREATE TABLE, and DROP TABLE between test cases.

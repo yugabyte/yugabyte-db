@@ -70,17 +70,7 @@ class TSLocalLockManager {
   // conflicting lock types on a key given that there aren't other txns with active conflciting
   // locks on the key.
   //
-  // Continuous influx of readers can starve writers. For instance, if there are multiple txns
-  // requesting ACCESS_SHARE on a key, a writer requesting ACCESS_EXCLUSIVE may face starvation.
-  // Since we intend to use this for table locks, DDLs may face starvation if there is influx of
-  // conflicting DMLs.
-  // TODO: DDLs don't face starvation in PG. Address the above starvation problem.
-  //
   // TODO: Augment the 'pg_locks' path to show the acquired/waiting object/table level locks.
-  Status AcquireObjectLocks(
-      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-      WaitForBootstrap wait = WaitForBootstrap::kTrue);
-
   void AcquireObjectLocksAsync(
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       StdStatusCallback&& callback, WaitForBootstrap wait = WaitForBootstrap::kTrue);

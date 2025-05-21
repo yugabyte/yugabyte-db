@@ -268,6 +268,40 @@ void AdvisoryLockRequestInitCommon(
 
 }
 
+YbcTxnPriorityRequirement GetTxnPriorityRequirement(
+    bool is_ddl_mode, PgIsolationLevel isolation_level, RowMarkType row_mark_type) {
+  YbcTxnPriorityRequirement txn_priority_requirement;
+  if (is_ddl_mode) {
+    // DDLs acquire object locks to serialize conflicting concurrent DDLs. Concurrent DDLs that
+    // don't conflict can make progress without blocking each other.
+    //
+    // However, if object locks are disabled, concurrent DDLs are disallowed for safety.
+    // This is done by relying on conflicting increments to the catalog version (most DDLs do this
+    // except some like CREATE TABLE). Note that global DDLs (those that affect catalog tables
+    // shared across databases) conflict with all other DDLs since they increment all per-db
+    // catalog versions.
+    //
+    // For detecting and resolving these conflicts, DDLs use Fail-on-Conflict concurrency
+    // control (system catalog table doesn't have wait queues enabled). All DDLs except
+    // Auto-ANALYZEs use kHighestPriority priority to mimic first-come-first-serve behavior. We
+    // want to give Auto-ANALYZEs a lower priority to ensure they don't abort already running
+    // user DDLs. Also, user DDLs should preempt Auto-ANALYZEs.
+    //
+    // With object level locking, priorities are meaningless since DDLs don't rely on DocDB's
+    // conflict resolution for concurrent DDLs.
+    if (!yb_use_internal_auto_analyze_service_conn)
+      txn_priority_requirement = kHighestPriority;
+    else
+      txn_priority_requirement = kHigherPriorityRange;
+  } else {
+    txn_priority_requirement =
+        isolation_level == PgIsolationLevel::READ_COMMITTED ? kHighestPriority :
+            (RowMarkNeedsHigherPriority(row_mark_type) ?
+                kHigherPriorityRange : kLowerPriorityRange);
+  }
+  return txn_priority_requirement;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -376,13 +410,13 @@ class PgSession::RunHelper {
       return Status::OK();
     }
 
-    const auto txn_priority_requirement =
-      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED
-        ? kHighestPriority :
-          (RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange);
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
-    return pg_session_.pg_txn_manager_->CalculateIsolation(read_only, txn_priority_requirement);
+    return pg_session_.pg_txn_manager_->CalculateIsolation(
+        read_only,
+        GetTxnPriorityRequirement(
+            pg_session_.pg_txn_manager_->IsDdlMode(), pg_session_.GetIsolationLevel(),
+            row_mark_type));
   }
 
   Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
@@ -731,12 +765,10 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, boo
   }
 
   if (transactional) {
-    const auto txn_priority_requirement =
-        GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED
-            ? kHighestPriority : kLowerPriorityRange;
-
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-        false /* read_only */, txn_priority_requirement));
+        false /* read_only */,
+        GetTxnPriorityRequirement(
+            pg_txn_manager_->IsDdlMode(), GetIsolationLevel(), RowMarkType::ROW_MARK_ABSENT)));
   }
 
   // When YSQL is flushing a pipeline of Perform rpcs asynchronously i.e., without waiting for
@@ -1067,7 +1099,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
         // as writing to ysql catalog so we can avoid incrementing the catalog version.
         has_catalog_write_ops_in_ddl_mode_ =
             has_catalog_write_ops_in_ddl_mode_ ||
-            (is_ddl && !IsReadOnly(*op) && is_ysql_catalog_table);
+            (is_ddl && op->is_write() && is_ysql_catalog_table);
         return runner.Apply(table, op);
     };
   RETURN_NOT_OK(processor(first_table_op));

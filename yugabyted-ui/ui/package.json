@@ -49,7 +49,7 @@
     "recharts": "2.0.9",
     "snowpack": "3.3.7",
     "snowpack-plugin-svgr": "0.1.2",
-    "typescript": "4.2.4",
+    "typescript": "5.0.4",
     "use-query-params": "1.2.3",
     "webpack": "^5.72.0",
     "yup": "0.32.9"

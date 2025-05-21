@@ -1,14 +1,16 @@
 ---
 title: Build Scalable Generative AI Applications with Azure OpenAI and YugabyteDB
-headerTitle: Build scalable generative AI applications with Azure OpenAI and YugabyteDB
-linkTitle: Azure OpenAI
+headerTitle: Similarity search using Azure OpenAI
+linkTitle: Similarity search - Azure
 description: Build scalable generative AI applications with Azure OpenAI and YugabyteDB
 image: /images/tutorials/azure/icons/OpenAI-Icon.svg
 headcontent: Use YugabyteDB as the database backend for Azure OpenAI applications
+aliases:
+  - /tutorials/azure/azure-openai/
 menu:
   preview_tutorials:
     identifier: tutorials-azure-openai
-    parent: tutorials-azure
+    parent: tutorials-ai-rag
     weight: 40
 type: docs
 ---
@@ -304,4 +306,4 @@ With the help of the PostgreSQL pgvector extension, YugabyteDB enhances the scal
 
 To learn more about additional updates to YugabyteDB with release 2.19, check out [Dream Big, Go Bigger: Turbocharging PostgreSQL](https://www.yugabyte.com/blog/postgresql-turbocharging/).
 
-To learn how to run this application using Google Cloud, see [Build scalable generative AI applications with Google Vertex AI and YugabyteDB](../../google/google-vertex-ai/).
+To learn how to run this application using Google Cloud, see [Build scalable generative AI applications with Google Vertex AI and YugabyteDB](../google-vertex-ai/).

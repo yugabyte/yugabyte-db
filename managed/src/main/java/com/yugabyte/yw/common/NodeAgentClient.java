@@ -39,6 +39,8 @@ import com.yugabyte.yw.nodeagent.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.FileInfo;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorOutput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareOutput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
@@ -54,6 +56,8 @@ import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlOutput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsOutput;
+import com.yugabyte.yw.nodeagent.SetupCGroupInput;
+import com.yugabyte.yw.nodeagent.SetupCGroupOutput;
 import com.yugabyte.yw.nodeagent.SubmitTaskRequest;
 import com.yugabyte.yw.nodeagent.SubmitTaskResponse;
 import com.yugabyte.yw.nodeagent.UpdateRequest;
@@ -953,6 +957,30 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), InstallYbcOutput.class);
+  }
+
+  public InstallOtelCollectorOutput runInstallOtelCollector(
+      NodeAgent nodeAgent, InstallOtelCollectorInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setInstallOtelCollectorInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), InstallOtelCollectorOutput.class);
+  }
+
+  public SetupCGroupOutput runSetupCGroupInput(
+      NodeAgent nodeAgent, SetupCGroupInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setSetupCGroupInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), SetupCGroupOutput.class);
   }
 
   public ServerGFlagsOutput runServerGFlags(

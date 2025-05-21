@@ -492,19 +492,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status.ok()) {
         if (used_read_time && metadata_.isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
           const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
-#ifndef NDEBUG
           if (read_point_already_set) {
+#ifndef NDEBUG
             // Display details of operations before crashing in debug mode.
             int op_idx = 1;
             for (const auto& op : ops) {
               LOG(ERROR) << "Operation " << op_idx << ": " << op.ToString();
               op_idx++;
             }
-          }
 #endif
-          LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
-              << "Read time already picked (" << read_point_.GetReadTime()
-              << ", but server replied with used read time: " << used_read_time;
+            LOG_WITH_PREFIX(DFATAL)
+                << "Read time already picked (" << read_point_.GetReadTime()
+                << ", but server replied with used read time: " << used_read_time;
+          }
           // TODO: Update local limit for the tablet id which sent back the used read time
           read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
           VLOG_WITH_PREFIX(3)
@@ -708,8 +708,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // that were first involved in the transaction with this batch of changes.
     auto status = StartPromotionToGlobal();
     if (!status.ok()) {
-      LOG(ERROR) << "Prepare for transaction " << metadata_.transaction_id
-                 << " rejected (promotion failed): " << status;
+      LOG(DFATAL) << "Prepare for transaction " << metadata_.transaction_id
+                  << " rejected (promotion failed): " << status;
       return status;
     }
     return true;

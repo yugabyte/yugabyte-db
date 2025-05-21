@@ -237,8 +237,8 @@ class TSLocalLockManager::Impl {
     yb::UniqueLock lock(mutex_);
     while (txns_in_progress_.find(txn_id) != txns_in_progress_.end()) {
       if (deadline <= CoarseMonoClock::Now()) {
-        LOG(ERROR) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
-                    << ToString(deadline);
+        LOG(WARNING) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
+                     << ToString(deadline);
         TRACE("Failed to add by deadline.");
         return STATUS_FORMAT(
             TryAgain, "Failed to add txn $0 to in progress txns until deadline: $1", txn_id,
@@ -328,25 +328,6 @@ TSLocalLockManager::TSLocalLockManager(
             clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool))) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
-
-// TODO: Remove this method and enforce callers supply a callback func.
-Status TSLocalLockManager::AcquireObjectLocks(
-    const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-    WaitForBootstrap wait) {
-  if (VLOG_IS_ON(4)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(4) << "Dumping current state Before acquire : " << output.str();
-  }
-  auto ret = impl_->AcquireObjectLocks(req, deadline, wait);
-  if (VLOG_IS_ON(3)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(3) << "Acquire " << (ret.ok() ? "succeded" : "failed")
-            << ". Dumping current state After acquire : " << output.str();
-  }
-  return ret;
-}
 
 void TSLocalLockManager::AcquireObjectLocksAsync(
     const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,

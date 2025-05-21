@@ -2322,8 +2322,9 @@ ExecuteTruncateGuts(List *explicit_rels,
 		 */
 		if (YbUseUnsafeTruncate(rel) != YB_SAFE_TRUNCATE)
 			YbUnsafeTruncate(rel);
-		else if (rel->rd_createSubid == mySubid ||
-				 rel->rd_newRelfilenodeSubid == mySubid || !IsYBRelation(rel))
+		else if ((rel->rd_createSubid == mySubid ||
+				  rel->rd_newRelfilenodeSubid == mySubid) &&
+				 !IsYBRelation(rel))
 		{
 			/* Immediate, non-rollbackable truncation is OK */
 			heap_truncate_one_rel(rel);

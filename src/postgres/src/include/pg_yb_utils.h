@@ -770,6 +770,8 @@ extern bool yb_silence_advisory_locks_not_supported_error;
 
 extern bool yb_skip_data_insert_for_xcluster_target;
 
+extern bool yb_force_early_ddl_serialization;
+
 /*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
@@ -1301,8 +1303,7 @@ extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
  */
 extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
 
-extern void YbGetRedactedQueryString(const char *query, int query_len,
-									 const char **redacted_query, int *redacted_query_len);
+extern const char *YbGetRedactedQueryString(const char *query, int *redacted_query_len);
 
 /* Check if optimizations for UPDATE queries have been enabled. */
 extern bool YbIsUpdateOptimizationEnabled();
