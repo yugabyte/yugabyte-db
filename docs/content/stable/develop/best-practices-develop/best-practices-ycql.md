@@ -1,18 +1,18 @@
 ---
 title: Best practices for YCQL applications
-headerTitle: Best practices
-linkTitle: Best practices
+headerTitle: Best practices for YCQL applications
+linkTitle: YCQL applications
 description: Tips and tricks to build YCQL applications
 headcontent: Tips and tricks to build YCQL applications for high performance and availability
 menu:
   stable:
     identifier: best-practices-ycql
-    parent: develop
-    weight: 571
+    parent: best-practices-develop
+    weight: 40
 type: docs
 ---
 
-{{<api-tabs>}}
+To build high-performance and scalable applications using YCQL, developers should follow key schema design and operational best practices tailored for YugabyteDB's distributed architecture. This guide covers strategies for using indexes efficiently, optimizing read/write paths with batching and prepared statements, managing JSON and collection data types, and ensuring memory settings align with your query layer. These practices help ensure reliable performance, especially under real-world workloads.
 
 ## Global secondary indexes
 

@@ -1,16 +1,18 @@
 ---
-title: Best practices for YSQL DB administrators
-headerTitle: Best practices
-linkTitle: Best practices
+title: Best practices for YSQL database administrators
+headerTitle: Best practices for YSQL database administrators
+linkTitle: YSQL database administrators
 description: Tips and tricks to build YSQL applications
-headcontent: Tips and tricks to administer YSQL DBs
+headcontent: Tips and tricks for administering YSQL databases
 menu:
   stable:
-    identifier: best-practices-ysql-db-admins
-    parent: best-practices-ysql
-    weight: 570
+    identifier: best-practices-ysql-administration
+    parent: best-practices-develop
+    weight: 30
 type: docs
 ---
+
+Database administrators can fine-tune YugabyteDB deployments for better reliability, performance, and operational efficiency by following targeted best practices. This guide outlines key recommendations for configuring single-AZ environments, optimizing memory use, accelerating CI/CD tests, and safely managing concurrent DML and DDL operations. These tips are designed to help DBAs maintain stable, scalable YSQL clusters in real-world and test scenarios alike.
 
 ## Single availability zone (AZ) deployments
 

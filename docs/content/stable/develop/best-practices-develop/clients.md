@@ -1,16 +1,18 @@
 ---
 title: Best practices for YSQL clients
-headerTitle: Best practices
-linkTitle: Best practices
-description: Tips and tricks to build YSQL applications
-headcontent: Tips and tricks to build YSQL applications for high performance and availability
+headerTitle: Best practices for YSQL clients
+linkTitle: YSQL clients
+description: Tips and tricks for administering YSQL clients
+headcontent: Tips and tricks for administering YSQL clients
 menu:
   stable:
     identifier: best-practices-ysql-clients
-    parent: best-practices-ysql
-    weight: 570
+    parent: best-practices-develop
+    weight: 20
 type: docs
 ---
+
+Client-side configuration plays a critical role in the performance, scalability, and resilience of YSQL applications. This guide highlights essential best practices for managing connections, balancing load across nodes, and handling failovers efficiently using YugabyteDB's smart drivers and connection pooling. Whether you're deploying in a single region or across multiple data centers, these tips will help ensure your applications make the most of YugabyteDB's distributed architecture
 
 ## Load balance and failover using smart drivers
 
