@@ -54,6 +54,13 @@ This page categorizes configuration flags into the following sections, making it
 | [Performance Tuning](#performance-tuning)           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
 | [Security](#security)                     | Settings for encryption, SSL/TLS, and authentication to secure both node-to-node and client-server communications. |
 
+**Legend**
+
+The following badges describe the requirements or whether any action is needed when updating or using a flag.
+
+* {{% tags/feature/restart-needed %}} – Indicates that a restart is required for the flag to take effect. For example, if the flag is used on *yb-master*, you need to restart only *yb-master*. If the flag is used on both the *yb-master* and *yb-tserver* components, restart both services.
+* {{% tags/feature/t-server %}} – The flag must have the same value across all *yb-master* and *yb-tserver* nodes.
+
 ## All flags
 
 The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
