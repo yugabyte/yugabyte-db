@@ -1853,4 +1853,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Verify actual gflags state on node before upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableEditAutoRollback =
+      new ConfKeyInfo<>(
+          "yb.task.enable_edit_auto_rollback",
+          ScopeType.GLOBAL,
+          "Enable Performing Automatic Rollback of Edit Operation",
+          "Enable performing automatic rollback of edit operation (if possible)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -2234,6 +2234,9 @@
         "auditLogConfig" : {
           "$ref" : "#/definitions/AuditLogConfig"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -4920,6 +4923,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -7953,6 +7959,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -8729,6 +8738,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -10139,6 +10151,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "azOverrides" : {
           "additionalProperties" : {
@@ -14446,6 +14461,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -15460,6 +15478,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -16290,6 +16311,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -17795,6 +17819,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -19545,6 +19572,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -20625,6 +20655,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -21910,6 +21943,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -22565,6 +22601,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -23478,6 +23517,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -24112,6 +24154,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -24734,6 +24779,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -25840,6 +25888,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -26990,6 +27041,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [

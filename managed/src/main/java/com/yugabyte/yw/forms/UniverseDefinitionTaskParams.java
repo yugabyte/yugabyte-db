@@ -156,6 +156,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // UUID of last failed task that applied modification to cluster state.
   @ApiModelProperty public UUID placementModificationTaskUuid = null;
 
+  @ApiModelProperty public boolean autoRollbackPerformed = false;
+
   @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
 
   // Set to true when software rollback is allowed.

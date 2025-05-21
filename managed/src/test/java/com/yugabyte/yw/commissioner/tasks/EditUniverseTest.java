@@ -8,6 +8,9 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -17,6 +20,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -34,6 +38,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -569,6 +574,104 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         61.0 /* Free */);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testExpandRollback() {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
+    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(nodes, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  @Test
+  public void testFullMoveRollback() {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
+    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    assertEquals(nodes * 2, taskParams.nodeDetailsSet.size());
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(nodes, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+  }
+
+  @Test
+  public void testFullMoveNoRollback() {
+    ShellResponse badShellResponse = new ShellResponse();
+    badShellResponse.code = 100;
+    badShellResponse.message = "No way!";
+    ShellResponse okShellResponse = new ShellResponse();
+    okShellResponse.message = "";
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.Create.equals(invocation.getArgument(0))) {
+                AnsibleCreateServer.Params params = invocation.getArgument(1);
+                if (params.nodeName.contains("n2")) {
+                  return badShellResponse;
+                }
+              }
+              return okShellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
+    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    assertEquals(nodes * 2, taskParams.nodeDetailsSet.size());
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotEquals(nodes, universe.getUniverseDetails().nodeDetailsSet.size());
+    assertFalse(universe.getUniverseDetails().autoRollbackPerformed);
+    assertNotNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNotNull(universe.getUniverseDetails().placementModificationTaskUuid);
   }
 
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {
