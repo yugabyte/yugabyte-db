@@ -306,4 +306,4 @@ With the help of the PostgreSQL pgvector extension, YugabyteDB enhances the scal
 
 To learn more about additional updates to YugabyteDB with release 2.19, check out [Dream Big, Go Bigger: Turbocharging PostgreSQL](https://www.yugabyte.com/blog/postgresql-turbocharging/).
 
-To learn how to run this application using Google Cloud, see [Build scalable generative AI applications with Google Vertex AI and YugabyteDB](../../google/google-vertex-ai/).
+To learn how to run this application using Google Cloud, see [Build scalable generative AI applications with Google Vertex AI and YugabyteDB](../google-vertex-ai/).

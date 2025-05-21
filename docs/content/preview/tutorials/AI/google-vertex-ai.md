@@ -203,4 +203,4 @@ The Google Vertex AI service simplifies the process of designing, building, and 
 
 With the help of the PostgreSQL pgvector extension, YugabyteDB enhances the scalability of these applications by distributing data and embeddings across a cluster of nodes, facilitating similarity searches on a large scale.
 
-To learn how to run this application using Azure, see [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](../../azure/azure-openai/).
+To learn how to run this application using Azure, see [Build scalable generative AI applications with Azure OpenAI and YugabyteDB](../azure-openai/).
