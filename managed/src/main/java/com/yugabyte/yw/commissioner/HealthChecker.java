@@ -1121,12 +1121,13 @@ public class HealthChecker {
             .traceLogging(true)
             .timeoutSecs(nodeCheckContext.getTimeoutSec())
             .build();
-    if (uploadedInfo == null && !nodeInfo.isK8s()) {
-      // Only upload it once for new node, as it only depends on yb home dir.
-      // Also skip upload for k8s as no one will call it on k8s pod.
+    if ((uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) && !nodeInfo.isK8s()) {
+      // Node IP change means node name was reused and underlying node is a fresh one.
+      // Skip upload for k8s as no one will call it on k8s pod.
       String generatedScriptPath =
           generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
 
+      log.info("Uploading metrics collection script to node {}", nodeInfo.getNodeName());
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
       nodeUniverseManager.uploadFileToNode(
           nodeInfo.nodeDetails,

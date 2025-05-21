@@ -54,6 +54,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.FreezeUniverse,
           TaskType.CheckNodeSafeToDelete,
           TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.DeleteNode,
           TaskType.UniverseUpdateSucceeded);
 
@@ -62,6 +63,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.RemoveNodeAgent,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.DeleteNode,
           TaskType.UniverseUpdateSucceeded);
 

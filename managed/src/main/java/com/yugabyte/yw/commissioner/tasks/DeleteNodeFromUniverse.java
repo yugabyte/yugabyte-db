@@ -103,6 +103,9 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       } else {
         createRemoveNodeAgentTasks(universe, currentNodeDetails, true /* isForceDelete */)
             .setSubTaskGroupType(SubTaskGroupType.DeletingNode);
+
+        // Just in case node was manually deleted earlier
+        createMarkUniverseForHealthScriptReUploadTask();
       }
 
       createDeleteNodeFromUniverseTask(taskParams().nodeName)
