@@ -575,7 +575,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
                             table_name,
                             internal::GetSchema(schema),
                             internal::GetSchema(info.schema));
-        LOG(ERROR) << msg;
+        LOG(WARNING) << msg;
         return STATUS(AlreadyPresent, msg);
       }
 
@@ -593,7 +593,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
               table_name.ToString(),
               partition_schema.DebugString(internal::GetSchema(schema)),
               info.partition_schema.DebugString(internal::GetSchema(info.schema)));
-          LOG(ERROR) << msg;
+          LOG(WARNING) << msg;
           return STATUS(AlreadyPresent, msg);
         }
       }
@@ -901,7 +901,7 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                             table_name,
                             internal::GetSchema(ybschema),
                             internal::GetSchema(info.schema));
-        LOG(ERROR) << msg;
+        LOG(WARNING) << msg;
         return STATUS(AlreadyPresent, msg);
       }
 
@@ -2827,7 +2827,7 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
       out.str(master_server_addr);
       out.str(" ");
     }
-    LOG(ERROR) << out.str();
+    LOG(DFATAL) << out.str();
     return STATUS(InvalidArgument, "master addresses cannot be empty");
   }
 

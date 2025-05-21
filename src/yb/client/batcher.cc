@@ -747,10 +747,11 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
 
     size_t row_index = err_pb.row_index();
     if (row_index >= rpc.ops().size()) {
-      LOG_WITH_PREFIX(ERROR) << "Received a per_row_error for an out-of-bound op index "
-                             << row_index << " (sent only " << rpc.ops().size() << " ops)";
-      LOG_WITH_PREFIX(ERROR) << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
-                             << rpc.resp().DebugString();
+      LOG_WITH_PREFIX(DFATAL)
+          << "Received a per_row_error for an out-of-bound op index " << row_index
+          << " (sent only " << rpc.ops().size() << " ops)\n"
+          << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
+          << rpc.resp().DebugString();
       continue;
     }
     shared_ptr<YBOperation> yb_op = rpc.ops()[row_index].yb_op;

@@ -326,11 +326,9 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
         Slice key = iter->key();
         EXPECT_OK(DocHybridTime::DecodeFromEnd(&key));
         auto emplace_result = keys.emplace(key.ToBuffer(), iter->key().ToBuffer());
-        if (!emplace_result.second) {
-          LOG(ERROR)
-              << "Duplicate key: " << dockv::SubDocKey::DebugSliceToString(iter->key())
-              << " vs " << dockv::SubDocKey::DebugSliceToString(emplace_result.first->second);
-        }
+        EXPECT_TRUE(emplace_result.second)
+            << "Duplicate key: " << dockv::SubDocKey::DebugSliceToString(iter->key())
+            << " vs " << dockv::SubDocKey::DebugSliceToString(emplace_result.first->second);
       }
     }
   }

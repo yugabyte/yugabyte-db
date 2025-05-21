@@ -4858,8 +4858,21 @@ show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
 	ExplainPropertyFloat("Estimated Seeks", NULL,
 						 planinfo->estimated_num_seeks, 0, es);
-	ExplainPropertyFloat("Estimated Nexts", NULL,
-						 planinfo->estimated_num_nexts, 0, es);
+	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL,
+						 planinfo->estimated_num_nexts_prevs, 0, es);
+
+	/*
+	 * YB_TODO(#27210): Do not print values of estimated_num_table_result_pages
+	 * or estimated_num_index_result_pages if == 0.
+	 */
+	if (planinfo->estimated_num_table_result_pages >= 0)
+		ExplainPropertyFloat("Estimated Table Roundtrips", NULL,
+								planinfo->estimated_num_table_result_pages, 0, es);
+
+	if (planinfo->estimated_num_index_result_pages >= 0)
+		ExplainPropertyFloat("Estimated Index Roundtrips", NULL,
+								planinfo->estimated_num_index_result_pages, 0, es);
+
 	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
 						   planinfo->estimated_docdb_result_width, es);
 }

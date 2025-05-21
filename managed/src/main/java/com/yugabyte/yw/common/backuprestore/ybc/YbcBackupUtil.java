@@ -1107,6 +1107,8 @@ public class YbcBackupUtil {
         log.debug("database version {} does not support --dump-role-checks", ybdbSoftwareVersion);
         extendedArgsBuilder.setDumpRoleChecks(false); // DB does not support dump role checks flag.
       }
+      // Set enable backups during DDL
+      extendedArgsBuilder.setUseReadTimeYsqlDump(tableParams.getEnableBackupsDuringDDL());
       return extendedArgsBuilder.build();
     } catch (Exception e) {
       log.error("Error while fetching extended args for backup: ", e);

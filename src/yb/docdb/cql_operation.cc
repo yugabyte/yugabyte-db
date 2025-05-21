@@ -877,8 +877,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
       break;
     }
     default: {
-      LOG(ERROR) << "Unexpected type for setting subcolumn: "
-                 << column.type()->ToString();
+      LOG(DFATAL) << "Unexpected type for setting subcolumn: " << column.type()->ToString();
     }
   }
   return Status::OK();
@@ -1288,8 +1287,8 @@ Status QLWriteOperation::DeleteSubscriptedColumnElement(
       break;
     }
     default: {
-      LOG(ERROR) << "Unexpected type for deleting subscripted column element: "
-                 << column_schema.type()->ToString();
+      LOG(DFATAL) << "Unexpected type for deleting subscripted column element: "
+                  << column_schema.type()->ToString();
       return STATUS_FORMAT(InternalError,
           "Unexpected type for deleting subscripted column element: $0", *column_schema.type());
     }

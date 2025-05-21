@@ -1,14 +1,16 @@
 ---
 title: Build Scalable Generative AI Applications with Google Vertex AI and YugabyteDB
-headerTitle: Build scalable generative AI applications with Google Vertex AI and YugabyteDB
-linkTitle: Google Vertex AI
+headerTitle: Similarity search using Google Vertex AI
+linkTitle: Similarity search - Google Vertex
 description: Build scalable generative AI applications with Google Vertex AI and YugabyteDB
 image: /images/tutorials/google/icons/Google-Vertex-AI-Icon.svg
 headcontent: Use YugabyteDB as the database backend for Google Vertex AI applications
+aliases:
+  - /tutorials/google/google-vertex-ai/
 menu:
   preview_tutorials:
     identifier: tutorials-google-vertex-ai
-    parent: tutorials-google
+    parent: tutorials-ai-rag
     weight: 40
 type: docs
 ---

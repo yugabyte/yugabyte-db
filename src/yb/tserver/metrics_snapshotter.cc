@@ -504,8 +504,8 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
       uint64_t system_ticks = cur_ticks[2] - prev_ticks_[2];
       prev_ticks_ = cur_ticks;
       if (total_ticks <= 0) {
-        YB_LOG_EVERY_N_SECS(ERROR, 120) << Format("Failed to calculate CPU usage - "
-                                                 "invalid total CPU ticks: $0.", total_ticks);
+        YB_LOG_EVERY_N_SECS(DFATAL, 120)
+            << Format("Failed to calculate CPU usage - invalid total CPU ticks: $0.", total_ticks);
       } else {
         double cpu_usage_user = static_cast<double>(user_ticks) / total_ticks;
         double cpu_usage_system = static_cast<double>(system_ticks) / total_ticks;

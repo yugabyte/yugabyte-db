@@ -1351,8 +1351,8 @@ std::string DdlLogEntry::id() const {
 // ObjectLockInfo
 // ================================================================================================
 
-std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLease(
-    const NodeInstancePB& instance) {
+std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance) {
   auto l = LockForWrite();
   {
     std::lock_guard l(mutex_);
@@ -1360,7 +1360,7 @@ std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLea
   }
   if (l->pb.lease_info().live_lease() &&
       l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
-    return std::nullopt;
+    return l->pb.lease_info();
   }
   auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
   lease_info.set_live_lease(true);

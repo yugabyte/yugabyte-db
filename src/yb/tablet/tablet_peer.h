@@ -393,7 +393,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation>* operation);
 
   // Tells the tablet's log to garbage collect.
-  Status RunLogGC();
+  Status RunLogGC(bool rollover = false);
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().

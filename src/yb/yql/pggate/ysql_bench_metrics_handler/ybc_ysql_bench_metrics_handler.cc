@@ -110,7 +110,7 @@ int StartWebserver(WebserverWrapper *webserver_wrapper) {
       "/prometheus-metrics", "Metrics", PgPrometheusMetricsHandler, false, false);
   auto status = WithMaskedYsqlSignals([webserver]() { return webserver->Start(); });
   if (!status.ok()) {
-    LOG(ERROR) << "Error starting webserver: " << status.ToString();
+    LOG(DFATAL) << "Error starting webserver: " << status.ToString();
     return 1;
   }
 

@@ -29,6 +29,7 @@
 
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/ysql_lease.h"
 
 namespace yb {
 
@@ -96,7 +97,6 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
-    (AcquireObjectLock) \
     (ExportTxnSnapshot) \
     (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
@@ -109,15 +109,11 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (AcquireObjectLock) \
     (OpenTable) \
     (GetTableKeyRanges) \
     /**/
 
-
-struct YSQLLeaseInfo {
-  bool is_live;
-  uint64_t lease_epoch;
-};
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
@@ -141,7 +137,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
-  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
   YSQLLeaseInfo GetYSQLLeaseInfo() const;
 
   size_t TEST_SessionsCount();

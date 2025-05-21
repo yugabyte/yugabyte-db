@@ -104,7 +104,7 @@ void Synchronizer::EnsureWaitDone() {
     LOG(FATAL) << kErrorMsg;
 #else
     const int kWaitSec = 10;
-    YB_LOG_EVERY_N_SECS(ERROR, 1) << kErrorMsg << " Waiting up to " << kWaitSec << " seconds";
+    YB_LOG_EVERY_N_SECS(DFATAL, 1) << kErrorMsg << " Waiting up to " << kWaitSec << " seconds";
     CHECK_OK(WaitFor(MonoDelta::FromSeconds(kWaitSec)));
 #endif
   }

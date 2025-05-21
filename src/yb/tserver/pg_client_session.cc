@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/pg_client_session.h"
+#include <sys/types.h>
 
 #include <algorithm>
 #include <array>
@@ -42,8 +43,9 @@
 #include "yb/common/common_util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/pgsql_error.h"
-#include "yb/common/transaction_error.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction_error.h"
+#include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/rpc/lightweight_message.h"
@@ -1337,9 +1339,9 @@ class PgClientSession::Impl {
     PgCreateTable helper(req);
     RETURN_NOT_OK(helper.Prepare());
 
-  if (xcluster_context()) {
-    xcluster_context()->PrepareCreateTableHelper(req, helper);
-  }
+    if (xcluster_context()) {
+      xcluster_context()->PrepareCreateTableHelper(req, helper);
+    }
 
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
@@ -2323,7 +2325,7 @@ class PgClientSession::Impl {
     return status;
   }
 
-  Status AcquireObjectLock(
+  Status DoAcquireObjectLock(
       const PgAcquireObjectLockRequestPB& req, PgAcquireObjectLockResponsePB* resp,
       rpc::RpcContext* context) {
     RSTATUS_DCHECK(IsObjectLockingEnabled(), IllegalState, "Table Locking feature not enabled.");
@@ -2349,6 +2351,8 @@ class PgClientSession::Impl {
         << " lock_type: " << AsString(lock_type)
         << " req: " << req.ShortDebugString();
 
+    auto callback = MakeRpcOperationCompletionCallback(
+        std::move(*context), resp, nullptr /* clock */);
     if (IsTableLockTypeGlobal(lock_type)) {
       if (setup_session_result.is_plain) {
         plain_session_has_exclusive_object_locks_.store(true);
@@ -2357,16 +2361,25 @@ class PgClientSession::Impl {
           instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
           req.database_oid(), req.object_oid(), lock_type, lease_epoch_, context_.clock.get(),
           deadline, txn_meta_res->status_tablet);
-      auto status_future = MakeFuture<Status>([&](auto callback) {
-        client_.AcquireObjectLocksGlobalAsync(lock_req, callback, deadline);
-      });
-      return status_future.get();
+      client_.AcquireObjectLocksGlobalAsync(lock_req, std::move(callback), deadline);
+      return Status::OK();
     }
     auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
         instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
         req.database_oid(), req.object_oid(), lock_type, lease_epoch_, context_.clock.get(),
         deadline, txn_meta_res->status_tablet);
-    return ts_lock_manager()->AcquireObjectLocks(lock_req, deadline);
+    ts_lock_manager()->AcquireObjectLocksAsync(lock_req, deadline, std::move(callback));
+    return Status::OK();
+  }
+
+  void AcquireObjectLock(
+      const PgAcquireObjectLockRequestPB& req, PgAcquireObjectLockResponsePB* resp,
+      yb::rpc::RpcContext context) {
+    auto s = DoAcquireObjectLock(req, resp, &context);
+    if (!s.ok()) {
+      StatusToPB(s, resp->mutable_status());
+      context.RespondSuccess();
+    }
   }
 
   void StartShutdown() {
@@ -2446,7 +2459,7 @@ class PgClientSession::Impl {
           // If we failed to report the status of this DDL transaction, we can just log and ignore
           // it, as the poller in the YB-Master will figure out the status of this transaction using
           // the transaction status tablet and PG catalog.
-          ERROR_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
+          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
                       Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
         }
 
@@ -2461,8 +2474,8 @@ class PgClientSession::Impl {
           // (commit.has_value() is false), the purpose is to use the side effect of
           // WaitForDdlVerificationToFinish to trigger the start of a background task to
           // complete the DDL transaction at the DocDB side.
-          ERROR_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
-                       "WaitForDdlVerificationToFinish call failed");
+          WARN_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
+                      "WaitForDdlVerificationToFinish call failed");
         }
       }
     }
@@ -2671,7 +2684,8 @@ class PgClientSession::Impl {
       kind = PgClientSessionKind::kDdl;
       EnsureSession(kind, deadline);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
-          true /* use_transaction */, false /* use_regular_transaction_block */, deadline));
+          true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
+          options.priority()));
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline);
@@ -2893,8 +2907,10 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
+  // All DDLs use kHighestPriority unless specified otherwise.
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
-    bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline) {
+      bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline,
+      uint64_t priority = kHighPriTxnUpperBound) {
     if (!use_transaction) {
       return nullptr;
     }
@@ -2923,6 +2939,7 @@ class PgClientSession::Impl {
           ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
       txn = transaction_provider_.Take<PgClientSessionKind::kDdl>(deadline);
       RETURN_NOT_OK(txn->Init(isolation));
+      txn->SetPriority(priority);
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
       EnsureSession(kSessionKind, deadline)->SetTransaction(txn);
@@ -3145,7 +3162,7 @@ class PgClientSession::Impl {
           // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
           // for any table/index that are involved in a DDL transaction and start a background task
           // to complete the DDL transaction at the DocDB side.
-          LOG(ERROR) << "DdlAtomicityFinishTransaction failed: " << status;
+          LOG(DFATAL) << "DdlAtomicityFinishTransaction failed: " << status;
         }
         return MergeStatus(std::move(commit_status), std::move(status));
       }

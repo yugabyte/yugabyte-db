@@ -14,7 +14,7 @@ $$;
 CREATE PROCEDURE TEST_reset()
   LANGUAGE SQL AS
 $$
-  CALL yb_xcluster_ddl_replication.TEST_override_replication_role('source');
+  SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'source';
   DELETE FROM yb_xcluster_ddl_replication.ddl_queue;
   DELETE FROM yb_xcluster_ddl_replication.replicated_ddls;
 $$;
