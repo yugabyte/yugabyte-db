@@ -1224,16 +1224,19 @@ Status WaitUntilTabletHasLeader(
 }
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline) {
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready) {
   for (const auto& tablet_id : ListTabletIdsForTable(cluster, table_id)) {
-    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline));
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline, require_leader_is_ready));
   }
   return Status::OK();
 }
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout) {
-  return WaitForTableLeaders(cluster, table_id, CoarseMonoClock::Now() + timeout);
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout,
+    RequireLeaderIsReady require_leader_is_ready) {
+  return WaitForTableLeaders(
+      cluster, table_id, CoarseMonoClock::Now() + timeout, require_leader_is_ready);
 }
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
