@@ -1814,6 +1814,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       subTaskGroup.addSubTask(task);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+
+    createMarkUniverseForHealthScriptReUploadTask();
+
     return subTaskGroup;
   }
 
