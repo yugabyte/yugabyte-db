@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.Data;
@@ -176,7 +177,9 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             .map(
                 p ->
                     new NodeResp(
-                        p.getLastKnownPrivateIps().stream()
+                        Stream.concat(
+                                p.getLastKnownPrivateIps().stream(),
+                                p.getLastKnownBroadcastIps().stream())
                             .map(hp -> hp.getHost())
                             .collect(Collectors.toList())))
             .collect(Collectors.toList());
