@@ -49,13 +49,12 @@ In particular, [DDL changes](#making-ddl-changes) don't require the use of yb-ad
 {{% readfile "includes/semi-automatic-setup.md" %}}
 
 ## Monitor replication
-For information on monitoring xCluster replication, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
 
+For information on monitoring xCluster replication, refer to [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/).
 
 ## Add a database to a replication group
 
 {{% readfile "includes/transactional-add-db.md" %}}
-
 
 ## Remove a database from a replication group
 
@@ -66,6 +65,7 @@ For information on monitoring xCluster replication, refer to [Monitor xCluster](
 {{% readfile "includes/transactional-drop.md" %}}
 
 ## Making DDL changes
+
 When performing any DDL operation on databases using semi-automatic transactional xCluster replication (such as creating, altering, or dropping tables, indexes, or partitions), do the following:
 
 1. Execute the DDL on Primary.
