@@ -1571,7 +1571,7 @@ SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- for fetc
 
 Suggested change to the schema is to add the sharding key as the modulo of the hash of the timestamp column value, which gives a key in a range (for example, 0-15). This can change depending on the use case. This key will be used to distribute the data among various tablets and hence help in distributing the data evenly.
 
-This also requires modifying the range queries to include the modulo of the hash of timestamp column value is in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
+This also requires modifying the range queries to include the modulo of the hash of timestamp column value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
 
 ```sql
 CREATE TABLE orders (
