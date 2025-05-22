@@ -35,17 +35,24 @@ However, on-premises cron-based universes must be upgraded manually. To do this,
 
 ## Node provisioning
 
-[Legacy provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) workflows have been deprecated. Provision nodes for on-premises universes using the `node-agent-provision.sh` script. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+As of v2024.2, [legacy node provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) workflows have been deprecated. Going forward, provision nodes for on-premises universes using the `node-agent-provision.sh` script. For more information, refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
 To upgrade a running on-premises universe to automatic provisioning, follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
 
 ### Transparent hugepages
 
-Transparent hugepages (THP) should be enabled on nodes for optimal performance. Future versions of YugabyteDB Anywhere will flag universes without THP as unhealthy.
+As of May 2025 (and affecting all customers on all versions), there is updated guidance for Transparent Hugepages (THP). THP should be enabled on nodes for optimal performance.
 
-YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to use THP.
+The required settings are described in [Transparent hugepages](../../prepare/server-nodes-software/#transparent-hugepages). Verify that all your DB nodes are configured in Linux with these settings.
 
-For on-premises universes, THP settings will be set when you upgrade to automatic provisioning.
+Future versions of YugabyteDB Anywhere will flag universes lacking exactly thesewithout THP as mis-configured and/or unhealthy.
+
+Going forward, YBA will manage THP as follows.
+
+| Provider | Action |
+| :--- | :--- |
+| AWS, Google, Azure | For new universes, YBA automatically configures nodes with the correct THP settings.<br><br>For existing universes that lack THP or have THP mis-configured, YugabyteDB Anywhere will automatically configure THP as part any universe task that causes node re-provisioning (for example, upgrading Linux to apply security patches to nodes). |
+| On-premises | New nodes that are provisioned using [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/) are automatically configured with the correct THP settings.<br><br>For existing nodes that lack THP or have THP mis-configured, THP settings are automatically configured during node re-provisioning if you follow the procedure for boot disk replacement as described in [Patch and upgrade the system](../../manage-deployments/upgrade-nodes/). You can do this when performing a regular Linux security patch (monthly, quarterly). |
 
 ## Node agent
 
