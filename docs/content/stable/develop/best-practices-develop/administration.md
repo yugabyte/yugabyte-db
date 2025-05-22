@@ -28,6 +28,8 @@ If this flag is true, then the [memory division flag defaults](../../../referenc
 
 Note that although the default setting is false, when creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to true, unless you explicitly set it to false.
 
+For more details, refer to [Memory and tablet limits](../../../deploy/checklist/#memory-and-tablet-limits).
+
 ## Settings for CI and CD integration tests
 
 You can set certain flags to increase performance using YugabyteDB in CI and CD automated test scenarios as follows:

@@ -212,9 +212,9 @@ WriteQuery::WriteQuery(
     global_tablet_metrics_ = (*res)->metrics();
   }
 
-  metrics_ = std::make_shared<TabletMetrics*>(
-      GetAtomicFlag(&FLAGS_batch_tablet_metrics_update)
-          ? &scoped_tablet_metrics_ : global_tablet_metrics_);
+  metrics_ = std::make_shared<TabletMetricsHolder>(
+      GetAtomicFlag(&FLAGS_batch_tablet_metrics_update), global_tablet_metrics_,
+      &scoped_tablet_metrics_);
 }
 
 LWWritePB& WriteQuery::request() {
@@ -297,7 +297,7 @@ WriteQuery::~WriteQuery() {
   // Any metrics updated after destroying the WriteQuery
   // object cannot be sent with the response PB. So, update
   // global tablet metrics directly from now.
-  *metrics_ = global_tablet_metrics_;
+  metrics_->Reset();
 
   if (global_tablet_metrics_) {
     scoped_tablet_metrics_.MergeAndClear(global_tablet_metrics_);
@@ -339,8 +339,7 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     if (metrics_) {
       auto op_duration_usec =
           make_unsigned(MonoDelta(MonoTime::Now() - start_time_).ToMicroseconds());
-
-      (*metrics_)->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
+      metrics_->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
     }
   }
 
@@ -877,7 +876,7 @@ Status WriteQuery::DoTransactionalConflictsResolved() {
     safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
     read_time_ = ReadHybridTime::FromHybridTimeRange(
         {safe_time, tablet->clock()->NowRange().second});
-    (*metrics_)->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    metrics_->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
   } else if (prepare_result_.need_read_snapshot &&
              isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
     return STATUS_FORMAT(
@@ -898,7 +897,7 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   auto tablet = VERIFY_RESULT(tablet_safe());
   if (prepare_result_.need_read_snapshot && !read_time_) {
     // A read_time will be picked by the below ScopedReadOperation::Create() call.
-    (*metrics_)->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    metrics_->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
   }
   // For WriteQuery requests with execution mode kCql and kPgsql, we perform schema version checks
   // in two places:

@@ -243,7 +243,7 @@ Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE 
 
 ## Minimize the number of tablets you need
 
-Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [allowing for tablet replica overheads](#allowing-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
+Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [Allow for tablet replica overheads](../administration/#allow-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
 
 Each table and index consists of several tablets based on the [--ysql_num_shards_per_tserver](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 

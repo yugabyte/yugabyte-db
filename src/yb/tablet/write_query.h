@@ -121,8 +121,6 @@ class WriteQuery {
 
   uint64_t request_start_us() const { return request_start_us_; }
 
-  std::shared_ptr<TabletMetrics*> metrics() { return metrics_; }
-
   PgsqlResponsePB* GetPgsqlResponseForMetricsCapture() const;
   ScopedTabletMetrics scoped_tablet_metrics() { return scoped_tablet_metrics_; }
   docdb::DocDBStatistics scoped_statistics() { return scoped_statistics_; }
@@ -260,7 +258,7 @@ class WriteQuery {
   // Stores either scoped_tablet_metrics_ or global_tablet_metrics_
   // depending on the batch_tablet_metrics_update gflag. This points
   // to global_tablet_metrics_ once the WriteQuery object is destroyed.
-  std::shared_ptr<TabletMetrics*> metrics_;
+  std::shared_ptr<TabletMetricsHolder> metrics_;
   docdb::DocDBStatistics scoped_statistics_;
 };
 
