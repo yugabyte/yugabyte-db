@@ -1987,8 +1987,7 @@ TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {
   }
 }
 
-// TODO(#27064): Enable this test once the underlying bug is fixed.
-TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST(DocdbNextColumnAboveLastUsedColumn)) {
+TEST_F(XClusterDDLReplicationTest, DocdbNextColumnAboveLastUsedColumn) {
   // This test checks the hard case of whether or not backup and
   // restore preserves the next DocDB column ID correctly: when the
   // next DocDB column ID is higher than the last undeleted Postgres
