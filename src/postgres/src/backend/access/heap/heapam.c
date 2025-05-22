@@ -8356,16 +8356,8 @@ index_delete_sort(TM_IndexDeleteOp *delstate)
 	const int	gaps[9] = {1968, 861, 336, 112, 48, 21, 7, 3, 1};
 
 	/* Think carefully before changing anything here -- keep swaps cheap */
-#ifdef YB_TODO
-	/*
-	 * NEIL: Revisit this to have a permanent fix.
-	 * - ItemPointer is part of TM_IndexDelete.
-	 * - yb_item is added to ItemPointer and increase the size of
-	 *   TM_IndexDelete.
-	 */
 	StaticAssertStmt(sizeof(TM_IndexDelete) <= 8,
 					 "element size exceeds 8 bytes");
-#endif
 
 	for (int g = 0; g < lengthof(gaps); g++)
 	{

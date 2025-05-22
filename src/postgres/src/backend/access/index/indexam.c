@@ -111,16 +111,6 @@ do { \
 			 CppAsString(pname), RelationGetRelationName(indexRelation)); \
 } while(0)
 
-#ifdef YB_TODO
-#define CHECK_REL_PROCEDURE2(pname1, pname2) \
-do { \
-	if (indexRelation->rd_indam->pname1 == NULL && \
-		indexRelation->rd_indam->pname2 == NULL) \
-		elog(ERROR, "functions %s/%s are not defined for index %s", \
-			 CppAsString(pname1), CppAsString(pname2), RelationGetRelationName(indexRelation)); \
-} while(0)
-#endif
-
 #define CHECK_SCAN_PROCEDURE(pname) \
 do { \
 	if (scan->indexRelation->rd_indam->pname == NULL) \
