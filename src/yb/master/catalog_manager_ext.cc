@@ -194,8 +194,8 @@ struct TableWithTabletsEntries {
     table_entry.AppendToString(&output);
     *table_backup_entry->mutable_entry() =
         ToSysRowEntry(table_id, SysRowEntryType::TABLE, std::move(output));
-    if (!table_entry.schema().depricated_pgschema_name().empty()) {
-      table_backup_entry->set_pg_schema_name(table_entry.schema().depricated_pgschema_name());
+    if (!table_entry.schema().deprecated_pgschema_name().empty()) {
+      table_backup_entry->set_pg_schema_name(table_entry.schema().deprecated_pgschema_name());
     }
     for (const auto& tablet_entry : tablets_entries) {
       std::string output;

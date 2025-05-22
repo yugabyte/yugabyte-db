@@ -672,8 +672,8 @@ void FillDDLInfo(
   }
 
   row_message->set_schema_version(schema_version);
-  // SchemaPB::pgschema_name is depricated. See GHI: #12770.
-  row_message->set_pgschema_name(schema_pb.depricated_pgschema_name());
+  // SchemaPB::pgschema_name is deprecated. See GHI: #12770.
+  row_message->set_pgschema_name(schema_pb.deprecated_pgschema_name());
   CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb =
       row_message->mutable_schema()->mutable_tab_info();
 

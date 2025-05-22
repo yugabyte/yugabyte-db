@@ -874,8 +874,8 @@ bool IsPgCronJobTable(const CreateTableRequestPB& req) {
   }
 
   // (DEPRECATE_EOL 2.27) In upgrade mode - process request from old TS.
-  return req.has_schema() &&
-         req.schema().depricated_pgschema_name() == "cron" && req.name() == "job";
+  return req.has_schema() && req.schema().deprecated_pgschema_name() == "cron" &&
+         req.name() == "job";
 }
 
 bool IsXClusterDDLReplicationTable(const CreateTableRequestPB& req) {
@@ -885,9 +885,9 @@ bool IsXClusterDDLReplicationTable(const CreateTableRequestPB& req) {
 
   // (DEPRECATE_EOL 2.27) In upgrade mode - process request from old TS.
   return req.has_schema() &&
-         req.schema().depricated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         req.schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          (req.name() == xcluster::kDDLQueueTableName ||
-             req.name() == xcluster::kDDLReplicatedTableName);
+          req.name() == xcluster::kDDLReplicatedTableName);
 }
 
 Result<QLWriteRequestPB::QLStmtType> ToQLStmtType(
@@ -5542,7 +5542,7 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   SchemaToPB(schema, metadata->mutable_schema());
   if (FLAGS_TEST_create_table_with_empty_pgschema_name) {
     // Use empty string (default proto val) so that this passes has_pgschema_name() checks.
-    metadata->mutable_schema()->set_depricated_pgschema_name("");
+    metadata->mutable_schema()->set_deprecated_pgschema_name("");
   }
   partition_schema.ToPB(metadata->mutable_partition_schema());
   // For index table, set index details (indexed table id and whether the index is local).
@@ -7831,9 +7831,8 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
     // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
     if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-        resp->schema().depricated_pgschema_name().empty() &&
-        !table->is_system() && !table->IsSequencesSystemTable() &&
-        !table->IsColocationParentTable()) {
+        resp->schema().deprecated_pgschema_name().empty() && !table->is_system() &&
+        !table->IsSequencesSystemTable() && !table->IsColocationParentTable()) {
       TRACE("Acquired catalog manager lock for schema name lookup");
 
       auto pgschema_name = GetPgSchemaName(table->id(), l.data());
@@ -7842,7 +7841,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
             "Unable to find schema name for YSQL table $0.$1 due to error: $2",
             table->namespace_name(), table->name(), pgschema_name.ToString());
       } else {
-        resp->mutable_schema()->set_depricated_pgschema_name(*pgschema_name);
+        resp->mutable_schema()->set_deprecated_pgschema_name(*pgschema_name);
       }
     }
 
@@ -8136,7 +8135,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       table->set_indexed_table_id(table_info->indexed_table_id());
     }
     table->set_state(ltm->pb.state());
-    table->set_pgschema_name(ltm->schema().depricated_pgschema_name());
+    table->set_pgschema_name(ltm->schema().deprecated_pgschema_name());
     if (table_info->colocated()) {
       table->mutable_colocated_info()->set_colocated(true);
       if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
@@ -8190,7 +8189,7 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
     auto& table_pb = l->pb;
 
     if (!l->started_deleting() && table_pb.namespace_id() == ns->id() &&
-        boost::iequals(table_pb.schema().depricated_pgschema_name(), pg_schema_name) &&
+        boost::iequals(table_pb.schema().deprecated_pgschema_name(), pg_schema_name) &&
         boost::iequals(table_pb.name(), table_name)) {
       return table;
     }

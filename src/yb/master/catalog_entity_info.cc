@@ -511,11 +511,11 @@ Result<Schema> TableInfo::GetSchema() const {
 }
 
 bool TableInfo::has_pgschema_name() const {
-  return LockForRead()->schema().has_depricated_pgschema_name();
+  return LockForRead()->schema().has_deprecated_pgschema_name();
 }
 
 const string TableInfo::pgschema_name() const {
-  return LockForRead()->schema().depricated_pgschema_name();
+  return LockForRead()->schema().deprecated_pgschema_name();
 }
 
 bool TableInfo::has_pg_type_oid() const {
@@ -1211,13 +1211,13 @@ Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
 
 bool PersistentTableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().depricated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLQueueTableName;
 }
 
 bool PersistentTableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().depricated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLReplicatedTableName;
 }
 
