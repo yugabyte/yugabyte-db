@@ -413,12 +413,7 @@ AcquireObjectLockRequestPB TserverRequestFor(
   req.set_txn_id(master_request.txn_id());
   req.set_subtxn_id(master_request.subtxn_id());
   req.set_session_host_uuid(master_request.session_host_uuid());
-  for (auto& entry : master_request.object_locks()) {
-    auto* lock = req.add_object_locks();
-    lock->set_database_oid(entry.database_oid());
-    lock->set_object_oid(entry.object_oid());
-    lock->set_lock_type(entry.lock_type());
-  }
+  req.mutable_object_locks()->CopyFrom(master_request.object_locks());
   req.set_lease_epoch(master_request.lease_epoch());
   if (master_request.has_ignore_after_hybrid_time()) {
     req.set_ignore_after_hybrid_time(master_request.ignore_after_hybrid_time());
@@ -453,19 +448,6 @@ ReleaseObjectLockRequestPB TserverRequestFor(
     req.mutable_ash_metadata()->CopyFrom(master_request.ash_metadata());
   }
   return req;
-}
-
-void ExportObjectLocksForTxn(
-    uint64_t db_id, const master::SysObjectLockEntryPB_ObjectLocksMapPB& objects_map,
-    tserver::AcquireObjectLockRequestPB& req) {
-  for (const auto& [object_id, lock_types] : objects_map.objects()) {
-    for (const auto& type : lock_types.lock_type()) {
-      auto* lock = req.add_object_locks();
-      lock->set_database_oid(db_id);
-      lock->set_object_oid(object_id);
-      lock->set_lock_type(TableLockType(type));
-    }
-  }
 }
 
 template <class Resp>
@@ -637,15 +619,9 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   auto lock = object_lock_info->LockForWrite();
   auto& txns_map = (*lock.mutable_data()->pb.mutable_lease_epochs())[lease_epoch];
   auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
-  auto& object_map = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
+  auto& object_locks_list = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
   for (const auto& object_lock : req.object_locks()) {
-    RSTATUS_DCHECK(
-        !subtxns_map.has_db_id() || subtxns_map.db_id() == object_lock.database_oid(),
-        IllegalState, "Multiple db ids found for a txn: $0 vs $1",
-        subtxns_map.db_id(), object_lock.database_oid());
-    subtxns_map.set_db_id(object_lock.database_oid());
-    auto& types = (*object_map.mutable_objects())[object_lock.object_oid()];
-    types.add_lock_type(object_lock.lock_type());
+    object_locks_list.add_locks()->CopyFrom(object_lock);
   }
   RETURN_NOT_OK(catalog_manager_.sys_catalog()->Upsert(epoch, object_lock_info));
   lock.Commit();
@@ -727,14 +703,13 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnloc
     }
     for (const auto& [txn_id_str, subtxns_map] : txns_map_it->second.transactions()) {
       auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
-      const auto db_id = subtxns_map.db_id();
-      for (const auto& [subtxn_id, objects_map] : subtxns_map.subtxns()) {
-        auto* lock_entries_pb = entries.add_lock_entries();
-        lock_entries_pb->set_session_host_uuid(host_uuid);
-        lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
-        lock_entries_pb->set_subtxn_id(subtxn_id);
-        ExportObjectLocksForTxn(db_id, objects_map, *lock_entries_pb);
-      }
+      for (const auto& [subtxn_id, object_locks_list] : subtxns_map.subtxns()) {
+          auto* lock_entries_pb = entries.add_lock_entries();
+          lock_entries_pb->set_session_host_uuid(host_uuid);
+          lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
+          lock_entries_pb->set_subtxn_id(subtxn_id);
+          lock_entries_pb->mutable_object_locks()->MergeFrom(object_locks_list.locks());
+        }
     }
   }
   VLOG(3) << "Exported " << yb::ToString(entries);
