@@ -1064,8 +1064,7 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 			.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch,
 			.ConstructArrayDatum = &YbConstructArrayDatum,
 			.CheckUserMap = &check_usermap,
-			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
-			.CheckForInterrupts = &YbCheckForInterrupts
+			.PgstatReportWaitStart = &yb_pgstat_report_wait_start
 		};
 		YbcPgAshConfig ash_config = {
 			.metadata = &MyProc->yb_ash_metadata,

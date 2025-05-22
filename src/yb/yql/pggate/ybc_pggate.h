@@ -116,8 +116,6 @@ const unsigned char* YBCGetLocalTserverUuid();
 // Get access to callbacks.
 const YbcPgCallbacks* YBCGetPgCallbacks();
 
-void YBCCheckForInterrupts();
-
 int64_t YBCGetPgggateCurrentAllocatedBytes();
 
 int64_t YBCGetActualHeapSizeBytes();

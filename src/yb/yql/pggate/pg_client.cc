@@ -204,25 +204,16 @@ struct PerformData : public FetchBigDataCallback {
   }
 
   template <class Res>
-  Res ResponseReady(MonoDelta max_timeout = MonoDelta()) {
+  Res ResponseReady() {
     using Traits = ResponseReadyTraits<Res>;
     UniqueLock lock(exchange_mutex);
     if (!exchange_result) {
-      if (Traits::AllowNotReady() && !exchange->ResponseReady() && !max_timeout.Initialized()) {
+      if (Traits::AllowNotReady() && !exchange->ResponseReady()) {
         return Traits::NotReady();
       }
-      auto wait_until = deadline;
-      if (max_timeout.Initialized()) {
-        wait_until = std::min(CoarseMonoClock::now() + max_timeout, deadline);
-      }
-      exchange_result = exchange->FetchResponse(wait_until);
+      exchange_result = exchange->FetchResponse(deadline);
     }
     if (!exchange_result->ok()) {
-      if (Traits::AllowNotReady() && exchange_result->status().IsTimedOut() &&
-          deadline > CoarseMonoClock::now()) {
-        exchange_result.reset();
-        return Traits::NotReady();
-      }
       return Traits::FromStatus(exchange_result->status());
     }
     auto slice = **exchange_result;
@@ -1909,13 +1900,6 @@ Status PgClient::SetCronLastMinute(int64_t last_minute) {
 
 Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(); }
 
-bool PerformExchangeFuture::WaitFor(MonoDelta duration) const {
-  if (value_) {
-    return true;
-  }
-  return data_->ResponseReady<bool>(duration);
-}
-
 void PerformExchangeFuture::wait() const {
   if (!value_) {
     value_ = MakePerformResult(data_.get(), data_->CompletePerform());
@@ -1949,20 +1933,6 @@ bool Ready(const PerformExchangeFuture& future) {
 bool Ready(const PerformResultFuture& future) {
   return std::visit([](const auto& future) {
     return Ready(future);
-  }, future);
-}
-
-bool WaitFor(const std::future<PerformResult>& future, MonoDelta duration) {
-  return future.wait_for(duration.ToSteadyDuration()) == std::future_status::ready;
-}
-
-bool WaitFor(const PerformExchangeFuture& future, MonoDelta duration) {
-  return future.WaitFor(duration);
-}
-
-bool WaitFor(const PerformResultFuture& future, MonoDelta duration) {
-  return std::visit([duration](const auto& future) {
-    return WaitFor(future, duration);
   }, future);
 }
 
