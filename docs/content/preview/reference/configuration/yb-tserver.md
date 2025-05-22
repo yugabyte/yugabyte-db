@@ -97,6 +97,16 @@ Default: `5000`
 
 Specifies the queue size for the tablet server to serve reads and writes from applications.
 
+##### --time_source
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/tp idea="1807">}}
+Default: `""`
+{{% /tags/wrap %}}
+
+Specifies the time source used by the database. Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+
 ### PostgreSQL server options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
@@ -390,15 +400,6 @@ To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
 Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
 
-##### --time_source
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-{{<tags/feature/tp idea="1807">}}
-Default: `""`
-{{% /tags/wrap %}}
-
-Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 ### Webserver configuration
 
