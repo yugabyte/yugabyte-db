@@ -107,6 +107,9 @@ service TabletServerService {
   // a persisted intent. These intents may correspond to explicit or implicit locks.
   rpc GetLockStatus(GetLockStatusRequestPB) returns (GetLockStatusResponsePB);
 
+  rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
+      returns (GetObjectLockStatusResponsePB);
+
   rpc CancelTransaction(CancelTransactionRequestPB) returns (CancelTransactionResponsePB);
 
   // Returns the schema version on the XCluster consumer side that is
@@ -197,6 +200,16 @@ message GetLockStatusResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 
   repeated TabletLockInfoPB tablet_lock_infos = 4;
+}
+
+
+message GetObjectLockStatusRequestPB {
+}
+
+message GetObjectLockStatusResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  repeated ObjectLockInfoPB object_lock_infos = 2;
 }
 
 message GetYSQLLeaseInfoRequestPB {

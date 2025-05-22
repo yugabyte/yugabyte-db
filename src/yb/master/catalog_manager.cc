@@ -6319,6 +6319,21 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   return Status::OK();
 }
 
+Status CatalogManager::GetObjectLockStatus(
+    const GetObjectLockStatusRequestPB* req, GetObjectLockStatusResponsePB* resp) {
+  std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, this);
+    if (!l.IsInitializedAndIsLeader()) {
+      return STATUS(IllegalState, "Fail to get object lock status, master is not the leader");
+    }
+    local_lock_manager = object_lock_info_manager_->ts_local_lock_manager();
+  }
+  local_lock_manager->PopulateObjectLocks(resp->mutable_object_lock_infos());
+  VLOG(3) << "GetObjectLockStatus: " << resp->ShortDebugString();
+  return Status::OK();
+}
+
 void CatalogManager::AcquireObjectLocksGlobal(
     const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {

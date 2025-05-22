@@ -36,6 +36,30 @@ namespace tserver {
 
 YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 
+struct ObjectLockContext {
+  ObjectLockContext(
+      TransactionId txn_id, SubTransactionId subtxn_id, uint64_t database_oid,
+      uint64_t relation_oid, uint64_t object_oid, uint64_t object_sub_oid,
+      TableLockType lock_type)
+      : txn_id(txn_id), subtxn_id(subtxn_id), database_oid(database_oid),
+        relation_oid(relation_oid), object_oid(object_oid), object_sub_oid(object_sub_oid),
+        lock_type(lock_type) {}
+
+  YB_STRUCT_DEFINE_HASH(
+      ObjectLockContext, txn_id, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid,
+      lock_type);
+
+  auto operator<=>(const ObjectLockContext&) const = default;
+
+  TransactionId txn_id;
+  SubTransactionId subtxn_id;
+  uint64_t database_oid;
+  uint64_t relation_oid;
+  uint64_t object_oid;
+  uint64_t object_sub_oid;
+  TableLockType lock_type;
+};
+
 // LockManager for acquiring table/object locks of type TableLockType on a given object id.
 // TSLocalLockManager uses LockManagerImpl<ObjectLockPrefix> to acheive the locking/unlocking
 // behavior, yet the scope of the object lock is not just limited to the scope of the lock rpc
@@ -94,6 +118,9 @@ class TSLocalLockManager {
   bool IsBootstrapped() const;
 
   server::ClockPtr clock() const;
+
+  void PopulateObjectLocks(
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const;
 
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;

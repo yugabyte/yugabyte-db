@@ -3362,6 +3362,18 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetObjectLockStatus(const GetObjectLockStatusRequestPB* req,
+                                            GetObjectLockStatusResponsePB* resp,
+                                            rpc::RpcContext context) {
+  auto ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found."), &context);
+  }
+  ts_local_lock_manager->PopulateObjectLocks(resp->mutable_object_lock_infos());
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {

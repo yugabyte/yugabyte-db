@@ -545,6 +545,8 @@ message PgGetLockStatusResponsePB {
 
   // Map of transactions keyed by the host node uuid.
   map<string, TransactionList> transactions_by_node = 3;
+
+  repeated ObjectLockInfoPB object_lock_infos = 4;
 }
 
 message PgGetReplicationSlotRequestPB {
