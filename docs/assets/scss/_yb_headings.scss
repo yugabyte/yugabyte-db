@@ -236,8 +236,8 @@ body.configuration {
   .td-content {
     h2,
     .h2,
-    h3,
-    .h3 {
+    *:not(h2) + h3,
+    *:not(.h2)  + .h3 {
       margin-top: 96px;
     }
 
