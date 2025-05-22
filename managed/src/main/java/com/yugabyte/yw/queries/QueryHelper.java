@@ -339,16 +339,17 @@ public class QueryHelper {
                   // Defining values to reuse
                   double X_a = previousQueryObj.get("mean_time").asDouble();
                   double X_b = queryObject.get("mean_time").asDouble();
-                  int n_a = previousQueryObj.get("calls").asInt();
-                  int n_b = queryObject.get("calls").asInt();
+                  long n_a = previousQueryObj.get("calls").asLong();
+                  long n_b = queryObject.get("calls").asLong();
                   double S_a = previousQueryObj.get("stddev_time").asDouble();
                   double S_b = queryObject.get("stddev_time").asDouble();
 
                   double totalTime =
                       previousQueryObj.get("total_time").asDouble()
                           + queryObject.get("total_time").asDouble();
-                  int totalCalls = n_a + n_b;
-                  int rows = previousQueryObj.get("rows").asInt() + queryObject.get("rows").asInt();
+                  long totalCalls = n_a + n_b;
+                  long rows =
+                      previousQueryObj.get("rows").asLong() + queryObject.get("rows").asLong();
                   double minTime =
                       Math.min(
                           previousQueryObj.get("min_time").asDouble(),
