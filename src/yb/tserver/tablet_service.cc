@@ -242,10 +242,6 @@ DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
 DEFINE_test_flag(
     string, mini_cluster_pg_host_port, "", "The PG host:port used in PostgresMiniclusterTest");
 
-DEFINE_test_flag(
-    int32, clone_pg_schema_inject_latency_ms, 0,
-    "Number of milliseconds the clone state manager will sleep in CloneNamespace.");
-
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
     "If true, setup an error status in AlterSchema and respond success to rpc call. "
     "This failure should not cause the TServer to crash but "
