@@ -1580,7 +1580,10 @@ CREATE TABLE orders (
     created_at timestamp
 );
 CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) HASH, created_at DESC);
+```
+And a related read query might look like the following:
 
+```sql
 SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- fetch orders for the previous month
 ```
 
