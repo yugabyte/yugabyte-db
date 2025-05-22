@@ -215,7 +215,7 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 {{% tags/wrap %}}
 
 
-Default: true
+Default: `true`
 {{% /tags/wrap %}}
 
 PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
@@ -230,7 +230,7 @@ Bitmap scans are only supported for LSM indexes.
 
 {{% tags/wrap %}}
 {{<tags/feature/tp>}}
-Default: false
+Default: `false`
 {{% /tags/wrap %}}
 
 Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
@@ -247,7 +247,7 @@ Enables or disables the query planner's use of bitmap scans for YugabyteDB relat
 {{% tags/wrap %}}
 
 
-Default: 1024
+Default: `1024`
 {{% /tags/wrap %}}
 
 Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
@@ -257,7 +257,7 @@ Set the size of a tuple batch that's taken from the outer side of a [batched nes
 {{% tags/wrap %}}
 
 
-Default: true
+Default: `true`
 {{% /tags/wrap %}}
 
 Enable or disable the query planner's use of batched nested loop join.
@@ -266,7 +266,7 @@ Enable or disable the query planner's use of batched nested loop join.
 
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="483">}}
-Default: false
+Default: `false`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
@@ -277,7 +277,7 @@ When enabling the cost based optimizer, ensure that [packed row](../../../archit
 
 {{% tags/wrap %}}
 {{<tags/feature/tp>}}
-Default: false
+Default: `false`
 {{% /tags/wrap %}}
 
 Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
@@ -286,7 +286,7 @@ Enables use of the PostgreSQL selectivity estimation, which uses table statistic
 
 {{% tags/wrap %}}
 {{<tags/feature/tp>}}
-Default: 0
+Default: `0`
 {{% /tags/wrap %}}
 
 Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
@@ -299,7 +299,7 @@ See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If th
 
 {{% tags/wrap %}}
 {{<tags/feature/tp>}}
-Default: 1024
+Default: `1024`
 {{% /tags/wrap %}}
 
 Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
@@ -311,7 +311,7 @@ See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
 {{<tags/feature/restart-needed>}}
-Default: true
+Default: `true`
 {{% /tags/wrap %}}
 
 When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
@@ -321,7 +321,7 @@ When set to true, tables and indexes are hash-partitioned based on the first col
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="1455">}}
 {{<tags/feature/restart-needed>}}
-Default: 0 (disabled)
+Default: `0` (disabled)
 {{% /tags/wrap %}}
 
 Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
@@ -338,7 +338,7 @@ The higher the number, the more batching is done. 1024 is recommended.
 {{% tags/wrap %}}
 
 
-Default: false
+Default: `false`
 {{% /tags/wrap %}}
 
 Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
@@ -348,7 +348,7 @@ Controls whether or not reading from followers is enabled. For more information,
 {{% tags/wrap %}}
 
 
-Default: 30000 (30 seconds)
+Default: `30000` (30 seconds)
 {{% /tags/wrap %}}
 
 Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
@@ -358,7 +358,7 @@ Sets the maximum allowable staleness. Although the default is recommended, you c
 {{% tags/wrap %}}
 
 
-Default: false
+Default: `false`
 {{% /tags/wrap %}}
 
 Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
@@ -382,6 +382,7 @@ See [transaction isolation levels](../../../architecture/transactions/isolation-
 
 Default: `true`
 {{% /tags/wrap %}}
+
 Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
 
 This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
@@ -391,7 +392,7 @@ This parameter can only be configured during cluster startup, and adjusting this
 {{% tags/wrap %}}
 
 
-Default: 0
+Default: `0`
 {{% /tags/wrap %}}
 
 Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
@@ -399,7 +400,6 @@ Enables [time travel queries](../../../manage/backup-restore/time-travel-query/)
 To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
 Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
-
 
 ### Webserver configuration
 
@@ -431,7 +431,7 @@ The port for monitoring the web server.
 Default: The `www` directory in the YugabyteDB home directory.
 {{% /tags/wrap %}}
 
-The monitoring web server home directory..
+The monitoring web server home directory.
 
 ##### --webserver_certificate_file
 
@@ -446,7 +446,6 @@ Location of the SSL certificate file (in .pem format) to use for the web server.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-
 Default: `""`
 {{% /tags/wrap %}}
 
@@ -756,7 +755,9 @@ In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of
 
 ##### --fs_data_dirs
 
-{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{% /tags/wrap %}}
 
 Specifies a comma-separated list of mount directories, where yb-tserver will add a `yb-data/tserver` data directory, `tserver.err`, `tserver.out`, and `pg_data` directory.
 
@@ -863,10 +864,12 @@ Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabl
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-Default: `-1`, where the number of shards is determined at runtime, as follows:
+Default: `-1`
 {{% /tags/wrap %}}
 
 The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
+
+The number of shards is determined at runtime, as follows:
 
 - If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
   - The default value is considered as `1`.
@@ -892,10 +895,12 @@ Clusters created using yugabyted always use a default value of `1`.
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-Default: `-1`, where the number of shards is determined at runtime, as follows:
+Default: `-1`
 {{% /tags/wrap %}}
 
 The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
+
+The number of shards is determined at runtime, as follows:
 
 - If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
   - The default value is considered as `1`.
@@ -1101,7 +1106,7 @@ The number of tablet replicas that each GiB reserved by YB-TServers for tablet o
 {{% tags/wrap %}}
 
 
-Default: true
+Default: `true`
 {{% /tags/wrap %}}
 
 Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will roll back the changes made to the DocDB system catalog.
@@ -1117,7 +1122,7 @@ Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB 
 {{% tags/wrap %}}
 
 
-Default: true
+Default: `true`
 {{% /tags/wrap %}}
 
 If set, at the end of a DDL operation the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
@@ -1133,7 +1138,7 @@ This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`,
 {{% tags/wrap %}}
 
 
-Default: true
+Default: `true`
 {{% /tags/wrap %}}
 
 If set, DDL transactions will wait for DDL verification to complete before returning to the client.
@@ -1584,7 +1589,7 @@ Controls whether to use the PostgreSQL relcache init file, which caches critical
 {{% tags/wrap %}}
 
 
-Default: -1 (disabled). Minimum: 128 bytes.
+Default: `-1` (disabled). Minimum: 128 bytes.
 {{% /tags/wrap %}}
 
 Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
@@ -1942,8 +1947,10 @@ When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-
 {{% tags/wrap %}}
 
 
-Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores, and so on.)
+Default: `-1`
 {{% /tags/wrap %}}
+
+`-1` indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores, and so on.
 
 {{< note title="Note" >}}
 
@@ -1996,6 +2003,7 @@ If `enable_wait_queues=true`, this controls the rate at which each tablet's wait
 
 Default: `true`
 {{% /tags/wrap %}}
+
 Enable the per database catalog version mode. A DDL statement that
 affects the current database can only increment catalog version for
 that database.
@@ -2075,7 +2083,7 @@ To learn about advisory locks, see [Advisory locks](../../../explore/transaction
 {{% tags/wrap %}}
 {{<tags/feature/tp>}}
 {{<tags/feature/t-server>}}
-Default: false
+Default: `false`
 {{% /tags/wrap %}}
 
 Enables advisory locking.
@@ -2087,7 +2095,7 @@ This value must match on all YB-Master and YB-TServer configurations of a Yugaby
 {{% tags/wrap %}}
 
 
-Default: 1
+Default: `1`
 {{% /tags/wrap %}}
 
 Number of tablets used for the advisory locks table. It must be set before ysql_yb_enable_advisory_locks is set to true on the cluster.
@@ -2110,7 +2118,7 @@ Adding flags to this list doesn't automatically change any settings. It only gra
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: 86400000 (1 day)
+Default: `86400000` (1 day)
 {{% /tags/wrap %}}
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
@@ -2119,7 +2127,7 @@ Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 {{% tags/wrap %}}
 
 
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
+Default: `-1`, where the system automatically calculates the value to be approximately 1 second.
 {{% /tags/wrap %}}
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
@@ -2129,7 +2137,7 @@ The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms]
 {{% tags/wrap %}}
 
 
-Default: 128
+Default: `128`
 {{% /tags/wrap %}}
 
 The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
@@ -2368,7 +2376,9 @@ Deprecated. Use `--ysql_pg_conf_csv` instead.
 
 ##### --ysql_pg_conf_csv
 
-{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{% /tags/wrap %}}
 
 Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file. If internal quotation marks are required, surround each configuration pair having single quotation marks with double quotation marks.
 
@@ -2488,7 +2498,7 @@ For details on the expected behaviour when used with the sequence cache clause, 
 
 {{% tags/wrap %}}
 {{<tags/feature/tp>}}
-Default: 0
+Default: `0`
 {{% /tags/wrap %}}
 
 Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
