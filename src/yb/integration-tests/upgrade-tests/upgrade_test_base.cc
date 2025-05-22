@@ -185,15 +185,6 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-// Add the flag_name to undefok list, so that it can be set on all versions even if the version does
-// not contain the flag. If the flag_list already contains an undefok flag, append to it, else
-// insert a new entry.
-void AddUnDefOkAndSetFlag(
-    std::vector<std::string>& flag_list, const std::string& flag_name,
-    const std::string& flag_value) {
-  AppendCsvFlagValue(flag_list, "undefok", flag_name);
-  flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
-}
 
 void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
 
@@ -266,6 +257,16 @@ Status UpgradeTestBase::StartClusterInOldVersion() {
   default_opts.num_tablet_servers = 3;
 
   return StartClusterInOldVersion(default_opts);
+}
+
+// Add the flag_name to undefok list, so that it can be set on all versions even if the version does
+// not contain the flag. If the flag_list already contains an undefok flag, append to it, else
+// insert a new entry.
+void UpgradeTestBase::AddUnDefOkAndSetFlag(
+    std::vector<std::string>& flag_list, const std::string& flag_name,
+    const std::string& flag_value) {
+  AppendCsvFlagValue(flag_list, "undefok", flag_name);
+  flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
 }
 
 void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {

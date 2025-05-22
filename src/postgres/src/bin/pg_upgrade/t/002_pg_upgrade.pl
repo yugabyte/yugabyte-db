@@ -164,6 +164,9 @@ else
 my $newnode = PostgreSQL::Test::Cluster->new('new_node');
 $newnode->init(%node_params);
 
+# Stabilize stats for comparison.
+$newnode->append_conf('postgresql.conf', 'autovacuum = off');
+
 my $newbindir = $newnode->config_data('--bindir');
 my $oldbindir = $oldnode->config_data('--bindir');
 
@@ -196,6 +199,10 @@ if (defined($ENV{oldinstall}))
 			"ran version adaptation commands for database $updb");
 	}
 }
+
+# Stabilize stats before pg_dumpall.
+$oldnode->append_conf('postgresql.conf', 'autovacuum = off');
+$oldnode->restart;
 
 # Take a dump before performing the upgrade as a base comparison. Note
 # that we need to use pg_dumpall from the new node here.

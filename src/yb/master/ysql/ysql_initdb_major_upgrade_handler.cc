@@ -60,6 +60,9 @@ DEFINE_RUNTIME_string(ysql_major_upgrade_user, "yugabyte_upgrade",
     "This user should have superuser privileges and the password must be placed in the `.pgpass` "
     "file on all yb-master nodes.");
 
+DEFINE_RUNTIME_bool(ysql_upgrade_import_stats, false,
+    "Import relation and attribute stats as part of the YSQL Major upgrade");
+
 DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
     "Fail the cleanup of the previous version ysql catalog");
 
@@ -446,6 +449,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   pg_upgrade_params.new_version_socket_dir =
       PgDeriveSocketDir(HostPort(pg_conf.listen_addresses, pg_conf.pg_port));
   pg_upgrade_params.new_version_pg_port = pg_conf.pg_port;
+  pg_upgrade_params.no_statistics = !FLAGS_ysql_upgrade_import_stats;
 
   bool local_ts = false;
   auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver(&local_ts));

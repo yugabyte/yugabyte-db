@@ -70,6 +70,7 @@ enum _dumpPreparedQueries
 	PREPQUERY_DUMPOPR,
 	PREPQUERY_DUMPRANGETYPE,
 	PREPQUERY_DUMPTABLEATTACH,
+	PREPQUERY_GETATTRIBUTESTATS,
 	PREPQUERY_GETCOLUMNACLS,
 	PREPQUERY_GETDOMAINCONSTRAINTS,
 	NUM_PREP_QUERIES			/* must be last */
@@ -154,6 +155,7 @@ typedef struct _restoreOptions
 	/* flags derived from the user-settable flags */
 	bool		dumpSchema;
 	bool		dumpData;
+	bool		dumpStatistics;
 } RestoreOptions;
 
 typedef struct _dumpOptions
@@ -202,6 +204,7 @@ typedef struct _dumpOptions
 	/* flags derived from the user-settable flags */
 	bool		dumpSchema;
 	bool		dumpData;
+	bool		dumpStatistics;
 
 	/* YB */
 	const char *master_hosts;	/* YB Master hosts */
@@ -289,6 +292,10 @@ typedef int DumpId;
  * Function pointer prototypes for assorted callback methods.
  */
 
+/* forward declaration to avoid including pg_backup_archiver.h here */
+typedef struct _tocEntry TocEntry;
+
+typedef char *(*DefnDumperPtr) (Archive *AH, const void *userArg, const TocEntry *te);
 typedef int (*DataDumperPtr) (Archive *AH, const void *userArg);
 
 typedef void (*SetupWorkerPtrType) (Archive *AH);
