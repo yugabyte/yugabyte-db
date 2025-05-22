@@ -19,6 +19,7 @@ option java_package = "org.yb.master";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/docdb/docdb.proto";
 import "yb/master/catalog_entity_info.proto";
@@ -814,6 +815,14 @@ message ReleaseObjectLocksGlobalResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message GetObjectLockStatusRequestPB {
+}
+
+message GetObjectLockStatusResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated ObjectLockInfoPB object_lock_infos = 2;
+}
+
 message RefreshYsqlLeaseRequestPB {
   optional NodeInstancePB instance = 1;
   // The current lease epoch of the tserver making this request.
@@ -899,4 +908,7 @@ service MasterDdl {
       returns (ReleaseObjectLocksGlobalResponsePB);
   rpc RefreshYsqlLease(RefreshYsqlLeaseRequestPB)
     returns (RefreshYsqlLeaseResponsePB);
+
+  rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
+      returns (GetObjectLockStatusResponsePB);
 }
