@@ -492,19 +492,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status.ok()) {
         if (used_read_time && metadata_.isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
           const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
-#ifndef NDEBUG
           if (read_point_already_set) {
+#ifndef NDEBUG
             // Display details of operations before crashing in debug mode.
             int op_idx = 1;
             for (const auto& op : ops) {
               LOG(ERROR) << "Operation " << op_idx << ": " << op.ToString();
               op_idx++;
             }
-          }
 #endif
-          LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
-              << "Read time already picked (" << read_point_.GetReadTime()
-              << ", but server replied with used read time: " << used_read_time;
+            LOG_WITH_PREFIX(DFATAL)
+                << "Read time already picked (" << read_point_.GetReadTime()
+                << ", but server replied with used read time: " << used_read_time;
+          }
           // TODO: Update local limit for the tablet id which sent back the used read time
           read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
           VLOG_WITH_PREFIX(3)
@@ -708,8 +708,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // that were first involved in the transaction with this batch of changes.
     auto status = StartPromotionToGlobal();
     if (!status.ok()) {
-      LOG(ERROR) << "Prepare for transaction " << metadata_.transaction_id
-                 << " rejected (promotion failed): " << status;
+      LOG(DFATAL) << "Prepare for transaction " << metadata_.transaction_id
+                  << " rejected (promotion failed): " << status;
       return status;
     }
     return true;
@@ -783,6 +783,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     metadata_promise_.set_value(metadata_);
     return metadata_future_;
+  }
+
+  Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
+    {
+      std::lock_guard lock(mutex_);
+      RETURN_NOT_OK(status_);
+      if (!ready_) {
+        return STATUS_FORMAT(IllegalState, "Transaction not ready");
+      }
+    }
+    return metadata_;
   }
 
   void PrepareChild(
@@ -2575,6 +2586,10 @@ Result<ChildTransactionResultPB> YBTransaction::FinishChild() {
 std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata(
     CoarseTimePoint deadline) const {
   return impl_->GetMetadata(deadline);
+}
+
+Result<TransactionMetadata> YBTransaction::metadata() const {
+  return impl_->metadata();
 }
 
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {

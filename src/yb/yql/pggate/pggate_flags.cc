@@ -17,7 +17,11 @@
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/size_literals.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
+
+using namespace yb::size_literals;
 
 DEPRECATE_FLAG(int32, pgsql_rpc_keepalive_time_ms, "02_2024");
 
@@ -65,7 +69,13 @@ DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid
 DEFINE_test_flag(bool, index_read_multiple_partitions, false,
       "Test flag used to simulate tablet spliting by joining tables' partitions.");
 
-DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, 1024 * 1024,
+#if defined(__APPLE__)
+constexpr int32_t kDefaultYsqlOutputBufferSize = 256_KB;
+#else
+constexpr int32_t kDefaultYsqlOutputBufferSize = 1_MB;
+#endif
+
+DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, kDefaultYsqlOutputBufferSize,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
@@ -130,6 +140,12 @@ DEFINE_validator(ysql_select_parallelism, FLAG_NE_VALUE_VALIDATOR(0));
 
 DEFINE_UNKNOWN_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
+
+DEFINE_RUNTIME_int64(ysql_check_for_interrupt_interval_ms, 100,
+    "Interval in milliseconds between PgGate checks for Postgres interrupts while waiting for "
+    "a DocDB response. Periodic checks enable prompt reaction to interrupts like "
+    "statement timeouts, query cancellation and shutdown requests");
+DEFINE_validator(ysql_check_for_interrupt_interval_ms, FLAG_GT_VALUE_VALIDATOR(0));
 
 DEPRECATE_FLAG(int32, ysql_max_read_restart_attempts, "12_2023");
 

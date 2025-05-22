@@ -97,6 +97,7 @@ class PerformExchangeFuture {
 
   void wait() const;
   bool ready() const;
+  bool WaitFor(MonoDelta duration) const;
 
   PerformResult get();
 
@@ -112,6 +113,9 @@ void Wait(const PerformResultFuture& future);
 bool Ready(const std::future<PerformResult>& future);
 bool Ready(const PerformExchangeFuture& future);
 bool Ready(const PerformResultFuture& future);
+bool WaitFor(const std::future<PerformResult>& future, MonoDelta duration);
+bool WaitFor(const PerformExchangeFuture& future, MonoDelta duration);
+bool WaitFor(const PerformResultFuture& future, MonoDelta duration);
 bool Valid(const PerformResultFuture& future);
 PerformResult Get(PerformResultFuture* future);
 

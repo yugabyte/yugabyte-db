@@ -388,7 +388,7 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
         sanity_check_lower_bound &&
         sanity_check_lower_bound != HybridTime::kMax) {
       HybridTime incremented_hybrid_time = sanity_check_lower_bound.Incremented();
-      YB_LOG_EVERY_N_SECS(ERROR, 5) << LogPrefix()
+      YB_LOG_EVERY_N_SECS(DFATAL, 5) << LogPrefix()
           << "Assigning an artificially incremented hybrid time: " << incremented_hybrid_time
           << ". This needs to be investigated. " << get_details_msg(/* drain_aborted */ false);
       ht = incremented_hybrid_time;
@@ -466,7 +466,7 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
 #else
     // Do not crash in production.
     if (safe_time < propagated_safe_time_) {
-      YB_LOG_EVERY_N_SECS(ERROR, 5) << LogPrefix()
+      YB_LOG_EVERY_N_SECS(DFATAL, 5) << LogPrefix()
           << "Previously saw " << YB_EXPR_TO_STREAM(propagated_safe_time_)
           << ", but now safe time is " << safe_time;
     } else {

@@ -89,6 +89,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_bootstrap_intent_ht_filter);
+DECLARE_bool(ysql_allow_duplicating_repeatable_read_queries);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
@@ -906,6 +907,8 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
 }
 
 TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_allow_duplicating_repeatable_read_queries) = true;
+
   const std::string kTableName = "key_value";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(

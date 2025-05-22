@@ -113,8 +113,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
         return Status::OK();
       }
       // TODO fallback to copy.
-      LOG_WITH_PREFIX(ERROR) << "Failed to link file: " << file_path << " => " << it->second
-                             << ": " << link_status;
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to link file: " << file_path << " => " << it->second << ": " << link_status;
     }
   }
 
@@ -155,8 +155,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     static auto rate_updater = []() {
       auto remote_bootstrap_clients_started = RemoteClientBase::StartedClientsCount();
       if (remote_bootstrap_clients_started < 1) {
-        YB_LOG_EVERY_N(ERROR, 100) << "Invalid number of remote bootstrap sessions: "
-                                   << remote_bootstrap_clients_started;
+        YB_LOG_EVERY_N(DFATAL, 100) << "Invalid number of remote bootstrap sessions: "
+                                     << remote_bootstrap_clients_started;
         return static_cast<uint64_t>(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec);
       }
       return static_cast<uint64_t>(

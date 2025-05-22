@@ -2322,8 +2322,9 @@ ExecuteTruncateGuts(List *explicit_rels,
 		 */
 		if (YbUseUnsafeTruncate(rel) != YB_SAFE_TRUNCATE)
 			YbUnsafeTruncate(rel);
-		else if (rel->rd_createSubid == mySubid ||
-				 rel->rd_newRelfilenodeSubid == mySubid || !IsYBRelation(rel))
+		else if ((rel->rd_createSubid == mySubid ||
+				  rel->rd_newRelfilenodeSubid == mySubid) &&
+				 !IsYBRelation(rel))
 		{
 			/* Immediate, non-rollbackable truncation is OK */
 			heap_truncate_one_rel(rel);
@@ -2932,7 +2933,7 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 				if (CompressionMethodIsValid(attribute->attcompression))
 				{
 					const char *compression =
-					GetCompressionMethodName(attribute->attcompression);
+						GetCompressionMethodName(attribute->attcompression);
 
 					if (def->compression == NULL)
 						def->compression = pstrdup(compression);
@@ -15719,7 +15720,7 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 		if (check_option)
 		{
 			const char *view_updatable_error =
-			view_query_is_auto_updatable(view_query, true);
+				view_query_is_auto_updatable(view_query, true);
 
 			if (view_updatable_error)
 				ereport(ERROR,

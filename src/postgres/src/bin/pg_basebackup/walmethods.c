@@ -1343,7 +1343,7 @@ CreateWalTarMethod(const char *tarbase,
 {
 	WalWriteMethod *method;
 	const char *suffix = (compression_algorithm == PG_COMPRESSION_GZIP) ?
-	".tar.gz" : ".tar";
+		".tar.gz" : ".tar";
 
 	method = pg_malloc0(sizeof(WalWriteMethod));
 	method->open_for_write = tar_open_for_write;

@@ -1579,7 +1579,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Status CDCSDKYsqlTest::UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t& session_id) {
+      uint64_t session_id) {
     UpdatePublicationTableListRequestPB req;
     UpdatePublicationTableListResponsePB resp;
 
@@ -1920,9 +1920,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       if (get_changes_result.ok()) {
         change_resp = *get_changes_result;
       } else {
-        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
-                   << tablets[tablet_idx].tablet_id()
-                   << ", status: " << get_changes_result.status();
+        LOG(WARNING) << "Encountered error while calling GetChanges on tablet: "
+                     << tablets[tablet_idx].tablet_id()
+                     << ", status: " << get_changes_result.status();
         break;
       }
 
@@ -1994,7 +1994,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     if (init_virtual_wal) {
       Status s = InitVirtualWAL(stream_id, table_ids, session_id, std::move(slot_hash_range));
       if (!s.ok()) {
-        LOG(ERROR) << "Error while trying to initialize virtual WAL: " << s;
+        LOG(WARNING) << "Error while trying to initialize virtual WAL: " << s;
         RETURN_NOT_OK(s);
       }
     }
@@ -2013,8 +2013,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           if (get_changes_result.ok()) {
             change_resp = *get_changes_result;
           } else {
-            LOG(ERROR) << "Encountered error while calling GetConsistentChanges on stream: "
-                       << stream_id << ", status: " << get_changes_result.status();
+            LOG(WARNING) << "Encountered error while calling GetConsistentChanges on stream: "
+                         << stream_id << ", status: " << get_changes_result.status();
             RETURN_NOT_OK(get_changes_result);
           }
 
@@ -2055,7 +2055,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
               auto result =
                   UpdateAndPersistLSN(stream_id, confirmed_flush_lsn, restart_lsn, session_id);
               if (!result.ok()) {
-                LOG(ERROR) << "UpdateRestartLSN failed: " << result;
+                LOG(WARNING) << "UpdateRestartLSN failed: " << result;
                 RETURN_NOT_OK(result);
               }
             }
@@ -2103,9 +2103,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       if (get_changes_result.ok()) {
         change_resp = *get_changes_result;
       } else {
-        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
-                   << tablets[tablet_idx].tablet_id()
-                   << ", status: " << get_changes_result.status();
+        LOG(WARNING) << "Encountered error while calling GetChanges on tablet: "
+                     << tablets[tablet_idx].tablet_id()
+                     << ", status: " << get_changes_result.status();
         break;
       }
 
@@ -2903,8 +2903,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         total_seen_records += change_resp.cdc_sdk_proto_records_size();
         first_iter = false;
       } else {
-        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
-                   << tablets[0].tablet_id();
+        LOG(WARNING) << "Encountered error while calling GetChanges on tablet: "
+                     << tablets[0].tablet_id();
         break;
       }
     }

@@ -2880,7 +2880,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 				 * mentioned above.
 				 */
 				Datum		attoptions =
-				get_attoptions(RelationGetRelid(index_rel), i + 1);
+					get_attoptions(RelationGetRelid(index_rel), i + 1);
 
 				defopclass = GetDefaultOpClass(attform->atttypid,
 											   index_rel->rd_rel->relam);

@@ -120,31 +120,13 @@ class MasterTest : public MasterTestBase {
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
       YQLDatabase db_type, const std::string& name);
+
+  Result<TSHeartbeatResponsePB> SendNewTSRegistrationHeartbeat(const std::string& uuid);
+
+ private:
+  // Used by SendNewTSRegistrationHeartbeat to avoid host port collisions.
+  uint32_t registered_ts_count_ = 0;
 };
-
-Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
-    TSToMasterCommonPB common, std::optional<TSRegistrationPB> registration,
-    std::optional<TabletReportPB> report) {
-  SysClusterConfigEntryPB config =
-      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
-  auto universe_uuid = config.universe_uuid();
-
-  TSHeartbeatRequestPB req;
-  TSHeartbeatResponsePB resp;
-  req.mutable_common()->Swap(&common);
-  if (registration) {
-    req.mutable_registration()->Swap(&registration.value());
-  }
-  if (report) {
-    req.mutable_tablet_report()->Swap(&report.value());
-  }
-  req.set_universe_uuid(universe_uuid);
-  RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return resp;
-}
 
 TEST_F(MasterTest, TestPingServer) {
   // Ping the server.
@@ -2859,58 +2841,98 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
 }
 
 TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
 
   const char* kTsUUID = "my-ts-uuid";
   auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto result = ddl_client.RefreshYsqlLease(kTsUUID, 1);
+  auto result = ddl_client.RefreshYsqlLease(
+      kTsUUID, 1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {});
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
 }
 
 TEST_F(MasterTest, RefreshYsqlLease) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
-  const char *kTsUUID = "my-ts-uuid";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
+  const std::string kTsUUID1 = "ts-uuid1";
+  const std::string kTsUUID2 = "ts-uuid2";
 
-  SysClusterConfigEntryPB config =
-      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
-  auto universe_uuid = config.universe_uuid();
-
-  // Register the fake TS, without sending any tablet report.
-  TSRegistrationPB fake_reg;
-  *fake_reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000);
-  *fake_reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000);
-  *fake_reg.mutable_resources() = master::ResourcesPB();
-
-  TSToMasterCommonPB common;
-  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
-  common.mutable_ts_instance()->set_instance_seqno(1);
-  {
-    TSHeartbeatRequestPB req;
-    TSHeartbeatResponsePB resp;
-    req.mutable_common()->CopyFrom(common);
-    req.mutable_registration()->CopyFrom(fake_reg);
-    req.set_universe_uuid(universe_uuid);
-    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
-
-    ASSERT_FALSE(resp.needs_reregister());
-    ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_TRUE(resp.has_tablet_report_limit());
-  }
-
-  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
-  ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
-  auto reg = descs[0]->GetTSRegistrationPB();
-  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
-      << "Master got different registration";
-
-  auto ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
-  ASSERT_EQ(ts_desc, descs[0]);
+  auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID1));
+  ASSERT_FALSE(reg_resp1.needs_reregister());
 
   auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, /* instance_seqno */1));
+  auto lease_refresh_send_time_ms = MonoTime::Now().GetDeltaSinceMin().ToMilliseconds();
+  auto info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 1);
+  ASSERT_GT(
+      info.lease_expiry_time_ms(),
+      lease_refresh_send_time_ms);
+
+  // todo(zdrudi): but we need to do this and check the bootstrap entries...
+  // Refresh lease again. Since we omitted current lease epoch, master leader should still say this
+  // is a new lease.
+  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, {}));
+  ASSERT_TRUE(info.new_lease());
+  ASSERT_EQ(info.lease_epoch(), 1);
+  ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
+
+  // Refresh lease again. We included current lease epoch but it's incorrect.
+  info = ASSERT_RESULT(
+      ddl_client.RefreshYsqlLease(kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, 0));
+  ASSERT_TRUE(info.new_lease());
+  ASSERT_EQ(info.lease_epoch(), 1);
+  ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
+
+  // Refresh lease again. Current lease epoch is correct so master leader should not set new lease
+  // bit.
+  info = ASSERT_RESULT(
+      ddl_client.RefreshYsqlLease(kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, 1));
+  ASSERT_FALSE(info.new_lease());
+  ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
+}
+
+Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
+    TSToMasterCommonPB common, std::optional<TSRegistrationPB> registration,
+    std::optional<TabletReportPB> report) {
+  SysClusterConfigEntryPB config =
+      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+  auto universe_uuid = config.universe_uuid();
+
+  TSHeartbeatRequestPB req;
+  TSHeartbeatResponsePB resp;
+  req.mutable_common()->Swap(&common);
+  if (registration) {
+    req.mutable_registration()->Swap(&registration.value());
+  }
+  if (report) {
+    req.mutable_tablet_report()->Swap(&report.value());
+  }
+  req.set_universe_uuid(universe_uuid);
+  RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
+}
+
+Result<TSHeartbeatResponsePB> MasterTest::SendNewTSRegistrationHeartbeat(const std::string& uuid) {
+  TSRegistrationPB reg;
+  *reg.mutable_common()->add_private_rpc_addresses() =
+      MakeHostPortPB("localhost", 1000 + registered_ts_count_);
+  *reg.mutable_common()->add_http_addresses() =
+      MakeHostPortPB("localhost", 2000 + registered_ts_count_);
+  *reg.mutable_resources() = master::ResourcesPB();
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(uuid);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+  auto result = SendHeartbeat(common, reg);
+  if (result.ok()) {
+    registered_ts_count_++;
+  }
+  return result;
 }
 
 } // namespace master

@@ -251,6 +251,21 @@ TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
   }
 }
 
+void FailIfNotConcurrentDDLErrors(const Status& status) {
+  // Expect a catalog version mismatch error during concurrent operations
+  if (!status.ok()) {
+    std::string error_msg = status.ToString();
+    if (error_msg.find("pgsql error 40001") != std::string::npos ||
+        error_msg.find("Catalog Version Mismatch") != std::string::npos ||
+        error_msg.find("Restart read required") != std::string::npos ||
+        error_msg.find("schema version mismatch") != std::string::npos) {
+      LOG(INFO) << "Expected error: " << error_msg;
+    } else {
+      FAIL() << "Unexpected error: " << error_msg;
+    }
+  }
+}
+
 // Test that hints work correctly when ANALYZE is running concurrently
 TEST_F(PgHintTableTest, HintWithConcurrentAnalyze) {
   // ----------------------------------------------------------------------------------------------
@@ -263,42 +278,35 @@ TEST_F(PgHintTableTest, HintWithConcurrentAnalyze) {
 
   // Thread to run ANALYZE
   auto conn_analyze = ASSERT_RESULT(ConnectWithHintTable());
+  // Thread to insert the hint
+  auto conn_hint = ASSERT_RESULT(ConnectWithHintTable());
+
   threads.AddThreadFunctor([&stop_threads, &conn_analyze]() {
     LOG(INFO) << "Starting ANALYZE thread";
 
     while (!stop_threads.load()) {
       auto status = conn_analyze.Execute("ANALYZE VERBOSE");
 
-      // Expect a catalog version mismatch error during concurrent operations
-      if (!status.ok()) {
-        std::string error_msg = status.ToString();
-        if (error_msg.find("pgsql error 40001") != std::string::npos ||
-            error_msg.find("Catalog Version Mismatch") != std::string::npos ||
-            error_msg.find("Restart read required") != std::string::npos ||
-            error_msg.find("schema version mismatch") != std::string::npos) {
-          // These errors are expected during concurrent operations
-          LOG(INFO) << "Expected error during ANALYZE: " << error_msg;
-        } else {
-          FAIL() << "Unexpected error during ANALYZE: " << error_msg;
-        }
-      }
+      FailIfNotConcurrentDDLErrors(status);
     }
 
     LOG(INFO) << "ANALYZE completed";
   });
 
-  // Thread to insert the hint
-  auto conn_hint = ASSERT_RESULT(ConnectWithHintTable());
   threads.AddThreadFunctor([&stop_threads, &hint_num, &conn_hint]() {
 
     LOG(INFO) << "Starting hint insertion thread";
     while (!stop_threads.load()) {
-      ASSERT_OK(conn_hint.ExecuteFormat(
+      auto status = conn_hint.ExecuteFormat(
           "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
           "VALUES ('$0', '', 'MergeJoin(pg_class pg_attribute)') "
           "ON CONFLICT (norm_query_string, application_name) "
           "DO UPDATE SET hints = 'MergeJoin(pg_class pg_attribute)'",
-          hint_num++));
+          hint_num);
+      FailIfNotConcurrentDDLErrors(status);
+      if (status.ok()) {
+        hint_num++;
+      }
     }
     LOG(INFO) << "Successfully inserted " << hint_num << " hints";
   });

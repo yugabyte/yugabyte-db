@@ -934,7 +934,7 @@ void SerializeUUID(const string& value, faststring* mesg) {
   if (value.size() == CQLMessage::kUUIDSize) {
     mesg->append(value);
   } else {
-    LOG(ERROR) << "Internal error: inconsistent UUID size: " << value.size();
+    LOG(DFATAL) << "Internal error: inconsistent UUID size: " << value.size();
     uint8_t empty_uuid[CQLMessage::kUUIDSize] = {0};
     mesg->append(empty_uuid, sizeof(empty_uuid));
   }
@@ -944,7 +944,7 @@ void SerializeTimeUUID(const string& value, faststring* mesg) {
   if (value.size() == CQLMessage::kUUIDSize) {
     mesg->append(value);
   } else {
-    LOG(ERROR) << "Internal error: inconsistent TimeUUID size: " << value.size();
+    LOG(DFATAL) << "Internal error: inconsistent TimeUUID size: " << value.size();
     uint8_t empty_uuid[CQLMessage::kUUIDSize] = {0};
     mesg->append(empty_uuid, sizeof(empty_uuid));
   }
@@ -1013,7 +1013,7 @@ void SerializeValue(const CQLMessage::Value& value, faststring* mesg) {
       break;
       // default: fall through
   }
-  LOG(ERROR) << "Internal error: invalid/unknown value kind " << static_cast<uint32_t>(value.kind);
+  LOG(DFATAL) << "Internal error: invalid/unknown value kind " << static_cast<uint32_t>(value.kind);
   SerializeInt(-1, mesg);
 }
 #endif
@@ -1226,7 +1226,7 @@ ResultResponse::RowsMetadata::Type::Type(const Id id) : id(id) {
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: invalid/unknown primitive type id " << static_cast<uint32_t>(id);
+  FATAL_INVALID_ENUM_VALUE(Id, id);
 }
 
 // These union members in Type below are not initialized by default. They need to be explicitly
@@ -1273,7 +1273,7 @@ ResultResponse::RowsMetadata::Type::Type(const Id id, shared_ptr<const Type> ele
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: invalid/unknown list/map type id " << static_cast<uint32_t>(id);
+  FATAL_INVALID_ENUM_VALUE(Id, id);
 }
 
 ResultResponse::RowsMetadata::Type::Type(shared_ptr<const MapType> map_type) : id(Id::MAP) {
@@ -1332,7 +1332,7 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
+  FATAL_INVALID_ENUM_VALUE(Id, id);
 }
 
 ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
@@ -1443,7 +1443,7 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: invalid/unsupported type " << type->ToString();
+  FATAL_INVALID_ENUM_VALUE(DataType, type->main());
 }
 
 ResultResponse::RowsMetadata::Type::~Type() {
@@ -1489,7 +1489,7 @@ ResultResponse::RowsMetadata::Type::~Type() {
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
+  FATAL_INVALID_ENUM_VALUE(Id, id);
 }
 
 ResultResponse::RowsMetadata::RowsMetadata()
@@ -1576,7 +1576,8 @@ void ResultResponse::SerializeType(const RowsMetadata::Type* type, faststring* m
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(type->id);
+
+  FATAL_INVALID_ENUM_VALUE(RowsMetadata::Type::Id, type->id);
 }
 
 void ResultResponse::SerializeColSpecs(

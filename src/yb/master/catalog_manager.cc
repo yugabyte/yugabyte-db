@@ -1294,8 +1294,8 @@ void CatalogManager::ValidateIndexTablesPostLoad(
             IndexStatusPB::BackfillStatus backfill_status) {
           DCHECK(status.ok());
           if (!status.ok()) {
-            LOG(ERROR) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
-                       << "index table " << index_id << ": " << status;
+            LOG(WARNING) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
+                         << "index table " << index_id << ": " << status;
             return;
           }
 
@@ -2185,7 +2185,7 @@ void CatalogManager::CompleteShutdown() {
   if (async_task_pool_) {
     async_task_pool_->Shutdown();
   }
-
+  object_lock_info_manager_->Shutdown();
   // It's OK if the visitor adds more entries even after we finish; it won't start any new tasks for
   // those entries.
   AbortAndWaitForAllTasks();
@@ -3969,12 +3969,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   const bool is_vector_index = req.index_info().has_vector_idx_options();
-  const bool colocated =
-      (is_colocated_via_database || req.has_tablegroup_id() || is_vector_index) &&
-      // Any tables created in the xCluster DDL replication extension should not be colocated.
-      !IsXClusterDDLReplicationTable(req);
-  SCHECK(!colocated || req.has_table_id(),
-         InvalidArgument, "Colocated table should specify a table ID");
+  const bool colocated = is_colocated_via_database || req.has_tablegroup_id() || is_vector_index;
+  SCHECK(
+      !colocated || req.has_table_id(), InvalidArgument,
+      "Colocated table should specify a table ID");
 
   // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
   // specified for indexes on colocated tables.
@@ -7963,7 +7961,7 @@ Status CatalogManager::GetTablegroupSchema(const GetTablegroupSchemaRequestPB* r
     schema_req.mutable_table()->set_table_id(table_id);
     Status s = GetTableSchema(&schema_req, &schema_resp);
     if (!s.ok() || schema_resp.has_error()) {
-      LOG(ERROR) << "Error while getting table schema: " << s;
+      LOG(WARNING) << "Error while getting table schema: " << s;
       return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
     }
     resp->add_get_table_schema_response_pbs()->Swap(&schema_resp);
@@ -7999,7 +7997,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
   listTablesReq.set_exclude_system_tables(true);
   Status status = ListTables(&listTablesReq, &ListTablesResp);
   if (!status.ok() || ListTablesResp.has_error()) {
-    LOG(ERROR) << "Error while listing tables: " << status;
+    LOG(WARNING) << "Error while listing tables: " << status;
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
   }
 
@@ -8016,7 +8014,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
       schemaReq.mutable_table()->set_table_id(t.id());
       status = GetTableSchema(&schemaReq, &schemaResp);
       if (!status.ok() || schemaResp.has_error()) {
-        LOG(ERROR) << "Error while getting table schema: " << status;
+        LOG(WARNING) << "Error while getting table schema: " << status;
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
       }
       resp->add_get_table_schema_response_pbs()->Swap(&schemaResp);
@@ -9038,9 +9036,9 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
       continue;
     }
     if (xcluster_manager_->IsTableReplicated(table->id())) {
-      LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
-                 << " is under replication"
-                 << ". Cannot delete a database that contains tables under replication.";
+      LOG(WARNING) << "Error deleting database: " << database->id() << ", table: " << table->id()
+                   << " is under replication"
+                   << ". Cannot delete a database that contains tables under replication.";
       return STATUS_FORMAT(
           InvalidCommand, Format(
                               "Table: $0 is under replication. Cannot delete a database that "
@@ -12642,10 +12640,10 @@ void CatalogManager::RebuildYQLSystemPartitions() {
       if (system_partitions_tablet_ != nullptr) {
         Status s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
         if (!s.ok()) {
-          LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
+          LOG(WARNING) << "Error rebuilding system.partitions: " << s.ToString();
         }
       } else {
-        LOG(ERROR) << "Error finding system.partitions vtable.";
+        LOG(WARNING) << "Error finding system.partitions vtable.";
       }
     }
   }

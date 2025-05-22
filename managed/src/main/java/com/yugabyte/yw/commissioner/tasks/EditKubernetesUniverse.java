@@ -949,29 +949,30 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     UUID providerUUID = UUID.fromString(userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
 
-    // Subtask groups( ignore Errors is false by default )
-    SubTaskGroup validateExpansion =
-        createSubTaskGroup(
-            KubernetesCheckVolumeExpansion.getSubTaskGroupName(), SubTaskGroupType.PreflightChecks);
-    SubTaskGroup stsDelete =
-        createSubTaskGroup(
-            KubernetesCommandExecutor.CommandType.STS_DELETE.getSubTaskGroupName(),
-            SubTaskGroupType.ResizingDisk);
-    SubTaskGroup pvcExpand =
-        createSubTaskGroup(
-            KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE.getSubTaskGroupName(),
-            SubTaskGroupType.ResizingDisk,
-            true /* ignoreErrors */);
-    SubTaskGroup helmUpgrade =
-        createSubTaskGroup(
-            KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName(),
-            SubTaskGroupType.HelmUpgrade);
-    SubTaskGroup postExpansionValidate =
-        createSubTaskGroup(
-            KubernetesPostExpansionCheckVolume.getSubTaskGroupName(),
-            SubTaskGroupType.PostUpdateValidations);
-
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+
+      // Subtask groups( ignore Errors is false by default )
+      SubTaskGroup validateExpansion =
+          createSubTaskGroup(
+              KubernetesCheckVolumeExpansion.getSubTaskGroupName(),
+              SubTaskGroupType.PreflightChecks);
+      SubTaskGroup stsDelete =
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.STS_DELETE.getSubTaskGroupName(),
+              SubTaskGroupType.ResizingDisk);
+      SubTaskGroup pvcExpand =
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE.getSubTaskGroupName(),
+              SubTaskGroupType.ResizingDisk,
+              true /* ignoreErrors */);
+      SubTaskGroup helmUpgrade =
+          createSubTaskGroup(
+              KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName(),
+              SubTaskGroupType.HelmUpgrade);
+      SubTaskGroup postExpansionValidate =
+          createSubTaskGroup(
+              KubernetesPostExpansionCheckVolume.getSubTaskGroupName(),
+              SubTaskGroupType.PostUpdateValidations);
 
       UUID azUUID = entry.getKey();
       String azName =
@@ -1126,13 +1127,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               providerUUID,
               newDiskSizeGi,
               serverType));
-    }
-    if (validateExpansion.getSubTaskCount() > 0) {
-      getRunnableTask().addSubTaskGroup(validateExpansion);
-      getRunnableTask().addSubTaskGroup(stsDelete);
-      getRunnableTask().addSubTaskGroup(pvcExpand);
-      getRunnableTask().addSubTaskGroup(helmUpgrade);
-      getRunnableTask().addSubTaskGroup(postExpansionValidate);
+
+      // Add all subtasks to runnable
+      if (validateExpansion.getSubTaskCount() > 0) {
+        getRunnableTask().addSubTaskGroup(validateExpansion);
+        getRunnableTask().addSubTaskGroup(stsDelete);
+        getRunnableTask().addSubTaskGroup(pvcExpand);
+        getRunnableTask().addSubTaskGroup(helmUpgrade);
+        getRunnableTask().addSubTaskGroup(postExpansionValidate);
+      }
     }
   }
 

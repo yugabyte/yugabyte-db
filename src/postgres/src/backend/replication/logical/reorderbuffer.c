@@ -1419,7 +1419,7 @@ ReorderBufferIterTXNNext(ReorderBuffer *rb, ReorderBufferIterTXNState *state)
 	{
 		dlist_node *next = dlist_next_node(&entry->txn->changes, &change->node);
 		ReorderBufferChange *next_change =
-		dlist_container(ReorderBufferChange, node, next);
+			dlist_container(ReorderBufferChange, node, next);
 
 		/* txn stays the same */
 		state->entries[off].lsn = next_change->lsn;
@@ -1450,8 +1450,8 @@ ReorderBufferIterTXNNext(ReorderBuffer *rb, ReorderBufferIterTXNState *state)
 		{
 			/* successfully restored changes from disk */
 			ReorderBufferChange *next_change =
-			dlist_head_element(ReorderBufferChange, node,
-							   &entry->txn->changes);
+				dlist_head_element(ReorderBufferChange, node,
+								   &entry->txn->changes);
 
 			elog(DEBUG2, "restored %u/%u changes from disk",
 				 (uint32) entry->txn->nentries_mem,
@@ -3892,7 +3892,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 			{
 				char	   *data;
 				Size		inval_size = sizeof(SharedInvalidationMessage) *
-				change->data.inval.ninvalidations;
+					change->data.inval.ninvalidations;
 
 				sz += inval_size;
 
@@ -4257,7 +4257,7 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 	dlist_foreach_modify(cleanup_iter, &txn->changes)
 	{
 		ReorderBufferChange *cleanup =
-		dlist_container(ReorderBufferChange, node, cleanup_iter.cur);
+			dlist_container(ReorderBufferChange, node, cleanup_iter.cur);
 
 		dlist_delete(&cleanup->node);
 		ReorderBufferReturnChange(rb, cleanup, true);
@@ -4534,7 +4534,7 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INVALIDATION:
 			{
 				Size		inval_size = sizeof(SharedInvalidationMessage) *
-				change->data.inval.ninvalidations;
+					change->data.inval.ninvalidations;
 
 				change->data.inval.invalidations =
 					MemoryContextAlloc(rb->context, inval_size);
@@ -5042,7 +5042,7 @@ ReorderBufferToastReset(ReorderBuffer *rb, ReorderBufferTXN *txn)
 		dlist_foreach_modify(it, &ent->chunks)
 		{
 			ReorderBufferChange *change =
-			dlist_container(ReorderBufferChange, node, it.cur);
+				dlist_container(ReorderBufferChange, node, it.cur);
 
 			dlist_delete(&change->node);
 			ReorderBufferReturnChange(rb, change, true);

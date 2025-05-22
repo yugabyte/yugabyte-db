@@ -138,6 +138,7 @@ DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(TEST_simulate_long_remote_bootstrap_sec);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -1964,9 +1965,7 @@ TEST_F(AutomaticTabletSplitExternalMiniClusterITest, CrashedSplitIsRestarted) {
   std::this_thread::sleep_for(2s);
   // Flush to ensure SST files are generated so splitting can occur.
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(i),
-                                                    {tablet_id},
-                                                    tserver::FlushTabletsRequestPB::FLUSH));
+    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(i, {tablet_id}));
   }
 
   const auto kCrashTime = 10s;
@@ -3037,8 +3036,7 @@ TEST_F_EX(
     auto* ts = cluster_->tablet_server(i);
     if (i != server_to_bootstrap_idx) {
       ASSERT_OK(cluster_->WaitForAllIntentsApplied(ts, 15s * kTimeMultiplier));
-      ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
-          ts, {source_tablet_id}, tserver::FlushTabletsRequestPB::FLUSH));
+      ASSERT_OK(ts->FlushTablets({source_tablet_id}));
       // Prevent leader changes.
       ASSERT_OK(cluster_->SetFlag(ts, "enable_leader_failure_detection", "false"));
     }
@@ -3168,8 +3166,7 @@ TEST_F_EX(
   for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
     auto* ts = cluster_->tablet_server(ts_idx);
     if (ts->IsProcessAlive()) {
-      ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
-          ts, {source_tablet_id}, tserver::FlushTabletsRequestPB::FLUSH));
+      ASSERT_OK(ts->FlushTablets({source_tablet_id}));
       ASSERT_OK(WaitForAnySstFiles(*ts, source_tablet_id));
     }
   }

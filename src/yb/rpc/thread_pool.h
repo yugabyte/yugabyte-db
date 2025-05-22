@@ -21,6 +21,7 @@
 
 #include "yb/gutil/port.h"
 
+#include "yb/util/lockfree.h"
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
@@ -34,7 +35,7 @@ namespace rpc {
 
 class ThreadSubPoolBase;
 
-class ThreadPoolTask {
+class ThreadPoolTask : public MPSCQueueEntry<ThreadPoolTask> {
  public:
   // Invoked in thread pool
   virtual void Run() = 0;

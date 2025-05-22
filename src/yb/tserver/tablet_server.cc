@@ -367,12 +367,6 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
   }
-  if (opts.server_type == TabletServerOptions::kServerType &&
-      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
-  } else {
-    ts_local_lock_manager_ = nullptr;
-  }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
 }
@@ -740,6 +734,8 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(heartbeater_->Start());
 
+  StartTSLocalLockManager();
+
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
   }
@@ -785,6 +781,10 @@ void TabletServer::Shutdown() {
         "Failed to stop table mutation count sender thread");
   }
 
+  if (auto local_lock_manager = ts_local_lock_manager(); local_lock_manager) {
+    local_lock_manager->Shutdown();
+  }
+
   client()->RequestAbortAllRpcs();
 
   tablet_manager_->StartShutdown();
@@ -795,9 +795,24 @@ void TabletServer::Shutdown() {
 }
 
 tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
-  std::lock_guard l(lock_);
-  ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(clock_, this);
-  return ts_local_lock_manager_;
+  ts_local_lock_manager()->Shutdown();
+  {
+    std::lock_guard l(lock_);
+    ts_local_lock_manager_.reset();
+  }
+  StartTSLocalLockManager();
+  return ts_local_lock_manager();
+}
+
+void TabletServer::StartTSLocalLockManager() {
+  if (opts_.server_type == TabletServerOptions::kServerType &&
+      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    std::lock_guard l(lock_);
+    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
+        clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
+        tablet_manager_->waiting_txn_pool());
+    ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
+  }
 }
 
 bool TabletServer::HasBootstrappedLocalLockManager() const {
@@ -805,11 +820,10 @@ bool TabletServer::HasBootstrappedLocalLockManager() const {
   return lock_manager && lock_manager->IsBootstrapped();
 }
 
-Status TabletServer::ProcessLeaseUpdate(
-    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
+Status TabletServer::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
   VLOG(2) << __func__;
   auto lock_manager = ts_local_lock_manager();
-  if (lease_refresh_info.has_ddl_lock_entries() && lock_manager) {
+  if (lease_refresh_info.new_lease() && lock_manager) {
     if (lock_manager->IsBootstrapped()) {
       // Reset the local lock manager to bootstrap from the given DDL lock entries.
       lock_manager = ResetAndGetTSLocalLockManager();
@@ -821,13 +835,13 @@ Status TabletServer::ProcessLeaseUpdate(
   // having it the other way around, and having an old-session that is not reset.
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
-    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info, time);
+    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info);
   }
   return Status::OK();
 }
 
 
-Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
+Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
   if (!IsYsqlLeaseEnabled()) {
     return STATUS(NotSupported, "YSQL lease is not enabled");
   }
@@ -835,13 +849,7 @@ Result<GetYSQLLeaseInfoResponsePB> TabletServer::GetYSQLLeaseInfo() const {
   if (!pg_client_service) {
     RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
   }
-  auto lease_info = pg_client_service->impl.GetYSQLLeaseInfo();
-  GetYSQLLeaseInfoResponsePB resp;
-  resp.set_is_live(lease_info.is_live);
-  if (lease_info.is_live) {
-    resp.set_lease_epoch(lease_info.lease_epoch);
-  }
-  return resp;
+  return pg_client_service->impl.GetYSQLLeaseInfo();
 }
 
 Status TabletServer::RestartPG() const {
@@ -849,6 +857,13 @@ Status TabletServer::RestartPG() const {
     return pg_restarter_();
   }
   return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
+}
+
+Status TabletServer::KillPg() const {
+  if (pg_killer_) {
+    return pg_killer_();
+  }
+  return STATUS(IllegalState, "Pg killer callback not registered, cannot restart PG");
 }
 
 bool TabletServer::IsYsqlLeaseEnabled() {
@@ -1199,10 +1214,9 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
   InvalidatePgTableCache();
 }
 
-void TabletServer::SetYsqlDBCatalogVersions(
+void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   const tserver::DBCatalogVersionDataPB& db_catalog_version_data) {
   DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
-  std::lock_guard l(lock_);
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
@@ -1349,8 +1363,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
         ++count;
       }
       if (shm_index == -1) {
-        YB_LOG_EVERY_N_SECS(ERROR, 60) << "Cannot find free db_catalog_versions_ slot, db_oid: "
-                                       << db_oid;
+        YB_LOG_EVERY_N_SECS(WARNING, 60)
+            << "Cannot find free db_catalog_versions_ slot, db_oid: " << db_oid;
         continue;
       }
       // update the newly inserted entry to have the allocated slot.
@@ -1457,12 +1471,19 @@ void TabletServer::UpdateCatalogVersionsFingerprintUnlocked() {
                     << ", new fingerprint: " << new_fingerprint;
 }
 
-void TabletServer::SetYsqlDBCatalogInvalMessages(
+void TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages(
+    const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
+    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
+  std::lock_guard l(lock_);
+  SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data);
+  SetYsqlDBCatalogInvalMessagesUnlocked(db_catalog_inval_messages_data);
+}
+
+void TabletServer::SetYsqlDBCatalogInvalMessagesUnlocked(
   const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
   if (db_catalog_inval_messages_data.db_catalog_inval_messages_size() == 0) {
     return;
   }
-  std::lock_guard l(lock_);
   uint32_t current_db_oid = 0;
   // ysql_db_invalidation_messages_map_ is just an extended history of pg_yb_invalidation_messages
   // except message_time column. Merge the incoming db_catalog_inval_messages_data from the
@@ -2078,6 +2099,10 @@ void TabletServer::RegisterCertificateReloader(CertificateReloader reloader) {
 
 void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restarter) {
   pg_restarter_ = std::move(restarter);
+}
+
+void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
+  pg_killer_ = std::move(killer);
 }
 
 Status TabletServer::StartYSQLLeaseRefresher() {

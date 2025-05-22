@@ -7423,7 +7423,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 	appendPQExpBuffer(query,
 					  "SELECT t.tableoid, t.oid, i.indrelid, "
 					  "t.relname AS indexname, "
-						 "t.relpages, t.reltuples, t.relallvisible, "
+					  "t.relpages, t.reltuples, t.relallvisible, "
 					  "pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
 					  "i.indkey, i.indisclustered, "
 					  "c.contype, c.conname, "
@@ -7431,11 +7431,11 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 					  "c.tableoid AS contableoid, "
 					  "c.oid AS conoid, "
 					  "pg_catalog.pg_get_constraintdef(c.oid, false) AS condef, "
-						 "CASE WHEN i.indexprs IS NOT NULL THEN "
-						 "(SELECT pg_catalog.array_agg(attname ORDER BY attnum)"
-						 "  FROM pg_catalog.pg_attribute "
-						 "  WHERE attrelid = i.indexrelid) "
-						 "ELSE NULL END AS indattnames, "
+					  "CASE WHEN i.indexprs IS NOT NULL THEN "
+					  "(SELECT pg_catalog.array_agg(attname ORDER BY attnum)"
+					  "  FROM pg_catalog.pg_attribute "
+					  "  WHERE attrelid = i.indexrelid) "
+					  "ELSE NULL END AS indattnames, "
 					  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) AS tablespace, "
 					  "t.reloptions AS indreloptions, ");
 
@@ -16120,7 +16120,7 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 	if (tbinfo->dobj.dump & DUMP_COMPONENT_ACL)
 	{
 		const char *objtype =
-		(tbinfo->relkind == RELKIND_SEQUENCE) ? "SEQUENCE" : "TABLE";
+			(tbinfo->relkind == RELKIND_SEQUENCE) ? "SEQUENCE" : "TABLE";
 
 		tableAclDumpId =
 			dumpACL(fout, tbinfo->dobj.dumpId, InvalidDumpId,
@@ -19156,7 +19156,7 @@ processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 				TableInfo  *configtbl;
 				Oid			configtbloid = atooid(extconfigarray[j]);
 				bool		dumpobj =
-				curext->dobj.dump & DUMP_COMPONENT_DEFINITION;
+					curext->dobj.dump & DUMP_COMPONENT_DEFINITION;
 
 				configtbl = findTableByOid(configtbloid);
 				if (configtbl == NULL)

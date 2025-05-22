@@ -18,6 +18,11 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/object_lock_manager.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/poller.h"
+
+#include "yb/server/server_base.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
@@ -27,11 +32,22 @@
 using namespace std::literals;
 DECLARE_bool(dump_lock_keys);
 
+DEFINE_RUNTIME_int64(olm_poll_interval_ms, 100,
+    "Poll interval for Object lock Manager. Waiting requests that are unblocked by other release "
+    "requests are independent of this interval since the release schedules unblocking of potential "
+    "waiters. Yet this might help release timedout requests soon and also avoid probable issues "
+    "with the signaling mechanism if any.");
+
 namespace yb::tserver {
 
 class TSLocalLockManager::Impl {
  public:
-  Impl(const server::ClockPtr& clock, TabletServerIf* server) : clock_(clock), server_(server) {}
+  Impl(
+      const server::ClockPtr& clock, TabletServerIf* tablet_server,
+      server::RpcServerBase& messenger_server, ThreadPool* thread_pool)
+      : clock_(clock), server_(tablet_server), messenger_base_(messenger_server),
+        object_lock_manager_(thread_pool, messenger_server),
+        poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {}
 
   ~Impl() = default;
 
@@ -56,10 +72,34 @@ class TSLocalLockManager::Impl {
     return Status::OK();
   }
 
+  Status CheckShutdown() {
+    return shutdown_
+        ? STATUS_FORMAT(ShutdownInProgress, "Object Lock Manager Shutdown") : Status::OK();
+  }
+
   Status AcquireObjectLocks(
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       WaitForBootstrap wait) {
+    Synchronizer synchronizer;
+    DoAcquireObjectLocksAsync(
+        req, deadline, synchronizer.AsStdStatusCallback(), tserver::WaitForBootstrap::kFalse);
+    return synchronizer.Wait();
+  }
+
+  void DoAcquireObjectLocksAsync(
+      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
+      StdStatusCallback&& callback, WaitForBootstrap wait) {
+    auto s = PrepareAndExecuteAcquire(req, deadline, callback, wait);
+    if (!s.ok()) {
+      callback(s);
+    }
+  }
+
+  Status PrepareAndExecuteAcquire(
+      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
+      StdStatusCallback& callback, WaitForBootstrap wait) {
     TRACE_FUNC();
+    RETURN_NOT_OK(CheckShutdown());
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     VLOG(3) << object_lock_owner.ToString() << " Acquiring lock : " << req.ShortDebugString();
@@ -80,17 +120,14 @@ class TSLocalLockManager::Impl {
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
     auto keys_to_lock = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    if (object_lock_manager_.Lock(keys_to_lock.lock_batch, deadline, object_lock_owner)) {
-      TRACE("Successfully obtained object locks.");
-      return Status::OK();
-    }
-    TRACE("Could not get the object locks.");
-    std::string batch_str;
-    if (FLAGS_dump_lock_keys) {
-      batch_str = Format(", batch: $0", keys_to_lock.lock_batch);
-    }
-    return STATUS_FORMAT(
-        TryAgain, "Failed to obtain object locks until deadline: $0$1", deadline, batch_str);
+    object_lock_manager_.Lock(docdb::LockData {
+      .key_to_lock = std::move(keys_to_lock),
+      .deadline = deadline,
+      .object_lock_owner = std::move(object_lock_owner),
+      .status_tablet = req.status_tablet(),
+      .start_time = MonoTime::FromUint64(req.propagated_hybrid_time()),
+      .callback = std::move(callback)});
+    return Status::OK();
   }
 
   Status WaitToApplyIfNecessary(
@@ -129,6 +166,7 @@ class TSLocalLockManager::Impl {
 
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
+    RETURN_NOT_OK(CheckShutdown());
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     VLOG(3) << object_lock_owner.ToString()
@@ -142,8 +180,35 @@ class TSLocalLockManager::Impl {
     if (req.has_db_catalog_version_data()) {
       server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
     }
-    object_lock_manager_.Unlock(object_lock_owner);
+    Status abort_status = req.has_abort_status() && req.abort_status().code() != AppStatusPB::OK
+        ? StatusFromPB(req.abort_status())
+        : Status::OK();
+    object_lock_manager_.Unlock(object_lock_owner, abort_status);
     return Status::OK();
+  }
+
+  void Poll() {
+    object_lock_manager_.Poll();
+  }
+
+  void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry) {
+    object_lock_manager_.Start(waiting_txn_registry);
+    poller_.Start(
+        &messenger_base_.messenger()->scheduler(), 1ms * FLAGS_olm_poll_interval_ms);
+  }
+
+  void Shutdown() {
+    shutdown_ = true;
+    poller_.Shutdown();
+    {
+      yb::UniqueLock<LockType> lock(mutex_);
+      while (!txns_in_progress_.empty()) {
+        WaitOnConditionVariableUntil(&cv_, &lock, CoarseMonoClock::Now() + 5s);
+        LOG_WITH_FUNC(WARNING)
+            << Format("Waiting for $0 in progress requests at the OLM", txns_in_progress_.size());
+      }
+    }
+    object_lock_manager_.Shutdown();
   }
 
   void UpdateLeaseEpochIfNecessary(const std::string& uuid, uint64_t lease_epoch) EXCLUDES(mutex_) {
@@ -172,8 +237,8 @@ class TSLocalLockManager::Impl {
     yb::UniqueLock lock(mutex_);
     while (txns_in_progress_.find(txn_id) != txns_in_progress_.end()) {
       if (deadline <= CoarseMonoClock::Now()) {
-        LOG(ERROR) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
-                    << ToString(deadline);
+        LOG(WARNING) << "Failed to add txn " << txn_id << " to in progress txns until deadline: "
+                     << ToString(deadline);
         TRACE("Failed to add by deadline.");
         return STATUS_FORMAT(
             TryAgain, "Failed to add txn $0 to in progress txns until deadline: $1", txn_id,
@@ -216,6 +281,11 @@ class TSLocalLockManager::Impl {
     return object_lock_manager_.TEST_WaitingLocksSize();
   }
 
+  std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
+      TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
+    return object_lock_manager_.TEST_GetLockStateMapForTxn(txn);
+  }
+
   void DumpLocksToHtml(std::ostream& out) {
     object_lock_manager_.DumpStatusHtml(out);
   }
@@ -238,7 +308,6 @@ class TSLocalLockManager::Impl {
 
  private:
   const server::ClockPtr clock_;
-  docdb::ObjectLockManager object_lock_manager_;
   std::atomic_bool is_bootstrapped_{false};
   std::unordered_map<std::string, uint64> max_seen_lease_epoch_ GUARDED_BY(mutex_);
   std::unordered_set<std::string> txns_in_progress_ GUARDED_BY(mutex_);
@@ -246,29 +315,24 @@ class TSLocalLockManager::Impl {
   using LockType = std::mutex;
   LockType mutex_;
   TabletServerIf* server_;
+  server::RpcServerBase& messenger_base_;
+  docdb::ObjectLockManager object_lock_manager_;
+  std::atomic<bool> shutdown_{false};
+  rpc::Poller poller_;
 };
 
-TSLocalLockManager::TSLocalLockManager(const server::ClockPtr& clock, TabletServerIf* server)
-    : impl_(new Impl(clock, server)) {}
+TSLocalLockManager::TSLocalLockManager(
+    const server::ClockPtr& clock, TabletServerIf* tablet_server,
+    server::RpcServerBase& messenger_server, ThreadPool* thread_pool)
+      : impl_(new Impl(
+            clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool))) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 
-Status TSLocalLockManager::AcquireObjectLocks(
+void TSLocalLockManager::AcquireObjectLocksAsync(
     const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-    WaitForBootstrap wait) {
-  if (VLOG_IS_ON(4)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(4) << "Dumping current state Before acquire : " << output.str();
-  }
-  auto ret = impl_->AcquireObjectLocks(req, deadline, wait);
-  if (VLOG_IS_ON(3)) {
-    std::stringstream output;
-    impl_->DumpLocksToHtml(output);
-    VLOG(3) << "Acquire " << (ret.ok() ? "succeded" : "failed")
-            << ". Dumping current state After acquire : " << output.str();
-  }
-  return ret;
+    StdStatusCallback&& callback, WaitForBootstrap wait) {
+  impl_->DoAcquireObjectLocksAsync(req, deadline, std::move(callback), wait);
 }
 
 Status TSLocalLockManager::ReleaseObjectLocks(
@@ -287,6 +351,15 @@ Status TSLocalLockManager::ReleaseObjectLocks(
   return ret;
 }
 
+void TSLocalLockManager::Start(
+    docdb::LocalWaitingTxnRegistry* waiting_txn_registry) {
+  return impl_->Start(waiting_txn_registry);
+}
+
+void TSLocalLockManager::Shutdown() {
+  impl_->Shutdown();
+}
+
 void TSLocalLockManager::DumpLocksToHtml(std::ostream& out) {
   return impl_->DumpLocksToHtml(out);
 }
@@ -297,6 +370,10 @@ size_t TSLocalLockManager::TEST_GrantedLocksSize() const {
 
 bool TSLocalLockManager::IsBootstrapped() const {
   return impl_->IsBootstrapped();
+}
+
+server::ClockPtr TSLocalLockManager::clock() const {
+  return impl_->clock();
 }
 
 size_t TSLocalLockManager::TEST_WaitingLocksSize() const {
@@ -311,8 +388,9 @@ void TSLocalLockManager::TEST_MarkBootstrapped() {
   impl_->MarkBootstrapped();
 }
 
-server::ClockPtr TSLocalLockManager::clock() const {
-  return impl_->clock();
+std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
+    TSLocalLockManager::TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
+  return impl_->TEST_GetLockStateMapForTxn(txn);
 }
 
 } // namespace yb::tserver

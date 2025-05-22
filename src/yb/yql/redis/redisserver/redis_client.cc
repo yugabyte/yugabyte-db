@@ -62,7 +62,7 @@ RedisReply CreateReply(redisReply* reply) {
     default:
       RedisReply result(
           RedisReplyType::kError, Format("Unsupported reply type: $0", reply->type));
-      LOG(ERROR) << result.ToString();
+      LOG(DFATAL) << result.ToString();
       return result;
   }
 }

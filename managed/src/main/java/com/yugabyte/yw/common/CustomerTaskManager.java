@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
@@ -242,6 +243,8 @@ public class CustomerTaskManager {
           resumeTask = true;
           isRestoreYbc = true;
         }
+      } else if (CustomerTask.TaskType.SendUserNotification.equals(type)) {
+        resumeTask = true;
       }
 
       if (!isRestoreYbc) {
@@ -286,18 +289,19 @@ public class CustomerTaskManager {
 
       // Resume tasks if any
       TaskType taskType = taskInfo.getTaskType();
-      UniverseTaskParams taskParams = null;
+      AbstractTaskParams taskParams = null;
       log.info("Resume Task: {}", resumeTask);
 
       try {
-        if (resumeTask && optUniv.isPresent()) {
-          Universe universe = optUniv.get();
-          if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
-            log.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
-            customerTask.markAsCompleted();
-            return;
+        if (resumeTask) {
+          if (optUniv.isPresent()) {
+            Universe universe = optUniv.get();
+            if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+              log.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
+              customerTask.markAsCompleted();
+              return;
+            }
           }
-
           switch (taskType) {
             case CreateBackup:
               BackupRequestParams backupParams =
@@ -308,6 +312,11 @@ public class CustomerTaskManager {
               RestoreBackupParams restoreParams =
                   Json.fromJson(taskInfo.getTaskParams(), RestoreBackupParams.class);
               taskParams = restoreParams;
+              break;
+            case SendUserNotification:
+              SendUserNotification.Params sendParams =
+                  Json.fromJson(taskInfo.getTaskParams(), SendUserNotification.Params.class);
+              taskParams = sendParams;
               break;
             default:
               log.error("Invalid task type: {} during platform restart", taskType);
@@ -320,7 +329,7 @@ public class CustomerTaskManager {
                   subtask -> {
                     subtask.delete();
                   });
-          UniverseTaskParams finalTaskParams = taskParams;
+          AbstractTaskParams finalTaskParams = taskParams;
           Util.doWithCorrelationId(
               corrId -> {
                 // There is a chance that async execution is delayed and correlation ID is

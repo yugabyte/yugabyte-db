@@ -1152,9 +1152,9 @@ LWLockDequeueSelf(LWLock *lock)
 	LWLockWaitListLock(lock);
 
 	/*
-	 * Remove ourselves from the waitlist, unless we've already been
-	 * removed. The removal happens with the wait list lock held, so there's
-	 * no race in this check.
+	 * Remove ourselves from the waitlist, unless we've already been removed.
+	 * The removal happens with the wait list lock held, so there's no race in
+	 * this check.
 	 */
 	on_waitlist = proc->lwWaiting == LW_WS_WAITING;
 	if (on_waitlist)

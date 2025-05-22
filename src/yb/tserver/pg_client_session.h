@@ -68,7 +68,6 @@ namespace tserver {
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
-    (AcquireObjectLock) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network
@@ -77,6 +76,7 @@ namespace tserver {
 // If such method responds with error Status, it will be handled by the upper layer that will fill
 // response with error status and call context.RespondSuccess.
 #define PG_CLIENT_SESSION_ASYNC_METHODS \
+    (AcquireObjectLock) \
     (GetTableKeyRanges) \
     /**/
 

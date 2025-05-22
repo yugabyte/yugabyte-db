@@ -262,7 +262,7 @@ void SystemQueryCache::ExecuteSync(const std::string& stmt, Status* status,
     ExecutedResult::SharedPtr* result_ptr) {
   const auto processor = service_impl_->GetProcessor();
   if (!processor.ok()) {
-    LOG(ERROR) << "Unable to get CQLProcessor for system query cache";
+    LOG(DFATAL) << "Unable to get CQLProcessor for system query cache";
     *status = processor.status();
     return;
   }

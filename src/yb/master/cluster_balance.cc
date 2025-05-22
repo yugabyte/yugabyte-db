@@ -1853,8 +1853,8 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
     }
   }
   // Should never get here.
-  LOG(ERROR) << "Could not find read only cluster with placement uuid: "
-             << state_->options_->placement_uuid;
+  LOG(DFATAL) << "Could not find read only cluster with placement uuid: "
+              << state_->options_->placement_uuid;
   return replication_info.read_replicas(0);
 }
 

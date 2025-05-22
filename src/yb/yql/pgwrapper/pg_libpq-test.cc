@@ -165,6 +165,8 @@ class PgLibPqTest : public LibPqTestBase {
 
   void TestSecondaryIndexInsertSelect();
 
+  Status TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces);
+
   void KillPostmasterProcessOnTservers();
 
   Result<string> GetPostmasterPidViaShell(pid_t backend_pid);
@@ -945,6 +947,107 @@ class PgLibPqWithSharedMemTest : public PgLibPqTest {
 
 TEST_F_EX(PgLibPqTest, SecondaryIndexInsertSelectWithSharedMem, PgLibPqWithSharedMemTest) {
   TestSecondaryIndexInsertSelect();
+}
+
+Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces) {
+  auto conn = VERIFY_RESULT(Connect());
+  constexpr auto kPgCatalogOid = 11;
+
+  // Secondary index scan on system table.
+  auto query = Format(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM pg_class WHERE relname = 'pg_class' AND relnamespace = $0",
+      kPgCatalogOid);
+  // First run is to warm up the cache.
+  RETURN_NOT_OK(conn.FetchRow<std::string>(query));
+  // Second run is the real test.
+  auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  rapidjson::Document explain_json;
+  explain_json.Parse(explain_str.c_str());
+  auto scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Catalog Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of catalog read requests");
+
+  // Secondary index scan on copartitioned table.
+  RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE vector_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 2 TABLETS"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE INDEX ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO vector_test VALUES (1, '[1, 2, 3]')"));
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM vector_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT 1"));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Limit",
+            IllegalState,
+            "Unexpected scan type");
+  scan_type = std::string(explain_json[0]["Plan"]["Plans"][0]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index.
+  RETURN_NOT_OK(conn.Execute("CREATE DATABASE colodb WITH colocation = true"));
+  conn = VERIFY_RESULT(ConnectToDB("colodb"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE colo_test (id int PRIMARY KEY, value TEXT)"));
+  RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO colo_test VALUES (1, 'hi')"));
+  query = "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM colo_test WHERE value = 'hi'";
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index on different tablespaces.
+  if (is_colocated_with_tablespaces) {
+    RETURN_NOT_OK(conn.Execute("DROP INDEX colo_test_value_idx"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLESPACE spc LOCATION '/dne'"));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value) TABLESPACE spc"));
+    explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+    explain_json.Parse(explain_str.c_str());
+    scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+    SCHECK_EQ(scan_type, "Index Scan",
+              IllegalState,
+              "Unexpected scan type");
+    SCHECK_GT(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+              IllegalState,
+              "Unexpected number of storage read requests");
+  }
+
+  return Status::OK();
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    options->extra_master_flags.push_back(flag);
+    options->extra_tserver_flags.push_back(flag);
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
+          PgLibPqColocatedTablesWithTablespacesTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
 void AssertRows(PGConn *conn, int expected_num_rows) {

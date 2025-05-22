@@ -1067,8 +1067,8 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
-  std::optional<ObjectLockInfo::WriteLock> RefreshYsqlOperationLease(const NodeInstancePB& instance)
-      EXCLUDES(mutex_);
+  std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+  RefreshYsqlOperationLease(const NodeInstancePB& instance) EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 

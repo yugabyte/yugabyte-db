@@ -98,7 +98,6 @@ namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
-YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
@@ -644,13 +643,14 @@ class Tablet : public AbstractTablet,
   // range-based partitions always matches the returned middle key.
   Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
 
-  std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
+  std::string TEST_DocDBDumpStr(
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse);
 
   void TEST_DocDBDumpToContainer(
-      IncludeIntents include_intents, std::unordered_set<std::string>* out);
+      docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out);
 
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
-  void TEST_DocDBDumpToLog(IncludeIntents include_intents);
+  void TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents);
 
   Result<size_t> TEST_CountDBRecords(docdb::StorageDbType db_type);
 

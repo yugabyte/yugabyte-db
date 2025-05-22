@@ -745,8 +745,8 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
                    << "complete. Continuing to wait.";
       time = CoarseMonoClock::now();
       if (time >= deadline) {
-        LOG(ERROR) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
-                   << "Returning a timeout from SyncWrite.";
+        LOG(WARNING) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
+                     << "Returning a timeout from SyncWrite.";
         return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
       }
     }

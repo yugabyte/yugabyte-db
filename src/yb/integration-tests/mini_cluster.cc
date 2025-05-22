@@ -110,6 +110,7 @@ DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(fs_data_dirs);
 DECLARE_string(use_private_ip);
+DECLARE_bool(TEST_enable_ysql_operation_lease_expiry_check);
 
 namespace yb {
 
@@ -216,6 +217,11 @@ Status MiniCluster::StartAsync(
 
   // We are testing public/private IPs using mini cluster. So set mode to 'cloud'.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "cloud";
+
+  // todo(zdrudi): There are currently use after free issues with how the minicluster handles the
+  // pg process. The background ysql lease checker can call a method on a null pointer. This is only
+  // an issue in the test harness so we disable the tserver's ysql op lease check for miniclusters.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
 
   // This dictates the RF of newly created tables.
   SetAtomicFlag(options_.num_tablet_servers >= 3 ? 3 : 1, &FLAGS_replication_factor);
@@ -1218,16 +1224,19 @@ Status WaitUntilTabletHasLeader(
 }
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline) {
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready) {
   for (const auto& tablet_id : ListTabletIdsForTable(cluster, table_id)) {
-    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline));
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline, require_leader_is_ready));
   }
   return Status::OK();
 }
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout) {
-  return WaitForTableLeaders(cluster, table_id, CoarseMonoClock::Now() + timeout);
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout,
+    RequireLeaderIsReady require_leader_is_ready) {
+  return WaitForTableLeaders(
+      cluster, table_id, CoarseMonoClock::Now() + timeout, require_leader_is_ready);
 }
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
@@ -1650,7 +1659,7 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster) {
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
   auto peers = ListTabletPeers(cluster, filter);
   for (const auto& peer : peers) {
-    peer->shared_tablet()->TEST_DocDBDumpToLog(tablet::IncludeIntents::kTrue);
+    peer->shared_tablet()->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
   }
 }
 

@@ -191,6 +191,10 @@ constexpr static size_t GetNumEntriesByDimensions(size_t dimensions) {
   return 1ULL << dimensions;
 }
 
+static size_t GetNumDimensionsByEntries(size_t num_entries) {
+  return std::ceil(std::log2(num_entries));
+}
+
 FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
   FloatVectorLSM::InsertEntries result;
   for (size_t i = 1; i <= GetNumEntriesByDimensions(dimensions); ++i) {
@@ -242,7 +246,8 @@ Status VectorLSMTest::InsertCube(
     RETURN_NOT_OK(lsm.Insert(block_entries, { .frontiers = &frontiers }));
     ++num_inserts;
   }
-  LOG(INFO) << "Inserted " << num_inserts << " blocks";
+  LOG(INFO) << "Inserted " << inserted_entries_.size() << " entries "
+            << "via " << num_inserts << " batches";
   return Status::OK();
 }
 
@@ -315,7 +320,7 @@ void VectorLSMTest::CheckQueryVector(
       .ef = 0,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));
-    LOG(INFO) << "Search result: " << AsString(search_result);
+    VLOG(1) << "Search result: " << AsString(search_result);
 
     ASSERT_EQ(search_result.size(), expected_results.size());
 
@@ -489,8 +494,8 @@ TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
 }
 
 void VectorLSMTest::TestBootstrap(bool flush) {
-  constexpr size_t kDimensions = 4;
-  constexpr size_t kChunkSize = 4;
+  constexpr size_t kChunkSize  = kDefaultChunkSize;
+  const     size_t kDimensions = GetNumDimensionsByEntries(kChunkSize * 4);
 
   {
     FloatVectorLSM lsm;

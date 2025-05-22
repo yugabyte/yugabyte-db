@@ -3383,7 +3383,7 @@ SPI_register_trigger_data(TriggerData *tdata)
 	if (tdata->tg_newtable)
 	{
 		EphemeralNamedRelation enr =
-		palloc(sizeof(EphemeralNamedRelationData));
+			palloc(sizeof(EphemeralNamedRelationData));
 		int			rc;
 
 		enr->md.name = tdata->tg_trigger->tgnewtable;
@@ -3400,7 +3400,7 @@ SPI_register_trigger_data(TriggerData *tdata)
 	if (tdata->tg_oldtable)
 	{
 		EphemeralNamedRelation enr =
-		palloc(sizeof(EphemeralNamedRelationData));
+			palloc(sizeof(EphemeralNamedRelationData));
 		int			rc;
 
 		enr->md.name = tdata->tg_trigger->tgoldtable;

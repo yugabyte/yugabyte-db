@@ -95,8 +95,8 @@ std::string GetSharedMemoryDirectory() {
       }
     }
   } else if (errno != ENOENT) {
-    LOG(ERROR) << "Unexpected error when reading /proc/mounts: errno=" << errno
-               << ": " << ErrnoToString(errno);
+    LOG(DFATAL) << "Unexpected error when reading /proc/mounts: errno=" << errno
+                << ": " << ErrnoToString(errno);
   }
 #endif
 
@@ -117,8 +117,8 @@ int TryMemfdCreate() {
 
   struct utsname uts_name;
   if (uname(&uts_name) == -1) {
-    LOG(ERROR) << "Failed to get kernel name information: errno=" << errno
-               << ": " << ErrnoToString(errno);
+    LOG(DFATAL) << "Failed to get kernel name information: errno=" << errno
+                << ": " << ErrnoToString(errno);
     return fd;
   }
 
@@ -140,8 +140,8 @@ int TryMemfdCreate() {
 
     fd = memfd_create();
     if (fd == -1) {
-      LOG(ERROR) << "Error creating shared memory via memfd_create: errno=" << errno
-                 << ": " << ErrnoToString(errno);
+      LOG(DFATAL) << "Error creating shared memory via memfd_create: errno=" << errno
+                  << ": " << ErrnoToString(errno);
     }
   }
 
@@ -180,9 +180,9 @@ Result<int> CreateTempSharedMemoryFile() {
 
     // Immediately unlink the file to so it will be removed when all file descriptors close.
     if (unlink(temp_file_path.c_str()) == -1) {
-      LOG(ERROR) << "Leaking shared memory file '" << temp_file_path
-                 << "' after failure to unlink: errno=" << errno
-                 << ": " << ErrnoToString(errno);
+      LOG(DFATAL) << "Leaking shared memory file '" << temp_file_path
+                  << "' after failure to unlink: errno=" << errno
+                  << ": " << ErrnoToString(errno);
     }
     break;
   }
@@ -255,8 +255,8 @@ SharedMemorySegment::SharedMemorySegment(SharedMemorySegment&& other)
 
 SharedMemorySegment::~SharedMemorySegment() {
   if (base_address_ && munmap(base_address_, segment_size_) == -1) {
-    LOG(ERROR) << "Failed to unmap shared memory segment: errno=" << errno
-               << ": " << ErrnoToString(errno);
+    LOG(DFATAL) << "Failed to unmap shared memory segment: errno=" << errno
+                << ": " << ErrnoToString(errno);
   }
 
   if (fd_ != -1) {

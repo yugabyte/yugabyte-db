@@ -3802,10 +3802,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 	 * "public" that is a comment.  We have to do this when --no-owner mode is
 	 * selected.  This is ugly, but I see no other good way ...
 	 *
-	 * Entries with a defnDumper need to call it to generate the
-	 * definition.  This is primarily intended to provide a way to save memory
-	 * for objects that would otherwise need a lot of it (e.g., statistics
-	 * data).
+	 * Entries with a defnDumper need to call it to generate the definition.
+	 * This is primarily intended to provide a way to save memory for objects
+	 * that would otherwise need a lot of it (e.g., statistics data).
 	 */
 	if (ropt->noOwner &&
 		strcmp(te->desc, "SCHEMA") == 0 && strncmp(te->defn, "--", 2) != 0)

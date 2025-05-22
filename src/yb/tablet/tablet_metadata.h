@@ -70,7 +70,6 @@ namespace yb::tablet {
 using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
 
 extern const int64 kNoDurableMemStore;
-extern const std::string kIntentsDirName;
 extern const std::string kSnapshotsDirName;
 
 const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();

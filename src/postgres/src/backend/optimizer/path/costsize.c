@@ -173,8 +173,6 @@ double		yb_seq_block_cost = DEFAULT_SEQ_PAGE_COST;
 double		yb_random_block_cost = DEFAULT_RANDOM_PAGE_COST;
 double		yb_docdb_next_cpu_cycles = YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES;
 double		yb_seek_cost_factor = YB_DEFAULT_SEEK_COST_FACTOR;
-double		yb_backward_seek_cost_factor = YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR;
-double		yb_fast_backward_seek_cost_factor = YB_DEFAULT_FAST_BACKWARD_SEEK_COST_FACTOR;
 int			yb_docdb_merge_cpu_cycles = YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES;
 int			yb_docdb_remote_filter_overhead_cycles = YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES;
 
@@ -219,6 +217,8 @@ bool		enable_async_append = true;
 bool		yb_enable_geolocation_costing = true;
 bool		yb_enable_batchednl = false;
 bool		yb_enable_parallel_append = false;
+YbCostModel	yb_enable_cbo = YB_COST_MODEL_LEGACY;
+bool		yb_ignore_stats = false;
 
 extern int	yb_bnl_batch_size;
 
@@ -2317,7 +2317,7 @@ cost_incremental_sort(Path *path,
 	{
 		PathKey    *key = (PathKey *) lfirst(l);
 		EquivalenceMember *member = (EquivalenceMember *)
-		linitial(key->pk_eclass->ec_members);
+			linitial(key->pk_eclass->ec_members);
 
 		/*
 		 * Check if the expression contains Var with "varno 0" so that we
@@ -6705,7 +6705,7 @@ yb_compute_result_transfer_cost(double result_tuples,
 								Cost roundtrip_cost,
 								Cost transfer_cost)
 {
-	int			num_result_pages;
+	double		num_result_pages;
 	double		result_page_size;
 
 	/* Network costs */
@@ -7387,8 +7387,10 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (adjusted_baserel_tuples - 1);
 
-	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
+	path->yb_plan_info.estimated_num_table_result_pages = num_result_pages;
+	path->yb_plan_info.estimated_num_index_result_pages = 0;
 
 	run_cost += (num_seeks * per_seek_cost) + (num_nexts * per_next_cost);
 
@@ -7950,7 +7952,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	int			num_sst_files_baserel = YB_DEFAULT_NUM_SST_FILES_PER_TABLE;
 	Cost		per_next_cost;
 	double		num_seeks;
-	double		num_nexts;
+	double		num_nexts_prevs;
 	QualCost	qual_cost;
 	List	   *base_table_pushed_down_filters = NIL;
 	List	   *base_table_colrefs = NIL;
@@ -8136,13 +8138,13 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * scan.
 	 */
 	num_seeks = 0;
-	num_nexts = 0;
+	num_nexts_prevs = 0;
 	if (yb_exist_conditions_on_all_hash_keys_)
 	{
 		yb_estimate_seeks_nexts_in_index_scan(root, index, baserel, baserel_oid,
 											  index_conditions_selectivity,
 											  index_conditions_on_each_column,
-											  &num_seeks, &num_nexts);
+											  &num_seeks, &num_nexts_prevs);
 	}
 	else
 	{
@@ -8154,7 +8156,31 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 * find the next keys.
 		 */
 		num_seeks = 1;
-		num_nexts = index->tuples;
+		num_nexts_prevs = index->tuples;
+	}
+
+	if (path->indexscandir == BackwardScanDirection && !YbUseFastBackwardScan())
+	{
+		/*
+		 * In case of backward index scan without the fast backward scan
+		 * optimization, we need to do additional seeks and nexts.
+		 *
+		 * The seek and next estimates to look up the index for the index
+		 * conditions are the same, but for each row that matches, we must
+		 * first seek to the first key-value pair in DocDB and then do nexts
+		 * to build the tuple.
+		 *
+		 * However, for each tuple we must first seek to the first key-value
+		 * pair for the tuple and then do nexts to build the tuple. At the
+		 * end, we must seek back to the first key-value pair for the tuple
+		 * and do prev to find the last key-value pair of the previous
+		 * tuple. This is why we must add 2 seeks and 1 prev for each tuple.
+		 *
+		 * There is additional logic in this implementation that has not
+		 * been modeled here for the sake of simplicity.
+		 */
+		num_seeks += (index_conditions_selectivity * adjusted_index_tuples * 2);
+		num_nexts_prevs += (index_conditions_selectivity * adjusted_index_tuples);
 	}
 
 	pfree(index_conditions_on_each_column);
@@ -8186,23 +8212,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	per_next_cost = ((yb_docdb_next_cpu_cycles * cpu_operator_cost) +
 					 per_merge_cost);
 
-	if (path->indexscandir == BackwardScanDirection)
-	{
-		per_next_cost *= (YbUseFastBackwardScan() ?
-						  yb_fast_backward_seek_cost_factor :
-						  yb_backward_seek_cost_factor);
-	}
-
 	/* Adjust costing for parallelism, if used. */
 	if (path->path.parallel_workers > 0)
 	{
 		parallel_divisor = get_parallel_divisor(&path->path);
 		adjusted_index_tuples = index->tuples / parallel_divisor;
 		num_seeks = ceil(num_seeks / parallel_divisor);
-		num_nexts = ceil(num_nexts / parallel_divisor);
+		num_nexts_prevs = ceil(num_nexts_prevs / parallel_divisor);
 	}
 
-	run_cost += num_seeks * index_per_seek_cost + num_nexts * per_next_cost;
+	run_cost += (num_seeks * index_per_seek_cost) +
+				(num_nexts_prevs * per_next_cost);
 
 	/* Estimate the cost of checking the index conditions and filters */
 	List	   *index_conditions_and_filters = NIL;
@@ -8302,7 +8322,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 				 YB_DEFAULT_DOCDB_BLOCK_SIZE);
 		index_pages_fetched = clamp_row_est(index_selectivity * index_total_pages);
 		index_random_pages_fetched =
-			ceil(num_seeks / (num_seeks + num_nexts)) * index_pages_fetched;
+			ceil(num_seeks / (num_seeks + num_nexts_prevs)) * index_pages_fetched;
 		index_sequential_pages_fetched =
 			index_pages_fetched - index_random_pages_fetched;
 
@@ -8369,6 +8389,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 												   baserel, baserel_oid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 
+	double		index_result_num_pages = 0;
+
 	/*
 	 * Compute the cost of transferring results over network from DocDB to
 	 * pggate.
@@ -8415,7 +8437,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		}
 
 		Cost baserel_ybctid_transfer_cost;
-		double		index_result_num_pages;
 
 		if (path->path.parallel_workers > 0)
 		{
@@ -8455,6 +8476,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 					  (1 - 1 / index_result_num_pages)));
 	}
 
+	double		num_baserel_result_pages = 0;
+
 	if (!is_primary_index && !index_only && !baserel_is_colocated)
 	{
 		/*
@@ -8476,7 +8499,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 		/* Add cost of fetching result from base table */
 		startup_cost += baserel_roundtrip_cost;
-		double		num_baserel_result_pages;
 		if (path->path.parallel_workers > 0)
 		{
 			num_baserel_result_pages = ceil(num_baserel_result_rows *
@@ -8541,7 +8563,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 											 (MAX_NEXTS_TO_AVOID_SEEK + 1));
 
 			num_seeks += baserel_num_seeks;
-			num_nexts += baserel_num_nexts;
+			num_nexts_prevs += baserel_num_nexts;
 			run_cost += (baserel_per_seek_cost * baserel_num_seeks);
 			run_cost += (per_next_cost * baserel_num_nexts);
 		}
@@ -8562,8 +8584,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		}
 	}
 
-	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts_prevs;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
+	path->yb_plan_info.estimated_num_table_result_pages = num_baserel_result_pages;
+	path->yb_plan_info.estimated_num_index_result_pages = index_result_num_pages;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -8887,8 +8911,18 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	num_seeks = tuples_scanned;
 	num_nexts = (max_nexts_to_avoid_seek + 1) * tuples_scanned;
 
-	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
+
+	/*
+	 * Initialize to -1 to indicate the values are not set.
+	 *
+	 * YB_TODO(#27232) : Enhance EXPLAIN to show round trips for
+	 * bitmap scans and check to see if we still need to set these
+	 * valuess to -1.
+	 */
+	path->yb_plan_info.estimated_num_table_result_pages = -1;
+	path->yb_plan_info.estimated_num_index_result_pages = -1;
 
 	run_cost += (num_seeks * per_seek_cost) + (num_nexts * per_next_cost);
 
@@ -8917,6 +8951,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	path->startup_cost = startup_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->total_cost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
-	path->yb_plan_info.estimated_num_nexts = num_nexts;
+	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
 }

@@ -4743,10 +4743,9 @@ RelationClearRelation(Relation relation, bool rebuild)
 		 * have different types of stats.
 		 *
 		 * If we don't want to keep the stats, unlink the stats and relcache
-		 * entry (and do so before entering the "critical section"
-		 * below). This is important because otherwise
-		 * PgStat_TableStatus->relation would get out of sync with
-		 * relation->pgstat_info.
+		 * entry (and do so before entering the "critical section" below).
+		 * This is important because otherwise PgStat_TableStatus->relation
+		 * would get out of sync with relation->pgstat_info.
 		 */
 		keep_pgstats = relation->rd_rel->relkind == newrel->rd_rel->relkind;
 		if (!keep_pgstats)
@@ -5197,10 +5196,10 @@ static void
 AssertPendingSyncConsistency(Relation relation)
 {
 	bool		relcache_verdict =
-	RelationIsPermanent(relation) &&
-	((relation->rd_createSubid != InvalidSubTransactionId &&
-	  RELKIND_HAS_STORAGE(relation->rd_rel->relkind)) ||
-	 relation->rd_firstRelfilenodeSubid != InvalidSubTransactionId);
+		RelationIsPermanent(relation) &&
+		((relation->rd_createSubid != InvalidSubTransactionId &&
+		  RELKIND_HAS_STORAGE(relation->rd_rel->relkind)) ||
+		 relation->rd_firstRelfilenodeSubid != InvalidSubTransactionId);
 
 	Assert(relcache_verdict == RelFileNodeSkippingWAL(relation->rd_node));
 

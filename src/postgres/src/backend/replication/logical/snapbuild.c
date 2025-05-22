@@ -2168,9 +2168,9 @@ SnapBuildXidSetCatalogChanges(SnapBuild *builder, TransactionId xid, int subxcnt
 	/*
 	 * Skip if there is no initial running xacts information.
 	 *
-	 * Even if the transaction has been marked as containing catalog
-	 * changes, it cannot be skipped because its subtransactions that
-	 * modified the catalog may not be marked.
+	 * Even if the transaction has been marked as containing catalog changes,
+	 * it cannot be skipped because its subtransactions that modified the
+	 * catalog may not be marked.
 	 */
 	if (NInitialRunningXacts == 0)
 		return;

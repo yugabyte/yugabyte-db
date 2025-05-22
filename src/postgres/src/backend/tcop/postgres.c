@@ -222,8 +222,8 @@ static long YbNumHintCacheMisses = 0;
  * YB: String constants used for redacting text after the password token in
  * CREATE/ALTER ROLE commands.
  */
-#define TOKEN_PASSWORD "password"
-#define TOKEN_REDACTED "<REDACTED>"
+#define YB_TOKEN_PASSWORD "password"
+#define YB_TOKEN_REDACTED "<REDACTED>"
 
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
@@ -3608,6 +3608,11 @@ ProcessInterrupts(void)
 		ProcessLogHeapSnapshotInterrupt();
 }
 
+void YbCheckForInterrupts()
+{
+	CHECK_FOR_INTERRUPTS();
+}
+
 
 /*
  * IA64-specific code to fetch the AR.BSP register for stack depth checks.
@@ -4415,9 +4420,10 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	}
 
 	ereport(enable_inval_messages ? LOG : DEBUG1,
-			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %u",
+			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d",
 					message_lists.num_lists, local_catalog_version,
-					shared_catalog_version, num_catalog_versions)));
+					shared_catalog_version, catalog_master_version,
+					num_catalog_versions, is_retry)));
 	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
 	YBRefreshCache();
 }
@@ -7215,50 +7221,59 @@ disable_statement_timeout(void)
 
 /*
  * Redact password, if exists in the query text.
+ * Note that this function redacts not just the password token but also everything
+ * following the token. Also note that a semi-colon is not added to end of the
+ * query text. As an example:
+ * 	 CREATE USER test PASSWORD 'pass' NOLOGIN
+ * will be redacted to:
+ * 	 CREATE USER test PASSWORD <REDACTED>
  */
 const char *
 YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 {
 	char	   *redactedStr;
 	char	   *passwordToken;
-	int			i;
 	int			passwordPos;
+	int			strLen;
 
 	/*
-	* Parse and check the type of the query. We only redact password
-	* for the CREATE USER / CREATE ROLE / ALTER USER / ALTER ROLE queries.
-	*/
-	if (commandTag == CMDTAG_UNKNOWN ||
-		(commandTag != CMDTAG_CREATE_ROLE && commandTag != CMDTAG_ALTER_ROLE))
+	 * We only redact password for CREATE USER / CREATE ROLE / ALTER USER /
+	 * ALTER ROLE queries or if the command tag is unknown.
+	 */
+	if (commandTag != CMDTAG_UNKNOWN &&
+		commandTag != CMDTAG_CREATE_ROLE &&
+		commandTag != CMDTAG_ALTER_ROLE)
 		return queryStr;
 
-	/* Copy the query string and convert to lower case. */
-	redactedStr = pstrdup(queryStr);
-
-	for (i = 0; redactedStr[i]; i++)
-		redactedStr[i] = (char) pg_tolower((unsigned char) redactedStr[i]);
-
 	/* Find index of password token. */
-	passwordToken = strstr(redactedStr, TOKEN_PASSWORD);
+	passwordToken = strcasestr(queryStr, YB_TOKEN_PASSWORD);
 
-	if (passwordToken != NULL)
-	{
-		/* Copy query string up to password token. */
-		passwordPos = (passwordToken - redactedStr) + strlen(TOKEN_PASSWORD);
+	/* None exists, so return the unmodified string to the caller. */
+	if (!passwordToken)
+		return queryStr;
 
-		redactedStr = palloc(passwordPos + 1 + strlen(TOKEN_REDACTED) + 1);
+	/* A password exists, so note down the index. */
+	passwordPos = (passwordToken - queryStr) + strlen(YB_TOKEN_PASSWORD);
 
-		strncpy(redactedStr, queryStr, passwordPos);
+	/*
+	 * Copy the query string until the password, accounting for a space char
+	 * after the password token and a NULL termination byte at the end.
+	 */
+	strLen = passwordPos + 1 + strlen(YB_TOKEN_REDACTED);
+	redactedStr = palloc(strLen + 1);
+	strncpy(redactedStr, queryStr, passwordPos);
 
-		/* And append redacted token. */
-		redactedStr[passwordPos] = ' ';
+	/*
+	 * The character after a password token in the original string can be any
+	 * kind of whitespace (like a tab or newline). Replace with a space char.
+	 */
+	redactedStr[passwordPos] = ' ';
 
-		strcpy(redactedStr + passwordPos + 1, TOKEN_REDACTED);
+	/* And append redacted token. */
+	strcpy(redactedStr + passwordPos + 1, YB_TOKEN_REDACTED);
+	redactedStr[strLen] = '\0';
 
-		return redactedStr;
-	}
-
-	return queryStr;
+	return redactedStr;
 }
 
 long
