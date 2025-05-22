@@ -1550,6 +1550,8 @@ Note that if the table is colocated, this hotspot concern can safely be ignored,
 
 To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. The new sharding key will be a modulo of the hash of the timestamp column value, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
 
+Implementing this solution requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, the new sharding key values should be included in the query filters to benefit from distributed execution.
+
 Ensure that the index on the column is configured to be range-sharded.
 
 **Example**
@@ -1564,9 +1566,12 @@ CREATE TABLE orders (
 );
 CREATE INDEX idx_orders_created ON orders(created_at DESC);
 
+SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
 ```
 
 Suggested change to the schema is to add the sharding key as the modulo of the hash of the timestamp column value, which gives a key in a range (for example, 0-15). This can change depending on the use case. This key will be used to distribute the data among various tablets and hence help in distributing the data evenly.
+
+This also requires modifying the range queries to include the modulo of the hash of timestamp column value is in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
 
 ```sql
 CREATE TABLE orders (
@@ -1574,7 +1579,9 @@ CREATE TABLE orders (
     ...
     created_at timestamp
 );
-CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) ASC, created_at DESC);
+CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) HASH, created_at DESC);
+
+SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
 ```
 
 ---
