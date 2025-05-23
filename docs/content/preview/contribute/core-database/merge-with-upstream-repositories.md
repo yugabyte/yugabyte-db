@@ -56,7 +56,7 @@ Therefore, in case of port-imports, YugabyteDB must create a fork of the externa
 To make matters more complicated, the upstream repository might be tracked differently across [yugabyte/yugabyte-db][repo-yugabyte-db] branches.
 For example, pgaudit has different branches for each PG version while pg_cron has a single branch where, at any point, there is multi-version support.
 In case of the former, it is necessary to track separate upstream commits across [yugabyte/yugabyte-db][repo-yugabyte-db] branches, and if a fork is required, then a branch should be created for each PG version that YugabyteDB supports, conventionally named `yb-pg<version>`.
-In case of the latter, one may do the same, or a single `yb` branch can be used across all [yugabyte/yugabyte-db][repo-yugabyte-db] branches.
+In case of the latter, you may do the same, or a single `yb` branch can be used across all [yugabyte/yugabyte-db][repo-yugabyte-db] branches.
 Branches can be renamed, so if the single `yb` branch ever needs to be split to two, it can switch to the `yb-pg<version>` format from that point.
 It's fine as long as historical commits are not lost so that old commits still have a valid upstream commit that can be referenced.
 
@@ -163,7 +163,7 @@ The following steps detail what has already been done to add DocumentDB.
 ### Converting a squash embedded upstream repository to subtree
 
 Working with an existing squash embedded repositories to the subtree strategy is a lot more complicated.
-This is primarily because of the hoops one has to jump through to make `git blame` point to the subtree rather than the old squash commits.
+This is primarily because of the hoops you have to jump through to make `git blame` point to the subtree rather than the old squash commits.
 
 You might be trying to update the upstream repository at the same time.
 In that case, it is strongly recommended to first convert the repository to the subtree embedding strategy at the existing version, then [update it to the new version](#updating-a-subtree).
@@ -500,7 +500,7 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 1. Do the same steps as in [direct-descendant merge](#squash-direct-descendant-merge), starting from "Apply those changes to the [yugabyte/yugabyte-db][repo-yugabyte-db] repo."
    A difference is that this merge may be so much larger that the initial merge is incomplete and potentially based off an old commit on [yugabyte/yugabyte-db][repo-yugabyte-db].
    This initial merge commit and further development to close the gaps can be done in a separate `pg18` branch on [yugabyte/yugabyte-db][repo-yugabyte-db].
-   This is what was done for the PG 15 merge, from [yugabyte/yugabyte-db@55782d561e55ef972f2470a4ae887dd791bb4a97](https://github.com/yugabyte/yugabyte-db/commit/55782d561e55ef972f2470a4ae887dd791bb4a97) to [yugabyte/yugabyte-db@eac5ed5d186b492702a0b546bf82ed162da506b0]((https://github.com/yugabyte/yugabyte-db/commit/eac5ed5d186b492702a0b546bf82ed162da506b0).
+   This is what was done for the PG 15 merge, from [yugabyte/yugabyte-db@55782d561e55ef972f2470a4ae887dd791bb4a97](https://github.com/yugabyte/yugabyte-db/commit/55782d561e55ef972f2470a4ae887dd791bb4a97) to [yugabyte/yugabyte-db@eac5ed5d186b492702a0b546bf82ed162da506b0](https://github.com/yugabyte/yugabyte-db/commit/eac5ed5d186b492702a0b546bf82ed162da506b0).
 
 ### Embedded via subtree
 
@@ -590,10 +590,10 @@ If you are interested in finding whether a certain `REL_15_STABLE` back-patch co
 ### Testing PostgreSQL
 
 When doing a point-import or merge of upstream PostgreSQL, often that leads to creating a commit in [yugabyte/postgres][repo-postgres] repo.
-One should make sure that tests pass after that commit to catch logical merge conflicts.
+You should make sure that tests pass after that commit to catch logical merge conflicts.
 
 There are many tests scattered around different Makefiles, generally run using `make check`.
-Ideally, all should pass, but here are a few that one should pay special attention to since [yugabyte/yugabyte-db][repo-yugabyte-db] also partially uses them:
+Ideally, all should pass, but here are a few that you should pay special attention to since [yugabyte/yugabyte-db][repo-yugabyte-db] also partially uses them:
 
 ```sh
 ./configure
