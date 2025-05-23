@@ -273,4 +273,5 @@ if __name__ == "__main__":
 
 ## Read more
 
+- [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)
 - [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/)
