@@ -872,7 +872,7 @@ Make sure that the information on what is being merged from what repository (if 
 When using `git cherry-pick -x`, the commit message is automatically generated.
 
 In case of cherry-picking for the sake of officially pushing the cherry-picked commits directly (e.g. upstream repositories), if encountering any merge conflicts, put such details somewhere in the commit message.
-In case of [cross-repository cherry-picking](#cross-repository-cherry-pick) and eventually landing a Phorge squash commit, concatenate the commit messages (including titles) and add merge conflict details somewhere in the Phorge summary.
+In case of [cross-repository cherry-picking](#cross-repository-cherry-pick) and eventually landing a Phorge squash commit, concatenate the commit messages (including titles) and add merge conflict details somewhere in the Phorge summary (see [commit 9c084ca219411b6264aaab1dc15ab27adc74bf90](https://github.com/yugabyte/yugabyte-db/commit/9c084ca219411b6264aaab1dc15ab27adc74bf90) as an example).
 The Phorge title should be of the form `[#<GH_issue>] YSQL: import <cherry-picked_commit_title>`, in case of cherry-picking a single commit, or `[#GH_issue>] YSQL: import <general_catchall>` otherwise.
 In case of [cross-repository cherry-picking](#cross-repository-cherry-pick) an upstream merge commit, it may be more fitting to make the title and summary follow the format of a [merge commit message](#merge-commit-message).
 
