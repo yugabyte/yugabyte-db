@@ -12037,5 +12037,40 @@ TEST_F(CDCSDKYsqlTest, TestEqualityOfTxnalRecordsWithColocatedTableHavingIndex) 
   ASSERT_EQ(commit_count, 1);
 }
 
+TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(3 /* rf */, 1 /* num_masters*/));
+
+  // Create 2 tables.
+  std::string table_suffix[2] = {"_1", "_2"};
+  auto table_1 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[0]));
+  auto table_2 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[1]));
+
+  // Create a replication slot and an Xcluster stream.
+  const auto slot_name = "test_slot";
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(slot_name));
+  ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table_1.table_id()));
+
+  // Verify that replica identity map contains two entries for two tables.
+  std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
+  ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
+  ASSERT_EQ(replica_identities.size(), 2);
+
+  // Drop the table under xcluster replication.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName + table_suffix[0]));
+
+  // Sleep for 5 seconds for master bg task to do its work.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // The replica identity map should contain both the entries. This is because, xcluster will retain
+  // the dropped table by marking it as HIDDEN.
+  replica_identities.clear();
+  ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
+  ASSERT_EQ(replica_identities.size(), 2);
+}
+
 }  // namespace cdc
 }  // namespace yb
