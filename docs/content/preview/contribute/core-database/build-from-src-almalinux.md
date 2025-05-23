@@ -123,7 +123,7 @@ sudo dnf install -y python3.11
 ```
 
 Set this as the default python3, if desired.  It is only nessesary that python3.11 be in the PATH,
-It need not be the default.
+it need not be the default python.
 
 ```sh
 sudo alternatives --set python3 /usr/bin/python3.11
