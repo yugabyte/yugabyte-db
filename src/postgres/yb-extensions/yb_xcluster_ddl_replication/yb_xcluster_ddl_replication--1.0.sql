@@ -24,10 +24,6 @@ CREATE FUNCTION yb_xcluster_ddl_replication.get_replication_role()
   LANGUAGE C
   AS 'MODULE_PATHNAME', 'get_replication_role';
 
-CREATE PROCEDURE yb_xcluster_ddl_replication.TEST_override_replication_role(role text)
-  LANGUAGE C
-  AS 'MODULE_PATHNAME', 'TEST_override_replication_role';
-
 /* ------------------------------------------------------------------------- */
 /* Create event triggers. */
 
