@@ -195,7 +195,7 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 		else
 		{
 			Oid			primitive_type_oid =
-			YbGetPrimitiveTypeOid(type_id, tp->typtype, tp->typbasetype);
+				YbGetPrimitiveTypeOid(type_id, tp->typtype, tp->typbasetype);
 
 			return YbDataTypeFromOidMod(InvalidAttrNumber, primitive_type_oid);
 		}

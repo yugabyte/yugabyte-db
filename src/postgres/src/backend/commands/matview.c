@@ -113,7 +113,7 @@ SetMatViewPopulatedState(Relation relation, bool newstate,
 	{
 		if (((Form_pg_class) GETSTRUCT(tuple))->relispopulated != newstate)
 			elog(ERROR, "Cannot change the populated state of a materialized "
-						"view when in place refresh is enabled");
+				 "view when in place refresh is enabled");
 
 		heap_freetuple(tuple);
 		table_close(pgrel, RowExclusiveLock);
@@ -175,7 +175,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	int			save_sec_context;
 	int			save_nestlevel;
 	ObjectAddress address;
-	bool yb_in_place_refresh = YbRefreshMatviewInPlace();
+	bool		yb_in_place_refresh = YbRefreshMatviewInPlace();
 
 	/* Determine strength of lock needed. */
 	concurrent = stmt->concurrent;
@@ -1108,16 +1108,16 @@ yb_refresh_in_place_update(Relation matviewRel, Oid tempOid)
 	Assert(IsYugaByteEnabled());
 
 	StringInfoData querybuf;
-	Relation tempRel;
-	char *matviewname;
-	char *tempname;
+	Relation	tempRel;
+	char	   *matviewname;
+	char	   *tempname;
 
 	initStringInfo(&querybuf);
 	matviewname = quote_qualified_identifier(get_namespace_name(RelationGetNamespace(matviewRel)),
-		RelationGetRelationName(matviewRel));
+											 RelationGetRelationName(matviewRel));
 	tempRel = table_open(tempOid, NoLock);
 	tempname = quote_qualified_identifier(get_namespace_name(RelationGetNamespace(tempRel)),
-		RelationGetRelationName(tempRel));
+										  RelationGetRelationName(tempRel));
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");

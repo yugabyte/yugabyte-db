@@ -46,11 +46,12 @@
 /* Status codes for query diagnostics bundles in yb_query_diagnostics_status view */
 typedef enum YbQueryDiagnosticsStatusType
 {
-	YB_DIAGNOSTICS_SUCCESS = 0,		/* Bundle completed successfully */
+	YB_DIAGNOSTICS_SUCCESS = 0, /* Bundle completed successfully */
 	YB_DIAGNOSTICS_IN_PROGRESS = 1, /* Bundle is currently running */
-	YB_DIAGNOSTICS_ERROR = 2,		/* Bundle encountered an error */
+	YB_DIAGNOSTICS_ERROR = 2,	/* Bundle encountered an error */
 	YB_DIAGNOSTICS_CANCELLED = 3,	/* Bundle was cancelled */
-	YB_DIAGNOSTICS_POSTMASTER_SHUTDOWN = 4 /* Bundle encountered a postmaster shutdown */
+	YB_DIAGNOSTICS_POSTMASTER_SHUTDOWN = 4	/* Bundle encountered a postmaster
+											 * shutdown */
 } YbQueryDiagnosticsStatusType;
 
 /*
@@ -63,7 +64,7 @@ typedef enum YbQueryDiagnosticsStatusType
 extern bool yb_enable_query_diagnostics;
 extern int	yb_query_diagnostics_bg_worker_interval_ms;
 extern int	yb_query_diagnostics_circular_buffer_size;
-extern bool	yb_query_diagnostics_disable_database_connection_bgworker;
+extern bool yb_query_diagnostics_disable_database_connection_bgworker;
 
 /*
  * Enum to distinguish between planning and execution statistics for pg_stat_statements.
@@ -71,24 +72,30 @@ extern bool	yb_query_diagnostics_disable_database_connection_bgworker;
  *
  * Note that this needs to be in sync with pgssStoreKind of pg_stat_statements.c
  */
- typedef enum YbQdPgssStoreKind
+typedef enum YbQdPgssStoreKind
 {
 	YB_QD_PGSS_INVALID = -1,
 
 	YB_QD_PGSS_PLAN = 0,
 	YB_QD_PGSS_EXEC,
 
-	YB_QD_PGSS_NUMKIND				/* Must be last value of this enum */
+	YB_QD_PGSS_NUMKIND			/* Must be last value of this enum */
 } YbQdPgssStoreKind;
 
 typedef struct YbPgssCounters
 {
-	int64		calls[YB_QD_PGSS_NUMKIND];			/* # of times executed */
-	double		total_time[YB_QD_PGSS_NUMKIND];		/* total planning/execution time, in msec */
-	double		min_time[YB_QD_PGSS_NUMKIND];		/* minimum planning/execution time in msec */
-	double		max_time[YB_QD_PGSS_NUMKIND];		/* maximum planning/execution time in msec */
-	double		mean_time[YB_QD_PGSS_NUMKIND];		/* mean planning/execution time in msec */
-	double		sum_var_time[YB_QD_PGSS_NUMKIND];	/* sum of variances in planning/execution time in msec */
+	int64		calls[YB_QD_PGSS_NUMKIND];	/* # of times executed */
+	double		total_time[YB_QD_PGSS_NUMKIND]; /* total planning/execution
+												 * time, in msec */
+	double		min_time[YB_QD_PGSS_NUMKIND];	/* minimum planning/execution
+												 * time in msec */
+	double		max_time[YB_QD_PGSS_NUMKIND];	/* maximum planning/execution
+												 * time in msec */
+	double		mean_time[YB_QD_PGSS_NUMKIND];	/* mean planning/execution
+												 * time in msec */
+	double		sum_var_time[YB_QD_PGSS_NUMKIND];	/* sum of variances in
+													 * planning/execution time
+													 * in msec */
 	int64		rows;			/* total # of retrieved or affected rows */
 	int64		shared_blks_hit;	/* # of shared buffer hits */
 	int64		shared_blks_read;	/* # of shared disk blocks read */
@@ -103,23 +110,27 @@ typedef struct YbPgssCounters
 	double		blk_read_time;	/* time spent reading blocks, in msec */
 	double		blk_write_time; /* time spent writing blocks, in msec */
 	double		temp_blk_read_time; /* time spent reading temp blocks, in msec */
-	double		temp_blk_write_time; /* time spent writing temp blocks, in msec */
+	double		temp_blk_write_time;	/* time spent writing temp blocks, in
+										 * msec */
 	int64		wal_records;	/* # of WAL records generated */
 	int64		wal_fpi;		/* # of WAL full page images generated */
 	uint64		wal_bytes;		/* total amount of WAL generated in bytes */
 	int64		jit_functions;	/* total number of JIT functions emitted */
 	double		jit_generation_time;	/* total time to generate jit code */
-	int64		jit_inlining_count; /* number of times inlining time has been > 0 */
+	int64		jit_inlining_count; /* number of times inlining time has been
+									 * > 0 */
 	double		jit_inlining_time;	/* total time to inline jit code */
-	int64		jit_optimization_count; /* number of times optimization time has been > 0 */
+	int64		jit_optimization_count; /* number of times optimization time
+										 * has been > 0 */
 	double		jit_optimization_time;	/* total time to optimize jit code */
-	int64		jit_emission_count; /* number of times emission time has been > 0 */
+	int64		jit_emission_count; /* number of times emission time has been
+									 * > 0 */
 	double		jit_emission_time;	/* total time to emit jit code */
 } YbPgssCounters;
 
 typedef struct YbQueryDiagnosticsPgss
 {
-	YbPgssCounters counters;		/* the statistics for this query */
+	YbPgssCounters counters;	/* the statistics for this query */
 	Size		query_offset;	/* query text offset in external file */
 	int			query_len;		/* # of valid bytes in query string, or -1 */
 } YbQueryDiagnosticsPgss;
@@ -171,7 +182,10 @@ typedef struct YbQueryDiagnosticsMetadata
 	/* Whether the directory has been created */
 	bool		directory_created;
 
-	/* Only schema details remain pending; all other diagnostics data has been flushed */
+	/*
+	 * Only schema details remain pending; all other diagnostics data has been
+	 * flushed
+	 */
 	bool		flush_only_schema_details;
 } YbQueryDiagnosticsMetadata;
 
@@ -213,7 +227,7 @@ extern Size YbQueryDiagnosticsShmemSize(void);
 extern void YbQueryDiagnosticsShmemInit(void);
 extern void YbQueryDiagnosticsMain(Datum main_arg);
 extern void YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_len);
-extern void YbQueryDiagnosticsAppendToDescription(char *description, const char *format, ...);
+extern void YbQueryDiagnosticsAppendToDescription(char *description, const char *format,...);
 extern void YbQueryDiagnosticsDatabaseConnectionWorkerMain(Datum main_arg);
 extern void YbQueryDiagnosticsAccumulatePgss(int64 query_id, YbQdPgssStoreKind kind,
 											 double total_time, uint64 rows,

@@ -579,8 +579,9 @@ LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 	/*
 	 * blocknum and offnum are irrelevant in YB's object locking.
 	 */
-	uint32 block_num = 0;
-	uint16 offset_num = 0;
+	uint32		block_num = 0;
+	uint16		offset_num = 0;
+
 	if (YBIsPgLockingEnabled())
 	{
 		block_num = ItemPointerGetBlockNumber(tid);
@@ -610,8 +611,9 @@ ConditionalLockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 	/*
 	 * blocknum and offnum are irrelevant in YB's object locking.
 	 */
-	uint32 block_num = 0;
-	uint16 offset_num = 0;
+	uint32		block_num = 0;
+	uint16		offset_num = 0;
+
 	if (YBIsPgLockingEnabled())
 	{
 		block_num = ItemPointerGetBlockNumber(tid);
@@ -638,8 +640,9 @@ UnlockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 	/*
 	 * blocknum and offnum are irrelevant in YB's object locking.
 	 */
-	uint32 block_num = 0;
-	uint16 offset_num = 0;
+	uint32		block_num = 0;
+	uint16		offset_num = 0;
+
 	if (YBIsPgLockingEnabled())
 	{
 		block_num = ItemPointerGetBlockNumber(tid);
@@ -1110,6 +1113,7 @@ LockDatabaseObject(Oid classid, Oid objid, uint16 objsubid,
 				   LOCKMODE lockmode)
 {
 	LOCKTAG		tag;
+
 	SET_LOCKTAG_OBJECT(tag,
 					   MyDatabaseId,
 					   classid,
@@ -1168,6 +1172,7 @@ UnlockDatabaseObject(Oid classid, Oid objid, uint16 objsubid,
 					 LOCKMODE lockmode)
 {
 	LOCKTAG		tag;
+
 	SET_LOCKTAG_OBJECT(tag,
 					   MyDatabaseId,
 					   classid,
@@ -1187,6 +1192,7 @@ LockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 				 LOCKMODE lockmode)
 {
 	LOCKTAG		tag;
+
 	SET_LOCKTAG_OBJECT(tag,
 					   InvalidOid,
 					   classid,
@@ -1207,6 +1213,7 @@ UnlockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 				   LOCKMODE lockmode)
 {
 	LOCKTAG		tag;
+
 	SET_LOCKTAG_OBJECT(tag,
 					   InvalidOid,
 					   classid,

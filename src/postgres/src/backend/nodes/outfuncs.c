@@ -44,7 +44,7 @@
  * ScalarOpArrayExpression, without disturbing any other PG functionality that
  * depends on the serialization format.
  */
-int yb_serialize_expression_version = 0;
+int			yb_serialize_expression_version = 0;
 
 static void outChar(StringInfo str, char c);
 
@@ -4877,7 +4877,7 @@ bmsToString(const Bitmapset *bms)
 char *
 ybSerializeNode(const void *obj)
 {
-	char *result;
+	char	   *result;
 
 	yb_serialize_expression_version = yb_major_version_upgrade_compatibility;
 

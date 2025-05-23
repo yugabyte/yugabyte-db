@@ -12,8 +12,10 @@ different.
     the corresponding commit):
 
         diff \
-          <(cd src/postgres; git ls-files ^third-party-extensions ../yb/yql/pggate/***/ybc_*.h | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk '{print$1}' | uniq) \
-          <(cd ~/code/postgres; git ls-files | ctags -L - --languages=c,c++ --c-kinds=gstu --c++-kinds=gstu -f /dev/stdout | awk ' {print$1}' | uniq) | grep '<'
+          <(cd src/postgres; git ls-files ^third-party-extensions ../yb/yql/pggate/***/ybc_*.h | ctags -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout | awk '{print$1}' | uniq) \
+          <(cd ~/code/postgres; git ls-files | ctags -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout | awk ' {print$1}' | uniq) \
+          | grep '<' \
+          | sed 's/< //'
 
     ctags can find most type names.  The command above compares the ctags
     output between Yugabyte code and upstream postgres code and reports the

@@ -1493,7 +1493,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 				   Oid *paramTypes, /* parameter types */
 				   int numParams,	/* number of parameters */
 				   CommandDest output_dest, /* where to send output */
-				   bool yb_parse_no_parse_complete) /* do not send ParseComplete */
+				   bool yb_parse_no_parse_complete) /* do not send
+													 * ParseComplete */
 {
 	MemoryContext unnamed_stmt_context = NULL;
 	MemoryContext oldcontext;
@@ -3608,7 +3609,8 @@ ProcessInterrupts(void)
 		ProcessLogHeapSnapshotInterrupt();
 }
 
-void YbCheckForInterrupts()
+void
+YbCheckForInterrupts()
 {
 	CHECK_FOR_INTERRUPTS();
 }
@@ -3749,7 +3751,7 @@ check_stack_depth(void)
 bool
 stack_is_too_deep(void)
 {
-#ifdef ADDRESS_SANITIZER	/* YB */
+#ifdef ADDRESS_SANITIZER		/* YB */
 	/*
 	 * YB: Postgres analyzes/limits stack depth based on local variables
 	 * address offset.
@@ -3777,9 +3779,9 @@ stack_is_too_deep(void)
 	{
 		const char *max_stack_depth_GUC = "max_stack_depth";
 		const char *current_value =
-		GetConfigOption(max_stack_depth_GUC, false, false);
+			GetConfigOption(max_stack_depth_GUC, false, false);
 		const char *default_value =
-		GetConfigOptionResetString(max_stack_depth_GUC);
+			GetConfigOptionResetString(max_stack_depth_GUC);
 
 		if (strcmp(current_value, default_value) != 0)
 		{
@@ -3793,7 +3795,7 @@ stack_is_too_deep(void)
 		}
 	}
 	return false;
-#endif	/* YB */
+#endif							/* YB */
 	char		stack_top_loc;
 	long		stack_depth;
 
@@ -4354,12 +4356,13 @@ YBRefreshCache()
 static void
 YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 {
-	uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
-	uint64_t local_catalog_version = YbGetCatalogCacheVersion();
-	uint32_t num_catalog_versions =
+	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
+	uint64_t	local_catalog_version = YbGetCatalogCacheVersion();
+	uint32_t	num_catalog_versions =
 		shared_catalog_version - local_catalog_version;
 	YbcCatalogMessageLists message_lists = {0};
-	const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
+	const bool	enable_inval_messages = YbIsInvalidationMessageEnabled();
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
@@ -4471,10 +4474,11 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	 * A non-DDL statement that failed due to transaction conflict does not
 	 * require cache refresh.
 	 */
-	const bool is_read_restart = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
-	const bool is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
-	const bool is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
-	const bool is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
+	const bool	is_read_restart = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
+	const bool	is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
+	const bool	is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
+	const bool	is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
+
 	edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 
 	/*
@@ -4501,7 +4505,8 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	 * below YbGetMasterCatalogVersion() is not expected to succeed either as it
 	 * would be using the same transaction as the failed operation.
 	*/
-	uint64_t catalog_master_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	uint64_t	catalog_master_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+
 	if (!yb_non_ddl_txn_for_sys_tables_allowed)
 	{
 		YBCPgResetCatalogReadTime();
@@ -4770,7 +4775,7 @@ YBCheckSharedCatalogCacheVersion()
 	if (YBCIsInitDbModeEnvVarSet())
 		return;
 
-	uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
+	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
 	const uint64_t local_catalog_version = YbGetCatalogCacheVersion();
 	const bool	need_global_cache_refresh = (local_catalog_version <
 											 shared_catalog_version);
@@ -4852,7 +4857,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "query layer retry isn't possible, txn error isn't one of "
-					  "kConflict/kReadRestart/kDeadlock/kAborted");
+				 "kConflict/kReadRestart/kDeadlock/kAborted");
 		return false;
 	}
 
@@ -5412,10 +5417,10 @@ yb_perform_retry_on_error(int attempt, ErrorData *edata,
 	if (yb_debug_log_internal_restarts)
 		ereport(LOG, (errmsg("performing query layer retry, attempt number %d", attempt)));
 
-	const bool is_read_restart = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
-	const bool is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
-	const bool is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
-	const bool is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
+	const bool	is_read_restart = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
+	const bool	is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
+	const bool	is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
+	const bool	is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
 
 	if (!(is_read_restart || is_conflict_error || is_deadlock_error || is_aborted_error))
 	{
@@ -6442,10 +6447,10 @@ PostgresMain(const char *dbname, const char *username)
 							 errmsg("invalid frontend message type %d",
 									firstchar)));
 				if (whereToSendOutput == DestRemote)
-					{
-						pq_putemptymessage('1');
-						pq_flush();
-					}
+				{
+					pq_putemptymessage('1');
+					pq_flush();
+				}
 				break;
 			case 'p':			/* YB: parse without ParseComplete */
 				if (!YbIsClientYsqlConnMgr())
@@ -6484,7 +6489,8 @@ PostgresMain(const char *dbname, const char *username)
 						exec_parse_message(query_string, stmt_name,
 										   paramTypes, numParams,
 										   whereToSendOutput,
-										   (firstchar == 'p')); /* YB: from yb_switch_fallthrough() */
+										   (firstchar == 'p')); /* YB: from
+																 * yb_switch_fallthrough() */
 					}
 					PG_CATCH();
 					{
@@ -6815,6 +6821,7 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					pq_getmsgend(&input_message);
 					MemoryContext oldcontext = CurrentMemoryContext;
+
 					PG_TRY();
 					{
 						finish_xact_command();
@@ -6823,6 +6830,7 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						MemoryContext errorcontext = MemoryContextSwitchTo(oldcontext);
 						ErrorData  *edata = CopyErrorData();
+
 						edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 						MemoryContextSwitchTo(errorcontext);
 						ThrowErrorData(edata);

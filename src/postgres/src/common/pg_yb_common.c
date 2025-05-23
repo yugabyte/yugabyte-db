@@ -311,7 +311,8 @@ YBGetDatabaseOidFromEnv(const char *database_name)
 bool
 YBQueryDiagnosticsTestRaceCondition()
 {
-	static int cached_value = -1;
+	static int	cached_value = -1;
+
 	if (cached_value == -1)
 	{
 		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_ysql_yb_query_diagnostics_race_condition");

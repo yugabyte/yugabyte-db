@@ -1079,6 +1079,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 
 		long		current_count = YbGetCatCacheRefreshes();
 		long		total_delta = current_count - last_catcache_refresh_val;
+
 		last_catcache_refresh_val = current_count;
 		/* Set the time parameter to 0 as we don't have metrics for that. */
 		ybpgm_StoreCount(CatCacheRefresh, 0, total_delta);
@@ -1126,17 +1127,20 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 		}
 
 		/* Hint cache metrics */
-		long current_hint_cache_refreshes = YbGetHintCacheRefreshes();
+		long		current_hint_cache_refreshes = YbGetHintCacheRefreshes();
+
 		total_delta = current_hint_cache_refreshes - last_hint_cache_refreshes_val;
 		last_hint_cache_refreshes_val = current_hint_cache_refreshes;
 		ybpgm_StoreCount(HintCacheRefresh, 0, total_delta);
 
-		long current_hint_cache_hits = YbGetHintCacheHits();
+		long		current_hint_cache_hits = YbGetHintCacheHits();
+
 		total_delta = current_hint_cache_hits - last_hint_cache_hits_val;
 		last_hint_cache_hits_val = current_hint_cache_hits;
 		ybpgm_StoreCount(HintCacheHits, 0, total_delta);
 
-		long current_hint_cache_misses = YbGetHintCacheMisses();
+		long		current_hint_cache_misses = YbGetHintCacheMisses();
+
 		total_delta = current_hint_cache_misses - last_hint_cache_misses_val;
 		last_hint_cache_misses_val = current_hint_cache_misses;
 		ybpgm_StoreCount(HintCacheMisses, 0, total_delta);

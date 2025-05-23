@@ -1593,15 +1593,15 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 	if (IsYBRelation(resultRelationDesc))
 	{
-		bool row_found = YBCExecuteDelete(resultRelationDesc,
-										  context->planSlot,
-										  ((ModifyTable *) context->mtstate->ps.plan)->ybReturningColumns,
-										  context->mtstate->yb_fetch_target_tuple,
-										  (estate->yb_es_is_single_row_modify_txn ?
-										   YB_SINGLE_SHARD_TRANSACTION :
-										   YB_TRANSACTIONAL),
-										  changingPart,
-										  estate);
+		bool		row_found = YBCExecuteDelete(resultRelationDesc,
+												 context->planSlot,
+												 ((ModifyTable *) context->mtstate->ps.plan)->ybReturningColumns,
+												 context->mtstate->yb_fetch_target_tuple,
+												 (estate->yb_es_is_single_row_modify_txn ?
+												  YB_SINGLE_SHARD_TRANSACTION :
+												  YB_TRANSACTIONAL),
+												 changingPart,
+												 estate);
 
 		/*
 		 * Vanilla postgres does not have the equivalent of "no matching tuple"

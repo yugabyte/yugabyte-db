@@ -190,8 +190,8 @@ typedef struct pgssHashKey
  */
 typedef struct YbCounters
 {
-	int64 counters[YB_NUM_COUNTERS_INT];
-	double counters_dbl[YB_NUM_COUNTERS_DBL];
+	int64		counters[YB_NUM_COUNTERS_INT];
+	double		counters_dbl[YB_NUM_COUNTERS_DBL];
 } YbCounters;
 
 /*
@@ -241,7 +241,7 @@ typedef struct Counters
 	int64		jit_emission_count; /* number of times emission time has been
 									 * > 0 */
 	double		jit_emission_time;	/* total time to emit jit code */
-	YbCounters	yb_counters; /* YB specific counters */
+	YbCounters	yb_counters;	/* YB specific counters */
 } Counters;
 
 /*

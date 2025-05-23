@@ -995,18 +995,19 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		{
 			const char *clone_time_str = defGetString(dclonetime);
 			TimestampTz clone_time = DirectFunctionCall3(timestamptz_in,
-					CStringGetDatum(clone_time_str),
-					ObjectIdGetDatum(InvalidOid),
-					Int32GetDatum(-1));
+														 CStringGetDatum(clone_time_str),
+														 ObjectIdGetDatum(InvalidOid),
+														 Int32GetDatum(-1));
+
 			dbclonetime =
-					yb_timestamptz_to_micros_time_t(DatumGetTimestampTz(clone_time));
+				yb_timestamptz_to_micros_time_t(DatumGetTimestampTz(clone_time));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid clone time type: %s (must be a Unix microseconds "
-									"timestamp or a timestamptz-formatted string).",
+							"timestamp or a timestamptz-formatted string).",
 							nodeToString(dclonetime->arg))));
 		}
 	}
@@ -1439,7 +1440,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		 */
 		ereport(WARNING,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("creation of databases with OIDs is not supported in Yugabyte. OID will be ignored")));
+				 errmsg("creation of databases with OIDs is not supported in Yugabyte. OID will be ignored")));
 		dboid = InvalidOid;
 	}
 
@@ -1470,7 +1471,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 							  InvalidOid,	/* next_oid */
 							  dbcolocated,
 							  NULL, /* retry_on_oid_collision */
-							  NULL); /* yb_clone_info */
+							  NULL);	/* yb_clone_info */
 	}
 	else
 	{
@@ -1903,7 +1904,7 @@ yb_removing_database_from_system:
 		 * Ysql Connection Manager stats.
 		 */
 		if (YbGetNumYsqlConnMgrConnections(db_id, -1, &yb_num_logical_conn,
-									   &yb_num_physical_conn_from_ysqlconnmgr))
+										   &yb_num_physical_conn_from_ysqlconnmgr))
 		{
 			yb_net_client_connections +=
 				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
@@ -2138,7 +2139,7 @@ RenameDatabase(const char *oldname, const char *newname)
 		 * Ysql Connection Manager stats.
 		 */
 		if (YbGetNumYsqlConnMgrConnections(db_id, -1, &yb_num_logical_conn,
-									   &yb_num_physical_conn_from_ysqlconnmgr))
+										   &yb_num_physical_conn_from_ysqlconnmgr))
 		{
 			yb_net_client_connections +=
 				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;

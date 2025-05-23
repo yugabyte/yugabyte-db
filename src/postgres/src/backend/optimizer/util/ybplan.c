@@ -317,13 +317,14 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 	foreach(lc, restrictinfo_list)
 	{
 		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
-		List *colrefs = NIL;
+		List	   *colrefs = NIL;
 
 		/* ignore pseudoconstants */
 		if (ri->pseudoconstant)
 			continue;
 
-		bool pushable = YbCanPushdownExpr(ri->clause, &colrefs, relid);
+		bool		pushable = YbCanPushdownExpr(ri->clause, &colrefs, relid);
+
 		/*
 		 * If clause was found pushable before, that shouldn't change.
 		 * Opposite is possible, join condition may be moved to inner and have

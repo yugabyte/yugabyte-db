@@ -181,9 +181,9 @@ else
             fi
 
             c_include="#include \"c.h\""
-            yb_c_include="$c_include"$'\t'"/* YB include */"
+            yb_c_include="$c_include"$'\t\t\t\t\t'"/* YB include */"
             pg_include_re="#include \"postgres(_fe)?\\.h\""
-            yb_pg_include_re="$pg_include_re"$'\t'"/\\* YB include \\*/"
+            yb_pg_include_re="$pg_include_re"$'\t\t\t'"+/\\* YB include \\*/"
             if ! "$hit_yb_includes_block"; then
               if [[ "$line" == "$c_include"* ]]; then
                 if [[ "$line" != "$yb_c_include" ]]; then

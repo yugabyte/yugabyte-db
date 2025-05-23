@@ -234,9 +234,9 @@ typedef struct AlteredTableInfo
 	char	   *clusterOnIndex; /* index to use for CLUSTER */
 	List	   *changedStatisticsOids;	/* OIDs of statistics to rebuild */
 	List	   *changedStatisticsDefs;	/* string definitions of same */
-	bool		yb_skip_copy_split_options;	/* true if we need to skip copying
-											   split options during table
-											   rewrite */
+	bool		yb_skip_copy_split_options; /* true if we need to skip copying
+											 * split options during table
+											 * rewrite */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
@@ -3589,12 +3589,12 @@ SetRelationHasSubclass(Oid relationId, bool relhassubclass)
 	HeapTuple	tuple;
 	Form_pg_class classtuple;
 
-#ifdef YB_TODO /* yb.port.truncate hits this */
+#ifdef YB_TODO					/* yb.port.truncate hits this */
 	Assert(CheckRelationOidLockedByMe(relationId,
 									  ShareUpdateExclusiveLock, false) ||
 		   CheckRelationOidLockedByMe(relationId,
 									  ShareRowExclusiveLock, true));
-#endif	/* YB */
+#endif							/* YB */
 
 	/*
 	 * Fetch a modifiable copy of the tuple, modify it, update pg_class.
@@ -6198,12 +6198,13 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			if (IsYugaByteEnabled() && tab->relkind == RELKIND_PARTITIONED_TABLE)
 			{
 				RelationSetNewRelfilenode(OldHeap,
-					OldHeap->rd_rel->relpersistence,
-					!tab->yb_skip_copy_split_options);
+										  OldHeap->rd_rel->relpersistence,
+										  !tab->yb_skip_copy_split_options);
 				ReindexParams reindex_params = {0};
+
 				reindex_relation(RelationGetRelid(OldHeap), 0, &reindex_params,
-					true /* is_yb_table_rewrite */ ,
-					!tab->yb_skip_copy_split_options);
+								 true /* is_yb_table_rewrite */ ,
+								 !tab->yb_skip_copy_split_options);
 				table_close(OldHeap, NoLock);
 				continue;
 			}
@@ -9387,9 +9388,9 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 				{
 					if (IsYugaByteEnabled())
 						elog(ERROR, "Dropping a locally defined child col from the parent is not supported in YB."
-												" Please report at #26094."
-												" As a workaround, temporarily disable inheritance on the child, drop col from parent, "
-												" and re-enable inheritance.");
+							 " Please report at #26094."
+							 " As a workaround, temporarily disable inheritance on the child, drop col from parent, "
+							 " and re-enable inheritance.");
 
 					/* Child column must survive my deletion */
 					childatt->attinhcount--;
@@ -12680,7 +12681,7 @@ YbGetNext(YbFKTriggerScanDesc desc, TupleTableSlot *slot)
 			}
 			YbAddTriggerFKReferenceIntent(desc->trigger,
 										  desc->fk_rel, new_slot, desc->estate,
-										  /* is_deferred= */ false);
+										   /* is_deferred= */ false);
 			desc->buffered_tuples[desc->buffered_tuples_size++] = new_slot;
 		}
 	}
@@ -22254,7 +22255,7 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
 			case CONSTRAINT_FOREIGN:
 				{
 					Relation	fk_rel =
-					table_open(con_form->confrelid, ShareRowExclusiveLock);
+						table_open(con_form->confrelid, ShareRowExclusiveLock);
 
 					if (has_altered_column_type)
 					{
@@ -23450,20 +23451,20 @@ YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt, AlteredTableInfo *tab)
  * Used in YB during DROP TABLE to check whether a table belongs to a publication. This does not
  * check if the given table is part of any ALL TABLES publication.
  */
- static bool
- YbIsTablePartOfPublication(Oid relOid)
- {
-	Relation pubrel;
+static bool
+YbIsTablePartOfPublication(Oid relOid)
+{
+	Relation	pubrel;
 	SysScanDesc scan;
 	ScanKeyData key;
-	bool is_part_of_pub = false;
+	bool		is_part_of_pub = false;
 
 	pubrel = table_open(PublicationRelRelationId, AccessShareLock);
 	ScanKeyInit(&key, Anum_pg_publication_rel_prrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(relOid));
 	scan = systable_beginscan(pubrel, PublicationRelPrrelidPrpubidIndexId,
-							true, NULL, 1, &key);
+							  true, NULL, 1, &key);
 
 	/* If we get at least one tuple, a publication exists for this relation. */
 	if ((systable_getnext(scan)) != NULL)
@@ -23473,4 +23474,4 @@ YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt, AlteredTableInfo *tab)
 	table_close(pubrel, AccessShareLock);
 
 	return is_part_of_pub;
- }
+}

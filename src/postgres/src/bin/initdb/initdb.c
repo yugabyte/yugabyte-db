@@ -3390,6 +3390,7 @@ main(int argc, char *argv[])
 	if (yb_log_file_path && yb_log_file_path[0] != '\0')
 	{
 		const char *yb_log_option = psprintf("-r %s", yb_log_file_path);
+
 		extra_options = psprintf("%s %s", extra_options, yb_log_option);
 	}
 

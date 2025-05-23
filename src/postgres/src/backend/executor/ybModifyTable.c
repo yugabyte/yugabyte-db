@@ -570,6 +570,7 @@ YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
 	}
 
 	TriggerDesc *trigdesc = resultRelInfo->ri_TrigDesc;
+
 	if (!(trigdesc && (trigdesc->trig_delete_after_row ||
 					   trigdesc->trig_insert_after_row ||
 					   trigdesc->trig_update_after_row)))
@@ -1546,10 +1547,12 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 int
 YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo)
 {
-	int count = 0;
+	int			count = 0;
+
 	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
 	{
-		Relation index = resultRelInfo->ri_IndexRelationDescs[i];
+		Relation	index = resultRelInfo->ri_IndexRelationDescs[i];
+
 		if (index->rd_index->indisprimary)
 		{
 			continue;

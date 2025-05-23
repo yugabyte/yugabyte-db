@@ -548,6 +548,7 @@ extern void YBMarkDataNotSent(void);
 extern void YBMarkDataNotSentForCurrQuery(void);
 extern bool YBIsDataSent(void);
 extern bool YBIsDataSentForCurrQuery(void);
+
 /*
  * YB: Utilities for postponed pggate DDL statement handles, that can be
  * executed after the YSQL DDL transaction has commited. To qualify for this
@@ -565,6 +566,7 @@ extern bool YBIsDataSentForCurrQuery(void);
 extern void YBSaveDdlHandle(YbcPgStatement handle);
 extern List *YBGetDdlHandles(void);
 extern void YBClearDdlHandles(void);
+
 /*
  * YB: Utility for clearing transaction ID.
 */

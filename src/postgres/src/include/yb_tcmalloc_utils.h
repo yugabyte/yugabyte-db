@@ -31,4 +31,4 @@ extern void HandleLogHeapSnapshotInterrupt(void);
 extern void HandleLogHeapSnapshotPeakInterrupt(void);
 extern void ProcessLogHeapSnapshotInterrupt(void);
 
-#endif /* YB_TCMALLOC_UTILS_H */
+#endif							/* YB_TCMALLOC_UTILS_H */

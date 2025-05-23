@@ -950,10 +950,12 @@ index_create(Relation heapRelation,
 	if (!OidIsValid(indexRelationId))
 	{
 		bool		yb_index_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
+
 		if (yb_binary_restore && !yb_ignore_pg_class_oids)
 			yb_index_pg_class_oids_supplied = true;
 
 		bool		yb_index_relfilenode_supplied = IsBinaryUpgrade && !yb_binary_restore;
+
 		if (yb_binary_restore && !yb_ignore_relfilenode_ids)
 			yb_index_relfilenode_supplied = true;
 		/* Use binary-upgrade override for pg_class.oid and relfilenode */
@@ -4114,7 +4116,7 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	 * do an index build for them (like PG), so skip this.
 	 */
 	if (!(IsYBRelation(iRel) &&
-				iRel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX))
+		  iRel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX))
 	{
 		index_build(heapRelation, iRel, indexInfo, true, true);
 	}

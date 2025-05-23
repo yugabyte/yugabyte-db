@@ -1444,7 +1444,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 
 	if (es->ybShowHints)
 	{
-		char *generatedHints = ybGenerateHintString(plannedstmt);
+		char	   *generatedHints = ybGenerateHintString(plannedstmt);
+
 		if (generatedHints != NULL)
 			ExplainPropertyText("Generated hints", generatedHints, es);
 		else
@@ -2073,6 +2074,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->ybHintAlias != NULL)
 			{
 				StringInfoData buf;
+
 				initStringInfo(&buf);
 				appendStringInfo(&buf, "%s %s", pname, plan->ybHintAlias);
 				pname = sname = buf.data;
@@ -2823,7 +2825,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_YbBitmapTableScan:
 			{
 				YbBitmapTableScanState *bitmapscanstate =
-				(YbBitmapTableScanState *) planstate;
+					(YbBitmapTableScanState *) planstate;
 				YbBitmapTableScan *bitmapplan = (YbBitmapTableScan *) plan;
 				List	   *storage_filter = (bitmapscanstate->work_mem_exceeded ?
 											  bitmapplan->fallback_pushdown.quals :
@@ -4605,6 +4607,7 @@ show_instrumentation_count(const char *qlabel, int which,
 	if (IsYugaByteEnabled() && which == 2)
 	{
 		YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
+
 		nfiltered += yb_instr->rows_removed_by_recheck;
 	}
 
@@ -4867,11 +4870,11 @@ show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 	 */
 	if (planinfo->estimated_num_table_result_pages >= 0)
 		ExplainPropertyFloat("Estimated Table Roundtrips", NULL,
-								planinfo->estimated_num_table_result_pages, 0, es);
+							 planinfo->estimated_num_table_result_pages, 0, es);
 
 	if (planinfo->estimated_num_index_result_pages >= 0)
 		ExplainPropertyFloat("Estimated Index Roundtrips", NULL,
-								planinfo->estimated_num_index_result_pages, 0, es);
+							 planinfo->estimated_num_index_result_pages, 0, es);
 
 	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
 						   planinfo->estimated_docdb_result_width, es);

@@ -701,12 +701,12 @@ extern bool yb_test_inval_message_portability;
 /*
  * If > 0, add a delay after apply invalidation messages.
  */
-extern int yb_test_delay_after_applying_inval_message_ms;
+extern int	yb_test_delay_after_applying_inval_message_ms;
 
 /*
  * If > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.
  */
-extern int yb_test_delay_set_local_tserver_inval_message_ms;
+extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
@@ -746,8 +746,8 @@ extern bool yb_enable_advisory_locks;
  * Enable invalidation messages.
  */
 extern bool yb_enable_invalidation_messages;
-extern int yb_invalidation_message_expiration_secs;
-extern int yb_max_num_invalidation_messages;
+extern int	yb_invalidation_message_expiration_secs;
+extern int	yb_max_num_invalidation_messages;
 
 typedef struct YBUpdateOptimizationOptions
 {
@@ -815,7 +815,7 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
-extern int YBGetDdlNestingLevel();
+extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetDdlOriginalNodeTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
 extern void YbSetIsGlobalDDL();
@@ -954,19 +954,19 @@ extern void YBGetCollationInfo(Oid collation_id,
 /*
  * Setup collation info in attr.
  */
-extern void		YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
+extern void YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.
  */
-extern bool		YBIsCollationValidNonC(Oid collation_id);
+extern bool YBIsCollationValidNonC(Oid collation_id);
 
 /*
  * Check whether the DB collation is UTF-8.
  */
-extern bool		YBIsDbLocaleDefault();
+extern bool YBIsDbLocaleDefault();
 
-extern bool		YBRequiresCacheToCheckLocale(Oid collation_id);
+extern bool YBRequiresCacheToCheckLocale(Oid collation_id);
 
 /*
  * For the column 'attr_num' and its collation id, return the collation id that

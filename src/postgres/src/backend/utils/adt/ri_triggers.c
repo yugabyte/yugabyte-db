@@ -365,6 +365,7 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 													   proute, pkslot, estate);
 
 		MemoryContext oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
+
 		*leaf_root_conversion_map = ExecGetChildToRootMap(pk_part_rri);
 		MemoryContextSwitchTo(oldcxt);
 

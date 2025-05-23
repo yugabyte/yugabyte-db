@@ -113,9 +113,10 @@ static char *masterHosts = NULL;
 static int	include_yb_metadata = 0;	/* In this mode DDL statements include
 										 * YB specific metadata such as tablet
 										 * partitions. */
-static int	yb_dump_role_checks = 0;	/* Add to the dump additional checks if the used ROLE
-										 * exists. The ROLE usage statements are skipped if
-										 * the ROLE does not exist. */
+static int	yb_dump_role_checks = 0;	/* Add to the dump additional checks
+										 * if the used ROLE exists. The ROLE
+										 * usage statements are skipped if the
+										 * ROLE does not exist. */
 static int	dump_single_database = 0;	/* Dump only one DB specified by
 										 * '--database' argument. */
 
@@ -965,7 +966,7 @@ dumpRoles(PGconn *conn)
 				(strcmp(rolename, "yugabyte") == 0 || strcmp(rolename, "postgres") == 0);
 		else
 			yb_skip_create_role = ((binary_upgrade || include_yb_metadata) &&
-				(strcmp(PQgetvalue(res, i, i_is_current_user), "t") == 0));
+								   (strcmp(PQgetvalue(res, i, i_is_current_user), "t") == 0));
 
 		if (!yb_skip_create_role)
 		{
@@ -1122,6 +1123,7 @@ dumpRoleMembership(PGconn *conn)
 		char	   *yb_grantor = NULL;
 
 		PQExpBuffer yb_sql = createPQExpBuffer();
+
 		appendPQExpBuffer(yb_sql, "GRANT %s", fmtId(roleid));
 		appendPQExpBuffer(yb_sql, " TO %s", fmtId(member));
 		if (*option == 't')
@@ -1141,11 +1143,13 @@ dumpRoleMembership(PGconn *conn)
 		if (yb_dump_role_checks)
 		{
 			PQExpBuffer yb_source_sql = yb_sql;
+
 			yb_sql = createPQExpBuffer();
 			YBWwrapInRoleChecks(conn, yb_source_sql, "grant privilege",
-								member,		/* role1 */
-								yb_grantor,	/* role2; note: yb_grantor can be NULL */
-								NULL,		/* role3 */
+								member, /* role1 */
+								yb_grantor, /* role2; note: yb_grantor can be
+											 * NULL */
+								NULL,	/* role3 */
 								yb_sql);
 			destroyPQExpBuffer(yb_source_sql);
 		}
@@ -1159,7 +1163,7 @@ dumpRoleMembership(PGconn *conn)
 
 	fprintf(OPF, "\n");
 	if (!yb_dump_role_checks)
-		fprintf(OPF, "\n"); /* Second EOL. */
+		fprintf(OPF, "\n");		/* Second EOL. */
 }
 
 
@@ -1275,7 +1279,7 @@ dumpTablespaces(PGconn *conn)
 					   "pg_catalog.pg_tablespace_location(oid), "
 					   "spcacl, acldefault('t', spcowner) AS acldefault, "
 					   "spcoptions,"	/* YB: processing is done later in
-										   ybProcessTablespaceSpcOptions */
+										 * ybProcessTablespaceSpcOptions */
 					   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 					   "FROM pg_catalog.pg_tablespace "
 					   "WHERE spcname !~ '^pg_' "

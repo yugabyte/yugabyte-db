@@ -1318,7 +1318,8 @@ SetCatCacheList(CatCache *cache,
 							continue;	/* ignore dead and negative entries */
 
 						if (ct->hash_value != hashValue)
-							continue;	/* quickly skip entry if wrong hash val */
+							continue;	/* quickly skip entry if wrong hash
+										 * val */
 
 						if (!ItemPointerEquals(&(ct->tuple.t_self), &(ntp->t_self)))
 							continue;	/* not same tuple */
@@ -1331,7 +1332,7 @@ SetCatCacheList(CatCache *cache,
 							continue;
 
 						found = true;
-						break;		/* A-OK */
+						break;	/* A-OK */
 					}
 				}
 
@@ -1357,7 +1358,7 @@ SetCatCacheList(CatCache *cache,
 				ctlist = lappend(ctlist, ct);
 				ct->refcount++;
 			}
-		} while (false);	/* YB: assume no failure (see above comment) */
+		} while (false);		/* YB: assume no failure (see above comment) */
 
 		table_close(relation, AccessShareLock);
 
@@ -2445,7 +2446,8 @@ SearchCatCacheList(CatCache *cache,
 							continue;	/* ignore dead and negative entries */
 
 						if (ct->hash_value != hashValue)
-							continue;	/* quickly skip entry if wrong hash val */
+							continue;	/* quickly skip entry if wrong hash
+										 * val */
 
 						if (!ItemPointerEquals(&(ct->tuple.t_self), &(ntp->t_self)))
 							continue;	/* not same tuple */
@@ -2458,7 +2460,7 @@ SearchCatCacheList(CatCache *cache,
 							continue;
 
 						found = true;
-						break;		/* A-OK */
+						break;	/* A-OK */
 					}
 				}
 
@@ -2626,13 +2628,14 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		 * 0.1% of the times through this code path, even when there's no
 		 * toasted fields.
 		 */
-#if 0	/* YB: return NULL is not handled yet (HeapTupleHasExternal(ntp) is
-		   expected to be false) */
+#if 0							/* YB: return NULL is not handled yet
+								 * (HeapTupleHasExternal(ntp) is expected to
+								 * be false) */
 #ifdef USE_ASSERT_CHECKING
 		if (pg_prng_uint32(&pg_global_prng_state) <= (PG_UINT32_MAX / 1000))
 			return NULL;
 #endif
-#endif	/* YB */
+#endif							/* YB */
 
 		/*
 		 * If there are any out-of-line toasted fields in the tuple, expand
@@ -2691,13 +2694,13 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 
 		ct = (CatCTup *) palloc(sizeof(CatCTup) +
 								MAXIMUM_ALIGNOF + dtp->t_len);
-#ifdef CATCACHE_STATS	/* YB added */
+#ifdef CATCACHE_STATS			/* YB added */
 		cache->yb_cc_size_bytes += sizeof(CatCTup) + MAXIMUM_ALIGNOF + dtp->t_len;
 #endif
 		ct->tuple.t_len = dtp->t_len;
 		ct->tuple.t_self = dtp->t_self;
 		HEAPTUPLE_COPY_YBCTID(dtp, &ct->tuple);
-#ifdef CATCACHE_STATS	/* YB added */
+#ifdef CATCACHE_STATS			/* YB added */
 		/* HEAPTUPLE_COPY_YBCTID makes allocation for ybctid. */
 		bool		allocated_ybctid = (IsYugaByteEnabled() &&
 										HEAPTUPLE_YBCTID(&ct->tuple));
@@ -2736,7 +2739,7 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		/* Set up keys for a negative cache entry */
 		oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 		ct = (CatCTup *) palloc(sizeof(CatCTup));
-#ifdef CATCACHE_STATS	/* YB added */
+#ifdef CATCACHE_STATS			/* YB added */
 		cache->yb_cc_size_bytes += sizeof(CatCTup);
 #endif
 

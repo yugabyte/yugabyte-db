@@ -689,15 +689,18 @@ YbGetAllRelfilenodes()
 	 */
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
-	char query[100];
+	char		query[100];
+
 	sprintf(query, "SELECT relfilenode FROM pg_catalog.pg_class WHERE relfilenode >= %u",
 			FirstNormalObjectId);
-	SPIPlanPtr plan = SPI_prepare(query, 0, NULL);
+	SPIPlanPtr	plan = SPI_prepare(query, 0, NULL);
+
 	if (plan == NULL)
 		elog(ERROR, "SPI_prepare failed for \"%s\"", query);
 
-	int saved_yb_fetch_row_limit = yb_fetch_row_limit;
-	bool saved_yb_is_calling_internal_sql_for_ddl = yb_is_calling_internal_sql_for_ddl;
+	int			saved_yb_fetch_row_limit = yb_fetch_row_limit;
+	bool		saved_yb_is_calling_internal_sql_for_ddl = yb_is_calling_internal_sql_for_ddl;
+
 	/*
 	 * We are fetching relfilenode column, each row has only 4-bytes, let's
 	 * fetch 256K rows at a time.
@@ -706,7 +709,8 @@ YbGetAllRelfilenodes()
 	yb_is_calling_internal_sql_for_ddl = true;
 	PG_TRY();
 	{
-		int spirc = SPI_execute_plan(plan, NULL, NULL, true, 0);
+		int			spirc = SPI_execute_plan(plan, NULL, NULL, true, 0);
+
 		yb_fetch_row_limit = saved_yb_fetch_row_limit;
 		yb_is_calling_internal_sql_for_ddl = saved_yb_is_calling_internal_sql_for_ddl;
 		if (spirc != SPI_OK_SELECT)
@@ -723,17 +727,21 @@ YbGetAllRelfilenodes()
 
 	/* Build a hash table of all the relfilenodes in pg_class. */
 	HASHCTL		ctl;
+
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(Oid);
 	ctl.hcxt = CacheMemoryContext;
 	relfilenode_htab = hash_create("relfilenode_htab", 1024, &ctl, HASH_ELEM | HASH_BLOBS);
 	uint64		i;
+
 	for (i = 0; i < SPI_processed; i++)
 	{
 		bool		isnull;
-		Datum       qdata = SPI_getbinval(SPI_tuptable->vals[i], SPI_tuptable->tupdesc, 1, &isnull);
+		Datum		qdata = SPI_getbinval(SPI_tuptable->vals[i], SPI_tuptable->tupdesc, 1, &isnull);
+
 		Assert(!isnull);
-		Oid         relfilenode = DatumGetObjectId(qdata);
+		Oid			relfilenode = DatumGetObjectId(qdata);
+
 		hash_search(relfilenode_htab, &relfilenode, HASH_ENTER, NULL);
 	}
 
@@ -777,7 +785,7 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 {
 	RelFileNodeBackend rnode;
 
-	HTAB *htab = NULL;
+	HTAB	   *htab = NULL;
 
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
 		htab = YbGetAllRelfilenodes();

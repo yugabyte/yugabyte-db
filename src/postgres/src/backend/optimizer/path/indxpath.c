@@ -1576,9 +1576,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			if (yb_distinct_prefixlen >= 0)
 			{
 				Path	   *distinct_index_path =
-				yb_create_distinct_index_path(root, index, ipath,
-											  yb_distinct_prefixlen,
-											  yb_distinct_nkeys);
+					yb_create_distinct_index_path(root, index, ipath,
+												  yb_distinct_prefixlen,
+												  yb_distinct_nkeys);
 
 				result = lappend(result, distinct_index_path);
 			}
@@ -4289,7 +4289,8 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(list_length(exprlist) == list_length(oprlist));
 
-	List *ybIndexList = rel->indexlist;
+	List	   *ybIndexList = rel->indexlist;
+
 	if (list_length(ybIndexList) < list_length(rel->ybHintsOrigIndexlist))
 	{
 		/*

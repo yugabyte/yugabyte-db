@@ -15,7 +15,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "c.h"	/* YB include */
+#include "c.h"					/* YB include */
 
 #include "catalog/pg_collation.h"
 #include "utils/pg_locale.h"

@@ -70,7 +70,7 @@
 /* YB includes */
 #include "catalog/pg_index.h"	/* TODO: is needed? */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include <float.h>          /* for DBL_DIG */
+#include <float.h>				/* for DBL_DIG */
 #include <inttypes.h>
 
 typedef struct
@@ -159,17 +159,22 @@ static int	nseclabels = 0;
 static bool IsYugabyteEnabled = true;
 bool		g_verbose;			/* User wants verbose narration of our
 								 * activities. */
+
 /* YB: Cache whether the dumped database is a colocated database. */
 static bool is_colocated_database = false;
+
 /* YB: Cache whether the dumped database is a legacy colocated database. */
 static bool is_legacy_colocated_database = false;
+
 /* Support for YB-only table pg_yb_tablegroup. */
 static bool pg_yb_tablegroup_exists = false;
+
 /*
  * YB: Array of pointers to extensions having configuration tables.
  * Used to update pg_extension catalog tables.
  */
 static ExtensionInfo **yb_dumpable_extensions_with_config_relations = NULL;
+
 /*
  * YB: Number of extensions in array:
  * yb_dumpable_extensions_with_config_relations.
@@ -10459,7 +10464,10 @@ dumpRelationStats_dumper(Archive *fout, const void *userArg, const TocEntry *te)
 							 "s.most_common_elems, s.most_common_elem_freqs, "
 							 "s.elem_count_histogram, ");
 
-		/* YB: Range columns are available in YB v2024.2 (pg v11) in the yb_int_pg_stats_v11 view. */
+		/*
+		 * YB: Range columns are available in YB v2024.2 (pg v11) in the
+		 * yb_int_pg_stats_v11 view.
+		 */
 		if (fout->remoteVersion >= 170000 ||
 			(IsYugabyteEnabled && fout->remoteVersion >= 110000))
 			appendPQExpBufferStr(query,
@@ -10487,13 +10495,16 @@ dumpRelationStats_dumper(Archive *fout, const void *userArg, const TocEntry *te)
 		 */
 		if (fout->remoteVersion >= 90400)
 		{
-			/* YB: Range columns are available in YB version 11 in the yb_int_pg_stats_v11 view. */
+			/*
+			 * YB: Range columns are available in YB version 11 in the
+			 * yb_int_pg_stats_v11 view.
+			 */
 			if (IsYugabyteEnabled && fout->remoteVersion < 150000)
 				appendPQExpBufferStr(query,
-					"FROM pg_catalog.yb_int_pg_stats_v11 s ");
+									 "FROM pg_catalog.yb_int_pg_stats_v11 s ");
 			else
 				appendPQExpBufferStr(query,
-				"FROM pg_catalog.pg_stats s ");
+									 "FROM pg_catalog.pg_stats s ");
 
 			appendPQExpBufferStr(query,
 								 "JOIN unnest($1, $2) WITH ORDINALITY AS u (schemaname, tablename, ord) "

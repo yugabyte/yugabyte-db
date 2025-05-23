@@ -7669,7 +7669,7 @@ yb_server_type_to_string(YbPgFdwServerType server_type)
 			elog(ERROR, "Unsupported server type: %d", server_type);
 	}
 
-	return NULL;	/* keep compiler happy */
+	return NULL;				/* keep compiler happy */
 }
 
 static YbPgFdwServerType

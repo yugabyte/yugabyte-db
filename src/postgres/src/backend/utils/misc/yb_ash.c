@@ -440,7 +440,10 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	{
 		if (yb_enable_ash)
 		{
-			/* UTILITY statements can have password tokens that require redaction */
+			/*
+			 * UTILITY statements can have password tokens that require
+			 * redaction
+			 */
 			query_id = (pstmt->queryId != 0 ?
 						pstmt->queryId :
 						yb_ash_utility_query_id(queryString,

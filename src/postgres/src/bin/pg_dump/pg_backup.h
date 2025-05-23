@@ -213,9 +213,10 @@ typedef struct _dumpOptions
 	int			include_yb_metadata;	/* In this mode DDL statements include
 										 * YB specific metadata such as tablet
 										 * partitions. */
-	int			yb_dump_role_checks;	/* Add to the dump additional checks if the used ROLE
-										 * exists. The ROLE usage statements are skipped if
-										 * the ROLE does not exist. */
+	int			yb_dump_role_checks;	/* Add to the dump additional checks
+										 * if the used ROLE exists. The ROLE
+										 * usage statements are skipped if the
+										 * ROLE does not exist. */
 	Oid			db_oid;			/* initiated only if include-yb-metadata flag
 								 * is set */
 	char	   *yb_read_time;	/* read the data as of this time. Used in

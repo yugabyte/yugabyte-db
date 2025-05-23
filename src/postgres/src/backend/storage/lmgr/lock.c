@@ -385,9 +385,9 @@ GetYBObjectLockId(const LOCKTAG *locktag)
 	return (YbcObjectLockId)
 	{
 		.db_oid = locktag->locktag_field1,
-		.relation_oid = locktag->locktag_field2,
-		.object_oid = locktag->locktag_field3,
-		.object_sub_oid = locktag->locktag_field4,
+			.relation_oid = locktag->locktag_field2,
+			.object_oid = locktag->locktag_field3,
+			.object_sub_oid = locktag->locktag_field4,
 	};
 }
 

@@ -237,8 +237,8 @@ make_restrictinfo_internal(PlannerInfo *root,
  */
 bool
 yb_can_hash_batched_rinfo(RestrictInfo *batched_rinfo,
-						 Relids outer_relids,
-						 Relids inner_relids)
+						  Relids outer_relids,
+						  Relids inner_relids)
 {
 	if (bms_is_subset(batched_rinfo->right_relids, outer_relids) &&
 		bms_is_subset(batched_rinfo->left_relids, inner_relids))

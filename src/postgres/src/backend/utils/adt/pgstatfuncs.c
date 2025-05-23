@@ -747,14 +747,16 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 		if (IsYugaByteEnabled())
 		{
-			int slotno;
+			int			slotno;
+
 			for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
 			{
 				YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+
 				if (slot->active_pid == beentry->st_procpid)
 				{
 					values[16] = slot->xmin;
-					nulls[16]  = false;
+					nulls[16] = false;
 					break;
 				}
 			}
@@ -1372,10 +1374,10 @@ yb_pg_stat_get_backend_catalog_version(PG_FUNCTION_ARGS)
 Datum
 yb_pg_stat_get_backend_local_catalog_version(PG_FUNCTION_ARGS)
 {
-	int         pid = PG_ARGISNULL(0) ? InvalidPid : PG_GETARG_INT32(0);
+	int			pid = PG_ARGISNULL(0) ? InvalidPid : PG_GETARG_INT32(0);
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	int			num_backends = pgstat_fetch_stat_numbackends();
-	int         i;
+	int			i;
 
 	InitMaterializedSRF(fcinfo, 0);
 
@@ -1384,6 +1386,7 @@ yb_pg_stat_get_backend_local_catalog_version(PG_FUNCTION_ARGS)
 	{
 		PgBackendStatus *beentry;
 		LocalPgBackendStatus *local_beentry = pgstat_fetch_stat_local_beentry(i);
+
 		if (!local_beentry)
 			continue;
 
