@@ -93,9 +93,9 @@ packages=(
   npm
   patchelf
   pkg-config
-  python3
-  python3-dev
-  python3-venv
+  python3.11
+  python3.11-dev
+  python3.11-venv
   rsync
 )
 # Avoid tzdata package configuration prompt.
