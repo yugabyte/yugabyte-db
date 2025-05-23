@@ -2137,7 +2137,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
     PgsqlReadRequestYbctidProvider key_provider(data_.doc_read_context, request_, response_);
     fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
   } else if (request_.has_sampling_state()) {
-    if (data_.doc_read_context.is_index()) {
+    if (data_.doc_read_context.is_index) {
       return STATUS_FORMAT(
           InvalidArgument, "Sampling of index table ($0) is not supported and not expected",
           request_.table_id());

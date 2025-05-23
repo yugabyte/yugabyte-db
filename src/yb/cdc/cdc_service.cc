@@ -789,7 +789,7 @@ class CDCServiceImpl::Impl {
       if (it != table_to_schema_packing_storage_.end()) {
         result.emplace(table_id, it->second);
       } else {
-        result.emplace(table_id, dockv::SchemaPackingStorage(table_type));
+        result.emplace(table_id, dockv::SchemaPackingStorage(table_type, schema_packing_registry_));
       }
     }
 
@@ -800,7 +800,8 @@ class CDCServiceImpl::Impl {
     std::lock_guard l(mutex_);
 
     for (const auto& [table_id, schema_packing_storage] : schema_packing_storages) {
-      table_to_schema_packing_storage_.insert_or_assign(table_id, schema_packing_storage);
+      table_to_schema_packing_storage_.erase(table_id);
+      table_to_schema_packing_storage_.emplace(table_id, schema_packing_storage);
     }
   }
 
@@ -816,6 +817,9 @@ class CDCServiceImpl::Impl {
 
  private:
   rw_spinlock& mutex_;
+
+  const dockv::SchemaPackingRegistryPtr schema_packing_registry_ =
+      std::make_shared<dockv::SchemaPackingRegistry>("CDCService: ");
 
   TabletCheckpoints tablet_checkpoints_ GUARDED_BY(mutex_);
 
