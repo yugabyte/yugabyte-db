@@ -109,7 +109,7 @@ Specifies the time source used by the database. Set this to `clockbound` for con
 
 ### PostgreSQL server options
 
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
+YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/15/config-setting.html) to apply server configuration settings to new server instances.
 
 #### Modify configuration parameters
 
@@ -131,7 +131,7 @@ You can modify these parameters in the following ways:
     ALTER ROLE yugabyte SET temp_file_limit=-1;
     ```
 
-    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
+    Parameters set at the role or database level only take effect on new sessions.
 
 - Set the option for the current session:
 
@@ -170,6 +170,8 @@ For information on available PostgreSQL server configuration parameters, refer t
 #### YSQL configuration parameters
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
+
+Note that if a corresponding flag is available (with the same name as the parameter and `ysql_` prefix), then set the flag directly.
 
 ##### log_line_prefix
 
