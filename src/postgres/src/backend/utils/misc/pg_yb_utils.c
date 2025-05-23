@@ -7165,16 +7165,19 @@ YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup,
 	return ordering;
 }
 
-void
-YbGetRedactedQueryString(const char *query, int query_len,
-						 const char **redacted_query, int *redacted_query_len)
+/*
+ * Given a query string, this functions redacts any password tokens in the string.
+ * The input query string is preserved.
+ * redacted_query_len is an optional parameter.
+ */
+const char *
+YbGetRedactedQueryString(const char *query, int *redacted_query_len)
 {
-	CommandTag	command_tag;
+	const char *redacted_query = YbRedactPasswordIfExists(query, CMDTAG_UNKNOWN);
+	if (redacted_query_len)
+		*redacted_query_len = strlen(redacted_query);
 
-	*redacted_query = pnstrdup(query, query_len);
-	command_tag = YbParseCommandTag(*redacted_query);
-	*redacted_query = YbRedactPasswordIfExists(*redacted_query, command_tag);
-	*redacted_query_len = strlen(*redacted_query);
+	return redacted_query;
 }
 
 bool

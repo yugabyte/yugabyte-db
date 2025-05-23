@@ -1303,8 +1303,7 @@ extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
  */
 extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
 
-extern void YbGetRedactedQueryString(const char *query, int query_len,
-									 const char **redacted_query, int *redacted_query_len);
+extern const char *YbGetRedactedQueryString(const char *query, int *redacted_query_len);
 
 /* Check if optimizations for UPDATE queries have been enabled. */
 extern bool YbIsUpdateOptimizationEnabled();

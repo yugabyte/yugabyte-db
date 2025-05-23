@@ -427,7 +427,8 @@ static void pgss_store(const char *query, uint64 queryId,
 					   const BufferUsage *bufusage,
 					   const WalUsage *walusage,
 					   const struct JitInstrumentation *jitusage,
-					   JumbleState *jstate);
+					   JumbleState *jstate,
+					   bool yb_is_sensitive_stmt);
 static void pg_stat_statements_internal(FunctionCallInfo fcinfo,
 										pgssVersion api_version,
 										bool showtext);
@@ -1355,7 +1356,8 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 				   NULL,
 				   NULL,
 				   NULL,
-				   jstate);
+				   jstate,
+				   false /* yb_is_sensitive_stmt */ );
 }
 
 /*
@@ -1440,7 +1442,8 @@ pgss_planner(Query *parse,
 				   &bufusage,
 				   &walusage,
 				   NULL,
-				   NULL);
+				   NULL,
+				   false /* yb_is_sensitive_stmt */ );
 	}
 	else
 	{
@@ -1559,7 +1562,8 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 				   &queryDesc->totaltime->bufusage,
 				   &queryDesc->totaltime->walusage,
 				   queryDesc->estate->es_jit ? &queryDesc->estate->es_jit->instr : NULL,
-				   NULL);
+				   NULL,
+				   false /* yb_is_sensitive_stmt */ );
 	}
 
 	if (prev_ExecutorEnd)
@@ -1679,6 +1683,11 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		memset(&walusage, 0, sizeof(WalUsage));
 		WalUsageAccumDiff(&walusage, &pgWalUsage, &walusage_start);
 
+		/*
+		 * YB note: UTILITY statements are the only kind that are treated as
+		 * sensitive. The other pgss hooks (planner, analyze, end-of-execution)
+		 * are not invoked for utility statements.
+		 */
 		pgss_store(queryString,
 				   saved_queryId,
 				   saved_stmt_location,
@@ -1689,7 +1698,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 				   &bufusage,
 				   &walusage,
 				   NULL,
-				   NULL);
+				   NULL,
+				   true /* yb_is_sensitive_stmt */ );
 	}
 	else
 	{
@@ -1723,16 +1733,12 @@ pgss_store(const char *query, uint64 queryId,
 		   const BufferUsage *bufusage,
 		   const WalUsage *walusage,
 		   const struct JitInstrumentation *jitusage,
-		   JumbleState *jstate)
+		   JumbleState *jstate,
+		   bool yb_is_sensitive_stmt)
 {
 	pgssHashKey key;
 	pgssEntry  *entry;
 	char	   *norm_query = NULL;
-#ifdef YB_TODO
-	/* TODO(devansh): Enable password redaction. Workaround for DB-11332. */
-	const char *redacted_query;
-	int			redacted_query_len;
-#endif
 	int			encoding = GetDatabaseEncoding();
 
 	Assert(query != NULL);
@@ -1760,10 +1766,13 @@ pgss_store(const char *query, uint64 queryId,
 	 */
 	query = CleanQuerytext(query, &query_location, &query_len);
 
-#ifdef YB_TODO
-	/* TODO(devansh): Enable password redaction. Workaround for DB-11332. */
-	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
-#endif
+	/*
+	 * The query string may include multiple statements, so consider only the
+	 * substring that we are interested in for redaction. Note that the
+	 * substring in question does not contain a semi-colon at the end.
+	 */
+	if (yb_is_sensitive_stmt)
+		query = YbGetRedactedQueryString(pnstrdup(query, query_len), &query_len);
 
 	if (yb_enable_query_diagnostics && !jstate)
 		YbQueryDiagnosticsAccumulatePgss(queryId, (YbQdPgssStoreKind) kind,
@@ -1802,26 +1811,15 @@ pgss_store(const char *query, uint64 queryId,
 		if (jstate)
 		{
 			LWLockRelease(pgss->lock);
-#ifdef YB_TODO
-			norm_query = generate_normalized_query(jstate, redacted_query,
-												   query_location,
-												   &redacted_query_len);
-#else
 			norm_query = generate_normalized_query(jstate, query,
 												   query_location,
 												   &query_len);
-#endif
 			LWLockAcquire(pgss->lock, LW_SHARED);
 		}
 
 		/* Append new query text to file with only shared lock held */
-#ifdef YB_TODO
-		stored = qtext_store(norm_query ? norm_query : redacted_query, redacted_query_len,
-							 &query_offset, &gc_count);
-#else
 		stored = qtext_store(norm_query ? norm_query : query, query_len,
 							 &query_offset, &gc_count);
-#endif
 
 		/*
 		 * Determine whether we need to garbage collect external query texts
@@ -1841,28 +1839,17 @@ pgss_store(const char *query, uint64 queryId,
 		 * This should be infrequent enough that doing it while holding
 		 * exclusive lock isn't a performance problem.
 		 */
-#ifdef YB_TODO
-		if (!stored || pgss->gc_count != gc_count)
-			stored = qtext_store(norm_query ? norm_query : redacted_query, redacted_query_len,
-								 &query_offset, NULL);
-#else
 		if (!stored || pgss->gc_count != gc_count)
 			stored = qtext_store(norm_query ? norm_query : query, query_len,
 								 &query_offset, NULL);
-#endif
 
 		/* If we failed to write to the text file, give up */
 		if (!stored)
 			goto done;
 
 		/* OK to create a new hashtable entry */
-#ifdef YB_TODO
-		entry = entry_alloc(&key, query_offset, redacted_query_len, encoding,
-							jstate != NULL);
-#else
 		entry = entry_alloc(&key, query_offset, query_len, encoding,
 							jstate != NULL);
-#endif
 
 		/* If needed, perform garbage collection while exclusive lock held */
 		if (do_gc)
@@ -2818,10 +2805,6 @@ qtext_load_file(Size *buffer_size)
 
 	if (buf == NULL)
 	{
-		/*
-		 * YB_TODO: error message should not have bytes information like
-		 * upstream PG commit 56df07bb9e50a3ca4d148c537524f00bccc6650e.
-		 */
 		ereport(LOG,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory"),
