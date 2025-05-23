@@ -67,10 +67,16 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     }
   }
 
-  Status SendReplicaChanges(const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-                          const bool is_add, const bool should_remove,
-                          const TabletServerId& new_leader_uuid) override {
-    // Do nothing.
+  Status SendAddReplica(const TabletInfoPtr& tablet, const TabletServerId& ts_uuid) override {
+    return Status::OK();
+  }
+  Status SendRemoveReplica(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid) override {
+    return Status::OK();
+  }
+  Status SendMoveLeader(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
+      const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid) override {
     return Status::OK();
   }
 
