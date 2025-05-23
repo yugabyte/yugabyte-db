@@ -16,6 +16,7 @@
 #include "yb/common/entity_ids.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"

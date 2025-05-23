@@ -143,7 +143,9 @@ TableInfo::TableInfo(const std::string& log_prefix_,
                      SkipTableTombstoneCheck skip_table_tombstone_check,
                      PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
+      doc_read_context(new docdb::DocReadContext(
+          log_prefix, table_type, docdb::Index::kFalse,
+          std::make_shared<dockv::SchemaPackingRegistry>(log_prefix_))),
       index_map(std::make_shared<IndexMap>()),
       skip_table_tombstone_check(skip_table_tombstone_check) {
   CompleteInit();
@@ -171,8 +173,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
-          log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
-          schema_version)),
+          log_prefix, table_type, docdb::Index(index_info.has_value()),
+          std::make_shared<dockv::SchemaPackingRegistry>(log_prefix), schema, schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -387,7 +389,12 @@ SchemaPtr TableInfo::SharedSchema() const {
 Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     const TableInfoPtr& self, SchemaVersion schema_version, HybridTime history_cutoff) {
   if (schema_version == docdb::kLatestSchemaVersion) {
+    auto min_active_version =
+        self->doc_read_context->schema_packing_storage.registry().MinActiveVersion();
     schema_version = self->schema_version;
+    if (min_active_version && schema_version > *min_active_version) {
+      schema_version = *min_active_version;
+    }
   }
   auto packing = self->doc_read_context->schema_packing_storage.GetPacking(schema_version);
   if (!packing.ok()) {

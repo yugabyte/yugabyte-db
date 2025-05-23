@@ -1010,7 +1010,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
 
   std::vector<std::shared_ptr<const BlockingData>> GetBlockingDataUnlocked(
       const DetectorId& detector_id, uint32_t probe_num, const TransactionId& waiting_txn_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version)
+      std::optional<PgSessionRequestVersion> pg_session_req_version)
       REQUIRES_SHARED(mutex_) {
     std::vector<std::shared_ptr<const BlockingData>> blocking_datas;
     auto waiter_entries =

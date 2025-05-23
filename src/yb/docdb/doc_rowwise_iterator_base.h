@@ -33,7 +33,6 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/operation_counter.h"
-#include "yb/docdb/doc_read_context.h"
 
 namespace yb::docdb {
 

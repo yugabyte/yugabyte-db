@@ -2132,8 +2132,8 @@ class PgClientSession::Impl {
   }
 
   void GetTableKeyRanges(
-      yb::tserver::PgGetTableKeyRangesRequestPB const& req,
-      yb::tserver::PgGetTableKeyRangesResponsePB* resp, yb::rpc::RpcContext context) {
+      PgGetTableKeyRangesRequestPB const& req,
+      PgGetTableKeyRangesResponsePB* resp, rpc::RpcContext context) {
     const auto table = table_cache().Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
     resp->set_current_ht(clock()->Now().ToUint64());
     if (!table.ok()) {

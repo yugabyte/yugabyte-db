@@ -179,8 +179,11 @@ class PackedRowData {
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
     std::tie(old_packing_.packed_row_version, old_schema_version_) = VERIFY_RESULT(ParseValueHeader(
         &old_value_slice_));
-    if (old_schema_version_ != new_packing_.schema_version) {
+    if (old_schema_version_ < new_packing_.schema_version) {
       return StartRepacking();
+    }
+    if (old_schema_version_ > new_packing_.schema_version) {
+      RETURN_NOT_OK(UsedSchemaVersion(old_schema_version_));
     }
     packing_started_ = false;
     return Status::OK();

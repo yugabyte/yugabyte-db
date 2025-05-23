@@ -132,6 +132,8 @@ class BulkLoadTask : public Runnable {
   BulkLoadDocDBUtil *const db_fixture_;
   const YBTable *const table_;
   YBPartitionGenerator *const partition_generator_;
+  dockv::SchemaPackingRegistryPtr schema_packing_registry_ =
+      std::make_shared<dockv::SchemaPackingRegistry>("BULK LOAD: ");
 };
 
 class CompactionTask: public Runnable {
@@ -331,7 +333,8 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
-      "BULK LOAD: ", TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, schema, schema_version);
+      "BULK LOAD: ", TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, schema_packing_registry_,
+      schema, schema_version);
   docdb::QLWriteOperation op(
       req, schema_version, doc_read_context, index_map,
       /* unique_index_key_projection= */ nullptr, TransactionOperationContext());
