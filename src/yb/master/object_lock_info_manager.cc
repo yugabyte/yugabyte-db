@@ -109,6 +109,8 @@ Status ValidateLockRequest(
   return Status::OK();
 }
 
+constexpr auto kTserverRpcsTimeoutDefaultSecs = 60s;
+
 }  // namespace
 
 class ObjectLockInfoManager::Impl {
@@ -117,14 +119,31 @@ class ObjectLockInfoManager::Impl {
       : master_(master),
         catalog_manager_(catalog_manager),
         clock_(master.clock()),
-        local_lock_manager_(
-            std::make_shared<tserver::TSLocalLockManager>(clock_, master_.tablet_server())),
-        poller_(std::bind(&Impl::CleanupExpiredLeaseEpochs, this)) {}
+        poller_(std::bind(&Impl::CleanupExpiredLeaseEpochs, this)) {
+    CHECK_OK(ThreadPoolBuilder("object_lock_info_manager").Build(&lock_manager_thread_pool_));
+    local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
+        clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get());
+  }
 
   void Start() {
     poller_.Start(
         &catalog_manager_.Scheduler(),
         MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms));
+  }
+
+  void Shutdown() {
+    poller_.Shutdown();
+    tserver::TSLocalLockManager* lock_manager = nullptr;
+    {
+      LockGuard lock(mutex_);
+      object_lock_infos_map_.clear();
+      if (local_lock_manager_) {
+        lock_manager = local_lock_manager_.get();
+      }
+    }
+    if (lock_manager) {
+      lock_manager->Shutdown();
+    }
   }
 
   void LockObject(
@@ -242,11 +261,12 @@ class ObjectLockInfoManager::Impl {
   };
 
   std::unordered_map<TransactionId, TxnHostInfo> txn_host_info_map_ GUARDED_BY(mutex_);
+  rpc::Poller poller_;
+  std::unique_ptr<ThreadPool> lock_manager_thread_pool_;
   std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager_ GUARDED_BY(mutex_);
   // Only accessed from a single thread for now, so no need for synchronization.
   std::unordered_map<TabletServerId, std::shared_ptr<CountDownLatch>>
       expired_lease_epoch_cleanup_tasks_;
-  rpc::Poller poller_;
 };
 
 template <class Req>
@@ -347,6 +367,8 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
     return Format("$0 for TServer: $1 ", shared_all_tservers_->LogPrefix(), permanent_uuid());
   }
 
+  MonoTime ComputeDeadline() const override;
+
  protected:
   void Finished(const Status& status) override;
 
@@ -403,6 +425,7 @@ AcquireObjectLockRequestPB TserverRequestFor(
   if (master_request.has_ash_metadata()) {
     req.mutable_ash_metadata()->CopyFrom(master_request.ash_metadata());
   }
+  req.set_status_tablet(master_request.status_tablet());
   return req;
 }
 
@@ -462,6 +485,10 @@ ObjectLockInfoManager::~ObjectLockInfoManager() = default;
 
 void ObjectLockInfoManager::Start() {
   impl_->Start();
+}
+
+void ObjectLockInfoManager::Shutdown() {
+  impl_->Shutdown();
 }
 
 void ObjectLockInfoManager::LockObject(
@@ -1022,7 +1049,11 @@ void ObjectLockInfoManager::Impl::Clear() {
   catalog_manager_.AssertLeaderLockAcquiredForWriting();
   LockGuard lock(mutex_);
   object_lock_infos_map_.clear();
-  local_lock_manager_.reset(new tserver::TSLocalLockManager(clock_, master_.tablet_server()));
+  if (local_lock_manager_) {
+    local_lock_manager_->Shutdown();
+  }
+  local_lock_manager_.reset(new tserver::TSLocalLockManager(
+      clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get()));
 }
 
 std::optional<uint64_t> ObjectLockInfoManager::Impl::GetLeaseEpoch(const std::string& ts_uuid) {
@@ -1161,6 +1192,7 @@ UpdateAllTServers<Req>::UpdateAllTServers(
       txn_id_(FullyDecodeTransactionId(req_.txn_id())),
       epoch_(std::move(leader_epoch)),
       callback_(std::move(callback)),
+      deadline_(CoarseMonoClock::Now() + kTserverRpcsTimeoutDefaultSecs),
       trace_(Trace::CurrentTrace()) {
   VLOG(3) << __PRETTY_FUNCTION__;
 }
@@ -1438,6 +1470,11 @@ bool UpdateTServer<ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB>::Sen
   VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
   ts_proxy_->ReleaseObjectLocksAsync(request(), &resp_, &rpc_, BindRpcCallback());
   return true;
+}
+
+template <class Req, class Resp>
+MonoTime UpdateTServer<Req, Resp>::ComputeDeadline() const {
+  return MonoTime(ToSteady(shared_all_tservers_->GetClientDeadline()));
 }
 
 template <class Req, class Resp>
