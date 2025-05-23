@@ -16,7 +16,7 @@ This tutorial guides you through constructing a Retrieval-Augmented Generation (
 
 ## Why Use RAG?
 
-RAG combines large language models (LLMs) with external knowledge sources to produce more accurate and context-aware responses. In this setup, YugabyteDB serves as the retrieval layer, storing vectorized representations of your data and enabling efficient similarity searches.
+RAG combines large language models (LLM) with external knowledge sources to produce more accurate and context-aware responses. In this setup, YugabyteDB serves as the retrieval layer, storing vector representations of your data, and enabling efficient similarity searches.
 
 One of the more compelling AI applications is frontline customer support.
 
@@ -198,13 +198,6 @@ In the `rag_example` directory, do the following:
     Graham continued to write essays and work on Y Combinator, a startup accelerator he co-founded. He also developed Hacker News and all of YC's internal software in Arc. In 2013, he decided to hand over Y Combinator to Sam Altman.
     ```
 
-To get the answer, the application:
-
-1. Converts your question to a vector.
-1. Uses the vector to retrieve relevant chunks from the database.
-1. Passes those chunks to GPT.
-1. GPT answers your question using that context.
-
 ## Review the application
 
 The application is a question-answering system that retrieves relevant text snippets from a PostgreSQL database with vector search support (such as YugabyteDB with pgvector), then uses OpenAI's GPT-4 model to generate an answer based on the retrieved context.
@@ -213,7 +206,7 @@ The application is a question-answering system that retrieves relevant text snip
 
 ```python
 import psycopg2        # For connecting to PostgreSQL
-import openai          # For interacting with OpenAI’s API
+import openai          # For interacting with OpenAI API
 import os              # For environment variable access
 from llama_index.embeddings.openai import OpenAIEmbedding  # For generating embeddings
 
