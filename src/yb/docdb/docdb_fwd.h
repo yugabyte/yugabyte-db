@@ -68,7 +68,7 @@ struct ObjectLockPrefix;
 struct ReadOperationData;
 
 using DocKeyHash = uint16_t;
-using DocReadContextPtr = std::shared_ptr<DocReadContext>;
+using DocReadContextPtr = std::shared_ptr<const DocReadContext>;
 template <typename T>
 using LockBatchEntries = std::vector<LockBatchEntry<T>>;
 // Lock state stores the number of locks acquired for each intent type.

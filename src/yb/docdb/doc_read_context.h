@@ -26,11 +26,12 @@ YB_STRONGLY_TYPED_BOOL(Index);
 
 struct DocReadContext {
   DocReadContext(
-      const std::string& log_prefix, TableType table_type, Index is_index);
+      const std::string& log_prefix, TableType table_type, Index is_index,
+      dockv::SchemaPackingRegistryPtr registry);
 
   DocReadContext(
-      const std::string& log_prefix, TableType table_type, Index is_index, const Schema& schema,
-      SchemaVersion schema_version);
+      const std::string& log_prefix, TableType table_type, Index is_index,
+      dockv::SchemaPackingRegistryPtr registry, const Schema& schema, SchemaVersion schema_version);
 
   DocReadContext(const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
 
@@ -104,13 +105,12 @@ struct DocReadContext {
   // Should account for every field in DocReadContext.
   static bool TEST_Equals(const DocReadContext& lhs, const DocReadContext& rhs) {
     return Schema::TEST_Equals(lhs.schema_, rhs.schema_) &&
-        lhs.schema_packing_storage == rhs.schema_packing_storage;
+           lhs.schema_packing_storage.TEST_Equals(rhs.schema_packing_storage);
   }
 
-  static DocReadContext TEST_Create(const Schema& schema) {
-    return DocReadContext(
-        "TEST: ", TableType::YQL_TABLE_TYPE, Index::kFalse, schema, 0);
-  }
+  static DocReadContext TEST_Create(const Schema& schema);
+
+  const Index is_index;
 
   dockv::SchemaPackingStorage schema_packing_storage;
 
@@ -123,7 +123,6 @@ struct DocReadContext {
     return log_prefix_;
   }
 
-  Index is_index_;
   Schema schema_;
 
   // The data about key prefix shared by all entries of this table.

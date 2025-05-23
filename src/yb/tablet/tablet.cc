@@ -1945,8 +1945,14 @@ Status Tablet::DoHandlePgsqlReadRequest(
 
   docdb::QLRocksDBStorage storage{doc_db(metrics)};
 
-  const shared_ptr<tablet::TableInfo> table_info =
+  const auto table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
+
+#ifndef NDEBUG
+  if (pgsql_read_request.is_aggregate()) {
+    DEBUG_ONLY_TEST_SYNC_POINT("Tablet::DoHandlePgsqlReadRequest::Aggregate");
+  }
+#endif
 
   Status status;
   if (pgsql_read_request.has_get_tablet_key_ranges_request()) {

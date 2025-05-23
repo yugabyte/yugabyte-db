@@ -1024,7 +1024,7 @@ class TransactionState {
 
   // Tablets participating in this transaction.
   std::unordered_map<
-      TabletId, InvolvedTabletState, StringHash, std::equal_to<void>> involved_tablets_;
+      TabletId, InvolvedTabletState, StringHash, std::equal_to<>> involved_tablets_;
   // Number of tablets that have not yet replicated all batches.
   size_t tablets_with_not_replicated_batches_ = 0;
   // Number of tablets that have not yet applied intents.
@@ -1036,13 +1036,13 @@ class TransactionState {
   // Metadata tracking aborted subtransaction IDs in this transaction.
   std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info_;
 
-  // The operation that we a currently replicating in RAFT.
+  // The operation that we are currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
-  tablet::UpdateTxnOperation* replicating_ = nullptr;
+  UpdateTxnOperation* replicating_ = nullptr;
   // Hybrid time before submitting replicating operation.
   // It is guaranteed to be less then actual operation hybrid time.
   HybridTime replicating_submit_time_;
-  std::deque<std::unique_ptr<tablet::UpdateTxnOperation>> request_queue_;
+  std::deque<std::unique_ptr<UpdateTxnOperation>> request_queue_;
 
   std::vector<TransactionAbortCallback> abort_waiters_;
   // Node uuid hosting the transaction at the query layer.

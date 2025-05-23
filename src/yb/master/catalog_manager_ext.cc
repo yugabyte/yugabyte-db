@@ -2617,12 +2617,16 @@ Status CatalogManager::RestoreSysCatalogCommon(
   RETURN_NOT_OK(state->Process());
 
   // Restore the pg_catalog tables.
+  // Since lifetime of tablet_peer and doc_read_context matches in this case. We could
+  // use tablet peer reference counter for doc read context.
+  auto doc_read_context = rpc::SharedField(
+      tablet_peer(), &this->doc_read_context());
   if (FLAGS_enable_ysql && state->IsYsqlRestoration()) {
     // Restore sequences_data table.
     RETURN_NOT_OK(state->PatchSequencesDataObjects());
 
     RETURN_NOT_OK(state->ProcessPgCatalogRestores(
-        doc_db, tablet->doc_db(), write_batch, doc_read_context(), schema_packing_provider,
+        doc_db, tablet->doc_db(), write_batch, doc_read_context, schema_packing_provider,
         tablet->metadata()));
   }
 
@@ -2631,7 +2635,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
 
   // Restore the other tables.
   RETURN_NOT_OK(state->PrepareWriteBatch(
-      schema(), schema_packing_provider, write_batch, master_->clock()->Now()));
+      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces
