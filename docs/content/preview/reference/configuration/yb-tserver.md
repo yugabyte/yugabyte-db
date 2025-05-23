@@ -107,11 +107,169 @@ Default: `""`
 
 Specifies the time source used by the database. Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
-### PostgreSQL server options
+### Webserver configuration
+
+##### --webserver_interface
+
+{{% tags/wrap %}}
+
+
+Default: `0.0.0.0` (`127.0.0.1`)
+{{% /tags/wrap %}}
+
+The address to bind for the web server user interface.
+
+##### --webserver_port
+
+{{% tags/wrap %}}
+
+
+Default: `9000`
+{{% /tags/wrap %}}
+
+The port for monitoring the web server.
+
+##### --webserver_doc_root
+
+{{% tags/wrap %}}
+
+
+Default: The `www` directory in the YugabyteDB home directory.
+{{% /tags/wrap %}}
+
+The monitoring web server home directory.
+
+##### --webserver_certificate_file
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `""`
+{{% /tags/wrap %}}
+
+Location of the SSL certificate file (in .pem format) to use for the web server. If empty, SSL is not enabled for the web server.
+
+##### --webserver_authentication_domain
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `""`
+{{% /tags/wrap %}}
+
+Domain used for `.htpasswd` authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
+
+##### --webserver_password_file
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `""`
+{{% /tags/wrap %}}
+
+Location of the `.htpasswd` file containing usernames and hashed passwords, for authentication to the web server.
+
+### Logging flags
+
+##### --log_dir
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: The same as [`--fs_data_dirs`](#fs-data-dirs)
+{{% /tags/wrap %}}
+
+The directory to write yb-tserver log files.
+
+##### --logtostderr
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Write log messages to `stderr` instead of `logfiles`.
+
+##### --max_log_size
+
+{{% tags/wrap %}}
+
+
+Default: `1800` (1.8 GB)
+{{% /tags/wrap %}}
+
+The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
+
+##### --minloglevel
+
+{{% tags/wrap %}}
+
+
+Default: `0` (INFO)
+{{% /tags/wrap %}}
+
+The minimum level to log messages. Values are: `0` (INFO), `1`, `2`, `3` (FATAL).
+
+##### --stderrthreshold
+
+{{% tags/wrap %}}
+
+
+Default: `2`
+{{% /tags/wrap %}}
+
+Log messages at, or above, this level are copied to `stderr` in addition to log files.
+
+##### --stop_logging_if_full_disk
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Stop attempting to log to disk if the disk is full.
+
+##### --callhome_enabled
+
+{{% tags/wrap %}}
+
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Disable callhome diagnostics.
+
+### Metric export flags
+
+YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
+
+##### --export_help_and_type_in_prometheus_metrics
+
+{{% tags/wrap %}}
+
+
+Default: `true`
+{{% /tags/wrap %}}
+
+This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
+
+To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
+
+##### --max_prometheus_metric_entries
+
+{{% tags/wrap %}}
+
+
+Default: `UINT32_MAX`
+{{% /tags/wrap %}}
+
+Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
+
+To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
+
+## Server configuration parameters
 
 YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/15/config-setting.html) to apply server configuration settings to new server instances.
 
-#### Modify configuration parameters
+### How to modify configuration parameters
 
 You can modify these parameters in the following ways:
 
@@ -167,7 +325,7 @@ You can modify these parameters in the following ways:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
-#### YSQL configuration parameters
+### YSQL configuration parameters
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
 
@@ -402,164 +560,6 @@ Enables [time travel queries](../../../manage/backup-restore/time-travel-query/)
 To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
 Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
-
-### Webserver configuration
-
-##### --webserver_interface
-
-{{% tags/wrap %}}
-
-
-Default: `0.0.0.0` (`127.0.0.1`)
-{{% /tags/wrap %}}
-
-The address to bind for the web server user interface.
-
-##### --webserver_port
-
-{{% tags/wrap %}}
-
-
-Default: `9000`
-{{% /tags/wrap %}}
-
-The port for monitoring the web server.
-
-##### --webserver_doc_root
-
-{{% tags/wrap %}}
-
-
-Default: The `www` directory in the YugabyteDB home directory.
-{{% /tags/wrap %}}
-
-The monitoring web server home directory.
-
-##### --webserver_certificate_file
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: `""`
-{{% /tags/wrap %}}
-
-Location of the SSL certificate file (in .pem format) to use for the web server. If empty, SSL is not enabled for the web server.
-
-##### --webserver_authentication_domain
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: `""`
-{{% /tags/wrap %}}
-
-Domain used for `.htpasswd` authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
-
-##### --webserver_password_file
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: `""`
-{{% /tags/wrap %}}
-
-Location of the `.htpasswd` file containing usernames and hashed passwords, for authentication to the web server.
-
-### Logging flags
-
-##### --log_dir
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: The same as [`--fs_data_dirs`](#fs-data-dirs)
-{{% /tags/wrap %}}
-
-The directory to write yb-tserver log files.
-
-##### --logtostderr
-
-{{% tags/wrap %}}
-
-
-Default: `false`
-{{% /tags/wrap %}}
-
-Write log messages to `stderr` instead of `logfiles`.
-
-##### --max_log_size
-
-{{% tags/wrap %}}
-
-
-Default: `1800` (1.8 GB)
-{{% /tags/wrap %}}
-
-The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
-
-##### --minloglevel
-
-{{% tags/wrap %}}
-
-
-Default: `0` (INFO)
-{{% /tags/wrap %}}
-
-The minimum level to log messages. Values are: `0` (INFO), `1`, `2`, `3` (FATAL).
-
-##### --stderrthreshold
-
-{{% tags/wrap %}}
-
-
-Default: `2`
-{{% /tags/wrap %}}
-
-Log messages at, or above, this level are copied to `stderr` in addition to log files.
-
-##### --stop_logging_if_full_disk
-
-{{% tags/wrap %}}
-
-
-Default: `false`
-{{% /tags/wrap %}}
-
-Stop attempting to log to disk if the disk is full.
-
-##### --callhome_enabled
-
-{{% tags/wrap %}}
-
-
-Default: `true`
-{{% /tags/wrap %}}
-
-Disable callhome diagnostics.
-
-### Metric export flags
-
-YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
-
-##### --export_help_and_type_in_prometheus_metrics
-
-{{% tags/wrap %}}
-
-
-Default: `true`
-{{% /tags/wrap %}}
-
-This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
-
-To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
-
-##### --max_prometheus_metric_entries
-
-{{% tags/wrap %}}
-
-
-Default: `UINT32_MAX`
-{{% /tags/wrap %}}
-
-Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
-
-To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
 ## Networking
 
@@ -2392,7 +2392,7 @@ For example:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [Server configuration parameters](#server-configuration-parameters).
 
 ##### --ysql_timezone
 
@@ -2425,7 +2425,7 @@ This is a maximum per server, so a 3-node cluster will have a default of 900 ava
 
 Any active, idle in transaction, or idle in session connection counts toward the connection limit.
 
-Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL server parameter](#postgresql-server-options). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
+Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [configuration parameter](#server-configuration-parameters). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
 
 ##### --ysql_default_transaction_isolation
 
