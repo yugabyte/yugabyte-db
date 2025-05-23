@@ -9,6 +9,7 @@ menu:
     parent: admin
     weight: 30
 type: docs
+body_class: configuration
 ---
 
 The yb-admin utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.

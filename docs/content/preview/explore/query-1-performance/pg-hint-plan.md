@@ -43,7 +43,7 @@ To enable pg_hint_plan, run the following command:
 yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
-For more information on setting [configuration parameters](../../../reference/configuration/yb-tserver/#server-configuration-parameters), refer to [Server configuration parameters](../../../reference/configuration/yb-tserver/#server-configuration-parameters).
+For more information on setting configuration parameters, refer to [Configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters).
 
 ### Turn on debug output
 

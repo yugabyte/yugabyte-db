@@ -265,7 +265,7 @@ Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric
 
 To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
-## Server configuration parameters
+## PostgreSQL configuration parameters
 
 YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/15/config-setting.html) to apply server configuration settings to new server instances.
 
@@ -412,6 +412,8 @@ Default: `1024`
 
 Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
+Can be set using the [--ysql_yb_bnl_batch_size](#ysql-yb-bnl-batch-size) flag.
+
 ##### yb_enable_batchednl
 
 {{% tags/wrap %}}
@@ -535,6 +537,8 @@ Specifies the default isolation level of each new transaction. Every transaction
 
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
+See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+
 ##### yb_skip_redundant_update_ops
 
 {{% tags/wrap %}}
@@ -569,7 +573,6 @@ Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/t-server>}}
 Default: `127.0.0.1:7100`
 {{% /tags/wrap %}}
 
@@ -583,7 +586,6 @@ The number of comma-separated values should match the total number of YB-Master 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/t-server>}}
 {{% /tags/wrap %}}
 
 Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
@@ -795,7 +797,6 @@ The directory where the yb-tserver retains WAL files. May be the same as one of 
 ##### --durable_wal_write
 
 {{% tags/wrap %}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
@@ -805,7 +806,6 @@ If set to `false`, the writes to the WAL are synchronized to disk every [interva
 ##### --interval_durable_wal_write_ms
 
 {{% tags/wrap %}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `1000`
 {{% /tags/wrap %}}
@@ -815,7 +815,6 @@ When [--durable_wal_write](#durable-wal-write) is false, writes to the WAL are s
 ##### --bytes_durable_wal_write_mb
 
 {{% tags/wrap %}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `1`
 {{% /tags/wrap %}}
@@ -2383,7 +2382,7 @@ For example:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [Server configuration parameters](#server-configuration-parameters).
+The configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [Configuration parameters](#postgresql-configuration-parameters).
 
 ##### --ysql_timezone
 
@@ -2416,7 +2415,7 @@ This is a maximum per server, so a 3-node cluster will have a default of 900 ava
 
 Any active, idle in transaction, or idle in session connection counts toward the connection limit.
 
-Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [configuration parameter](#server-configuration-parameters). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
+Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [configuration parameter](#postgresql-configuration-parameters). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
 
 ##### --ysql_default_transaction_isolation
 
