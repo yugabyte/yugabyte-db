@@ -1176,15 +1176,6 @@ Default: `15000`
 
 The rate at which CDC state's checkpoint is updated.
 
-##### --cdc_ybclient_reactor_threads
-
-{{% tags/wrap %}}
-{{<tags/feature/deprecated>}}
-Default: `50`
-{{% /tags/wrap %}}
-
-The number of reactor threads to be used for processing `ybclient` requests for CDC. Increase to improve throughput on large tablet setups.
-
 ##### --cdc_max_stream_intent_records
 
 {{% tags/wrap %}}
