@@ -44,6 +44,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/random.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/memory/arena.h"
@@ -79,6 +80,14 @@ DEFINE_RUNTIME_int32(print_nesting_levels, 5,
     "controls the depth of the child traces to be printed.");
 TAG_FLAG(print_nesting_levels, advanced);
 
+
+DEFINE_RUNTIME_uint32(tracing_max_entries_per_trace, 100,
+    "max number of entries in a trace. 0 means unbounded.");
+TAG_FLAG(tracing_max_entries_per_trace, advanced);
+
+DEFINE_RUNTIME_uint32(tracing_max_children_per_trace, 10,
+    "max number of child traces. 0 means unbounded.");
+TAG_FLAG(tracing_max_children_per_trace, advanced);
 namespace yb {
 
 using strings::internal::SubstituteArg;
@@ -345,6 +354,12 @@ bool Trace::must_print() const {
 
 scoped_refptr<Trace>  Trace::MaybeGetNewTraceForParent(Trace* parent) {
   if (parent) {
+    auto max_children = GetAtomicFlag(&FLAGS_tracing_max_children_per_trace);
+    if (max_children > 0 && parent->NumChildren() >= max_children) {
+      TRACE_TO(parent, "Cannot add more child traces");
+      YB_LOG_EVERY_N_SECS(WARNING, 10) << "Trace has too many child traces. Cannot add more.";
+      return MaybeGetNewTrace();
+    }
     scoped_refptr<Trace> trace(new Trace);
     parent->AddChildTrace(trace.get());
     return trace;
@@ -383,8 +398,22 @@ void Trace::SubstituteAndTrace(const char* file_path,
   AddEntry(entry);
 }
 
+size_t Trace::NumEntries() const {
+  return entries_count_.load(std::memory_order_acquire);
+}
+
+size_t Trace::NumChildren() const {
+  std::lock_guard l(lock_);
+  return child_traces_.size();
+}
+
 TraceEntry* Trace::NewEntry(
     size_t msg_len, const char* file_path, int line_number, CoarseTimePoint now) {
+  auto max_entries = GetAtomicFlag(&FLAGS_tracing_max_entries_per_trace);
+  if (max_entries > 0 && NumEntries() >= max_entries) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << "Trace has too many entries. Will not add more entries;";
+    return nullptr;
+  }
   auto* arena = GetAndInitArena();
   size_t size = offsetof(TraceEntry, message) + msg_len;
   void* dst = arena->AllocateBytesAligned(size, alignof(TraceEntry));
@@ -413,6 +442,7 @@ void Trace::AddEntry(TraceEntry* entry) {
     trace_start_time_usec_ = GetCurrentMicrosFast(entry->timestamp);
   }
   entries_tail_ = entry;
+  entries_count_++;
 }
 
 void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
