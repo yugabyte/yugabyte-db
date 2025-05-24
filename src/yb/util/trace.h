@@ -252,6 +252,9 @@ class Trace : public RefCountedThreadSafe<Trace> {
  private:
   friend class ScopedAdoptTrace;
   friend class RefCountedThreadSafe<Trace>;
+  FRIEND_TEST(TraceTest, TestTraceEntryLimit);
+  FRIEND_TEST(TraceTest, TestTraceChildLimitWithSampling);
+  FRIEND_TEST(TraceTest, TestNoCrashWhenExceedingTraceLimits);
   ~Trace();
 
   ThreadSafeArena* GetAndInitArena();
@@ -268,22 +271,26 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // Add the entry to the linked list of entries.
   void AddEntry(TraceEntry* entry);
 
+  size_t NumEntries() const;
+  size_t NumChildren() const;
+
   std::atomic<ThreadSafeArena*> arena_ = {nullptr};
 
   // Lock protecting the entries linked list.
   mutable simple_spinlock lock_;
   // The head of the linked list of entries (allocated inside arena_)
-  TraceEntry* entries_head_ = nullptr;
+  TraceEntry* entries_head_ GUARDED_BY(lock_) = nullptr;
   // The tail of the linked list of entries (allocated inside arena_)
-  TraceEntry* entries_tail_ = nullptr;
+  TraceEntry* entries_tail_ GUARDED_BY(lock_) = nullptr;
+  std::atomic<size_t> entries_count_{0};
 
   int64_t trace_start_time_usec_ = 0;
 
   // A hint to request that the collected trace be printed.
-  bool must_print_ = false;
-  bool end_to_end_traces_requested_ = false;
+  bool must_print_ GUARDED_BY(lock_) = false;
+  bool end_to_end_traces_requested_ GUARDED_BY(lock_) = false;
 
-  std::vector<scoped_refptr<Trace> > child_traces_;
+  std::vector<scoped_refptr<Trace> > child_traces_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(Trace);
 };
@@ -355,7 +362,7 @@ class PlainTrace {
   mutable simple_spinlock mutex_;
   int64_t trace_start_time_usec_ = 0;
   size_t size_ = 0;
-  Entry entries_[kMaxEntries];
+  Entry entries_[kMaxEntries] GUARDED_BY(mutex_);
 };
 
 } // namespace yb

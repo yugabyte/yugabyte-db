@@ -50,7 +50,11 @@
 
 // Need to add rapidjson.h to the list of recognized third-party libraries in our linter.
 
+DECLARE_bool(enable_tracing);
+DECLARE_int32(sampled_trace_1_in_n);
 DECLARE_uint32(trace_max_dump_size);
+DECLARE_uint32(tracing_max_entries_per_trace);
+DECLARE_uint32(tracing_max_children_per_trace);
 
 using yb::debug::TraceLog;
 using yb::debug::TraceResultBuffer;
@@ -103,6 +107,7 @@ std::string GetLongString(size_t size) {
 
 TEST_F(TraceTest, TestDumpLargeTrace) {
   const size_t kGlogMessageSizeLimit = google::LogMessage::kMaxLogMessageLen;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_max_entries_per_trace) = 0;
 
   class LogSink : public google::LogSink {
    public:
@@ -214,6 +219,64 @@ TEST_F(TraceTest, TestDumpLargeTrace) {
           kNumNewLinesRemovedByDumpToLogInfo);
 
   google::RemoveLogSink(&log_sink);
+}
+
+TEST_F(TraceTest, TestTraceEntryLimit) {
+  constexpr uint32_t kMaxEntries = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_max_entries_per_trace) = kMaxEntries;
+
+  scoped_refptr<Trace> trace(new Trace());
+  for (size_t i = 0; i < kMaxEntries + 2; ++i) {
+    TRACE_TO(trace.get(), "Entry $0", i);
+  }
+
+  ASSERT_LE(trace->NumEntries(), kMaxEntries)
+      << "Expected at most " << kMaxEntries << " entries in trace, found " << trace->NumEntries();
+}
+
+TEST_F(TraceTest, TestTraceChildLimitWithSampling) {
+  constexpr uint32_t kMaxChildren = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_max_children_per_trace) = kMaxChildren;
+  {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sampled_trace_1_in_n) = 0; // Disable sampling for this test.
+    scoped_refptr<Trace> parent(new Trace());
+    size_t num_child_traces = 0;
+    for (size_t i = 0; i < kMaxChildren + 2; ++i) {
+      if (auto child = Trace::MaybeGetNewTraceForParent(parent.get())) {
+        num_child_traces++;
+      }
+    }
+    ASSERT_EQ(parent->NumChildren(), kMaxChildren);
+    ASSERT_EQ(num_child_traces, kMaxChildren);
+  }
+
+  {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sampled_trace_1_in_n) = 1; // Enable sampling 100% of the time.
+    scoped_refptr<Trace> parent(new Trace());
+    size_t num_child_traces = 0;
+    for (size_t i = 0; i < kMaxChildren + 2; ++i) {
+      if (auto child = Trace::MaybeGetNewTraceForParent(parent.get())) {
+        num_child_traces++;
+      }
+    }
+    ASSERT_EQ(parent->NumChildren(), kMaxChildren);
+    ASSERT_EQ(num_child_traces, kMaxChildren + 2);
+  }
+}
+
+TEST_F(TraceTest, TestNoCrashWhenExceedingTraceLimits) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_max_entries_per_trace) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_max_children_per_trace) = 1;
+
+  scoped_refptr<Trace> trace(new Trace());
+  TRACE_TO(trace.get(), "First entry");
+  TRACE_TO(trace.get(), "Second entry");
+  ASSERT_EQ(trace->NumEntries(), 1);
+
+  auto child1 = Trace::MaybeGetNewTraceForParent(trace.get());
+  auto child2 = Trace::MaybeGetNewTraceForParent(trace.get());
+  ASSERT_EQ(trace->NumChildren(), 1);
 }
 
 TEST_F(TraceTest, TestAttach) {
@@ -942,7 +1005,8 @@ TEST_F(TraceEventSyntheticDelayTest, BeginParallel) {
 }
 
 TEST_F(TraceTest, TestVLogTrace) {
-  for (FLAGS_v = 0; FLAGS_v <= 1; FLAGS_v++) {
+  for(int i = 0; i <= 1; i++) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = i;
     TraceLog* tl = TraceLog::GetInstance();
     tl->SetEnabled(CategoryFilter(CategoryFilter::kDefaultCategoryFilterString),
                    TraceLog::RECORDING_MODE,
