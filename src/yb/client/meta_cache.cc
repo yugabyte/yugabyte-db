@@ -901,6 +901,7 @@ LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
       meta_cache_(meta_cache),
       table_(table) {
   DCHECK(deadline != CoarseTimePoint());
+  DCHECK(deadline != CoarseTimePoint::max());
 }
 
 LookupRpc::~LookupRpc() {

@@ -1770,13 +1770,15 @@ class PgClientSession::Impl {
   }
 
   Status CleanupObjectLocks() {
+    auto deadline = CoarseMonoClock::Now() +
+                    MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
     return MergeStatus(
         ReleaseObjectLocksIfNecessary(
             GetSessionData(PgClientSessionKind::kPlain).transaction, PgClientSessionKind::kPlain,
-            CoarseTimePoint::max()),
+            deadline),
         ReleaseObjectLocksIfNecessary(
             GetSessionData(PgClientSessionKind::kDdl).transaction, PgClientSessionKind::kDdl,
-            CoarseTimePoint::max()));
+            deadline));
   }
 
   Status Perform(
