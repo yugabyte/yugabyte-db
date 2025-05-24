@@ -15,6 +15,12 @@ cascade:
 
 {{<index/block>}}
 {{<index/item
+    title="Hello RAG"
+    body="Build a Retrieval-Augmented Generation (RAG) pipeline with YugabyteDB."
+    href="hello-rag/"
+    icon="fa-thin fa-vector-circle">}}
+
+{{<index/item
     title="Similarity Search using Azure AI"
     body="Build a scalable generative AI application using YugabyteDB as the database backend."
     href="azure-openai/"
