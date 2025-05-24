@@ -5,4 +5,4 @@ block_indexing = true
 +++
 -->
 
-Python 3.7 or higher is required.
+Python 3.11 or higher is required.

@@ -29,13 +29,6 @@ type: docs
   </li>
 
   <li >
-    <a href="../build-from-src-centos/" class="nav-link">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      CentOS
-    </a>
-  </li>
-
-  <li >
     <a href="../build-from-src-ubuntu/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
@@ -71,7 +64,7 @@ packages=(
   maven
   npm
   patchelf
-  python39
+  python3.11
   rsync
 )
 sudo dnf -y install "${packages[@]}"
@@ -116,16 +109,17 @@ sudo dnf -y install epel-release libatomic rsync
 
 {{% readfile "includes/python.md" %}}
 
-The following example installs Python 3.9.
+The following example installs Python 3.11.
 
 ```sh
-sudo dnf install -y python39
+sudo dnf install -y python3.11
 ```
 
-In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one.
+Set this as the default python3, if desired.  It is only nessesary that python3.11 be in the PATH,
+it need not be the default python.
 
 ```sh
-sudo alternatives --set python3 /usr/bin/python3.9
+sudo alternatives --set python3 /usr/bin/python3.11
 sudo alternatives --display python3
 python3 -V
 ```
