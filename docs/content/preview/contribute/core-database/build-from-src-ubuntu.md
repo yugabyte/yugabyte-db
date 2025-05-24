@@ -64,6 +64,9 @@ source <(cat /etc/os-release | grep '^VERSION_ID=')
 case "$VERSION_ID" in
   20.04)
     gcc_version=10
+    # 20.04 needs deadsnakes repo for python3.11 installed below
+    sudo add-apt-repository ppa:deadsnakes/ppa
+    sudo apt update
     ;;
   22.04)
     gcc_version=11
