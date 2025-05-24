@@ -29,13 +29,6 @@ type: docs
   </li>
 
   <li >
-    <a href="../build-from-src-centos/" class="nav-link">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      CentOS
-    </a>
-  </li>
-
-  <li >
     <a href="../build-from-src-ubuntu/" class="nav-link active">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
@@ -164,7 +157,12 @@ sudo locale-gen en_US.UTF-8
 {{% readfile "includes/python.md" %}}
 
 ```sh
-sudo apt install -y libffi-dev python3 python3-dev python3-venv
+# 20.04 needs deadsnakes repo for python3.11 installed below.
+if grep -q '20.04' /etc/os-release; then
+  sudo add-apt-repository ppa:deadsnakes/ppa
+  sudo apt update
+fi
+sudo apt install -y libffi-dev python3.11 python3.11-dev python3.11-venv
 ```
 
 ### CMake 3
