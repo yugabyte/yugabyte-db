@@ -77,9 +77,11 @@ For each node in the universe, use the following general procedure:
 
     Ensure that the node retains its IP addresses after the patching of the Linux OS. Also ensure that the existing data volumes on the node remain untouched by the OS patching mechanism.
 
+    Note that you do not need to manually update transparent hugepages (THP). THP settings are automatically set during automatic provisioning in the next step.
+
 1. After replacing the boot disk, re-provision the node by following the steps in [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
-1. Re-provision the node using the following API command:
+1. Reinstall YugabyteDB on the node using the following API command:
 
     ```shell
     curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
