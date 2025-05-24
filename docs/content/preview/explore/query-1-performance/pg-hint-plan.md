@@ -19,7 +19,7 @@ pg_hint_plan makes it possible to tweak execution plans using "hints", which are
 
 {{< warning title="Revisit your hint plans" >}}
 
-To use `pg_hint_plan` effectively, you need a thorough knowledge of how your application will be deployed. Hint plans also need to be revisited when the database grows or the deployment changes to ensure that the plan is not limiting performance rather than optimizing it.
+To use pg_hint_plan effectively, you need a thorough knowledge of how your application will be deployed. Hint plans also need to be revisited when the database grows or the deployment changes to ensure that the plan is not limiting performance rather than optimizing it.
 
 {{< /warning >}}
 
@@ -43,9 +43,7 @@ To enable pg_hint_plan, run the following command:
 yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
-{{<note title="Enable pg_hint_plan for all sessions">}}
-You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-server-options).
-{{</note>}}
+For more information on setting configuration parameters, refer to [Configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters).
 
 ### Turn on debug output
 

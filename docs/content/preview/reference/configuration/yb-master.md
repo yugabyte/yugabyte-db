@@ -9,6 +9,7 @@ menu:
     parent: configuration
     weight: 2000
 type: docs
+body_class: configuration
 ---
 
 Use the yb-master binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The yb-master executable file is located in the `bin` directory of YugabyteDB home.
