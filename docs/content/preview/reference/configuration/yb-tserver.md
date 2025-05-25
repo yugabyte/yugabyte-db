@@ -23,6 +23,7 @@ Flags are organized in the following categories.
 | Category                     | Description |
 |------------------------------|-------------|
 | [General configuration](#general-configuration)        | Basic server setup including overall system settings, logging, and web interface configurations. |
+| [PostgreSQL configuration parameters](#postgresql-configuration-parameters)        | PostgreSQL settings, and YSQL-specific configuration parameters. |
 | [Networking](#networking)                   | Flags that control network interfaces, RPC endpoints, DNS caching, and geo-distribution settings. |
 | [Storage and data management](#storage-data-management)    | Parameters for managing data directories, WAL configurations, sharding, CDC, and TTL-based file expiration. |
 | [Performance tuning](#performance-tuning)           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
