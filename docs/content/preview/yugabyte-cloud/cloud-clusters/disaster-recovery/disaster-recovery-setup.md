@@ -14,7 +14,7 @@ type: docs
 
 ## Prerequisites
 
-To set up or configure Disaster Recovery, you must be a Super Admin or Admin, or have a role with the Manage xCluster permission. For information on roles, refer to [Manage users](../../../administer-yugabyte-platform/anywhere-rbac/).
+To set up or configure Disaster Recovery, you must be an Admin, or have a role with Disaster Recovery permissions. For information on roles, refer to [Manage users](../../../managed-security/managed-roles/).
 
 ### Create clusters
 
@@ -158,14 +158,24 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | :--- | :--- |
 | Failed | The table failed to be added to replication. |
 | Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
-| Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
-| Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). |
+| Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). |
 | Extra Table On Source | The table is newly created on the DR primary but is not in replication yet. |
 | Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
-| Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other cluster and you will need to [restart replication](#restart-replication).|
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the clusters) and replication is paused until the same schema change is made to the other cluster. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
-| Auto flag config mismatch | Replication has stopped because one of the clusters is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading clusters that are in replication. Upgrade the other cluster to the same version. |
+| Unable to Fetch | The replication status is currently not available. Try a again in a bit. If the error continues, contact support. |
+| Unknown | The replication status is currently not available. Try a again in a bit. If the error continues, contact support. |
+
+The following statuses describe replication errors. More than one of these errors may be displayed.
+
+| Status | Description |
+| :--- | :--- |
+| Error | Replication is in an error state, but the error is not known. |
+| Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
+| Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
+| Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
+| Auto flag config mismatch | Replication has stopped because one of the clusters is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
 
 ### Disaster recovery alerts
 
