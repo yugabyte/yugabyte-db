@@ -992,6 +992,8 @@ class Tablet : public AbstractTablet,
   void RefreshCompactFlushRateLimitBytesPerSec();
   void SetCompactFlushRateLimitBytesPerSec(int64_t bytes_per_sec);
 
+  void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1151,6 +1153,9 @@ class Tablet : public AbstractTablet,
 
   // For the block cache and memory manager shared across tablets
   const TabletOptions tablet_options_;
+
+  mutable std::shared_mutex mutable_tablet_options_mutex_;
+  MutableTabletOptions mutable_tablet_options_ GUARDED_BY (mutable_tablet_options_mutex_);
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destructing the RocksDB in-memory instance and read/write

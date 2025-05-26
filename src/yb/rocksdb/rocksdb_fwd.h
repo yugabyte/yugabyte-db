@@ -17,6 +17,8 @@
 
 #include <memory>
 
+#include "yb/util/strongly_typed_bool.h"
+
 namespace rocksdb {
 
 class CompactionContext;
@@ -55,5 +57,7 @@ class MergeIteratorBuilderBase;
 using MergeIteratorBuilder = MergeIteratorBuilderBase<IteratorWrapper>;
 
 using CompactionContextPtr = std::unique_ptr<CompactionContext>;
+
+YB_STRONGLY_TYPED_BOOL(AllowCompactionFailures);
 
 } // namespace rocksdb

@@ -629,6 +629,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void UpdateCompactFlushRateLimitBytesPerSec();
 
+  void UpdateAllowCompactionFailures();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -804,8 +806,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
   std::atomic<client::YBMetaDataCache*> metadata_cache_;
 
-  // Callback for FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec update handling.
-  FlagCallbackRegistration rate_limiter_flag_callback_;
+  std::vector<FlagCallbackRegistration> flag_callbacks_;
+
+  std::string allow_compaction_failures_for_tablet_ids_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
