@@ -205,6 +205,8 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(
     "schema version mismatch for table"sv,
     "marked for deletion in table"sv,
     "Invalid column number"sv,
+    "duplicate key value violates unique constraint"sv,
+    "not found in Raft group"sv,
     kDdlVerificationError
   };
   if (HasSubstring(msg, allowed_msgs)) {

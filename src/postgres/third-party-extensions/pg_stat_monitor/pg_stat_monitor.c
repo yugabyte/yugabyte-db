@@ -239,7 +239,7 @@ static void pgsm_update_entry(pgsmEntry * entry,
 							  const struct JitInstrumentation *jitusage,
 							  bool reset,
 							  pgsmStoreKind kind);
-static void pgsm_store(pgsmEntry * entry);
+static void pgsm_store(pgsmEntry * entry, bool yb_is_sensitive_stmt);
 
 static void pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 									 pgsmVersion api_version,
@@ -781,7 +781,11 @@ pgsm_ExecutorEnd(QueryDesc *queryDesc)
 						  false,	/* reset */
 						  PGSM_EXEC);	/* kind */
 
-		pgsm_store(entry);
+		/*
+		 * UTILITY statements are the only kind that are treated as sensitive.
+		 * ExecutorEnd is not invoked for such statements.
+		 */
+		pgsm_store(entry, false /* yb_is_sensitive_stmt */ );
 	}
 
 	if (prev_ExecutorEnd)
@@ -1184,7 +1188,8 @@ pgsm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 						  false,	/* reset */
 						  PGSM_EXEC);	/* kind */
 
-		pgsm_store(entry);
+		/* UTILITY statements can have password tokens that require redaction */
+		pgsm_store(entry, true /* yb_is_sensitive_stmt */ );
 	}
 	else
 	{
@@ -1608,7 +1613,11 @@ pgsm_store_error(const char *query, ErrorData *edata)
 	snprintf(entry->counters.error.message, ERROR_MESSAGE_LEN, "%s", edata->message);
 	snprintf(entry->counters.error.sqlcode, SQLCODE_LEN, "%s", unpack_sql_state(edata->sqlerrcode));
 
-	pgsm_store(entry);
+	/*
+	 * We no longer have context of the command tag of the query that caused the
+	 * error, so we will assume that it could be sensitive.
+	 */
+	pgsm_store(entry, true /* yb_is_sensitive_stmt */ );
 }
 
 static void
@@ -1760,9 +1769,9 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo * plan_info)
  * query string.  total_time, rows, bufusage are ignored in this case.
  */
 static void
-pgsm_store(pgsmEntry * entry)
+pgsm_store(pgsmEntry * entry, bool yb_is_sensitive_stmt)
 {
-	if (yb_is_calling_internal_function_for_ddl)
+	if (yb_is_calling_internal_sql_for_ddl)
 		return;
 
 	pgsmEntry  *shared_hash_entry;
@@ -1771,14 +1780,13 @@ pgsm_store(pgsmEntry * entry)
 	uint64		bucketid;
 	uint64		prev_bucket_id;
 	bool		reset = false;	/* Only used in update function - HAMID */
-	const char *query;	/* YB: changed to const for YbRedactPasswordIfExists */
+	const char *query;	/* YB: changed to const for YbGetRedactedQueryString */
 	int			query_len;
 	BufferUsage bufusage;
 	WalUsage	walusage;
 	JitInstrumentation jitusage;
 	char		comments[COMMENTS_LEN] = {0};
 	int			comments_len;
-	CommandTag command_tag;
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
@@ -1793,13 +1801,12 @@ pgsm_store(pgsmEntry * entry)
 		reset = true;
 
 	entry->key.bucket_id = bucketid;
-	/*
-	 * TODO(jason): YbRedactPasswordIfExists is not designed in a
-	 * memory-conscious way.
-	 */
-	command_tag = YbParseCommandTag(entry->query_text.query_pointer);
-	query = YbRedactPasswordIfExists(entry->query_text.query_pointer, command_tag);
-	query_len = strlen(query);
+	query = entry->query_text.query_pointer;
+
+	if (yb_is_sensitive_stmt)
+		query = YbGetRedactedQueryString(query, &query_len);
+	else
+		query_len = strlen(query);
 
 	/* Let's do all the leg work here before we acquire any locks */
 	extract_query_comments(query, comments, sizeof(comments));

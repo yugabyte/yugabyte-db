@@ -353,8 +353,8 @@ expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
 	 * that survive pruning.  Below, we will initialize child objects for the
 	 * surviving partitions.
 	 */
-	relinfo->live_parts = live_parts =
-		prune_append_rel_partitions(relinfo, partdesc->oids);
+	relinfo->live_parts = live_parts = prune_append_rel_partitions(relinfo,
+																   partdesc->oids);
 
 	/* Expand simple_rel_array and friends to hold child objects. */
 	num_live_parts = bms_num_members(live_parts);
@@ -384,8 +384,17 @@ expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
 		Index		childRTindex;
 		RelOptInfo *childrelinfo;
 
-		/* Open rel, acquiring required locks */
-		childrel = table_open(childOID, lockmode);
+		/*
+		 * Open rel, acquiring required locks.  If a partition was recently
+		 * detached and subsequently dropped, then opening it will fail.  In
+		 * this case, behave as though the partition had been pruned.
+		 */
+		childrel = try_table_open(childOID, lockmode);
+		if (childrel == NULL)
+		{
+			relinfo->live_parts = bms_del_member(relinfo->live_parts, i);
+			continue;
+		}
 
 		/*
 		 * Temporary partitions belonging to other sessions should have been

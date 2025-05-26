@@ -54,7 +54,7 @@ YbGetMasterLogicalClientVersion()
 		case LOGICAL_CLIENT_VERSION_CATALOG_TABLE:
 			if (YbGetMasterLogicalClientVersionFromTable(MyDatabaseId, &version))
 				return version;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 
 		case LOGICAL_CLIENT_VERSION_UNSET:	/* should not happen. */
 			break;

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -60,13 +61,8 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 			"No clusters found in universe " + universeName + " (" + universeUUID + ")")
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	var primaryCluster ybaclient.Cluster
-	for _, c := range clusters {
-		if strings.EqualFold(c.GetClusterType(), util.PrimaryClusterType) {
-			primaryCluster = c
-			break
-		}
-	}
+
+	primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
 
 	if primaryCluster == (ybaclient.Cluster{}) {
 		err := fmt.Errorf(
@@ -126,19 +122,39 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 			Format:  universe.NewNodesFormat(viper.GetString("output")),
 		}
 
-		nodeInstance, response, err := authAPI.GetNodeDetails(universeUUID, nodeName).Execute()
+		if !isNodeRemovingOperation(operation) {
+			nodeInstance, response, err := authAPI.GetNodeDetails(universeUUID, nodeName).Execute()
+			if err != nil {
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Node",
+					fmt.Sprintf("%s - Fetch Nodes", operation))
+				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			}
+
+			nodeInstanceList := make([]ybaclient.NodeDetailsResp, 0)
+			nodeInstanceList = append(nodeInstanceList, nodeInstance)
+
+			universe.NodeWrite(nodesCtx, nodeInstanceList)
+			return
+		}
+		nodesCtx.Command = "list"
+
+		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node",
-				fmt.Sprintf("%s - Fetch Nodes", operation))
+
+			errMessage := util.ErrorFromHTTPResponse(
+				response, err,
+				"Node",
+				fmt.Sprintf("%s - List Universes", operation))
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		nodeInstanceList := make([]ybaclient.NodeDetailsResp, 0)
-		nodeInstanceList = append(nodeInstanceList, nodeInstance)
-
-		universe.NodeWrite(nodesCtx, nodeInstanceList)
+		selectedUniverse := r[0]
+		details := selectedUniverse.GetUniverseDetails()
+		nodes := details.GetNodeDetailsSet()
+		universe.NodeWrite(nodesCtx, nodes)
 		return
 	}
+
 	logrus.Infoln(msg + "\n")
 
 	taskCtx := formatter.Context{
@@ -148,4 +164,9 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 	}
 	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
 
+}
+
+func isNodeRemovingOperation(operation string) bool {
+	operation = strings.ToLower(operation)
+	return strings.EqualFold(operation, "replace") || strings.EqualFold(operation, "decommission")
 }

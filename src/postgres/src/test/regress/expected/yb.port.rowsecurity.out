@@ -618,11 +618,274 @@ ALTER TABLE t1 DROP COLUMN junk1;    -- just a disturbing factor
 GRANT ALL ON t1 TO public;
 COPY t1 FROM stdin WITH ;
 CREATE TABLE t2 (c float) INHERITS (t1);
-ERROR:  INHERITS not supported yet
-LINE 1: CREATE TABLE t2 (c float) INHERITS (t1);
-                                  ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
--- YB: port further queries when above works
+GRANT ALL ON t2 TO public;
+COPY t2 FROM stdin;
+CREATE TABLE t3 (id int not null primary key, c text, b text, a int);
+ALTER TABLE t3 INHERIT t1;
+GRANT ALL ON t3 TO public;
+COPY t3(id, a,b,c) FROM stdin;
+CREATE POLICY p1 ON t1 FOR ALL TO PUBLIC USING (a % 2 = 0); -- be even number
+CREATE POLICY p2 ON t2 FOR ALL TO PUBLIC USING (a % 2 = 1); -- be odd number
+ALTER TABLE t1 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE t2 ENABLE ROW LEVEL SECURITY;
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM t1;
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 104 | 4 | dad
+ 202 | 2 | bcd
+ 204 | 4 | def
+ 302 | 2 | yyy
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1;
+              QUERY PLAN               
+---------------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Storage Filter: ((a % 2) = 0)
+   ->  Seq Scan on t2 t1_2
+         Storage Filter: ((a % 2) = 0)
+   ->  Seq Scan on t3 t1_3
+         Storage Filter: ((a % 2) = 0)
+(7 rows)
+
+SELECT * FROM t1 WHERE f_leak(b);
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => dad
+NOTICE:  f_leak => bcd
+NOTICE:  f_leak => def
+NOTICE:  f_leak => yyy
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 104 | 4 | dad
+ 202 | 2 | bcd
+ 204 | 4 | def
+ 302 | 2 | yyy
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
+              QUERY PLAN               
+---------------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Storage Filter: ((a % 2) = 0)
+         Filter: f_leak(b)
+   ->  Seq Scan on t2 t1_2
+         Storage Filter: ((a % 2) = 0)
+         Filter: f_leak(b)
+   ->  Seq Scan on t3 t1_3
+         Storage Filter: ((a % 2) = 0)
+         Filter: f_leak(b)
+(10 rows)
+
+-- reference to system column
+SELECT tableoid::regclass, * FROM t1;
+ tableoid | id  | a |  b  
+----------+-----+---+-----
+ t1       | 102 | 2 | bbb
+ t1       | 104 | 4 | dad
+ t2       | 202 | 2 | bcd
+ t2       | 204 | 4 | def
+ t3       | 302 | 2 | yyy
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
+              QUERY PLAN               
+---------------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Storage Filter: ((a % 2) = 0)
+   ->  Seq Scan on t2 t1_2
+         Storage Filter: ((a % 2) = 0)
+   ->  Seq Scan on t3 t1_3
+         Storage Filter: ((a % 2) = 0)
+(7 rows)
+
+-- reference to whole-row reference
+SELECT *, t1 FROM t1;
+ id  | a |  b  |     t1      
+-----+---+-----+-------------
+ 102 | 2 | bbb | (102,2,bbb)
+ 104 | 4 | dad | (104,4,dad)
+ 202 | 2 | bcd | (202,2,bcd)
+ 204 | 4 | def | (204,4,def)
+ 302 | 2 | yyy | (302,2,yyy)
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
+              QUERY PLAN               
+---------------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Storage Filter: ((a % 2) = 0)
+   ->  Seq Scan on t2 t1_2
+         Storage Filter: ((a % 2) = 0)
+   ->  Seq Scan on t3 t1_3
+         Storage Filter: ((a % 2) = 0)
+(7 rows)
+
+-- for share/update lock
+SELECT * FROM t1 FOR SHARE;
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 104 | 4 | dad
+ 202 | 2 | bcd
+ 204 | 4 | def
+ 302 | 2 | yyy
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 FOR SHARE;
+                 QUERY PLAN                  
+---------------------------------------------
+ LockRows
+   ->  Append
+         ->  Seq Scan on t1 t1_1
+               Storage Filter: ((a % 2) = 0)
+         ->  Seq Scan on t2 t1_2
+               Storage Filter: ((a % 2) = 0)
+         ->  Seq Scan on t3 t1_3
+               Storage Filter: ((a % 2) = 0)
+(8 rows)
+
+SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => dad
+NOTICE:  f_leak => bcd
+NOTICE:  f_leak => def
+NOTICE:  f_leak => yyy
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 104 | 4 | dad
+ 202 | 2 | bcd
+ 204 | 4 | def
+ 302 | 2 | yyy
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
+                 QUERY PLAN                  
+---------------------------------------------
+ LockRows
+   ->  Append
+         ->  Seq Scan on t1 t1_1
+               Storage Filter: ((a % 2) = 0)
+               Filter: f_leak(b)
+         ->  Seq Scan on t2 t1_2
+               Storage Filter: ((a % 2) = 0)
+               Filter: f_leak(b)
+         ->  Seq Scan on t3 t1_3
+               Storage Filter: ((a % 2) = 0)
+               Filter: f_leak(b)
+(11 rows)
+
+-- union all query
+SELECT a, b, tableoid::regclass FROM t2 UNION ALL SELECT a, b, tableoid::regclass FROM t3;
+ a |  b  | tableoid 
+---+-----+----------
+ 1 | abc | t2
+ 3 | cde | t2
+ 1 | xxx | t3
+ 2 | yyy | t3
+ 3 | zzz | t3
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT a, b, tableoid::regclass FROM t2 UNION ALL SELECT a, b, tableoid::regclass FROM t3;
+              QUERY PLAN               
+---------------------------------------
+ Append
+   ->  Seq Scan on t2
+         Storage Filter: ((a % 2) = 1)
+   ->  Seq Scan on t3
+(4 rows)
+
+-- superuser is allowed to bypass RLS checks
+RESET SESSION AUTHORIZATION;
+SET row_security TO OFF;
+SELECT * FROM t1 WHERE f_leak(b);
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => ccc
+NOTICE:  f_leak => dad
+NOTICE:  f_leak => abc
+NOTICE:  f_leak => bcd
+NOTICE:  f_leak => cde
+NOTICE:  f_leak => def
+NOTICE:  f_leak => xxx
+NOTICE:  f_leak => yyy
+NOTICE:  f_leak => zzz
+ id  | a |  b  
+-----+---+-----
+ 101 | 1 | aba
+ 102 | 2 | bbb
+ 103 | 3 | ccc
+ 104 | 4 | dad
+ 201 | 1 | abc
+ 202 | 2 | bcd
+ 203 | 3 | cde
+ 204 | 4 | def
+ 301 | 1 | xxx
+ 302 | 2 | yyy
+ 303 | 3 | zzz
+(11 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
+        QUERY PLAN         
+---------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Filter: f_leak(b)
+   ->  Seq Scan on t2 t1_2
+         Filter: f_leak(b)
+   ->  Seq Scan on t3 t1_3
+         Filter: f_leak(b)
+(7 rows)
+
+-- non-superuser with bypass privilege can bypass RLS policy when disabled
+SET SESSION AUTHORIZATION regress_rls_exempt_user;
+SET row_security TO OFF;
+SELECT * FROM t1 WHERE f_leak(b);
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => ccc
+NOTICE:  f_leak => dad
+NOTICE:  f_leak => abc
+NOTICE:  f_leak => bcd
+NOTICE:  f_leak => cde
+NOTICE:  f_leak => def
+NOTICE:  f_leak => xxx
+NOTICE:  f_leak => yyy
+NOTICE:  f_leak => zzz
+ id  | a |  b  
+-----+---+-----
+ 101 | 1 | aba
+ 102 | 2 | bbb
+ 103 | 3 | ccc
+ 104 | 4 | dad
+ 201 | 1 | abc
+ 202 | 2 | bcd
+ 203 | 3 | cde
+ 204 | 4 | def
+ 301 | 1 | xxx
+ 302 | 2 | yyy
+ 303 | 3 | zzz
+(11 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
+        QUERY PLAN         
+---------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Filter: f_leak(b)
+   ->  Seq Scan on t2 t1_2
+         Filter: f_leak(b)
+   ->  Seq Scan on t3 t1_3
+         Filter: f_leak(b)
+(7 rows)
+
 --
 -- Partitioned Tables
 --
@@ -1235,7 +1498,424 @@ ALTER POLICY p2 ON s2 USING (x in (select a from s1 where b like '%d2%'));
 SET SESSION AUTHORIZATION regress_rls_bob;
 SELECT * FROM s1 WHERE f_leak(b);	-- fail (infinite recursion via view)
 ERROR:  infinite recursion detected in policy for relation "s1"
--- YB: port further queries when above works (table t2 and t3 inherit from t1)
+-- prepared statement with regress_rls_alice privilege
+PREPARE p1(int) AS SELECT * FROM t1 WHERE a <= $1;
+EXECUTE p1(2);
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 202 | 2 | bcd
+ 302 | 2 | yyy
+(3 rows)
+
+EXPLAIN (COSTS OFF) EXECUTE p1(2);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Storage Filter: ((a <= 2) AND ((a % 2) = 0))
+   ->  Seq Scan on t2 t1_2
+         Storage Filter: ((a <= 2) AND ((a % 2) = 0))
+   ->  Seq Scan on t3 t1_3
+         Storage Filter: ((a <= 2) AND ((a % 2) = 0))
+(7 rows)
+
+-- superuser is allowed to bypass RLS checks
+RESET SESSION AUTHORIZATION;
+SET row_security TO OFF;
+SELECT * FROM t1 WHERE f_leak(b);
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => ccc
+NOTICE:  f_leak => dad
+NOTICE:  f_leak => abc
+NOTICE:  f_leak => bcd
+NOTICE:  f_leak => cde
+NOTICE:  f_leak => def
+NOTICE:  f_leak => xxx
+NOTICE:  f_leak => yyy
+NOTICE:  f_leak => zzz
+ id  | a |  b  
+-----+---+-----
+ 101 | 1 | aba
+ 102 | 2 | bbb
+ 103 | 3 | ccc
+ 104 | 4 | dad
+ 201 | 1 | abc
+ 202 | 2 | bcd
+ 203 | 3 | cde
+ 204 | 4 | def
+ 301 | 1 | xxx
+ 302 | 2 | yyy
+ 303 | 3 | zzz
+(11 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
+        QUERY PLAN         
+---------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Filter: f_leak(b)
+   ->  Seq Scan on t2 t1_2
+         Filter: f_leak(b)
+   ->  Seq Scan on t3 t1_3
+         Filter: f_leak(b)
+(7 rows)
+
+-- plan cache should be invalidated
+EXECUTE p1(2);
+ id  | a |  b  
+-----+---+-----
+ 101 | 1 | aba
+ 102 | 2 | bbb
+ 201 | 1 | abc
+ 202 | 2 | bcd
+ 301 | 1 | xxx
+ 302 | 2 | yyy
+(6 rows)
+
+EXPLAIN (COSTS OFF) EXECUTE p1(2);
+            QUERY PLAN            
+----------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Storage Filter: (a <= 2)
+   ->  Seq Scan on t2 t1_2
+         Storage Filter: (a <= 2)
+   ->  Seq Scan on t3 t1_3
+         Storage Filter: (a <= 2)
+(7 rows)
+
+PREPARE p2(int) AS SELECT * FROM t1 WHERE a = $1;
+EXECUTE p2(2);
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 202 | 2 | bcd
+ 302 | 2 | yyy
+(3 rows)
+
+EXPLAIN (COSTS OFF) EXECUTE p2(2);
+           QUERY PLAN            
+---------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Storage Filter: (a = 2)
+   ->  Seq Scan on t2 t1_2
+         Storage Filter: (a = 2)
+   ->  Seq Scan on t3 t1_3
+         Storage Filter: (a = 2)
+(7 rows)
+
+-- also, case when privilege switch from superuser
+SET SESSION AUTHORIZATION regress_rls_bob;
+SET row_security TO ON;
+EXECUTE p2(2);
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 202 | 2 | bcd
+ 302 | 2 | yyy
+(3 rows)
+
+EXPLAIN (COSTS OFF) EXECUTE p2(2);
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Storage Filter: ((a = 2) AND ((a % 2) = 0))
+   ->  Seq Scan on t2 t1_2
+         Storage Filter: ((a = 2) AND ((a % 2) = 0))
+   ->  Seq Scan on t3 t1_3
+         Storage Filter: ((a = 2) AND ((a % 2) = 0))
+(7 rows)
+
+--
+-- UPDATE / DELETE and Row-level security
+--
+SET SESSION AUTHORIZATION regress_rls_bob;
+EXPLAIN (COSTS OFF) UPDATE t1 SET b = b || b WHERE f_leak(b);
+                    QUERY PLAN                     
+---------------------------------------------------
+ Update on t1
+   Update on t1 t1_1
+   Update on t2 t1_2
+   Update on t3 t1_3
+   ->  Result t1
+         ->  Append
+               ->  Seq Scan on t1 t1_1
+                     Storage Filter: ((a % 2) = 0)
+                     Filter: f_leak(b)
+               ->  Seq Scan on t2 t1_2
+                     Storage Filter: ((a % 2) = 0)
+                     Filter: f_leak(b)
+               ->  Seq Scan on t3 t1_3
+                     Storage Filter: ((a % 2) = 0)
+                     Filter: f_leak(b)
+(15 rows)
+
+UPDATE t1 SET b = b || b WHERE f_leak(b);
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => dad
+NOTICE:  f_leak => bcd
+NOTICE:  f_leak => def
+NOTICE:  f_leak => yyy
+EXPLAIN (COSTS OFF) UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
+              QUERY PLAN               
+---------------------------------------
+ Update on t1
+   ->  Seq Scan on t1
+         Storage Filter: ((a % 2) = 0)
+         Filter: f_leak(b)
+(4 rows)
+
+UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
+NOTICE:  f_leak => bbbbbb
+NOTICE:  f_leak => daddad
+-- returning clause with system column
+UPDATE only t1 SET b = b WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+NOTICE:  f_leak => bbbbbb_updt
+NOTICE:  f_leak => daddad_updt
+ tableoid | id  | a |      b      |         t1          
+----------+-----+---+-------------+---------------------
+ t1       | 102 | 2 | bbbbbb_updt | (102,2,bbbbbb_updt)
+ t1       | 104 | 4 | daddad_updt | (104,4,daddad_updt)
+(2 rows)
+
+UPDATE t1 SET b = b WHERE f_leak(b) RETURNING *;
+NOTICE:  f_leak => bbbbbb_updt
+NOTICE:  f_leak => daddad_updt
+NOTICE:  f_leak => bcdbcd
+NOTICE:  f_leak => defdef
+NOTICE:  f_leak => yyyyyy
+ id  | a |      b      
+-----+---+-------------
+ 102 | 2 | bbbbbb_updt
+ 104 | 4 | daddad_updt
+ 202 | 2 | bcdbcd
+ 204 | 4 | defdef
+ 302 | 2 | yyyyyy
+(5 rows)
+
+UPDATE t1 SET b = b WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+NOTICE:  f_leak => bbbbbb_updt
+NOTICE:  f_leak => daddad_updt
+NOTICE:  f_leak => bcdbcd
+NOTICE:  f_leak => defdef
+NOTICE:  f_leak => yyyyyy
+ tableoid | id  | a |      b      |         t1          
+----------+-----+---+-------------+---------------------
+ t1       | 102 | 2 | bbbbbb_updt | (102,2,bbbbbb_updt)
+ t1       | 104 | 4 | daddad_updt | (104,4,daddad_updt)
+ t2       | 202 | 2 | bcdbcd      | (202,2,bcdbcd)
+ t2       | 204 | 4 | defdef      | (204,4,defdef)
+ t3       | 302 | 2 | yyyyyy      | (302,2,yyyyyy)
+(5 rows)
+
+-- updates with from clause
+EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t3
+WHERE t2.a = 3 and t3.a = 2 AND f_leak(t2.b) AND f_leak(t3.b);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Update on t2
+   ->  Nested Loop
+         ->  Seq Scan on t2
+               Storage Filter: ((a = 3) AND ((a % 2) = 1))
+               Filter: f_leak(b)
+         ->  Materialize
+               ->  Seq Scan on t3
+                     Storage Filter: (a = 2)
+                     Filter: f_leak(b)
+(9 rows)
+
+UPDATE t2 SET b=t2.b FROM t3
+WHERE t2.a = 3 and t3.a = 2 AND f_leak(t2.b) AND f_leak(t3.b);
+NOTICE:  f_leak => cde
+NOTICE:  f_leak => yyyyyy
+EXPLAIN (COSTS OFF) UPDATE t1 SET b=t1.b FROM t2
+WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Update on t1
+   Update on t1 t1_1
+   Update on t2 t1_2
+   Update on t3 t1_3
+   ->  Nested Loop
+         ->  Append
+               ->  Seq Scan on t1 t1_1
+                     Storage Filter: ((a = 3) AND ((a % 2) = 0))
+                     Filter: f_leak(b)
+               ->  Seq Scan on t2 t1_2
+                     Storage Filter: ((a = 3) AND ((a % 2) = 0))
+                     Filter: f_leak(b)
+               ->  Seq Scan on t3 t1_3
+                     Storage Filter: ((a = 3) AND ((a % 2) = 0))
+                     Filter: f_leak(b)
+         ->  Materialize
+               ->  Seq Scan on t2
+                     Storage Filter: ((a = 3) AND ((a % 2) = 1))
+                     Filter: f_leak(b)
+(19 rows)
+
+UPDATE t1 SET b=t1.b FROM t2
+WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t1
+WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Update on t2
+   ->  Nested Loop
+         ->  Append
+               ->  Seq Scan on t1 t1_1
+                     Storage Filter: ((a = 3) AND ((a % 2) = 0))
+                     Filter: f_leak(b)
+               ->  Seq Scan on t2 t1_2
+                     Storage Filter: ((a = 3) AND ((a % 2) = 0))
+                     Filter: f_leak(b)
+               ->  Seq Scan on t3 t1_3
+                     Storage Filter: ((a = 3) AND ((a % 2) = 0))
+                     Filter: f_leak(b)
+         ->  Materialize
+               ->  Seq Scan on t2
+                     Storage Filter: ((a = 3) AND ((a % 2) = 1))
+                     Filter: f_leak(b)
+(16 rows)
+
+UPDATE t2 SET b=t2.b FROM t1
+WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+-- updates with from clause self join
+EXPLAIN (COSTS OFF) UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
+WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
+AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Update on t2 t2_1
+   ->  Merge Join
+         Merge Cond: (t2_1.b = t2_2.b)
+         ->  Sort
+               Sort Key: t2_1.b
+               ->  Seq Scan on t2 t2_1
+                     Storage Filter: ((a = 3) AND ((a % 2) = 1))
+                     Filter: f_leak(b)
+         ->  Sort
+               Sort Key: t2_2.b
+               ->  Seq Scan on t2 t2_2
+                     Storage Filter: ((a = 3) AND ((a % 2) = 1))
+                     Filter: f_leak(b)
+(13 rows)
+
+UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
+WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
+AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
+NOTICE:  f_leak => cde
+NOTICE:  f_leak => cde
+ id  | a |  b  |  c  | id  | a |  b  |  c  |      t2_1       |      t2_2       
+-----+---+-----+-----+-----+---+-----+-----+-----------------+-----------------
+ 203 | 3 | cde | 3.3 | 203 | 3 | cde | 3.3 | (203,3,cde,3.3) | (203,3,cde,3.3)
+(1 row)
+
+EXPLAIN (COSTS OFF) UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
+WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
+AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Update on t1 t1_1
+   Update on t1 t1_1_1
+   Update on t2 t1_1_2
+   Update on t3 t1_1_3
+   ->  Merge Join
+         Merge Cond: (t1_1.b = t1_2.b)
+         ->  Sort
+               Sort Key: t1_1.b
+               ->  Append
+                     ->  Seq Scan on t1 t1_1_1
+                           Storage Filter: ((a = 4) AND ((a % 2) = 0))
+                           Filter: f_leak(b)
+                     ->  Seq Scan on t2 t1_1_2
+                           Storage Filter: ((a = 4) AND ((a % 2) = 0))
+                           Filter: f_leak(b)
+                     ->  Seq Scan on t3 t1_1_3
+                           Storage Filter: ((a = 4) AND ((a % 2) = 0))
+                           Filter: f_leak(b)
+         ->  Sort
+               Sort Key: t1_2.b
+               ->  Append
+                     ->  Seq Scan on t1 t1_2_1
+                           Storage Filter: ((a = 4) AND ((a % 2) = 0))
+                           Filter: f_leak(b)
+                     ->  Seq Scan on t2 t1_2_2
+                           Storage Filter: ((a = 4) AND ((a % 2) = 0))
+                           Filter: f_leak(b)
+                     ->  Seq Scan on t3 t1_2_3
+                           Storage Filter: ((a = 4) AND ((a % 2) = 0))
+                           Filter: f_leak(b)
+(30 rows)
+
+UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
+WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
+AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
+NOTICE:  f_leak => daddad_updt
+NOTICE:  f_leak => defdef
+NOTICE:  f_leak => daddad_updt
+NOTICE:  f_leak => defdef
+ id  | a |      b      | id  | a |      b      |        t1_1         |        t1_2         
+-----+---+-------------+-----+---+-------------+---------------------+---------------------
+ 104 | 4 | daddad_updt | 104 | 4 | daddad_updt | (104,4,daddad_updt) | (104,4,daddad_updt)
+ 204 | 4 | defdef      | 204 | 4 | defdef      | (204,4,defdef)      | (204,4,defdef)
+(2 rows)
+
+RESET SESSION AUTHORIZATION;
+SET row_security TO OFF;
+SELECT * FROM t1 ORDER BY a,b;
+ id  | a |      b      
+-----+---+-------------
+ 101 | 1 | aba
+ 201 | 1 | abc
+ 301 | 1 | xxx
+ 102 | 2 | bbbbbb_updt
+ 202 | 2 | bcdbcd
+ 302 | 2 | yyyyyy
+ 103 | 3 | ccc
+ 203 | 3 | cde
+ 303 | 3 | zzz
+ 104 | 4 | daddad_updt
+ 204 | 4 | defdef
+(11 rows)
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+SET row_security TO ON;
+EXPLAIN (COSTS OFF) DELETE FROM only t1 WHERE f_leak(b);
+              QUERY PLAN               
+---------------------------------------
+ Delete on t1
+   ->  Seq Scan on t1
+         Storage Filter: ((a % 2) = 0)
+         Filter: f_leak(b)
+(4 rows)
+
+EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
+                 QUERY PLAN                  
+---------------------------------------------
+ Delete on t1
+   Delete on t1 t1_1
+   Delete on t2 t1_2
+   Delete on t3 t1_3
+   ->  Append
+         ->  Seq Scan on t1 t1_1
+               Storage Filter: ((a % 2) = 0)
+               Filter: f_leak(b)
+         ->  Seq Scan on t2 t1_2
+               Storage Filter: ((a % 2) = 0)
+               Filter: f_leak(b)
+         ->  Seq Scan on t3 t1_3
+               Storage Filter: ((a % 2) = 0)
+               Filter: f_leak(b)
+(14 rows)
+
+/* YB: these queries fail in YB and are tracked by #26577
+DELETE FROM only t1 WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+DELETE FROM t1 WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+*/ -- YB
 --
 -- S.b. view on top of Row-level security
 --
@@ -2353,7 +3033,10 @@ DROP TABLE test_qual_pushdown;
 -- Plancache invalidate on user change.
 --
 RESET SESSION AUTHORIZATION;
+\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP TABLE t1 CASCADE;
+NOTICE:  drop cascades to 2 other objects
+\set VERBOSITY default \\ -- YB
 CREATE TABLE t1 (a integer);
 GRANT SELECT ON t1 TO regress_rls_bob, regress_rls_carol;
 CREATE POLICY p1 ON t1 TO regress_rls_bob USING ((a % 2) = 0);

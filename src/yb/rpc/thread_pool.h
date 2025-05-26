@@ -21,6 +21,7 @@
 
 #include "yb/gutil/port.h"
 
+#include "yb/util/lockfree.h"
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
@@ -34,7 +35,7 @@ namespace rpc {
 
 class ThreadSubPoolBase;
 
-class ThreadPoolTask {
+class ThreadPoolTask : public MPSCQueueEntry<ThreadPoolTask> {
  public:
   // Invoked in thread pool
   virtual void Run() = 0;
@@ -88,13 +89,16 @@ FunctorThreadPoolTask<F, TaskBase>* MakeFunctorThreadPoolTask(F&& f) {
   return new FunctorThreadPoolTask<F, TaskBase>(std::move(f));
 }
 
+MonoDelta DefaultIdleTimeout();
+
 struct ThreadPoolOptions {
   std::string name;
 
   size_t max_workers;
+  MonoDelta idle_timeout = DefaultIdleTimeout();
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(name, max_workers);
+    return YB_STRUCT_TO_STRING(name, max_workers, idle_timeout);
   }
 
   static constexpr auto kUnlimitedWorkers = std::numeric_limits<decltype(max_workers)>::max();
@@ -156,8 +160,6 @@ class ThreadPool : public TaskRecipient<ThreadPoolTask> {
   virtual bool Enqueue(ThreadPoolTask* task);
 
   void Shutdown();
-
-  static bool IsCurrentThreadRpcWorker();
 
   bool Owns(Thread* thread);
   bool OwnsThisThread();

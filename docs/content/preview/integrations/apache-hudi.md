@@ -77,7 +77,7 @@ This integration allows continuous and incremental data ingestion from YugabyteD
 1. Run the docker containers:
 
     ```sh
-    docker-compose up -d
+    docker compose up -d
     ```
 
 ### Set up and configure gRPC CDC stream ID in YugabyteDB
@@ -106,7 +106,7 @@ Run the Kafka connector with the following command:
 curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{
   "name": "cdc-demo",
   "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
     "database.hostname": "'$IP'",
     "database.port": "5433",
     "tasks.max": "3",

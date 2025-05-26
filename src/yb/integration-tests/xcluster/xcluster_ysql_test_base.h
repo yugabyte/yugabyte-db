@@ -20,6 +20,7 @@ namespace yb {
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 
 YB_STRONGLY_TYPED_BOOL(ExpectNoRecords);
+YB_STRONGLY_TYPED_BOOL(CheckColumnCounts);
 
 YB_DEFINE_ENUM(ReplicationDirection, (AToB)(BToA))
 
@@ -138,10 +139,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status VerifyWrittenRecords(
       const client::YBTableName& producer_table_name,
       const client::YBTableName& consumer_table_name,
-      ExpectNoRecords expect_no_records = ExpectNoRecords::kFalse);
+      ExpectNoRecords expect_no_records = ExpectNoRecords::kFalse,
+      CheckColumnCounts check_col_counts = CheckColumnCounts::kTrue);
 
   Status VerifyWrittenRecords(
-      ExpectNoRecords expect_no_records);
+      ExpectNoRecords expect_no_records,
+      CheckColumnCounts check_col_counts = CheckColumnCounts::kTrue);
 
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
@@ -207,6 +210,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+  Status StartPostgres(Cluster* cluster);
+  void SetPGCallbacks(Cluster* cluster, uint16_t pg_port);
 
   Status WriteGenerateSeries(
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table);

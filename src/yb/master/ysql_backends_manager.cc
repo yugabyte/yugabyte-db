@@ -761,7 +761,7 @@ std::string BackendsCatalogVersionTS::description() const {
   return "BackendsCatalogVersionTS RPC";
 }
 
-MonoTime BackendsCatalogVersionTS::ComputeDeadline() {
+MonoTime BackendsCatalogVersionTS::ComputeDeadline() const {
   MonoTime timeout = MonoTime::Now() + MonoDelta::FromMilliseconds(
       FLAGS_wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms);
   return MonoTime::Earliest(timeout, deadline_);
@@ -943,6 +943,23 @@ std::string BackendsCatalogVersionTS::LogPrefix() const {
   } else {
     return Format("[no job, TS $0]: ", permanent_uuid());
   }
+}
+
+bool BackendsCatalogVersionTS::RetryTaskAfterRPCFailure(const Status& status) {
+  auto ts = target_ts_desc();
+  if (status.IsRemoteError() &&
+      rpc_.status().message().ToBuffer().find("invalid method name:") != std::string::npos) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
+                             << " is on an older version that doesn't"
+                             << " support backends catalog version RPC. Ignoring.";
+    return false;
+  } else if (!ts->HasYsqlCatalogLease()) {
+    LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
+                             << " catalog lease expired. Assume backends"
+                             << " on that TS will be resolved to sufficient catalog version";
+    return false;
+  }
+  return true;
 }
 
 }  // namespace master

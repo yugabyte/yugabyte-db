@@ -7,7 +7,7 @@ import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.google.protobuf.util.JsonFormat;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
-import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.SupportBundleFormData;
@@ -37,13 +37,15 @@ import play.libs.Json;
 @Slf4j
 public class TabletReportComponent implements SupportBundleComponent {
 
-  private final ApiHelper apiHelper;
+  private final NodeUIApiHelper apiHelper;
   private final SupportBundleUtil supportBundleUtil;
   private final YBClientService ybClientService;
 
   @Inject
   TabletReportComponent(
-      ApiHelper apiHelper, SupportBundleUtil supportBundleUtil, YBClientService ybClientService) {
+      NodeUIApiHelper apiHelper,
+      SupportBundleUtil supportBundleUtil,
+      YBClientService ybClientService) {
     this.apiHelper = apiHelper;
     this.supportBundleUtil = supportBundleUtil;
     this.ybClientService = ybClientService;

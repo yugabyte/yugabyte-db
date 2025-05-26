@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
@@ -241,7 +243,10 @@ public class NodeUniverseManager extends DevopsBase {
       String remoteFile,
       String localFile,
       ShellProcessContext context) {
-    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    Optional<NodeAgent> optional =
+        context.isUseSshConnectionOnly()
+            ? Optional.empty()
+            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       nodeActionRunner.copyFile(optional.get(), remoteFile, localFile, DEFAULT_CONTEXT);
     } else {
@@ -293,7 +298,10 @@ public class NodeUniverseManager extends DevopsBase {
       String targetFile,
       String permissions,
       ShellProcessContext context) {
-    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    Optional<NodeAgent> optional =
+        context.isUseSshConnectionOnly()
+            ? Optional.empty()
+            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       nodeActionRunner.uploadFile(optional.get(), sourceFile, targetFile, permissions, context);
     } else {
@@ -320,7 +328,10 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runCommand(
       NodeDetails node, Universe universe, List<String> command, ShellProcessContext context) {
-    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    Optional<NodeAgent> optional =
+        context.isUseSshConnectionOnly()
+            ? Optional.empty()
+            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       return nodeActionRunner.runCommand(optional.get(), command, context);
     }
@@ -381,7 +392,10 @@ public class NodeUniverseManager extends DevopsBase {
       String localScriptPath,
       List<String> params,
       ShellProcessContext context) {
-    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    Optional<NodeAgent> optional =
+        context.isUseSshConnectionOnly()
+            ? Optional.empty()
+            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       return nodeActionRunner.runScript(optional.get(), localScriptPath, params, context);
     }
@@ -575,7 +589,7 @@ public class NodeUniverseManager extends DevopsBase {
     return "/tmp";
   }
 
-  private Optional<NodeAgent> maybeGetNodeAgent(
+  public Optional<NodeAgent> maybeGetNodeAgent(
       Universe universe, NodeDetails node, boolean checkJavaClient) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
@@ -631,18 +645,20 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
     } else if (cloudType != Common.CloudType.unknown) {
-      UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-      Provider provider = Provider.getOrBadRequest(providerUUID);
-      AccessKey accessKey =
-          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       // No need to check the feature flag as this is not for java client.
       Optional<NodeAgent> optional =
-          maybeGetNodeAgent(universe, node, false /*check feature flag*/);
+          context.isUseSshConnectionOnly()
+              ? Optional.empty()
+              : maybeGetNodeAgent(universe, node, false /*check feature flag*/);
       if (optional.isPresent()) {
         NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");
         getNodeAgentClient().addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
-      } else {
+      } else if (!StringUtils.isEmpty(cluster.userIntent.accessKeyCode)) {
+        UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+        Provider provider = Provider.getOrBadRequest(providerUUID);
+        AccessKey accessKey =
+            AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
         String sshPort = provider.getDetails().sshPort.toString();
         UUID imageBundleUUID =
             Util.retreiveImageBundleUUID(
@@ -672,6 +688,11 @@ public class NodeUniverseManager extends DevopsBase {
         if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
           commandArgs.add("--ssh2_enabled");
         }
+      } else {
+        String errMsg =
+            "No remote connection method is available to the node " + node.cloudInfo.private_ip;
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
       if (StringUtils.isNotBlank(context.getSshUser())) {
         commandArgs.add("--user");

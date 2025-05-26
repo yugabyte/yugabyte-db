@@ -456,17 +456,9 @@ extern TimestampTz GetCurrentStatementStartTimestamp(void);
 extern TimestampTz GetCurrentTransactionStopTimestamp(void);
 extern void SetCurrentStatementStartTimestamp(void);
 extern int	GetCurrentTransactionNestLevel(void);
-extern const char *GetCurrentTransactionName(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
 extern void ForceSyncCommit(void);
-extern int	YBGetEffectivePggateIsolationLevel();
-extern void YBInitializeTransaction(void);
-extern void YBResetTransactionReadPoint(void);
-extern void YBRestartReadPoint(void);
-extern void YBCRestartWriteTransaction(void);
-extern void YbSetTxnWithPgOps(uint8 pg_op_type);
-extern uint8 YbGetPgOpsInCurrentTxn(void);
 extern void StartTransactionCommand(void);
 extern void SaveTransactionCharacteristics(SavedTransactionCharacteristics *s);
 extern void RestoreTransactionCharacteristics(const SavedTransactionCharacteristics *s);
@@ -540,6 +532,15 @@ extern void EnterParallelMode(void);
 extern void ExitParallelMode(void);
 extern bool IsInParallelMode(void);
 
+/* YB */
+extern const char *GetCurrentTransactionName(void);
+extern int	YBGetEffectivePggateIsolationLevel();
+extern void YBInitializeTransaction(void);
+extern void YBResetTransactionReadPoint(void);
+extern void YBRestartReadPoint(void);
+extern void YBCRestartWriteTransaction(void);
+extern void YbSetTxnWithPgOps(uint8 pg_op_type);
+extern uint8 YbGetPgOpsInCurrentTxn(void);
 extern void YbBeginInternalSubTransactionForReadCommittedStatement();
 extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
 extern void YBMarkDataSent(void);
@@ -549,7 +550,7 @@ extern bool YBIsDataSent(void);
 extern bool YBIsDataSentForCurrQuery(void);
 
 /*
- * Utilities for postponed pggate DDL statement handles, that can be
+ * YB: Utilities for postponed pggate DDL statement handles, that can be
  * executed after the YSQL DDL transaction has commited. To qualify for this
  * the DDL must have the following properties:
  *   1. It cannot be rolled back by abort (so we wait for commit to succeed).
@@ -567,7 +568,7 @@ extern List *YBGetDdlHandles(void);
 extern void YBClearDdlHandles(void);
 
 /*
- * Utility for clearing transaction ID.
+ * YB: Utility for clearing transaction ID.
 */
 extern void YbClearParallelContexts(void);
 

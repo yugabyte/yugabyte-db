@@ -453,23 +453,27 @@ The following advanced configuration properties have defaults that work in most 
 
 ##### converters
 
-Enumerates a comma-separated list of the symbolic names of the custom converter instances that the connector can use. For example,
-
-```isbn```
+Enumerates a comma-separated list of the symbolic names of the custom converter instances that the connector can use. For example, `isbn`.
 
 You must set the converters property to enable the connector to use a custom converter.
 
-For each converter that you configure for a connector, you must also add a .type property, which specifies the fully-qualified name of the class that implements the converter interface. The `.type` property uses the following format:
+For each converter that you configure for a connector, you must also add a `.type` property, which specifies the fully-qualified name of the class that implements the converter interface. The `.type` property uses the following format:
 
-`<converterSymbolicName>.type`
+```properties
+<converterSymbolicName>.type
+```
 
-For example,
+For example:
 
-```isbn.type: io.debezium.test.IsbnConverter```
+```properties
+isbn.type: io.debezium.test.IsbnConverter
+```
 
 If you want to further control the behavior of a configured converter, you can add one or more configuration parameters to pass values to the converter. To associate any additional configuration parameter with a converter, prefix the parameter names with the symbolic name of the converter. For example,
 
-```isbn.schema.name: io.debezium.YugabyteDB.type.Isbn```
+```properties
+isbn.schema.name: io.debezium.YugabyteDB.type.Isbn
+```
 
 No default.
 
@@ -478,7 +482,7 @@ No default.
 Specifies the criteria for performing a snapshot when the connector starts:
 
 * `initial` - The connector performs a snapshot only when no offsets have been recorded for the logical server name.
-* `never` - The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The never snapshot mode is useful only when you know all data of interest is still reflected in the WAL.
+* `never` - The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored Log Sequence Number ([LSN](../key-concepts/#lsn-type)) in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The never snapshot mode is useful only when you know all data of interest is still reflected in the WAL.
 * `initial_only` - The connector performs an initial snapshot and then stops, without processing any subsequent changes.
 
 Default: `initial`
@@ -492,6 +496,39 @@ This property does not affect the behavior of incremental snapshots.
 To match the name of a table, Debezium applies the regular expression that you specify as an _anchored_ regular expression. That is, the specified expression is matched against the entire name string of the table; it does not match substrings that might be present in a table name.
 
 Default: All tables included in `table.include.list`
+
+##### snapshot.select.statement.overrides
+
+Specifies the table rows to include in a snapshot. Use the property if you want a snapshot to include only a subset of the rows in a table. This property affects snapshots only. It does not apply to events that the connector reads from the log.
+
+The property contains a comma-separated list of fully-qualified table names in the form `<schemaName>.<tableName>`. For example:
+
+```properties
+"snapshot.select.statement.overrides": "inventory.products,customers.orders"
+```
+
+For each table in the list, add a further configuration property that specifies the `SELECT` statement for the connector to run on the table when it takes a snapshot. The specified `SELECT` statement determines the subset of table rows to include in the snapshot. Use the following format to specify the name of this `SELECT` statement property:
+
+```properties
+snapshot.select.statement.overrides.<schemaName>.<tableName>
+```
+
+For example:
+
+```properties
+snapshot.select.statement.overrides.customers.orders
+```
+
+For example, from a `customers.orders` table that includes the soft-delete column `delete_flag`, add the following properties if you want a snapshot to include only those records that are not soft-deleted:
+
+```properties
+"snapshot.select.statement.overrides": "customer.orders",
+"snapshot.select.statement.overrides.customer.orders": "SELECT * FROM [customers].[orders] WHERE delete_flag = 0 ORDER BY id DESC"
+```
+
+In the resulting snapshot, the connector includes only the records for which `delete_flag = 0`.
+
+No default.
 
 ##### event.processing.failure.handling.mode
 
@@ -693,8 +730,51 @@ Default: 60
 
 The type of LSN to use for the specified replication slot:
 
-* SEQUENCE - A monotonic increasing number that determines the record in global order within the context of a slot.
+* SEQUENCE - A monotonic increasing number that determines the record in global order in the context of a slot.
 * HYBRID_TIME - A hybrid time value that can be used to compare transactions across slots.
+
+##### streaming.mode
+
+Specifies whether the connector should stream changes using a single slot or multiple slots in parallel.
+
+* `default` uses a single task to stream all changes.
+* `parallel` uses multi task mode and streams changes using the number of specified replication slots.
+
+{{< note title="Important" >}}
+
+When deploying the connector using `parallel` streaming mode, you need to ensure that the `table.include.list` only contains one table for which the streaming is supposed to happen in parallel.
+
+{{< /note >}}
+
+{{< note title="Usage with snapshot" >}}
+
+If `snapshot.mode` is set to `initial` or `initial_only`, you need to ensure that the configuration also contains a valid value for the configuration property `primary.key.hash.columns`.
+
+{{< /note >}}
+
+##### slot.names
+
+A list of slot names, provided as comma-separated values, to be used by each task when using `streaming.mode=parallel`. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
+
+No default.
+
+##### publication.names
+
+A list of publication names, provided as comma-separated values, to be used by each task when using `streaming.mode=parallel`. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
+
+No default.
+
+##### slot.ranges
+
+A range of slots to be used by each task when using `streaming.mode=parallel`, provided as tablet hash code ranges separated by semi colons. This property applies only when `streaming.mode` is set to `parallel`; otherwise it has no effect.
+
+No default.
+
+For example, suppose you have a table with 3 tablets where the tablets have hash ranges of `[0,21845)`, `[21845,43690)`, and `[43690,65536)`. The value for this configuration would be `slot.ranges=0,21845;21845,43690;43690,65536`.
+
+##### primary.key.hash.columns
+
+The columns of the table which constitute the hash part of the primary key. This property is only valid when `streaming.mode` is set to `parallel`.
 
 ## Pass-through configuration properties
 

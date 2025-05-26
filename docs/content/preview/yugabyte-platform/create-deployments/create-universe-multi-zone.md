@@ -138,6 +138,12 @@ Enable Connection Pooling
 Enable Systemd Services
 : To use cron instead of systemd for managing nodes, you can disable systemd services. This is not recommended.
 
+{{< warning title="cron-based support deprecated" >}}
+
+cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. To upgrade to v2025.2 or later, all your universes must be using systemd. Universes that use a cloud provider configuration will be upgraded to systemd automatically. To upgrade on-premises cron-based universes, navigate to the universe and choose **Actions>Upgrade to Systemd**.
+
+{{< /warning >}}
+
 Override Deployment Ports
 : To customize the [ports used for the universe](../../prepare/networking/), select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change. Any value from `1024` to `65535` is valid, as long as it doesn't conflict with anything else running on nodes to be provisioned.
 

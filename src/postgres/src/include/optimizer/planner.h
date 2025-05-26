@@ -58,6 +58,7 @@ extern Path *get_cheapest_fractional_path(RelOptInfo *rel,
 
 extern Expr *preprocess_phv_expression(PlannerInfo *root, Expr *expr);
 
+/* YB */
 extern char *ybGenerateHintString(PlannedStmt *plannedStmt);
 extern bool ybComparePlanShapesAndMethods(PlannedStmt *plannedStmt1, Plan *plan1, PlannedStmt *plannedStmt2, Plan *plan2, bool trace);
 extern uint32 ybGetNextUid(PlannerGlobal *glob);

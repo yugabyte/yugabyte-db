@@ -20,7 +20,7 @@ import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
-import com.yugabyte.yw.nodeagent.Server.ServerInfo;
+import com.yugabyte.yw.nodeagent.ServerInfo;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -63,6 +63,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.ToStringBuilder;
@@ -331,6 +332,20 @@ public class NodeAgent extends Model {
     ExpressionList<NodeAgent> query = finder.query().where().eq("customerUuid", customerUuid);
     appendInClause(query, "ip", ips);
     return query.findList();
+  }
+
+  public static int count(UUID customerUuid, Set<String> ips, State... states) {
+    ExpressionList<NodeAgent> query =
+        finder
+            .query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .where()
+            .eq("customerUuid", customerUuid);
+    appendInClause(query, "ip", ips);
+    if (states != null && ArrayUtils.isNotEmpty(states)) {
+      appendInClause(query, "state", Arrays.stream(states).collect(Collectors.toSet()));
+    }
+    return query.findCount();
   }
 
   public static Set<NodeAgent> getUpdatableNodeAgents(UUID customerUuid, String softwareVersion) {

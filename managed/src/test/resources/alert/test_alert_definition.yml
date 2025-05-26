@@ -42,6 +42,8 @@ groups:
             {{ range $index, $element := query "max by (universe_uuid, node_address) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]) - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid='<universe_uuid>'}[10m])) - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid='<universe_uuid>'}[10m]))) / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid='<universe_uuid>'}[10m]))) * 100 > 1" }}{{ if $index }},{{ end }}{{ $element.Labels.node_address }}{{ end }}
           definition_name: |-
             [Possibly] wrong "name"
+          customer_name: |-
+            test@customer.com
           node_prefix: |-
             yb-tc-Test Universe
           universe_name: |-

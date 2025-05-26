@@ -14,10 +14,8 @@
 
 #include <algorithm>
 #include <atomic>
-#include <iterator>
 #include <limits>
 #include <memory>
-#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -36,11 +34,8 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/partition.h"
 #include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_type.h"
 
@@ -67,8 +62,6 @@
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/pg_memctx.h"
-#include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_value.h"
@@ -170,11 +163,20 @@ DEFINE_RUNTIME_PREVIEW_bool(
     "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
     "and SET TRANSACTION SNAPSHOT");
 
+DEFINE_RUNTIME_PG_FLAG(
+    bool, yb_force_early_ddl_serialization, true,
+    "If object locking is off (i.e., TEST_enable_object_locking_for_table_locks=false), concurrent "
+    "DDLs might face a conflict error on the catalog version increment at the end after doing all "
+    "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
+    "the start of DDLs, causing conflict errors to occur before useful work is done. This flag is "
+    "only applicable without object locking. If object locking is enabled, it ensures that "
+    "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
+    "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_inheritance);
 
 DECLARE_bool(use_fast_backward_scan);
 
@@ -412,7 +414,7 @@ void AshCopyAuxInfo(
   snprintf(
       cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
       FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
-                               : (component == to_underlying(ash::Component::kYCQL)
+                               : (component == std::to_underlying(ash::Component::kYCQL)
                                       ? tserver_aux_info.table_id().c_str()
                                       : tserver_aux_info.tablet_id().c_str()));
 }
@@ -511,7 +513,7 @@ static Result<std::string> GetYbLsnTypeString(
     case tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME:
       return YBC_LSN_TYPE_HYBRID_TIME;
     default:
-      LOG(ERROR) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
+      LOG(DFATAL) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
       return STATUS_FORMAT(
           InternalError, "Received unexpected LSN type $0 for stream $1", yb_lsn_type, stream_id);
   }
@@ -627,6 +629,10 @@ void YBCRestorePgSessionState(const YbcPgSessionState* session_data) {
 
 YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade) {
   return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
+}
+
+void YBCPgIncrementIndexRecheckCount() {
+  pgapi->IncrementIndexRecheckCount();
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
@@ -786,7 +792,7 @@ void YBCDumpTcMallocHeapProfile(bool peak_heap, size_t max_call_stacks) {
 // YB Bitmap Scan Operations
 //--------------------------------------------------------------------------------------------------
 
-typedef std::unordered_set<Slice, Slice::Hash> UnorderedSliceSet;
+using UnorderedSliceSet = std::unordered_set<Slice, Slice::Hash>;
 
 static void FreeSlice(Slice slice) {
   delete[] slice.data(), slice.size();
@@ -876,7 +882,7 @@ YbcConstSliceVector YBCBitmapGetVectorRange(YbcConstSliceVector vec, size_t star
   const size_t end_index = std::min(start + length, v->size());
 
   if (end_index <= start)
-    return NULL;
+    return nullptr;
 
   return new std::vector<Slice>(v->begin() + start, v->begin() + end_index);
 }
@@ -977,7 +983,7 @@ YbcStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
 }
 
 YbcStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
-  if (table_id == NULL) {
+  if (table_id == nullptr) {
     return ToYBCStatus(STATUS(InvalidArgument, "table_id is null"));
   }
   std::string table_id_str = table_id;
@@ -1514,6 +1520,10 @@ YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size) {
   return ToYBCStatus(pgapi->DmlANNSetPrefetchSize(handle, prefetch_size));
 }
 
+YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search) {
+  return ToYBCStatus(pgapi->DmlHnswSetReadOptions(handle, ef_search));
+}
+
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YbcPgSysColumns *syscols, bool *has_data) {
   return ToYBCStatus(pgapi->DmlFetch(handle, natts, values, isnulls, syscols, has_data));
@@ -1588,7 +1598,7 @@ YbcStatus YBCPgNewInsertBlock(
       PgObjectId(database_oid, table_oid), is_region_local, transaction_setting);
   if (result.ok()) {
     *handle = *result;
-    return NULL;
+    return nullptr;
   }
   return ToYBCStatus(result.status());
 }
@@ -2188,8 +2198,19 @@ YbcStatus YBCGetTserverCatalogMessageLists(
       // This entire invalidation message list is a PG null. This will force full
       // catalog cache refresh.
       current.num_bytes = 0;
-      current.message_list = NULL;
+      current.message_list = nullptr;
     }
+  }
+  return YBCStatusOK();
+}
+
+YbcStatus YBCPgSetTserverCatalogMessageList(
+    YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list) {
+  const auto result = pgapi->SetTserverCatalogMessageList(db_oid, is_breaking_change,
+                                                          new_catalog_version, message_list);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
   }
   return YBCStatusOK();
 }
@@ -2213,6 +2234,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_num_databases_reserved_in_db_catalog_version_mode =
           &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
       .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,
+      .ysql_output_flush_size                   = &FLAGS_ysql_output_flush_size,
       .ysql_sequence_cache_minval               = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
@@ -2257,8 +2279,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
-      .ysql_enable_inheritance =
-          &FLAGS_ysql_enable_inheritance
+      .TEST_enable_object_locking_for_table_locks =
+          &FLAGS_TEST_enable_object_locking_for_table_locks
   };
   // clang-format on
   return &accessor;
@@ -2268,26 +2290,29 @@ bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
 
-void YBCSetTimeout(int timeout_ms, void* extra) {
-  if (!pgapi) {
-    return;
-  }
+static int GetTimeoutValue(int timeout_ms) {
+  DCHECK_GE(timeout_ms, 0) << "Timeout value should be non-negative";
   const auto default_client_timeout_ms = client::YsqlClientReadWriteTimeoutMs();
-  // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
-  // FLAGS(_ysql)?_client_read_write_timeout_ms}.
-  // Note that 0 is a valid value of timeout_ms, meaning no timeout in Postgres.
-  if (timeout_ms < 0) {
-    // The timeout is not valid. Use the default GFLAG value.
-    return;
-  } else if (timeout_ms == 0) {
-    timeout_ms = default_client_timeout_ms;
-  } else {
-    timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
+  // If the timeout is 0, it means no timeout in Postgres, so we use the default value.
+  if (timeout_ms == 0) {
+    return default_client_timeout_ms;
   }
+  // Otherwise, return the minimum of the provided timeout and the default timeout.
+  return std::min(timeout_ms, default_client_timeout_ms);
+}
 
-  // The statement timeout is lesser than default_client_timeout, hence the rpcs would
-  // need to use a shorter timeout.
-  pgapi->SetTimeout(timeout_ms);
+void YBCSetLockTimeout(int lock_timeout_ms, void* extra) {
+  if (!pgapi || lock_timeout_ms < 0) {
+    return;
+  }
+  pgapi->SetLockTimeout(GetTimeoutValue(lock_timeout_ms));
+}
+
+void YBCSetTimeout(int timeout_ms, void* extra) {
+  if (!pgapi || timeout_ms < 0) {
+    return;
+  }
+  pgapi->SetTimeout(GetTimeoutValue(timeout_ms));
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {
@@ -2301,7 +2326,7 @@ YbcStatus YBCGetTabletServerHosts(YbcServerDescriptor **servers, size_t *count) 
   }
   const auto &servers_info = result.get().tablet_servers;
   *count = servers_info.size();
-  *servers = NULL;
+  *servers = nullptr;
   if (!servers_info.empty()) {
     *servers = static_cast<YbcServerDescriptor *>(
         YBCPAlloc(sizeof(YbcServerDescriptor) * servers_info.size()));
@@ -2356,6 +2381,14 @@ void* YBCPgGetThreadLocalStrTokPtr() {
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   PgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
+}
+
+int YBCPgGetThreadLocalYbExpressionVersion() {
+  return PgGetThreadLocalYbExpressionVersion();
+}
+
+void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
+  PgSetThreadLocalYbExpressionVersion(yb_expr_version);
 }
 
 YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
@@ -2463,12 +2496,14 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgOid database_oid,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
+                                        YbcOrderingMode ordering_mode,
                                         YbcPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      plugin_name,
                                                      database_oid,
                                                      snapshot_action,
                                                      lsn_type,
+                                                     ordering_mode,
                                                      handle));
 }
 
@@ -2512,7 +2547,7 @@ YbcStatus YBCPgListReplicationSlots(
 
   const auto &replication_slots_info = result.get().replication_slots();
   *DCHECK_NOTNULL(numreplicationslots) = replication_slots_info.size();
-  *DCHECK_NOTNULL(replication_slots) = NULL;
+  *DCHECK_NOTNULL(replication_slots) = nullptr;
   if (!replication_slots_info.empty()) {
     *replication_slots = static_cast<YbcReplicationSlotDescriptor *>(
         YBCPAlloc(sizeof(YbcReplicationSlotDescriptor) * replication_slots_info.size()));
@@ -2630,7 +2665,7 @@ YbcStatus YBCYcqlStatementStats(YbcYCQLStatementStats** stats, size_t* num_stats
   }
   const auto& statements_stat = result->statements();
   *num_stats = statements_stat.size();
-  *stats = NULL;
+  *stats = nullptr;
   if (!statements_stat.empty()) {
     *stats = static_cast<YbcYCQLStatementStats*>(
         YBCPAlloc(sizeof(YbcYCQLStatementStats) * statements_stat.size()));
@@ -2662,7 +2697,7 @@ void YBCStoreTServerAshSamples(
   acquire_cb_lock_fn(true /* exclusive */);
   if (!result.ok()) {
     // We don't return error status to avoid a restart loop of the ASH collector
-    LOG(ERROR) << result.status();
+    LOG(WARNING) << result.status();
   } else {
     AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
     AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);
@@ -2754,7 +2789,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
     return ToYBCStatus(result.status());
   }
 
-  *DCHECK_NOTNULL(record_batch) = NULL;
+  *DCHECK_NOTNULL(record_batch) = nullptr;
   const auto resp = result.get();
   VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
   auto response_to_pg_conversion_start = GetCurrentTimeMicros();
@@ -3031,6 +3066,14 @@ YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** database_clones, size_t* co
 
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
 
+int YBCGetXClusterRole(uint32_t db_oid) {
+  auto result = pgapi->GetXClusterRole(db_oid);
+  if (result.ok()) {
+    return *result;
+  }
+  return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+}
+
 YbcStatus YBCSetCronLastMinute(int64_t last_minute) {
   return ToYBCStatus(pgapi->SetCronLastMinute(last_minute));
 }
@@ -3045,12 +3088,19 @@ YbcStatus YBCGetCronLastMinute(int64_t* last_minute) {
   return YBCStatusOK();
 }
 
-uint64_t YBCPgGetCurrentReadTimePoint() {
-  return pgapi->GetCurrentReadTimePoint();
+YbcReadPointHandle YBCPgGetCurrentReadPoint() {
+  return pgapi->GetCurrentReadPoint();
 }
 
-YbcStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle) {
-  return ToYBCStatus(pgapi->RestoreReadTimePoint(read_time_point_handle));
+YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point) {
+  return ToYBCStatus(pgapi->RestoreReadPoint(read_point));
+}
+
+YbcStatus YBCPgRegisterSnapshotReadTime(
+    uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle) {
+  YbcReadPointHandle tmp_handle;
+  return ExtractValueFromResult(
+      pgapi->RegisterSnapshotReadTime(read_time, use_read_time), handle ? handle : &tmp_handle);
 }
 
 void YBCDdlEnableForceCatalogModification() {
@@ -3075,34 +3125,18 @@ YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 YbcStatus YBCPgExportSnapshot(
-    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time) {
-  std::optional<uint64_t> explicit_read_time_opt = std::nullopt;
-  if (explicit_read_time) {
-    explicit_read_time_opt = *explicit_read_time;
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const YbcReadPointHandle* read_point) {
+  std::optional<YbcReadPointHandle> read_point_handle;
+  if (read_point) {
+    read_point_handle = *read_point;
   }
   return ExtractValueFromResult(
-      pgapi->ExportSnapshot(*snapshot, explicit_read_time_opt),
+      pgapi->ExportSnapshot(*snapshot, read_point_handle),
       [snapshot_id](auto value) { *snapshot_id = YBCPAllocStdString(value); });
 }
 
-YbcStatus PgSetTxnSnapshotImpl(
-    const PgTxnSnapshotDescriptor& descriptor, YbcPgTxnSnapshot* snapshot) {
-  return ExtractValueFromResult(
-      pgapi->SetTxnSnapshot(descriptor), [snapshot](const std::optional<YbcPgTxnSnapshot>& value) {
-        if (snapshot) {
-          DCHECK(value.has_value());
-          *snapshot = value.value();
-        }
-      });
-}
-
 YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot) {
-  return PgSetTxnSnapshotImpl(snapshot_id, snapshot);
-}
-
-YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time) {
-  DCHECK_NE(explicit_read_time, 0);
-  return PgSetTxnSnapshotImpl(explicit_read_time, nullptr);
+  return ExtractValueFromResult(pgapi->ImportSnapshot({snapshot_id}), snapshot);
 }
 
 bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }

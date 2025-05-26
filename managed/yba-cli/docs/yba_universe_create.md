@@ -39,7 +39,7 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --num-nodes ints                                   [Optional] Number of nodes in the cluster. Provide no of nodes for each cluster as a separate flag. "--num-nodes 3 --num-nodes 5" OR "--num-nodes 3,5" refers to 3 nodes in the Primary cluster and 5 nodes in the Read Replica cluster. First flag always corresponds to the primry cluster. (default [3,3])
       --regions stringArray                              [Optional] Regions for the nodes of the cluster to be placed in. Provide comma-separated strings for each cluster as a separate flag, in the following format: "--regions 'region-1-for-primary-cluster,region-2-for-primary-cluster' --regions 'region-1-for-read-replica,region-2-for-read-replica'". Defaults to fetching the regions from the provider.
       --preferred-region stringArray                     [Optional] Preferred region to place the node of the cluster in. Provide preferred regions for each cluster as a separate flag. (default [])
-      --master-gflags string                             [Optional] Master GFlags in map (JSON or YAML) format. Provide the gflags in the following formats: "--master-gflags {"master-gflag-key-1":"value-1","master-gflag-key-2":"value-2" }" or  "--master-gflags "master-gflag-key-1: value-1
+      --master-gflags string                             [Optional] Master GFlags in map (JSON or YAML) format. Provide the gflags in the following formats: "--master-gflags '{"master-gflag-key-1":"value-1","master-gflag-key-2":"value-2" }'" or  "--master-gflags "master-gflag-key-1: value-1
                                                          master-gflag-key-2: value-2
                                                          master-gflag-key-3: value-3".
       --tserver-gflags string                            [Optional] TServer GFlags in map (JSON or YAML) format. Provide gflags for clusters in the following format: "--tserver-gflags '{"primary": {"tserver-gflag-key-1": "value-1","tserver-gflag-key-2": "value-2"},"async": {"tserver-gflag-key-1": "value-1","tserver-gflag-key-2": "value-2"}}'" OR "--tserver-gflag "primary:
@@ -72,8 +72,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --dedicated-master-storage-class string            [Optional] Name of the storage class for the master instance. Defaults to "standard".
       --dedicated-master-disk-iops int                   [Optional] Desired IOPS for the volumes mounted on this instance, supported only for AWS. (default 3000)
       --dedicated-master-throughput int                  [Optional] Desired throughput for the volumes mounted on this instance in MB/s, supported only for AWS. (default 125)
-      --k8s-master-mem-size float64Slice                 [Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size for each cluster as a separate flag or as comma separated values. (default [4.000000,4.000000])
-      --k8s-master-cpu-core-count float64Slice           [Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count for each cluster as a separate flag or as comma separated values. (default [2.000000,2.000000])
+      --k8s-master-mem-size float                        [Optional] Memory size of the kubernetes master node in GB. (default 4)
+      --k8s-master-cpu-core-count float                  [Optional] CPU core count of the kubernetes master node. (default 2)
       --use-spot-instance                                [Optional] Use spot instances for cloud provider based universe nodes. (default false)
       --spot-price float                                 [Optional] Max price willing to pay for spot instances.
       --assign-public-ip                                 [Optional] Assign Public IPs to the DB servers for connections over the internet. (default true)
@@ -117,10 +117,13 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
 
 ```
   -a, --apiToken string    YugabyteDB Anywhere api token.
-      --config string      Config file, defaults to $HOME/.yba-cli.yaml
+      --ca-cert string     CA certificate file path for secure connection to YugabyteDB Anywhere. Required when the endpoint is https and --insecure is not set.
+      --config string      Full path to a specific configuration file for YBA CLI. If provided, this takes precedence over the directory specified via --directory, and the generated files are added to the same path. If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.
       --debug              Use debug mode, same as --logLevel debug.
+      --directory string   Directory containing YBA CLI configuration and generated files. If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. Defaults to '$HOME/.yba-cli/'.
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
+      --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)

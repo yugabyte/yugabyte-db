@@ -657,6 +657,7 @@
       "last12hours": "Last 12 Hours",
       "last24hours": "Last 24 Hours",
       "last7days": "Last 7 Days",
+      "xCluster": "xCluster",
       "charts": {
         "operations": "Operations/Sec",
         "read": "Read",
@@ -998,9 +999,6 @@
             "migrationComplexityExplanation": "Migration Complexity Explanation",
             "estimatedDataMigrationTime": "Estimated Data Migration Time",
             "unavailable": "Summary unavailable",
-            "complexityTooltipEasy": "This migration is rated as <bold>Easy</bold>, as it requires <bold>0-20 manual schema changes</bold> and <bold>0 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
-            "complexityTooltipMedium": "This migration is rated as <bold>Medium</bold>, as it requires <bold>>20 manual schema changes</bold> and/or <bold>1-5 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
-            "complexityTooltipHard": "This migration is rated as <bold>Hard</bold>, as it requires <bold>>5 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
             "complexityLearn": "Learn more about how migration complexity is calculated"
           },
           "impactLevels": {
@@ -1084,9 +1082,14 @@
               "size": "Size",
               "sharded": "Sharded"
             },
+            "notes": {
+              "heading": "Notes"
+            },
             "schemaChanges": {
               "heading": "Recommended Changes",
               "objectType": "Object Type",
+              "objectTypeColon": "Object Type : ",
+              "description": "Description",
               "automaticDDLImportTooltip": "SQL objects that can be imported into YugabyteDB without DDL changes.",
               "manualRefactoringTooltip": "Number of DDL statements requiring manual refactoring.",
               "invalidObjectCountTooltip": "Invalid object count requiring manual refactoring.",
@@ -1145,11 +1148,14 @@
             "details": {
               "heading": "Unsupported Data Type: {{datatype}}",
               "search": "Search",
+              "key": "Key",
+              "value": "Value",
               "searchPlaceholder": "Search DDL",
               "acknowledged": "Acknowledged",
               "any": "Any",
               "issueType": "Issue Type",
               "suggestion": "Suggestion",
+              "minVersionsFixedIn": "Minimum Versions Fixed In",
               "sqlStatement": "SQL Statement",
               "fileName": "File Name",
               "searchBy": "SEARCH BY",
@@ -1756,7 +1762,37 @@
           "name": "Name"
         }
       },
-      "noShellForVpc": "Cloud Shell is not available for clusters with VPC peering at this time."
+      "noShellForVpc": "Cloud Shell is not available for clusters with VPC peering at this time.",
+      "xcluster": {
+        "xcluster": "xCluster",
+        "xclusterReplications": "xCluster Replications",
+        "outboundReplications": "Outbound Replications",
+        "inboundReplications": "Inbound Replications",
+        "noInboundFound": "No inbound replication groups found",
+        "targetClusterNodeIPS": "Target Universe IPs",
+        "kibps": "KiBps",
+        "sourceClusterNodeIPS": "Source Universe IPs",
+        "tablesInvolvedInReplication": "Tables Involved In Replication",
+        "noOutboundFound": "No outbound replication groups found",
+        "tableUUID": "Table UUID",
+        "tableName": "Table Name",
+        "database": "Database",
+        "isCheckpointing": "Is Checkpointing?",
+        "is_part_of_initial_bootstrap": "Is Part of Initial Bootstrap?",
+        "async_replication_committed_lag_micros": "Committed Replication Lag (µs)",
+        "async_replication_sent_lag_micros": "Sent Replication Lag (µs)",
+        "replicationGroupId": "Replication Group ID",
+        "currentClusterLeaderIPAddress": "Current Leader IP",
+        "state": "State",
+        "sourceLeaderHost": "Source Leader Host",
+        "targetUniverseUUID": "Target Universe UUID",
+        "streamID": "Stream ID",
+        "noTablesInNamespace": "No Tables Found in this Namespace",
+        "sourceUniverseUUID": "Source Universe UUID",
+        "targetCluster": "Target Cluster",
+        "sourceCluster": "Source Cluster",
+        "replicationList": "Replication List"
+      }
     },
     "clusters": {
       "addClusterCopy": "Add Cluster",

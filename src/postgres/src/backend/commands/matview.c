@@ -80,7 +80,6 @@ static bool is_usable_unique_index(Relation indexRel);
 static void OpenMatViewIncrementalMaintenance(void);
 static void CloseMatViewIncrementalMaintenance(void);
 
-static bool yb_needs_in_place_refresh();
 static void yb_refresh_in_place_update(Relation matviewRel, Oid tempOid);
 
 /*
@@ -114,7 +113,7 @@ SetMatViewPopulatedState(Relation relation, bool newstate,
 	{
 		if (((Form_pg_class) GETSTRUCT(tuple))->relispopulated != newstate)
 			elog(ERROR, "Cannot change the populated state of a materialized "
-						"view when in place refresh is enabled");
+				 "view when in place refresh is enabled");
 
 		heap_freetuple(tuple);
 		table_close(pgrel, RowExclusiveLock);
@@ -176,7 +175,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	int			save_sec_context;
 	int			save_nestlevel;
 	ObjectAddress address;
-	bool yb_in_place_refresh = yb_needs_in_place_refresh();
+	bool		yb_in_place_refresh = YbRefreshMatviewInPlace();
 
 	/* Determine strength of lock needed. */
 	concurrent = stmt->concurrent;
@@ -315,7 +314,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	}
 
 	/*
-	 * Required to allow the creation for the temp table since we directly
+	 * YB: Required to allow the creation for the temp table since we directly
 	 * call make_new_heap instead of going through DefineRelation.
 	 * For postgres xid cleanup, mark the current transaction as running a
 	 * concurrent refresh.
@@ -702,27 +701,50 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 						   SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1))));
 	}
 
+	/*
+	 * Create the temporary "diff" table.
+	 *
+	 * Temporarily switch out of the SECURITY_RESTRICTED_OPERATION context,
+	 * because you cannot create temp tables in SRO context.  For extra
+	 * paranoia, add the composite type column only after switching back to
+	 * SRO context.
+	 */
 	SetUserIdAndSecContext(relowner,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
-
-	/* Start building the query for creating the diff table. */
 	resetStringInfo(&querybuf);
 	if (IsYugaByteEnabled())
-	{
 		appendStringInfo(&querybuf,
-						 "CREATE TEMP TABLE %s AS "
+						 "CREATE TEMP TABLE %s (mv %s)",
+						 diffname, matviewname);
+	else
+		appendStringInfo(&querybuf,
+						 "CREATE TEMP TABLE %s (tid pg_catalog.tid)",
+						 diffname);
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+	SetUserIdAndSecContext(relowner,
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	resetStringInfo(&querybuf);
+	appendStringInfo(&querybuf,
+					 "ALTER TABLE %s ADD COLUMN newdata %s",
+					 diffname, tempname);
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+
+	/* Start building the query for populating the diff table. */
+	resetStringInfo(&querybuf);
+	if (IsYugaByteEnabled())
+		appendStringInfo(&querybuf,
+						 "INSERT INTO %s "
 						 "SELECT mv.*::%s AS mv, newdata.*::%s AS newdata "
 						 "FROM %s mv FULL JOIN %s newdata ON (",
 						 diffname, matviewname, tempname, matviewname, tempname);
-	}
 	else
-	{
 		appendStringInfo(&querybuf,
-						 "CREATE TEMP TABLE %s AS "
+						 "INSERT INTO %s "
 						 "SELECT mv.ctid AS tid, newdata.*::%s AS newdata "
 						 "FROM %s mv FULL JOIN %s newdata ON (",
 						 diffname, tempname, matviewname, tempname);
-	}
 
 	/*
 	 * Get the list of index OIDs for the table from the relcache, and look up
@@ -839,9 +861,12 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	 *
 	 * ExecRefreshMatView() checks that after taking the exclusive lock on the
 	 * matview. So at least one unique index is guaranteed to exist here
-	 * because the lock is still being held; so an Assert seems sufficient.
+	 * because the lock is still being held.  (One known exception is if a
+	 * function called as part of refreshing the matview drops the index.
+	 * That's a pretty silly thing to do.)
 	 */
-	Assert(foundUniqueIndex);
+	if (!foundUniqueIndex)
+		elog(ERROR, "could not find suitable unique index on materialized view");
 
 	if (IsYugaByteEnabled())
 	{
@@ -858,12 +883,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 							   "ORDER BY tid");
 	}
 
-	/* Create the temporary "diff" table. */
-	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+	/* Populate the temporary "diff" table. */
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_INSERT)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
-
-	SetUserIdAndSecContext(relowner,
-						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 
 	/*
 	 * We have no further use for data from the "full-data" temp table, but we
@@ -1075,13 +1097,6 @@ CloseMatViewIncrementalMaintenance(void)
 	Assert(matview_maintenance_depth >= 0);
 }
 
-static bool
-yb_needs_in_place_refresh()
-{
-	return yb_refresh_matview_in_place ||
-		   YBCPgYsqlMajorVersionUpgradeInProgress();
-}
-
 /*
  * yb_refresh_in_place_update
  * Refresh the matview by using the same heap/DocDB table. Deletes all rows from
@@ -1093,16 +1108,16 @@ yb_refresh_in_place_update(Relation matviewRel, Oid tempOid)
 	Assert(IsYugaByteEnabled());
 
 	StringInfoData querybuf;
-	Relation tempRel;
-	char *matviewname;
-	char *tempname;
+	Relation	tempRel;
+	char	   *matviewname;
+	char	   *tempname;
 
 	initStringInfo(&querybuf);
 	matviewname = quote_qualified_identifier(get_namespace_name(RelationGetNamespace(matviewRel)),
-		RelationGetRelationName(matviewRel));
+											 RelationGetRelationName(matviewRel));
 	tempRel = table_open(tempOid, NoLock);
 	tempname = quote_qualified_identifier(get_namespace_name(RelationGetNamespace(tempRel)),
-		RelationGetRelationName(tempRel));
+										  RelationGetRelationName(tempRel));
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");

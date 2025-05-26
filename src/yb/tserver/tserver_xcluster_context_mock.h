@@ -16,10 +16,11 @@
 #include <gmock/gmock.h>
 
 #include "yb/common/hybrid_time.h"
-
-#include "yb/util/result.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/tserver/tserver_xcluster_context_if.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -33,6 +34,10 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
  public:
   MOCK_METHOD(
       (Result<std::optional<HybridTime>>), GetSafeTime, (const NamespaceId& namespace_id),
+      (const, override));
+
+  MOCK_METHOD(
+      XClusterNamespaceInfoPB_XClusterRole, GetXClusterRole, (const NamespaceId& namespace_id),
       (const, override));
 
   MOCK_METHOD(bool, IsReadOnlyMode, (const NamespaceId& namespace_id), (const, override));

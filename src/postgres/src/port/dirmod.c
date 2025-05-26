@@ -99,6 +99,32 @@ int
 pgunlink(const char *path)
 {
 	int			loops = 0;
+	struct stat st;
+
+	/*
+	 * This function might be called for a regular file or for a junction
+	 * point (which we use to emulate symlinks).  The latter must be unlinked
+	 * with rmdir() on Windows.  Before we worry about any of that, let's see
+	 * if we can unlink directly, since that's expected to be the most common
+	 * case.
+	 */
+	if (unlink(path) == 0)
+		return 0;
+	if (errno != EACCES)
+		return -1;
+
+	/*
+	 * EACCES is reported for many reasons including unlink() of a junction
+	 * point.  Check if that's the case so we can redirect to rmdir().
+	 *
+	 * Note that by checking only once, we can't cope with a path that changes
+	 * from regular file to junction point underneath us while we're retrying
+	 * due to sharing violations, but that seems unlikely.  We could perhaps
+	 * prevent that by holding a file handle ourselves across the lstat() and
+	 * the retry loop, but that seems like over-engineering for now.
+	 */
+	if (lstat(path, &st) < 0)
+		return -1;
 
 	/*
 	 * We need to loop because even though PostgreSQL uses flags that allow
@@ -107,7 +133,7 @@ pgunlink(const char *path)
 	 * someone else to close the file, as the caller might be holding locks
 	 * and blocking other backends.
 	 */
-	while (unlink(path))
+	while ((S_ISLNK(st.st_mode) ? rmdir(path) : unlink(path)) < 0)
 	{
 		if (errno != EACCES)
 			return -1;
@@ -325,10 +351,21 @@ pgreadlink(const char *path, char *buf, size_t size)
 	}
 
 	/*
-	 * If the path starts with "\??\", which it will do in most (all?) cases,
-	 * strip those out.
+	 * If the path starts with "\??\" followed by a "drive absolute" path
+	 * (known to Windows APIs as RtlPathTypeDriveAbsolute), then strip that
+	 * prefix.  This undoes some of the transformation performed by
+	 * pqsymlink(), to get back to a format that users are used to seeing.  We
+	 * don't know how to transform other path types that might be encountered
+	 * outside PGDATA, so we just return them directly.
 	 */
-	if (r > 4 && strncmp(buf, "\\??\\", 4) == 0)
+	if (r >= 7 &&
+		buf[0] == '\\' &&
+		buf[1] == '?' &&
+		buf[2] == '?' &&
+		buf[3] == '\\' &&
+		isalpha(buf[4]) &&
+		buf[5] == ':' &&
+		buf[6] == '\\')
 	{
 		memmove(buf, buf + 4, strlen(buf + 4) + 1);
 		r -= 4;
@@ -336,20 +373,4 @@ pgreadlink(const char *path, char *buf, size_t size)
 	return r;
 }
 
-/*
- * Assumes the file exists, so will return false if it doesn't
- * (since a nonexistent file is not a junction)
- */
-bool
-pgwin32_is_junction(const char *path)
-{
-	DWORD		attr = GetFileAttributes(path);
-
-	if (attr == INVALID_FILE_ATTRIBUTES)
-	{
-		_dosmaperr(GetLastError());
-		return false;
-	}
-	return ((attr & FILE_ATTRIBUTE_REPARSE_POINT) == FILE_ATTRIBUTE_REPARSE_POINT);
-}
 #endif							/* defined(WIN32) && !defined(__CYGWIN__) */

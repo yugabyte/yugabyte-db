@@ -80,13 +80,20 @@ static int	use_setsessauth = 0;
 static int	no_comments = 0;
 static int	no_publications = 0;
 static int	no_security_labels = 0;
+static int	no_data = 0;
+static int	no_schema = 0;
+static int	no_statistics = 0;
 static int	no_subscriptions = 0;
 static int	no_toast_compression = 0;
 static int	no_unlogged_table_data = 0;
 static int	no_role_passwords = 0;
+static int	with_data = 0;
+static int	with_schema = 0;
+static int	with_statistics = 0;
 static int	server_version;
 static int	load_via_partition_root = 0;
 static int	on_conflict_do_nothing = 0;
+static int	statistics_only = 0;
 
 static char role_catalog[10];
 #define PG_AUTHID "pg_authid"
@@ -106,6 +113,10 @@ static char *masterHosts = NULL;
 static int	include_yb_metadata = 0;	/* In this mode DDL statements include
 										 * YB specific metadata such as tablet
 										 * partitions. */
+static int	yb_dump_role_checks = 0;	/* Add to the dump additional checks
+										 * if the used ROLE exists. The ROLE
+										 * usage statements are skipped if the
+										 * ROLE does not exist. */
 static int	dump_single_database = 0;	/* Dump only one DB specified by
 										 * '--database' argument. */
 
@@ -157,16 +168,24 @@ main(int argc, char *argv[])
 		{"role", required_argument, NULL, 3},
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 		{"no-comments", no_argument, &no_comments, 1},
+		{"no-data", no_argument, &no_data, 1},
 		{"no-publications", no_argument, &no_publications, 1},
 		{"no-role-passwords", no_argument, &no_role_passwords, 1},
+		{"no-schema", no_argument, &no_schema, 1},
 		{"no-security-labels", no_argument, &no_security_labels, 1},
 		{"no-subscriptions", no_argument, &no_subscriptions, 1},
+		{"no-statistics", no_argument, &no_statistics, 1},
 		{"no-sync", no_argument, NULL, 4},
 		{"no-toast-compression", no_argument, &no_toast_compression, 1},
 		{"no-unlogged-table-data", no_argument, &no_unlogged_table_data, 1},
+		{"with-data", no_argument, &with_data, 1},
+		{"with-schema", no_argument, &with_schema, 1},
+		{"with-statistics", no_argument, &with_statistics, 1},
 		{"on-conflict-do-nothing", no_argument, &on_conflict_do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 7},
+		{"statistics-only", no_argument, &statistics_only, 1},
 		{"include-yb-metadata", no_argument, &include_yb_metadata, 1},
+		{"dump-role-checks", no_argument, &yb_dump_role_checks, 1},
 		{"dump-single-database", no_argument, &dump_single_database, 1},
 
 		{NULL, 0, NULL, 0}
@@ -411,6 +430,13 @@ main(int argc, char *argv[])
 		exit_nicely(1);
 	}
 
+	if (yb_dump_role_checks && !include_yb_metadata)
+	{
+		pg_log_error("option --dump-role-checks must be used only together with --include-yb-metadata");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+		exit_nicely(1);
+	}
+
 	/*
 	 * If password values are not required in the dump, switch to using
 	 * pg_roles which is equally useful, just more likely to have unrestricted
@@ -444,20 +470,36 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --use-set-session-authorization");
 	if (no_comments)
 		appendPQExpBufferStr(pgdumpopts, " --no-comments");
+	if (no_data)
+		appendPQExpBufferStr(pgdumpopts, " --no-data");
 	if (no_publications)
 		appendPQExpBufferStr(pgdumpopts, " --no-publications");
 	if (no_security_labels)
 		appendPQExpBufferStr(pgdumpopts, " --no-security-labels");
+	if (no_schema)
+		appendPQExpBufferStr(pgdumpopts, " --no-schema");
+	if (no_statistics)
+		appendPQExpBufferStr(pgdumpopts, " --no-statistics");
 	if (no_subscriptions)
 		appendPQExpBufferStr(pgdumpopts, " --no-subscriptions");
 	if (no_toast_compression)
 		appendPQExpBufferStr(pgdumpopts, " --no-toast-compression");
 	if (no_unlogged_table_data)
 		appendPQExpBufferStr(pgdumpopts, " --no-unlogged-table-data");
+	if (with_data)
+		appendPQExpBufferStr(pgdumpopts, " --with-data");
+	if (with_schema)
+		appendPQExpBufferStr(pgdumpopts, " --with-schema");
+	if (with_statistics)
+		appendPQExpBufferStr(pgdumpopts, " --with-statistics");
 	if (on_conflict_do_nothing)
 		appendPQExpBufferStr(pgdumpopts, " --on-conflict-do-nothing");
+	if (statistics_only)
+		appendPQExpBufferStr(pgdumpopts, " --statistics-only");
 	if (include_yb_metadata)
 		appendPQExpBufferStr(pgdumpopts, " --include-yb-metadata");
+	if (yb_dump_role_checks)
+		appendPQExpBufferStr(pgdumpopts, " --dump-role-checks");
 
 	/*
 	 * If there was a database specified on the command line, use that,
@@ -607,7 +649,7 @@ main(int argc, char *argv[])
 	}
 
 	if (!globals_only && !roles_only && !tablespaces_only)
-		/* Dump one DB only with '--dump-single-database'. */
+		/* YB: Dump one DB only with '--dump-single-database'. */
 		dumpDatabases(conn, dump_single_database ? pgdb : NULL);
 
 	PQfinish(conn);
@@ -643,13 +685,13 @@ help(void)
 	printf(_("  --lock-wait-timeout=TIMEOUT  fail after waiting TIMEOUT for a table lock\n"));
 	printf(_("  -?, --help                   show this help, then exit\n"));
 	printf(_("\nOptions controlling the output content:\n"));
-	printf(_("  -a, --data-only              dump only the data, not the schema\n"));
+	printf(_("  -a, --data-only              dump only the data, not the schema or statistics\n"));
 	printf(_("  -c, --clean                  clean (drop) databases before recreating\n"));
 	printf(_("  -E, --encoding=ENCODING      dump the data in encoding ENCODING\n"));
 	printf(_("  -g, --globals-only           dump only global objects, no databases\n"));
 	printf(_("  -O, --no-owner               skip restoration of object ownership\n"));
 	printf(_("  -r, --roles-only             dump only roles, no databases or tablespaces\n"));
-	printf(_("  -s, --schema-only            dump only the schema, no data\n"));
+	printf(_("  -s, --schema-only            dump only the schema, no data or statistics\n"));
 	printf(_("  -S, --superuser=NAME         superuser user name to use in the dump\n"));
 	printf(_("  -t, --tablespaces-only       dump only tablespaces, no databases or roles\n"));
 	printf(_("  -x, --no-privileges          do not dump privileges (grant/revoke)\n"));
@@ -665,12 +707,19 @@ help(void)
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
 			 "                               like SPLIT details).\n"));
+	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
+			 "                               exists. The ROLE usage statements are skipped if\n"
+			 "                               the ROLE does not exist.\n"
+			 "                               Requires --include-yb-metadata.\n"));
 	printf(_("  --inserts                    dump data as INSERT commands, rather than COPY\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comments\n"));
+	printf(_("  --no-data                    do not dump data\n"));
 	printf(_("  --no-publications            do not dump publications\n"));
 	printf(_("  --no-role-passwords          do not dump passwords for roles\n"));
+	printf(_("  --no-schema                  do not dump schema\n"));
 	printf(_("  --no-security-labels         do not dump security label assignments\n"));
+	printf(_("  --no-statistics              do not dump statistics\n"));
 	printf(_("  --no-subscriptions           do not dump subscriptions\n"));
 	printf(_("  --no-sync                    do not wait for changes to be written safely to disk\n"));
 	printf(_("  --no-table-access-method     do not dump table access methods\n"));
@@ -680,9 +729,13 @@ help(void)
 	printf(_("  --on-conflict-do-nothing     add ON CONFLICT DO NOTHING to INSERT commands\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
+	printf(_("  --statistics-only            dump only the statistics, not schema or data\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
+	printf(_("  --with-data                  dump the data\n"));
+	printf(_("  --with-schema                dump the schema\n"));
+	printf(_("  --with-statistics            dump the statistics\n"));
 	printf(_("  -m, --masters=HOST:PORT      DEPRECATED and NOT USED\n"
 			 "                               comma-separated list of YB-Master hosts and ports\n"));
 
@@ -774,28 +827,31 @@ dumpRoles(PGconn *conn)
 				i_is_current_user;
 	int			i;
 
-	/* note: rolconfig is dumped later */
+	/*
+	 * Notes: rolconfig is dumped later, and pg_authid must be used for
+	 * extracting rolcomment regardless of role_catalog.
+	 */
 	if (server_version >= 90600)
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
 						  "rolcreaterole, rolcreatedb, "
 						  "rolcanlogin, rolconnlimit, rolpassword, "
 						  "rolvaliduntil, rolreplication, rolbypassrls, "
-						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
+						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
 						  "FROM %s "
 						  "WHERE rolname !~ '^pg_' "
-						  "ORDER BY 2", role_catalog, role_catalog);
+						  "ORDER BY 2", role_catalog);
 	else if (server_version >= 90500)
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
 						  "rolcreaterole, rolcreatedb, "
 						  "rolcanlogin, rolconnlimit, rolpassword, "
 						  "rolvaliduntil, rolreplication, rolbypassrls, "
-						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
+						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
 						  "FROM %s "
-						  "ORDER BY 2", role_catalog, role_catalog);
+						  "ORDER BY 2", role_catalog);
 	else
 		printfPQExpBuffer(buf,
 						  "SELECT oid, rolname, rolsuper, rolinherit, "
@@ -803,10 +859,10 @@ dumpRoles(PGconn *conn)
 						  "rolcanlogin, rolconnlimit, rolpassword, "
 						  "rolvaliduntil, rolreplication, "
 						  "false as rolbypassrls, "
-						  "pg_catalog.shobj_description(oid, '%s') as rolcomment, "
+						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
 						  "FROM %s "
-						  "ORDER BY 2", role_catalog, role_catalog);
+						  "ORDER BY 2", role_catalog);
 
 	res = executeQuery(conn, buf->data);
 
@@ -843,7 +899,7 @@ dumpRoles(PGconn *conn)
 		const char *rolename;
 		Oid			auth_oid;
 
-		char	   *yb_frolename;
+		char	   *yb_frolename = NULL;
 		const char *yb_indent = "";
 		bool		yb_skip_create_role = false;
 		bool		yb_need_endif = false;
@@ -910,7 +966,7 @@ dumpRoles(PGconn *conn)
 				(strcmp(rolename, "yugabyte") == 0 || strcmp(rolename, "postgres") == 0);
 		else
 			yb_skip_create_role = ((binary_upgrade || include_yb_metadata) &&
-				(strcmp(PQgetvalue(res, i, i_is_current_user), "t") == 0));
+								   (strcmp(PQgetvalue(res, i, i_is_current_user), "t") == 0));
 
 		if (!yb_skip_create_role)
 		{
@@ -975,6 +1031,7 @@ dumpRoles(PGconn *conn)
 		if (strcmp(PQgetvalue(res, i, i_rolconnlimit), "-1") != 0)
 			appendPQExpBuffer(buf, " CONNECTION LIMIT %s",
 							  PQgetvalue(res, i, i_rolconnlimit));
+
 
 		if (!PQgetisnull(res, i, i_rolpassword) && !no_role_passwords)
 		{
@@ -1063,10 +1120,14 @@ dumpRoleMembership(PGconn *conn)
 		char	   *member = PQgetvalue(res, i, 1);
 		char	   *option = PQgetvalue(res, i, 2);
 
-		fprintf(OPF, "GRANT %s", fmtId(roleid));
-		fprintf(OPF, " TO %s", fmtId(member));
+		char	   *yb_grantor = NULL;
+
+		PQExpBuffer yb_sql = createPQExpBuffer();
+
+		appendPQExpBuffer(yb_sql, "GRANT %s", fmtId(roleid));
+		appendPQExpBuffer(yb_sql, " TO %s", fmtId(member));
 		if (*option == 't')
-			fprintf(OPF, " WITH ADMIN OPTION");
+			appendPQExpBufferStr(yb_sql, " WITH ADMIN OPTION");
 
 		/*
 		 * We don't track the grantor very carefully in the backend, so cope
@@ -1074,17 +1135,35 @@ dumpRoleMembership(PGconn *conn)
 		 */
 		if (!PQgetisnull(res, i, 3))
 		{
-			char	   *grantor = PQgetvalue(res, i, 3);
-
-			fprintf(OPF, " GRANTED BY %s", fmtId(grantor));
+			yb_grantor = PQgetvalue(res, i, 3);
+			appendPQExpBuffer(yb_sql, " GRANTED BY %s", fmtId(yb_grantor));
 		}
-		fprintf(OPF, ";\n");
+		appendPQExpBufferStr(yb_sql, ";\n");
+
+		if (yb_dump_role_checks)
+		{
+			PQExpBuffer yb_source_sql = yb_sql;
+
+			yb_sql = createPQExpBuffer();
+			YBWwrapInRoleChecks(conn, yb_source_sql, "grant privilege",
+								member, /* role1 */
+								yb_grantor, /* role2; note: yb_grantor can be
+											 * NULL */
+								NULL,	/* role3 */
+								yb_sql);
+			destroyPQExpBuffer(yb_source_sql);
+		}
+
+		fprintf(OPF, "%s", yb_sql->data);
+		destroyPQExpBuffer(yb_sql);
 	}
 
 	PQclear(res);
 	destroyPQExpBuffer(buf);
 
-	fprintf(OPF, "\n\n");
+	fprintf(OPF, "\n");
+	if (!yb_dump_role_checks)
+		fprintf(OPF, "\n");		/* Second EOL. */
 }
 
 
@@ -1126,9 +1205,9 @@ dumpRoleGUCPrivs(PGconn *conn)
 		/* needed for buildACLCommands() */
 		fparname = pg_strdup(fmtId(parname));
 
-		if (!buildACLCommands(fparname, NULL, NULL, "PARAMETER",
+		if (!buildACLCommands(conn, fparname, NULL, NULL, "PARAMETER",
 							  paracl, acldefault,
-							  parowner, "", server_version, buf))
+							  parowner, "", server_version, yb_dump_role_checks, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for parameter \"%s\"",
 						 paracl, parname);
@@ -1199,7 +1278,8 @@ dumpTablespaces(PGconn *conn)
 					   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
 					   "pg_catalog.pg_tablespace_location(oid), "
 					   "spcacl, acldefault('t', spcowner) AS acldefault, "
-					   "spcoptions,"
+					   "spcoptions,"	/* YB: processing is done later in
+										 * ybProcessTablespaceSpcOptions */
 					   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 					   "FROM pg_catalog.pg_tablespace "
 					   "WHERE spcname !~ '^pg_' "
@@ -1271,9 +1351,9 @@ dumpTablespaces(PGconn *conn)
 		/* tablespaces can't have initprivs */
 
 		if (!skip_acls &&
-			!buildACLCommands(fspcname, NULL, NULL, "TABLESPACE",
+			!buildACLCommands(conn, fspcname, NULL, NULL, "TABLESPACE",
 							  spcacl, acldefault,
-							  spcowner, "", server_version, buf))
+							  spcowner, "", server_version, yb_dump_role_checks, buf))
 		{
 			pg_log_error("could not parse ACL list (%s) for tablespace \"%s\"",
 						 spcacl, spcname);
@@ -1341,7 +1421,7 @@ dropDBs(PGconn *conn)
 	res = executeQuery(conn,
 					   "SELECT datname "
 					   "FROM pg_database d "
-					   "WHERE datallowconn "
+					   "WHERE datallowconn AND datconnlimit != -2 "
 					   "ORDER BY datname");
 
 	if (PQntuples(res) > 0)
@@ -1484,7 +1564,7 @@ dumpDatabases(PGconn *conn, const char *pgdb)
 	res = executeQuery(conn,
 					   "SELECT datname "
 					   "FROM pg_database d "
-					   "WHERE datallowconn "
+					   "WHERE datallowconn AND datconnlimit != -2 "
 					   "ORDER BY (datname <> 'template1'), datname");
 
 	if (PQntuples(res) > 0)

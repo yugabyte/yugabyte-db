@@ -35,7 +35,7 @@ The connector produces a change event for every row-level insert, update, and de
 
 YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the configured tables. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
-The connector is tolerant of failures. As the connector reads changes and produces events, it records the LSN for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off.
+The connector is tolerant of failures. As the connector reads changes and produces events, it records the Log Sequence Number ([LSN](../key-concepts/#lsn-type)) for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off.
 
 {{< tip title="Use UTF-8 encoding" >}}
 
@@ -1393,7 +1393,7 @@ To deploy the connector, you install the connector archive, configure the connec
 
 **Procedure**
 
-1. Download the [YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1.SNAPSHOT.1).
+1. Download the latest [YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/).
 2. Extract the files into your Kafka Connect environment.
 3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
@@ -1526,6 +1526,138 @@ The following table lists the streaming metrics that are available.
 | `LastTransactionId` | string | Transaction identifier of the last processed transaction. |
 | `MaxQueueSizeInBytes` | long | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
 | `CurrentQueueSizeInBytes` | long | The current volume, in bytes, of records in the queue. |
+
+## Advanced
+
+### Parallel streaming
+
+{{<tags/feature/tp idea="1549">}}YugabyteDB also supports parallel streaming of a single table using logical replication. This means that you can start the replication for the table using parallel tasks, where each task polls on specific tablets.
+
+{{< note title="Important" >}}
+
+Parallel streaming is {{<tags/feature/tp idea="1549">}}. To enable the feature, set the `ysql_enable_pg_export_snapshot` and `ysql_yb_enable_consistent_replication_from_hash_range` flags to true.
+
+{{< /note >}}
+
+Use the following steps to configure parallel streaming using the YugabyteDB Connector.
+
+#### Step 1: Decide on the number of tasks
+
+This is important, as you need to create the same number of replication slots and publications. Note that the number of tasks cannot be greater than the number of tablets you have in the table to be streamed.
+
+For example, if you have a table `test` with 3 tablets, you will create 3 tasks.
+
+#### Step 2: Create publication and replication slots
+
+If you are creating a slot and publication yourself, ensure that a publication is created before you create the replication slot.
+
+If you do not want to create the publication and slots, decide on names so that the connector can create the publication and slots.
+
+```sql
+CREATE PUBLICATION pb FOR TABLE test;
+CREATE PUBLICATION pb2 FOR TABLE test;
+CREATE PUBLICATION pb3 FOR TABLE test;
+
+CREATE_REPLICATION_SLOT rs LOGICAL yboutput;
+CREATE_REPLICATION_SLOT rs2 LOGICAL yboutput;
+CREATE_REPLICATION_SLOT rs3 LOGICAL yboutput;
+```
+
+#### Step 3: Get hash ranges
+
+Execute the following query in YSQL for a `table_name` and number of tasks to get the ranges. Replace `num_ranges` and `table_name` as appropriate.
+
+```sql
+WITH params AS (
+  SELECT 
+    num_ranges::int AS num_ranges,
+    'table_name'::text AS table_name
+),
+yb_local_tablets_cte AS (
+  SELECT *,
+    COALESCE(('x' || encode(partition_key_start, 'hex'))::BIT(16)::INT, 0) AS partition_key_start_int,
+    COALESCE(('x' || encode(partition_key_end, 'hex'))::BIT(16)::INT, 65536) AS partition_key_end_int
+  FROM yb_local_tablets
+  WHERE table_name = (SELECT table_name FROM params)
+),
+
+grouped AS (
+  SELECT 
+    yt.*,
+    NTILE((SELECT num_ranges FROM params)) OVER (ORDER BY partition_key_start_int) AS bucket_num
+  FROM yb_local_tablets_cte yt
+),
+
+buckets AS (
+  SELECT 
+    bucket_num,
+    MIN(partition_key_start_int) AS bucket_start,
+    MAX(partition_key_end_int) AS bucket_end
+  FROM grouped
+  GROUP BY bucket_num
+),
+distinct_ranges AS (
+  SELECT DISTINCT
+    b.bucket_start,
+    b.bucket_start || ',' || b.bucket_end AS partition_range
+  FROM grouped g
+  JOIN buckets b ON g.bucket_num = b.bucket_num
+)
+SELECT STRING_AGG(partition_range, ';' ORDER BY bucket_start) AS concatenated_ranges
+FROM distinct_ranges;
+```
+
+The output is in a format that can be added as ranges in the connector configuration:
+
+```output
+       concatenated_ranges
+---------------------------------
+ 0,21845;21845,43690;43690,65536
+```
+
+Copy the output as you will need it later on.
+
+#### Step 4: Build connector configuration
+
+Using the output from the preceding step, add the following additional configuration properties to the connector and deploy it:
+
+```json
+{
+  ...
+  "streaming.mode":"parallel",
+  "slot.names":"rs,rs2,rs3",
+  "publication.names":"pb,pb2,pb3",
+  "slot.ranges":"0,21845;21845,43690;43690,65536"
+  ...
+}
+```
+
+If you have to take the snapshot, you'll need to add 2 other configuration properties:
+
+```json
+{
+  ...
+  "snapshot.mode":"initial",
+  "primary.key.hash.columns":"id"
+  ...
+}
+```
+
+For information on parallel streaming configuration properties, refer to [Advanced connector properties](../yugabytedb-connector-properties/#streaming-mode).
+
+{{< warning title="Warning" >}}
+
+The order of slot names, publication names, and slot ranges is important as the assignment of ranges to slots is sequential, and you want the same range assigned to the same slot across restarts.
+
+The configuration for the connector shouldn't change on restart.
+
+{{< /warning >}}
+
+{{< note title="Important" >}}
+
+Adding the configuration value for `primary.key.hash.columns` is important, as you will need the columns that form the hash part of the primary key. The connector relies on the column names to figure out the appropriate range each task should be polling.
+
+{{< /note >}}
 
 ## Behavior when things go wrong
 

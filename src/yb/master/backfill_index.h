@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,7 +33,7 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
 
 #include "yb/server/monitored_task.h"
@@ -45,6 +45,8 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
+
+#include "yb/tserver/tserver_admin.pb.h"
 
 namespace yb {
 namespace master {
@@ -326,7 +328,8 @@ class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
         backfill_table_(backfill_table),
         tablet_(tablet),
         min_cutoff_(min_cutoff) {
-    deadline_ = MonoTime::Max();  // Never time out.
+    // No deadline for the task, refer to ComputeDeadline() for a single attempt deadline.
+    deadline_ = MonoTime::Max();
   }
 
   Status Launch();
@@ -375,7 +378,7 @@ class BackfillChunk : public RetryingTSRpcTaskWithTable {
 
   std::string description() const override;
 
-  MonoTime ComputeDeadline() override;
+  MonoTime ComputeDeadline() const override;
 
  private:
   TabletId tablet_id() const override { return backfill_tablet_->tablet()->id(); }

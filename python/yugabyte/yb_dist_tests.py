@@ -180,6 +180,7 @@ def set_global_conf_from_dict(global_conf_dict: Dict[str, str]) -> GlobalTestCon
 
 ARCHIVED_PATHS_IN_BUILD_DIR = [
     'bin',
+    'gobin',
     'lib',
     'openssl-config',
     'postgres',
@@ -225,6 +226,7 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
     'requirements.txt',
     'requirements_frozen.txt',
     'build/yugabyte-bash-common',
+    'yb.env'
 ]
 
 

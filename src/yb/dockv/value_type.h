@@ -123,6 +123,8 @@ namespace yb::dockv {
     ((kMergeFlags, 'k')) /* ASCII code 107 */ \
     ((kBitSet, 'm')) /* ASCII code 109 */ \
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
+    ((kBson, 'o')) /* ASCII code 111 */ \
+    ((kBsonDescending, 'p')) /* ASCII code 112 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \
     /* TTL value in milliseconds, optionally present at the start of a value. */ \

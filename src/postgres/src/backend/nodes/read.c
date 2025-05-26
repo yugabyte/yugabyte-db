@@ -64,6 +64,19 @@ SetPgStrTokPtr(const char *new_pg_strtok_ptr)
 	}
 }
 
+int
+GetYbExpressionVersion(void)
+{
+	return IsMultiThreadedMode() ? YBCPgGetThreadLocalYbExpressionVersion() : PG_MAJORVERSION_NUM;
+}
+
+static void
+SetYbExpressionVersion(int yb_expr_version)
+{
+	Assert(IsMultiThreadedMode());
+	YBCPgSetThreadLocalYbExpressionVersion(yb_expr_version);
+}
+
 /*
  * stringToNode -
  *	  builds a Node tree from its string representation (assumed valid)
@@ -116,6 +129,14 @@ stringToNodeInternal(const char *str, bool restore_loc_fields)
 void *
 stringToNode(const char *str)
 {
+	return stringToNodeInternal(str, false);
+}
+
+void *
+ybDeserializeNode(const char *str, int yb_expr_version)
+{
+	Assert(IsMultiThreadedMode());
+	SetYbExpressionVersion(yb_expr_version);
 	return stringToNodeInternal(str, false);
 }
 

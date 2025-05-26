@@ -158,12 +158,14 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
+    SetPGCallbacks(&producer_cluster_, producer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&producer_cluster_));
   }
 
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
-    RETURN_NOT_OK(InitPostgres(&consumer_cluster_, pg_ts_idx, consumer_pg_port));
+    SetPGCallbacks(&consumer_cluster_, consumer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&consumer_cluster_));
   }
 
   return Status::OK();
@@ -205,7 +207,8 @@ Status XClusterYsqlTestBase::InitProducerClusterOnly(const MiniClusterOptions& o
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
+    SetPGCallbacks(&producer_cluster_, producer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&producer_cluster_));
   }
 
   return Status::OK();
@@ -232,21 +235,30 @@ Status XClusterYsqlTestBase::InitPostgres(
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
   cluster->pg_supervisor_ =
       std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
-  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+  RETURN_NOT_OK(cluster->pg_supervisor_->StartAndMaybePause());
 
+  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  return OK();
+}
+
+Status XClusterYsqlTestBase::StartPostgres(Cluster* cluster) {
+  auto* pg_ts = cluster->mini_cluster_->mini_tablet_server(cluster->pg_ts_idx_);
+  return pg_ts->StartPgIfConfigured();
+}
+
+void XClusterYsqlTestBase::SetPGCallbacks(Cluster* cluster, uint16_t pg_port) {
+  tserver::MiniTabletServer* const pg_ts =
+      cluster->mini_cluster_->mini_tablet_server(cluster->pg_ts_idx_);
+  CHECK(pg_ts);
   pg_ts->SetPgServerHandlers(
       // start_pg
-      [this, cluster, pg_port = pg_process_conf.pg_port] {
-        return InitPostgres(cluster, cluster->pg_ts_idx_, pg_port);
-      },
+      [this, cluster, pg_port] { return InitPostgres(cluster, cluster->pg_ts_idx_, pg_port); },
       // shutdown_pg
       [cluster] {
         cluster->pg_supervisor_->Stop();
         cluster->pg_supervisor_.reset();
-      });
-
-  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-  return OK();
+      },
+      [cluster] { return cluster->CreatePGConnSettings(); });
 }
 
 std::string XClusterYsqlTestBase::GetCompleteTableName(const YBTableName& table) {
@@ -598,18 +610,19 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
   return VerifyWrittenRecords(producer_table->name(), consumer_table->name());
 }
 
-Status XClusterYsqlTestBase::VerifyWrittenRecords(ExpectNoRecords expect_no_records) {
-    return VerifyWrittenRecords(
-        producer_table_->name(), consumer_table_->name(), expect_no_records);
+Status XClusterYsqlTestBase::VerifyWrittenRecords(
+    ExpectNoRecords expect_no_records, CheckColumnCounts check_col_counts) {
+  return VerifyWrittenRecords(
+      producer_table_->name(), consumer_table_->name(), expect_no_records, check_col_counts);
 }
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
     const YBTableName& producer_table_name, const YBTableName& consumer_table_name,
-    ExpectNoRecords expect_no_records) {
+    ExpectNoRecords expect_no_records, CheckColumnCounts check_col_counts) {
   int prod_row_count, cons_row_count = 0, prod_col_count = 0, cons_col_count = 0;
   const Status s = LoggedWaitFor(
       [this, producer_table_name, consumer_table_name, &prod_row_count, &cons_row_count,
-          &prod_col_count, &cons_col_count, expect_no_records]()-> Result<bool> {
+       &prod_col_count, &cons_col_count, expect_no_records, check_col_counts]() -> Result<bool> {
         auto producer_results =
             VERIFY_RESULT(ScanToStrings(producer_table_name, &producer_cluster_));
         prod_row_count = PQntuples(producer_results.get());
@@ -626,6 +639,9 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
         }
         prod_col_count = PQnfields(producer_results.get());
         cons_col_count = PQnfields(consumer_results.get());
+        SCHECK(
+            !check_col_counts || prod_col_count == cons_col_count, Corruption,
+            Format("Expected $0 columns but got $1 columns", prod_col_count, cons_col_count));
         int col_count = std::min(prod_col_count, cons_col_count);
         for (int row = 0; row < prod_row_count; ++row) {
           for (int col = 0; col < col_count; ++col) {
@@ -836,15 +852,20 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
 
   // Verify single value inserts are replicated correctly and can be read
   ASSERT_OK(InsertRowsInProducer(51, 52));
-  ASSERT_OK(VerifyWrittenRecords());
+  auto verify_written_records_without_column_counts = [this]() {
+    // Don't check column counts as they are different now.
+    return VerifyWrittenRecords(ExpectNoRecords::kFalse, CheckColumnCounts::kFalse);
+  };
+
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // 5. Verify batch inserts are replicated correctly and can be read
   ASSERT_OK(InsertGenerateSeriesOnProducer(52, 100));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // Verify transactional inserts are replicated correctly and can be read
   ASSERT_OK(InsertTransactionalBatchOnProducer(101, 150));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // Alter the table on the producer side by adding the same column and insert some rows
   // and verify
@@ -898,7 +919,7 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
   ASSERT_OK(consumer_cluster()->FlushTablets());
 
   ASSERT_OK(InsertRowsInProducer(301, 350));
-  ASSERT_OK(VerifyWrittenRecords(nullptr, nullptr));
+  ASSERT_OK(verify_written_records_without_column_counts());
 }
 
 Status XClusterYsqlTestBase::SetUpWithParams(

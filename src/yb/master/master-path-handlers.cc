@@ -61,6 +61,7 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/async_rbs_info_task.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
@@ -87,6 +88,8 @@
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/tablet_types.pb.h"
+
+#include "yb/tserver/remote_bootstrap_info.h"
 
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
@@ -122,6 +125,8 @@ DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_string(webserver_ca_certificate_file);
 DECLARE_string(webserver_certificate_file);
 DEPRECATE_FLAG(uint64, master_maximum_heartbeats_without_lease, "12_2023");
+
+using namespace std::chrono_literals;
 
 namespace yb {
 
@@ -834,7 +839,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   auto cluster_config_result = master_->catalog_manager()->GetClusterConfig();
   if (!cluster_config_result.ok()) {
@@ -986,7 +991,7 @@ void MasterPathHandlers::HandleHealthCheck(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   // TODO: Lock not needed since other APIs handle it.  Refactor other functions accordingly
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
   if (!cluster_config_result.ok()) {
@@ -1208,7 +1213,7 @@ void MasterPathHandlers::HandleAllTables(
       if (result.ok()) {
         table_row[kYsqlOid] = std::to_string(*result);
       } else {
-        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+        LOG(WARNING) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
 
       const auto& schema = table_locked->schema();
@@ -1343,7 +1348,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
   bool only_user_tables = ParseLeadingBoolValue(
       FindWithDefault(req.parsed_args, "only_user_tables", ""), false);
 
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
@@ -1400,7 +1405,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
       if (result.ok()) {
         table_row.ysql_oid = std::to_string(*result);
       } else {
-        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+        LOG(WARNING) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
 
       const auto& schema = table_locked->schema();
@@ -1516,7 +1521,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
 void MasterPathHandlers::HandleGetMetaCacheJson(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
-  JsonWriter writer(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter writer(output, JsonWriter::COMPACT);
   master_->WriteServerMetaCacheAsJson(&writer);
 }
 
@@ -1595,7 +1600,7 @@ void MasterPathHandlers::HandleNamespacesJSON(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   std::vector<scoped_refptr<NamespaceInfo>> namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
@@ -1958,7 +1963,7 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
 
   // True if table_id, false if (keyspace, table).
@@ -2417,7 +2422,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
 void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest& req,
                                                     Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   auto leaderless_ts = GetLeaderlessTablets();
   if (!leaderless_ts) {
@@ -2450,7 +2455,7 @@ void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest&
 void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebRequest& req,
                                                     Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   auto underreplicated_tablets = GetUnderReplicatedTablets();
 
@@ -2886,7 +2891,7 @@ Status JsonDumpCollection(JsonWriter* jw, Master* master, stringstream* output) 
   } else {
     // Print just an error message.
     output->str("");
-    JsonWriter jw_err(output, JsonWriter::COMPACT_ESCAPE_STR);
+    JsonWriter jw_err(output, JsonWriter::COMPACT);
     jw_err.StartObject();
     jw_err.String("error");
     jw_err.String(s.ToString());
@@ -2902,7 +2907,7 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
 
   if (JsonDumpCollection<JsonKeyspaceDumper>(&jw, master_, output).ok() &&
@@ -2916,7 +2921,7 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
 void MasterPathHandlers::HandleCheckIfLeader(const Webserver::WebRequest& req,
                                               Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
   {
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
@@ -2940,7 +2945,7 @@ void MasterPathHandlers::HandleGetMastersStatus(const Webserver::WebRequest& req
   vector<ServerEntryPB> masters;
   Status s = master_->ListMasters(&masters);
   ListMastersResponsePB pb_resp;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
   if (!s.ok()) {
     jw.Protobuf(pb_resp);
     return;
@@ -2972,7 +2977,7 @@ void MasterPathHandlers::HandleGetClusterConfig(
 void MasterPathHandlers::HandleGetClusterConfigJSON(
   const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::COMPACT);
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
@@ -2990,7 +2995,7 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
 }
 
 void MasterPathHandlers::GetXClusterJSON(std::stringstream& output, bool pretty) {
-  JsonWriter jw(&output, pretty ? JsonWriter::PRETTY_ESCAPE_STR : JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(&output, pretty ? JsonWriter::PRETTY : JsonWriter::COMPACT);
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   jw.StartObject();
@@ -3135,7 +3140,7 @@ void MasterPathHandlers::HandleXCluster(
 void MasterPathHandlers::HandleVersionInfoDump(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  JsonWriter jw(output, JsonWriter::PRETTY_ESCAPE_STR);
+  JsonWriter jw(output, JsonWriter::PRETTY);
 
   // Get the version info.
   VersionInfoPB version_info;
@@ -3144,6 +3149,35 @@ void MasterPathHandlers::HandleVersionInfoDump(
   jw.Protobuf(version_info);
 }
 
+namespace {
+void RenderRbsInfo(
+    CatalogManagerIf* cm,
+    const std::unordered_map<TabletServerId, tserver::GetActiveRbsInfoResponsePB>& responses,
+    HtmlPrintHelper& html_print_helper, std::stringstream* output) {
+
+  // Render the RBS info.
+  auto rbs_info_table = html_print_helper.CreateTablePrinter(
+      "Ongoing Remote Bootstraps",
+      {"Tablet ID", "Namespace.Table", "Source TServer UUID", "Destination TServer UUID",
+       "Progress"});
+  for (auto& [dest_uuid, response] : responses) {
+    for (auto& rbs_info : response.rbs_infos()) {
+      auto tablet_info_result = cm->GetTabletInfo(rbs_info.tablet_id());
+      std::string table_desc = "Not found";
+      if (tablet_info_result.ok()) {
+        table_desc = Format(
+            "$0.$1", (*tablet_info_result)->table()->namespace_name(),
+            (*tablet_info_result)->table()->name());
+      }
+      rbs_info_table.AddRow(
+          rbs_info.tablet_id(), table_desc, rbs_info.source_ts_uuid(),
+          dest_uuid, GetRemoteBootstrapProgressMessage(rbs_info));
+    }
+  }
+  rbs_info_table.Print();
+}
+} // namespace
+
 void MasterPathHandlers::HandleLoadBalancer(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
@@ -3151,8 +3185,14 @@ void MasterPathHandlers::HandleLoadBalancer(
 
   *output << "<h1>Cluster Balancer</h1>\n";
 
+  *output << "<h2>Ongoing Remote Bootstraps</h2>\n";
+  auto rbs_info = FetchRbsInfo(master_, 5s /* timeout */);
+  RenderRbsInfo(master_->catalog_manager(), rbs_info, html_print_helper, output);
+
   auto activity_info = master_->catalog_manager()->load_balancer()->GetLatestActivityInfo();
-  SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_sleep_before_reporting_lb_ui_ms));
+  if (FLAGS_TEST_sleep_before_reporting_lb_ui_ms > 0) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_sleep_before_reporting_lb_ui_ms));
+  }
 
   *output << "<h2>Last Run Summary</h2>\n";
 
@@ -3232,7 +3272,7 @@ void MasterPathHandlers::HandleStatefulServices(
 
 void MasterPathHandlers::HandleStatefulServicesJson(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  JsonWriter jw(&resp->output, JsonWriter::COMPACT_ESCAPE_STR);
+  JsonWriter jw(&resp->output, JsonWriter::COMPACT);
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
   jw.StartObject();

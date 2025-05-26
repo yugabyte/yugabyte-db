@@ -194,6 +194,11 @@ bool operator==(const VectorWithDistance<DistanceResult>& lhs,
   return YB_STRUCT_EQUALS(vector_id, distance);
 }
 
+template<ValidDistanceResultType DistanceResult>
+std::ostream& operator<<(std::ostream& out, const VectorWithDistance<DistanceResult>& value) {
+  return out << value.ToString();
+}
+
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 DistanceFunction<Vector, DistanceResult> GetDistanceFunction(DistanceKind distance_kind) {
   switch (distance_kind) {

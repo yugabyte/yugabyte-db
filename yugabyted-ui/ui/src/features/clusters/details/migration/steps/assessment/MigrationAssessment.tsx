@@ -22,6 +22,7 @@ interface MigrationAssessmentProps {
   isNewMigration?: boolean;
   operatingSystem?: string;
   voyagerVersion?: string;
+  notes?: string[];
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -45,6 +46,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   isNewMigration = false,
   operatingSystem,
   voyagerVersion,
+  notes
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -157,6 +159,9 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
                   newMigrationAPI?.summary?.migration_complexity || migration?.complexity || "N/A"
                 }
                 estimatedMigrationTime={newMigrationAPI?.summary?.estimated_migration_time || "N/A"}
+                migrationComplexityExplanation={
+                  newMigrationAPI?.summary?.migration_comlexity_explanation
+                }
               />
             </Box>
             <Box flexBasis="100%">
@@ -166,6 +171,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
             </Box>
           </Box>
           <MigrationAssessmentRecommendation
+            notes={notes}
             migration={migration}
             nodeCount={
               newMigrationAPI?.target_recommendations?.target_cluster_recommendation?.num_nodes ??

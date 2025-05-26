@@ -13,6 +13,8 @@
 
 #include "yb/client/client_master_rpc.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 
@@ -32,21 +34,25 @@ namespace internal {
 ClientMasterRpcBase::ClientMasterRpcBase(YBClient::Data* client_data, CoarseTimePoint deadline)
     : Rpc(deadline, client_data->messenger_, client_data->proxy_cache_.get()),
       client_data_(DCHECK_NOTNULL(client_data)),
-      retained_self_(client_data->rpcs_.InvalidHandle()) {
+      retained_self_(client_data->rpcs_.InvalidHandle()),
+      wait_state_(ash::WaitStateInfo::CurrentWaitState()) {
 }
 
 void ClientMasterRpcBase::SendRpc() {
   DCHECK(retained_self_ != client_data_->rpcs_.InvalidHandle());
 
+  auto deadline = retrier().deadline();
   auto now = CoarseMonoClock::Now();
-  if (retrier().deadline() < now) {
+  if (deadline < now) {
     Finished(STATUS_FORMAT(TimedOut, "Request $0 timed out after deadline expired", *this));
     return;
   }
 
-  auto rpc_deadline = now + client_data_->default_rpc_timeout_;
   mutable_retrier()->mutable_controller()->set_deadline(
-      std::min(rpc_deadline, retrier().deadline()));
+      deadline != CoarseTimePoint::max() ? deadline : now + client_data_->default_rpc_timeout_);
+
+  ASH_ENABLE_CONCURRENT_UPDATES();
+  SET_WAIT_STATUS(YBClient_WaitingOnMaster);
   CallRemoteMethod();
 }
 
@@ -72,6 +78,9 @@ void ClientMasterRpcBase::NewLeaderMasterDeterminedCb(const Status& status) {
 
 void ClientMasterRpcBase::Finished(const Status& status) {
   ADOPT_TRACE(trace_.get());
+  ADOPT_WAIT_STATE(wait_state_);
+  SET_WAIT_STATUS(OnCpu_Passive);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   auto resp_status = ResponseStatus();
   if (status.ok() && !resp_status.ok()) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1) << "Failed, got resp error: " << resp_status;

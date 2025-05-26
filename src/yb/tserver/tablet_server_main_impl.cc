@@ -37,47 +37,49 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "yb/common/termination_monitor.h"
 #include "yb/common/llvm_profile_dumper.h"
+#include "yb/common/termination_monitor.h"
+#include "yb/common/ysql_operation_lease.h"
 
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/log_util.h"
 
 #include "yb/docdb/docdb_pgapi.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
+#include "yb/rpc/io_thread_pool.h"
+#include "yb/rpc/scheduler.h"
+#include "yb/rpc/secure.h"
+#include "yb/rpc/secure_stream.h"
+
+#include "yb/server/skewed_clock.h"
+
+#include "yb/tserver/factory.h"
+#include "yb/tserver/metrics_snapshotter.h"
+#include "yb/tserver/server_main_util.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_call_home.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/main_util.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/port_picker.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
+#include "yb/util/ulimit_util.h"
+#include "yb/util/debug/trace_event.h"
+#include "yb/util/net/net_util.h"
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
-
-#include "yb/gutil/strings/substitute.h"
-#include "yb/tserver/tserver_call_home.h"
-#include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
-#include "yb/rpc/secure_stream.h"
-#include "yb/server/skewed_clock.h"
-#include "yb/rpc/secure.h"
-#include "yb/tserver/factory.h"
-#include "yb/tserver/metrics_snapshotter.h"
-#include "yb/tserver/tablet_server.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
-#include "yb/util/main_util.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/result.h"
-#include "yb/util/ulimit_util.h"
-#include "yb/util/size_literals.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status_log.h"
-#include "yb/util/debug/trace_event.h"
-#include "yb/util/thread.h"
-#include "yb/util/port_picker.h"
-
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
-
-#include "yb/tserver/server_main_util.h"
 
 using std::string;
 using namespace std::placeholders;
@@ -136,8 +138,17 @@ void SetProxyAddress(std::string* flag, const std::string& name,
   uint16_t port, bool override_port = false) {
   if (flag->empty() || override_port) {
     std::vector<HostPort> bind_addresses;
-    Status status = HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &bind_addresses);
-    LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_rpc_bind_addresses << ": " << status;
+    Status status;
+    if (flag->empty()) {
+      // If the flag is empty, we set ip address to the default rpc bind address.
+      status = HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &bind_addresses);
+      LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_rpc_bind_addresses << ": "
+             << status;
+    } else {
+      // If override_port is true, we keep the existing ip addresses and just change the port.
+      status = HostPort::ParseStrings(*flag, 0, &bind_addresses);
+      LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << *flag << ": " << status;
+    }
     if (!bind_addresses.empty()) {
       for (auto& addr : bind_addresses) {
         addr.set_port(port);
@@ -270,6 +281,8 @@ int TabletServerMain(int argc, char** argv) {
   call_home->ScheduleCallHome();
 
   std::unique_ptr<PgSupervisor> pg_supervisor;
+  bool ysql_lease_enabled = false;
+  bool ysql_conn_mgr_enabled = FLAGS_enable_ysql_conn_mgr;
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
         FLAGS_pgsql_proxy_bind_address,
@@ -284,11 +297,26 @@ int TabletServerMain(int argc, char** argv) {
               << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
 
     pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
+    // If the ysql lease feature is enabled, we don't want to accept pg connections until the
+    // tserver acquires a lease from the master leader.
+    ysql_lease_enabled = IsYsqlLeaseEnabled();
+    if (!ysql_lease_enabled) {
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->StartYSQLLeaseRefresher());
+    } else if (ysql_conn_mgr_enabled) {
+      // Normally when the lease is enabled we don't spawn a postgres process until acquiring a
+      // lease. However the ysql connection manager seems to peel configuration from the postgres
+      // process. Starting up the connection manager fails unless postgres is currently running. So
+      // if it's configured, keep the pg process alive while we spawn the ysql connection manager.
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
+    } else {
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->InitPaused());
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->StartYSQLLeaseRefresher());
+    }
   }
 
   std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor> ysql_conn_mgr_supervisor;
-  if (FLAGS_enable_ysql_conn_mgr) {
+  if (ysql_conn_mgr_enabled) {
     LOG(INFO) << "Starting Ysql Connection Manager on port " << FLAGS_ysql_conn_mgr_port;
 
     ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
@@ -316,6 +344,12 @@ int TabletServerMain(int argc, char** argv) {
 
     // Set the shared memory key for tserver so it can access stats as well.
     server->SetYsqlConnMgrStatsShmemKey(conn_mgr_shmem_key);
+    if (ysql_lease_enabled) {
+      // Now that the connection manager has been spawned we can kill the postgres process and wait
+      // for a lease.
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Pause());
+      LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->StartYSQLLeaseRefresher());
+    }
   }
 
   std::unique_ptr<RedisServer> redis_server;

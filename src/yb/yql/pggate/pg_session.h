@@ -28,10 +28,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/tserver/tserver_util_fwd.h"
-
 #include "yb/util/lw_function.h"
-#include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
@@ -89,6 +86,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   Status GetCatalogMasterVersion(uint64_t *version);
 
+  Result<int> GetXClusterRole(uint32_t db_oid);
+
   Status CancelTransaction(const unsigned char* transaction_id);
 
   // API for sequences data operations.
@@ -129,18 +128,16 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   // Operations on Tablegroup.
   //------------------------------------------------------------------------------------------------
 
-  Status DropTablegroup(const PgOid database_oid,
-                        PgOid tablegroup_oid);
-
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
   Status CreateSchema(const std::string& schema_name, bool if_not_exist);
   Status DropSchema(const std::string& schema_name, bool if_exist);
 
   // API for table operations.
-  Status DropTable(const PgObjectId& table_id);
+  Status DropTable(const PgObjectId& table_id, bool use_regular_transaction_block);
   Status DropIndex(
       const PgObjectId& index_id,
+      bool use_regular_transaction_block,
       client::YBTableName* indexed_table_name = nullptr);
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(
@@ -237,6 +234,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
+  void SetLockTimeout(int lock_timeout_ms);
+
   Status ValidatePlacement(const std::string& placement_info, bool check_satisfiable);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
@@ -248,8 +247,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
 
-  void ResetHasWriteOperationsInDdlMode();
-  bool HasWriteOperationsInDdlMode() const;
+  void ResetHasCatalogWriteOperationsInDdlMode();
+  bool HasCatalogWriteOperationsInDdlMode() const;
 
   void SetDdlHasSyscatalogChanges();
 
@@ -301,6 +300,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
     std::optional<CacheOptions> cache_options = std::nullopt;
     HybridTime in_txn_limit = {};
+    bool non_transactional_buffered_write = false;
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
@@ -347,7 +347,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   BufferingSettings& buffering_settings_;
   PgOperationBuffer buffer_;
 
-  bool has_write_ops_in_ddl_mode_ = false;
+  bool has_catalog_write_ops_in_ddl_mode_ = false;
 
   // This session is upgrading to PG15.
   const bool is_major_pg_version_upgrade_;

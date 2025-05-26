@@ -23,7 +23,7 @@ CREATE INDEX p2_id_val_idx ON p2 (id, val);
 CREATE UNIQUE INDEX p2_val_idx ON p2 (val);
 CREATE INDEX p2_ununi_id_val_idx ON p2 (val);
 CREATE INDEX p2_val_idx_1 ON p2 USING hash (val);
-NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "hash" in YugabyteDB
 CREATE INDEX p2_val_id_idx ON p2 (val, id);
 CREATE INDEX p2_val_idx2 ON p2 (val COLLATE "C");
 CREATE INDEX p2_val_idx3 ON p2 (val varchar_ops);

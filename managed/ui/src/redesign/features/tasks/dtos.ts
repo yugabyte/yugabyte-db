@@ -31,7 +31,8 @@ export enum TaskStates {
 export const TaskType = {
   GFlags_UPGRADE: 'GFlagsUpgrade',
   EDIT: 'Update',
-  SOFTWARE_UPGRADE: 'SoftwareUpgrade'
+  SOFTWARE_UPGRADE: 'SoftwareUpgrade',
+  RESIZE_NODE: 'ResizeNode',
 };
 export const TargetType = {
   UNIVERSE: 'Universe',
@@ -93,7 +94,14 @@ export interface SubTaskInfo {
     error?: {
       code: string;
       message: string;
+      originMessage: string;
     }
+  }
+  taskParams? : {
+    nodeName?: string;
+    nodeDetailsSet? : {
+      nodeName?: string;
+    }[]
   }
 };
 

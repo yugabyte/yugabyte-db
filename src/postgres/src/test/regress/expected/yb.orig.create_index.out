@@ -508,9 +508,9 @@ DROP TABLE test_truncate;
 -- Test index methods
 CREATE TABLE test_method (k int PRIMARY KEY, v int);
 CREATE INDEX ON test_method USING btree (v);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 CREATE INDEX ON test_method USING hash (v);
-NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "hash" in YugabyteDB
 CREATE INDEX ON test_method USING foo (v);
 ERROR:  access method "foo" does not exist
 \d test_method
@@ -1505,6 +1505,7 @@ DROP TABLE test_stats;
 -- for a newly attached partition.
 CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a)
     SPLIT AT VALUES ((5), (10)); -- split options are ignored.
+WARNING:  split options on a partitioned table will be ignored
 CREATE TABLE test_part_1 PARTITION OF test_part FOR VALUES FROM (1) TO (5);
 SELECT yb_get_range_split_clause('test_part_1'::regclass);
  yb_get_range_split_clause 

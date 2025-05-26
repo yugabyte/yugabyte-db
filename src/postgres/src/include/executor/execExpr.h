@@ -348,6 +348,7 @@ typedef struct ExprEvalStep
 			/* faster to access without additional indirection: */
 			PGFunction	fn_addr;	/* actual call address */
 			int			nargs;	/* number of arguments */
+			bool		make_ro;	/* make arg0 R/O (used only for NULLIF) */
 		}			func;
 
 		/* for EEOP_BOOL_*_STEP */
@@ -764,7 +765,6 @@ extern void ExecEvalConvertRowtype(ExprState *state, ExprEvalStep *op,
 extern void ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op,
 										ExprContext *econtext);
-extern void YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintNotNull(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintCheck(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op);
@@ -785,5 +785,8 @@ extern void ExecEvalAggOrderedTransDatum(ExprState *state, ExprEvalStep *op,
 										 ExprContext *econtext);
 extern void ExecEvalAggOrderedTransTuple(ExprState *state, ExprEvalStep *op,
 										 ExprContext *econtext);
+
+/* YB */
+extern void YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op);
 
 #endif							/* EXEC_EXPR_H */

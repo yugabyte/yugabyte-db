@@ -76,7 +76,10 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
 #include "lib/qunique.h"
+#include "miscadmin.h"
+#include "storage/lmgr.h"
 #include "utils/catcache.h"
+#include "utils/inval.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
@@ -1170,7 +1173,7 @@ static const char *yb_cache_index_name_table[] = {
 static_assert(SysCacheSize == sizeof(yb_cache_index_name_table) /
 			  sizeof(const char *), "Wrong catalog cache number");
 
-char *SysCacheName[] = {
+char	   *SysCacheName[] = {
 	"AGGFNOID",
 	"AMNAME",
 	"AMOID",
@@ -1314,6 +1317,7 @@ static const char *yb_cache_table_name_table[] = {
 	"pg_type",
 	"pg_user_mapping",
 	"pg_yb_tablegroup",
+	"pg_inherits"
 };
 
 static_assert(YbNumCatalogCacheTables ==
@@ -1488,9 +1492,17 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 											  0 /* nkeys */ ,
 											  NULL /* key */ );
 
+	size_t		scanned = 0;
+	instr_time	start;
+
+	if (yb_debug_log_catcache_events)
+		INSTR_TIME_SET_CURRENT(start);
+
 	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
 	{
+		scanned++;
 		SetCatCacheTuple(cache, ntp, RelationGetDescr(relation));
+
 		if (idx_cache)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
@@ -1649,6 +1661,18 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		list_free_deep(list_of_lists);
 	}
 
+	if (yb_debug_log_catcache_events)
+	{
+		instr_time	duration;
+
+		INSTR_TIME_SET_CURRENT(duration);
+		INSTR_TIME_SUBTRACT(duration, start);
+		elog(LOG, "YbPreloadCatalogCache: %ld entries added for "
+			 "cache id %d, index oid %d (relation %s), took %ld us",
+			 scanned, cache->id, cache->cc_indexoid, cache->cc_relname,
+			 INSTR_TIME_GET_MICROSEC(duration));
+	}
+
 	/* Done: mark cache(s) as loaded. */
 	if (!YBCIsInitDbModeEnvVarSet() &&
 		(IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
@@ -1743,6 +1767,7 @@ InitCatalogCachePhase2(void)
 	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
 		InitCatCachePhase2(SysCache[cacheId], true);
 }
+
 
 /*
  * SearchSysCache
@@ -1853,6 +1878,108 @@ ReleaseSysCache(HeapTuple tuple)
 }
 
 /*
+ * SearchSysCacheLocked1
+ *
+ * Combine SearchSysCache1() with acquiring a LOCKTAG_TUPLE at mode
+ * InplaceUpdateTupleLock.  This is a tool for complying with the
+ * README.tuplock section "Locking to write inplace-updated tables".  After
+ * the caller's heap_update(), it should UnlockTuple(InplaceUpdateTupleLock)
+ * and ReleaseSysCache().
+ *
+ * The returned tuple may be the subject of an uncommitted update, so this
+ * doesn't prevent the "tuple concurrently updated" error.
+ */
+HeapTuple
+SearchSysCacheLocked1(int cacheId,
+					  Datum key1)
+{
+	CatCache   *cache = SysCache[cacheId];
+	ItemPointerData tid;
+	LOCKTAG		tag;
+
+	if (!YBIsPgLockingEnabled())
+	{
+		return SearchSysCache1(cacheId, key1);
+	}
+
+	/*----------
+	 * Since inplace updates may happen just before our LockTuple(), we must
+	 * return content acquired after LockTuple() of the TID we return.  If we
+	 * just fetched twice instead of looping, the following sequence would
+	 * defeat our locking:
+	 *
+	 * GRANT:   SearchSysCache1() = TID (1,5)
+	 * GRANT:   LockTuple(pg_class, (1,5))
+	 * [no more inplace update of (1,5) until we release the lock]
+	 * CLUSTER: SearchSysCache1() = TID (1,5)
+	 * CLUSTER: heap_update() = TID (1,8)
+	 * CLUSTER: COMMIT
+	 * GRANT:   SearchSysCache1() = TID (1,8)
+	 * GRANT:   return (1,8) from SearchSysCacheLocked1()
+	 * VACUUM:  SearchSysCache1() = TID (1,8)
+	 * VACUUM:  LockTuple(pg_class, (1,8))  # two TIDs now locked for one rel
+	 * VACUUM:  inplace update
+	 * GRANT:   heap_update() = (1,9)  # lose inplace update
+	 *
+	 * In the happy case, this takes two fetches, one to determine the TID to
+	 * lock and another to get the content and confirm the TID didn't change.
+	 *
+	 * This is valid even if the row gets updated to a new TID, the old TID
+	 * becomes LP_UNUSED, and the row gets updated back to its old TID.  We'd
+	 * still hold the right LOCKTAG_TUPLE and a copy of the row captured after
+	 * the LOCKTAG_TUPLE.
+	 */
+	ItemPointerSetInvalid(&tid);
+	for (;;)
+	{
+		HeapTuple	tuple;
+		LOCKMODE	lockmode = InplaceUpdateTupleLock;
+
+		tuple = SearchSysCache1(cacheId, key1);
+		if (ItemPointerIsValid(&tid))
+		{
+			if (!HeapTupleIsValid(tuple))
+			{
+				LockRelease(&tag, lockmode, false);
+				return tuple;
+			}
+			if (ItemPointerEquals(&tid, &tuple->t_self))
+				return tuple;
+			LockRelease(&tag, lockmode, false);
+		}
+		else if (!HeapTupleIsValid(tuple))
+			return tuple;
+
+		tid = tuple->t_self;
+		ReleaseSysCache(tuple);
+
+		/*
+		 * Do like LockTuple(rel, &tid, lockmode).  While cc_relisshared won't
+		 * change from one iteration to another, it may have been a temporary
+		 * "false" until our first SearchSysCache1().
+		 */
+		SET_LOCKTAG_TUPLE(tag,
+						  cache->cc_relisshared ? InvalidOid : MyDatabaseId,
+						  cache->cc_reloid,
+						  ItemPointerGetBlockNumber(&tid),
+						  ItemPointerGetOffsetNumber(&tid));
+		(void) LockAcquire(&tag, lockmode, false, false);
+
+		/*
+		 * If an inplace update just finished, ensure we process the syscache
+		 * inval.  XXX this is insufficient: the inplace updater may not yet
+		 * have reached AtEOXact_Inval().  See test at inplace-inval.spec.
+		 *
+		 * If a heap_update() call just released its LOCKTAG_TUPLE, we'll
+		 * probably find the old tuple and reach "tuple concurrently updated".
+		 * If that heap_update() aborts, our LOCKTAG_TUPLE blocks inplace
+		 * updates while our caller works.
+		 */
+		AcceptInvalidationMessages();
+	}
+}
+
+/*
  * SearchSysCacheCopy
  *
  * A convenience routine that does SearchSysCache and (if successful)
@@ -1871,6 +1998,28 @@ SearchSysCacheCopy(int cacheId,
 				newtuple;
 
 	tuple = SearchSysCache(cacheId, key1, key2, key3, key4);
+	if (!HeapTupleIsValid(tuple))
+		return tuple;
+	newtuple = heap_copytuple(tuple);
+	ReleaseSysCache(tuple);
+	return newtuple;
+}
+
+/*
+ * SearchSysCacheLockedCopy1
+ *
+ * Meld SearchSysCacheLockedCopy1 with SearchSysCacheCopy().  After the
+ * caller's heap_update(), it should UnlockTuple(InplaceUpdateTupleLock) and
+ * heap_freetuple().
+ */
+HeapTuple
+SearchSysCacheLockedCopy1(int cacheId,
+						  Datum key1)
+{
+	HeapTuple	tuple,
+				newtuple;
+
+	tuple = SearchSysCacheLocked1(cacheId, key1);
 	if (!HeapTupleIsValid(tuple))
 		return tuple;
 	newtuple = heap_copytuple(tuple);
@@ -2389,7 +2538,7 @@ YbCheckSysCacheNames()
 #undef CHECK_SYSCACHE_NAME
 	return true;
 }
-#endif /* NDEBUG */
+#endif							/* NDEBUG */
 
 const char *
 YbGetCatalogCacheIndexName(int cache_id)
@@ -2424,7 +2573,8 @@ YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4)
 {
 	elog(LOG, "Computing hash for cache_id: %d, v1: %ld, v2: %ld, v3: %ld, v4: %ld",
 		 cache_id, v1, v2, v3, v4);
-	CatCache *cache = SysCache[cache_id];
+	CatCache   *cache = SysCache[cache_id];
+
 	return YbCatalogCacheComputeHashValue(cache, v1, v2, v3, v4);
 }
 

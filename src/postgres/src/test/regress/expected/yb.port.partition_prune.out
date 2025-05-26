@@ -1070,20 +1070,25 @@ explain (costs off) select * from boolpart where a is true or a is not true;
          Filter: ((a IS TRUE) OR (a IS NOT TRUE))
    ->  Seq Scan on boolpart_t boolpart_2
          Filter: ((a IS TRUE) OR (a IS NOT TRUE))
-(5 rows)
+   ->  Seq Scan on boolpart_default boolpart_3
+         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+(7 rows)
 
 explain (costs off) select * from boolpart where a is not true;
-           QUERY PLAN            
----------------------------------
- Seq Scan on boolpart_f boolpart
-   Filter: (a IS NOT TRUE)
-(2 rows)
+                  QUERY PLAN                   
+-----------------------------------------------
+ Append
+   ->  Seq Scan on boolpart_f boolpart_1
+         Filter: (a IS NOT TRUE)
+   ->  Seq Scan on boolpart_default boolpart_2
+         Filter: (a IS NOT TRUE)
+(5 rows)
 
 explain (costs off) select * from boolpart where a is not true and a is not false;
-        QUERY PLAN        
---------------------------
- Result boolpart
-   One-Time Filter: false
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on boolpart_default boolpart
+   Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
 (2 rows)
 
 explain (costs off) select * from boolpart where a is unknown;
@@ -2088,42 +2093,51 @@ select * from ab where a = (select max(a) from lprt_a) and b = (select max(a)-1 
            ->  Seq Scan on lprt_a lprt_a_1 (actual rows=3 loops=1)
                  Partial Aggregate: true
    ->  YB Bitmap Table Scan on ab_a1_b1 ab_1 (never executed)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a1_b1_a_idx (never executed)
                Index Cond: (a = $0)
    ->  YB Bitmap Table Scan on ab_a1_b2 ab_2 (never executed)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a1_b2_a_idx (never executed)
                Index Cond: (a = $0)
    ->  YB Bitmap Table Scan on ab_a1_b3 ab_3 (never executed)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a1_b3_a_idx (never executed)
                Index Cond: (a = $0)
    ->  YB Bitmap Table Scan on ab_a2_b1 ab_4 (never executed)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a2_b1_a_idx (never executed)
                Index Cond: (a = $0)
    ->  YB Bitmap Table Scan on ab_a2_b2 ab_5 (never executed)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a2_b2_a_idx (never executed)
                Index Cond: (a = $0)
    ->  YB Bitmap Table Scan on ab_a2_b3 ab_6 (never executed)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a2_b3_a_idx (never executed)
                Index Cond: (a = $0)
    ->  YB Bitmap Table Scan on ab_a3_b1 ab_7 (never executed)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a3_b1_a_idx (never executed)
                Index Cond: (a = $0)
    ->  YB Bitmap Table Scan on ab_a3_b2 ab_8 (actual rows=0 loops=1)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a3_b2_a_idx (actual rows=0 loops=1)
                Index Cond: (a = $0)
    ->  YB Bitmap Table Scan on ab_a3_b3 ab_9 (never executed)
+         Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a3_b3_a_idx (never executed)
                Index Cond: (a = $0)
-(45 rows)
+(54 rows)
 
 -- Test run-time partition pruning with UNION ALL parents
 explain (analyze, costs off, summary off, timing off)

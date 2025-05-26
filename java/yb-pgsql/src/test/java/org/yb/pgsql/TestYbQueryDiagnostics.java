@@ -36,6 +36,7 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -52,7 +53,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.json.JSONObject;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -119,45 +119,34 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     // Use regex to split on commas not inside quotes
     private static final String pgssRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)";
 
-    private Map<String, String> queryDiagnosticsFlags() throws Exception {
+    private Map<String, String> queryDiagnosticsFlags() {
         Map<String, String> flagMap = super.getTServerFlags();
         flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_query_diagnostics");
         flagMap.put("ysql_yb_enable_query_diagnostics", "true");
-
-        /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
         flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(ASH_SAMPLING_INTERVAL_MS));
-
         return flagMap;
     }
 
-    @Before
-    public void setUp() throws Exception {
-        Map<String, String> flagMap = queryDiagnosticsFlags();
-        restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
-        setUpPreparedStatement();
+    // Base setup method with default configuration
+    public void setUpQueryDiagnostics() throws Exception {
+        setUpQueryDiagnostics(Collections.emptyMap());
     }
 
-    /* TODO(#26574): Fix triggering restartCluster twice for tests calling setUp manually */
-    public void setUp(int queryDiagnosticsCircularBufferSize) throws Exception {
+    // Setup method with customizable flags
+    public void setUpQueryDiagnostics(Map<String, String> additionalFlags) throws Exception {
         Map<String, String> flagMap = queryDiagnosticsFlags();
 
-        appendToYsqlPgConf(flagMap,
-                "yb_query_diagnostics_circular_buffer_size=" +
-                        queryDiagnosticsCircularBufferSize);
+        if (!additionalFlags.isEmpty()) {
+            if (additionalFlags.containsKey("ysql_pg_conf_csv")) {
+                appendToYsqlPgConf(flagMap, additionalFlags.get("ysql_pg_conf_csv"));
+                additionalFlags.remove("ysql_pg_conf_csv");
+            }
+
+            flagMap.putAll(additionalFlags);
+        }
+
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
-        setUpPreparedStatement();
-    }
-
-    /* TODO(#26574): Fix triggering restartCluster twice for tests calling setUp manually */
-    public void setUpWithBgworkerRaceConditionTestFlag() throws Exception {
-        Map<String, String> flagMap = queryDiagnosticsFlags();
-
-        flagMap.put("TEST_ysql_yb_query_diagnostics_race_condition", "true");
-        restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
         setUpPreparedStatement();
     }
 
@@ -379,16 +368,10 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         try {
             TestUtils.waitFor(() -> {
                 return !isBackgroundWorkerRunning(databaseConnectionBgworkerName);
-            }, 10000L, 1000);
+            }, 20000L, 1000);
         } catch (Exception e) {
             fail("DatabaseConnectionBgWorker did not complete as expected");
         }
-        //sleepfor 5sec
-        // try {
-        //     Thread.sleep(5000);
-        // } catch (InterruptedException e) {
-        //     fail("DatabaseConnectionBgWorker did not complete as expected");
-        // }
     }
 
     /*
@@ -784,6 +767,44 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return queryText;
     }
 
+    private void setUpTablesForCboStats() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA test_schema");
+            statement.execute("CREATE TABLE test_schema.table1 (id INTEGER)");
+            statement.execute("CREATE TABLE test_schema.table2 (name TEXT)");
+
+            // Instead of inserting data we directly
+            // import statistics that are generated from cbo_stat_dump tool
+            ImportStatistics();
+        }
+    }
+
+    private void ImportStatistics() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            String importStatsPath = "src/test/resources/import_statistics.sql";
+
+            try {
+                Path path = Paths.get(importStatsPath);
+                List<String> sqlStatements = Files.readAllLines(path);
+                for (String sql : sqlStatements) {
+                    LOG.info("Executing SQL: " + sql);
+                    if (!sql.trim().isEmpty() && !sql.trim().startsWith("--")) {
+                        statement.execute(sql);
+                    }
+                }
+            } catch (Exception e) {
+                throw new Exception(
+                        "Failed to execute import_statistics.sql: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    private String getQueryWithAllTablesJoined() throws Exception {
+        return "SELECT * " + //
+               "FROM test_schema.table1 t1 " + //
+               "CROSS JOIN test_schema.table2 t2";
+    }
+
     private void validateAgainstFile(String expectedFilePath, String actualData) throws Exception{
 
         Path expectedOutputPath = Paths.get(expectedFilePath);
@@ -949,6 +970,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void checkBindVariablesData() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -994,6 +1016,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void checkConstantsData() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1050,6 +1073,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testMixedConstantsAndBindVariables() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1131,6 +1155,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testYbQueryDiagnosticsStatus() throws Exception {
+        setUpQueryDiagnostics();
         try (Statement statement = connection.createStatement()) {
             /*
              * We use random number for the queryid, as we are not doing any accumulation of data,
@@ -1238,6 +1263,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testBufferSizeUpdateAfterShmemInit() throws Exception {
+        setUpQueryDiagnostics();
         try (Statement statement = connection.createStatement()) {
             try {
                statement.executeQuery("set yb_query_diagnostics_circular_buffer_size to 50");
@@ -1253,7 +1279,10 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testCircularBufferWrapAround() throws Exception {
-        setUp(15);
+        Map<String, String> extraFlags = new HashMap<>();
+        extraFlags.put("ysql_pg_conf_csv",
+                       "yb_query_diagnostics_circular_buffer_size=15");
+        setUpQueryDiagnostics(extraFlags);
 
         try (Statement statement = connection.createStatement()) {
             /* running several bundles ensure buffer wraps around */
@@ -1263,6 +1292,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkAshData() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
                 diagnosticsInterval /* diagnosticsInterval */,
@@ -1296,6 +1326,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkPgssData() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1326,6 +1357,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testPgssResetBetweenDiagnostics() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1381,6 +1413,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void emptyBundle() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1426,6 +1459,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testIntermediateFlushing() throws Exception {
+        setUpQueryDiagnostics();
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
             String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
@@ -1505,6 +1539,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkSchemaDetailsData() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1546,6 +1581,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testSchemaDetailsDataLimit() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1641,6 +1677,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testYbCancelQueryDiagnostics() throws Exception {
+        setUpQueryDiagnostics();
         int bundle1Interval = 1;
         int bundle2Interval = 5;
         int bundle3Interval = 10;
@@ -1732,6 +1769,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testComplexQuery() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 5;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
@@ -1789,6 +1827,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testLongQueryWith5000Constants() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
@@ -1851,6 +1890,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testExplainDistWithoutExplainAnalyze() throws Exception {
+        setUpQueryDiagnostics();
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             2, /* diagnosticsInterval */
             100, /* explainSampleRate */
@@ -1883,6 +1923,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testConstantsForMultiThreadedQueryDiagnostics() throws Exception {
+        setUpQueryDiagnostics();
         final int diagnosticsInterval = 10;
         final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
@@ -1974,6 +2015,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testInterruptsHandling() throws Exception {
+        setUpQueryDiagnostics();
         try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE DATABASE db1");
             statement.execute("ALTER DATABASE db1 RENAME TO db2");
@@ -1986,6 +2028,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testDynamicBackgroundWorker() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 10;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
                 diagnosticsInterval,
@@ -2039,6 +2082,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testDatabaseConnectionBackgroundWorker() throws Exception {
+        setUpQueryDiagnostics();
         final int diagnosticsInterval = 10;
         final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
@@ -2100,7 +2144,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testBgworkerRaceConditionTimeout() throws Exception {
-        setUpWithBgworkerRaceConditionTestFlag();
+        setUpQueryDiagnostics(Collections.singletonMap(
+                "TEST_ysql_yb_query_diagnostics_race_condition", "true"));
 
         final int diagnosticsInterval = 10;
         final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
@@ -2129,7 +2174,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testBgworkerRaceConditionResolved() throws Exception {
-        setUpWithBgworkerRaceConditionTestFlag();
+        setUpQueryDiagnostics(Collections.singletonMap(
+                "TEST_ysql_yb_query_diagnostics_race_condition", "true"));
 
         final int diagnosticsInterval = 10;
         final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
@@ -2155,4 +2201,201 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
+    /*
+     * This test verifies the proper functioning of
+     * yb_query_diagnostics_disable_database_connection_bgworker flag
+     */
+    @Test
+    public void testDisablingDatabaseConnectionBgworker() throws Exception {
+        setUpQueryDiagnostics();
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            printQueryOutput(statement,
+                "SHOW yb_query_diagnostics_disable_database_connection_bgworker");
+
+            String queryid = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+
+            // This prevents us from "no query executed" warning
+            statement.execute("EXECUTE stmt('var1', 1, 1.1)");
+
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
+
+            assertTrue("schema_details file does not exist", Files.exists(schemaDetailsPath));
+            assertGreaterThan("schema_details.txt file is empty",
+                    Files.size(schemaDetailsPath), 0L);
+        }
+
+        setUpQueryDiagnostics(Collections.singletonMap(
+            "ysql_yb_query_diagnostics_disable_database_connection_bgworker", "true"));
+
+        try(Statement statement = connection.createStatement()) {
+            printQueryOutput(statement,
+                "SHOW yb_query_diagnostics_disable_database_connection_bgworker");
+
+            String queryid = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+
+            // This prevents us from "no query executed" warning
+            statement.execute("EXECUTE stmt('var1', 1, 1.1)");
+
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+
+            /*
+             * Sleep to ensure that non-existence of schema details file is not because
+             * database connection bgworker did exist but didn't finish, we want to test for
+             * database connection bgworker didn't exist.
+             */
+            Thread.sleep(10000);
+
+            Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
+
+            assertFalse("schema_details file should not exist", Files.exists(schemaDetailsPath));
+        }
+    }
+
+    /*
+     * Tests if yb_query_diagnostics_status view is persistent across crashes.
+     */
+    @Test
+    public void testViewPersistence() throws Exception {
+        setUpQueryDiagnostics();
+
+        int successfulDiagnosticsInterval = 10;
+        Path successfulBundlePath;
+        String successfulQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams successfulParams = new QueryDiagnosticsParams(
+                successfulDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        Path inProgressBundlePath;
+        int inProgressDiagnosticsInterval = 100;
+        String inProgressQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams inProgressParams = new QueryDiagnosticsParams(
+                inProgressDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        Path cancelledBundlePath;
+        int cancelledDiagnosticsInterval = 100;
+        String cancelQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams cancelledParams = new QueryDiagnosticsParams(
+                cancelledDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            // successful bundle
+            successfulBundlePath = runQueryDiagnostics(statement,
+                                                       successfulQueryId, successfulParams);
+            waitForBundleCompletion(successfulQueryId, statement, successfulDiagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            // bundle in progress
+            inProgressBundlePath = runQueryDiagnostics(statement, inProgressQueryId,
+                                                       inProgressParams);
+
+            // cancel bundle
+            cancelledBundlePath = runQueryDiagnostics(statement, cancelQueryId, cancelledParams);
+            statement.execute("SELECT yb_cancel_query_diagnostics('" + cancelQueryId + "')");
+
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
+        }
+
+        miniCluster.restart();
+        connection = getConnectionBuilder().connect();
+
+        try (Statement statement = connection.createStatement()) {
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
+
+            // successful bundle
+            QueryDiagnosticsStatus successfulBundleViewEntry =
+                    getViewData(statement, successfulQueryId, "");
+            QueryDiagnosticsStatus expectedSuccessfulBundleViewEntry =
+                    new QueryDiagnosticsStatus(successfulBundlePath, "Success",
+                                               noQueriesExecutedWarning, successfulParams);
+            assertQueryDiagnosticsStatus(expectedSuccessfulBundleViewEntry,
+                    successfulBundleViewEntry);
+
+            // bundle in progress
+            QueryDiagnosticsStatus inProgressBundleViewEntry =
+                    getViewData(statement, inProgressQueryId, "");
+            QueryDiagnosticsStatus expectedInProgressBundleViewEntry = new QueryDiagnosticsStatus(
+                    inProgressBundlePath, "Postmaster Shutdown", "", inProgressParams);
+            assertQueryDiagnosticsStatus(expectedInProgressBundleViewEntry,
+                    inProgressBundleViewEntry);
+
+            // cancelled bundle
+            QueryDiagnosticsStatus cancelledBundleViewEntry =
+                    getViewData(statement, cancelQueryId, "");
+            QueryDiagnosticsStatus expectedCancelledBundleViewEntry =
+                    new QueryDiagnosticsStatus(cancelledBundlePath, "Cancelled",
+                                               "Bundle was cancelled", cancelledParams);
+            assertQueryDiagnosticsStatus(expectedCancelledBundleViewEntry,
+                                         cancelledBundleViewEntry);
+        }
+    }
+
+    @Test
+    public void testCboStats() throws Exception {
+        setUpQueryDiagnostics();
+
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            setUpTablesForCboStats();
+            String query = getQueryWithAllTablesJoined();
+
+            printQueryOutput(statement, query);
+
+            String queryId = getQueryIdFromPgStatStatements(statement, query);
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId,
+                    queryDiagnosticsParams);
+            statement.execute(query);
+
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            Path statisticsJsonPath = getFilePathFromBaseDir(bundleDataPath,
+                    "statistics.json");
+            assertTrue("statistics.json file does not exist",
+                    Files.exists(statisticsJsonPath));
+            assertGreaterThan("statistics.json file is empty",
+                    Files.size(statisticsJsonPath), 0L);
+            String statisticsJsonContent = new String(Files.readAllBytes(statisticsJsonPath));
+            LOG.info("Statistics JSON content:\n" + statisticsJsonContent);
+
+            validateAgainstFile(
+                    "src/test/resources/expected/statistics_json.out",
+                    statisticsJsonContent);
+        }
+    }
 }

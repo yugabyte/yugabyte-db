@@ -909,7 +909,7 @@ acldefault_sql(PG_FUNCTION_ARGS)
 		case 'T':
 			objtype = OBJECT_TYPE;
 			break;
-		case 'g':
+		case 'g':				/* YB */
 			objtype = OBJECT_YBTABLEGROUP;
 			break;
 		default:

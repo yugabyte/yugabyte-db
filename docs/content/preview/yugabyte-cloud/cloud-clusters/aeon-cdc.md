@@ -250,6 +250,31 @@ To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/)
     replication=database"
 ```
 
+### Permissions
+
+By default, only the admin user can configure CDC streaming. For clusters created using YugabyteDB v2024.1.0 or later, you can additionally enable or disable replication for other users using the following functions:
+
+- `enable_replication_role('username')` – Enables replication for the specified user.
+- `disable_replication_role('username')` – Disables replication for the specified user.
+
+For example, to enable replication for the user `replication_user`:
+
+```sql
+SELECT enable_replication_role('replication_user');
+```
+
+To disable replication for the user:
+
+```sql
+SELECT disable_replication_role('replication_user');
+```
+
+Note the following:
+
+- Only the admin user (created when you created the cluster) can execute these functions.
+- The functions are only available in the `yugabyte` database.
+- The functions aren't available for clusters which are already on v2024.1.0 or later (created prior to April 2, 2025), only newly created clusters, or clusters that are newly upgraded to v2024.1.0.
+
 ## FAQ
 
 ### How do I turn off CDC?

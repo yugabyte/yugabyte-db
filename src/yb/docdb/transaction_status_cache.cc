@@ -157,7 +157,7 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
     } else {
       LOG(INFO) << "TXN: " << transaction_id << ": Timed out waiting txn status, waited: "
                 << MonoDelta(CoarseMonoClock::now() - wait_start)
-                << ", future status: " << to_underlying(future_status)
+                << ", future status: " << std::to_underlying(future_status)
                 << ", left to deadline: " << MonoDelta(deadline_ - CoarseMonoClock::now());
       if (waiter.ExpiredNow()) {
         return StatusWaitTimedOut(transaction_id);

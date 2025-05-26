@@ -47,7 +47,7 @@ The Kubernetes cluster and nodes must meet the following software criteria:
 
 - Operating System: any Linux OS
 - Kubernetes cluster and Helm version:
-  - Kubernetes 1.22+
+  - Kubernetes 1.26+
   - Helm 3.11.3+
   - For OpenShift, versions 4.6+ of the OpenShift Container Platform (OCP) are supported
 - Additional software or information
@@ -55,7 +55,7 @@ The Kubernetes cluster and nodes must meet the following software criteria:
 
 The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
 
-- Kubernetes - 1.22 to 1.25
+- Kubernetes - 1.26 to 1.33
 - Helm - 3.11.3
 
 To get the secret, contact your YugabyteDB representative in Sales or Support. It allows download access to the YBA binaries from the YugabyteDB Helm repository.

@@ -123,7 +123,6 @@ CREATE FOREIGN TABLE text_csv (
 ) SERVER file_server
 OPTIONS (format 'text', filename :'filename', null 'NULL');
 SELECT * FROM text_csv; -- ERROR
--- YB note: Enable ALTER TABLE here and remove DROP/CREATE when #1124 is closed
 ALTER FOREIGN TABLE text_csv OPTIONS (SET format 'csv');
 DROP FOREIGN TABLE text_csv;
 CREATE FOREIGN TABLE text_csv (
@@ -200,15 +199,15 @@ RESET constraint_exclusion;
 CREATE TABLE agg (a int2, b float4);
 -- YB note: Enable when ALTER TABLE INHERIT from #1124 is supported
 ALTER FOREIGN TABLE agg_csv INHERIT agg;
---SELECT tableoid::regclass, * FROM agg;
---SELECT tableoid::regclass, * FROM agg_csv;
---SELECT tableoid::regclass, * FROM ONLY agg;
----- updates aren't supported
---UPDATE agg SET a = 1;
---DELETE FROM agg WHERE a = 100;
----- but this should be allowed
---SELECT tableoid::regclass, * FROM agg FOR UPDATE;
---ALTER FOREIGN TABLE agg_csv NO INHERIT agg;
+SELECT tableoid::regclass, * FROM agg;
+SELECT tableoid::regclass, * FROM agg_csv;
+SELECT tableoid::regclass, * FROM ONLY agg;
+-- updates aren't supported
+UPDATE agg SET a = 1;
+DELETE FROM agg WHERE a = 100;
+-- but this should be allowed
+--SELECT tableoid::regclass, * FROM agg FOR UPDATE;  -- YB: triggers a crash #27105
+ALTER FOREIGN TABLE agg_csv NO INHERIT agg;
 DROP TABLE agg;
 
 -- declarative partitioning tests
@@ -262,10 +261,8 @@ SELECT * FROM agg_text ORDER BY a;
 -- privilege tests for object
 SET ROLE regress_file_fdw_superuser;
 ALTER FOREIGN TABLE agg_text OWNER TO regress_file_fdw_user;
--- YB note: Change expected output when ALTER TABLE from #1124 is supported
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
 SET ROLE regress_file_fdw_user;
--- YB note: Change expected output when ALTER TABLE from #1124 is supported
 ALTER FOREIGN TABLE agg_text OPTIONS (SET format 'text');
 SET ROLE regress_file_fdw_superuser;
 

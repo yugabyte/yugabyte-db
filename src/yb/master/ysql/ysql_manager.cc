@@ -32,12 +32,8 @@
 DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
     "Automatically run initdb on master leader initialization");
 
-DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 1,
-                          "Number of advisory lock tablets. Must be set "
-                          "before ysql_yb_enable_advisory_locks is set to true");
+DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 1, "Number of advisory lock tablets");
 DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
-
-DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb::master {
 
@@ -200,7 +196,7 @@ Status YsqlManager::GetYsqlMajorCatalogUpgradeState(
 }
 
 Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch) {
-  if (advisory_locks_table_created_ || !FLAGS_enable_ysql || !FLAGS_ysql_yb_enable_advisory_locks) {
+  if (advisory_locks_table_created_ || !FLAGS_enable_ysql) {
     return Status::OK();
   }
 

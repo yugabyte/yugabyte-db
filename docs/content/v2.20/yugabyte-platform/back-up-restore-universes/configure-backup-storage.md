@@ -93,30 +93,42 @@ To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` 
 
 ## Google Cloud Storage
 
-You can configure Google Cloud Storage (GCS) as your backup target, as follows:
+You can configure Google Cloud Storage (GCS) as your backup target.
 
-1. Navigate to **Configs > Backup > Google Cloud Storage**.
+### Required GCP service account permissions
 
-1. Click **Create GCS Backup** to access the configuration form shown in the following illustration:
+To grant access to your bucket, create a GCP service account with [IAM roles for cloud storage](https://cloud.google.com/storage/docs/access-control/iam-roles) with the following permissions:
 
-    ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs-stable.png)
+```sh
+roles/storage.admin
+```
 
-1. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
-
-1. Enter the URI of your GCS bucket in the **GCS Bucket** field. For example, `gs://gcp-bucket/test_backups`.
-
-1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
-
-1. Complete the **GCS Bucket** and **GCS Credentials** fields.
-
-    For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
-
-1. Click **Save**.
+The credentials for this account (in JSON format) are used when creating the backup storage configuration. For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
 
 You can configure access control for the GCS bucket as follows:
 
 - Provide the required access control list (ACL) and set it as either uniform or fine-grained (for object-level access).
 - Add permissions, such as roles and members.
+
+### Create a GCS backup configuration
+
+To create a GCP backup configuration, do the following:
+
+1. Navigate to **Integrations > Backup > Google Cloud Storage**.
+
+1. Click **Create GCS Backup**.
+
+    ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs-stable.png)
+
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+1. Enter the URI of your GCS bucket in the **GCS Bucket** field. For example, `gs://gcp-bucket/test_backups`.
+
+1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
+
+1. Enter the credentials for your account in JSON format in the **GCS Credentials** field.
+
+1. Click **Save**.
 
 ### GKE service account-based IAM (GCP IAM)
 
@@ -128,7 +140,13 @@ Workload Identity links a KSA to an IAM account using annotations in the KSA. Po
 
 By using Workload Identity, you avoid the need for manually managing service account keys or tokens in your applications running on GKE. This approach enhances security and simplifies the management of credentials.
 
-#### Prerequisites
+- To enable GCP IAM when installing YugabyteDB Anywhere, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
+
+- To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
+
+- To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
+
+**Prerequisites**
 
 - The GKE cluster hosting the pods should have Workload Identity enabled. The worker nodes of this GKE cluster should have the GKE metadata server enabled.
 
@@ -137,12 +155,6 @@ By using Workload Identity, you avoid the need for manually managing service acc
 - The KSA, which is annotated with the IAM service account, should be present in the same namespace where the pod resources for YugabyteDB Anywhere and YugabyteDB universes are expected. If you have multiple namespaces, each namespace should include the annotated KSA.
 
 For instructions on setting up Workload Identity, see [Use Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the GKE documentation.
-
-To enable GCP IAM when installing YBA, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
-
-To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides).
-
-To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
 
 ## Azure Storage
 
@@ -168,6 +180,7 @@ You can configure Azure as your backup target.
 
     - Navigate to **Storage account > Shared access signature**, as shown in the following illustration. (Note that you must generate the SAS Token on the Storage Account, not the Container. Generating the SAS Token on the container will prevent the configuration from being applied.)
     - Under **Allowed resource types**, select **Container** and **Object**.
+    - Under **Allowed permissions**, select all options as shown.
     - Click **Generate SAS and connection string** and copy the SAS token.
 
         ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)

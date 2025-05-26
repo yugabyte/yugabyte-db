@@ -4,6 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import static play.mvc.Http.Status.FORBIDDEN;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -27,9 +30,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -94,6 +99,30 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final JWTVerifier jwtVerifier;
 
+  private final LoadingCache<String, Optional<UUID>> authTokenCache =
+      CacheBuilder.newBuilder()
+          .maximumSize(10000)
+          .expireAfterWrite(10, TimeUnit.MINUTES)
+          .build(
+              new CacheLoader<>() {
+                public Optional<UUID> load(String token) {
+                  Users user = Users.authWithToken(token, getAuthTokenExpiry());
+                  return Optional.ofNullable(user != null ? user.getUuid() : null);
+                }
+              });
+
+  private final LoadingCache<String, Optional<UUID>> apiTokenCache =
+      CacheBuilder.newBuilder()
+          .maximumSize(10000)
+          .expireAfterWrite(10, TimeUnit.MINUTES)
+          .build(
+              new CacheLoader<>() {
+                public Optional<UUID> load(String token) {
+                  Users user = Users.authWithApiToken(token);
+                  return Optional.ofNullable(user != null ? user.getUuid() : null);
+                }
+              });
+
   @Inject
   public TokenAuthenticator(
       Config config,
@@ -134,14 +163,14 @@ public class TokenAuthenticator extends Action.Simple {
       if (user == null) {
         // Defaulting to regular flow to support dual login.
         token = fetchToken(request, false /* isApiToken */);
-        user = Users.authWithToken(token, getAuthTokenExpiry());
+        user = authWithToken(token, false);
         if (user != null && !user.getRole().equals(Users.Role.SuperAdmin)) {
           user = null; // We want to only allow SuperAdmins access.
         }
       }
     } else {
       token = fetchToken(request, false /* isApiToken */);
-      user = Users.authWithToken(token, getAuthTokenExpiry());
+      user = authWithToken(token, false);
     }
     if (user == null && !cookieValue.isPresent()) {
       token = fetchToken(request, true /* isApiToken */);
@@ -151,7 +180,7 @@ public class TokenAuthenticator extends Action.Simple {
           user = Users.getOrBadRequest(userUuid);
         }
       } else {
-        user = Users.authWithApiToken(token);
+        user = authWithToken(token, true);
       }
     }
     return user;
@@ -216,12 +245,12 @@ public class TokenAuthenticator extends Action.Simple {
 
   public boolean checkAuthentication(Http.Request request, Set<Users.Role> roles) {
     String token = fetchToken(request, true);
-    Users user = null;
+    Users user;
     if (token != null) {
-      user = Users.authWithApiToken(token);
+      user = authWithToken(token, true);
     } else {
       token = fetchToken(request, false);
-      user = Users.authWithToken(token, getAuthTokenExpiry());
+      user = authWithToken(token, false);
     }
     if (user != null) {
       boolean foundRole = false;
@@ -304,6 +333,10 @@ public class TokenAuthenticator extends Action.Simple {
       return userUUID.equals(user.getUuid());
     }
 
+    if (endPoint.endsWith("/reset_password")) {
+      return true;
+    }
+
     if (requestType.equals("GET")
         && (endPoint.endsWith("/users/" + user.getUuid())
             || path.endsWith("/customers/" + user.getCustomerUUID()))) {
@@ -346,7 +379,9 @@ public class TokenAuthenticator extends Action.Simple {
         || endPoint.endsWith("create_backup_schedule")
         || endPoint.endsWith("create_backup_schedule_async")
         || endPoint.contains("/schedules")
-        || endPoint.endsWith("/restore")) {
+        || endPoint.endsWith("/restore")
+        || endPoint.endsWith("/restore/preflight")
+        || endPoint.endsWith("/restore/advanced_restore_preflight")) {
       return true;
     }
     // If the user is backupAdmin, they don't get further access.
@@ -356,5 +391,16 @@ public class TokenAuthenticator extends Action.Simple {
 
   private Duration getAuthTokenExpiry() {
     return config.getDuration("yb.authtoken.token_expiry");
+  }
+
+  private Users authWithToken(String token, boolean apiToken) {
+    if (StringUtils.isEmpty(token)) {
+      return null;
+    }
+    UUID userUuid = (apiToken ? apiTokenCache : authTokenCache).getUnchecked(token).orElse(null);
+    if (userUuid == null) {
+      return null;
+    }
+    return Users.get(userUuid);
   }
 }

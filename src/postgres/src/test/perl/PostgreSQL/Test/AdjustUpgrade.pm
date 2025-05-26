@@ -255,6 +255,11 @@ sub adjust_old_dumpfile
 	# Version comments will certainly not match.
 	$dump =~ s/^-- Dumped from database version.*\n//mg;
 
+	# Same with version argument to pg_restore_relation_stats() or
+	# pg_restore_attribute_stats().
+	$dump =~ s {(^\s+'version',) '\d+'::integer,$}
+		{$1 '000000'::integer,}mg;
+
 	if ($old_version < 14)
 	{
 		# Remove mentions of extended hash functions.
@@ -275,6 +280,18 @@ sub adjust_old_dumpfile
 			(^CREATE\sTRIGGER\s.*?)
 			\sEXECUTE\sPROCEDURE
 			/$1 EXECUTE FUNCTION/mgx;
+	}
+
+	# During pg_upgrade, we reindex hash indexes if the source is pre-v10.
+	# This may change their tables' relallvisible values, so don't compare
+	# those.
+	if ($old_version < 10)
+	{
+		$dump =~ s/
+			(^SELECT\s\*\sFROM\spg_catalog\.pg_restore_relation_stats\(
+			[^;]*'relation',\s'public\.hash_[a-z0-9]*_heap'::regclass,
+			[^;]*'relallvisible',)\s'\d+'::integer
+			/$1 ''::integer/mgx;
 	}
 
 	if ($old_version lt '9.6')
@@ -437,6 +454,11 @@ sub adjust_new_dumpfile
 	# Version comments will certainly not match.
 	$dump =~ s/^-- Dumped from database version.*\n//mg;
 
+	# Same with version argument to pg_restore_relation_stats() or
+	# pg_restore_attribute_stats().
+	$dump =~ s {(^\s+'version',) '\d+'::integer,$}
+		{$1 '000000'::integer,}mg;
+
 	if ($old_version < 14)
 	{
 		# Suppress noise-word uses of IN in CREATE/ALTER PROCEDURE.
@@ -466,6 +488,18 @@ sub adjust_new_dumpfile
 	if ($old_version < 12)
 	{
 		$dump =~ s/^SET default_table_access_method = heap;\n//mg;
+	}
+
+	# During pg_upgrade, we reindex hash indexes if the source is pre-v10.
+	# This may change their tables' relallvisible values, so don't compare
+	# those.
+	if ($old_version < 10)
+	{
+		$dump =~ s/
+			(^SELECT\s\*\sFROM\spg_catalog\.pg_restore_relation_stats\(
+			[^;]*'relation',\s'public\.hash_[a-z0-9]*_heap'::regclass,
+			[^;]*'relallvisible',)\s'\d+'::integer
+			/$1 ''::integer/mgx;
 	}
 
 	# dumps from pre-9.6 dblink may include redundant ACL settings

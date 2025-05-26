@@ -18,7 +18,7 @@ type: indexpage
 {{< page-finder/head text="Back Up and Restore" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/back-up-restore-universes/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="../../yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
 {{< /page-finder/head >}}
 
 Backup and restoration is the process of creating and storing copies of your data for protection against data loss. With a proper backup strategy, you can always restore your data to a most-recent known working state and minimize application downtime. This in turn guarantees business and application continuity.
@@ -46,30 +46,30 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     title="Export and import"
     body="Export and import data using SQL or CQL scripts."
     href="export-import-data/"
-    icon="fa-light fa-file-import">}}
+    icon="fa-thin fa-file-import">}}
 
   {{<index/item
     title="Distributed snapshots"
     body="Back up and restore data using distributed snapshots."
     href="snapshot-ysql/"
-    icon="fa-light fa-camera">}}
+    icon="fa-thin fa-camera">}}
 
   {{<index/item
     title="Point-in-time recovery"
     body="Restore data to a particular point in time."
     href="point-in-time-recovery/"
-    icon="fa-light fa-timeline-arrow">}}
+    icon="fa-thin fa-timeline-arrow">}}
 
   {{<index/item
     title="Instant database cloning"
     body="Clone a database for data recovery, development, and testing."
     href="instant-db-cloning/"
-    icon="fa-light fa-clone">}}
+    icon="fa-thin fa-clone">}}
 
   {{<index/item
     title="Time travel query"
     body="Query data as at a specific point in time."
     href="time-travel-query/"
-    icon="fa-light fa-clock-rotate-left">}}
+    icon="fa-thin fa-clock-rotate-left">}}
 
 {{</index/block>}}

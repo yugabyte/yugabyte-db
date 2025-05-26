@@ -92,7 +92,6 @@ public class TestPgTransactions extends BasePgSQLTest {
   void runWithFailOnConflict() throws Exception {
     // Some of these tests depend on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    markClusterNeedsRecreation();
     Map<String, String> FailOnConflictTestGflags = new TreeMap<String, String>()
       {
         {

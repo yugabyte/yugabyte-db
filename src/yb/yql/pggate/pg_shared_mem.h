@@ -15,7 +15,7 @@
 
 #include <string_view>
 
-#include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/status_fwd.h"

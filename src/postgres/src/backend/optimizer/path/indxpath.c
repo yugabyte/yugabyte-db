@@ -132,8 +132,6 @@ static Path *choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel,
 static int	path_usage_comparator(const void *a, const void *b);
 static Cost bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
 								 Path *ipath);
-static Cost yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
-									Path *ipath);
 static Cost bitmap_and_cost_est(PlannerInfo *root, RelOptInfo *rel,
 								List *paths);
 static PathClauseUsage *classify_index_clause_usage(Path *path,
@@ -209,9 +207,14 @@ static Expr *match_clause_to_ordering_op(IndexOptInfo *index,
 static bool ec_member_matches_indexcol(PlannerInfo *root, RelOptInfo *rel,
 									   EquivalenceClass *ec, EquivalenceMember *em,
 									   void *arg);
+
+/* YB declarations */
 static bool is_hash_column_in_lsm_index(const IndexOptInfo *index, int columnIndex);
+static Cost yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
+									Path *ipath);
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
 static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
+
 
 /*
  * create_index_paths()
@@ -1573,9 +1576,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			if (yb_distinct_prefixlen >= 0)
 			{
 				Path	   *distinct_index_path =
-				yb_create_distinct_index_path(root, index, ipath,
-											  yb_distinct_prefixlen,
-											  yb_distinct_nkeys);
+					yb_create_distinct_index_path(root, index, ipath,
+												  yb_distinct_prefixlen,
+												  yb_distinct_nkeys);
 
 				result = lappend(result, distinct_index_path);
 			}
@@ -1957,7 +1960,7 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	{
 		Path	   *ipath = (Path *) lfirst(l);
 
-		/* TODO(#21039): Support Distinct Bitmap Scans */
+		/* YB: TODO(#21039): Support Distinct Bitmap Scans */
 		if (IsA(ipath, UpperUniquePath))
 			continue;
 
@@ -3027,7 +3030,7 @@ match_clause_to_indexcol(PlannerInfo *root,
 		if (!nt->argisrow &&
 			match_index_to_operand((Node *) nt->arg, indexcol, index))
 		{
-			/* Cannot push down IS NOT NULL on hash columns in LSM Index */
+			/* YB: Cannot push down IS NOT NULL on hash columns in LSM Index */
 			if (IsYBRelationById(index->indexoid) &&
 				nt->nulltesttype == IS_NOT_NULL &&
 				is_hash_column_in_lsm_index(index, indexcol))
@@ -3218,10 +3221,10 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		}
 
 		/*
-		 * If the column in the filter clause is part of the hash key for this
-		 * index and the clause uses an inequality operator, then index scan
-		 * cannot be used. This is because a hash index is sorted by the hash
-		 * value and not by the value of the column. #13241
+		 * YB: If the column in the filter clause is part of the hash key for
+		 * this index and the clause uses an inequality operator, then index
+		 * scan cannot be used. This is because a hash index is sorted by the
+		 * hash value and not by the value of the column. #13241
 		 */
 		if (is_hash_column_in_lsm_index(index, indexcol))
 		{
@@ -3287,10 +3290,10 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		}
 
 		/*
-		 * If the column in the filter clause is part of the hash key for this
-		 * index and the clause uses an inequality operator, then index scan
-		 * cannot be used. This is because a hash index is sorted by the hash
-		 * value and not by the value of the column. #13241
+		 * YB: If the column in the filter clause is part of the hash key for
+		 * this index and the clause uses an inequality operator, then index
+		 * scan cannot be used. This is because a hash index is sorted by the
+		 * hash value and not by the value of the column. #13241
 		 */
 		if (is_hash_column_in_lsm_index(index, indexcol))
 		{
@@ -4286,7 +4289,8 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 
 	Assert(list_length(exprlist) == list_length(oprlist));
 
-	List *ybIndexList = rel->indexlist;
+	List	   *ybIndexList = rel->indexlist;
+
 	if (list_length(ybIndexList) < list_length(rel->ybHintsOrigIndexlist))
 	{
 		/*
@@ -4350,10 +4354,13 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 
 		/*
 		 * If the index is not unique, or not immediately enforced, or if it's
-		 * a partial index that doesn't match the query, it's useless here.
+		 * a partial index, it's useless here.  We're unable to make use of
+		 * predOK partial unique indexes due to the fact that
+		 * check_index_predicates() also makes use of join predicates to
+		 * determine if the partial index is usable. Here we need proofs that
+		 * hold true before any joins are evaluated.
 		 */
-		if (!ind->unique || !ind->immediate ||
-			(ind->indpred != NIL && !ind->predOK))
+		if (!ind->unique || !ind->immediate || ind->indpred != NIL)
 			continue;
 
 		/*
@@ -4529,7 +4536,7 @@ match_index_to_operand(Node *operand,
 	indkey = index->indexkeys[indexcol];
 	if (indkey != 0)
 	{
-
+		/* YB: yb_hash_code */
 		if (operand && IsA(operand, FuncExpr))
 		{
 			/*
@@ -4626,17 +4633,11 @@ match_index_to_operand(Node *operand,
 			}
 		}
 		/*
-		 * Simple index column; operand must be a matching Var
+		 * Simple index column; operand must be a matching Var.
 		 */
-
-		Var		   *operand_var = NULL;
-
-		if (operand && IsA(operand, Var))
-			operand_var = (Var *) operand;
-
-		if (operand_var &&
-			index->rel->relid == operand_var->varno &&
-			indkey == operand_var->varattno)
+		if (operand && IsA(operand, Var) &&
+			index->rel->relid == ((Var *) operand)->varno &&
+			indkey == ((Var *) operand)->varattno)
 			return true;
 	}
 	else

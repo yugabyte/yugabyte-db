@@ -26,7 +26,7 @@ When a query quits for unexpected reasons, information about the query and the r
 - Terminated by SIGSEGV - the query terminated due to a crash in the PostgreSQL process.
 - Terminated by SIGKILL - the query was killed by the system's out of memory killer because the node is running out of memory.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Supported fields
 

@@ -3,6 +3,7 @@
 --
 CREATE USER regress_merge_privs;
 CREATE USER regress_merge_no_privs;
+CREATE USER regress_merge_none;
 DROP TABLE IF EXISTS target;
 NOTICE:  table "target" does not exist, skipping
 DROP TABLE IF EXISTS source;
@@ -159,6 +160,14 @@ ERROR:  cannot execute MERGE on relation "mv"
 DETAIL:  This operation is not supported for materialized views.
 DROP MATERIALIZED VIEW mv;
 -- permissions
+SET SESSION AUTHORIZATION regress_merge_none;
+MERGE INTO target
+USING (SELECT 1) AS s
+ON true
+WHEN MATCHED THEN
+	DO NOTHING;
+ERROR:  permission denied for table target
+SET SESSION AUTHORIZATION regress_merge_privs;
 MERGE INTO target
 USING source2
 ON target.tid = source2.sid
@@ -942,12 +951,25 @@ SELECT * FROM target full outer join source on (sid = tid);
 
 create trigger merge_skip BEFORE INSERT OR UPDATE or DELETE
   ON target FOR EACH ROW EXECUTE FUNCTION skip_merge_op();
+DO $$
+DECLARE
+  result integer;
+BEGIN
 MERGE INTO target t
 USING source AS s
 ON t.tid = s.sid
 WHEN MATCHED AND s.sid = 3 THEN UPDATE SET balance = t.balance + s.delta
 WHEN MATCHED THEN DELETE
 WHEN NOT MATCHED THEN INSERT VALUES (sid, delta);
+IF FOUND THEN
+  RAISE NOTICE 'Found';
+ELSE
+  RAISE NOTICE 'Not found';
+END IF;
+GET DIAGNOSTICS result := ROW_COUNT;
+RAISE NOTICE 'ROW_COUNT = %', result;
+END;
+$$;
 NOTICE:  BEFORE INSERT STATEMENT trigger
 NOTICE:  BEFORE UPDATE STATEMENT trigger
 NOTICE:  BEFORE DELETE STATEMENT trigger
@@ -957,6 +979,8 @@ NOTICE:  BEFORE INSERT ROW trigger row: (4,40)
 NOTICE:  AFTER DELETE STATEMENT trigger
 NOTICE:  AFTER UPDATE STATEMENT trigger
 NOTICE:  AFTER INSERT STATEMENT trigger
+NOTICE:  Not found
+NOTICE:  ROW_COUNT = 0
 SELECT * FROM target FULL OUTER JOIN source ON (sid = tid);
  tid | balance | sid | delta 
 -----+---------+-----+-------
@@ -1459,6 +1483,56 @@ WHEN MATCHED AND t.a < 10 THEN
 
 DROP TABLE ex_msource, ex_mtarget;
 DROP FUNCTION explain_merge(text);
+-- EXPLAIN SubPlans and InitPlans
+CREATE TABLE src (a int, b int, c int, d int);
+CREATE TABLE tgt (a int, b int, c int, d int);
+CREATE TABLE ref (ab int, cd int);
+EXPLAIN (verbose, costs off)
+MERGE INTO tgt t
+USING (SELECT *, (SELECT count(*) FROM ref r
+                   WHERE r.ab = s.a + s.b
+                     AND r.cd = s.c - s.d) cnt
+         FROM src s) s
+ON t.a = s.a AND t.b < s.cnt
+WHEN MATCHED AND t.c > s.cnt THEN
+  UPDATE SET (b, c) = (SELECT s.b, s.cnt);
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Merge on public.tgt t
+   ->  Hash Join
+         Output: t.ctid, s.a, s.b, s.c, s.d, s.ctid
+         Hash Cond: (t.a = s.a)
+         Join Filter: (t.b < (SubPlan 1))
+         ->  Seq Scan on public.tgt t
+               Output: t.ctid, t.a, t.b
+         ->  Hash
+               Output: s.a, s.b, s.c, s.d, s.ctid
+               ->  Seq Scan on public.src s
+                     Output: s.a, s.b, s.c, s.d, s.ctid
+         SubPlan 1
+           ->  Aggregate
+                 Output: count(*)
+                 ->  Seq Scan on public.ref r
+                       Output: r.ab, r.cd
+                       Filter: ((r.ab = (s.a + s.b)) AND (r.cd = (s.c - s.d)))
+   SubPlan 4
+     ->  Aggregate
+           Output: count(*)
+           ->  Seq Scan on public.ref r_2
+                 Output: r_2.ab, r_2.cd
+                 Filter: ((r_2.ab = (s.a + s.b)) AND (r_2.cd = (s.c - s.d)))
+   SubPlan 3 (returns $9,$10)
+     ->  Result
+           Output: s.b, $8
+           InitPlan 2 (returns $8)
+             ->  Aggregate
+                   Output: count(*)
+                   ->  Seq Scan on public.ref r_1
+                         Output: r_1.ab, r_1.cd
+                         Filter: ((r_1.ab = (s.a + s.b)) AND (r_1.cd = (s.c - s.d)))
+(32 rows)
+
+DROP TABLE src, tgt, ref;
 -- Subqueries
 BEGIN;
 MERGE INTO sq_target t
@@ -1582,6 +1656,10 @@ SELECT * FROM pa_target ORDER BY tid;
 ROLLBACK;
 -- try updating the partition key column
 BEGIN;
+CREATE FUNCTION merge_func() RETURNS integer LANGUAGE plpgsql AS $$
+DECLARE
+  result integer;
+BEGIN
 MERGE INTO pa_target t
   USING pa_source s
   ON t.tid = s.sid
@@ -1589,6 +1667,18 @@ MERGE INTO pa_target t
     UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
     INSERT VALUES (sid, delta, 'inserted by merge');
+IF FOUND THEN
+  GET DIAGNOSTICS result := ROW_COUNT;
+END IF;
+RETURN result;
+END;
+$$;
+SELECT merge_func();
+ merge_func 
+------------
+         14
+(1 row)
+
 SELECT * FROM pa_target ORDER BY tid;
  tid | balance |           val            
 -----+---------+--------------------------
@@ -1631,6 +1721,10 @@ ALTER TABLE pa_target ATTACH PARTITION part4 DEFAULT;
 INSERT INTO pa_target SELECT id, id * 100, 'initial' FROM generate_series(1,14,2) AS id;
 -- try simple MERGE
 BEGIN;
+DO $$
+DECLARE
+  result integer;
+BEGIN
 MERGE INTO pa_target t
   USING pa_source s
   ON t.tid = s.sid
@@ -1638,6 +1732,11 @@ MERGE INTO pa_target t
     UPDATE SET balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
     INSERT VALUES (sid, delta, 'inserted by merge');
+GET DIAGNOSTICS result := ROW_COUNT;
+RAISE NOTICE 'ROW_COUNT = %', result;
+END;
+$$;
+NOTICE:  ROW_COUNT = 14
 SELECT * FROM pa_target ORDER BY tid;
  tid | balance |           val            
 -----+---------+--------------------------
@@ -1694,6 +1793,10 @@ SELECT * FROM pa_target ORDER BY tid;
 ROLLBACK;
 -- try updating the partition key column
 BEGIN;
+DO $$
+DECLARE
+  result integer;
+BEGIN
 MERGE INTO pa_target t
   USING pa_source s
   ON t.tid = s.sid
@@ -1701,6 +1804,11 @@ MERGE INTO pa_target t
     UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
     INSERT VALUES (sid, delta, 'inserted by merge');
+GET DIAGNOSTICS result := ROW_COUNT;
+RAISE NOTICE 'ROW_COUNT = %', result;
+END;
+$$;
+NOTICE:  ROW_COUNT = 14
 SELECT * FROM pa_target ORDER BY tid;
  tid | balance |           val            
 -----+---------+--------------------------
@@ -1720,6 +1828,91 @@ SELECT * FROM pa_target ORDER BY tid;
   14 |     140 | inserted by merge
 (14 rows)
 
+ROLLBACK;
+-- as above, but blocked by BEFORE DELETE ROW trigger
+BEGIN;
+CREATE FUNCTION trig_fn() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN RETURN NULL; END; $$;
+CREATE TRIGGER del_trig BEFORE DELETE ON pa_target
+  FOR EACH ROW EXECUTE PROCEDURE trig_fn();
+DO $$
+DECLARE
+  result integer;
+BEGIN
+MERGE INTO pa_target t
+  USING pa_source s
+  ON t.tid = s.sid
+  WHEN MATCHED THEN
+    UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
+  WHEN NOT MATCHED THEN
+    INSERT VALUES (sid, delta, 'inserted by merge');
+GET DIAGNOSTICS result := ROW_COUNT;
+RAISE NOTICE 'ROW_COUNT = %', result;
+END;
+$$;
+NOTICE:  ROW_COUNT = 10
+SELECT * FROM pa_target ORDER BY tid;
+ tid | balance |           val            
+-----+---------+--------------------------
+   1 |     100 | initial
+   2 |      20 | inserted by merge
+   3 |     300 | initial
+   4 |      40 | inserted by merge
+   6 |     550 | initial updated by merge
+   6 |      60 | inserted by merge
+   7 |     700 | initial
+   8 |      80 | inserted by merge
+   9 |     900 | initial
+  10 |     100 | inserted by merge
+  12 |    1210 | initial updated by merge
+  12 |     120 | inserted by merge
+  14 |    1430 | initial updated by merge
+  14 |     140 | inserted by merge
+(14 rows)
+
+ROLLBACK;
+-- as above, but blocked by BEFORE INSERT ROW trigger
+BEGIN;
+CREATE FUNCTION trig_fn() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN RETURN NULL; END; $$;
+CREATE TRIGGER ins_trig BEFORE INSERT ON pa_target
+  FOR EACH ROW EXECUTE PROCEDURE trig_fn();
+DO $$
+DECLARE
+  result integer;
+BEGIN
+MERGE INTO pa_target t
+  USING pa_source s
+  ON t.tid = s.sid
+  WHEN MATCHED THEN
+    UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
+  WHEN NOT MATCHED THEN
+    INSERT VALUES (sid, delta, 'inserted by merge');
+GET DIAGNOSTICS result := ROW_COUNT;
+RAISE NOTICE 'ROW_COUNT = %', result;
+END;
+$$;
+NOTICE:  ROW_COUNT = 3
+SELECT * FROM pa_target ORDER BY tid;
+ tid | balance |           val            
+-----+---------+--------------------------
+   6 |     550 | initial updated by merge
+  12 |    1210 | initial updated by merge
+  14 |    1430 | initial updated by merge
+(3 rows)
+
+ROLLBACK;
+-- test RLS enforcement
+BEGIN;
+ALTER TABLE pa_target ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pa_target FORCE ROW LEVEL SECURITY;
+CREATE POLICY pa_target_pol ON pa_target USING (tid != 0);
+MERGE INTO pa_target t
+  USING pa_source s
+  ON t.tid = s.sid AND t.tid IN (1,2,3,4)
+  WHEN MATCHED THEN
+    UPDATE SET tid = tid - 1;
+ERROR:  new row violates row-level security policy for table "pa_target"
 ROLLBACK;
 DROP TABLE pa_source;
 DROP TABLE pa_target CASCADE;
@@ -1771,6 +1964,63 @@ SELECT * FROM pa_target ORDER BY tid;
 (9 rows)
 
 ROLLBACK;
+DROP TABLE pa_source;
+DROP TABLE pa_target CASCADE;
+-- Partitioned table with primary key
+CREATE TABLE pa_target (tid integer PRIMARY KEY) PARTITION BY LIST (tid);
+CREATE TABLE pa_targetp PARTITION OF pa_target DEFAULT;
+CREATE TABLE pa_source (sid integer);
+INSERT INTO pa_source VALUES (1), (2);
+EXPLAIN (VERBOSE, COSTS OFF)
+MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
+  WHEN NOT MATCHED THEN INSERT VALUES (s.sid);
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Merge on public.pa_target t
+   Merge on public.pa_targetp t_1
+   ->  Nested Loop Left Join
+         Output: s.sid, s.ctid, t_1.tableoid, t_1.ctid
+         ->  Seq Scan on public.pa_source s
+               Output: s.sid, s.ctid
+         ->  Index Scan using pa_targetp_pkey on public.pa_targetp t_1
+               Output: t_1.tid, t_1.tableoid, t_1.ctid
+               Index Cond: (t_1.tid = s.sid)
+(9 rows)
+
+MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
+  WHEN NOT MATCHED THEN INSERT VALUES (s.sid);
+TABLE pa_target;
+ tid 
+-----
+   1
+   2
+(2 rows)
+
+-- Partition-less partitioned table
+-- (the bug we are checking for appeared only if table had partitions before)
+DROP TABLE pa_targetp;
+EXPLAIN (VERBOSE, COSTS OFF)
+MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
+  WHEN NOT MATCHED THEN INSERT VALUES (s.sid);
+                 QUERY PLAN                 
+--------------------------------------------
+ Merge on public.pa_target t
+   ->  Hash Left Join
+         Output: s.sid, s.ctid, t.ctid
+         Hash Cond: (s.sid = t.tid)
+         ->  Seq Scan on public.pa_source s
+               Output: s.sid, s.ctid
+         ->  Hash
+               Output: t.tid, t.ctid
+               ->  Result
+                     Output: t.tid, t.ctid
+                     One-Time Filter: false
+(11 rows)
+
+MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
+  WHEN NOT MATCHED THEN INSERT VALUES (s.sid);
+ERROR:  no partition of relation "pa_target" found for row
+DETAIL:  Partition key of the failing row contains (tid) = (1).
 DROP TABLE pa_source;
 DROP TABLE pa_target CASCADE;
 -- some complex joins on the source side
@@ -1826,6 +2076,27 @@ SELECT * FROM cj_target;
    1 |     110 | initial source2 200
    2 |     320 | initial source2 300
 (4 rows)
+
+-- try it with an outer join and PlaceHolderVar
+MERGE INTO cj_target t
+USING (SELECT *, 'join input'::text AS phv FROM cj_source1) fj
+	FULL JOIN cj_source2 fj2 ON fj.scat = fj2.sid2 * 10
+ON t.tid = fj.scat
+WHEN NOT MATCHED THEN
+	INSERT (tid, balance, val) VALUES (fj.scat, fj.delta, fj.phv);
+SELECT * FROM cj_target;
+ tid | balance |               val                
+-----+---------+----------------------------------
+   3 |     400 | initial source2 updated by merge
+   1 |     220 | initial source2 200
+   1 |     110 | initial source2 200
+   2 |     320 | initial source2 300
+  10 |     100 | join input
+  10 |     400 | join input
+  20 |     200 | join input
+  20 |     300 | join input
+     |         | 
+(9 rows)
 
 ALTER TABLE cj_source1 RENAME COLUMN sid1 TO sid;
 ALTER TABLE cj_source2 RENAME COLUMN sid2 TO sid;
@@ -2027,8 +2298,20 @@ drop cascades to table measurement_y2007m01
 DROP FUNCTION measurement_insert_trigger();
 -- prepare
 RESET SESSION AUTHORIZATION;
+-- try a system catalog
+MERGE INTO pg_class c
+USING (SELECT 'pg_depend'::regclass AS oid) AS j
+ON j.oid = c.oid
+WHEN MATCHED THEN
+	UPDATE SET reltuples = reltuples + 1;
+MERGE INTO pg_class c
+USING pg_namespace n
+ON n.oid = c.relnamespace
+WHEN MATCHED AND c.oid = 'pg_depend'::regclass THEN
+	UPDATE SET reltuples = reltuples - 1;
 DROP TABLE target, target2;
 DROP TABLE source, source2;
 DROP FUNCTION merge_trigfunc();
 DROP USER regress_merge_privs;
 DROP USER regress_merge_no_privs;
+DROP USER regress_merge_none;

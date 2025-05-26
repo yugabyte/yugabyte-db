@@ -96,7 +96,6 @@ typedef struct PlannedStmt
 	int			stmt_len;		/* length in bytes; 0 means "rest of string" */
 
 	/* YB specific fields */
-
 	/*
 	 * Number of relations that are still referenced by the plan after
 	 * constraint exclusion and partition pruning.
@@ -173,26 +172,26 @@ typedef struct Plan
 	Bitmapset  *extParam;
 	Bitmapset  *allParam;
 
-	/* alias to use for hinting - unique across all blocks/entire query */
+	/* YB: alias to use for hinting - unique across all blocks/entire query */
 	char	   *ybHintAlias;
 
 	/*
-	 * Unique id across all plan nodes. This is inherited from corresponding
-	 * Path node (in a few cases there is not one).
+	 * YB: Unique id across all plan nodes. This is inherited from
+	 * corresponding Path node (in a few cases there is not one).
 	 */
 	uint32		ybUniqueId;
 
 	/*
-	 * If a node is a child of a Subquery Scan node and the scan node gets
+	 * YB: If a node is a child of a Subquery Scan node and the scan node gets
 	 * removed the child node will 'inherit' the unique hint alias
 	 * of the scan.
 	 */
 	char	   *ybInheritedHintAlias;
 
-	/* Is this a join that was referenced in a leading join hint? */
+	/* YB: Is this a join that was referenced in a leading join hint? */
 	bool		ybIsHinted;
 
-	/* Is this node forced using a UID? */
+	/* YB: Is this node forced using a UID? */
 	bool		ybHasHintedUid;
 } Plan;
 
@@ -236,9 +235,9 @@ typedef struct ProjectSet
 } ProjectSet;
 
 /*
- * An enum whose values describe the type of entity that may be excluded from
- * bookkeeping operations performed by an UPDATE or an INSERT ON CONFLICT DO
- * UPDATE query.
+ * YB: An enum whose values describe the type of entity that may be excluded
+ * from bookkeeping operations performed by an UPDATE or an INSERT ON CONFLICT
+ * DO UPDATE query.
  */
 typedef enum
 {
@@ -353,11 +352,12 @@ typedef struct YbUpdateAffectedEntities
  *		Apply rows produced by outer plan to result table(s),
  *		by inserting, updating, or deleting.
  *
- * If the originally named target table is a partitioned table, both
- * nominalRelation and rootRelation contain the RT index of the partition
- * root, which is not otherwise mentioned in the plan.  Otherwise rootRelation
- * is zero.  However, nominalRelation will always be set, as it's the rel that
- * EXPLAIN should claim is the INSERT/UPDATE/DELETE/MERGE target.
+ * If the originally named target table is a partitioned table or inheritance
+ * tree, both nominalRelation and rootRelation contain the RT index of the
+ * partition root or appendrel RTE, which is not otherwise mentioned in the
+ * plan.  Otherwise rootRelation is zero.  However, nominalRelation will
+ * always be set, as it's the rel that EXPLAIN should claim is the
+ * INSERT/UPDATE/DELETE/MERGE target.
  *
  * Note that rowMarks and epqParam are presumed to be valid for all the
  * table(s); they can't contain any info that varies across tables.
@@ -369,7 +369,7 @@ typedef struct ModifyTable
 	CmdType		operation;		/* INSERT, UPDATE, DELETE, or MERGE */
 	bool		canSetTag;		/* do we set the command tag/es_processed? */
 	Index		nominalRelation;	/* Parent RT index for use of EXPLAIN */
-	Index		rootRelation;	/* Root RT index, if target is partitioned */
+	Index		rootRelation;	/* Root RT index, if partitioned/inherited */
 	bool		partColsUpdated;	/* some part key in hierarchy updated? */
 	List	   *resultRelations;	/* integer list of RT indexes */
 	List	   *updateColnosLists;	/* per-target-table update_colnos lists */
@@ -389,25 +389,23 @@ typedef struct ModifyTable
 	List	   *mergeActionLists;	/* per-target-table lists of actions for
 									 * MERGE */
 
+	/* YB */
 	List	   *ybPushdownTlist;	/* tlist for the pushdown SET expressions */
 	List	   *ybReturningColumns; /* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
-
 	/*
-	 * A collection of entities that are impacted by the ModifyTable query, and
-	 * their relationship to the columns that are modified by the query. This is
-	 * currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE queries.
-	 * The contents of this struct are computed at planning time and remain
-	 * immutable for the lifetime of the plan.
+	 * YB: A collection of entities that are impacted by the ModifyTable query,
+	 * and their relationship to the columns that are modified by the query.
+	 * This is currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE
+	 * queries. The contents of this struct are computed at planning time and
+	 * remain immutable for the lifetime of the plan.
 	 */
 	YbUpdateAffectedEntities *yb_update_affected_entities;
-
 	/*
-	 * A collection of entity OIDs (grouped by type) for which it is known at
-	 * planning time that bookkeeping updates can be skipped.
-	 * This is currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE
-	 * queries.
+	 * YB: A collection of entity OIDs (grouped by type) for which it is known
+	 * at planning time that bookkeeping updates can be skipped. This is
+	 * currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE queries.
 	 * The entities in this struct are mutually exclusive to the entities in
 	 * yb_update_affected_entities.
 	 */
@@ -603,8 +601,10 @@ typedef struct IndexScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indexorderbyorig;	/* the same in original form */
 	List	   *indexorderbyops;	/* OIDs of sort ops for ORDER BY exprs */
-	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+
+	/* YB */
+	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	YbPushdownExprs yb_idx_pushdown;
 	YbPushdownExprs yb_rel_pushdown;
 	YbPlanInfo	yb_plan_info;
@@ -652,13 +652,9 @@ typedef struct IndexOnlyScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+
+	/* YB */
 	YbPushdownExprs yb_pushdown;
-	/*
-	 * yb_indexqual_for_recheck is the modified version of indexqual.
-	 * It is used in tuple recheck step only.
-	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
-	 */
-	List	   *yb_indexqual_for_recheck;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
 } IndexOnlyScan;
@@ -1383,7 +1379,7 @@ typedef struct Limit
  * doing a separate remote query to lock each selected row is usually pretty
  * unappealing, so early locking remains a credible design choice for FDWs.
  *
- * When doing UPDATE, DELETE, or SELECT FOR UPDATE/SHARE, we have to uniquely
+ * When doing UPDATE/DELETE/MERGE/SELECT FOR UPDATE/SHARE, we have to uniquely
  * identify all the source rows, not only those from the target relations, so
  * that we can perform EvalPlanQual rechecking at need.  For plain tables we
  * can just fetch the TID, much as for a target relation; this case is
@@ -1412,7 +1408,7 @@ typedef enum RowMarkType
  * PlanRowMark -
  *	   plan-time representation of FOR [KEY] UPDATE/SHARE clauses
  *
- * When doing UPDATE, DELETE, or SELECT FOR UPDATE/SHARE, we create a separate
+ * When doing UPDATE/DELETE/MERGE/SELECT FOR UPDATE/SHARE, we create a separate
  * PlanRowMark node for each non-target relation in the query.  Relations that
  * are not specified as FOR UPDATE/SHARE are marked ROW_MARK_REFERENCE (if
  * regular tables or supported foreign tables) or ROW_MARK_COPY (if not).

@@ -345,12 +345,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
-  std::optional<std::pair<TSDescriptor::WriteLock, std::optional<uint64_t>>> MaybeUpdateLiveness(
-      MonoTime time) EXCLUDES(mutex_);
-
-  std::pair<YsqlLeaseUpdate, std::optional<TSDescriptor::WriteLock>> RefreshYsqlLease();
-
-  bool HasLiveYsqlOperationLease() const;
+  std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
  private:
   mutable rw_spinlock mutex_;
@@ -416,8 +411,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // The last time a heartbeat was received for this node.
   MonoTime last_heartbeat_ GUARDED_BY(mutex_);
   const bool registered_through_heartbeat_;
-
-  MonoTime last_ysql_lease_refresh_ GUARDED_BY(mutex_);
 
   // The physical and hybrid times on the tserver represented by this object at the time it sent the
   // last heartbeat received by this master.

@@ -153,10 +153,10 @@ main(int argc, char **argv)
 	}
 
 	/*
-	 * This checks for global state information initialized during initdb and is
-	 * not relevant for YB. The storage doesn't change between versions, and YB
-	 * controls the creation of the new cluster, so we don't need to be as
-	 * meticulous about checking the state.
+	 * YB: This checks for global state information initialized during initdb
+	 * and is not relevant for YB. The storage doesn't change between versions,
+	 * and YB controls the creation of the new cluster, so we don't need to be
+	 * as meticulous about checking the state.
 	 */
 	if (!is_yugabyte_enabled())
 		check_cluster_compatibility(live_check);
@@ -270,6 +270,7 @@ main(int argc, char **argv)
 	}
 
 	cleanup_output_dirs();
+
 	return 0;
 }
 
@@ -888,9 +889,10 @@ yb_execute_extension_updates()
 		for (rowno = 0; rowno < ntups; rowno++)
 		{
 			const char *extension_name = PQgetvalue(res, rowno, i_name);
-			char query[256];
+			char		query[256];
 
 			PGresult   *res;
+
 			snprintf(query, sizeof(query), "ALTER EXTENSION %s UPDATE;",
 					 quote_identifier(extension_name));
 

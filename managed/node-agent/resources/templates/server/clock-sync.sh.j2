@@ -1,0 +1,128 @@
+#!/bin/bash
+
+SCRIPT_NAME=$(basename "$0")
+
+################### Config ###################
+is_acceptable_clock_skew_wait_enabled="{{ is_acceptable_clock_skew_wait_enabled | default(true) }}"  # Whether check clock skew
+acceptable_clock_skew_sec="{{ acceptable_clock_skew_sec | default(0.5) }}"  # In seconds
+max_tries="{{ acceptable_clock_skew_max_tries | default(120) }}"  # Maximum number of tries before returning failure
+retry_wait_time_s=1  # How long waits before retry in seconds
+
+if [[ "$is_acceptable_clock_skew_wait_enabled" != true && "$is_acceptable_clock_skew_wait_enabled" != "True" ]]; then
+  echo "Wait for clock skew to go below the acceptable threshold is disabled. Returning success."
+  exit 0
+fi
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+readonly PYTHON_EXECUTABLES=("python" "python3" "python3.11" "python3.10" "python3.9" "python3.8" "python3.7" "python3.6" "python3.12" "python2")
+PYTHON_EXECUTABLE=""
+set_python_executable() {
+  for py_executable in "${PYTHON_EXECUTABLES[@]}"; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      export PYTHON_EXECUTABLE
+      return
+    fi
+  done
+}
+
+check_clock_sync_chrony() {
+  # if chrond is restarted, tracking will return all 0s
+  set_python_executable
+  chrony_tracking="$(chronyc tracking)"
+  if [[ $? -ne 0 ]]; then
+    echo "`chronyc tracking` failed to execute"
+    return 1
+  fi
+  if [[ $(echo "${chrony_tracking}" | awk "/Reference ID/ {print \$4}") == "00000000" ]]; then
+    echo "chrony is not initialized"
+    return 1
+  fi
+  local skew=$(echo "${chrony_tracking}" | awk "/System time/ {print \$4}")
+  local dispersion=$(echo "${chrony_tracking}" | awk "/Root dispersion/ {print \$4}")
+  local delay=$(echo "${chrony_tracking}" | awk "/Root delay/ {print \$4}")
+  local clock_error=""
+  if [[ -z "${PYTHON_EXECUTABLE}" ]]; then
+    clock_error=${skew}
+  else
+   clock_error=$(${PYTHON_EXECUTABLE} -c "print(${skew} + ${dispersion} + (0.5 * ${delay}))")
+  fi
+
+  if awk "BEGIN {exit !($clock_error < $acceptable_clock_skew_sec)}"; then
+    echo "Clock skew is within acceptable limits: $skew ms"
+    return 0
+  else
+    echo "Clock skew exceeds acceptable limits: $skew ms"
+    return 1
+  fi
+}
+
+check_clock_sync_ntpd() {
+  set_python_executable
+  local skew=$(ntpq -p | awk "\$1 ~ /^\*/ {print \$9}")
+  local acceptable_skew_ms=$(${PYTHON_EXECUTABLE} -c "print(${acceptable_clock_skew_sec} * 1000)")
+
+  if [[ -z "$skew" ]]; then
+    echo "ntpd is not initialized"
+    return 1
+  fi
+
+  if awk "BEGIN{exit !(${skew} < ${acceptable_skew_ms})}"; then
+    echo "Clock skew is within acceptable limits: $skew ms"
+    return 0
+  else
+    echo "Clock skew exceeds acceptable limits: $skew ms"
+    return 1
+  fi
+}
+
+check_clock_sync_timesyncd() {
+  synchronized=$(timedatectl status | grep "System clock synchronized" | awk "{print \$4}")
+  if [[ "${synchronized}" == "yes" ]]; then
+    echo "timesyncd reports clock is synchronized"
+    return 0
+  else
+    echo "timesyncd clock is not synchronized"
+    return 1
+  fi
+}
+
+systemd_loaded() {
+  active=$(systemctl show --no-pager $1 | grep "ActiveState" | cut -d= -f2)
+  if [[ "${active}" == "active" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+iter=0
+while true; do
+  # If chrony is available, use it for clock sync.
+  if command_exists chronyc; then
+    check_clock_sync_chrony
+    res=$?
+  # If ntpd is available, use it for clock sync.
+  elif command_exists ntpd; then
+    check_clock_sync_ntpd
+    res=$?
+  elif systemd_loaded systemd-timesyncd; then
+    check_clock_sync_timesyncd
+    res=$?
+  else
+    echo "Chrony, NTPd, and timesyncd are not available, but required."
+    exit 1
+  fi
+  ((iter++))
+  if [ $res -eq 0 ]; then
+    echo "Success! Clock skew is within acceptable limits."
+    exit 0
+  fi
+  if [ $iter -ge $max_tries ]; then
+    echo "Failure! Maximum number of tries reached."
+    exit 1
+  fi
+  sleep "$retry_wait_time_s"
+done

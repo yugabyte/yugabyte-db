@@ -4307,8 +4307,9 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectId = tempNamespaceId;
 	object.objectSubId = 0;
 
-	bool yb_use_regular_txn_block =
+	bool		yb_use_regular_txn_block =
 		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
+
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
@@ -4439,9 +4440,13 @@ InitializeSearchPath(void)
 	{
 		/*
 		 * In normal mode, arrange for a callback on any syscache invalidation
-		 * of pg_namespace rows.
+		 * of pg_namespace or pg_authid rows. (Changing a role name may affect
+		 * the meaning of the special string $user.)
 		 */
 		CacheRegisterSyscacheCallback(NAMESPACEOID,
+									  NamespaceCallback,
+									  (Datum) 0);
+		CacheRegisterSyscacheCallback(AUTHOID,
 									  NamespaceCallback,
 									  (Datum) 0);
 		/* Force search path to be recomputed on next use */

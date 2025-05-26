@@ -23,9 +23,8 @@
 #include "yb/master/xcluster/xcluster_source_manager.h"
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
-namespace yb {
+namespace yb::master {
 
-namespace master {
 class CDCStreamInfo;
 class GetMasterXClusterConfigResponsePB;
 class PauseResumeXClusterProducerStreamsRequestPB;
@@ -75,6 +74,10 @@ class XClusterManager : public XClusterManagerIf,
   Status PrepareDefaultXClusterConfig(int64_t term, bool recreate);
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
+
+  Status SetXClusterRole(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      XClusterNamespaceInfoPB_XClusterRole role);
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
   Status RemoveStreamsFromSysCatalog(
@@ -299,6 +302,8 @@ class XClusterManager : public XClusterManagerIf,
       const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
       const NamespaceId& namespace_id) const;
 
+  Status ValidateCreateTableRequest(const CreateTableRequestPB& req);
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
@@ -311,6 +316,4 @@ class XClusterManager : public XClusterManagerIf,
   std::unordered_set<server::MonitoredTaskPtr> monitored_tasks_ GUARDED_BY(monitored_tasks_mutex_);
 };
 
-}  // namespace master
-
-}  // namespace yb
+} // namespace yb::master

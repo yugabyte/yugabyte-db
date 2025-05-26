@@ -125,6 +125,8 @@ static void status(const char *fmt,...) pg_attribute_printf(1, 2);
 static StringInfo psql_start_command(void);
 static void psql_add_command(StringInfo buf, const char *query,...) pg_attribute_printf(2, 3);
 static void psql_end_command(StringInfo buf, const char *database);
+
+/* YB */
 static void yb_postprocess_output(const char *filename);
 
 /*
@@ -626,7 +628,7 @@ initialize_environment(void)
 	/*
 	 * Set timezone and datestyle for datetime-related tests
 	 */
-	setenv("PGTZ", "PST8PDT", 1);
+	setenv("PGTZ", "America/Los_Angeles", 1);
 	setenv("PGDATESTYLE", "Postgres, MDY", 1);
 
 	/*
@@ -1127,7 +1129,7 @@ spawn_process(const char *cmdline)
 		comspec = "CMD";
 
 	memset(&pi, 0, sizeof(pi));
-	cmdline2 = psprintf("\"%s\" /c \"%s\"", comspec, cmdline);
+	cmdline2 = psprintf("\"%s\" /d /c \"%s\"", comspec, cmdline);
 
 	if ((restrictedToken =
 		 CreateRestrictedProcess(cmdline2, &pi)) == 0)

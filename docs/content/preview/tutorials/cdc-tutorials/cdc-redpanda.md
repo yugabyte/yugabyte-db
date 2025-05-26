@@ -50,7 +50,7 @@ If you're running a Windows Machine then you can [leverage Docker on Windows wit
 
 ### Install and set up Redpanda
 
-Follow the Redpanda [Quick Start](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) to spin up the Redpanda cluster using single- or multi-broker configuration using docker-compose or using a Redpanda cloud account.
+Follow the Redpanda [Quick Start](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) to spin up the Redpanda cluster using single- or multi-broker configuration using Docker Compose or using a Redpanda cloud account.
 
 Post installation and setup using the docker option, you can see docker containers are up and running. The following illustration shows two docker containers (Redpanda-Console and Redpanda Broker):
 
@@ -72,7 +72,7 @@ Create and deploy the source connector as follows, changing the parameters as pe
 curl -i -X  POST -H  "Accept:application/json" -H  "Content-Type:application/json" localhost:8083/connectors/ -d '{
   "name": "srcdb",
   "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
     "database.hostname":"10.9.205.161",
     "database.port":"5433",
     "database.master.addresses": "10.9.205.161:7100",

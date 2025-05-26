@@ -223,11 +223,6 @@ typedef struct YbgErrorData
 	int			nargs;
 	int			argsize;
 	int			sqlerrcode;		/* encoded ERRSTATE */
-	uint16_t	yb_txn_errcode; /* YB transaction error cast to uint16, as
-								 * returned by static_cast of
-								 * TransactionErrorTag::Decode of
-								 * Status::ErrorData(TransactionErrorTag::kCategory)
-								 * */
 	const char *filename;		/* __FILE__ of ereport() call */
 	int			lineno;			/* __LINE__ of ereport() call */
 	const char *funcname;		/* __func__ of ereport() call */
@@ -237,7 +232,6 @@ typedef struct YbgErrorData
 } YbgErrorData;
 typedef struct YbgErrorData *YbgError;
 
-static void yb_additional_errmsg(const char *fmt,...);
 static void yb_errmsg_va(const char *fmt, va_list args);
 static void yb_format_and_append(StringInfo buf, const char *fmt,
 								 const size_t nargs, const char **args);
@@ -280,8 +274,10 @@ yb_errstart(int elevel)
 		 * Static constants of YbgStatus type have NULL context. They are read
 		 * only, and can not be used with ereport/elog
 		 */
-		YBCLogImpl( /* severity (3=FATAL) */ 3, NULL /* filename */ , 0 /* lineno */ ,
-				   YBShouldLogStackTraceOnError(),
+		YBCLogImpl(3,			/* severity (3=FATAL) */
+				   NULL,		/* filename */
+				   0,			/* lineno */
+				   true,		/* stack trace */
 				   "PG error state is missing memory context");
 		pg_unreachable();
 	}
@@ -299,8 +295,10 @@ yb_errstart(int elevel)
 		YBCPgSetThreadLocalErrStatus(NULL);
 		MemoryContextSwitchTo(old_context);
 		MemoryContextReset(error_context);
-		YBCLogImpl( /* severity (3=FATAL) */ 3, NULL /* filename */ , 0 /* lineno */ ,
-				   YBShouldLogStackTraceOnError(),
+		YBCLogImpl(3,			/* severity (3=FATAL) */
+				   NULL,		/* filename */
+				   0,			/* lineno */
+				   true,		/* stack trace */
 				   "Error data stack is too deep");
 		pg_unreachable();
 	}
@@ -353,14 +351,13 @@ yb_write_status_to_server_log()
 	MemoryContext oldcontext = MemoryContextSwitchTo(error_context);
 
 	initStringInfo(&buf);
-	yb_format_and_append(&buf, edata->errmsg, edata->nargs,
-						 edata->errargs);
-	bool		is_error = YbgStatusIsError(status);
+	yb_format_and_append(&buf, edata->errmsg, edata->nargs, edata->errargs);
+	bool		is_error = edata->elevel >= ERROR;
 
-	YBCLogImpl(is_error ? 2 : 0 /* severity */ ,
+	YBCLogImpl(is_error ? 2 : 0,	/* severity */
 			   edata->filename,
 			   edata->lineno,
-			   is_error ? YBShouldLogStackTraceOnError() : false,
+			   is_error,		/* stack_trace */
 			   "%s", buf.data);
 	pfree(buf.data);
 	MemoryContextSwitchTo(oldcontext);
@@ -418,8 +415,7 @@ yb_errfinish(const char *filename, int lineno, const char *funcname)
 			int			lineno = YbgStatusGetLineNumber(status);
 
 			YBCLogImpl(3 /* severity (3=FATAL) */ , filename, lineno,
-					   YBShouldLogStackTraceOnError(),
-					   "PG error reporting has not been set up");
+					   true, "PG error reporting has not been set up");
 		}
 		siglongjmp(*buffer, 1);
 		pg_unreachable();
@@ -560,6 +556,7 @@ message_level_is_interesting(int elevel)
 		return true;
 	return false;
 }
+
 
 /*
  * in_error_recursion_trouble --- are we at risk of infinite error recursion?
@@ -804,32 +801,35 @@ errfinish(const char *filename, int lineno, const char *funcname)
 
 	/*
 	 * YB: in case yb_owns_file_and_func, filename and funcname were already
-	 * set beforehand.
+	 * set beforehand, with path already stripped from the filename.
 	 */
 	if (IsYugaByteEnabled() && edata->yb_owns_file_and_func)
 	{
 		filename = edata->filename;
+		lineno = edata->lineno;
 		funcname = edata->funcname;
 	}
-
-	/* Save the last few bits of error state into the stack entry */
-	if (filename)
+	else
 	{
-		const char *slash;
+		/* Save the last few bits of error state into the stack entry */
+		if (filename)
+		{
+			const char *slash;
 
-		/* keep only base name, useful especially for vpath builds */
-		slash = strrchr(filename, '/');
-		if (slash)
-			filename = slash + 1;
-		/* Some Windows compilers use backslashes in __FILE__ strings */
-		slash = strrchr(filename, '\\');
-		if (slash)
-			filename = slash + 1;
+			/* keep only base name, useful especially for vpath builds */
+			slash = strrchr(filename, '/');
+			if (slash)
+				filename = slash + 1;
+			/* Some Windows compilers use backslashes in __FILE__ strings */
+			slash = strrchr(filename, '\\');
+			if (slash)
+				filename = slash + 1;
+		}
+
+		edata->filename = filename;
+		edata->lineno = lineno;
+		edata->funcname = funcname;
 	}
-
-	edata->filename = filename;
-	edata->lineno = lineno;
-	edata->funcname = funcname;
 
 	elevel = edata->elevel;
 
@@ -883,17 +883,6 @@ errfinish(const char *filename, int lineno, const char *funcname)
 
 		recursion_depth--;
 		PG_RE_THROW();
-	}
-
-	/*
-	 * YB_TODO(neil@yugabyte) Check if this is still needed and the right
-	 * place for reporting
-	 */
-	if (YBShouldLogStackTraceOnError() && elevel >= ERROR)
-	{
-		YBCLogImpl(2 /* severity (2=ERROR) */ , filename, lineno,
-				   true /* stack_trace */ , "Postgres error: %s",
-				   YBPgErrorLevelToString(elevel));
 	}
 
 	/* Emit the message to the right places */
@@ -1032,18 +1021,20 @@ errcode(int sqlerrcode)
 }
 
 int
-yb_txn_errcode(uint16_t txn_errcode)
+yb_external_errcode(int sqlerrcode)
 {
-	RETURN_IF_MULTITHREADED_MODE();
+	if (yb_enable_extended_sql_codes)
+		return sqlerrcode;
 
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+	if (sqlerrcode == ERRCODE_YB_TXN_ABORTED ||
+		sqlerrcode == ERRCODE_YB_RESTART_READ ||
+		sqlerrcode == ERRCODE_YB_TXN_CONFLICT)
+		return ERRCODE_T_R_SERIALIZATION_FAILURE;
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+	if (sqlerrcode == ERRCODE_YB_DEADLOCK)
+		return ERRCODE_T_R_DEADLOCK_DETECTED;
 
-	edata->yb_txn_errcode = txn_errcode;
-
-	return 0;					/* return value does not matter */
+	return sqlerrcode;
 }
 
 /*
@@ -1098,6 +1089,10 @@ errcode_for_file_access(void)
 			/* Insufficient resources */
 		case ENOSPC:			/* No space left on device */
 			edata->sqlerrcode = ERRCODE_DISK_FULL;
+			break;
+
+		case ENOMEM:			/* Out of memory */
+			edata->sqlerrcode = ERRCODE_OUT_OF_MEMORY;
 			break;
 
 		case ENFILE:			/* File table overflow */
@@ -1274,9 +1269,6 @@ errmsg(const char *fmt,...)
 	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, true);
 
-	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
-		yb_additional_errmsg("%s", YBCGetStackTrace());
-
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
 	return 0;					/* return value does not matter */
@@ -1285,6 +1277,8 @@ errmsg(const char *fmt,...)
 /*
  * Add a backtrace to the containing ereport() call.  This is intended to be
  * added temporarily during debugging.
+ * YB: set yb_debug_log_docdb_error_backtrace to true to automatically add a
+ * backtrace to all errors received from the DocDB.
  */
 int
 errbacktrace(void)
@@ -1317,6 +1311,20 @@ set_backtrace(ErrorData *edata, int num_skip)
 
 	initStringInfo(&errtrace);
 
+	if (IsYugaByteEnabled() && !yb_debug_original_backtrace_format)
+	{
+		const char *backtrace = YBCGetStackTrace();
+
+		for (int i = 0; i <= num_skip; ++i)
+		{
+			backtrace = strchr(backtrace + 1, '\n');
+			if (backtrace == NULL)
+				return;
+		}
+		appendStringInfoString(&errtrace, backtrace);
+	}
+	else
+
 #ifdef HAVE_BACKTRACE_SYMBOLS
 	{
 		void	   *buf[100];
@@ -1333,8 +1341,8 @@ set_backtrace(ErrorData *edata, int num_skip)
 		free(strfrms);
 	}
 #else
-	appendStringInfoString(&errtrace,
-						   "backtrace generation is not supported by this installation");
+		appendStringInfoString(&errtrace,
+							   "backtrace generation is not supported by this installation");
 #endif
 
 	edata->backtrace = errtrace.data;
@@ -1377,9 +1385,6 @@ errmsg_internal(const char *fmt,...)
 
 	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, false);
-
-	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
-		yb_additional_errmsg("%s", YBCGetStackTrace());
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -1426,9 +1431,6 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 
 	edata->message_id = fmt_singular;
 	EVALUATE_MESSAGE_PLURAL(edata->domain, message, false);
-
-	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
-		yb_additional_errmsg("%s", YBCGetStackTrace());
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -1582,6 +1584,7 @@ errhint(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
+
 /*
  * errhint_plural --- add a hint error message text to the current error,
  * with support for pluralization of the message text
@@ -1603,6 +1606,7 @@ errhint_plural(const char *fmt_singular, const char *fmt_plural,
 	recursion_depth--;
 	return 0;					/* return value does not matter */
 }
+
 
 /*
  * errcontext_msg --- add a context error message text to the current error
@@ -1658,6 +1662,7 @@ set_errcontext_domain(const char *domain)
 
 	return 0;					/* return value does not matter */
 }
+
 
 /*
  * errhidestmt --- optionally suppress STATEMENT: field of log entry
@@ -1883,11 +1888,7 @@ getinternalerrposition(void)
 	return edata->internalpos;
 }
 
-/* YB_TODO(neil)
- *  - Check if the following assert needs to be called in Pg15 elog functions.
- *  - It was called in pg11 elog function for Yugabyte.
- *	Assert(!IsMultiThreadedMode());
- */
+
 /*
  * Functions to allow construction of error message strings separately from
  * the ereport() call itself.
@@ -1937,9 +1938,6 @@ format_elog_string(const char *fmt,...)
 
 	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, true);
-
-	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
-		yb_additional_errmsg("%s", YBCGetStackTrace());
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -2168,7 +2166,21 @@ CopyErrorData(void)
 	newedata = (ErrorData *) palloc(sizeof(ErrorData));
 	memcpy(newedata, edata, sizeof(ErrorData));
 
-	/* Make copies of separately-allocated fields */
+	/*
+	 * Make copies of separately-allocated strings.  Note that we copy even
+	 * theoretically-constant strings such as filename.  This is because those
+	 * could point into JIT-created code segments that might get unloaded at
+	 * transaction cleanup.  In some cases we need the copied ErrorData to
+	 * survive transaction boundaries, so we'd better copy those strings too.
+	 */
+	if (newedata->filename)
+		newedata->filename = pstrdup(newedata->filename);
+	if (newedata->funcname)
+		newedata->funcname = pstrdup(newedata->funcname);
+	if (newedata->domain)
+		newedata->domain = pstrdup(newedata->domain);
+	if (newedata->context_domain)
+		newedata->context_domain = pstrdup(newedata->context_domain);
 	if (newedata->message)
 		newedata->message = pstrdup(newedata->message);
 	if (newedata->detail)
@@ -2181,6 +2193,8 @@ CopyErrorData(void)
 		newedata->context = pstrdup(newedata->context);
 	if (newedata->backtrace)
 		newedata->backtrace = pstrdup(newedata->backtrace);
+	if (newedata->message_id)
+		newedata->message_id = pstrdup(newedata->message_id);
 	if (newedata->schema_name)
 		newedata->schema_name = pstrdup(newedata->schema_name);
 	if (newedata->table_name)
@@ -2263,7 +2277,7 @@ void
 FlushErrorState(void)
 {
 	/*
-	 * Teoretically if error is raised and caught during construction of
+	 * YB: Theoretically if error is raised and caught during construction of
 	 * another message should leave something in the stack to continue the
 	 * construction. However, it seems like expectation is that FlushErrorState
 	 * should empty out everything, so in multi-thread mode too, remove and
@@ -2374,8 +2388,7 @@ ReThrowError(ErrorData *edata)
 		/* This call should not return because elevel is ERROR */
 		ybg_status_from_edata(edata);
 		YBCLogImpl(3 /* severity (3=FATAL) */ , edata->filename, edata->lineno,
-				   YBShouldLogStackTraceOnError(),
-				   "Unexpected return from ybg_status_from_edata()");
+				   true, "Unexpected return from ybg_status_from_edata()");
 		pg_unreachable();
 	}
 
@@ -2470,8 +2483,7 @@ pg_re_throw(void)
 				lineno = YbgStatusGetLineNumber(status);
 			}
 			YBCLogImpl(3 /* severity (3=FATAL) */ , filename, lineno,
-					   YBShouldLogStackTraceOnError(),
-					   "PG error reporting has not been set up");
+					   true, "PG error reporting has not been set up");
 			pg_unreachable();
 		}
 
@@ -3245,12 +3257,12 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				{
 					char		strfbuf[128];
 
-					snprintf(strfbuf, sizeof(strfbuf) - 1, "%lx.%x",
-							 (long) (MyStartTime), MyProcPid);
+					snprintf(strfbuf, sizeof(strfbuf) - 1, "%" INT64_MODIFIER "x.%x",
+							 MyStartTime, MyProcPid);
 					appendStringInfo(buf, "%*s", padding, strfbuf);
 				}
 				else
-					appendStringInfo(buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
+					appendStringInfo(buf, "%" INT64_MODIFIER "x.%x", MyStartTime, MyProcPid);
 				break;
 			case 'p':
 				if (padding != 0)
@@ -3444,7 +3456,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				else
 					appendStringInfoString(buf, unpack_sql_state(edata->sqlerrcode));
 				break;
-			case 'C':
+			case 'C':			/* YB */
 				{
 					const char *cloud = YBGetCurrentCloud();
 
@@ -3457,7 +3469,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'R':
+			case 'R':			/* YB */
 				{
 					const char *region = YBGetCurrentRegion();
 
@@ -3470,7 +3482,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'Z':
+			case 'Z':			/* YB */
 				{
 					const char *zone = YBGetCurrentZone();
 
@@ -3483,7 +3495,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'U':
+			case 'U':			/* YB */
 				{
 					const char *uuid = YBGetCurrentUUID();
 
@@ -3496,7 +3508,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'N':
+			case 'N':			/* YB */
 				{
 					const char *node = YBGetCurrentMetricNodeName();
 
@@ -3509,7 +3521,7 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					}
 					break;
 				}
-			case 'H':
+			case 'H':			/* YB */
 				{
 					char		name[MAX_HOSTNAME_LENGTH];
 					const int	ret = gethostname(name, sizeof(name));
@@ -4166,6 +4178,34 @@ write_stderr(const char *fmt,...)
 
 
 /*
+ * Write a message to STDERR using only async-signal-safe functions.  This can
+ * be used to safely emit a message from a signal handler.
+ *
+ * TODO: It is likely possible to safely do a limited amount of string
+ * interpolation (e.g., %s and %d), but that is not presently supported.
+ */
+void
+write_stderr_signal_safe(const char *str)
+{
+	int			nwritten = 0;
+	int			ntotal = strlen(str);
+
+	while (nwritten < ntotal)
+	{
+		int			rc;
+
+		rc = write(STDERR_FILENO, str + nwritten, ntotal - nwritten);
+
+		/* Just give up on error.  There isn't much else we can do. */
+		if (rc == -1)
+			return;
+
+		nwritten += rc;
+	}
+}
+
+
+/*
  * Adjust the level of a recovery-related message per trace_recovery_messages.
  *
  * The argument is the default log level of the message, eg, DEBUG2.  (This
@@ -4191,7 +4231,7 @@ trace_recovery(int trace_level)
 }
 
 /*
- * Custom format string handling
+ * YB: Custom format string handling
  *
  * The main problem we are trying to solve here is the national laguage support.
  * First of all, we do not want to format message in the YbGate environment.
@@ -4224,23 +4264,6 @@ trace_recovery(int trace_level)
 #define STR_TYPES "ms"
 #define MODIFIERS " -+*#0123456789.hjlLtz"
 #define MAX_ATTR_LEN 16384
-
-/*
- * Append an additional message to edata->message.  This function is expected to
- * be called uniformly across all instances of
- *
- *     ...EVALUATE_MESSAGE...(edata->domain, message, false...
- */
-static void
-yb_additional_errmsg(const char *fmt,...)
-{
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-
-	Assert(CurrentMemoryContext == edata->assoc_context ||
-		   CurrentMemoryContext == ErrorContext);
-	EVALUATE_MESSAGE(edata->domain, message, true /* appendval */ ,
-					 false /* translateit */ );
-}
 
 /*
  * yb_is_char_in_str - find if specified character exists in the c-string
@@ -4544,10 +4567,6 @@ yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args)
 									false /* appendval */ ,
 									true /* translateit */ , nargs, args);
 
-	Assert(IsYugaByteEnabled());
-	if (yb_debug_report_error_stacktrace)
-		yb_additional_errmsg("%s", YBCGetStackTrace());
-
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
 	return 0;					/* return value does not matter */
@@ -4574,36 +4593,50 @@ yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args)
 	return 0;					/* return value does not matter */
 }
 
-/*
- * Set the given field to the given value (assumed to be palloc-d) or, if the
- * new value is null, pstrdup the existing value of the field to ensure that
- * we end up with a palloc-d or null value in any case.
- */
-static void
-yb_set_or_pstrdup_err_field(const char **field, const char *new_value)
+int
+yb_errdetail_log_from_status(const char *fmt, const size_t nargs, const char **args)
 {
-	if (new_value)
-	{
-		*field = new_value;
-		return;
-	}
-	if (*field)
-	{
-		/* Assume the existing value originates from __FILE__ or __func__. */
-		*field = pstrdup(*field);
-	}
+	Assert(!IsMultiThreadedMode());
+
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, detail_log,
+									false /* appendval */ ,
+									true /* translateit */ , nargs, args);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
+	return 0;					/* return value does not matter */
 }
 
 /*
- * Set palloc-d filename and funcname and makes sure they are pfreed at the end.
+ * In Yugabyte filename and funcname retrieved from a Status are palloc-d, and
+ * should be properly pfree-d to avoid memory leaks. We assume status data are
+ * decoded into new ErrorData structure and therefore filename/funcname fields
+ * are empty.
  */
 void
-yb_set_pallocd_error_file_and_func(const char *filename, const char *funcname)
+yb_errlocation_from_status(const char *filename, int lineno, const char *funcname)
 {
 	Assert(!IsMultiThreadedMode());
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	yb_set_or_pstrdup_err_field(&edata->filename, filename);
-	yb_set_or_pstrdup_err_field(&edata->funcname, funcname);
-	edata->yb_owns_file_and_func = true;
+	/*
+	 * If Status don't have location info don't change anything and allow
+	 * errfinish to capture the location where Status was handled.
+	 */
+	if (filename || funcname)
+	{
+		Assert(!edata->filename);
+		Assert(!edata->funcname);
+		edata->filename = filename;
+		edata->lineno = lineno;
+		edata->funcname = funcname;
+		edata->yb_owns_file_and_func = true;
+	}
 }

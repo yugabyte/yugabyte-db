@@ -6,9 +6,8 @@ ynp:
   yb_home_dir: /home/yugabyte
 
   # NTP (Network Time Protocol) servers for time synchronization.
-  chrony_servers:
-    - "0.pool.ntp.org"
-    - "1.pool.ntp.org"
+  # Example: ["0.pool.ntp.org", "1.pool.ntp.org"]
+  chrony_servers: []
 
   # User ID for the 'yugabyte' user.
   # Specifies the UID to ensure consistency across nodes.
@@ -49,6 +48,7 @@ ynp:
   # Ref: https://github.com/aws/clock-bound
   is_configure_clockbound: false
 
+  configure_thp_settings: true
 yba:
   # The base URL of the Yugabyte Anywhere instance.
   # Example: 'https://yba.example.com'.

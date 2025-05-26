@@ -39,7 +39,7 @@ struct Traits<DataType::USER_DEFINED_TYPE> {
   using UDTInfo = UDTypeInfo;
 };
 
-constexpr int kMaxValidYCQLTypeIndex = to_underlying(DataType::JSONB) + 1;
+constexpr int kMaxValidYCQLTypeIndex = std::to_underlying(DataType::JSONB) + 1;
 
 // Set of keywords in CQL.
 // Derived from .../cassandra/src/java/org/apache/cassandra/cql3/Cql.g
@@ -186,6 +186,7 @@ QLType::SharedPtr QLType::Create(DataType type) {
 
     case DataType::GIN_NULL: return kDefaultType<DataType::GIN_NULL>;
     case DataType::VECTOR: return kDefaultType<DataType::VECTOR>;
+    case DataType::BSON: return kDefaultType<DataType::BSON>;
   }
   LOG(FATAL) << "Not supported datatype " << ToCQLString(type);
   return kNullType;
@@ -370,7 +371,8 @@ const std::string& QLType::ToCQLString(DataType type) {
     ((DataType::UINT32, "uint32")) \
     ((DataType::UINT64, "uint64")) \
     ((DataType::GIN_NULL, "gin_null")) \
-    ((DataType::VECTOR, "vector"))
+    ((DataType::VECTOR, "vector")) \
+    ((DataType::BSON, "bson"))
   switch (type) {
     BOOST_PP_SEQ_FOR_EACH(DATA_TYPE_SWITCH_CASE, ~, DATA_TYPE_ENUM_ELEMENTS)
   }
@@ -492,8 +494,8 @@ bool QLType::IsImplicitlyConvertible(const SharedPtr& lhs_type, const SharedPtr&
 }
 
 QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) {
-  const size_t left_index = to_underlying(left);
-  const size_t right_index = to_underlying(right);
+  const size_t left_index = std::to_underlying(left);
+  const size_t right_index = std::to_underlying(right);
   DCHECK_LT(left_index, kMaxValidYCQLTypeIndex);
   DCHECK_LT(right_index, kMaxValidYCQLTypeIndex);
 
@@ -538,8 +540,8 @@ QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) 
 }
 
 bool QLType::IsComparable(DataType left, DataType right) {
-  const size_t left_index = to_underlying(left);
-  const size_t right_index = to_underlying(right);
+  const size_t left_index = std::to_underlying(left);
+  const size_t right_index = std::to_underlying(right);
   DCHECK_LT(left_index, kMaxValidYCQLTypeIndex);
   DCHECK_LT(right_index, kMaxValidYCQLTypeIndex);
 

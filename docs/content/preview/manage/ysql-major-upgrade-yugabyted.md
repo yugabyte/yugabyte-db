@@ -47,6 +47,11 @@ v2.25 is a preview release that is only meant for evaluation purposes and should
 
     If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
 
+- If your cluster has dedicated YB-Master nodes (that is, nodes with YB-Master service only and no YB-TServer), you must create a superuser named `yugabyte_upgrade` and add its credentials to the `.pgpass` file on each YB-Master node. You can safely remove this user after the upgrade process is complete.
+    ```
+    CREATE USER yugabyte_upgrade WITH SUPERUSER PASSWORD '<strong_password>';
+    ```
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.

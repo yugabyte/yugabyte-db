@@ -344,7 +344,7 @@ class DocPgExprExecutor::State {
                    Format("Unsupported expression type $0", expr.expr_case()));
     auto& tscall = expr.tscall();
     RSTATUS_DCHECK_EQ(
-        tscall.opcode(), to_underlying(bfpg::TSOpcode::kPgEvalExprCall),
+        tscall.opcode(), std::to_underlying(bfpg::TSOpcode::kPgEvalExprCall),
         InternalError, "Serialized Postgres expression is expected");
     return tscall;
   }

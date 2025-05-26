@@ -35,9 +35,16 @@
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
+#include "yb/util/threadpool.h"
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+
+class ThreadPool;
+
+}
 
 namespace yb::tserver {
 
@@ -235,27 +242,32 @@ class SharedExchange {
 
 using SharedExchangeListener = std::function<void(size_t)>;
 
-class SharedExchangeThread {
+class SharedExchangeRunnable :
+    public Runnable, public std::enable_shared_from_this<SharedExchangeRunnable> {
  public:
-  SharedExchangeThread(SharedExchange exchange, const SharedExchangeListener& listener);
+  SharedExchangeRunnable(SharedExchange exchange, const SharedExchangeListener& listener);
 
-  ~SharedExchangeThread();
+  ~SharedExchangeRunnable();
 
   SharedExchange& exchange() {
     return exchange_;
   }
 
   bool ReadyToShutdown() const {
-    return ready_to_complete_.load();
+    return stop_latch_.count() == 0;
   }
+
+  Status Start(ThreadPool& thread_pool);
 
   void StartShutdown();
   void CompleteShutdown();
 
  private:
+  void Run() override;
+
   SharedExchange exchange_;
-  ThreadPtr thread_;
-  std::atomic<bool> ready_to_complete_{false};
+  SharedExchangeListener listener_;
+  CountDownLatch stop_latch_{0};
 };
 
 struct SharedExchangeMessage {

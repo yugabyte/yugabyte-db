@@ -6,4 +6,4 @@
 #####################################################################
 test: yb.port.update
 test: yb.port.partition_aggregate
-test: yb.port.partition_info
+test: partition_info

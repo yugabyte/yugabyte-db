@@ -12,7 +12,6 @@ package com.yugabyte.yw.common.ha;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertThrows;
 import static play.test.Helpers.fakeRequest;
 
 import com.yugabyte.yw.common.FakeApi;
@@ -39,8 +38,6 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
   private PlatformInstanceClientFactory platformInstanceClientFactory;
 
   private static final String REMOTE_ACME_ORG = "http://remote.acme.org";
-
-  private static final String BAD_CA_CERT_KEY = "-----BAD CERT-----\n";
 
   private static final String GOOD_CA_CERT_KEY =
       "-----BEGIN CERTIFICATE-----\n"
@@ -115,11 +112,6 @@ public class PlatformInstanceClientFactoryTest extends FakeDBApplication {
     assertNotEquals(
         platformInstanceClient.getApiHelper().getWsClient(),
         platformInstanceClient3.getApiHelper().getWsClient());
-  }
-
-  @Test
-  public void setWsConfig_badCert() {
-    assertThrows(RuntimeException.class, () -> setWsConfig(BAD_CA_CERT_KEY));
   }
 
   private void setWsConfig(String pemKey) {

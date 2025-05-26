@@ -38,24 +38,24 @@ The deployment types are explained in the following sections.
     title="Synchronous multi region"
     body="Distribute data synchronously across regions."
     href="synchronous-replication-ysql/"
-    icon="fa-light fa-circle-nodes">}}
+    icon="fa-thin fa-circle-nodes">}}
 
   {{<index/item
     title="xCluster"
     body="Asynchronous replication across two data centers or cloud regions."
     href="../going-beyond-sql/asynchronous-replication-ysql/"
-    icon="fa-light fa-clone">}}
+    icon="fa-thin fa-clone">}}
 
   {{<index/item
     title="Row-level geo-partitioning"
     body="Pin data to regions for compliance and lower latencies."
     href="row-level-geo-partitioning/"
-    icon="fa-light fa-earth-europe">}}
+    icon="fa-thin fa-earth-europe">}}
 
   {{<index/item
     title="Read replicas"
     body="Improve read latencies using read-only replicas."
     href="read-replicas-ysql/"
-    icon="fa-light fa-book-open">}}
+    icon="fa-thin fa-book-open">}}
 
 {{</index/block>}}

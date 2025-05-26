@@ -45,10 +45,11 @@ class XClusterCheckpointNamespaceTask : public MultiStepCatalogEntityTask {
   Status FirstStep() override;
 
  private:
-  Status CreateStreams();
+  Status BumpOidCounter();
   Status SetupDDLReplicationExtension();
   void SetupDDLReplicationExtensionCallback(Status status);
   Status PrepareDDLQueueTable(Status status);
+  Status CreateStreams();
 
   Status CheckpointStreams();
   void CheckpointStreamsCallback(XClusterCheckpointStreamsResult result);

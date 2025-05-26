@@ -43,6 +43,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 
@@ -78,6 +79,9 @@ DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output"
 
 #define REGISTER_COMMAND(command_name) \
   Register(#command_name, command_name##_args, command_name##_action)
+
+#define REGISTER_COMMAND_HIDDEN(command_name) \
+  Register(#command_name, command_name##_args, command_name##_action, true)
 
 using std::cerr;
 using std::endl;
@@ -264,13 +268,13 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
             auto meta =
                 VERIFY_RESULT(pb_util::ParseFromSlice<master::SysNamespaceEntryPB>(entry.data()));
             meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
           case master::SysRowEntryType::UDTYPE: {
             auto meta =
                 VERIFY_RESULT(pb_util::ParseFromSlice<master::SysUDTypeEntryPB>(entry.data()));
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
           case master::SysRowEntryType::TABLE: {
@@ -281,7 +285,7 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
             meta.clear_index_info();
             meta.clear_indexes();
             meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT_ESCAPE_STR);
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
           default:
@@ -292,8 +296,8 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
           entry.set_data("DATA");
           std::cout << kColumnSep
                     << StringReplace(
-                           JsonWriter::ToJson(entry, JsonWriter::COMPACT_ESCAPE_STR), "\"DATA\"",
-                           decoded_data, false)
+                           JsonWriter::ToJson(entry, JsonWriter::COMPACT), "\"DATA\"", decoded_data,
+                           false)
                     << std::endl;
         }
       }
@@ -1659,7 +1663,7 @@ const auto create_database_snapshot_args =
     "then takes the default value controlled by gflag default_retention_hours)";
 Status create_database_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1 && args.size() > 2) {
+  if (args.size() < 1 || args.size() > 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
@@ -2793,6 +2797,22 @@ Status write_sys_catalog_entry_action(
       operation, entry_type, /*entry_id=*/args[2], /*file_path=*/args[3], force);
 }
 
+const auto unsafe_release_object_locks_global_args = "<txn_uuid> [subtxn_id]";
+Status unsafe_release_object_locks_global_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 1 || args.size() > 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto txn_id = VERIFY_RESULT(TransactionId::FromString(args[0]));
+  uint32_t subtxn_id = 0;
+  if (args.size() == 2 && !args[1].empty()) {
+    subtxn_id = VERIFY_RESULT(CheckedStoui(args[1]));
+  }
+
+  return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2882,6 +2902,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(rotate_universe_key_in_memory);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
+  REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
   REGISTER_COMMAND(delete_change_data_stream);

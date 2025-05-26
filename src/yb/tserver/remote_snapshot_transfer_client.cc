@@ -111,7 +111,12 @@ Status RemoteSnapshotTransferClient::Start(
   LOG_WITH_PREFIX(INFO) << "Snapshot files: " << yb::ToString(kv_store->snapshot_files());
 
   downloader_.Start(
-      proxy_, resp.session_id(), MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
+      [proxy = this->proxy_](
+          const FetchDataRequestPB& req, FetchDataResponsePB* resp,
+          rpc::RpcController* controller) {
+        return proxy->FetchData(req, resp, controller);},
+      resp.session_id(),
+      MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
   LOG_WITH_PREFIX(INFO) << "Began remote snapshot transfer session " << session_id();
 
   superblock_.reset(resp.release_superblock());

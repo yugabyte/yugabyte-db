@@ -57,6 +57,8 @@ void YBCRestorePgSessionState(const YbcPgSessionState* session_data);
 
 YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade);
 
+void YBCPgIncrementIndexRecheckCount();
+
 uint64_t YBCPgGetSessionID();
 
 // Initialize YBCPgMemCtx.
@@ -101,6 +103,10 @@ YbcStatus YBCGetTserverCatalogMessageLists(
     YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
     YbcCatalogMessageLists* message_lists);
 
+YbcStatus YBCPgSetTserverCatalogMessageList(
+    YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -140,6 +146,8 @@ YbcStatus YBCFetchFromUrl(const char *url, char **buf);
 bool YBCIsCronLeader();
 YbcStatus YBCSetCronLastMinute(int64_t last_minute);
 YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
+
+int YBCGetXClusterRole(uint32_t db_oid);
 
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
@@ -565,6 +573,8 @@ YbcStatus YBCPgDmlANNBindVector(YbcPgStatement handle, YbcPgExpr vector);
 
 YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size);
 
+YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search);
+
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
@@ -834,6 +844,8 @@ bool YBCPgIsYugaByteEnabled();
 // Sets the specified timeout in the rpc service.
 void YBCSetTimeout(int timeout_ms, void* extra);
 
+void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
+
 //--------------------------------------------------------------------------------------------------
 // Thread-Local variables.
 
@@ -846,6 +858,10 @@ void YBCPgResetCurrentMemCtxThreadLocalVars();
 void* YBCPgGetThreadLocalStrTokPtr();
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
+
+int YBCPgGetThreadLocalYbExpressionVersion();
+
+void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version);
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
 
@@ -919,6 +935,7 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgOid database_oid,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
+                                        YbcOrderingMode ordering_mode,
                                         YbcPgStatement *handle);
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);
@@ -969,8 +986,10 @@ YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* 
 
 YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** databaseClones, size_t* count);
 
-uint64_t YBCPgGetCurrentReadTimePoint();
-YbcStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
+YbcReadPointHandle YBCPgGetCurrentReadPoint();
+YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
+YbcStatus YBCPgRegisterSnapshotReadTime(
+    uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
 
 void YBCDdlEnableForceCatalogModification();
 
@@ -982,9 +1001,9 @@ YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode 
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
 
 YbcStatus YBCPgExportSnapshot(
-    const YbcPgTxnSnapshot* snapshot, char** snapshot_id, const uint64_t* explicit_read_time);
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id,
+    const YbcReadPointHandle* explicit_read_point);
 YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
-YbcStatus YBCPgSetTxnSnapshot(uint64_t explicit_read_time);
 
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();

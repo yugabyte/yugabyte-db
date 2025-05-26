@@ -421,11 +421,9 @@ CREATE TABLE test_foreign_constraints(id1 int REFERENCES test_primary_constraint
 CREATE TABLE test_foreign_constraints_inh () INHERITS (test_foreign_constraints);
 \d+ test_primary_constraints
 \d+ test_foreign_constraints
-/* YB: pending issue with inherits #26216 should not attempt to propagate to child in this case
 ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id1_fkey;
 \d+ test_foreign_constraints
 \d+ test_foreign_constraints_inh
-*/ -- YB
 DROP TABLE test_foreign_constraints_inh;
 DROP TABLE test_foreign_constraints;
 DROP TABLE test_primary_constraints;
@@ -650,6 +648,44 @@ reset enable_seqscan;
 reset enable_indexscan;
 reset enable_bitmapscan;
 */ -- YB
+
+--
+-- Check handling of MULTIEXPR SubPlans in inherited updates
+--
+create table inhpar(f1 int, f2 name);
+create table inhcld(f2 name, f1 int);
+alter table inhcld inherit inhpar;
+insert into inhpar select x, x::text from generate_series(1,5) x;
+insert into inhcld select x::text, x from generate_series(6,10) x;
+
+explain (verbose, costs off)
+update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
+update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
+select * from inhpar;
+
+drop table inhpar cascade;
+
+--
+-- And the same for partitioned cases
+--
+create table inhpar(f1 int primary key, f2 name) partition by range (f1);
+create table inhcld1(f2 name, f1 int primary key);
+create table inhcld2(f1 int primary key, f2 name);
+alter table inhpar attach partition inhcld1 for values from (1) to (5);
+alter table inhpar attach partition inhcld2 for values from (5) to (100);
+insert into inhpar select x, x::text from generate_series(1,10) x;
+
+explain (verbose, costs off)
+update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
+update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
+select * from inhpar;
+
+-- Also check ON CONFLICT
+insert into inhpar as i values (3), (7) on conflict (f1)
+  do update set (f1, f2) = (select i.f1, i.f2 || '+');
+select * from inhpar order by f1;  -- tuple order might be unstable here
+
+drop table inhpar cascade;
 
 --
 -- Check handling of a constant-null CHECK constraint

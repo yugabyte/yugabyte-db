@@ -77,13 +77,31 @@
 #include <utils/rel.h>
 
 
+/* Bitmask flags for pushdown_safety_info.unsafeFlags */
+#define UNSAFE_HAS_VOLATILE_FUNC		(1 << 0)
+#define UNSAFE_HAS_SET_FUNC				(1 << 1)
+#define UNSAFE_NOTIN_DISTINCTON_CLAUSE	(1 << 2)
+#define UNSAFE_NOTIN_PARTITIONBY_CLAUSE	(1 << 3)
+#define UNSAFE_TYPE_MISMATCH			(1 << 4)
+
 /* results of subquery_is_pushdown_safe */
 typedef struct pushdown_safety_info
 {
-	bool	   *unsafeColumns;	/* which output columns are unsafe to use */
+	unsigned char *unsafeFlags; /* bitmask of reasons why this target list
+								 * column is unsafe for qual pushdown, or 0 if
+								 * no reason. */
 	bool		unsafeVolatile; /* don't push down volatile quals */
 	bool		unsafeLeaky;	/* don't push down leaky quals */
 } pushdown_safety_info;
+
+/* Return type for qual_is_pushdown_safe */
+typedef enum pushdown_safe_type
+{
+	PUSHDOWN_UNSAFE,			/* unsafe to push qual into subquery */
+	PUSHDOWN_SAFE,				/* safe to push qual into subquery */
+	PUSHDOWN_WINDOWCLAUSE_RUNCOND	/* unsafe, but may work as WindowClause
+									 * run condition */
+} pushdown_safe_type;
 
 /* These parameters are set by GUC */
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
@@ -91,8 +109,8 @@ int			geqo_threshold;
 int			min_parallel_table_scan_size;
 int			min_parallel_index_scan_size;
 
-bool 		yb_enable_planner_trace;
-char		*yb_hinted_uids;
+bool		yb_enable_planner_trace;
+char	   *yb_hinted_uids;
 
 /* Hook for plugins to get control in set_rel_pathlist() */
 set_rel_pathlist_hook_type set_rel_pathlist_hook = NULL;
@@ -163,16 +181,19 @@ static void check_output_expressions(Query *subquery,
 static void compare_tlist_datatypes(List *tlist, List *colTypes,
 									pushdown_safety_info *safetyInfo);
 static bool targetIsInAllPartitionLists(TargetEntry *tle, Query *query);
-static bool qual_is_pushdown_safe(Query *subquery, Index rti,
-								  RestrictInfo *rinfo,
-								  pushdown_safety_info *safetyInfo);
+static pushdown_safe_type qual_is_pushdown_safe(Query *subquery, Index rti,
+												RestrictInfo *rinfo,
+												pushdown_safety_info *safetyInfo);
 static void subquery_push_qual(Query *subquery,
 							   RangeTblEntry *rte, Index rti, Node *qual);
 static void recurse_push_qual(Node *setOp, Query *topquery,
 							  RangeTblEntry *rte, Index rti, Node *qual);
 static void remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel,
 										   Bitmapset *extra_used_attrs);
-static int ybCmpRelOptInfo(const void *p1, const void *p2);
+
+/* YB declarations */
+static int	ybCmpRelOptInfo(const void *p1, const void *p2);
+
 
 /*
  * make_one_rel
@@ -2330,6 +2351,10 @@ find_window_run_conditions(Query *subquery, RangeTblEntry *rte, Index rti,
 	if (!IsA(wfunc, WindowFunc))
 		return false;
 
+	/* can't use it if there are subplans in the WindowFunc */
+	if (contain_subplans((Node *) wfunc))
+		return false;
+
 	prosupport = get_func_support(wfunc->winfnoid);
 
 	/* Check if there's a support function for 'wfunc' */
@@ -2611,13 +2636,14 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	/*
 	 * Zero out result area for subquery_is_pushdown_safe, so that it can set
 	 * flags as needed while recursing.  In particular, we need a workspace
-	 * for keeping track of unsafe-to-reference columns.  unsafeColumns[i]
-	 * will be set true if we find that output column i of the subquery is
-	 * unsafe to use in a pushed-down qual.
+	 * for keeping track of the reasons why columns are unsafe to reference.
+	 * These reasons are stored in the bits inside unsafeFlags[i] when we
+	 * discover reasons that column i of the subquery is unsafe to be used in
+	 * a pushed-down qual.
 	 */
 	memset(&safetyInfo, 0, sizeof(safetyInfo));
-	safetyInfo.unsafeColumns = (bool *)
-		palloc0((list_length(subquery->targetList) + 1) * sizeof(bool));
+	safetyInfo.unsafeFlags = (unsigned char *)
+		palloc0((list_length(subquery->targetList) + 1) * sizeof(unsigned char));
 
 	/*
 	 * If the subquery has the "security_barrier" flag, it means the subquery
@@ -2660,37 +2686,50 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 			Node	   *clause = (Node *) rinfo->clause;
 
-			if (!rinfo->pseudoconstant &&
-				qual_is_pushdown_safe(subquery, rti, rinfo, &safetyInfo))
+			if (rinfo->pseudoconstant)
 			{
-				/* Push it down */
-				subquery_push_qual(subquery, rte, rti, clause);
+				upperrestrictlist = lappend(upperrestrictlist, rinfo);
+				continue;
 			}
-			else
+
+			switch (qual_is_pushdown_safe(subquery, rti, rinfo, &safetyInfo))
 			{
-				/*
-				 * Since we can't push the qual down into the subquery, check
-				 * if it happens to reference a window function.  If so then
-				 * it might be useful to use for the WindowAgg's runCondition.
-				 */
-				if (!subquery->hasWindowFuncs ||
-					check_and_push_window_quals(subquery, rte, rti, clause,
-												&run_cond_attrs))
-				{
+				case PUSHDOWN_SAFE:
+					/* Push it down */
+					subquery_push_qual(subquery, rte, rti, clause);
+					break;
+
+				case PUSHDOWN_WINDOWCLAUSE_RUNCOND:
+
 					/*
-					 * subquery has no window funcs or the clause is not a
-					 * suitable window run condition qual or it is, but the
-					 * original must also be kept in the upper query.
+					 * Since we can't push the qual down into the subquery,
+					 * check if it happens to reference a window function.  If
+					 * so then it might be useful to use for the WindowAgg's
+					 * runCondition.
 					 */
+					if (!subquery->hasWindowFuncs ||
+						check_and_push_window_quals(subquery, rte, rti, clause,
+													&run_cond_attrs))
+					{
+						/*
+						 * subquery has no window funcs or the clause is not a
+						 * suitable window run condition qual or it is, but
+						 * the original must also be kept in the upper query.
+						 */
+						upperrestrictlist = lappend(upperrestrictlist, rinfo);
+					}
+					break;
+
+				case PUSHDOWN_UNSAFE:
 					upperrestrictlist = lappend(upperrestrictlist, rinfo);
-				}
+					break;
 			}
 		}
 		rel->baserestrictinfo = upperrestrictlist;
 		/* We don't bother recomputing baserestrict_min_security */
 	}
 
-	pfree(safetyInfo.unsafeColumns);
+	pfree(safetyInfo.unsafeFlags);
 
 	/*
 	 * The upper query might not use all the subquery's output columns; if
@@ -3564,65 +3603,119 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 #endif
 		}
 
-		if (IsYugaByteEnabled())
+		if (IsYugaByteEnabled() && root->ybHintedJoinsOuter != NULL)
 		{
 			/*
-			 * Sweep all joins at this level and look for disabled join
-			 * and non-disabled joins.
+			 * There is a Leading hint so sweep all joins at this level
+			 * and look for disabled and non-disabled joins. Also determine
+			 * if some join at this level has been hinted. If so, it is safe to
+			 * prune non-hinted joins.
 			 */
-			List *levelJoinRels = NIL;
-			bool foundDisabledRel = false;
-			ListCell *lc2;
+			List	   *ybLevelJoinRels = NIL;
+			bool		ybFoundDisabledRel = false;
+			bool		ybFoundHintedJoin = false;
+
+			ListCell   *lc2;
+
 			foreach(lc2, root->join_rel_level[lev])
 			{
-				RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
-				if (rel->cheapest_total_path->total_cost < disable_cost ||
-					rel->cheapest_total_path->ybIsHinted ||
-					rel->cheapest_total_path->ybHasHintedUid)
+				RelOptInfo *ybRel = (RelOptInfo *) lfirst(lc2);
+
+				Assert(IS_JOIN_REL(ybRel));
+
+				bool		ybIsJoinPath;
+
+				/*
+				 * Could we have a non-join path type here (e.g., an Append)?
+				 * Check that we have a join path.
+				 */
+				switch (ybRel->cheapest_total_path->type)
+				{
+					case T_NestPath:
+						ybIsJoinPath = true;
+						break;
+					case T_MergePath:
+						ybIsJoinPath = true;
+						break;
+					case T_HashPath:
+						ybIsJoinPath = true;
+						break;
+					default:
+						ybIsJoinPath = false;
+						break;
+				}
+
+				/*
+				 * Assuming that only join paths exist in the space
+				 * of enumerated joins. If this is found to not be the case,
+				 * the next 2 IFs need to check for a join path, and a non-join
+				 * path, respectively.
+				 */
+				Assert(ybIsJoinPath);
+
+				if (ybRel->cheapest_total_path->ybIsHinted ||
+					ybRel->cheapest_total_path->ybHasHintedUid)
+				{
+					ybFoundHintedJoin = true;
+				}
+
+				if (ybRel->cheapest_total_path->total_cost < disable_cost ||
+					ybRel->cheapest_total_path->ybIsHinted ||
+					ybRel->cheapest_total_path->ybHasHintedUid)
 				{
 					/*
-					 * Found a join with cost < disable cost. Or cost could be
-					 * >= disable cost (because the join is really expensive)
-					 * but it is in a Leading hint.
+					 * Found a join with cost < disable cost,
+					 * or whose cost could be >= disable cost because the join is
+					 * really expensive. But it is in a Leading hint, or
+					 * has been hinted using its UID so add it to the list
+					 * of joins we want to keep at this level.
 					 */
-					levelJoinRels = lappend(levelJoinRels, rel);
+					ybLevelJoinRels = lappend(ybLevelJoinRels, ybRel);
 				}
 				else
 				{
 					/*
-					 * Found a path that has been disabled via hints.
+					 * Found a join that has been disabled,
+					 * or that perhaps has a "true" cost > disable cost.
+					 * It is a join and is not hinted so set a flag so we can
+					 * try pruning below.
 					 */
-					foundDisabledRel = true;
+					ybFoundDisabledRel = true;
 				}
 			}
 
 			/*
-			 * Now look for a mix of enabled and disabled join paths at this level.
+			 * Now look for a mix of enabled and disabled join paths at this level,
+			 * but only do this if some join at this level has been hinted.
 			 */
-			if (levelJoinRels != NIL && foundDisabledRel)
+			if (ybLevelJoinRels != NIL && ybFoundDisabledRel && ybFoundHintedJoin)
 			{
 				if (yb_enable_planner_trace)
 				{
 					StringInfoData dropMsg;
+
 					initStringInfo(&dropMsg);
 					appendStringInfo(&dropMsg, "\n++ Level %d DROP rel", lev);
 
 					StringInfoData keepMsg;
+
 					initStringInfo(&keepMsg);
 					appendStringInfo(&keepMsg, "\n++ Level %d KEEP rel", lev);
 
 					foreach(lc2, root->join_rel_level[lev])
 					{
 						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
-						if (!list_member_ptr(levelJoinRels, rel))
+
+						if (!list_member_ptr(ybLevelJoinRels, rel))
 						{
 							ybTraceRelOptInfo(root, rel, dropMsg.data);
 						}
 					}
 
-					foreach(lc2, levelJoinRels)
+					foreach(lc2, ybLevelJoinRels)
 					{
 						RelOptInfo *rel = (RelOptInfo *) lfirst(lc2);
+
 						ybTraceRelOptInfo(root, rel, keepMsg.data);
 					}
 
@@ -3631,9 +3724,10 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 				}
 
 				/*
-				 * Keep only the non-disabled joins since the disabled ones cannot be part of the best plan.
+				 * Keep only the non-disabled joins since the disabled ones
+				 * cannot be part of the best plan.
 				 */
-				root->join_rel_level[lev] = levelJoinRels;
+				root->join_rel_level[lev] = ybLevelJoinRels;
 			}
 		}
 	}
@@ -3649,9 +3743,10 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 	root->join_rel_level = NULL;
 
-	if (IsYugaByteEnabled()&& yb_enable_planner_trace)
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "final rel Level %d :", levels_needed);
 		ybTraceRelOptInfo(root, rel, buf.data);
@@ -3713,13 +3808,13 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
  *
  * In addition, we make several checks on the subquery's output columns to see
  * if it is safe to reference them in pushed-down quals.  If output column k
- * is found to be unsafe to reference, we set safetyInfo->unsafeColumns[k]
- * to true, but we don't reject the subquery overall since column k might not
- * be referenced by some/all quals.  The unsafeColumns[] array will be
- * consulted later by qual_is_pushdown_safe().  It's better to do it this way
- * than to make the checks directly in qual_is_pushdown_safe(), because when
- * the subquery involves set operations we have to check the output
- * expressions in each arm of the set op.
+ * is found to be unsafe to reference, we set the reason for that inside
+ * safetyInfo->unsafeFlags[k], but we don't reject the subquery overall since
+ * column k might not be referenced by some/all quals.  The unsafeFlags[]
+ * array will be consulted later by qual_is_pushdown_safe().  It's better to
+ * do it this way than to make the checks directly in qual_is_pushdown_safe(),
+ * because when the subquery involves set operations we have to check the
+ * output expressions in each arm of the set op.
  *
  * Note: pushing quals into a DISTINCT subquery is theoretically dubious:
  * we're effectively assuming that the quals cannot distinguish values that
@@ -3767,9 +3862,9 @@ subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 
 	/*
 	 * If we're at a leaf query, check for unsafe expressions in its target
-	 * list, and mark any unsafe ones in unsafeColumns[].  (Non-leaf nodes in
-	 * setop trees have only simple Vars in their tlists, so no need to check
-	 * them.)
+	 * list, and mark any reasons why they're unsafe in unsafeFlags[].
+	 * (Non-leaf nodes in setop trees have only simple Vars in their tlists,
+	 * so no need to check them.)
 	 */
 	if (subquery->setOperations == NULL)
 		check_output_expressions(subquery, safetyInfo);
@@ -3840,9 +3935,9 @@ recurse_pushdown_safe(Node *setOp, Query *topquery,
  *
  * There are several cases in which it's unsafe to push down an upper-level
  * qual if it references a particular output column of a subquery.  We check
- * each output column of the subquery and set unsafeColumns[k] to true if
- * that column is unsafe for a pushed-down qual to reference.  The conditions
- * checked here are:
+ * each output column of the subquery and set flags in unsafeFlags[k] when we
+ * see that column is unsafe for a pushed-down qual to reference.  The
+ * conditions checked here are:
  *
  * 1. We must not push down any quals that refer to subselect outputs that
  * return sets, else we'd introduce functions-returning-sets into the
@@ -3866,7 +3961,9 @@ recurse_pushdown_safe(Node *setOp, Query *topquery,
  * every row of any one window partition, and totally excluding some
  * partitions will not change a window function's results for remaining
  * partitions.  (Again, this also requires nonvolatile quals, but
- * subquery_is_pushdown_safe handles that.)
+ * subquery_is_pushdown_safe handles that.).  Subquery columns marked as
+ * unsafe for this reason can still have WindowClause run conditions pushed
+ * down.
  */
 static void
 check_output_expressions(Query *subquery, pushdown_safety_info *safetyInfo)
@@ -3880,40 +3977,44 @@ check_output_expressions(Query *subquery, pushdown_safety_info *safetyInfo)
 		if (tle->resjunk)
 			continue;			/* ignore resjunk columns */
 
-		/* We need not check further if output col is already known unsafe */
-		if (safetyInfo->unsafeColumns[tle->resno])
-			continue;
-
 		/* Functions returning sets are unsafe (point 1) */
 		if (subquery->hasTargetSRFs &&
+			(safetyInfo->unsafeFlags[tle->resno] &
+			 UNSAFE_HAS_SET_FUNC) == 0 &&
 			expression_returns_set((Node *) tle->expr))
 		{
-			safetyInfo->unsafeColumns[tle->resno] = true;
+			safetyInfo->unsafeFlags[tle->resno] |= UNSAFE_HAS_SET_FUNC;
 			continue;
 		}
 
 		/* Volatile functions are unsafe (point 2) */
-		if (contain_volatile_functions((Node *) tle->expr))
+		if ((safetyInfo->unsafeFlags[tle->resno] &
+			 UNSAFE_HAS_VOLATILE_FUNC) == 0 &&
+			contain_volatile_functions((Node *) tle->expr))
 		{
-			safetyInfo->unsafeColumns[tle->resno] = true;
+			safetyInfo->unsafeFlags[tle->resno] |= UNSAFE_HAS_VOLATILE_FUNC;
 			continue;
 		}
 
 		/* If subquery uses DISTINCT ON, check point 3 */
 		if (subquery->hasDistinctOn &&
+			(safetyInfo->unsafeFlags[tle->resno] &
+			 UNSAFE_NOTIN_DISTINCTON_CLAUSE) == 0 &&
 			!targetIsInSortList(tle, InvalidOid, subquery->distinctClause))
 		{
 			/* non-DISTINCT column, so mark it unsafe */
-			safetyInfo->unsafeColumns[tle->resno] = true;
+			safetyInfo->unsafeFlags[tle->resno] |= UNSAFE_NOTIN_DISTINCTON_CLAUSE;
 			continue;
 		}
 
 		/* If subquery uses window functions, check point 4 */
 		if (subquery->hasWindowFuncs &&
+			(safetyInfo->unsafeFlags[tle->resno] &
+			 UNSAFE_NOTIN_DISTINCTON_CLAUSE) == 0 &&
 			!targetIsInAllPartitionLists(tle, subquery))
 		{
 			/* not present in all PARTITION BY clauses, so mark it unsafe */
-			safetyInfo->unsafeColumns[tle->resno] = true;
+			safetyInfo->unsafeFlags[tle->resno] |= UNSAFE_NOTIN_PARTITIONBY_CLAUSE;
 			continue;
 		}
 	}
@@ -3925,8 +4026,8 @@ check_output_expressions(Query *subquery, pushdown_safety_info *safetyInfo)
  * subquery columns that suffer no type coercions in the set operation.
  * Otherwise there are possible semantic gotchas.  So, we check the
  * component queries to see if any of them have output types different from
- * the top-level setop outputs.  unsafeColumns[k] is set true if column k
- * has different type in any component.
+ * the top-level setop outputs.  We set the UNSAFE_TYPE_MISMATCH bit in
+ * unsafeFlags[k] if column k has different type in any component.
  *
  * We don't have to care about typmods here: the only allowed difference
  * between set-op input and output typmods is input is a specific typmod
@@ -3934,7 +4035,7 @@ check_output_expressions(Query *subquery, pushdown_safety_info *safetyInfo)
  *
  * tlist is a subquery tlist.
  * colTypes is an OID list of the top-level setop's output column types.
- * safetyInfo->unsafeColumns[] is the result array.
+ * safetyInfo is the pushdown_safety_info to set unsafeFlags[] for.
  */
 static void
 compare_tlist_datatypes(List *tlist, List *colTypes,
@@ -3952,7 +4053,7 @@ compare_tlist_datatypes(List *tlist, List *colTypes,
 		if (colType == NULL)
 			elog(ERROR, "wrong number of tlist entries");
 		if (exprType((Node *) tle->expr) != lfirst_oid(colType))
-			safetyInfo->unsafeColumns[tle->resno] = true;
+			safetyInfo->unsafeFlags[tle->resno] |= UNSAFE_TYPE_MISMATCH;
 		colType = lnext(colTypes, colType);
 	}
 	if (colType != NULL)
@@ -4012,28 +4113,28 @@ targetIsInAllPartitionLists(TargetEntry *tle, Query *query)
  * 5. rinfo's clause must not refer to any subquery output columns that were
  * found to be unsafe to reference by subquery_is_pushdown_safe().
  */
-static bool
+static pushdown_safe_type
 qual_is_pushdown_safe(Query *subquery, Index rti, RestrictInfo *rinfo,
 					  pushdown_safety_info *safetyInfo)
 {
-	bool		safe = true;
+	pushdown_safe_type safe = PUSHDOWN_SAFE;
 	Node	   *qual = (Node *) rinfo->clause;
 	List	   *vars;
 	ListCell   *vl;
 
 	/* Refuse subselects (point 1) */
 	if (contain_subplans(qual))
-		return false;
+		return PUSHDOWN_UNSAFE;
 
 	/* Refuse volatile quals if we found they'd be unsafe (point 2) */
 	if (safetyInfo->unsafeVolatile &&
 		contain_volatile_functions((Node *) rinfo))
-		return false;
+		return PUSHDOWN_UNSAFE;
 
 	/* Refuse leaky quals if told to (point 3) */
 	if (safetyInfo->unsafeLeaky &&
 		contain_leaked_vars(qual))
-		return false;
+		return PUSHDOWN_UNSAFE;
 
 	/*
 	 * It would be unsafe to push down window function calls, but at least for
@@ -4062,7 +4163,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, RestrictInfo *rinfo,
 		 */
 		if (!IsA(var, Var))
 		{
-			safe = false;
+			safe = PUSHDOWN_UNSAFE;
 			break;
 		}
 
@@ -4074,7 +4175,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, RestrictInfo *rinfo,
 		 */
 		if (var->varno != rti)
 		{
-			safe = false;
+			safe = PUSHDOWN_UNSAFE;
 			break;
 		}
 
@@ -4084,15 +4185,26 @@ qual_is_pushdown_safe(Query *subquery, Index rti, RestrictInfo *rinfo,
 		/* Check point 4 */
 		if (var->varattno == 0)
 		{
-			safe = false;
+			safe = PUSHDOWN_UNSAFE;
 			break;
 		}
 
 		/* Check point 5 */
-		if (safetyInfo->unsafeColumns[var->varattno])
+		if (safetyInfo->unsafeFlags[var->varattno] != 0)
 		{
-			safe = false;
-			break;
+			if (safetyInfo->unsafeFlags[var->varattno] &
+				(UNSAFE_HAS_VOLATILE_FUNC | UNSAFE_HAS_SET_FUNC |
+				 UNSAFE_NOTIN_DISTINCTON_CLAUSE | UNSAFE_TYPE_MISMATCH))
+			{
+				safe = PUSHDOWN_UNSAFE;
+				break;
+			}
+			else
+			{
+				/* UNSAFE_NOTIN_PARTITIONBY_CLAUSE is ok for run conditions */
+				safe = PUSHDOWN_WINDOWCLAUSE_RUNCOND;
+				/* don't break, we might find another Var that's unsafe */
+			}
 		}
 	}
 
@@ -4319,7 +4431,7 @@ void
 create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 							Path *bitmapqual)
 {
-	int			parallel_workers = 0;
+	int			parallel_workers;
 	double		pages_fetched;
 
 	/* Compute heap pages for bitmap heap scan */
@@ -4331,9 +4443,10 @@ create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * validated.
 	 */
 	if (!rel->is_yb_relation)
-		parallel_workers =
-			compute_parallel_worker(rel, pages_fetched, -1,
-									max_parallel_workers_per_gather);
+		parallel_workers = compute_parallel_worker(rel, pages_fetched, -1,
+												   max_parallel_workers_per_gather);
+	else
+		parallel_workers = 0;
 
 	if (parallel_workers <= 0)
 		return;
@@ -4343,9 +4456,7 @@ create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 		return;
 	else
 		add_partial_path(rel, (Path *) create_bitmap_heap_path(root, rel,
-															   bitmapqual,
-															   rel->lateral_relids,
-															   1.0, parallel_workers));
+															   bitmapqual, rel->lateral_relids, 1.0, parallel_workers));
 }
 
 /*
@@ -4600,13 +4711,15 @@ generate_partitionwise_join_paths(PlannerInfo *root, RelOptInfo *rel)
 bool
 ybFindProhibitedJoin(PlannerInfo *root, NodeTag joinTag, Relids joinRelids)
 {
-	bool foundProhibitedJoin = false;
+	bool		foundProhibitedJoin = false;
 
-	ListCell *lc1, *lc2;
+	ListCell   *lc1,
+			   *lc2;
+
 	forboth(lc1, root->ybProhibitedJoinTypes, lc2, root->ybProhibitedJoins)
 	{
-		NodeTag prohibitedJoinTag = (NodeTag) lfirst_int(lc1);
-		Relids prohibitedJoinRelids = (Relids) lfirst(lc2);
+		NodeTag		prohibitedJoinTag = (NodeTag) lfirst_int(lc1);
+		Relids		prohibitedJoinRelids = (Relids) lfirst(lc2);
 
 		if (joinTag == prohibitedJoinTag && bms_equal(prohibitedJoinRelids, joinRelids))
 		{
@@ -4651,13 +4764,16 @@ ybFindProhibitedJoin(PlannerInfo *root, NodeTag joinTag, Relids joinRelids)
 bool
 ybFindHintedJoin(PlannerInfo *root, Relids outerRelids, Relids innerRelids, bool trySwapped)
 {
-	bool foundHintedJoin = false;
+	bool		foundHintedJoin = false;
 
-	ListCell *lc1, *lc2;
+	ListCell   *lc1,
+			   *lc2;
+
 	forboth(lc1, root->ybHintedJoinsOuter, lc2, root->ybHintedJoinsInner)
 	{
-		Relids hintedJoinOuterRelids = (Relids) lfirst(lc1);
-		Relids hintedJoinInnerRelids = (Relids) lfirst(lc2);
+		Relids		hintedJoinOuterRelids = (Relids) lfirst(lc1);
+		Relids		hintedJoinInnerRelids = (Relids) lfirst(lc2);
+
 		if ((bms_equal(outerRelids, hintedJoinOuterRelids) && bms_equal(innerRelids, hintedJoinInnerRelids)) ||
 			(trySwapped && bms_equal(outerRelids, hintedJoinInnerRelids) && bms_equal(innerRelids, hintedJoinOuterRelids)))
 		{
@@ -4705,10 +4821,10 @@ ybFindHintedJoin(PlannerInfo *root, Relids outerRelids, Relids innerRelids, bool
 static int
 ybCmpRelOptInfo(const void *p1, const void *p2)
 {
-	RelOptInfo *rel1 = * (RelOptInfo **) p1;
-	RelOptInfo *rel2 = * (RelOptInfo **) p1;
+	RelOptInfo *rel1 = *(RelOptInfo **) p1;
+	RelOptInfo *rel2 = *(RelOptInfo **) p1;
 
-	int cmp;
+	int			cmp;
 
 	if (rel1 == NULL)
 	{
@@ -4774,8 +4890,9 @@ ybBuildRelidsString(PlannerInfo *root, Relids relids, StringInfoData *buf)
 		int			pos;
 		bool		first = true;
 
-		size_t arrSize = root->simple_rel_array_size * sizeof(RelOptInfo *);
+		size_t		arrSize = root->simple_rel_array_size * sizeof(RelOptInfo *);
 		RelOptInfo **copy_simple_rel_array = (RelOptInfo **) palloc(arrSize);
+
 		memcpy(copy_simple_rel_array, root->simple_rel_array, arrSize);
 		qsort(copy_simple_rel_array, root->simple_rel_array_size, sizeof(RelOptInfo *), ybCmpRelOptInfo);
 
@@ -4787,10 +4904,12 @@ ybBuildRelidsString(PlannerInfo *root, Relids relids, StringInfoData *buf)
 				appendStringInfoSpaces(buf, 1);
 			}
 
-			bool printed = false;
+			bool		printed = false;
+
 			if (pos < root->simple_rel_array_size)
 			{
 				RelOptInfo *rel = copy_simple_rel_array[pos];
+
 				if (rel != NULL && rel->ybHintAlias != NULL)
 				{
 					appendStringInfo(buf, "%s", rel->ybHintAlias);
@@ -4821,7 +4940,7 @@ ybBuildRelOptInfoString(PlannerInfo *root, RelOptInfo *relOptInfo, StringInfoDat
 	if (relOptInfo->ybUniqueBaseId > 0)
 	{
 		appendStringInfo(buf, "table %s, block %d, UID = %d, relid = %d",
-			relOptInfo->ybHintAlias, relOptInfo->ybBlockId, relOptInfo->ybUniqueBaseId, relOptInfo->relid);
+						 relOptInfo->ybHintAlias, relOptInfo->ybBlockId, relOptInfo->ybUniqueBaseId, relOptInfo->relid);
 	}
 	else
 	{
@@ -4833,6 +4952,7 @@ void
 ybTraceRelOptInfo(PlannerInfo *root, RelOptInfo *relOptInfo, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -4856,11 +4976,13 @@ ybTraceRelOptInfo(PlannerInfo *root, RelOptInfo *relOptInfo, char *msg)
 		ereport(DEBUG1,
 				(errmsg("\n%s Cheapest total path is NULL\n", ybMsgBuf)));
 
-		Path *bestCurrentPath = NULL;
-		ListCell *lc;
+		Path	   *bestCurrentPath = NULL;
+		ListCell   *lc;
+
 		foreach(lc, relOptInfo->pathlist)
 		{
-			Path *path = (Path *) lfirst(lc);
+			Path	   *path = (Path *) lfirst(lc);
+
 			if (bestCurrentPath == NULL || compare_path_costs(path, bestCurrentPath, TOTAL_COST) == -1)
 			{
 				bestCurrentPath = path;
@@ -4880,6 +5002,7 @@ void
 ybTraceRelds(PlannerInfo *root, Relids relids, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -4900,6 +5023,7 @@ void
 ybTraceRelOptInfoList(PlannerInfo *root, List *relOptInfoList, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -4909,8 +5033,9 @@ ybTraceRelOptInfoList(PlannerInfo *root, List *relOptInfoList, char *msg)
 
 	appendStringInfoString(&buf, "begin rels\n");
 
-	bool first = true;
-	ListCell *lc;
+	bool		first = true;
+	ListCell   *lc;
+
 	foreach(lc, relOptInfoList)
 	{
 		if (!first)
@@ -4918,6 +5043,7 @@ ybTraceRelOptInfoList(PlannerInfo *root, List *relOptInfoList, char *msg)
 			appendStringInfoString(&buf, "\n");
 		}
 		RelOptInfo *relOptInfo = (RelOptInfo *) lfirst(lc);
+
 		appendStringInfoSpaces(&buf, 4);
 		ybBuildRelOptInfoString(root, relOptInfo, &buf);
 		first = false;
@@ -4941,6 +5067,7 @@ void
 ybTracePathList(PlannerInfo *root, List *pathList, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -4950,13 +5077,15 @@ ybTracePathList(PlannerInfo *root, List *pathList, char *msg)
 				(errmsg("\n%s %s :\n", ybMsgBuf, msg)));
 	}
 
-	int cnt = 0;
-	ListCell *lc;
+	int			cnt = 0;
+	ListCell   *lc;
+
 	foreach(lc, pathList)
 	{
 		resetStringInfo(&buf);
 		appendStringInfo(&buf, "\npath %d", cnt);
-		Path *path = (Path *) lfirst(lc);
+		Path	   *path = (Path *) lfirst(lc);
+
 		ybTracePath(root, path, buf.data);
 		++cnt;
 	}
@@ -4968,6 +5097,7 @@ void
 ybTracePath(PlannerInfo *root, Path *path, char *msg)
 {
 	StringInfoData buf;
+
 	initStringInfo(&buf);
 
 	if (msg != NULL)
@@ -4977,6 +5107,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 
 	const char *ptype;
 	bool		join = false;
+	bool		index = false;
 
 	switch (nodeTag(path))
 	{
@@ -5017,6 +5148,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 			break;
 		case T_IndexPath:
 			ptype = "IdxScan";
+			index = true;
 			break;
 		case T_BitmapHeapPath:
 			ptype = "BitmapHeapScan";
@@ -5131,9 +5263,18 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 	appendStringInfoSpaces(&buf, 2);
 	appendStringInfo(&buf, "%s (NODE %u , hinted = %s)\n", ptype, path->ybUniqueId, path->ybIsHinted ? "true" : "false");
 
+	if (index)
+	{
+		IndexPath  *indexPath = (IndexPath *) path;
+		char	   *indexName = get_rel_name(indexPath->indexinfo->indexoid);
+
+		appendStringInfoSpaces(&buf, 4);
+		appendStringInfo(&buf, "index name : %s\n", indexName);
+	}
+
 	appendStringInfoSpaces(&buf, 4);
 	appendStringInfo(&buf, "parallel aware = %s , parallel safe = %s, parallel workers = %d\n",
-						path->parallel_aware? "true" : "false", path->parallel_safe ? "true" : "false", path->parallel_workers);
+					 path->parallel_aware ? "true" : "false", path->parallel_safe ? "true" : "false", path->parallel_workers);
 
 	if (path->parent != NULL)
 	{
@@ -5153,7 +5294,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 
 	appendStringInfoSpaces(&buf, 4);
 	appendStringInfo(&buf, "rows = %.0f cost = %.2f..%.2f\n",
-						path->rows, path->startup_cost, path->total_cost);
+					 path->rows, path->startup_cost, path->total_cost);
 
 	if (join)
 	{
@@ -5162,6 +5303,7 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 		appendStringInfoSpaces(&buf, 4);
 		appendStringInfo(&buf, "outer join path : NODE %u\n", jp->outerjoinpath->ybUniqueId);
 		StringInfoData buf2;
+
 		initStringInfo(&buf2);
 		ybBuildRelidsString(root, jp->outerjoinpath->parent->relids, &buf2);
 		appendStringInfoSpaces(&buf, 6);
@@ -5189,12 +5331,13 @@ ybTraceCheapestPaths(RelOptInfo *rel, char *msg)
 			(errmsg("\n%s : cheapest total : NODE %d\n",
 					msg, rel->cheapest_total_path->ybUniqueId)));
 
-	ListCell *lc;
-	int cnt = 0;
+	ListCell   *lc;
+	int			cnt = 0;
 
-	foreach (lc, rel->cheapest_parameterized_paths)
+	foreach(lc, rel->cheapest_parameterized_paths)
 	{
-		Path *paramPath = (Path *) lfirst(lc);
+		Path	   *paramPath = (Path *) lfirst(lc);
+
 		ereport(DEBUG1,
 				(errmsg("\n%s : cheapest param path %d : NODE %d\n",
 						msg, cnt, paramPath->ybUniqueId)));
@@ -5310,6 +5453,9 @@ print_path(PlannerInfo *root, Path *path, int indent)
 			break;
 		case T_TidPath:
 			ptype = "TidScan";
+			break;
+		case T_TidRangePath:
+			ptype = "TidRangePath";
 			break;
 		case T_SubqueryScanPath:
 			ptype = "SubqueryScan";

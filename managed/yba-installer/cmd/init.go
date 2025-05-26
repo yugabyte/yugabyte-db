@@ -138,7 +138,13 @@ func handleRootCheck(cmdName string) {
 		} else if user.Uid != "0" && err == nil {
 			log.Fatal("Detected root install at /opt/yba-ctl, cannot upgrade as non-root")
 		}
-		log.Debug("legacy root check passed for upgrade")
+		log.Debug(fmt.Sprintf("legacy root check passed for %s", cmdName))
+
+		// Also handle the case where a config file is provided but did not include as_root
+		if err := common.SetYamlValue(common.InputFile(), "as_root", user.Uid == "0"); err != nil {
+			log.Warn("Failed to set as_root in config file, please set it manually")
+			log.Fatal("Failed to set as_root in config file: " + err.Error())
+		}
 		return
 	} else if user.Uid == "0" && !viper.GetBool("as_root") {
 		log.Fatal("running as root user with 'as_root' set to false is not supported")

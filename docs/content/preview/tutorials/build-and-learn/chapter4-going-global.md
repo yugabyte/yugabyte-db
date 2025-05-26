@@ -130,12 +130,12 @@ Restart the application using the new migration file:
     cd {yugaplus-project-dir}
     ```
 
-1. Use `Ctrl+C` or `docker-compose stop` to stop the YugaPlus application containers.
+1. Use `Ctrl+C` or `docker compose stop` to stop the YugaPlus application containers.
 
 1. Rebuild the Docker images and start the containers back:
 
     ```shell
-    docker-compose up --build
+    docker compose up --build
     ```
 
 After the container is started and connected to the database, Flyway will detect and apply the new migration file. You should see the following message in the logs of the `yugaplus-backend` container:

@@ -19,6 +19,7 @@
 #include "utils/relcache.h"
 #include "utils/wait_event.h"	/* for backward compatibility */
 
+
 /* ----------
  * Paths for the statistics files (relative to installation's $PGDATA).
  * ----------
@@ -570,6 +571,7 @@ typedef struct PgStat_WalStats
 	TimestampTz stat_reset_timestamp;
 } PgStat_WalStats;
 
+
 /*
  * Functions in pgstat.c
  */
@@ -602,12 +604,16 @@ extern TimestampTz pgstat_get_stat_snapshot_timestamp(bool *have_snapshot);
 extern PgStat_Kind pgstat_get_kind_from_str(char *kind_str);
 extern bool pgstat_have_entry(PgStat_Kind kind, Oid dboid, Oid objoid);
 
+/* GUC hook for stats_fetch_consistency */
+extern void assign_stats_fetch_consistency(int newval, void *extra);
+
 /*
  * Functions in pgstat_archiver.c
  */
 
 extern void pgstat_report_archiver(const char *xlog, bool failed);
 extern PgStat_ArchiverStats *pgstat_fetch_stat_archiver(void);
+
 
 /*
  * Functions in pgstat_bgwriter.c
@@ -675,6 +681,7 @@ extern void pgstat_end_function_usage(PgStat_FunctionCallUsage *fcu,
 
 extern PgStat_StatFuncEntry *pgstat_fetch_stat_funcentry(Oid funcid);
 extern PgStat_BackendFunctionEntry *find_funcstat_entry(Oid func_id);
+
 
 /*
  * Functions in pgstat_relation.c
@@ -751,10 +758,12 @@ extern void pgstat_twophase_postcommit(TransactionId xid, uint16 info,
 									   void *recdata, uint32 len);
 extern void pgstat_twophase_postabort(TransactionId xid, uint16 info,
 									  void *recdata, uint32 len);
+
 extern PgStat_StatTabEntry *pgstat_fetch_stat_tabentry(Oid relid);
 extern PgStat_StatTabEntry *pgstat_fetch_stat_tabentry_ext(bool shared,
 														   Oid relid);
 extern PgStat_TableStatus *find_tabstat_entry(Oid rel_id);
+
 
 /*
  * Functions in pgstat_replslot.c
@@ -817,7 +826,6 @@ extern void pgstat_report_wal(bool force);
 extern PgStat_WalStats *pgstat_fetch_stat_wal(void);
 
 
-
 /*
  * Variables in pgstat.c
  */
@@ -830,7 +838,7 @@ extern char *pgstat_ybstat_filename;
 extern char *pgstat_ybstat_tmpname;
 
 /*
- * Metric to track number of sql connections established since
+ * YB: Metric to track number of sql connections established since
  * postmaster started.
  */
 extern uint64_t *yb_new_conn;

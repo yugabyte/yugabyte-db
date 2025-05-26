@@ -684,6 +684,8 @@ PortalSetResultFormat(Portal portal, int nFormats, int16 *formats)
  * isTopLevel: true if query is being executed at backend "top level"
  * (that is, directly from a client command message)
  *
+ * run_once: ignored, present only to avoid an API break in stable branches.
+ *
  * dest: where to send output of primary (canSetTag) query
  *
  * altdest: where to send output of non-primary queries
@@ -727,10 +729,6 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	 * Check for improper portal use, and mark portal active.
 	 */
 	MarkPortalActive(portal);
-
-	/* Set run_once flag.  Shouldn't be clear if previously set. */
-	Assert(!portal->run_once || run_once);
-	portal->run_once = run_once;
 
 	/*
 	 * Set up global portal context pointers.
@@ -820,10 +818,10 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		}
 
 		/*
-		 * We flush buffered ops here to ensure that any errors in the ops can
-		 * be caught by the PG_CATCH() and mark the portal failed. If some ops
-		 * are not flushed here and say flushed later at a place that doesn't
-		 * catch the error and mark the portal failed, it can result in
+		 * YB? We flush buffered ops here to ensure that any errors in the ops
+		 * can be caught by the PG_CATCH() and mark the portal failed. If some
+		 * ops are not flushed here and say flushed later at a place that
+		 * doesn't catch the error and mark the portal failed, it can result in
 		 * spurious WARNING messages (like "Snapshot reference leak") when
 		 * releasing the portal resources later (for example via a
 		 * CreatePortal() call that drops existing duplicate portal of an
@@ -949,7 +947,7 @@ PortalRunSelect(Portal portal,
 		{
 			PushActiveSnapshot(queryDesc->snapshot);
 			ExecutorRun(queryDesc, direction, (uint64) count,
-						portal->run_once);
+						false);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
 		}
@@ -989,7 +987,7 @@ PortalRunSelect(Portal portal,
 		{
 			PushActiveSnapshot(queryDesc->snapshot);
 			ExecutorRun(queryDesc, direction, (uint64) count,
-						portal->run_once);
+						false);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
 		}
@@ -1314,8 +1312,7 @@ PortalRunMulti(Portal portal,
 							 portal->sourceText,
 							 portal->portalParams,
 							 portal->queryEnv,
-							 altdest,
-							 NULL);
+							 altdest, NULL);
 			}
 
 			if (log_executor_stats)
@@ -1433,9 +1430,6 @@ PortalRunFetch(Portal portal,
 	 * Check for improper portal use, and mark portal active.
 	 */
 	MarkPortalActive(portal);
-
-	/* If supporting FETCH, portal can't be run-once. */
-	Assert(!portal->run_once);
 
 	/*
 	 * Set up global portal context pointers.

@@ -227,7 +227,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
             .filter(n -> n.type == NodeConfig.Type.PAM_LIMITS_WRITABLE)
             .findFirst()
             .get();
-    NodeConfig errCheck = new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "true");
+    NodeConfig errCheck = new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "false");
     testNode.nodeConfigs.remove(pamNode);
     testNode.nodeConfigs.add(errCheck);
     // Set an unaccepted value.
@@ -289,6 +289,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
   @Test
   public void testDownloadNodeAgent() {
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    Users newUser = ModelFactory.testUser(customer, "Fakeemail.com", Users.Role.ConnectOnly);
 
     ResourceDefinition rD =
         ResourceDefinition.builder()
@@ -296,17 +297,17 @@ public class NodeAgentControllerTest extends FakeDBApplication {
             .resourceUUIDSet(new HashSet<>(Arrays.asList(UUID.randomUUID())))
             .build();
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rD)));
-    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    RoleBinding.create(newUser, RoleBindingType.Custom, role, rG);
     Result result =
         downloadNodeAgent(
             "INSTALLER",
             OSType.LINUX.toString(),
             ArchType.AMD64.toString(),
-            user.createAuthToken());
+            newUser.createAuthToken());
     assertUnauthorizedNoException(result, "Unable to authorize user");
 
     ResourceGroup rG1 = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
-    RoleBinding.create(user, RoleBindingType.Custom, role, rG1);
+    RoleBinding.create(newUser, RoleBindingType.Custom, role, rG1);
 
     assertThrows(
         RuntimeException.class,
@@ -315,7 +316,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
                 "INSTALLER",
                 OSType.LINUX.toString(),
                 ArchType.AMD64.toString(),
-                user.createAuthToken()));
+                newUser.createAuthToken()));
   }
 
   public Set<NodeConfig> getTestNodeConfigsSet() {
@@ -327,7 +328,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.INTERNET_CONNECTION, "true"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.TMP_DIR_SPACE, "10000"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.PROMETHEUS_SPACE, "10000"));
-    nodeConfigs.add(new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "false"));
+    nodeConfigs.add(new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "true"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.HOME_DIR_SPACE, "10000"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.SSH_PORT, "{\"54422\":\"true\"}"));
     nodeConfigs.add(

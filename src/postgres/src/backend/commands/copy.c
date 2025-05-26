@@ -83,8 +83,13 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 	RawStmt    *query = NULL;
 	Node	   *whereClause = NULL;
 
+	/*
+	 * Disallow COPY to/from file or program except to users with the
+	 * appropriate role.
+	 *
+	 * YB might also disable access completely.
+	 */
 	YBCheckServerAccessIsAllowed();
-
 	if (!pipe)
 	{
 		if (stmt->is_program)
@@ -163,7 +168,8 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		attnums = CopyGetAttnums(tupDesc, rel, stmt->attlist);
 		foreach(cur, attnums)
 		{
-			int			attno = lfirst_int(cur) - YBGetFirstLowInvalidAttributeNumber(rel);
+			int			attno = lfirst_int(cur) -
+				YBGetFirstLowInvalidAttributeNumber(rel);
 
 			if (is_from)
 				rte->insertedCols = bms_add_member(rte->insertedCols, attno);
@@ -255,11 +261,14 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 
 			/*
 			 * Build RangeVar for from clause, fully qualified based on the
-			 * relation which we have opened and locked.
+			 * relation which we have opened and locked.  Use "ONLY" so that
+			 * COPY retrieves rows from only the target table not any
+			 * inheritance children, the same as when RLS doesn't apply.
 			 */
 			from = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 								pstrdup(RelationGetRelationName(rel)),
 								-1);
+			from->inh = false;	/* apply ONLY */
 
 			/* Build query */
 			select = makeNode(SelectStmt);

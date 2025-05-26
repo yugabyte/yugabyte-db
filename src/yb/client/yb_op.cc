@@ -1115,6 +1115,9 @@ Status YBNoOp::Execute(YBClient* client, const dockv::YBPartialRow& key) {
     // for the user's call.
     CoarseTimePoint rpc_deadline;
     if (static_cast<int>(candidates.size()) - blacklist.size() > 1) {
+      // TODO: it is not clear why the overall rpc deadline is limited by default rpc timeout if
+      // provided deadline is large enough. The similar limitation was considered as not relevant,
+      // refer to https://github.com/yugabyte/yugabyte-db/issues/26722 for additional details.
       rpc_deadline = now + client->default_rpc_timeout();
       rpc_deadline = std::min(deadline, rpc_deadline);
     } else {

@@ -279,8 +279,7 @@ bloom_init(int ndistinct, double false_positive_rate)
 	double		k;				/* number of hash functions */
 
 	Assert(ndistinct > 0);
-	Assert((false_positive_rate >= BLOOM_MIN_FALSE_POSITIVE_RATE) &&
-		   (false_positive_rate < BLOOM_MAX_FALSE_POSITIVE_RATE));
+	Assert(false_positive_rate > 0 && false_positive_rate < 1);
 
 	/* sizing bloom filter: -(n * ln(p)) / (ln(2))^2 */
 	nbits = ceil(-(ndistinct * log(false_positive_rate)) / pow(log(2.0), 2));
@@ -661,6 +660,9 @@ brin_bloom_union(PG_FUNCTION_ARGS)
 	for (i = 0; i < nbytes; i++)
 		filter_a->data[i] |= filter_b->data[i];
 
+	/* update the number of bits set in the filter */
+	filter_a->nbits_set = pg_popcount((const char *) filter_a->data, nbytes);
+
 	PG_RETURN_VOID();
 }
 
@@ -767,7 +769,7 @@ brin_bloom_summary_out(PG_FUNCTION_ARGS)
 	StringInfoData str;
 
 	/* detoast the data to get value with a full 4B header */
-	filter = (BloomFilter *) PG_DETOAST_DATUM(PG_GETARG_BYTEA_PP(0));
+	filter = (BloomFilter *) PG_DETOAST_DATUM_PACKED(PG_GETARG_DATUM(0));
 
 	initStringInfo(&str);
 	appendStringInfoChar(&str, '{');

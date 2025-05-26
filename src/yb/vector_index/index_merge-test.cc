@@ -88,18 +88,18 @@ class IndexMergeTest : public YBTest {
 
     // Check that the merged index contains all entries.
     auto result_a = ASSERT_RESULT(merged_index->Search(
-        input_vectors_[0], {.max_num_results = 1}));
+        input_vectors_[0], {.max_num_results = 1, .ef = 0}));
     ASSERT_EQ(result_a.size(), 1);
     ASSERT_EQ(result_a[0].vector_id, data_a.vector_ids[0]);
 
     auto result_b = ASSERT_RESULT(merged_index->Search(
-        input_vectors_[half_size], {.max_num_results = 1}));
+        input_vectors_[half_size], {.max_num_results = 1, .ef = 0}));
     ASSERT_EQ(result_b.size(), 1);
     ASSERT_EQ(result_b[0].vector_id, data_b.vector_ids[0]);
 
     // Verify the size of the merged index.
     auto all_results = ASSERT_RESULT(merged_index->Search(
-        {0.0f, 0.0f, 0.0f}, {.max_num_results = 10})); // Query that fetches all.
+        {0.0f, 0.0f, 0.0f}, {.max_num_results = 10, .ef = 0})); // Query that fetches all.
     ASSERT_EQ(all_results.size(), data_a.num_vectors() + data_b.num_vectors());
 
     // Check that all expected vertex_ids are in the results.
@@ -119,7 +119,7 @@ class IndexMergeTest : public YBTest {
 
     // Check that the merged index contains only the entries from data_a.
     auto all_results = ASSERT_RESULT(merged_index->Search(
-        {0.0f, 0.0f, 0.0f}, {.max_num_results = 10})); // Query that fetches all.
+        {0.0f, 0.0f, 0.0f}, {.max_num_results = 10, .ef = 0})); // Query that fetches all.
     ASSERT_EQ(all_results.size(), data_a.num_vectors());
 
     // Check that all expected vector ids are in the results.

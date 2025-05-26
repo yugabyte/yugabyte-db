@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../manage/upgrade-deployment/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="../../../yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
 {{< /page-finder/head >}}
 
 You can upgrade the YugabyteDB release that is powering a universe to get new features and fixes included in the release.
@@ -55,18 +55,18 @@ When performing a database upgrade, do the following:
     title="Prepare to upgrade"
     body="Review changes that may affect your automation."
     href="../upgrade-software-prepare/"
-    icon="/images/section_icons/quick_start/install.png">}}
+    icon="fa-thin fa-diamond-exclamation">}}
 
   {{<index/item
     title="Manage releases"
     body="View and import the latest releases of YugabyteDB."
     href="../ybdb-releases/"
-    icon="/images/section_icons/quick_start/install.png">}}
+    icon="fa-thin fa-download">}}
 
   {{<index/item
     title="Upgrade a universe"
     body="Perform a rolling upgrade on a live universe deployment."
     href="../upgrade-software-install/"
-    icon="/images/section_icons/quick_start/install.png">}}
+    icon="fa-thin fa-up-from-bracket">}}
 
 {{</index/block>}}

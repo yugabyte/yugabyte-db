@@ -183,7 +183,7 @@ check_ntp_synchronization() {
     else
       update_result_json "ntp_service_status" false
     fi
-    if [[ $skew_ms -lt 400 ]]; then
+    if awk "BEGIN{exit !(${skew_ms} < 400)}"; then
       update_result_json "ntp_skew" true
     else
       update_result_json "ntp_skew" false
@@ -242,6 +242,8 @@ check_binary_installed() {
 }
 
 preflight_configure_check() {
+
+  check_yugabyte_user
 
   check_packages_installed
 
@@ -339,8 +341,6 @@ preflight_all_checks() {
   done
 
   check_ntp_synchronization
-
-  check_yugabyte_user
 
   check_free_space "home_dir_space" "$yb_home_dir"
 

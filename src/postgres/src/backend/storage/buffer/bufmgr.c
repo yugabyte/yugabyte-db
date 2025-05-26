@@ -717,7 +717,7 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 	return ReadBufferExtended(reln, MAIN_FORKNUM, blockNum, RBM_NORMAL, NULL);
 }
 
-/* Only here for sequence support */
+/* YB: Only here for sequence support */
 extern HeapTuple YBReadSequenceTuple(Relation seqrel);
 
 /*
@@ -778,7 +778,7 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot access temporary tables of other sessions")));
 
-	/* Special handling for sequences */
+	/* YB: Special handling for sequences */
 	if (IsYugaByteEnabled() && RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
 	{
 		/* Get a sequence tuple */
@@ -2176,7 +2176,7 @@ BufferSync(int flags)
 	{
 		BufferDesc *bufHdr = NULL;
 		CkptTsStatus *ts_stat = (CkptTsStatus *)
-		DatumGetPointer(binaryheap_first(ts_heap));
+			DatumGetPointer(binaryheap_first(ts_heap));
 
 		buf_id = CkptBufferIds[ts_stat->index].buf_id;
 		Assert(buf_id != -1);
@@ -3799,11 +3799,9 @@ RelationCopyStorageUsingBuffer(RelFileNode srcnode,
 		LockBuffer(srcBuf, BUFFER_LOCK_SHARE);
 		srcPage = BufferGetPage(srcBuf);
 
-		/* Use P_NEW to extend the destination relation. */
 		dstBuf = ReadBufferWithoutRelcache(dstnode, forkNum, blkno,
-										   RBM_NORMAL, bstrategy_dst,
+										   RBM_ZERO_AND_LOCK, bstrategy_dst,
 										   permanent);
-		LockBuffer(dstBuf, BUFFER_LOCK_EXCLUSIVE);
 		dstPage = BufferGetPage(dstBuf);
 
 		START_CRIT_SECTION();
@@ -3821,6 +3819,9 @@ RelationCopyStorageUsingBuffer(RelFileNode srcnode,
 		UnlockReleaseBuffer(dstBuf);
 		UnlockReleaseBuffer(srcBuf);
 	}
+
+	FreeAccessStrategy(bstrategy_src);
+	FreeAccessStrategy(bstrategy_dst);
 }
 
 /* ---------------------------------------------------------------------

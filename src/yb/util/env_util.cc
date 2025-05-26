@@ -31,6 +31,8 @@
 //
 #include "yb/util/env_util.h"
 
+#include <sys/stat.h>
+
 #include <memory>
 #include <string>
 
@@ -38,6 +40,7 @@
 
 #include "yb/gutil/strings/util.h"
 #include "yb/util/env.h"
+#include "yb/util/errno.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -118,7 +121,7 @@ std::pair<Status, std::string> FindRootDir(const std::string& search_for_dir) {
 std::string GetRootDir(const std::string& search_for_dir) {
   auto [status, path] = FindRootDir(search_for_dir);
   if (!status.ok()) {
-    LOG(ERROR) << status.ToString();
+    LOG(WARNING) << status;
   }
   return path;
 }
@@ -225,6 +228,19 @@ Status CopyFile(Env* env, const string& source_path, const string& dest_path,
     RETURN_NOT_OK(source->Read(max_bytes_to_read, &data, scratch.get()));
     RETURN_NOT_OK(dest->Append(data));
     bytes_read += data.size();
+  }
+  return Status::OK();
+}
+
+Status CopyFilePermissions(const std::string& source_path, const std::string& dest_path) {
+  struct stat st;
+  auto res = stat(source_path.c_str(), &st);
+  if (res != 0) {
+    return STATUS_FROM_ERRNO(Format("Failed to obtain stats for $0", source_path), errno);
+  }
+  res = chmod(dest_path.c_str(), st.st_mode);
+  if (res != 0) {
+    return STATUS_FROM_ERRNO(Format("Failed to change mode for $0", dest_path), errno);
   }
   return Status::OK();
 }

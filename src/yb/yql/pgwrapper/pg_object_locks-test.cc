@@ -15,6 +15,11 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/object_lock_info_manager.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
@@ -33,6 +38,12 @@ DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
+
+DECLARE_string(TEST_block_alter_table);
+
+DECLARE_uint64(pg_client_session_expiration_ms);
+DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
 using namespace std::literals;
 
@@ -47,7 +58,12 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     PgMiniTestBase::SetUp();
-    lock_manager_ = cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager();
+    ts_lock_manager_ = cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager();
+    master_lock_manager_ = cluster_->mini_master()
+                               ->master()
+                               ->catalog_manager_impl()
+                               ->object_lock_info_manager()
+                               ->TEST_ts_local_lock_manager();
   }
 
   size_t NumTabletServers() override {
@@ -55,18 +71,26 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
   }
 
   size_t NumGrantedLocks() const {
-    return lock_manager_->TEST_GrantedLocksSize();
+    return ts_lock_manager_->TEST_GrantedLocksSize();
   }
 
   size_t NumWaitingLocks() const {
-    return lock_manager_->TEST_WaitingLocksSize();
+    return ts_lock_manager_->TEST_WaitingLocksSize();
+  }
+
+  size_t NumGrantedLocksOnMaster() const {
+    return master_lock_manager_->TEST_GrantedLocksSize();
+  }
+
+  size_t NumWaitingLocksOnMaster() const {
+    return master_lock_manager_->TEST_WaitingLocksSize();
   }
 
   Status AssertNumLocks(size_t granted_locks, size_t waiting_locks) {
     SCHECK_EQ(NumGrantedLocks(), granted_locks, IllegalState,
-              Format("Found mum granted locks != Expected num granted locks"));
+              Format("Found num granted locks != Expected num granted locks"));
     SCHECK_EQ(NumWaitingLocks(), waiting_locks, IllegalState,
-              Format("Found mum waiting locks != Expected num waiting locks"));
+              Format("Found num waiting locks != Expected num waiting locks"));
     return Status::OK();
   }
 
@@ -76,8 +100,74 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   }
 
-  tserver::TSLocalLockManagerPtr lock_manager_;
+  void VerifyBlockingBehavior(
+      PGConn& conn1, PGConn& conn2, const std::string& lock_stmt_1,
+      const std::string& lock_stmt_2) {
+    LOG(INFO) << "Checking blocking behavior: " << lock_stmt_1 << " and " << lock_stmt_2;
+    ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn1.Execute(lock_stmt_1));
+
+    // In sync point ObjectLockManagerImpl::DoLockSingleEntry, the lock is in waiting state.
+    SyncPoint::GetInstance()->LoadDependency(
+        {{"WaitingLock", "ObjectLockManagerImpl::DoLockSingleEntry"}});
+    SyncPoint::GetInstance()->ClearTrace();
+    SyncPoint::GetInstance()->EnableProcessing();
+
+    auto conn2_lock_future = std::async(std::launch::async, [&]() -> Status {
+      RETURN_NOT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      RETURN_NOT_OK(conn2.Execute(lock_stmt_2));
+      RETURN_NOT_OK(conn2.Execute("INSERT INTO test (k, v) VALUES (11, 1)"));
+      RETURN_NOT_OK(conn2.CommitTransaction());
+      return Status::OK();
+    });
+
+    // Ensure lock is in waiting state.
+    DEBUG_ONLY_TEST_SYNC_POINT("WaitingLock");
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test WHERE v = 1")), 0);
+
+    // After conn1 releases the lock, conn2 should be able to acquire it.
+    ASSERT_OK(conn1.CommitTransaction());
+    ASSERT_OK(conn2_lock_future.get());
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test WHERE v = 1")), 1);
+    ASSERT_OK(conn2.Execute("DELETE FROM test WHERE v = 1"));
+  }
+
+  tserver::TSLocalLockManagerPtr ts_lock_manager_;
+  tserver::TSLocalLockManagerPtr master_lock_manager_;
 };
+
+class TestWithTransactionalDDL: public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgObjectLocksTestRF1::SetUp();
+  }
+};
+
+TEST_F_EX(PgObjectLocksTestRF1, TestLockTuple, TestWithTransactionalDDL) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE OR REPLACE FUNCTION add1(integer, integer) RETURNS integer "
+      "AS 'select $1 + $2 + 2;' LANGUAGE SQL IMMUTABLE RETURNS NULL ON NULL INPUT"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION add1(int, int) OWNER TO postgres"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Execute("ALTER FUNCTION add1(int, int) OWNER TO postgres"));
+    RETURN_NOT_OK(conn.CommitTransaction());
+    return Status::OK();
+  });
+
+  EXPECT_OK(WaitFor([&]() {
+    return NumWaitingLocks() >= 1 || NumWaitingLocksOnMaster() >= 1;
+  }, 5s * kTimeMultiplier, "Timed out waiting for num waiting locks >= 1"));
+  ASSERT_OK(conn.RollbackTransaction());
+  ASSERT_OK(status_future.get());
+}
 
 TEST_F(PgObjectLocksTestRF1, TestSanity) {
   auto conn = ASSERT_RESULT(Connect());
@@ -131,6 +221,203 @@ TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
 }
 
+TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {
+  CreateTestTable();
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  const std::vector<std::pair<std::string, std::string>> blocking_pairs = {
+    {"ACCESS EXCLUSIVE", "ACCESS SHARE"},
+    {"ACCESS EXCLUSIVE", "ROW SHARE"},
+    {"ACCESS EXCLUSIVE", "ROW EXCLUSIVE"},
+    {"ACCESS EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+    {"ACCESS EXCLUSIVE", "SHARE"},
+    {"ACCESS EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+    {"ACCESS EXCLUSIVE", "EXCLUSIVE"},
+    {"ACCESS EXCLUSIVE", "ACCESS EXCLUSIVE"},
+    {"EXCLUSIVE", "ROW SHARE"},
+    {"EXCLUSIVE", "ROW EXCLUSIVE"},
+    {"EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+    {"EXCLUSIVE", "SHARE"},
+    {"EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+    {"EXCLUSIVE", "EXCLUSIVE"},
+    {"SHARE ROW EXCLUSIVE", "ROW EXCLUSIVE"},
+    {"SHARE ROW EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+    {"SHARE ROW EXCLUSIVE", "SHARE"},
+    {"SHARE ROW EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+    {"SHARE", "ROW EXCLUSIVE"},
+    {"SHARE", "SHARE UPDATE EXCLUSIVE"},
+    {"SHARE UPDATE EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+  };
+
+  for (const auto& pair : blocking_pairs) {
+    std::string lock_stmt_1 = "LOCK TABLE test IN " + pair.first + " MODE";
+    std::string lock_stmt_2 = "LOCK TABLE test IN " + pair.second + " MODE";
+    VerifyBlockingBehavior(conn1, conn2, lock_stmt_1, lock_stmt_2);
+    VerifyBlockingBehavior(conn1, conn2, lock_stmt_2, lock_stmt_1);
+  }
+}
+
+class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = kSessionTimeoutMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) = kSessionTimeoutMs / 3;
+    PgObjectLocksTestRF1::SetUp();
+
+    conn_ = ASSERT_RESULT(Connect());
+    LOG(INFO) << "Creating test table";
+    ASSERT_OK(conn_->Execute("CREATE TABLE test_table (id INT PRIMARY KEY, value TEXT);"));
+  }
+
+  Status WaitToReleaseAllLocks(MonoDelta timeout) {
+    LOG(INFO) << "Waiting for locks to be cleaned up";
+    return LoggedWaitFor(
+        [this]() -> bool {
+          auto granted_locks = NumGrantedLocks();
+          auto granted_master_locks = NumGrantedLocksOnMaster();
+          LOG(INFO) << "Num granted locks: " << granted_locks;
+          LOG(INFO) << "Num granted master locks: " << granted_master_locks;
+          return granted_locks == 0 && granted_master_locks == 0;
+        },
+        timeout, "wait for locks to be cleaned up", timeout / 10);
+  }
+
+  void ExpireSession(pgwrapper::PGConn& target_conn) {
+    auto pid = ASSERT_RESULT(target_conn.FetchRow<int32_t>("SELECT pg_backend_pid();"));
+    ExpireSessionWithPid(pid);
+  }
+
+  void ExpireSessionWithPid(int32_t pid) {
+    LOG(INFO) << "Killing pid " << pid;
+    auto res =
+        ASSERT_RESULT(conn_->FetchRowAsString(yb::Format("SELECT pg_terminate_backend($0);", pid)));
+    LOG(INFO) << "Got " << res;
+  }
+
+  uint64_t kSessionTimeoutMs = 6000 * kTimeMultiplier;
+  MonoDelta kSessionTimeout = MonoDelta::FromMilliseconds(kSessionTimeoutMs);
+
+ private:
+  std::optional<PGConn> conn_;
+};
+
+class PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl : public PgObjectLocksTestRF1SessionExpiry,
+                                                        public ::testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = GetParam();
+    PgObjectLocksTestRF1SessionExpiry::SetUp();
+  }
+};
+
+TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupSharedLocksOnExpiredSessions) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Clean up a shared lock from the local TServer.
+  LOG(INFO) << "Acquiring shared lock on test table in another session";
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'good');"));
+  ASSERT_GE(NumGrantedLocks(), 1);
+  LOG(INFO) << "Expiring connection";
+  ExpireSession(conn);
+  ASSERT_OK(WaitToReleaseAllLocks(kSessionTimeout * 2));
+}
+
+TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupExclusiveLocksOnExpiredSessions) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Clean up an exclusive lock from the master and local TServer.
+  LOG(INFO) << "Acquiring exclusive lock on test table";
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION;"));
+  ASSERT_OK(conn.Execute("LOCK TABLE test_table IN ACCESS EXCLUSIVE MODE;"));
+  ASSERT_GE(NumGrantedLocksOnMaster(), 1);
+  ASSERT_GE(NumGrantedLocks(), 1);
+  LOG(INFO) << "Expiring connection";
+  ExpireSession(conn);
+  ASSERT_OK(WaitToReleaseAllLocks(kSessionTimeout * 2));
+}
+
+TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupReadOnlyLocksOnExpiredSessions) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Clean up a shared lock from the local TServer.
+  LOG(INFO) << "Acquiring shared lock on test table in another session";
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION;"));
+  ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) from test_table;"));
+  ASSERT_GE(NumGrantedLocks(), 1);
+  LOG(INFO) << "Expiring connection";
+  ExpireSession(conn);
+  ASSERT_OK(WaitToReleaseAllLocks(kSessionTimeout * 2));
+}
+
+std::string MaybeUseTxnDdlTaskToName(const ::testing::TestParamInfo<bool>& info) {
+  return info.param ? "EnableTxnDdl" : "DisableTxnDdl";
+}
+
+INSTANTIATE_TEST_CASE_P(
+    MaybeUseTxnDdl, PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, ::testing::Bool(),
+    MaybeUseTxnDdlTaskToName);
+
+class PgObjectLocksTestRF1SessionExpiryWithDdlMaybeUseTxnDdl
+    : public PgObjectLocksTestRF1SessionExpiry,
+      public ::testing::WithParamInterface<std::pair<bool, bool>> {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = GetParam().first;
+    allow_ddl_verification_task_ = GetParam().second;
+    PgObjectLocksTestRF1SessionExpiry::SetUp();
+  }
+  bool allow_ddl_verification_task_;
+};
+
+TEST_P(PgObjectLocksTestRF1SessionExpiryWithDdlMaybeUseTxnDdl, CleanupDdlLocksOnExpiredSessions) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid();"));
+  TestThreadHolder thread_holder;
+  // Cause the alter to hang, so that we can kill the session while it is holding the locks.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) =
+      (allow_ddl_verification_task_ ? "completion" : "alter_schema");
+  thread_holder.AddThreadFunctor([&conn]() {
+    LOG(INFO) << "Acquiring exclusive lock on test table";
+    ASSERT_OK(conn.Execute("BEGIN TRANSACTION;"));
+    auto res = conn.Execute("ALTER TABLE test_table ADD COLUMN bar TEXT");
+    LOG(INFO) << "Got " << res;
+    // Expect the Alter to fail because we are going to kill the session.
+    ASSERT_NOK(res);
+  });
+  ASSERT_OK(WaitFor(
+      [this]() { return NumGrantedLocks() >= 1; }, 5s * kTimeMultiplier,
+      "Timed out waiting for num granted locks == 1"));
+  LOG(INFO) << "Expiring connection 1";
+  SleepFor(1s * kTimeMultiplier);
+  ExpireSessionWithPid(pid);
+  if (allow_ddl_verification_task_) {
+    // Let the Alter proceed, so it creates the verifier task.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
+    // Release request will be ignored.
+    // ddl verifier will kick in after the txn expires.
+    ASSERT_OK(WaitToReleaseAllLocks(60s));
+  } else {
+    ASSERT_OK(WaitToReleaseAllLocks(kSessionTimeout * 2));
+    // Alter may proceed, only after the locks are released.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
+  }
+}
+
+std::string UseTxnDdlAndDdlVerificationTaskToName(
+    const ::testing::TestParamInfo<std::pair<bool, bool>>& info) {
+  return yb::Format(
+      "$0$1", info.param.first ? "EnableTxnDdl" : "DisableTxnDdl",
+      info.param.second ? "ReleaseByDdlVerifier" : "ReleaseByLocalTServer");
+}
+
+INSTANTIATE_TEST_CASE_P(
+    MaybeUseTxnDdlAndVerifyTxnAtMaster, PgObjectLocksTestRF1SessionExpiryWithDdlMaybeUseTxnDdl,
+    ::testing::Values(
+        std::make_pair(false, false),
+        std::make_pair(false, true),
+        std::make_pair(true, false),
+        std::make_pair(true, true)
+    ),
+    UseTxnDdlAndDdlVerificationTaskToName);
+
 // Test that the exclusive locks are released only after the DDL schema changes have been applied
 // at the docdb layer.
 #ifndef NDEBUG
@@ -151,7 +438,7 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
   ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
 
   auto status_future = std::async(std::launch::async, [&conn]() -> Status {
-    RETURN_NOT_OK(conn.Fetch("SELECT * FROM TEST WHERE k=1"));
+    RETURN_NOT_OK(conn.Fetch("SELECT * FROM test WHERE k=1"));
     return Status::OK();
   });
 
@@ -166,14 +453,17 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
 class PgObjectLocksTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    opts->extra_tserver_flags.emplace_back("--TEST_enable_object_locking_for_table_locks=true");
-    opts->extra_tserver_flags.emplace_back("--TEST_enable_ysql_operation_lease=true");
+    const bool table_locks_enabled = EnableTableLocks();
+    opts->extra_tserver_flags.emplace_back(
+        yb::Format("--TEST_enable_object_locking_for_table_locks=$0", table_locks_enabled));
+    opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
-    opts->extra_master_flags.emplace_back("--TEST_enable_object_locking_for_table_locks=true");
-    opts->extra_master_flags.emplace_back("--TEST_enable_ysql_operation_lease=true");
+    opts->extra_master_flags.emplace_back(
+        yb::Format("--TEST_enable_object_locking_for_table_locks=$0", table_locks_enabled));
+    opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
   }
@@ -181,7 +471,52 @@ class PgObjectLocksTest : public LibPqTestBase {
   int GetNumTabletServers() const override {
     return 3;
   }
+
+  virtual bool EnableTableLocks() const {
+    return true;
+  }
 };
+
+class PgObjectLocksTestAbortTxns : public PgObjectLocksTest,
+                                   public ::testing::WithParamInterface<bool> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_colocate_database_by_default=true");
+    opts->extra_master_flags.emplace_back("--ysql_colocate_database_by_default=true");
+  }
+
+  bool EnableTableLocks() const override {
+    return GetParam();
+  }
+};
+
+TEST_P(PgObjectLocksTestAbortTxns, TestDDLAbortsTxns) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE testdb with colocation=true"));
+
+  auto conn1 = ASSERT_RESULT(ConnectToDB("testdb"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT) with (colocated=true)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test2(k INT PRIMARY KEY, v INT) with (colocated=true)"));
+
+  ASSERT_OK(conn1.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+
+  auto conn2 = ASSERT_RESULT(ConnectToDB("testdb"));
+  ASSERT_OK(conn2.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE test2 ADD COLUMN v1 INT"));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+
+  if (EnableTableLocks()) {
+    ASSERT_OK(conn1.Execute("COMMIT"));
+  } else {
+    ASSERT_NOK(conn1.Execute("COMMIT"));
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(
+    TableLocksEnabled, PgObjectLocksTestAbortTxns, ::testing::Bool(),
+    ::testing::PrintToStringParamName());
 
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;

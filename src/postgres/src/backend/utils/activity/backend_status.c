@@ -52,7 +52,7 @@ int			pgstat_track_activity_query_size = 1024;
 
 /* exposed so that backend_progress.c can access it */
 PgBackendStatus *MyBEEntry = NULL;
-static char *DatabaseNameBuffer = NULL;
+
 
 static PgBackendStatus *BackendStatusArray = NULL;
 static char *BackendAppnameBuffer = NULL;
@@ -66,6 +66,7 @@ static PgBackendSSLStatus *BackendSslStatusBuffer = NULL;
 static PgBackendGSSStatus *BackendGssStatusBuffer = NULL;
 #endif
 
+
 /* Status for backends including auxiliary */
 static LocalPgBackendStatus *localBackendStatusTable = NULL;
 
@@ -78,6 +79,8 @@ static MemoryContext backendStatusSnapContext;
 static void pgstat_beshutdown_hook(int code, Datum arg);
 static void pgstat_read_current_status(void);
 static void pgstat_setup_backend_status_context(void);
+
+static char *DatabaseNameBuffer = NULL;
 
 
 /*
@@ -296,9 +299,9 @@ pgstat_beinit(void)
 		 * Assign the MyBEEntry for an auxiliary process.  Since it doesn't
 		 * have a BackendId, the slot is statically allocated based on the
 		 * auxiliary process type (MyAuxProcType).  Backends use slots indexed
-		 * in the range from 1 to MaxBackends (inclusive), so we use
-		 * MaxBackends + AuxBackendType + 1 as the index of the slot for an
-		 * auxiliary process.
+		 * in the range from 0 to MaxBackends (exclusive), so we use
+		 * MaxBackends + AuxProcType as the index of the slot for an auxiliary
+		 * process.
 		 */
 		MyBEEntry = &BackendStatusArray[MaxBackends + MyAuxProcType];
 	}
@@ -371,7 +374,7 @@ pgstat_bestart(void)
 	lbeentry.st_xact_start_timestamp = 0;
 	lbeentry.st_databaseid = MyDatabaseId;
 
-	/* Increment the total connections counter */
+	/* YB: Increment the total connections counter */
 	if (lbeentry.st_procpid > 0 &&
 		(lbeentry.st_backendType == B_BACKEND ||
 		 lbeentry.st_backendType == YB_YSQL_CONN_MGR))
@@ -820,7 +823,8 @@ pgstat_read_current_status(void)
 						   NAMEDATALEN * NumBackendStatSlots);
 	localactivity = (char *)
 		MemoryContextAllocHuge(backendStatusSnapContext,
-							   pgstat_track_activity_query_size * NumBackendStatSlots);
+							   (Size) pgstat_track_activity_query_size *
+							   (Size) NumBackendStatSlots);
 #ifdef USE_SSL
 	localsslstatus = (PgBackendSSLStatus *)
 		MemoryContextAlloc(backendStatusSnapContext,

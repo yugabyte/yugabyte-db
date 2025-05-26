@@ -26,6 +26,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_opclass.h"
@@ -366,10 +367,12 @@ static bool
 CompareOpclassOptions(Datum *opts1, Datum *opts2, int natts)
 {
 	int			i;
+	FmgrInfo	fm;
 
 	if (!opts1 && !opts2)
 		return true;
 
+	fmgr_info(F_ARRAY_EQ, &fm);
 	for (i = 0; i < natts; i++)
 	{
 		Datum		opt1 = opts1 ? opts1[i] : (Datum) 0;
@@ -385,8 +388,12 @@ CompareOpclassOptions(Datum *opts1, Datum *opts2, int natts)
 		else if (opt2 == (Datum) 0)
 			return false;
 
-		/* Compare non-NULL text[] datums. */
-		if (!DatumGetBool(DirectFunctionCall2(array_eq, opt1, opt2)))
+		/*
+		 * Compare non-NULL text[] datums.  Use C collation to enforce binary
+		 * equivalence of texts, because we don't know anything about the
+		 * semantics of opclass options.
+		 */
+		if (!DatumGetBool(FunctionCall2Coll(&fm, C_COLLATION_OID, opt1, opt2)))
 			return false;
 	}
 
@@ -1019,7 +1026,7 @@ DefineIndex(Oid relationId,
 
 		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
 		bool		is_colocated_tables_with_tablespace_enabled =
-		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 		/*
 		 * For colocated index tables in a colocation database, the implicit
@@ -1209,22 +1216,36 @@ DefineIndex(Oid relationId,
 		}
 		else if (IsYBRelation(rel))
 		{
-			if (strcmp(accessMethodName, "btree") == 0 || strcmp(accessMethodName, "hash") == 0)
-			{
-				ereport(NOTICE,
-						(errmsg("index method \"%s\" was replaced with \"%s\" in YugabyteDB",
-								accessMethodName, DEFAULT_YB_INDEX_TYPE)));
-				accessMethodName = DEFAULT_YB_INDEX_TYPE;
-			}
-			if (strcmp(accessMethodName, "gin") == 0)
-			{
-				char	   *new_name = "ybgin";
+			char	   *new_name = NULL;
 
+			/* YB: Keeping the gin/hnsw index substitution message silent. */
+			if (strcmp(accessMethodName, "gin") == 0 ||
+				strcmp(accessMethodName, "hnsw") == 0)
+			{
+				new_name = psprintf("yb%s", accessMethodName);
 				ereport(LOG,
-						(errmsg("substituting access method \"%s\" for \"%s\"",
-								accessMethodName, new_name)));
+						(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
+								new_name, accessMethodName)));
 				accessMethodName = new_name;
 			}
+			else
+			{
+				if (strcmp(accessMethodName, "btree") == 0 ||
+					strcmp(accessMethodName, "hash") == 0)
+					new_name = DEFAULT_YB_INDEX_TYPE;
+
+				else if (strcmp(accessMethodName, "hnsw") == 0)
+					new_name = "ybhnsw";
+
+				if (new_name != NULL)
+				{
+					ereport(NOTICE,
+							(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
+									new_name, accessMethodName)));
+					accessMethodName = new_name;
+				}
+			}
+
 		}
 	}
 
@@ -1437,9 +1458,15 @@ DefineIndex(Oid relationId,
 			{
 				if (key->partattrs[i] == indexInfo->ii_IndexAttrNumbers[j])
 				{
-					/* Matched the column, now what about the equality op? */
+					/*
+					 * Matched the column, now what about the collation and
+					 * equality op?
+					 */
 					Oid			idx_opfamily;
 					Oid			idx_opcintype;
+
+					if (key->partcollation[i] != collationObjectId[j])
+						continue;
 
 					if (get_opclass_opfamily_and_input_type(classObjectId[j],
 															&idx_opfamily,
@@ -1817,6 +1844,7 @@ DefineIndex(Oid relationId,
 					IndexStmt  *childStmt = copyObject(stmt);
 					bool		found_whole_row;
 					ListCell   *lc;
+					ObjectAddress childAddr;
 
 					/*
 					 * We can't use the same index name for the child index,
@@ -1870,14 +1898,24 @@ DefineIndex(Oid relationId,
 					Assert(GetUserId() == child_save_userid);
 					SetUserIdAndSecContext(root_save_userid,
 										   root_save_sec_context);
-					DefineIndex(childRelid, childStmt,
-								InvalidOid, /* no predefined OID */
-								indexRelationId,	/* this is our child */
-								createdConstraintId,
-								is_alter_table, check_rights, check_not_in_use,
-								skip_build, quiet);
+					childAddr =
+						DefineIndex(childRelid, childStmt,
+									InvalidOid, /* no predefined OID */
+									indexRelationId,	/* this is our child */
+									createdConstraintId,
+									is_alter_table, check_rights,
+									check_not_in_use,
+									skip_build, quiet);
 					SetUserIdAndSecContext(child_save_userid,
 										   child_save_sec_context);
+
+					/*
+					 * Check if the index just created is valid or not, as it
+					 * could be possible that it has been switched as invalid
+					 * when recursing across multiple partition levels.
+					 */
+					if (!get_index_isvalid(childAddr.objectId))
+						invalidate_parent = true;
 				}
 
 				pgstat_progress_update_param(PROGRESS_CREATEIDX_PARTITIONS_DONE,
@@ -1909,6 +1947,12 @@ DefineIndex(Oid relationId,
 				ReleaseSysCache(tup);
 				table_close(pg_index, RowExclusiveLock);
 				heap_freetuple(newtup);
+
+				/*
+				 * CCI here to make this update visible, in case this recurses
+				 * across multiple partition levels.
+				 */
+				CommandCounterIncrement();
 			}
 		}
 
@@ -2155,9 +2199,10 @@ DefineIndex(Oid relationId,
 
 		StartTransactionCommand();
 
-		YbDdlMode ddl_mode = (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) ?
-							  YB_DDL_MODE_ONLINE_SCHEMA_CHANGE_VERSION_INCREMENT :
-							  YB_DDL_MODE_VERSION_INCREMENT;
+		YbDdlMode	ddl_mode = (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) ?
+			YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
+			YB_DDL_MODE_VERSION_INCREMENT;
+
 		YBIncrementDdlNestingLevel(ddl_mode);
 
 		/* Wait for all backends to have up-to-date version. */
@@ -2195,6 +2240,20 @@ DefineIndex(Oid relationId,
 
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 									 YB_PROGRESS_CREATEIDX_BACKFILLING);
+
+		/*
+		 * PG acquires ShareUpdateExclusiveLock on the main table for the
+		 * duration of the backfill so as to allow DMLs but prevent concurrent
+		 * schema changes, including parallel index creation requests. And it
+		 * acquires RowExclusiveLock on the index as backfill modifies data in
+		 * the index table.
+		 *
+		 * YB: Since backfill jobs run independently at each tablet, acquire
+		 * relevant locks here so as to hold them for the whole duration of the
+		 * backfill.
+		 */
+		LockRelationOid(relationId, ShareUpdateExclusiveLock);
+		LockRelationOid(indexRelationId, RowExclusiveLock);
 
 		/* TODO(jason): handle exclusion constraints, possibly not here. */
 
@@ -2242,33 +2301,6 @@ DefineIndex(Oid relationId,
 
 
 /*
- * CheckMutability
- *		Test whether given expression is mutable
- */
-static bool
-CheckMutability(Expr *expr)
-{
-	/*
-	 * First run the expression through the planner.  This has a couple of
-	 * important consequences.  First, function default arguments will get
-	 * inserted, which may affect volatility (consider "default now()").
-	 * Second, inline-able functions will get inlined, which may allow us to
-	 * conclude that the function is really less volatile than it's marked. As
-	 * an example, polymorphic functions must be marked with the most volatile
-	 * behavior that they have for any input type, but once we inline the
-	 * function we may be able to conclude that it's not so volatile for the
-	 * particular input type we're dealing with.
-	 *
-	 * We assume here that expression_planner() won't scribble on its input.
-	 */
-	expr = expression_planner(expr);
-
-	/* Now we can search for non-immutable functions */
-	return contain_mutable_functions((Node *) expr);
-}
-
-
-/*
  * CheckPredicate
  *		Checks that the given partial-index predicate is valid.
  *
@@ -2291,7 +2323,7 @@ CheckPredicate(Expr *predicate)
 	 * A predicate using mutable functions is probably wrong, for the same
 	 * reasons that we don't allow an index expression to use one.
 	 */
-	if (CheckMutability(predicate))
+	if (contain_mutable_functions_after_planning(predicate))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("functions in index predicate must be marked IMMUTABLE")));
@@ -2534,7 +2566,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				 * same data every time, it's not clear what the index entries
 				 * mean at all.
 				 */
-				if (CheckMutability((Expr *) expr))
+				if (contain_mutable_functions_after_planning((Expr *) expr))
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 							 errmsg("functions in index expression must be marked IMMUTABLE")));
@@ -4353,8 +4385,8 @@ ReindexRelationConcurrently(Oid relationOid, ReindexParams *params)
 		save_nestlevel = NewGUCNestLevel();
 
 		/* determine safety of this index for set_indexsafe_procflags */
-		idx->safe = (indexRel->rd_indexprs == NIL &&
-					 indexRel->rd_indpred == NIL);
+		idx->safe = (RelationGetIndexExpressions(indexRel) == NIL &&
+					 RelationGetIndexPredicate(indexRel) == NIL);
 		idx->tableId = RelationGetRelid(heapRel);
 		idx->amId = indexRel->rd_rel->relam;
 
@@ -4918,7 +4950,10 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 
 	/* set relhassubclass if an index partition has been added to the parent */
 	if (OidIsValid(parentOid))
+	{
+		LockRelationOid(parentOid, ShareUpdateExclusiveLock);
 		SetRelationHasSubclass(parentOid, true);
+	}
 
 	/* set relispartition correctly on the partition */
 	update_relispartition(partRelid, OidIsValid(parentOid));
@@ -4980,14 +5015,17 @@ update_relispartition(Oid relationId, bool newval)
 {
 	HeapTuple	tup;
 	Relation	classRel;
+	ItemPointerData otid;
 
 	classRel = table_open(RelationRelationId, RowExclusiveLock);
-	tup = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(relationId));
+	tup = SearchSysCacheLockedCopy1(RELOID, ObjectIdGetDatum(relationId));
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for relation %u", relationId);
+	otid = tup->t_self;
 	Assert(((Form_pg_class) GETSTRUCT(tup))->relispartition != newval);
 	((Form_pg_class) GETSTRUCT(tup))->relispartition = newval;
-	CatalogTupleUpdate(classRel, &tup->t_self, tup);
+	CatalogTupleUpdate(classRel, &otid, tup);
+	UnlockTuple(classRel, &otid, InplaceUpdateTupleLock);
 	heap_freetuple(tup);
 	table_close(classRel, RowExclusiveLock);
 }
@@ -5056,6 +5094,12 @@ YbWaitForBackendsCatalogVersion()
 									   yb_wait_for_backends_catalog_version_timeout))
 		{
 			if (num_lagging_backends > 0)
+				/*
+				 * Note: keep the errhint query in sync with the actual query
+				 * internally used
+				 * (TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion
+				 * at the time of writing).
+				 */
 				ereport(ERROR,
 						(errmsg("timed out waiting for postgres backends to catch"
 								" up"),
@@ -5066,8 +5110,10 @@ YbWaitForBackendsCatalogVersion()
 								   catalog_version),
 						 errhint("Run the following query on all tservers to find"
 								 " the lagging backends: SELECT * FROM"
-								 " pg_stat_activity WHERE catalog_version < %"
-								 PRIu64 " AND datid = %u;",
+								 " pg_stat_activity WHERE"
+								 " backend_type != 'walsender' AND"
+								 " catalog_version < %" PRIu64
+								 " AND datid = %u;",
 								 catalog_version,
 								 MyDatabaseId)));
 			else

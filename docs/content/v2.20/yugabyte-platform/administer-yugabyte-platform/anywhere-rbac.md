@@ -63,6 +63,7 @@ The following built-in roles are available:
   - Create new backups.
   - Delete any existing backup or backup schedule.
   - Edit existing backups.
+  - Restore backups.
 
   Backup Admin has view permissions for all other resources.
 

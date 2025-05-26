@@ -34,6 +34,7 @@
 
 #define CATCACHE_MAXKEYS		4
 
+
 /* function computing a datum's hash */
 typedef uint32 (*CCHashFN) (Datum datum);
 
@@ -186,6 +187,7 @@ typedef struct
 	int			index;
 } YbCatCListIterator;
 
+
 typedef struct catcacheheader
 {
 	slist_head	ch_caches;		/* head of list of CatCache structs */
@@ -225,6 +227,7 @@ extern CatCList *SearchCatCacheList(CatCache *cache, int nkeys,
 extern void ReleaseCatCacheList(CatCList *list);
 
 extern void ResetCatalogCaches(void);
+extern void ResetCatalogCachesExt(bool debug_discard);
 extern void CatalogCacheFlushCatalog(Oid catId);
 extern void CatCacheInvalidate(CatCache *cache, uint32 hashValue);
 extern void PrepareToInvalidateCacheTuple(Relation relation,
@@ -246,6 +249,12 @@ extern long *YbGetCatCacheIdMisses();
 extern long *YbGetCatCacheTableMisses();
 extern long YbGetCatCacheRefreshes();
 extern long YbGetCatCacheDeltaRefreshes();
+extern long YbGetHintCacheRefreshes();
+extern long YbGetHintCacheHits();
+extern long YbGetHintCacheMisses();
+extern void YbIncrementHintCacheRefreshes();
+extern void YbIncrementHintCacheHits();
+extern void YbIncrementHintCacheMisses();
 
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);

@@ -34,7 +34,7 @@ step s3_upd_all_k_except_2: UPDATE test SET v=3 where k!=2; <waiting ...>
 step s1c: COMMIT;
 step s2_upd_all_k_except_1: <... completed>
 step s3_upd_all_k_except_2: <... completed>
-ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  deadlock detected (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s2c: COMMIT;
 step s3c: COMMIT;
 step s1_select: SELECT * FROM test ORDER BY k;
@@ -70,7 +70,7 @@ step s2_upd_k1: UPDATE test SET v=2 WHERE k=1;
 step s3_upd_k2: UPDATE test SET v=3 WHERE k=2;
 step s2_upd_all_k_except_1: UPDATE test SET v=2 where k!=1; <waiting ...>
 step s3_upd_all_k_except_2: UPDATE test SET v=3 where k!=2;
-ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  deadlock detected (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s2_upd_all_k_except_1: <... completed>
 step s2c: COMMIT;
 step s3c: COMMIT;

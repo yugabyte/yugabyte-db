@@ -58,7 +58,7 @@ This tutorial assumes that you have:
 From your Spark installation directory, use the following command to start `spark-sql`, and pass the YugabyteDB driver package with the `--packages` parameter. The command fetches the YugabyteDB driver from local cache (if present), or installs the driver from [maven central](https://search.maven.org/).
 
 ```sh
-./bin/spark-sql --packages com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1
+./bin/spark-sql --packages com.yugabyte:jdbc-yugabytedb:{{< version-driver-java >}}
 ```
 
 The Spark prompt should be available as `spark-sql>`.
@@ -198,6 +198,6 @@ To verify that the Spark job is created,
 
 1. Navigate to the Spark UI using <https://localhost:4040>. If your port 4040 is in use, then change the port to the one mentioned when you started the [`spark-sql`](#start-python-spark-shell-with-yugabytedb-driver) shell.
 
-1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following image:
+1. From the **SQL/DataFrame** tab, click the last executed SQL statement to see if `numPartitions=5` is displayed as shown in the following illustration:
 
    ![Parallelism](/images/develop/ecosystem-integrations/parallelism.png)

@@ -17,7 +17,7 @@ type: docs
 
 JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. Assorted JSON-specific functions and operators are also available for data stored in these data types.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 YCQL supports the JSONB data type. JSONB stores JSON data in binary format. JSONB does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.
 

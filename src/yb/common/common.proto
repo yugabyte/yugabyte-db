@@ -148,11 +148,23 @@ message PgVectorIdxOptionsPB {
 
   reserved 5, 6;
   optional PgHnswIndexOptionsPB hnsw = 7;
+
+  // Permanent index id. It should be unique for tablet, but when tablet is cloned,
+  // index id in new tablet remains the same.
+  optional string id = 8;
+}
+
+message PgHnswReadOptionsPB {
+  required uint32 ef_search = 1;
 }
 
 message PgVectorReadOptionsPB {
   required QLValuePB vector = 1;
   required int32 prefetch_size = 2;
+  optional uint64 num_top_vectors_to_remove = 4;
+  oneof index_params {
+    PgHnswReadOptionsPB hnsw_options = 3;
+  }
 }
 
 message TablePropertiesPB {
@@ -202,7 +214,7 @@ message SchemaPB {
   optional TablePropertiesPB table_properties = 2;
   optional ColocatedTableIdentifierPB colocated_table_id = 3;
   // Added in 2.13, any upgraded cluster may not have this value so use it appropriately.
-  optional string pgschema_name = 4;
+  optional string DEPRECATED_pgschema_name = 4; // GHI: #12770 (DEPRECATE_EOL 2.27)
 }
 
 // This message contains the metadata of a secondary index of a table.
@@ -677,6 +689,13 @@ enum ReplicationSlotLsnType {
   ReplicationSlotLsnType_HYBRID_TIME = 2;
 }
 
+// The type of ordering mode to be used while using logical replication.
+enum ReplicationSlotOrderingMode {
+  ReplicationSlotOrderingMode_UNSPECIFIED = 0;
+  ReplicationSlotOrderingMode_ROW = 1;
+  ReplicationSlotOrderingMode_TRANSACTION = 2;
+}
+
 message AshMetadataPB {
   // The root level request id. i.e. the request id
   // corresponding to the call from the application to YSQL-Pg/YCQL
@@ -732,6 +751,8 @@ message CDCSDKStreamCreateOptionsPB {
   optional
       CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
   optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
+  optional ReplicationSlotOrderingMode ordering_mode =
+    13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 }
 
 message TserverMetricsInfoPB {

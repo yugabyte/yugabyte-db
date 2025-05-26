@@ -57,7 +57,14 @@ var updateXClusterCmd = &cobra.Command{
 				"Update - Get XCluster")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
-		xClusterTables := rXCluster.GetTables()
+		validStatesForConfig := util.TableStatesInXClusterConfig()
+		xClusterTables := make([]string, 0)
+		tableDetails := rXCluster.GetTableDetails()
+		for _, table := range tableDetails {
+			if slices.Contains(validStatesForConfig, table.GetStatus()) {
+				xClusterTables = append(xClusterTables, table.GetTableId())
+			}
+		}
 
 		name := rXCluster.GetName()
 
@@ -109,11 +116,6 @@ var updateXClusterCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		tableNeedBootstrapUUIDsString, err := cmd.Flags().GetString("tables-need-full-copy-uuids")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
 		formTableUUIDs := make([]string, 0)
 		removeTableUUIDsString = strings.TrimSpace(removeTableUUIDsString)
 		if len(removeTableUUIDsString) != 0 {
@@ -128,9 +130,16 @@ var updateXClusterCmd = &cobra.Command{
 			// In case add is empty, this list is sent for xCluster
 			logrus.Debug("Removing tables from XCluster")
 			req.SetTables(formTableUUIDs)
+		} else {
+			formTableUUIDs = xClusterTables
 		}
 
 		allowBoostrap := false
+
+		skipBootstrap, err := cmd.Flags().GetBool("skip-full-copy-tables")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		addTableUUIDsString = strings.TrimSpace(addTableUUIDsString)
 		addTableUUIDs := make([]string, 0)
@@ -141,98 +150,109 @@ var updateXClusterCmd = &cobra.Command{
 			logrus.Debug("Adding tables to XCluster")
 			req.SetTables(formTableUUIDs)
 
-			tableNeedBootstrapUUIDsString = strings.TrimSpace(tableNeedBootstrapUUIDsString)
-			tableNeedBootstrapUUIDs := make([]string, 0)
-			if len(tableNeedBootstrapUUIDsString) != 0 {
-				tableNeedBootstrapUUIDs = strings.Split(tableNeedBootstrapUUIDsString, ",")
-			} else {
-				allowBoostrap = true
-			}
-
-			if len(tableNeedBootstrapUUIDs) > 0 || allowBoostrap {
-				logrus.Debug("Updating tables needing bootstrap\n")
-				bootstrapParams := ybaclient.BootstrapParams{
-					Tables: tableNeedBootstrapUUIDs,
+			if !skipBootstrap {
+				tableNeedBootstrapUUIDsString, err := cmd.Flags().
+					GetString("tables-need-full-copy-uuids")
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 
-				if allowBoostrap {
-					logrus.Debug("Updating allow bootstrap to true\n")
-					bootstrapParams.SetAllowBootstrap(allowBoostrap)
-				} else if cmd.Flags().Changed("allow-bootstrap") {
-					allowBootstrap, err := cmd.Flags().GetBool("allow-bootstrap")
+				tableNeedBootstrapUUIDsString = strings.TrimSpace(tableNeedBootstrapUUIDsString)
+				tableNeedBootstrapUUIDs := make([]string, 0)
+				if len(tableNeedBootstrapUUIDsString) != 0 {
+					tableNeedBootstrapUUIDs = strings.Split(tableNeedBootstrapUUIDsString, ",")
+				} else {
+					tableNeedBootstrapUUIDs = addTableUUIDs
+					allowBoostrap = true
+				}
+
+				if len(tableNeedBootstrapUUIDs) > 0 || allowBoostrap {
+					logrus.Debug("Updating tables needing bootstrap\n")
+					bootstrapParams := ybaclient.BootstrapParams{
+						Tables: util.StringSliceFromString(tableNeedBootstrapUUIDs),
+					}
+
+					if allowBoostrap {
+						logrus.Debug("Updating allow bootstrap to true\n")
+						bootstrapParams.SetAllowBootstrap(allowBoostrap)
+					} else if cmd.Flags().Changed("allow-full-copy-tables") {
+						allowBootstrap, err := cmd.Flags().GetBool("allow-full-copy-tables")
+						if err != nil {
+							logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+						}
+						logrus.Debug("Updating allow bootstrap\n")
+						bootstrapParams.SetAllowBootstrap(allowBootstrap)
+					}
+
+					backupBootstrapParams := ybaclient.BootstrapBackupParams{}
+
+					parallelism, err := cmd.Flags().GetInt("parallelism")
 					if err != nil {
 						logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 					}
-					logrus.Debug("Updating allow bootstrap\n")
-					bootstrapParams.SetAllowBootstrap(allowBootstrap)
-				}
+					logrus.Debug("Updating parallelism\n")
+					backupBootstrapParams.SetParallelism(int32(parallelism))
 
-				backupBootstrapParams := ybaclient.BootstrapBackupParams{}
-
-				parallelism, err := cmd.Flags().GetInt("parallelism")
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-				logrus.Debug("Updating parallelism\n")
-				backupBootstrapParams.SetParallelism(int32(parallelism))
-
-				storageConfigName, err := cmd.Flags().GetString("storage-config-name")
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-
-				if len(strings.TrimSpace(storageConfigName)) == 0 {
-					logrus.Fatalf(
-						formatter.Colorize(
-							"Storage configuration must be provided since a tables need bootstrap\n",
-							formatter.RedColor,
-						),
-					)
-				}
-
-				storageConfigListRequest := authAPI.GetListOfCustomerConfig()
-				rStorageConfigList, response, err := storageConfigListRequest.Execute()
-				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(
-						response, err, "Backup", "Update - Get Storage Configuration")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-				}
-
-				storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
-				for _, s := range rStorageConfigList {
-					if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
-						storageConfigs = append(storageConfigs, s)
+					storageConfigName, err := cmd.Flags().GetString("storage-config-name")
+					if err != nil {
+						logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 					}
-				}
-				storageConfigsName := make([]ybaclient.CustomerConfigUI, 0)
-				for _, s := range storageConfigs {
-					if strings.Compare(s.GetConfigName(), storageConfigName) == 0 {
-						storageConfigsName = append(storageConfigsName, s)
+
+					if len(strings.TrimSpace(storageConfigName)) == 0 {
+						logrus.Fatalf(
+							formatter.Colorize(
+								"Storage configuration must be provided since a tables need bootstrap\n",
+								formatter.RedColor,
+							),
+						)
 					}
-				}
-				rStorageConfigList = storageConfigsName
 
-				if len(rStorageConfigList) < 1 {
-					logrus.Fatalf(
-						formatter.Colorize(
-							fmt.Sprintf("No storage configurations with name: %s found\n",
-								storageConfigName),
-							formatter.RedColor,
-						))
-					return
-				}
+					storageConfigListRequest := authAPI.GetListOfCustomerConfig()
+					rStorageConfigList, response, err := storageConfigListRequest.Execute()
+					if err != nil {
+						errMessage := util.ErrorFromHTTPResponse(
+							response, err, "Backup", "Update - Get Storage Configuration")
+						logrus.Fatalf(
+							formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor),
+						)
+					}
 
-				var storageUUID string
-				if len(rStorageConfigList) > 0 {
-					storageUUID = rStorageConfigList[0].GetConfigUUID()
-				}
-				if len(storageUUID) != 0 {
-					logrus.Debugf("Adding storage config for bootstrap\n")
-					backupBootstrapParams.SetStorageConfigUUID(storageUUID)
-				}
+					storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
+					for _, s := range rStorageConfigList {
+						if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
+							storageConfigs = append(storageConfigs, s)
+						}
+					}
+					storageConfigsName := make([]ybaclient.CustomerConfigUI, 0)
+					for _, s := range storageConfigs {
+						if strings.Compare(s.GetConfigName(), storageConfigName) == 0 {
+							storageConfigsName = append(storageConfigsName, s)
+						}
+					}
+					rStorageConfigList = storageConfigsName
 
-				bootstrapParams.SetBackupRequestParams(backupBootstrapParams)
-				req.SetBootstrapParams(bootstrapParams)
+					if len(rStorageConfigList) < 1 {
+						logrus.Fatalf(
+							formatter.Colorize(
+								fmt.Sprintf("No storage configurations with name: %s found\n",
+									storageConfigName),
+								formatter.RedColor,
+							))
+						return
+					}
+
+					var storageUUID string
+					if len(rStorageConfigList) > 0 {
+						storageUUID = rStorageConfigList[0].GetConfigUUID()
+					}
+					if len(storageUUID) != 0 {
+						logrus.Debugf("Adding storage config for bootstrap\n")
+						backupBootstrapParams.SetStorageConfigUUID(storageUUID)
+					}
+
+					bootstrapParams.SetBackupRequestParams(backupBootstrapParams)
+					req.SetBootstrapParams(bootstrapParams)
+				}
 			}
 		}
 
@@ -328,29 +348,35 @@ func init() {
 			"Run \"yba xcluster describe --uuid <xcluster-uuid>\""+
 			" to check the list of tables that can be removed from asynchronous replication.")
 
+	updateXClusterCmd.Flags().Bool("skip-full-copy-tables", false,
+		"[Optional] Skip taking a backup for replication. (default false)")
+
 	updateXClusterCmd.Flags().String("storage-config-name", "",
 		fmt.Sprintf(
 			"[Optional] Storage config to be used for taking the backup for replication. %s",
-			formatter.Colorize("Required when tables require bootstrapping.",
+			formatter.Colorize("Required when tables require bootstrapping. "+
+				"Ignored when skip-full-copy-tables is set to true.",
 				formatter.GreenColor)))
 
 	updateXClusterCmd.Flags().String("tables-need-full-copy-uuids", "",
 		"[Optional] Comma separated list of source universe table IDs/UUIDs "+
 			"that are allowed to be full-copied"+
 			" to the target universe. Must be a subset of table-uuids. "+
-			"If left empty, allow-bootstrap is set to true so full-copy can be done for "+
+			"If left empty, allow-full-copy-tables is set to true so full-copy can be done for "+
 			"all the tables passed in to be in replication. Run \"yba xcluster needs-full-copy-tables"+
 			" --source-universe-name <source-universe-name> --target-universe-name <target-universe-name> "+
 			"--table-uuids <tables-from-table-uuids-flag>\" to check the list of tables that need "+
-			"bootstrapping.")
+			"bootstrapping. Ignored when skip-full-copy-tables is set to true.")
+
+	updateXClusterCmd.Flags().Bool("allow-full-copy-tables", false,
+		"[Optional] Allow full copy on all the tables being added to the replication. "+
+			"The same as passing the same set passed to table-uuids to tables-need-full-copy-uuids. "+
+			"Ignored when skip-full-copy-tables is set to true."+
+			" (default false)")
 
 	updateXClusterCmd.Flags().Int("parallelism", 8,
-		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script.")
-
-	updateXClusterCmd.Flags().Bool("allow-bootstrap", false,
-		"Allow full copy on all the tables being added to the replication. "+
-			"The same as passing the same set passed to table-uuids to tables-need-full-copy-uuids."+
-			" (default false)")
+		"[Optional] Number of concurrent commands to run on nodes over SSH via \"yb_backup\" script. "+
+			"Ignored when skip-full-copy-tables is set to true.")
 
 	updateXClusterCmd.Flags().Bool("dry-run", false,
 		"[Optional] Run the pre-checks without actually running the subtasks. (default false)")

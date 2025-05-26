@@ -41,7 +41,7 @@ export const doesTaskSupportsDiffData = (task: Task): boolean => {
   if (task.type === TaskType.EDIT) {
     return task.target === 'Universe';
   }
-  return [TaskType.GFlags_UPGRADE, TaskType.SOFTWARE_UPGRADE].includes(task.type);
+  return [TaskType.GFlags_UPGRADE, TaskType.SOFTWARE_UPGRADE, TaskType.RESIZE_NODE].includes(task.type);
 };
 
 /**
@@ -112,4 +112,14 @@ export const isSoftwareUpgradeFailed = (task: Task, universe: IUniverse) => {
   SoftwareUpgradeTaskType.SOFTWARE_UPGRADE].includes(task.type) && [SoftwareUpgradeState.ROLLBACK_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
     universe?.universeDetails.softwareUpgradeState
   );
+};
+
+// for prechecks , display task typename and target
+// for other tasks, display task title
+export const getTaskTitle = (task: Task) => {
+  return task.typeName.includes('Validation') ? `${task.typeName} : ${task.title.split(":")?.[1]}` : task.title;
+};
+
+export const getErrorTaskTitle = (task: Task) => {
+  return  `${task.typeName} ${task.target} failed: ${task.title.split(":")?.[1]}`;
 };

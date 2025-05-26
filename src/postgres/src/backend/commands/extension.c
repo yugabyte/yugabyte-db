@@ -938,15 +938,6 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 								 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
-	 * Similarly disable check_function_bodies, to ensure that SQL functions
-	 * won't be parsed during creation.
-	 */
-	if (check_function_bodies)
-		(void) set_config_option("check_function_bodies", "off",
-								 PGC_USERSET, PGC_S_SESSION,
-								 GUC_ACTION_SAVE, true, 0, false);
-
-	/*
 	 * Set up the search path to have the target schema first, making it be
 	 * the default creation target namespace.  Then add the schemas of any
 	 * prerequisite extensions, unless they are in pg_catalog which would be
@@ -1026,6 +1017,11 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 											t_sql,
 											CStringGetTextDatum("@extowner@"),
 											CStringGetTextDatum(qUserName));
+			if (strpbrk(userName, quoting_relevant_chars))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("invalid character in extension owner: must not contain any of \"%s\"",
+								quoting_relevant_chars)));
 		}
 
 		/*
@@ -2741,7 +2737,7 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 {
 	Oid			extensionOid;
 	Oid			nspOid;
-	Oid			oldNspOid = InvalidOid;
+	Oid			oldNspOid;
 	AclResult	aclresult;
 	Relation	extRel;
 	ScanKeyData key[2];
@@ -2824,6 +2820,9 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 
 	objsMoved = new_object_addresses();
 
+	/* store the OID of the namespace to-be-changed */
+	oldNspOid = extForm->extnamespace;
+
 	/*
 	 * Scan pg_depend to find objects that depend directly on the extension,
 	 * and alter each one's schema.
@@ -2868,12 +2867,6 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 												 dep.objectId,
 												 nspOid,
 												 objsMoved);
-
-		/*
-		 * Remember previous namespace of first object that has one
-		 */
-		if (oldNspOid == InvalidOid && dep_oldNspOid != InvalidOid)
-			oldNspOid = dep_oldNspOid;
 
 		/*
 		 * If not all the objects had the same old namespace (ignoring any

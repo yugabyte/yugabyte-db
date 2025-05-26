@@ -24,6 +24,7 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
+#include "optimizer/restrictinfo.h"
 #include "utils/typcache.h"
 
 /* YB includes */
@@ -100,9 +101,11 @@ static void generate_mergejoin_paths(PlannerInfo *root,
 									 List *merge_pathkeys,
 									 bool is_partial);
 
+/* YB declarations */
 static bool yb_has_non_evaluable_bnl_clauses(Path *outer_path,
 											 Path *inner_path,
 											 List *rinfos);
+
 
 /*
  * add_paths_to_joinrel
@@ -138,12 +141,14 @@ add_paths_to_joinrel(PlannerInfo *root,
 {
 	JoinPathExtraData extra;
 	bool		mergejoin_allowed = true;
+	bool		consider_join_pushdown = false;
 	ListCell   *lc;
 	Relids		joinrelids;
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		ereport(DEBUG1,
 				(errmsg("\n%s BEGIN add_paths_to_joinrel Level %d\n", ybMsgBuf,
@@ -222,9 +227,11 @@ add_paths_to_joinrel(PlannerInfo *root,
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		ybBuildRelidsString(root, innerrel->relids, &buf);
 		ereport(DEBUG1,
@@ -353,26 +360,44 @@ add_paths_to_joinrel(PlannerInfo *root,
 							 jointype, &extra);
 
 	/*
+	 * createplan.c does not currently support handling of pseudoconstant
+	 * clauses assigned to joins pushed down by extensions; check if the
+	 * restrictlist has such clauses, and if not, allow them to consider
+	 * pushing down joins.
+	 */
+	if ((joinrel->fdwroutine &&
+		 joinrel->fdwroutine->GetForeignJoinPaths) ||
+		set_join_pathlist_hook)
+		consider_join_pushdown = !has_pseudoconstant_clauses(root,
+															 restrictlist);
+
+	/*
 	 * 5. If inner and outer relations are foreign tables (or joins) belonging
 	 * to the same server and assigned to the same user to check access
 	 * permissions as, give the FDW a chance to push down joins.
 	 */
 	if (joinrel->fdwroutine &&
-		joinrel->fdwroutine->GetForeignJoinPaths)
+		joinrel->fdwroutine->GetForeignJoinPaths &&
+		consider_join_pushdown)
 		joinrel->fdwroutine->GetForeignJoinPaths(root, joinrel,
 												 outerrel, innerrel,
 												 jointype, &extra);
 
 	/*
-	 * 6. Finally, give extensions a chance to manipulate the path list.
+	 * 6. Finally, give extensions a chance to manipulate the path list.  They
+	 * could add new paths (such as CustomPaths) by calling add_path(), or
+	 * add_partial_path() if parallel aware.  They could also delete or modify
+	 * paths added by the core code.
 	 */
-	if (set_join_pathlist_hook)
+	if (set_join_pathlist_hook &&
+		consider_join_pushdown)
 		set_join_pathlist_hook(root, joinrel, outerrel, innerrel,
 							   jointype, &extra);
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		ereport(DEBUG1,
 				(errmsg("\n%s END add_paths_to_joinrel\n", ybMsgBuf)));
@@ -635,6 +660,23 @@ get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 
 		if (contain_volatile_functions((Node *) rinfo))
 			return NULL;
+	}
+
+	/*
+	 * Also check the parameterized path restrictinfos for volatile functions.
+	 * Indexed functions must be immutable so shouldn't have any volatile
+	 * functions, however, with a lateral join the inner scan may not be an
+	 * index scan.
+	 */
+	if (inner_path->param_info != NULL)
+	{
+		foreach(lc, inner_path->param_info->ppi_clauses)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+			if (contain_volatile_functions((Node *) rinfo))
+				return NULL;
+		}
 	}
 
 	/*

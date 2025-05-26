@@ -166,7 +166,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
   }
 
   void SetUp() override {
-    YBTest::SetUp();
+    TEST_SETUP_SUPER(YBTest);
     LOG(INFO) << "Test uses automatic mode: " << UseAutomaticMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
   }
@@ -246,7 +246,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       pb.set_state(master::SysTablesEntryPB::PREPARING);
       pb.set_name(table_name);
       pb.set_namespace_id(namespace_id);
-      pb.mutable_schema()->set_pgschema_name(pg_schema_name);
+      pb.mutable_schema()->set_deprecated_pgschema_name(pg_schema_name);
       pb.set_table_type(PGSQL_TABLE_TYPE);
       l.Commit();
     }
@@ -312,6 +312,8 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
         return Status::OK();
       },
+      .set_normal_oid_counter_above_all_normal_oids_func =
+          [](NamespaceId namespace_id) -> Status { return Status::OK(); },
       .get_normal_oid_higher_than_any_used_normal_oid_func =
           [](NamespaceId namespace_id) -> Result<uint32_t> { return 100'000; },
       .get_namespace_func =

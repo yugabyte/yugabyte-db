@@ -54,7 +54,7 @@ bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr) {
 bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr, IntentAwareIteratorIf* iter) {
   if (CurrentTargetMatchesKey(curr)) {
     // Read restart logic: Match found => update checkpoint to latest.
-    last_seen_ht_checkpoint_ = iter->ObtainLastSeenHtCheckpoint();
+    max_seen_ht_checkpoint_ = iter->ObtainMaxSeenHtCheckpoint();
     return true;
   }
   return false;
@@ -852,7 +852,7 @@ Result<bool> HybridScanChoices::InterestedInRow(
   }
 
   // Not interested in the row => Rollback to last seen ht checkpoint.
-  iter->RollbackLastSeenHt(last_seen_ht_checkpoint_);
+  iter->RollbackMaxSeenHt(max_seen_ht_checkpoint_);
 
   SeekToCurrentTarget(iter);
   return false;
@@ -933,7 +933,7 @@ ScanChoicesPtr ScanChoices::Create(
   // hash columns in a hash partitioned table. And the hash code column cannot be skip'ed without
   // skip'ing all hash columns as well.
   if (prefixlen != 0 && !valid_prefixlen) {
-    LOG(ERROR)
+    LOG(DFATAL)
       << "Prefix length: " << prefixlen << " is invalid for schema: "
       << "num_hash_cols: " << num_hash_cols << ", num_key_cols: " << num_key_cols;
   }

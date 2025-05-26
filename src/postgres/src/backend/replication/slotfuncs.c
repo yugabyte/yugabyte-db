@@ -29,6 +29,7 @@
 /* YB includes */
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
+#include "replication/walsender.h"
 #include "utils/uuid.h"
 
 /*
@@ -49,7 +50,7 @@ create_physical_replication_slot(char *name, bool immediately_reserve,
 	ReplicationSlotCreate(name, false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT, false,
 						  NULL /* yb_plugin_name */ , CRS_NOEXPORT_SNAPSHOT,
-						  NULL, CRS_SEQUENCE);
+						  NULL, CRS_SEQUENCE, YB_CRS_TRANSACTION);
 
 	if (immediately_reserve)
 	{
@@ -131,7 +132,8 @@ create_logical_replication_slot(char *name, char *plugin,
 								bool temporary, bool two_phase,
 								XLogRecPtr restart_lsn,
 								bool find_startpoint,
-								char *yb_lsn_type)
+								char *yb_lsn_type,
+								char *yb_ordering_mode)
 {
 	LogicalDecodingContext *ctx = NULL;
 
@@ -150,9 +152,10 @@ create_logical_replication_slot(char *name, char *plugin,
 	 * CreateInitDecodingContext call below where `need_full_snapshot` is passed
 	 * as false indicating that no snapshot should be built.
 	 */
-	ReplicationSlotCreate(name, true,
-						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase,
-						  plugin, CRS_NOEXPORT_SNAPSHOT, NULL, YBParseLsnType(yb_lsn_type));
+	ReplicationSlotCreate(name, true, temporary ? RS_TEMPORARY : RS_EPHEMERAL,
+						  two_phase, plugin, CRS_NOEXPORT_SNAPSHOT, NULL,
+						  YBParseLsnType(yb_lsn_type),
+						  YBParseOrderingMode(yb_ordering_mode));
 
 	if (!IsYugaByteEnabled())
 	{
@@ -206,10 +209,20 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	Name		yb_lsn_type_arg;
 	char	   *yb_lsn_type = "SEQUENCE";
 
+	Name		yb_ordering_mode_arg;
+	char	   *yb_ordering_mode = "TRANSACTION";
+
+	/* YB */
 	if (!PG_ARGISNULL(4))
 	{
 		yb_lsn_type_arg = PG_GETARG_NAME(4);
 		yb_lsn_type = NameStr(*yb_lsn_type_arg);
+	}
+
+	if (!PG_ARGISNULL(5))
+	{
+		yb_ordering_mode_arg = PG_GETARG_NAME(5);
+		yb_ordering_mode = NameStr(*yb_ordering_mode_arg);
 	}
 
 	Datum		result;
@@ -243,6 +256,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 
 		YBValidateOutputPlugin(NameStr(*plugin));
 		YBValidateLsnType(yb_lsn_type);
+		YBValidateOrderingMode(yb_ordering_mode);
 	}
 
 	CheckSlotPermissions();
@@ -255,7 +269,8 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 									two_phase,
 									InvalidXLogRecPtr,
 									true,
-									yb_lsn_type);
+									yb_lsn_type,
+									yb_ordering_mode);
 
 	memset(nulls, 0, sizeof(nulls));
 
@@ -382,7 +397,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		bool		yb_stream_active;
 		uint64		yb_restart_commit_ht;
 		const char *yb_lsn_type;
-		bool        yb_stream_expired;
+		bool		yb_stream_expired;
 
 		if (IsYugaByteEnabled())
 		{
@@ -862,10 +877,11 @@ pg_replication_slot_advance(PG_FUNCTION_ARGS)
 static Datum
 copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("copy_replication_slot is unavailable."),
-			 errdetail("Copy of a replication slot is currently not supported.")));
+	if (IsYugaByteEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("copy_replication_slot is unavailable."),
+				 errdetail("Copy of a replication slot is currently not supported.")));
 
 	Name		src_name = PG_GETARG_NAME(0);
 	Name		dst_name = PG_GETARG_NAME(1);
@@ -873,6 +889,7 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 	ReplicationSlot first_slot_contents;
 	ReplicationSlot second_slot_contents;
 	char	   *yb_lsn_type = "SEQUENCE";
+	char	   *yb_ordering_mode = "TRANSACTION";
 	XLogRecPtr	src_restart_lsn;
 	bool		src_islogical;
 	bool		temporary;
@@ -972,7 +989,8 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 										false,
 										src_restart_lsn,
 										false,
-										yb_lsn_type);
+										yb_lsn_type,
+										yb_ordering_mode);
 	}
 	else
 		create_physical_replication_slot(NameStr(*dst_name),

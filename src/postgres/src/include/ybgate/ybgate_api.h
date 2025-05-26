@@ -162,7 +162,8 @@ extern YbgStatus YbgExprContextReset(YbgExprContext expr_ctx);
 extern YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx, int32_t attno,
 										   uint64_t datum, bool is_null);
 
-extern YbgStatus YbgPrepareExpr(char *expr_cstring, YbgPreparedExpr *expr);
+extern YbgStatus YbgPrepareExpr(char *expr_cstring, YbgPreparedExpr *expr,
+								int yb_expression_version);
 
 extern YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid);
 
@@ -254,7 +255,7 @@ extern void HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts,
  * PG Version
  *-----------------------------------------------------------------------------
  */
-extern int YbgGetPgVersion();
+extern int	YbgGetPgVersion();
 
 #ifdef __cplusplus
 }

@@ -62,6 +62,15 @@ PG_MODULE_MAGIC;
 /* If no remote estimates, assume a sort costs 20% extra */
 #define DEFAULT_FDW_SORT_MULTIPLIER 1.2
 
+/* YB: If no server_type is provided, assume that the underlying server is Postgres */
+#define YB_DEFAULT_FDW_SERVER_TYPE	PG_FDW_SERVER_POSTGRES
+
+const char *yb_server_types[] = {
+	[PG_FDW_SERVER_UNKNOWN] = "unknown",
+	[PG_FDW_SERVER_POSTGRES] = "postgreSQL",
+	[PG_FDW_SERVER_YUGABYTEDB] = "yugabyteDB"
+};
+
 /*
  * Indexes of FDW-private information stored in fdw_private lists.
  *
@@ -542,6 +551,9 @@ static void merge_fdw_options(PgFdwRelationInfo *fpinfo,
 							  const PgFdwRelationInfo *fpinfo_o,
 							  const PgFdwRelationInfo *fpinfo_i);
 static int	get_batch_size_option(Relation rel);
+
+static const char *yb_server_type_to_string(YbPgFdwServerType server_type);
+static YbPgFdwServerType yb_get_server_type(const char *server_type);
 
 
 /*
@@ -1663,9 +1675,12 @@ postgresReScanForeignScan(ForeignScanState *node)
 
 	/*
 	 * If any internal parameters affecting this node have changed, we'd
-	 * better destroy and recreate the cursor.  Otherwise, rewinding it should
-	 * be good enough.  If we've only fetched zero or one batch, we needn't
-	 * even rewind the cursor, just rescan what we have.
+	 * better destroy and recreate the cursor.  Otherwise, if the remote
+	 * server is v14 or older, rewinding it should be good enough; if not,
+	 * rewind is only allowed for scrollable cursors, but we don't have a way
+	 * to check the scrollability of it, so destroy and recreate it in any
+	 * case.  If we've only fetched zero or one batch, we needn't even rewind
+	 * the cursor, just rescan what we have.
 	 */
 	if (node->ss.ps.chgParam != NULL)
 	{
@@ -1675,8 +1690,15 @@ postgresReScanForeignScan(ForeignScanState *node)
 	}
 	else if (fsstate->fetch_ct_2 > 1)
 	{
-		snprintf(sql, sizeof(sql), "MOVE BACKWARD ALL IN c%u",
-				 fsstate->cursor_number);
+		if (PQserverVersion(fsstate->conn) < 150000)
+			snprintf(sql, sizeof(sql), "MOVE BACKWARD ALL IN c%u",
+					 fsstate->cursor_number);
+		else
+		{
+			fsstate->cursor_exists = false;
+			snprintf(sql, sizeof(sql), "CLOSE c%u",
+					 fsstate->cursor_number);
+		}
 	}
 	else
 	{
@@ -2022,8 +2044,8 @@ postgresGetForeignModifyBatchSize(ResultRelInfo *resultRelInfo)
 {
 	int			batch_size;
 	PgFdwModifyState *fmstate = resultRelInfo->ri_FdwState ?
-	(PgFdwModifyState *) resultRelInfo->ri_FdwState :
-	NULL;
+		(PgFdwModifyState *) resultRelInfo->ri_FdwState :
+		NULL;
 
 	/* should be called only once */
 	Assert(resultRelInfo->ri_BatchSize == 0);
@@ -5925,6 +5947,12 @@ apply_server_options(PgFdwRelationInfo *fpinfo)
 			(void) parse_int(defGetString(def), &fpinfo->fetch_size, 0, NULL);
 		else if (strcmp(def->defname, "async_capable") == 0)
 			fpinfo->async_capable = defGetBoolean(def);
+		/* YB-specific server options */
+		else if (strcmp(def->defname, "server_type") == 0)
+		{
+			fpinfo->yb_server_type = yb_get_server_type(defGetString(def));
+			Assert(fpinfo->yb_server_type != PG_FDW_SERVER_UNKNOWN);
+		}
 	}
 }
 
@@ -5983,6 +6011,7 @@ merge_fdw_options(PgFdwRelationInfo *fpinfo,
 	fpinfo->use_remote_estimate = fpinfo_o->use_remote_estimate;
 	fpinfo->fetch_size = fpinfo_o->fetch_size;
 	fpinfo->async_capable = fpinfo_o->async_capable;
+	fpinfo->yb_server_type = fpinfo_o->yb_server_type;
 
 	/* Merge the table level options from either side of the join. */
 	if (fpinfo_i)
@@ -6014,6 +6043,13 @@ merge_fdw_options(PgFdwRelationInfo *fpinfo,
 		 */
 		fpinfo->async_capable = fpinfo_o->async_capable ||
 			fpinfo_i->async_capable;
+
+		if (fpinfo_i->yb_server_type != fpinfo_o->yb_server_type)
+			elog(ERROR, "Mismatched server_type of relations: %s(%s), %s(%s)",
+				 fpinfo_o->relation_name,
+				 yb_server_type_to_string(fpinfo_o->yb_server_type),
+				 fpinfo_i->relation_name,
+				 yb_server_type_to_string(fpinfo_i->yb_server_type));
 	}
 }
 
@@ -6840,6 +6876,20 @@ add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		return;
 
 	/*
+	 * If the query has FETCH FIRST .. WITH TIES, 1) it must have ORDER BY as
+	 * well, which is used to determine which additional rows tie for the last
+	 * place in the result set, and 2) ORDER BY must already have been
+	 * determined to be safe to push down before we get here.  So in that case
+	 * the FETCH clause is safe to push down with ORDER BY if the remote
+	 * server is v13 or later, but if not, the remote query will fail entirely
+	 * for lack of support for it.  Since we do not currently have a way to do
+	 * a remote-version check (without accessing the remote server), disable
+	 * pushing the FETCH clause for now.
+	 */
+	if (parse->limitOption == LIMIT_OPTION_WITH_TIES)
+		return;
+
+	/*
 	 * Also, the LIMIT/OFFSET cannot be pushed down, if their expressions are
 	 * not safe to remote.
 	 */
@@ -6968,14 +7018,16 @@ postgresForeignAsyncConfigureWait(AsyncRequest *areq)
 	{
 		/*
 		 * This is the case when the in-process request was made by another
-		 * Append.  Note that it might be useless to process the request,
-		 * because the query might not need tuples from that Append anymore.
-		 * If there are any child subplans of the same parent that are ready
-		 * for new requests, skip the given request.  Likewise, if there are
-		 * any configured events other than the postmaster death event, skip
-		 * it.  Otherwise, process the in-process request, then begin a fetch
-		 * to configure the event below, because we might otherwise end up
-		 * with no configured events other than the postmaster death event.
+		 * Append.  Note that it might be useless to process the request made
+		 * by that Append, because the query might not need tuples from that
+		 * Append anymore; so we avoid processing it to begin a fetch for the
+		 * given request if possible.  If there are any child subplans of the
+		 * same parent that are ready for new requests, skip the given
+		 * request.  Likewise, if there are any configured events other than
+		 * the postmaster death event, skip it.  Otherwise, process the
+		 * in-process request, then begin a fetch to configure the event
+		 * below, because we might otherwise end up with no configured events
+		 * other than the postmaster death event.
 		 */
 		if (!bms_is_empty(requestor->as_needrequest))
 			return;
@@ -7602,4 +7654,41 @@ get_batch_size_option(Relation rel)
 	}
 
 	return batch_size;
+}
+
+static const char *
+yb_server_type_to_string(YbPgFdwServerType server_type)
+{
+	switch (server_type)
+	{
+		case PG_FDW_SERVER_POSTGRES:
+			return yb_server_types[PG_FDW_SERVER_POSTGRES];
+		case PG_FDW_SERVER_YUGABYTEDB:
+			return yb_server_types[PG_FDW_SERVER_POSTGRES];
+		default:
+			elog(ERROR, "Unsupported server type: %d", server_type);
+	}
+
+	return NULL;				/* keep compiler happy */
+}
+
+static YbPgFdwServerType
+yb_get_server_type(const char *server_type)
+{
+	if (pg_strncasecmp(server_type,
+					   yb_server_types[PG_FDW_SERVER_POSTGRES],
+					   strlen(yb_server_types[PG_FDW_SERVER_POSTGRES])) == 0)
+		return PG_FDW_SERVER_POSTGRES;
+	else if (pg_strncasecmp(server_type,
+							yb_server_types[PG_FDW_SERVER_YUGABYTEDB],
+							strlen(yb_server_types[PG_FDW_SERVER_YUGABYTEDB])) == 0)
+		return PG_FDW_SERVER_YUGABYTEDB;
+
+	return PG_FDW_SERVER_UNKNOWN;
+}
+
+bool
+yb_is_valid_server_type(const char *server_type)
+{
+	return yb_get_server_type(server_type) != PG_FDW_SERVER_UNKNOWN;
 }

@@ -19,19 +19,13 @@ Applications running in other regions incur cross-region latency to read the lat
 
 A read replica cluster is a set of follower nodes connected to a primary cluster. These are purely observer nodes, which means that they don't take part in the [Raft consensus](https://raft.github.io/) and elections. As a result, read replicas can have a different replication factor (RF) than the primary cluster, and you can have an even number of replicas.
 
-Let's look into how this can be beneficial for your application.
-
-## Setup
-
-{{<cluster-setup-tabs>}}
-
 Suppose you have an RF 3 cluster set up in `us-east-1` and `us-east-2`, with leader preference set to `us-east-1`. And suppose you want to run other applications in `us-central` and `us-west`. The read latencies would be similar to the following illustration.
 
 ![Read Replicas - setup](/images/develop/global-apps/global-apps-read-replicas-setup.png)
 
 ## Improve read latencies
 
-To improve read latencies, set up separate **Read Replica** clusters in each of the regions where you want to run your application and where a little staleness is acceptable.
+To improve read latencies, set up separate Read Replica clusters in each of the regions where you want to run your application and where a little staleness is acceptable.
 
 This enables the application to read data from the closest replica instead of going cross-region to the tablet leaders.
 

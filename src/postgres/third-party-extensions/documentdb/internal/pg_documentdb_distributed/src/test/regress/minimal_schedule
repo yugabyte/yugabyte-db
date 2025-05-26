@@ -1,0 +1,2 @@
+test: documentdb_distributed_setup
+test: documentdb_distributed_test_helpers

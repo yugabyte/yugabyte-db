@@ -18,7 +18,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -35,11 +34,9 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
 
-#include "yb/util/enums.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -111,10 +108,6 @@ class PerformExchangeFuture {
 using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
 using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, ash::PggateRPC)>;
 
-using PgTxnSnapshotId = std::string;
-using PgTxnSnapshotReadTime = uint64_t;
-using PgTxnSnapshotDescriptor = std::variant<PgTxnSnapshotId, PgTxnSnapshotReadTime>;
-
 void Wait(const PerformResultFuture& future);
 bool Ready(const std::future<PerformResult>& future);
 bool Ready(const PerformExchangeFuture& future);
@@ -136,6 +129,8 @@ class PgClient {
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
+
+  void SetLockTimeout(MonoDelta lock_timeout);
 
   uint64_t SessionID() const;
 
@@ -160,6 +155,8 @@ class PgClient {
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetCatalogMasterVersion();
+
+  Result<uint32_t> GetXClusterRole(uint32_t db_oid);
 
   Status CreateSequencesDataTable();
 
@@ -236,6 +233,10 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
 
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change,
+      uint64_t new_catalog_version, const std::optional<std::string>& message_list);
+
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
 
@@ -272,8 +273,8 @@ class PgClient {
   Result<int64_t> GetCronLastMinute();
 
   Result<std::string> ExportTxnSnapshot(tserver::PgExportTxnSnapshotRequestPB* req);
-  Result<tserver::PgSetTxnSnapshotResponsePB> SetTxnSnapshot(
-      PgTxnSnapshotDescriptor snapshot_descriptor, tserver::PgPerformOptionsPB&& options);
+  Result<PgTxnSnapshotPB> ImportTxnSnapshot(
+      std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
   Status ClearExportedTxnSnapshots();
 
   using ActiveTransactionCallback = LWFunction<Status(

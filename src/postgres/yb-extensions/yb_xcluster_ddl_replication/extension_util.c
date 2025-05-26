@@ -21,15 +21,16 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
-#include "catalog/indexing.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_extension_d.h"
+#include "catalog/pg_type.h"
 #include "executor/spi.h"
 #include "extension_util.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
+#include "utils/syscache.h"
 
 const char *kManualReplicationErrorMsg =
 "To manually replicate, run DDL on the source followed by the target with "
@@ -52,12 +53,13 @@ GetInt64FromVariable(const char *var, const char *var_name)
 	return ret;
 }
 
-static Oid	CachedExtensionOwnerOid = InvalidOid;	/* Cached for a pg connection. */
+static Oid	cached_extension_owner_oid = InvalidOid;	/* Cached for a pg
+														 * connection. */
 Oid
 XClusterExtensionOwner(void)
 {
-	if (CachedExtensionOwnerOid > InvalidOid)
-		return CachedExtensionOwnerOid;
+	if (cached_extension_owner_oid > InvalidOid)
+		return cached_extension_owner_oid;
 
 	Relation	extensionRelation = table_open(ExtensionRelationId,
 											   AccessShareLock);
@@ -87,20 +89,8 @@ XClusterExtensionOwner(void)
 	table_close(extensionRelation, AccessShareLock);
 
 	/* Cache this value for future calls. */
-	CachedExtensionOwnerOid = extensionOwner;
+	cached_extension_owner_oid = extensionOwner;
 	return extensionOwner;
-}
-
-Oid
-SPI_GetOid(HeapTuple spi_tuple, int column_id)
-{
-	bool		is_null;
-	Oid			oid = DatumGetObjectId(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
-													 column_id, &is_null));
-
-	if (is_null)
-		elog(ERROR, "Found NULL value when parsing oid (column %d)", column_id);
-	return oid;
 }
 
 Oid
@@ -109,8 +99,19 @@ SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id)
 	bool		is_null;
 	Oid			oid = DatumGetObjectId(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
 													 column_id, &is_null));
+
 	if (is_null)
 		return InvalidOid;
+	return oid;
+}
+
+Oid
+SPI_GetOid(HeapTuple spi_tuple, int column_id)
+{
+	Oid			oid = SPI_GetOidIfExists(spi_tuple, column_id);
+
+	if (oid == InvalidOid)
+		elog(ERROR, "Found NULL value when parsing oid (column %d)", column_id);
 	return oid;
 }
 
@@ -201,9 +202,30 @@ IsTempSchema(const char *schema_name)
 Oid
 GetColocationIdFromRelation(Relation *rel)
 {
-  YbcTableProperties table_props = YbTryGetTableProperties(*rel);
+	YbcTableProperties table_props = YbTryGetTableProperties(*rel);
+
 	if (!table_props || !table_props->is_colocated)
 		return InvalidOid;
 
 	return table_props->colocation_id;
+}
+
+char *
+get_typname(Oid pg_type_oid)
+{
+	HeapTuple	type_tuple = SearchSysCache1(TYPEOID,
+											 ObjectIdGetDatum(pg_type_oid));
+
+	if (!HeapTupleIsValid(type_tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("type OID %u not found", pg_type_oid)));
+	}
+
+	Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
+	char	   *type_name = pstrdup(NameStr(type_form->typname));
+
+	ReleaseSysCache(type_tuple);
+	return type_name;
 }

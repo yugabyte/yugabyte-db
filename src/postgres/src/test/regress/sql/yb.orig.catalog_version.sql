@@ -308,7 +308,7 @@ ALTER TABLE evt_trig_table ADD COLUMN val INT;
 CREATE TABLE post_trigger_table (id INT);
 :display_catalog_version;
 
--- The execution on atomic SPI context function will increment current_version.
+-- The execution on atomic SPI context function will not increment current_version.
 CREATE FUNCTION atomic_spi(INT) RETURNS INT AS $$
 DECLARE TOTAL INT;
 BEGIN
@@ -399,6 +399,7 @@ CREATE UNIQUE INDEX ON mv(t);
 REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
 -- concurrent refreshes should not bump catalog version.
+INSERT INTO base VALUES (1); -- TODO(#26677): remove this workaround.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
 
@@ -413,10 +414,7 @@ SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relna
 SELECT min(t), max(t) FROM analyze_table;
 SELECT min(t), max(t) FROM analyze_table2;
 -- Without specifying tables, ANALYZE update statistics for all tables.
--- Verify catalog version bumps more than once because ANALYZE internally
--- has more than one transactions committed. Each committed transaction
--- needs to cause catalog version to increment by 1 if it has generated
--- some cache invalidation messages.
+-- Verify catalog version only bumps once.
 ANALYZE;
 :display_catalog_version;
 

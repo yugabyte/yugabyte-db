@@ -23,11 +23,7 @@ extern void assign_log_timezone(const char *newval, void *extra);
 extern const char *show_log_timezone(void);
 extern bool check_transaction_read_only(bool *newval, void **extra, GucSource source);
 extern bool check_XactIsoLevel(int *newval, void **extra, GucSource source);
-extern void yb_assign_XactIsoLevel(int newval, void *extra);
-extern bool check_yb_default_xact_isolation(int *newval, void **extra, GucSource source);
 extern bool check_transaction_deferrable(bool *newval, void **extra, GucSource source);
-extern void assign_transaction_read_only(bool newval, void *extra);
-extern void assign_transaction_deferrable(bool newval, void *extra);
 extern bool check_random_seed(double *newval, void **extra, GucSource source);
 extern void assign_random_seed(double newval, void *extra);
 extern const char *show_random_seed(void);
@@ -38,12 +34,17 @@ extern void assign_session_authorization(const char *newval, void *extra);
 extern bool check_role(char **newval, void **extra, GucSource source);
 extern void assign_role(const char *newval, void *extra);
 extern const char *show_role(void);
+
+/* YB */
+extern void yb_assign_XactIsoLevel(int newval, void *extra);
+extern bool check_yb_default_xact_isolation(int *newval, void **extra, GucSource source);
+extern void assign_transaction_read_only(bool newval, void *extra);
+extern void assign_transaction_deferrable(bool newval, void *extra);
 extern bool check_follower_reads(bool *newval, void **extra, GucSource source);
 extern void assign_follower_reads(bool newval, void *extra);
 extern bool check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source);
 extern void assign_follower_read_staleness_ms(int32_t newval, void *extra);
 extern bool check_default_XactIsoLevel(int *newval, void **extra, GucSource source);
-
 extern const char *yb_fetch_effective_transaction_isolation_level(void);
 
 #endif							/* VARIABLE_H */

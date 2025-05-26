@@ -32,7 +32,8 @@ Assuming universe A is the Primary and universe B is the Standby, use the follow
 
 ### Setup replication in the reverse direction
 
-Set up xCluster Replication from the Standby universe (B) to Primary universe (A) by following the steps in [Set up transactional xCluster](../async-replication-transactional/). 
+Set up xCluster Replication from the Standby universe (B) to Primary universe (A) by following the steps in [Set up transactional xCluster](../../async-replication/async-replication-transactional/).
+
 Skip the bootstrap (backup/restore) step, since the data is already present in both universes.
 
 Ensure that the mode of replication used matches the original setup. Continuously monitor the health of the new replication to prevent any unexpected issues post-switchover.

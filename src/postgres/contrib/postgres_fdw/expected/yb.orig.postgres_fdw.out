@@ -1,0 +1,231 @@
+CREATE EXTENSION postgres_fdw;
+--
+-- Test to validate behavior of 'server_type' option in foreign server.
+--
+CREATE SERVER s_yugabytedb FOREIGN DATA WRAPPER postgres_fdw OPTIONS (server_type 'yugabytedb');
+CREATE SERVER s_postgres FOREIGN DATA WRAPPER postgres_fdw OPTIONS (server_type 'postgresql');
+CREATE SERVER s_yugabytedb2 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (dbname 'yugabyte', server_type 'yugabytedb');
+CREATE SERVER s_nosrvtype FOREIGN DATA WRAPPER postgres_fdw;
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
+CREATE SERVER s_nosrvtype2 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (dbname 'yugabyte', host '127.0.0.1');
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
+CREATE SERVER s_invalidsrvtype FOREIGN DATA WRAPPER postgres_fdw OPTIONS (server_type 'something_invalid');
+ERROR:  invalid server_type 'something_invalid'
+HINT:  Supported server types: [postgreSQL, yugabyteDB]
+CREATE SERVER s_invalidsrvtype2 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (server_type '');
+ERROR:  invalid server_type ''
+HINT:  Supported server types: [postgreSQL, yugabyteDB]
+SELECT srv.srvname, srv.srvoptions
+FROM pg_foreign_server srv JOIN pg_foreign_data_wrapper fdw ON srv.srvfdw = fdw.oid
+WHERE fdw.fdwname = 'postgres_fdw';
+    srvname    |                srvoptions                
+---------------+------------------------------------------
+ s_yugabytedb  | {server_type=yugabytedb}
+ s_postgres    | {server_type=postgresql}
+ s_yugabytedb2 | {dbname=yugabyte,server_type=yugabytedb}
+ s_nosrvtype   | 
+ s_nosrvtype2  | {dbname=yugabyte,host=127.0.0.1}
+(5 rows)
+
+-- Adding a 'server_type' option where none exists.
+ALTER SERVER s_nosrvtype2 OPTIONS (ADD server_type 'yugabytedb');
+-- Adding a 'server_type' option where one already exists should be disallowed.
+ALTER SERVER s_nosrvtype2 OPTIONS (ADD server_type 'postgresql');
+ERROR:  option "server_type" provided more than once
+-- Modifying 'server_type' option where one already exists should be disallowed.
+ALTER SERVER s_nosrvtype2 OPTIONS (SET server_type 'postgresql');
+ERROR:  changing server_type is not supported.
+HINT:  Use "DROP SERVER <name>" followed by "CREATE SERVER <name> ... OPTIONS (server_type 'postgresql')" to change server_type.
+-- Modifying 'server_type' option where one already exists but with an invalid value should be disallowed.
+ALTER SERVER s_nosrvtype2 OPTIONS (SET server_type 'something_invalid');
+ERROR:  invalid server_type 'something_invalid'
+HINT:  Supported server types: [postgreSQL, yugabyteDB]
+-- Dropping 'server_type' option should be disallowed.
+ALTER SERVER s_nosrvtype2 OPTIONS (DROP server_type);
+ERROR:  dropping server_type is not supported.
+-- Modifying or dropping 'server_type' option where one does not exist should be disallowed.
+ALTER SERVER s_nosrvtype OPTIONS (SET server_type 'postgresql');
+ERROR:  option "server_type" not found
+ALTER SERVER s_nosrvtype OPTIONS (DROP server_type);
+ERROR:  option "server_type" not found
+SELECT srv.srvname, srv.srvoptions
+FROM pg_foreign_server srv JOIN pg_foreign_data_wrapper fdw ON srv.srvfdw = fdw.oid
+WHERE fdw.fdwname = 'postgres_fdw';
+    srvname    |                       srvoptions                        
+---------------+---------------------------------------------------------
+ s_yugabytedb  | {server_type=yugabytedb}
+ s_postgres    | {server_type=postgresql}
+ s_yugabytedb2 | {dbname=yugabyte,server_type=yugabytedb}
+ s_nosrvtype   | 
+ s_nosrvtype2  | {dbname=yugabyte,host=127.0.0.1,server_type=yugabytedb}
+(5 rows)
+
+DROP SERVER s_yugabytedb2;
+DROP SERVER s_nosrvtype2;
+-- Test to validate that 'server_type' option is not applicable to foreign table.
+CREATE FOREIGN TABLE ft_test (v INT) SERVER s_yugabytedb OPTIONS (table_name 't_test', server_type 'yugabytedb');
+ERROR:  invalid option "server_type"
+HINT:  Valid options in this context are: schema_name, table_name, use_remote_estimate, updatable, truncatable, fetch_size, batch_size, async_capable
+CREATE TABLE t_test (v INT);
+INSERT INTO t_test (SELECT i FROM generate_series(1, 10) AS i);
+-- Sanity test to assert that the server has indeed been configured.
+DO $d$
+    BEGIN
+        EXECUTE $$ALTER SERVER s_yugabytedb
+            OPTIONS (dbname '$$||current_database()||$$',
+                     host '$$||current_setting('listen_addresses')||$$',
+                     port '$$||current_setting('port')||$$'
+            )$$;
+        EXECUTE $$ALTER SERVER s_postgres
+            OPTIONS (dbname '$$||current_database()||$$',
+                     host '$$||current_setting('listen_addresses')||$$',
+                     port '$$||current_setting('port')||$$'
+            )$$;
+        EXECUTE $$ALTER SERVER s_nosrvtype
+            OPTIONS (dbname '$$||current_database()||$$',
+                     host '$$||current_setting('listen_addresses')||$$',
+                     port '$$||current_setting('port')||$$'
+            )$$;
+    END;
+$d$;
+NOTICE:  no server_type specified. Defaulting to PostgreSQL.
+HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
+CREATE USER MAPPING FOR CURRENT_USER SERVER s_yugabytedb;
+CREATE USER MAPPING FOR CURRENT_USER SERVER s_postgres;
+CREATE USER MAPPING FOR CURRENT_USER SERVER s_nosrvtype;
+CREATE FOREIGN TABLE ft_test1 (v INT) SERVER s_yugabytedb OPTIONS (table_name 't_test');
+SELECT * FROM ft_test1 ORDER BY v;
+ v  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+(10 rows)
+
+CREATE FOREIGN TABLE ft_test2 (v INT) SERVER s_postgres OPTIONS (table_name 't_test');
+SELECT * FROM ft_test2 ORDER BY v;
+ v  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+(10 rows)
+
+CREATE FOREIGN TABLE ft_test3 (v INT) SERVER s_nosrvtype OPTIONS (table_name 't_test');
+SELECT * FROM ft_test3 ORDER BY v;
+ v  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+(10 rows)
+
+-- A join involving tables of different server types must not be pushed down.
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM ft_test1, ft_test2, ft_test3 WHERE ft_test1.v = ft_test2.v AND ft_test1.v = ft_test3.v;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Merge Join
+   Output: ft_test1.v, ft_test2.v, ft_test3.v
+   Merge Cond: (ft_test3.v = ft_test1.v)
+   ->  Sort
+         Output: ft_test3.v
+         Sort Key: ft_test3.v
+         ->  Foreign Scan on public.ft_test3
+               Output: ft_test3.v
+               Remote SQL: SELECT v FROM public.t_test
+   ->  Materialize
+         Output: ft_test1.v, ft_test2.v
+         ->  Merge Join
+               Output: ft_test1.v, ft_test2.v
+               Merge Cond: (ft_test1.v = ft_test2.v)
+               ->  Sort
+                     Output: ft_test1.v
+                     Sort Key: ft_test1.v
+                     ->  Foreign Scan on public.ft_test1
+                           Output: ft_test1.v
+                           Remote SQL: SELECT v FROM public.t_test
+               ->  Sort
+                     Output: ft_test2.v
+                     Sort Key: ft_test2.v
+                     ->  Foreign Scan on public.ft_test2
+                           Output: ft_test2.v
+                           Remote SQL: SELECT v FROM public.t_test
+(26 rows)
+
+SELECT * FROM ft_test1, ft_test2, ft_test3 WHERE ft_test1.v = ft_test2.v AND ft_test1.v = ft_test3.v;
+ v  | v  | v  
+----+----+----
+  1 |  1 |  1
+  2 |  2 |  2
+  3 |  3 |  3
+  4 |  4 |  4
+  5 |  5 |  5
+  6 |  6 |  6
+  7 |  7 |  7
+  8 |  8 |  8
+  9 |  9 |  9
+ 10 | 10 | 10
+(10 rows)
+
+-- Modifying table level options should be allowed.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_othertest');
+ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name, ADD batch_size '1000');
+SELECT * FROM pg_foreign_table;
+ ftrelid | ftserver |        ftoptions         
+---------+----------+--------------------------
+   16407 |    16391 | {table_name=t_othertest}
+   16410 |    16392 | {batch_size=1000}
+   16413 |    16394 | {table_name=t_test}
+(3 rows)
+
+-- Setting an option should be disallowed if it doesn't already exist.
+ALTER FOREIGN TABLE ft_test3 OPTIONS (SET batch_size '1000', SET table_name 't_othertest');
+ERROR:  option "batch_size" not found
+-- Dropping an option should be disallowed if it doesn't already exist.
+ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name);
+ERROR:  option "table_name" not found
+-- Adding an option should be disallowed if it already exists.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (ADD table_name 't_test');
+ERROR:  option "table_name" provided more than once
+SELECT * FROM pg_foreign_table;
+ ftrelid | ftserver |        ftoptions         
+---------+----------+--------------------------
+   16407 |    16391 | {table_name=t_othertest}
+   16410 |    16392 | {batch_size=1000}
+   16413 |    16394 | {table_name=t_test}
+(3 rows)
+
+-- Restore the original table name.
+ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_test');
+ALTER FOREIGN TABLE ft_test2 OPTIONS (ADD table_name 't_test', DROP batch_size);
+SELECT * FROM pg_foreign_table;
+ ftrelid | ftserver |      ftoptions      
+---------+----------+---------------------
+   16407 |    16391 | {table_name=t_test}
+   16410 |    16392 | {table_name=t_test}
+   16413 |    16394 | {table_name=t_test}
+(3 rows)
+

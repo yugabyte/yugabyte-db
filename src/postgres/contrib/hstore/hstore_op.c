@@ -1069,10 +1069,6 @@ hstore_each(PG_FUNCTION_ARGS)
 		tuple = heap_form_tuple(funcctx->tuple_desc, dvalues, nulls);
 		res = HeapTupleGetDatum(tuple);
 
-		/*
-		 * YB: Importing from PgMaster
-		 * 6bcda4a72123c3aa29fa3f03d952095675ad4468
-		 */
 		SRF_RETURN_NEXT(funcctx, res);
 	}
 

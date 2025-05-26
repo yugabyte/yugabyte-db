@@ -40,7 +40,7 @@ type: docs
 
 </ul>
 
-After [creating a local cluster](../../../quick-start/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../../api/ysql/).
+After [creating a local cluster](../../../quick-start/macos/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../../api/ysql/).
 
 ## Set up the sample database
 

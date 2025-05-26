@@ -129,7 +129,7 @@ class PgBgWorkersTest : public PgAshSingleNode {
     "--allowed_preview_flags_csv=ysql_yb_enable_query_diagnostics");
     options->extra_tserver_flags.push_back("--ysql_yb_enable_query_diagnostics=true");
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
-        to_underlying(ash::WaitStateCode::kCatalogRead)));
+        std::to_underlying(ash::WaitStateCode::kCatalogRead)));
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
         2 * kSamplingIntervalMs));
     PgAshSingleNode::UpdateMiniClusterOptions(options);
@@ -527,8 +527,7 @@ TEST_F_EX(PgWaitEventAuxTest, YB_DISABLE_TEST_IN_TSAN(TabletSplitRPCs), PgTablet
   ASSERT_OK(conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i FROM generate_series(1, 100) AS i", kTableName));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {tablet_id},
-      tserver::FlushTabletsRequestPB_Operation::FlushTabletsRequestPB_Operation_FLUSH));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(0, {tablet_id}));
 
   // keep running selects until GetTablePartitionList RPC is found
   ASSERT_OK(WaitFor([this]() -> Result<bool> {

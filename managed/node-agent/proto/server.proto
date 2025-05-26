@@ -3,6 +3,10 @@ package nodeagent.server;
 
 option go_package = "./service";
 option java_package = "com.yugabyte.yw.nodeagent";
+option java_multiple_files = true;
+
+import "common.proto";
+import "yb.proto";
 
 service NodeAgent {
     rpc Ping(PingRequest) returns (PingResponse);
@@ -50,6 +54,14 @@ message SubmitTaskRequest {
     oneof data {
         CommandInput commandInput = 3;
         PreflightCheckInput preflightCheckInput = 4;
+        ServerControlInput serverControlInput = 5;
+        ConfigureServiceInput configureServiceInput = 6;
+        InstallSoftwareInput installSoftwareInput = 7;
+        ServerGFlagsInput serverGFlagsInput = 8;
+        InstallYbcInput installYbcInput = 9;
+        ConfigureServerInput configureServerInput = 10;
+        InstallOtelCollectorInput installOtelCollectorInput = 11;
+        SetupCGroupInput setupCGroupInput = 12;
     }
 }
 
@@ -67,6 +79,14 @@ message DescribeTaskResponse {
         string output = 2;
         Error error = 3;
         PreflightCheckOutput preflightCheckOutput = 4;
+        ServerControlOutput serverControlOutput = 5;
+        ConfigureServiceOutput configureServiceOutput = 6;
+        InstallSoftwareOutput installSoftwareOutput = 7;
+        ServerGFlagsOutput serverGFlagsOutput = 8;
+        InstallYbcOutput installYbcOutput = 9;
+        ConfigureServerOutput configureServerOutput = 10;
+        InstallOtelCollectorOutput installOtelCollectorOutput = 11;
+        SetupCGroupOutput setupCGroupOutput = 12;
     }
 }
 
@@ -76,11 +96,6 @@ message AbortTaskRequest {
 
 message AbortTaskResponse {
     string taskId = 1;
-}
-
-message Error {
-    int32 code = 1;
-    string message = 2;
 }
 
 message UploadFileRequest {
@@ -120,35 +135,4 @@ message UpdateRequest {
 
 message UpdateResponse {
     string home = 1;
-}
-
-message PreflightCheckInput {
-    string ybHomeDir = 1;
-    bool skipProvisioning = 2;
-    bool airGapInstall = 3;
-    bool installNodeExporter = 4;
-    uint32 sshPort = 5;
-    repeated string mountPaths = 6;
-    uint32 masterHttpPort = 7;
-    uint32 masterRpcPort = 8;
-    uint32 tserverHttpPort = 9;
-    uint32 tserverRpcPort = 10;
-    uint32 redisServerHttpPort = 11;
-    uint32 redisServerRpcPort = 12;
-    uint32 nodeExporterPort = 13;
-    uint32 ycqlServerHttpPort = 14;
-    uint32 ycqlServerRpcPort = 15;
-    uint32 ysqlServerHttpPort = 16;
-    uint32 ysqlServerRpcPort = 17;
-    uint32 ybControllerHttpPort = 18;
-    uint32 ybControllerRpcPort = 19;
-}
-
-message PreflightCheckOutput {
-    repeated NodeConfig nodeConfigs = 1;
-}
-
-message NodeConfig {
-    string type = 1;
-    string value = 2;
 }

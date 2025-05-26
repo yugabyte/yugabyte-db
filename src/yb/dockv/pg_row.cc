@@ -18,6 +18,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/types.h"
 
+#include "yb/dockv/doc_bson.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_vector_id.h"
@@ -65,6 +66,7 @@ size_t FixedSize(DataType data_type) {
 
     case DataType::STRING: FALLTHROUGH_INTENDED;
     case DataType::VECTOR: FALLTHROUGH_INTENDED;
+    case DataType::BSON: FALLTHROUGH_INTENDED;
     case DataType::BINARY: FALLTHROUGH_INTENDED;
     case DataType::DECIMAL: FALLTHROUGH_INTENDED;
     case DataType::VARINT:
@@ -245,6 +247,7 @@ Status DoDecodeValue(
       *value = BinaryAppender::AppendString(slice, buffer);
       return Status::OK();
     case DataType::VECTOR: [[fallthrough]];
+    case DataType::BSON: [[fallthrough]];
     case DataType::BINARY:
       *value =  BinaryAppender::Append(slice, buffer);
       return Status::OK();
@@ -739,6 +742,11 @@ QLValuePB PgValue::ToQLValuePB(DataType data_type) const {
       result.set_binary_value(data.cdata(), data.size());
       return result;
     }
+    case DataType::BSON: {
+      auto data = binary_value();
+      result.set_bson_value(data.cdata(), data.size());
+      return result;
+    }
     case DataType::BOOL:
       result.set_bool_value(bool_value());
       return result;
@@ -943,6 +951,22 @@ Result<const char*> PgTableRow::DecodeComparableString(
   if (append_zero) {
     buffer_.PushBack(0);
   }
+  BigEndian::Store64(
+      buffer_.mutable_data() + old_size, buffer_.size() - old_size - sizeof(uint64_t));
+  is_null_[column_idx] = false;
+  values_[column_idx] = old_size;
+  return result;
+}
+
+Result<const char*> PgTableRow::DecodeComparableBson(
+    size_t column_idx, const char* input, const char* end, SortOrder sort_order) {
+  auto old_size = buffer_.size();
+  buffer_.GrowByAtLeast(sizeof(uint64_t));
+  const auto* result = VERIFY_RESULT(
+      sort_order == SortOrder::kAscending
+          ? BsonKeyFromComparableBinary(input, end, &buffer_)
+          : BsonKeyFromComparableBinaryDescending(input, end, &buffer_));
+
   BigEndian::Store64(
       buffer_.mutable_data() + old_size, buffer_.size() - old_size - sizeof(uint64_t));
   is_null_[column_idx] = false;

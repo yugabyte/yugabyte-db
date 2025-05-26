@@ -109,7 +109,7 @@ ProcGlobalShmemSize(void)
 {
 	Size		size = 0;
 	Size		TotalProcs =
-	add_size(MaxBackends, add_size(NUM_AUXILIARY_PROCS, max_prepared_xacts));
+		add_size(MaxBackends, add_size(NUM_AUXILIARY_PROCS, max_prepared_xacts));
 
 	/* ProcGlobal */
 	size = add_size(size, sizeof(PROC_HDR));
@@ -363,7 +363,7 @@ InitProcess(void)
 		 */
 		SpinLockRelease(ProcStructLock);
 
-		/* increment rejection counter */
+		/* YB: increment rejection counter */
 		(*yb_too_many_conn)++;
 
 		if (am_walsender)
@@ -392,9 +392,9 @@ InitProcess(void)
 		MarkPostmasterChildActive();
 
 	/*
-	* If the process is killed before this point, it does not have a pid set.
-	* The postmaster will not be able to identify the corresponding MyProc, so
-	* it will restart anyways.
+	* YB: If the process is killed before this point, it does not have a pid
+	* set. The postmaster will not be able to identify the corresponding
+	* MyProc, so it will restart anyways.
 	*/
 	MyProc->ybInitializationCompleted = false;
 	MyProc->ybTerminationStarted = false;
@@ -417,13 +417,13 @@ InitProcess(void)
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->tempNamespaceId = InvalidOid;
-	MyProc->isBackgroundWorker = IsBackgroundWorker;
+	MyProc->isBackgroundWorker = !AmRegularBackendProcess();
 	MyProc->delayChkptFlags = 0;
 	MyProc->statusFlags = 0;
 	/* NB -- autovac launcher intentionally does not set IS_AUTOVACUUM */
 	if (IsAutoVacuumWorkerProcess())
 		MyProc->statusFlags |= PROC_IS_AUTOVACUUM;
-	MyProc->lwWaiting = false;
+	MyProc->lwWaiting = LW_WS_NOT_WAITING;
 	MyProc->lwWaitMode = 0;
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
@@ -470,8 +470,8 @@ InitProcess(void)
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		   sizeof(MyProc->yb_ash_metadata.root_request_id));
 	/*
-	 * TODO(asaha): Update the query_id for catalog calls in circular buffer
-	 * once it's calculated
+	 * YB: TODO(asaha): Update the query_id for catalog calls in circular
+	 * buffer once it's calculated
 	 */
 	MyProc->yb_ash_metadata.query_id = IsBackgroundWorker
 		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
@@ -623,10 +623,10 @@ InitAuxiliaryProcess(void)
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->tempNamespaceId = InvalidOid;
-	MyProc->isBackgroundWorker = IsBackgroundWorker;
+	MyProc->isBackgroundWorker = true;
 	MyProc->delayChkptFlags = 0;
 	MyProc->statusFlags = 0;
-	MyProc->lwWaiting = false;
+	MyProc->lwWaiting = LW_WS_NOT_WAITING;
 	MyProc->lwWaitMode = 0;
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
@@ -860,6 +860,10 @@ ProcKill(int code, Datum arg)
 
 	MyProc->ybTerminationStarted = true;
 
+	/* not safe if forked by system(), etc. */
+	if (MyProc->pid != (int) getpid())
+		elog(PANIC, "ProcKill() called in child process");
+
 	/* Make sure we're out of the sync rep lists */
 	SyncRepCleanupAtProcExit(MyProc);
 
@@ -997,6 +1001,10 @@ AuxiliaryProcKill(int code, Datum arg)
 
 	Assert(proctype >= 0 && proctype < NUM_AUXILIARY_PROCS);
 
+	/* not safe if forked by system(), etc. */
+	if (MyProc->pid != (int) getpid())
+		elog(PANIC, "AuxiliaryProcKill() called in child process");
+
 	auxproc = &AuxiliaryProcs[proctype];
 
 	Assert(MyProc == auxproc);
@@ -1131,12 +1139,12 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	/*
 	 * If group locking is in use, locks held by members of my locking group
 	 * need to be included in myHeldLocks.  This is not required for relation
-	 * extension or page locks which conflict among group members. However,
-	 * including them in myHeldLocks will give group members the priority to
-	 * get those locks as compared to other backends which are also trying to
-	 * acquire those locks.  OTOH, we can avoid giving priority to group
-	 * members for that kind of locks, but there doesn't appear to be a clear
-	 * advantage of the same.
+	 * extension lock which conflict among group members. However, including
+	 * them in myHeldLocks will give group members the priority to get those
+	 * locks as compared to other backends which are also trying to acquire
+	 * those locks.  OTOH, we can avoid giving priority to group members for
+	 * that kind of locks, but there doesn't appear to be a clear advantage of
+	 * the same.
 	 */
 	if (leader != NULL)
 	{
@@ -1367,7 +1375,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 		if (InHotStandby)
 		{
 			bool		maybe_log_conflict =
-			(standbyWaitStart != 0 && !logged_recovery_conflict);
+				(standbyWaitStart != 0 && !logged_recovery_conflict);
 
 			/* Set a timer and wait for that or for the lock to be granted */
 			ResolveRecoveryConflictWithLock(locallock->tag.lock,

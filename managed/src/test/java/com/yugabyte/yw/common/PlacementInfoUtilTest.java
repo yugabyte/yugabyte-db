@@ -418,6 +418,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     rrIntent.provider = provider.getUuid().toString();
     rrIntent.regionList = Collections.singletonList(region.getUuid());
     rrIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    rrIntent.imageBundleUUID = UUID.randomUUID();
 
     UniverseDefinitionTaskParams.Cluster asyncCluster =
         new UniverseDefinitionTaskParams.Cluster(
@@ -1418,6 +1419,43 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.selectNumMastersAZ(pi, 3);
     Map<UUID, Integer> tServersPerAZ = PlacementInfoUtil.getNumTServerPerAZ(pi);
     assertEquals(expectedTServersPerAZ, tServersPerAZ);
+  }
+
+  @Test
+  public void testK8sRF5GeoPartitioned() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    PlacementInfo pi = new PlacementInfo();
+    AtomicInteger zoneIdx = new AtomicInteger();
+    Consumer<Region> createAZ =
+        (region) -> {
+          int idx = zoneIdx.incrementAndGet();
+          AvailabilityZone az =
+              AvailabilityZone.createOrThrow(
+                  region, "PlacementAZ " + idx, "az-" + idx, "subnet-" + idx);
+          PlacementInfoUtil.addPlacementZone(az.getUuid(), pi);
+        };
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    createAZ.accept(r1);
+    createAZ.accept(r1);
+    createAZ.accept(r1);
+    Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-2");
+    createAZ.accept(r2);
+    createAZ.accept(r2);
+    createAZ.accept(r2);
+    Region r3 = Region.create(k8sProvider, "region-3", "Region 3", "yb-image-3");
+    createAZ.accept(r3);
+    createAZ.accept(r3);
+    createAZ.accept(r3);
+    assertEquals(9, pi.azStream().count());
+    int total = pi.azStream().mapToInt(az -> az.replicationFactor).sum();
+    assertEquals(9, total);
+    PlacementInfoUtil.selectNumMastersAZ(pi, 5);
+    assertEquals(9, pi.azStream().count());
+    int total2 = pi.azStream().mapToInt(az -> az.replicationFactor).sum();
+    assertEquals(5, total2);
   }
 
   @Test
@@ -4731,6 +4769,63 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         1, params.getPrimaryCluster().placementInfo.findByAZUUID(az2.getUuid()).replicationFactor);
     assertEquals(
         6, params.getPrimaryCluster().placementInfo.findByAZUUID(az1.getUuid()).replicationFactor);
+  }
+
+  @Test
+  public void testModifyImageBundleForRR() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe universe = createFromConfig(provider, "Existing", "r1-az1-1-1;r1-az2-1-1;r1-az3-1-1");
+    Region region = Region.getByCode(provider, "r1");
+
+    UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.currentClusterType = ClusterType.ASYNC;
+    params.clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
+    params.nodeDetailsSet = new HashSet<>(universe.getUniverseDetails().nodeDetailsSet);
+
+    UserIntent rrIntent = new UserIntent();
+    rrIntent.replicationFactor = 1;
+    rrIntent.numNodes = 1;
+    rrIntent.universeName = universe.getName();
+    rrIntent.provider = provider.getUuid().toString();
+    rrIntent.regionList = Collections.singletonList(region.getUuid());
+    rrIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    rrIntent.imageBundleUUID = UUID.randomUUID();
+
+    UniverseDefinitionTaskParams.Cluster asyncCluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC, rrIntent);
+    params.clusters.add(asyncCluster);
+
+    PlacementInfoUtil.updateUniverseDefinition(params, customer.getId(), asyncCluster.uuid, CREATE);
+
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.setUniverseDetails(params);
+              params.nodeDetailsSet.forEach(n -> n.state = Live);
+            });
+
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.currentClusterType = ClusterType.ASYNC;
+    taskParams.getReadOnlyClusters().get(0).userIntent.imageBundleUUID = UUID.randomUUID();
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), asyncCluster.uuid, EDIT);
+
+    Map<NodeDetails.NodeState, Integer> countsForAsync = new HashMap<>();
+    for (NodeDetails nodeDetails : params.nodeDetailsSet) {
+      if (nodeDetails.isInPlacement(asyncCluster.uuid)) {
+        countsForAsync.merge(nodeDetails.state, 1, Integer::sum);
+      } else {
+        assertEquals(Live, nodeDetails.state);
+      }
+    }
+    assertEquals(new HashMap<>(ImmutableMap.of(ToBeAdded, 1, ToBeRemoved, 1)), countsForAsync);
   }
 
   private void markNodeInstancesAsOccupied(Map<UUID, Integer> azUuidToNumNodes) {

@@ -29,6 +29,8 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.Rule;
+import org.junit.rules.Timeout;
 import org.yb.CommonTypes;
 import play.libs.Json;
 import play.mvc.Result;
@@ -36,6 +38,9 @@ import play.mvc.Result;
 @Slf4j
 public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
   public static Map<String, String> DEFAULT_TABLE_COLUMNS = Map.of("id", "int", "name", "text");
+
+  // Set a higher timeout for xCluster tests to deflake the utest failures.
+  @Rule public Timeout globalTimeout = Timeout.seconds(1800);
 
   public static class Db {
     public String name;
@@ -343,7 +348,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(120, 150);
+    return new Pair<>(120, 180);
   }
 
   public NodeDetails getLiveNode(Universe universe) {

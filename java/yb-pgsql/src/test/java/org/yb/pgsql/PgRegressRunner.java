@@ -164,6 +164,8 @@ public class PgRegressRunner {
           }
         }
       });
+
+      FileUtils.deleteDirectory(pgRegressOutputDir);
     }
 
     if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_REGRESS_IGNORE_RESULT")) {

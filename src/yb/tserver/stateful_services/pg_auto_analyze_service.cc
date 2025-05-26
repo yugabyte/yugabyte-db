@@ -112,7 +112,7 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
     QLColumnValuePB *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
     QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
-    bfcall_expr_pb->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
+    bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
     QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
     QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);
@@ -310,7 +310,8 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
           std::make_pair(table_id, table_oid));
     }
   }
-  VLOG(1) << "namespace_id_to_tables_with_unknown_reltuples: " << ToString(namespace_id_to_tables_with_unknown_reltuples);
+  VLOG(1) << "namespace_id_to_tables_with_unknown_reltuples: "
+          << ToString(namespace_id_to_tables_with_unknown_reltuples);
   for (const auto& [namespace_id, tables] : namespace_id_to_tables_with_unknown_reltuples) {
     // If the database is deleted. We need to clean up table entries belonging to
     // this database from the YCQL service table.
@@ -352,6 +353,10 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
     auto it = table_tuple_count_.find(table_id);
     if (it == table_tuple_count_.end()) {
       VLOG(1) << "Table not in table_tuple_count_, so skipping: " << table_id;
+      continue;
+    }
+    if (!table_id_to_name_.contains(table_id)) {
+      VLOG(1) << "Table not in table_id_to_name_, so skipping: " << table_id;
       continue;
     }
     double analyze_threshold = FLAGS_ysql_auto_analyze_threshold +
@@ -405,6 +410,7 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       VLOG_WITH_FUNC(1) << "Deleted or renamed " << dbname << "/" << namespace_id << ", skipping";
       continue;
     }
+
     if (!conn_result) {
       VLOG_WITH_FUNC(1) << "Conn failed: " << conn_result.status();
       return conn_result.status();
@@ -416,6 +422,9 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       YB_LOG_EVERY_N_SECS(INFO, 30) << "Auto analyze is disabled on database " << dbname;
       continue;
     }
+
+    auto s = conn.Execute("SET yb_use_internal_auto_analyze_service_conn=true");
+    RETURN_NOT_OK(s);
 
     // Construct ANALYZE statement and RUN ANALYZE.
     // Try to analyze all tables in batches to minimize the number of catalog version increments.
@@ -472,6 +481,7 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
                   // Need to refresh name cache because the cached table name is outdated.
                   refresh_name_cache_ = true;
                 } else {
+                  // TODO: Fix this, else branch doesn't imply that the table was deleted.
                   VLOG(1) << "Table " << table_name << " was deleted";
                   // Need to remove deleted table entries from the YCQL service table.
                   deleted_tables.push_back(table_id);
@@ -516,7 +526,7 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     QLColumnValuePB *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
     QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
-    bfcall_expr_pb->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_SubI64I64_85));
+    bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_SubI64I64_85));
     QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
     QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);

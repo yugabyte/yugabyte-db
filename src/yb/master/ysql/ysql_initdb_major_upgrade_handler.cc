@@ -22,6 +22,10 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql/ysql_catalog_config.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
+
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/outbound_call.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
@@ -40,6 +44,7 @@ DECLARE_bool(master_join_existing_universe);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(ysql_enable_auth);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 
 DEFINE_RUNTIME_uint32(ysql_upgrade_postgres_port, 5434,
   "Port used to start the postgres process for ysql upgrade");
@@ -55,8 +60,14 @@ DEFINE_RUNTIME_string(ysql_major_upgrade_user, "yugabyte_upgrade",
     "This user should have superuser privileges and the password must be placed in the `.pgpass` "
     "file on all yb-master nodes.");
 
+DEFINE_RUNTIME_bool(ysql_upgrade_import_stats, true,
+    "Import relation and attribute stats as part of the YSQL Major upgrade");
+
 DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
     "Fail the cleanup of the previous version ysql catalog");
+
+DEFINE_test_flag(bool, ysql_block_writes_to_catalog, false,
+    "Block writes to the catalog tables like we would during a ysql major upgrade");
 
 using yb::pgwrapper::PgWrapper;
 
@@ -70,6 +81,31 @@ bool IsYsqlMajorCatalogOperationRunning(YsqlMajorCatalogUpgradeInfoPB::State sta
   return state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE ||
          state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB ||
          state == YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK;
+}
+
+// Returns std::nullopt if Tserver is runnning on an older version that does not support the RPC
+// call.
+Result<std::optional<HostPort>> GetPgSocketDir(TSDescriptorPtr ts_desc) {
+  std::shared_ptr<tserver::TabletServerAdminServiceProxy> proxy;
+  RETURN_NOT_OK(ts_desc->GetProxy(&proxy));
+
+  tserver::GetPgSocketDirRequestPB req;
+  tserver::GetPgSocketDirResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+
+  auto status = proxy->GetPgSocketDir(req, &resp, &rpc);
+
+  if (!status.ok() && rpc::RpcError(status) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+    // Tserver is running older version.
+    return std::nullopt;
+  }
+  RETURN_NOT_OK(status);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return HostPortFromPB(resp.pg_socket_dir());
 }
 
 }  // namespace
@@ -243,6 +279,20 @@ bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
     const TableId& table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.
   if (IsMajorUpgradeInProgress()) {
+    // Allow updates to the catalog version table only during the pg_upgrade step.
+    // These updates are later fixed up in UpdateCatalogVersions.
+    if (table_id == kPgYbCatalogVersionTableIdPriorVersion ||
+        (table_id == kPgYbCatalogVersionTableId &&
+         ysql_catalog_config_.GetMajorCatalogUpgradeState() ==
+             YsqlMajorCatalogUpgradeInfoPB::MONITORING)) {
+      LOG(DFATAL) << "Invalid attempt to update catalog version table " << table_id
+                  << " during ysql major upgrade";
+      return false;
+    }
+    return is_forced_update;
+  }
+
+  if (FLAGS_TEST_ysql_block_writes_to_catalog) {
     return is_forced_update;
   }
 
@@ -309,12 +359,12 @@ void YsqlInitDBAndMajorUpgradeHandler::RunMajorVersionUpgrade(const LeaderEpoch&
     if (update_state_status.ok()) {
       LOG(INFO) << "Ysql major catalog upgrade completed successfully";
     } else {
-      LOG(ERROR) << "Failed to set major version upgrade state: " << update_state_status;
+      LOG(DFATAL) << "Failed to set major version upgrade state: " << update_state_status;
     }
     return;
   }
 
-  LOG(ERROR) << "Ysql major catalog upgrade failed: " << status;
+  LOG(WARNING) << "Ysql major catalog upgrade failed: " << status;
   ERROR_NOT_OK(
       TransitionMajorCatalogUpgradeState(YsqlMajorCatalogUpgradeInfoPB::FAILED, epoch, status),
       "Failed to set major version upgrade state");
@@ -398,7 +448,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
 
   pgwrapper::PgSupervisor pg_supervisor(pg_conf, &master_);
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
-  RETURN_NOT_OK(pg_supervisor.Start());
+  RETURN_NOT_OK(pg_supervisor.StartAndMaybePause());
 
   PgWrapper::PgUpgradeParams pg_upgrade_params;
   pg_upgrade_params.ysql_user_name = "yugabyte";
@@ -406,6 +456,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   pg_upgrade_params.new_version_socket_dir =
       PgDeriveSocketDir(HostPort(pg_conf.listen_addresses, pg_conf.pg_port));
   pg_upgrade_params.new_version_pg_port = pg_conf.pg_port;
+  pg_upgrade_params.no_statistics = !FLAGS_ysql_upgrade_import_stats;
 
   bool local_ts = false;
   auto closest_ts = VERIFY_RESULT(master_.catalog_manager()->GetClosestLiveTserver(&local_ts));
@@ -414,17 +465,25 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
       narrow_cast<uint16_t>(closest_ts->GetRegistration().pg_port()));
 
   if (local_ts) {
-    // When pgsql_proxy_bind_address is set, it is used as the socket dir. The tserver does not
-    // expose its pgsql_proxy_bind_address, but we expect master and tserver flags to be the same,
-    // so we can use our flag value to infer the tservers socket dir.
-    if (!FLAGS_pgsql_proxy_bind_address.empty()) {
-      closest_ts_hp.set_host(pg_conf.listen_addresses);
-    }
-    if (FLAGS_enable_ysql_conn_mgr) {
-      closest_ts_hp.set_port(pgwrapper::PgProcessConf::kDefaultPortWithConnMgr);
-    }
+    auto pg_socket_dir_opt = VERIFY_RESULT(GetPgSocketDir(closest_ts));
+    if (pg_socket_dir_opt) {
+      closest_ts_hp = std::move(*pg_socket_dir_opt);
+      pg_upgrade_params.old_version_socket_dir = closest_ts_hp.host();
+    } else {
+      // Tserver is running a version which does not support the RPC to get Pg local address. Do
+      // best effort to guess the most likely address based on our own flags.
 
-    pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
+      // When pgsql_proxy_bind_address is set, it is used as the socket dir. The tserver does not
+      // expose its pgsql_proxy_bind_address, but we expect master and tserver flags to be the same,
+      // so we can use our flag value to infer the tservers socket dir.
+      if (!FLAGS_pgsql_proxy_bind_address.empty()) {
+        closest_ts_hp.set_host(pg_conf.listen_addresses);
+      }
+      if (FLAGS_enable_ysql_conn_mgr) {
+        closest_ts_hp.set_port(pgwrapper::PgProcessConf::kDefaultPortWithConnMgr);
+      }
+      pg_upgrade_params.old_version_socket_dir = PgDeriveSocketDir(closest_ts_hp);
+    }
   } else {
     // Remote tserver.
     pg_upgrade_params.old_version_pg_address = closest_ts_hp.host();

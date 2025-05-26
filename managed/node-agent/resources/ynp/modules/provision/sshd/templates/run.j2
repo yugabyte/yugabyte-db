@@ -1,0 +1,33 @@
+SSHD_CONFIG="/etc/ssh/sshd_config"
+BACKUP_FILE="/etc/ssh/sshd_config.bak_$(date +%Y%m%d%H%M%S)"
+
+# Backup the existing sshd_config
+echo "Backing up $SSHD_CONFIG to $BACKUP_FILE"
+cp "$SSHD_CONFIG" "$BACKUP_FILE"
+
+# Overwrite the sshd_config with the secure configuration
+cat > "$SSHD_CONFIG" <<EOF
+Port {{ custom_ssh_port }}
+PermitRootLogin no
+PermitEmptyPasswords no
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+AuthenticationMethods publickey
+UsePAM yes
+Subsystem sftp /usr/libexec/openssh/sftp-server
+EOF
+
+# Set appropriate permissions
+chmod 600 "$SSHD_CONFIG"
+chown root:root "$SSHD_CONFIG"
+
+# Test SSHD configuration
+if sshd -t; then
+  echo "sshd config is valid. Restarting sshd..."
+  systemctl restart sshd
+else
+  echo "Invalid sshd config. Restoring backup..."
+  cp "$BACKUP_FILE" "$SSHD_CONFIG"
+  systemctl restart sshd
+fi

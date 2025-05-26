@@ -707,6 +707,7 @@ typedef struct TableLikeClause
 	bits32		options;		/* OR of TableLikeOption flags */
 	Oid			relationOid;	/* If table has been looked up, its OID */
 
+	/* YB */
 	Oid			yb_tablespaceOid;	/* Yugabyte also needs info on where it is */
 } TableLikeClause;
 
@@ -1172,7 +1173,10 @@ typedef struct RangeTblEntry
 	Bitmapset  *updatedCols;	/* columns needing UPDATE permission */
 	Bitmapset  *extraUpdatedCols;	/* generated columns being updated */
 	List	   *securityQuals;	/* security barrier quals to apply, if any */
-	char	   *ybHintAlias; 	/* alias to use for hinting - unique across a query */
+
+	/* YB */
+	char	   *ybHintAlias;	/* alias to use for hinting - unique across a
+								 * query */
 	/* unique identifer (across all blocks) for a base rel - starting at '1' */
 	uint32		ybUniqueBaseId;
 } RangeTblEntry;
@@ -2039,6 +2043,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	bool		missing_ok;		/* skip error if missing? */
 	bool		recurse;		/* exec-time recursion */
 
+	/* YB */
 	bool		yb_is_add_primary_key;	/* checks if adding primary key */
 	bool		yb_cascade;		/* to restrict movement of single table in
 								 * colocated tablespace */
@@ -2267,6 +2272,7 @@ typedef struct CreateStmt
 	char	   *accessMethod;	/* table access method */
 	bool		if_not_exists;	/* just do nothing if it already exists? */
 
+	/* YB */
 	char	   *tablegroupname; /* tablegroup to use, or NULL */
 	struct YbOptSplit *split_options;	/* SPLIT statement options */
 } CreateStmt;
@@ -3066,6 +3072,8 @@ typedef struct IndexStmt
 	bool		if_not_exists;	/* just do nothing if index already exists? */
 	bool		reset_default_tblspc;	/* reset default_tablespace prior to
 										 * executing */
+
+	/* YB */
 	YbOptSplit *split_options;	/* SPLIT statement options */
 } IndexStmt;
 

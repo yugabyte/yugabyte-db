@@ -200,8 +200,9 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	/* make new portal structure */
 	portal = (Portal) MemoryContextAllocZero(TopPortalContext, sizeof *portal);
 
+	/* initialize portal context; typically it won't store much */
 	/*
-	 * Initialize portal context; typically it won't store much.
+	 * YB:
 	 * - portalContext lasts for the lifetime of the portal thru multiple portal runs.
 	 * - runContext only lasts for the lifetime of one portal run, and one portal may run many
 	 *   times. When SELECT is fetches in multiple batches, each batch is associated with one
@@ -1160,6 +1161,9 @@ pg_cursor(PG_FUNCTION_ARGS)
 
 		/* report only "visible" entries */
 		if (!portal->visible)
+			continue;
+		/* also ignore it if PortalDefineQuery hasn't been called yet */
+		if (!portal->sourceText)
 			continue;
 
 		MemSet(nulls, 0, sizeof(nulls));

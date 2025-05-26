@@ -41,6 +41,28 @@ SET standard_conforming_strings = on;
 
 \set role_exists false
 \if :ignore_existing_roles
+    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
+\endif
+\if :role_exists
+    \echo 'Role already exists:' regress_priv_user7
+\else
+    CREATE ROLE regress_priv_user7;
+    ALTER ROLE regress_priv_user7 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+\endif
+
+\set role_exists false
+\if :ignore_existing_roles
+    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AS role_exists \gset
+\endif
+\if :role_exists
+    \echo 'Role already exists:' regress_priv_user8
+\else
+    CREATE ROLE regress_priv_user8;
+    ALTER ROLE regress_priv_user8 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+\endif
+
+\set role_exists false
+\if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
 \endif
 \if :role_exists
@@ -91,6 +113,12 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 --
 
 
+--
+-- Role memberships
+--
+
+GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
+GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
 
 
 
@@ -151,11 +179,12 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -243,11 +272,12 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -333,11 +363,12 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -366,7 +397,7 @@ SET row_security = off;
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
 \if :use_roles
@@ -377,6 +408,7 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCA
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -441,11 +473,12 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+-- Dumped from database version 15.2-YB-2.25.2.0-b0
+-- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -474,7 +507,7 @@ SET row_security = off;
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
 \if :use_roles
@@ -485,6 +518,7 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROV
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
+SET yb_ignore_relfilenode_ids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;

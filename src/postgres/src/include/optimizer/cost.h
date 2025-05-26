@@ -23,16 +23,6 @@
 /* If you change these, update backend/utils/misc/postgresql.conf.sample */
 #define DEFAULT_SEQ_PAGE_COST  1.0
 #define DEFAULT_RANDOM_PAGE_COST  4.0
-
-#define YB_DEFAULT_INTERCLOUD_COST 10.0
-#define	YB_DEFAULT_INTERREGION_COST 10.0
-#define	YB_DEFAULT_INTERZONE_COST 9.5
-#define YB_DEFAULT_LOCAL_COST 9.4
-
-#define YB_DEFAULT_PER_TUPLE_COST 10.0
-
-#define YB_DEFAULT_FETCH_COST 4.0
-
 #define DEFAULT_CPU_TUPLE_COST	0.01
 #define DEFAULT_CPU_INDEX_TUPLE_COST 0.005
 #define DEFAULT_CPU_OPERATOR_COST  0.0025
@@ -43,45 +33,42 @@
 #define DEFAULT_RECURSIVE_WORKTABLE_FACTOR  10.0
 #define DEFAULT_EFFECTIVE_CACHE_SIZE  524288	/* measured in pages */
 
+/* YB */
+#define YB_DEFAULT_INTERCLOUD_COST 10.0
+#define	YB_DEFAULT_INTERREGION_COST 10.0
+#define	YB_DEFAULT_INTERZONE_COST 9.5
+#define YB_DEFAULT_LOCAL_COST 9.4
+#define YB_DEFAULT_PER_TUPLE_COST 10.0
+#define YB_DEFAULT_FETCH_COST 4.0
 #define YB_DEFAULT_DOCDB_BLOCK_SIZE 32768
-
 /* LSM Lookup costs */
 #define YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES 5
 #define YB_DEFAULT_SEEK_COST_FACTOR 0.4
-#define YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR 1
 
-/*
- * The value for the fast backward scan seek cost factor has been selected based on the smallest
- * improvement (2.8 times) for the backward scan related Order By workloads of Featurebench. It
- * might be good to use a different factor for colocated case, where the smallest improvement
- * is 3 times higher comparing to non-colocated case; refer to D35894 for the details.
- */
-#define YB_DEFAULT_FAST_BACKWARD_SEEK_COST_FACTOR (YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR / 3.0)
-
-/* DocDB row decode and process cost */
+/* YB: DocDB row decode and process cost */
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 5
-
-/* DocDB storage filter cost */
+/* YB: DocDB storage filter cost */
 #define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 3
-
-/* Network transfer cost */
-#define YB_DEFAULT_LOCAL_LATENCY_COST 10.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 800.0
-
+/* YB: Network transfer cost */
+#define YB_DEFAULT_LOCAL_ROUNDTRIP_COST 20.0
+#define YB_DEFAULT_LOCAL_TRANSFER_COST 800.0
+#define YB_DEFAULT_INTER_REGION_ROUNDTRIP_COST (2 * YB_DEFAULT_LOCAL_ROUNDTRIP_COST)
+#define YB_DEFAULT_INTER_REGION_TRANSFER_COST (2 * YB_DEFAULT_LOCAL_TRANSFER_COST)
+#define YB_DEFAULT_INTER_ZONE_ROUNDTRIP_COST (1.1 * YB_DEFAULT_LOCAL_ROUNDTRIP_COST)
+#define YB_DEFAULT_INTER_ZONE_TRANSFER_COST (1.1 * YB_DEFAULT_LOCAL_TRANSFER_COST)
 /*
- * TODO : Since we cannot currently estimate the number of key value pairs per
- * tuple, we use a constant heuristic value of 3.
+ * YB: TODO : Since we cannot currently estimate the number of key value pairs
+ * per tuple, we use a constant heuristic value of 3.
  */
 #define YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE 3
 /*
- * TODO : Since we cannot currently estimate the number of SST files per
+ * YB: TODO : Since we cannot currently estimate the number of SST files per
  * table, we use a constant heuristic value of 3.
  */
 #define YB_DEFAULT_NUM_SST_FILES_PER_TABLE 3
-
 /*
- * TODO : To avoid expensive seek for a key, DocDB performs a series of nexts
- * in hope to find the key among the following tuples. This configurable
+ * YB: TODO : To avoid expensive seek for a key, DocDB performs a series of
+ * nexts in hope to find the key among the following tuples. This configurable
  * parameter should be exposed in PG code to be used here.
  */
 #define MAX_NEXTS_TO_AVOID_SEEK 2
@@ -93,6 +80,15 @@ typedef enum
 	CONSTRAINT_EXCLUSION_PARTITION	/* apply c_e to otherrels only */
 }			ConstraintExclusionType;
 
+/* possible values for yb_enable_cbo */
+typedef enum
+{
+	YB_COST_MODEL_LEGACY = -2,
+	YB_COST_MODEL_LEGACY_STATS = -1,
+	YB_COST_MODEL_OFF = 0,
+	YB_COST_MODEL_ON,
+} YbCostModel;
+
 
 /*
  * prototypes for costsize.c
@@ -100,28 +96,12 @@ typedef enum
  */
 
 /* parameter variables and flags (see also optimizer.h) */
-extern PGDLLIMPORT double yb_network_fetch_cost;
-extern PGDLLIMPORT double yb_intercloud_cost;
-extern PGDLLIMPORT double yb_interregion_cost;
-extern PGDLLIMPORT double yb_interzone_cost;
-extern PGDLLIMPORT double yb_local_cost;
-
-extern PGDLLIMPORT double yb_seq_block_cost;
-extern PGDLLIMPORT double yb_random_block_cost;
-extern PGDLLIMPORT int yb_docdb_merge_cpu_cycles;
-extern PGDLLIMPORT int yb_docdb_remote_filter_overhead_cycles;
-extern PGDLLIMPORT double yb_docdb_next_cpu_cycles;
-extern PGDLLIMPORT double yb_local_latency_cost;
-extern PGDLLIMPORT double yb_local_throughput_cost;
-extern PGDLLIMPORT double yb_seek_cost_factor;
-
 extern PGDLLIMPORT Cost disable_cost;
 extern PGDLLIMPORT int max_parallel_workers_per_gather;
 extern PGDLLIMPORT bool enable_seqscan;
 extern PGDLLIMPORT bool enable_indexscan;
 extern PGDLLIMPORT bool enable_indexonlyscan;
 extern PGDLLIMPORT bool enable_bitmapscan;
-extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool enable_tidscan;
 extern PGDLLIMPORT bool enable_sort;
 extern PGDLLIMPORT bool enable_incremental_sort;
@@ -139,14 +119,36 @@ extern PGDLLIMPORT bool enable_parallel_hash;
 extern PGDLLIMPORT bool enable_partition_pruning;
 extern PGDLLIMPORT bool enable_async_append;
 extern PGDLLIMPORT int constraint_exclusion;
+
+/* YB */
+extern PGDLLIMPORT double yb_network_fetch_cost;
+extern PGDLLIMPORT double yb_intercloud_cost;
+extern PGDLLIMPORT double yb_interregion_cost;
+extern PGDLLIMPORT double yb_interzone_cost;
+extern PGDLLIMPORT double yb_local_cost;
+extern PGDLLIMPORT double yb_seq_block_cost;
+extern PGDLLIMPORT double yb_random_block_cost;
+extern PGDLLIMPORT int yb_docdb_merge_cpu_cycles;
+extern PGDLLIMPORT int yb_docdb_remote_filter_overhead_cycles;
+extern PGDLLIMPORT double yb_docdb_next_cpu_cycles;
+extern PGDLLIMPORT double yb_inter_region_roundtrip_cost;
+extern PGDLLIMPORT double yb_inter_region_transfer_cost;
+extern PGDLLIMPORT double yb_inter_zone_roundtrip_cost;
+extern PGDLLIMPORT double yb_inter_zone_transfer_cost;
+extern PGDLLIMPORT double yb_local_roundtrip_cost;
+extern PGDLLIMPORT double yb_local_transfer_cost;
+extern PGDLLIMPORT double yb_seek_cost_factor;
+extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool yb_enable_geolocation_costing;
 
 /*
- * If true, we will always prefer batched nested loop join plans over nested
- * loop join plans.
+ * YB: If true, we will always prefer batched nested loop join plans over
+ * nested loop join plans.
  */
 extern PGDLLIMPORT bool yb_enable_batchednl;
 extern PGDLLIMPORT bool yb_enable_parallel_append;
+extern PGDLLIMPORT YbCostModel yb_enable_cbo;
+extern PGDLLIMPORT bool yb_ignore_stats;
 
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 								  double index_pages, PlannerInfo *root);

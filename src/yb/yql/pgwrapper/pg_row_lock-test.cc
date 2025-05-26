@@ -24,6 +24,7 @@
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_skip_row_lock_for_update);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 using namespace std::literals;
 
@@ -205,6 +206,7 @@ TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
 }
 
 TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
   const auto table = "foo";
   const auto query = Format("SELECT pg_advisory_lock(k) FROM $0", table);
   auto conn = ASSERT_RESULT(Connect());
@@ -214,14 +216,34 @@ TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   auto value = conn.Fetch(query);
   ASSERT_NOK(value);
-  ASSERT_TRUE(value.status().message().Contains(
-      "ERROR:  advisory locks feature is currently in preview"));
+  ASSERT_TRUE(value.status().message().Contains("ERROR:  advisory locks are disabled"));
   ASSERT_OK(conn.RollbackTransaction());
 
   ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = true"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.Fetch(query));
   ASSERT_OK(conn.CommitTransaction());
+}
+
+TEST_F(PgRowLockTest, ObjectLocksNotSupported) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  auto VerifyAcquireTableLockNotSupport = [&](const std::string& lock_mode) -> void {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    auto s = conn.Execute(Format("LOCK TABLE test IN $0 MODE", lock_mode));
+    ASSERT_NOK(s);
+    ASSERT_STR_CONTAINS(s.message().ToBuffer(),
+        Format("ERROR:  $0 not supported yet", lock_mode));
+    ASSERT_OK(conn.RollbackTransaction());
+  };
+
+  VerifyAcquireTableLockNotSupport("SHARE");
+  VerifyAcquireTableLockNotSupport("SHARE ROW EXCLUSIVE");
+  VerifyAcquireTableLockNotSupport("EXCLUSIVE");
+  VerifyAcquireTableLockNotSupport("ACCESS EXCLUSIVE");
+  VerifyAcquireTableLockNotSupport("ROW SHARE");
+  VerifyAcquireTableLockNotSupport("ROW EXCLUSIVE");
+  VerifyAcquireTableLockNotSupport("SHARE UPDATE EXCLUSIVE");
 }
 
 class PgMiniTestNoTxnRetry : public PgRowLockTest {

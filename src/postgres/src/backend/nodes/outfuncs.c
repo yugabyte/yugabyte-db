@@ -37,6 +37,15 @@
 #include "utils/datum.h"
 #include "utils/rel.h"
 
+/*
+ * YB: A global variable that controls whether a node should be serialized in a
+ * PG11-compatible way. This is required to support mixed mode pushdown for
+ * cases where the node serialization changed betwen major versions, such as
+ * ScalarOpArrayExpression, without disturbing any other PG functionality that
+ * depends on the serialization format.
+ */
+int			yb_serialize_expression_version = 0;
+
 static void outChar(StringInfo str, char c);
 
 
@@ -1469,8 +1478,11 @@ _outScalarArrayOpExpr(StringInfo str, const ScalarArrayOpExpr *node)
 
 	WRITE_OID_FIELD(opno);
 	WRITE_OID_FIELD(opfuncid);
-	WRITE_OID_FIELD(hashfuncid);
-	WRITE_OID_FIELD(negfuncid);
+	if (yb_serialize_expression_version != 11)
+	{
+		WRITE_OID_FIELD(hashfuncid);
+		WRITE_OID_FIELD(negfuncid);
+	}
 	WRITE_BOOL_FIELD(useOr);
 	WRITE_OID_FIELD(inputcollid);
 	WRITE_NODE_FIELD(args);
@@ -4856,4 +4868,28 @@ bmsToString(const Bitmapset *bms)
 	initStringInfo(&str);
 	outBitmapset(&str, bms);
 	return str.data;
+}
+
+/*
+ * ybSerializeNode -
+ *	   calls nodeToString with yb_serialize_expression_version set appropriately
+ */
+char *
+ybSerializeNode(const void *obj)
+{
+	char	   *result;
+
+	yb_serialize_expression_version = yb_major_version_upgrade_compatibility;
+
+	PG_TRY();
+	{
+		result = nodeToString(obj);
+	}
+	PG_FINALLY();
+	{
+		yb_serialize_expression_version = 0;
+	}
+	PG_END_TRY();
+
+	return result;
 }

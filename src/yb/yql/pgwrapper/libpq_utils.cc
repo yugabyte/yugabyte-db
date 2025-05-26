@@ -252,6 +252,7 @@ constexpr Oid INT2OID = 21;
 constexpr Oid INT4OID = 23;
 constexpr Oid TEXTOID = 25;
 constexpr Oid OIDOID = 26;
+constexpr Oid JSONOID = 114;
 constexpr Oid FLOAT4OID = 700;
 constexpr Oid FLOAT8OID = 701;
 constexpr Oid BPCHAROID = 1042;
@@ -262,6 +263,7 @@ constexpr Oid CSTRINGOID = 2275;
 constexpr Oid UUIDOID = 2950;
 constexpr Oid JSONBOID = 3802;
 constexpr Oid VECTOROID = 8078;
+constexpr Oid BSONOID = 8095;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {
@@ -269,9 +271,11 @@ bool IsValidType(Oid pg_type) {
     switch(pg_type) {
       case NAMEOID: [[fallthrough]];
       case TEXTOID: [[fallthrough]];
+      case JSONOID: [[fallthrough]];
       case BPCHAROID: [[fallthrough]];
       case VARCHAROID: [[fallthrough]];
       case JSONBOID: [[fallthrough]];
+      case BSONOID: [[fallthrough]];
       case CSTRINGOID: return true;
     }
     return false;
@@ -726,6 +730,7 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
     case TEXTOID: [[fallthrough]];
     case BPCHAROID: [[fallthrough]];
     case VARCHAROID: [[fallthrough]];
+    case JSONOID: [[fallthrough]];
     case CSTRINGOID:
       return VERIFY_RESULT(GetValue<std::string>(result, row, column));
     case OIDOID:

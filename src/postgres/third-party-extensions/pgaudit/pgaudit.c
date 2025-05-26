@@ -510,7 +510,7 @@ log_audit_event(AuditEventStackItem *stackItem)
     if (creating_extension)
         return;
 
-    if (yb_is_calling_internal_function_for_ddl)
+    if (yb_is_calling_internal_sql_for_ddl)
         return;
 
     /* If this event has already been logged don't log it again */
@@ -554,12 +554,10 @@ log_audit_event(AuditEventStackItem *stackItem)
                 case T_AlterRoleStmt:
 
                     if (stackItem->auditEvent.commandText != NULL)
-                    {
-                        CommandTag command_tag = YbParseCommandTag(stackItem->auditEvent.commandText);
-                        stackItem->auditEvent.commandText = YbRedactPasswordIfExists(stackItem->auditEvent.commandText,
-                            command_tag);
-                    }
-                    switch_fallthrough();
+                        stackItem->auditEvent.commandText =
+                            YbGetRedactedQueryString(stackItem->auditEvent.commandText,
+                                                     NULL /* redacted_query_len */ );
+                    yb_switch_fallthrough();
 
                 /* Fall through */
 

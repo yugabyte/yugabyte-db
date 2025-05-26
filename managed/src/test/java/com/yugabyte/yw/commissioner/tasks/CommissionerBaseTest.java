@@ -72,6 +72,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -87,6 +88,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -187,6 +189,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected ReleasesUtils mockReleasesUtils;
   protected NodeAgentManager mockNodeAgentManager;
   protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
+  protected GFlagsAuditHandler mockGFlagsAuditHandler;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -234,6 +237,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     factory.globalRuntimeConf().setValue(ENABLE_CUSTOM_HOOKS_PATH, "true");
     factory.globalRuntimeConf().setValue(ENABLE_SUDO_PATH, "true");
     factory.globalRuntimeConf().setValue("yb.universe.consistency_check_enabled", "true");
+    // Disable this to check idempotency of the task.
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableTaskRuntimeInfoOnRetry.getKey(), "false");
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
@@ -276,6 +283,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
         .thenReturn(builder.build());
+    lenient()
+        .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
+        .thenReturn(Paths.get("/opt/yugabyte"));
     NodeAgent nodeAgent = new NodeAgent();
     nodeAgent.setIp("127.0.0.1");
     nodeAgent.setName("nodeAgent");
@@ -323,6 +333,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
     mockNodeAgentManager = mock(NodeAgentManager.class);
     mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
+    mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -366,6 +377,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(bind(NodeAgentManager.class).toInstance(mockNodeAgentManager))
                 .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
+                .overrides(bind(GFlagsAuditHandler.class).toInstance(mockGFlagsAuditHandler))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
@@ -605,7 +617,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       boolean checkStrictOrdering,
       int abortStep) {
     try {
-
       // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
       // and it spams logs like crazy - which will cause OOMs in Jenkins
       // - as Jenkins caches stdout in memory until test finishes.

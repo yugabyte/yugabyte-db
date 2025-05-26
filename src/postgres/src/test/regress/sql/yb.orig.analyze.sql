@@ -113,3 +113,66 @@ DROP TABLE y;
 
 -- Analyze all tables
 ANALYZE;
+
+
+-- Analyze partitioned table
+CREATE TABLE t_part (i int, a int, b int) PARTITION BY RANGE (i);
+CREATE TABLE t_part1 PARTITION OF t_part FOR VALUES FROM (1) TO (501);
+CREATE TABLE t_part2 PARTITION OF t_part FOR VALUES FROM (501) TO (601);
+CREATE TABLE t_part3 PARTITION OF t_part FOR VALUES FROM (601) TO (MAXVALUE)
+    PARTITION BY RANGE (a);
+CREATE TABLE t_part3s1 PARTITION OF t_part3 FOR VALUES FROM (10) TO (51);
+CREATE TABLE t_part3s2 PARTITION OF t_part3 FOR VALUES FROM (51) TO (401);
+CREATE TABLE t_part3s3 PARTITION OF t_part3 DEFAULT;
+
+INSERT INTO t_part
+    SELECT i, a, b
+    FROM (
+        SELECT
+            i, a,
+            CASE
+                WHEN i BETWEEN 1 AND 500 THEN
+                    i % 20 + 1
+                WHEN i BETWEEN 501 AND 600 THEN
+                    i % 100 + 1
+                WHEN i >= 601 THEN
+                    CASE
+                        WHEN a BETWEEN 10 AND 50 THEN
+                            i
+                        WHEN a BETWEEN 51 AND 400 THEN
+                            NULL
+                        ELSE
+                            CASE WHEN i % 20 = 0 THEN i END
+                    END
+                ELSE
+                    i % 20 + 1
+            END AS b
+        FROM (
+            SELECT i, i % 500 + 1 AS a
+            FROM generate_series(1, 10000) i
+        ) vv
+    ) v;
+
+-- Same size of sample from each (sub)partition
+ANALYZE t_part;
+
+SELECT relname, attname, reltuples, stadistinct, stanullfrac
+    FROM pg_statistic s, pg_class c, pg_attribute a
+    WHERE c.oid = starelid
+      AND c.oid = attrelid
+      AND attnum = staattnum
+      AND relname LIKE 't_part%'
+    ORDER BY starelid, attnum;
+
+-- Varying size of sample based on previously collected reltuples
+ANALYZE t_part;
+
+SELECT relname, attname, reltuples, stadistinct, stanullfrac
+    FROM pg_statistic s, pg_class c, pg_attribute a
+    WHERE c.oid = starelid
+      AND c.oid = attrelid
+      AND attnum = staattnum
+      AND relname LIKE 't_part%'
+    ORDER BY starelid, attnum;
+
+DROP TABLE t_part;

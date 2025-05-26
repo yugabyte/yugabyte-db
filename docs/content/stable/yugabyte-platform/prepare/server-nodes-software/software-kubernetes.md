@@ -16,12 +16,12 @@ type: docs
 
 The minimum software versions for a Kubernetes cluster and Helm chart are as follows:
 
-- Kubernetes 1.22
+- Kubernetes 1.26
 - Helm 3.11.3
 
 The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
 
-- Kubernetes - 1.22 to 1.25
+- Kubernetes - 1.26 to 1.33
 - Helm - 3.11.3
 
 For OpenShift clusters, the recommended OpenShift Container Platform (OCP) version is 4.6, with backward compatibility assumed but not guaranteed. In addition, ensure that you have the following:
@@ -71,6 +71,12 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 ```sh
 helm install -n kube-system --version 5.0.0 kube-state-metrics prometheus-community/kube-state-metrics
 ```
+
+## Install cert-manager
+
+You can use [cert-manager](https://cert-manager.io/) to manage certificates for your cluster. To use cert-manager to manage universe certificates, ensure that it is running on your Kubernetes cluster before you create your [Kubernetes provider configuration](../../../configure-yugabyte-platform/kubernetes/).
+
+For more information, refer to [Add certificates](../../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
 
 ## Pull and push YugabyteDB Docker images to private container registry
 

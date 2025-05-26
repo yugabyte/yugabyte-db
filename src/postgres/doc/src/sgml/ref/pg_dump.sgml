@@ -119,7 +119,7 @@ PostgreSQL documentation
       <term><option>--data-only</option></term>
       <listitem>
        <para>
-        Dump only the data, not the schema (data definitions).
+        Dump only the data, not the schema (data definitions) or statistics.
         Table data, large objects, and sequence values are dumped.
        </para>
 
@@ -168,11 +168,12 @@ PostgreSQL documentation
       <term><option>--clean</option></term>
       <listitem>
        <para>
-        Output commands to clean (drop)
+        Output commands to <command>DROP</command> all the dumped
         database objects prior to outputting the commands for creating them.
-        (Unless <option>--if-exists</option> is also specified,
-        restore might generate some harmless error messages, if any objects
-        were not present in the destination database.)
+        This option is useful when the restore is to overwrite an existing
+        database.  If any of the objects do not exist in the destination
+        database, ignorable error messages will be reported during
+        restore, unless <option>--if-exists</option> is also specified.
        </para>
 
        <para>
@@ -507,10 +508,11 @@ PostgreSQL documentation
       <term><option>--schema-only</option></term>
       <listitem>
        <para>
-        Dump only the object definitions (schema), not data.
+        Dump only the object definitions (schema), not data or statistics.
        </para>
        <para>
-        This option is the inverse of <option>--data-only</option>.
+        This option is mutually exclusive to <option>--data-only</option>
+        and <option>--statistics-only</option>.
         It is similar to, but for historical reasons not identical to,
         specifying
         <option>--section=pre-data --section=post-data</option>.
@@ -705,7 +707,8 @@ PostgreSQL documentation
       <term><option>--disable-triggers</option></term>
       <listitem>
        <para>
-        This option is relevant only when creating a data-only dump.
+        This option is relevant only when creating a dump that includes data
+        but does not include schema.
         It instructs <application>pg_dump</application> to include commands
         to temporarily disable triggers on the target tables while
         the data is restored.  Use this if you have referential
@@ -763,7 +766,8 @@ PostgreSQL documentation
         though you do not need the data in it.
        </para>
        <para>
-        To exclude data for all tables in the database, see <option>--schema-only</option>.
+        To exclude data for all tables in the database, see <option>--schema-only</option>
+        or <option>--statistics-only</option>.
        </para>
       </listitem>
      </varlistentry>
@@ -783,9 +787,11 @@ PostgreSQL documentation
       <term><option>--if-exists</option></term>
       <listitem>
        <para>
-        Use conditional commands (i.e., add an <literal>IF EXISTS</literal>
-        clause) when cleaning database objects.  This option is not valid
-        unless <option>--clean</option> is also specified.
+        Use <literal>DROP ... IF EXISTS</literal> commands to drop objects
+        in <option>--clean</option> mode.  This suppresses <quote>does not
+        exist</quote> errors that might otherwise be reported.  This
+        option is not valid unless <option>--clean</option> is also
+        specified.
        </para>
       </listitem>
      </varlistentry>
@@ -861,16 +867,6 @@ PostgreSQL documentation
         and the two systems have different definitions of the collation used
         to sort the partitioning column.
        </para>
-
-       <para>
-        It is best not to use parallelism when restoring from an archive made
-        with this option, because <application>pg_restore</application> will
-        not know exactly which partition(s) a given archive data item will
-        load data into.  This could result in inefficiency due to lock
-        conflicts between parallel jobs, or perhaps even restore failures due
-        to foreign key constraints being set up before all the relevant data
-        is loaded.
-       </para>
       </listitem>
      </varlistentry>
 
@@ -912,6 +908,24 @@ PostgreSQL documentation
       <listitem>
        <para>
         Do not dump security labels.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-schema</option></term>
+      <listitem>
+       <para>
+        Do not dump schema (data definitions).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-statistics</option></term>
+      <listitem>
+       <para>
+        Do not dump statistics.
        </para>
       </listitem>
      </varlistentry>
@@ -999,6 +1013,33 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--with-data</option></term>
+      <listitem>
+       <para>
+        Dump data. This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--with-schema</option></term>
+      <listitem>
+       <para>
+        Dump schema (data definitions). This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--with-statistics</option></term>
+      <listitem>
+       <para>
+        Dump statistics. This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--on-conflict-do-nothing</option></term>
       <listitem>
        <para>
@@ -1054,9 +1095,11 @@ PostgreSQL documentation
          </para>
          <para>
           The data section contains actual table data, large-object
-          contents, and sequence values.
+          contents, statitistics for tables and materialized views and
+          sequence values.
           Post-data items include definitions of indexes, triggers, rules,
-          and constraints other than validated check constraints.
+          statistics for indexes, and constraints other than validated check
+          constraints.
           Pre-data items include all other data definition items.
          </para>
        </listitem>
@@ -1362,7 +1405,7 @@ CREATE DATABASE foo WITH TEMPLATE template0;
   </para>
 
   <para>
-   When a data-only dump is chosen and the option <option>--disable-triggers</option>
+   When a dump without schema is chosen and the option <option>--disable-triggers</option>
    is used, <application>pg_dump</application> emits commands
    to disable triggers on user tables before inserting the data,
    and then commands to re-enable them after the data has been
@@ -1417,6 +1460,14 @@ CREATE DATABASE foo WITH TEMPLATE template0;
    subscriber if the subscription had been originally created with
    <literal>two_phase = true</literal> option.
   </para>
+
+  <para>
+   It is generally recommended to use the <option>-X</option>
+   (<option>--no-psqlrc</option>) option when restoring a database from a
+   plain-text <application>pg_dump</application> script to ensure a clean
+   restore process and prevent potential conflicts with
+   non-default <application>psql</application> configurations.
+  </para>
  </refsect1>
 
  <refsect1 id="pg-dump-examples" xreflabel="Examples">
@@ -1434,7 +1485,7 @@ CREATE DATABASE foo WITH TEMPLATE template0;
    <literal>newdb</literal>:
 
 <screen>
-<prompt>$</prompt> <userinput>psql -d newdb -f db.sql</userinput>
+<prompt>$</prompt> <userinput>psql -X -d newdb -f db.sql</userinput>
 </screen>
   </para>
 

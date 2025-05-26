@@ -102,7 +102,7 @@ After completing the upgrade and the required maintenance, you restart the node.
 
 To simulate bringing back a node online locally, you can just start the stopped node.
 
-{{%cluster/cmd op="stop" nodes="4"%}}
+{{%cluster/cmd op="start" nodes="4"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}

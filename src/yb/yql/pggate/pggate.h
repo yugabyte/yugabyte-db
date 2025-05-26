@@ -17,10 +17,9 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "yb/client/tablet_server.h"
 
@@ -36,14 +35,12 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/server_base_options.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/mem_tracker.h"
-#include "yb/util/memory/arena.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/uuid.h"
@@ -163,9 +160,14 @@ class PgApiImpl {
   Result<bool> CatalogVersionTableInPerdbMode();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change,
+      uint64_t new_catalog_version, const YbcCatalogMessageList *message_list);
+
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
+  Result<int> GetXClusterRole(uint32_t db_oid);
 
   Status NewTupleExpr(
     YbcPgStatement stmt, const YbcPgTypeEntity *tuple_type_entity,
@@ -607,6 +609,9 @@ class PgApiImpl {
 
   Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
 
+  Status DmlHnswSetReadOptions(PgStatement *handle, int ef_search);
+
+  void IncrementIndexRecheckCount();
 
   //------------------------------------------------------------------------------------------------
   // Functions.
@@ -740,6 +745,8 @@ class PgApiImpl {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
+  void SetLockTimeout(int lock_timeout_ms);
+
   Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
       const std::string &table_id, const std::string &transaction_id);
   Result<client::TabletServersInfo> ListTabletServers();
@@ -787,6 +794,7 @@ class PgApiImpl {
                                   const PgOid database_oid,
                                   YbcPgReplicationSlotSnapshotAction snapshot_action,
                                   YbcLsnType lsn_type,
+                                  YbcOrderingMode ordering_mode,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
@@ -820,9 +828,8 @@ class PgApiImpl {
   Status ExecDropReplicationSlot(PgStatement *handle);
 
   Result<std::string> ExportSnapshot(
-      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
-  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
-      PgTxnSnapshotDescriptor snapshot_descriptor);
+      const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time);
+  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
 
   bool HasExportedSnapshots() const;
   void ClearExportedTxnSnapshots();
@@ -838,8 +845,9 @@ class PgApiImpl {
   Status SetCronLastMinute(int64_t last_minute);
   Result<int64_t> GetCronLastMinute();
 
-  [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
-  Status RestoreReadTimePoint(uint64_t read_time_point_handle);
+  [[nodiscard]] YbcReadPointHandle GetCurrentReadPoint() const;
+  Status RestoreReadPoint(YbcReadPointHandle read_point);
+  Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
   void DdlEnableForceCatalogModification();
 

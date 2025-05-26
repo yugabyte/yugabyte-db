@@ -40,6 +40,7 @@
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/resowner_private.h"
+#include "utils/syscache.h"
 #include "utils/yb_inheritscache.h"
 
 /*
@@ -51,6 +52,8 @@ static HTAB *YbPgInheritsCacheByParent;
  *   Child oid -> list<parent oids>
  */
 static HTAB *YbPgInheritsCacheByChild;
+
+static bool fully_loaded = false;
 
 static void
 FindChildren(Oid parentOid, List **childTuples)
@@ -140,9 +143,6 @@ GetChildCacheEntryMiss(Oid relid, YbPgInheritsCacheEntry entry)
 
 	HeapTuple	inheritsTuple = NULL;
 
-	entry->oid = relid;
-	entry->refcount = 1;
-	entry->tuples = NIL;
 	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
 		Assert(((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid == relid);
@@ -191,7 +191,7 @@ YbInitPgInheritsCache()
 void
 YbPreloadPgInheritsCache()
 {
-	elog(DEBUG3, "preload pg inherits cache");
+	elog(yb_debug_log_catcache_events ? LOG : DEBUG3, "YbPgInheritsCache: preload started.");
 	Assert(YbPgInheritsCacheByParent);
 	Assert(YbPgInheritsCacheByChild);
 	Relation	relation = table_open(InheritsRelationId, AccessShareLock);
@@ -249,8 +249,11 @@ YbPreloadPgInheritsCache()
 	}
 	systable_endscan(scan);
 	table_close(relation, AccessShareLock);
-	elog(DEBUG3,
-		 "Preload complete. Parent cache has %ld entries, "
+
+	fully_loaded = true;
+
+	elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
+		 "YbPgInheritsCache: preload complete. Parent cache has %ld entries, "
 		 " child cache has %ld entries.",
 		 hash_get_num_entries(YbPgInheritsCacheByParent),
 		 hash_get_num_entries(YbPgInheritsCacheByChild));
@@ -267,10 +270,22 @@ GetYbPgInheritsCacheEntryByParent(Oid parentOid)
 
 	if (!found)
 	{
-		elog(DEBUG3, "YbPgInheritsCacheByParent miss for parent %d", parentOid);
 		entry->oid = parentOid;
-		FindChildren(parentOid, &entry->tuples);
+		entry->tuples = NIL;
 		entry->refcount = 1;
+		/* If we are fully loaded, we don't need to attempt a lookup */
+		if (fully_loaded)
+		{
+			elog(DEBUG3, "YbPgInheritsCacheByParent neg hit for parentOid %d", parentOid);
+		}
+		else
+		{
+			elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
+				 "YbPgInheritsCacheByParent miss for parent %d", parentOid);
+			YbNumCatalogCacheMisses++;
+			YbNumCatalogCacheTableMisses[YbAdhocCacheTable_pg_inherits]++;
+			FindChildren(parentOid, &entry->tuples);
+		}
 	}
 	else
 	{
@@ -292,8 +307,22 @@ GetYbPgInheritsCacheEntryByChild(Oid relid)
 
 	if (!found)
 	{
-		elog(DEBUG3, "YbPgInheritsCacheByChild miss for oid %d", relid);
-		GetChildCacheEntryMiss(relid, entry);
+		entry->oid = relid;
+		entry->refcount = 1;
+		entry->tuples = NIL;
+		/* If we are fully loaded, we don't need to attempt a lookup */
+		if (fully_loaded)
+		{
+			elog(DEBUG3, "YbPgInheritsCacheByChild neg hit for oid %d", relid);
+		}
+		else
+		{
+			YbNumCatalogCacheMisses++;
+			YbNumCatalogCacheTableMisses[YbAdhocCacheTable_pg_inherits]++;
+			elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
+				 "YbPgInheritsCacheByChild miss for oid %d", relid);
+			GetChildCacheEntryMiss(relid, entry);
+		}
 	}
 	else
 	{
@@ -345,6 +374,8 @@ YbPgInheritsCacheDelete(YbPgInheritsCacheEntry entry, bool isParentEntry)
 void
 YbPgInheritsCacheInvalidateImpl(Oid relid, bool isParentEntry)
 {
+	fully_loaded = false;
+
 	HASH_SEQ_STATUS status;
 	YbPgInheritsCacheEntry entry;
 

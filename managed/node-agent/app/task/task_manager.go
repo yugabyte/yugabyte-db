@@ -42,6 +42,7 @@ type AsyncTask interface {
 	// Handle is the method to be executed.
 	Handle(context.Context) (*pb.DescribeTaskResponse, error)
 	// CurrentTaskStatus returns the current task status.
+	// Nil can be returned if there is no status streaming for this task.
 	CurrentTaskStatus() *TaskStatus
 	// String returns the identifier for this task.
 	String() string
@@ -207,20 +208,23 @@ func (m *TaskManager) Subscribe(
 			// Task is completed.
 			size := 0
 			m.updateTime(taskID)
-			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
 			callbackData := &TaskCallbackData{State: tInfo.future.State()}
-			callbackData.Info, size = taskStatus.Info.StringWithLen()
-			if size > 0 {
-				// Send the info messages first before any error.
-				err := callback(callbackData)
-				if err != nil {
-					return err
+			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
+			if taskStatus != nil {
+				callbackData.Info, size = taskStatus.Info.StringWithLen()
+				if size > 0 {
+					// Send the info messages first before any error.
+					err := callback(callbackData)
+					if err != nil {
+						return err
+					}
+					taskStatus.Info.Consume(size)
 				}
-				taskStatus.Info.Consume(size)
 			}
 
 			size = 0
-			if taskStatus.ExitStatus.Code == 0 {
+			if taskStatus == nil || taskStatus.ExitStatus == nil ||
+				taskStatus.ExitStatus.Code == 0 {
 				result, err := tInfo.future.Get()
 				if err != nil {
 					return err
@@ -251,14 +255,16 @@ func (m *TaskManager) Subscribe(
 			// Task is still running.
 			m.updateTime(taskID)
 			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
-			data, size := taskStatus.Info.StringWithLen()
-			if size > 0 {
-				callbackData := &TaskCallbackData{Info: data, State: tInfo.future.State()}
-				err := callback(callbackData)
-				if err != nil {
-					return err
+			if taskStatus != nil {
+				data, size := taskStatus.Info.StringWithLen()
+				if size > 0 {
+					callbackData := &TaskCallbackData{Info: data, State: tInfo.future.State()}
+					err := callback(callbackData)
+					if err != nil {
+						return err
+					}
+					taskStatus.Info.Consume(size)
 				}
-				taskStatus.Info.Consume(size)
 			}
 			time.Sleep(TaskProgressWaitTime)
 		}

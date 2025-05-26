@@ -981,7 +981,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotent() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     upgradeCheckingIdempotency(false /* useSingleConnection */);
@@ -996,7 +996,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     // Ensures there's never more that one connection opened by an upgrade.
@@ -1061,7 +1061,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       preSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     boolean snapshot_has_pg_yb_tablegroup = false;
@@ -1889,11 +1889,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           totalMigrations + 1, appliedMigrations.size());
       assertRow(new Row(initialMajorVersion, initialMinorVersion, "<baseline>", null),
                 appliedMigrations.get(0));
-      for (int ver = 1; ver <= totalMigrations; ++ver) {
+      for (int i = 1; i <= totalMigrations; ++i) {
         // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
-        Row migrationRow = appliedMigrations.get(ver);
-        final int majorVersion = Math.min(ver, latestMajorVersion) + initialMajorVersion;
-        final int minorVersion = ver - majorVersion + initialMajorVersion;
+        Row migrationRow = appliedMigrations.get(i);
+        final int majorVersion = Math.min(i + initialMajorVersion, latestMajorVersion);
+        final int minorVersion = i - majorVersion + initialMajorVersion;
         assertEquals(majorVersion, migrationRow.getInt(0).intValue());
         assertEquals(minorVersion, migrationRow.getInt(1).intValue());
         String migrationNamePrefix;

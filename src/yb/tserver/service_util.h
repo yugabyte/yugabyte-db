@@ -83,11 +83,7 @@ Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
     // Maintain compat in release mode, but complain.
     std::string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
         method_name, requestor_string, req->ShortDebugString());
-#ifdef NDEBUG
-    YB_LOG_EVERY_N(ERROR, 100) << msg;
-#else
-    LOG(FATAL) << msg;
-#endif
+    YB_LOG_EVERY_N(DFATAL, 100) << msg;
     return true;
   }
   if (PREDICT_FALSE(req->dest_uuid() != local_uuid)) {
@@ -176,6 +172,34 @@ Result<TabletPeerTablet> LookupTabletPeerOrRespond(
 }
 
 template <class Response>
+concept HasSetPropagatedHybridTimeField =
+    requires(Response response) { response.propagated_hybrid_time(); };
+
+template <class Response>
+requires(HasSetPropagatedHybridTimeField<Response>)
+void SetPropagatedHybridTimeIfHasField(Response& response, server::Clock& clock) {
+  response.set_propagated_hybrid_time(clock.Now().ToUint64());
+}
+
+template <class Response>
+void SetPropagatedHybridTimeIfHasField(Response& response, server::Clock& clock) {}
+
+template <class Response>
+concept HasErrorField = requires(Response resp) { resp.error(); };
+
+template <class Response>
+  requires(HasErrorField<Response>)
+void SetupErrorAndRespond(Response& resp, const Status& status, rpc::RpcContext& context) {
+  SetupErrorAndRespond(resp.mutable_error(), status, &context);
+}
+
+template <class Response>
+void SetupErrorAndRespond(Response& resp, const Status& status, rpc::RpcContext& context) {
+  StatusToPB(status, resp.mutable_status());
+  context.RespondSuccess();
+}
+
+template <class Response>
 auto MakeRpcOperationCompletionCallback(
     rpc::RpcContext context,
     Response* response,
@@ -183,10 +207,10 @@ auto MakeRpcOperationCompletionCallback(
   return [context = std::make_shared<rpc::RpcContext>(std::move(context)),
           response, clock](const Status& status) {
     if (clock) {
-      response->set_propagated_hybrid_time(clock->Now().ToUint64());
+      SetPropagatedHybridTimeIfHasField(*response, *clock);
     }
     if (!status.ok()) {
-      SetupErrorAndRespond(response->mutable_error(), status, context.get());
+      SetupErrorAndRespond(*response, status, *context);
     } else {
       context->RespondSuccess();
     }

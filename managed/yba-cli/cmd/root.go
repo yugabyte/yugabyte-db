@@ -6,15 +6,19 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth/ldap"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth/oidc"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/customer"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/group"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
@@ -36,7 +40,8 @@ import (
 )
 
 var (
-	cfgFile string
+	cfgFile      string
+	cfgDirectory string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -71,8 +76,16 @@ func init() {
 
 	setDefaults()
 	rootCmd.PersistentFlags().SortFlags = false
+	rootCmd.PersistentFlags().StringVar(&cfgDirectory, "directory", "",
+		"Directory containing YBA CLI configuration and generated files. "+
+			"If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. "+
+			"Defaults to '$HOME/.yba-cli/'.")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "",
-		"Config file, defaults to $HOME/.yba-cli.yaml")
+		"Full path to a specific configuration file for YBA CLI. "+
+			"If provided, this takes precedence over the directory specified via --directory, "+
+			"and the generated files are added to the same path. "+
+			"If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. "+
+			"Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.")
 	rootCmd.PersistentFlags().StringP("host", "H", "http://localhost:9000",
 		"YugabyteDB Anywhere Host")
 	rootCmd.PersistentFlags().StringP("apiToken", "a", "", "YugabyteDB Anywhere api token.")
@@ -87,6 +100,12 @@ func init() {
 		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
 		"Wait command timeout, example: 5m, 1h.")
+	rootCmd.PersistentFlags().Bool("insecure", false,
+		"Allow insecure connections to YugabyteDB Anywhere."+
+			" Value ignored for http endpoints. Defaults to false for https.")
+	rootCmd.PersistentFlags().String("ca-cert", "",
+		"CA certificate file path for secure connection to YugabyteDB Anywhere. "+
+			"Required when the endpoint is https and --insecure is not set.")
 
 	//Bind peristents flags to viper
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
@@ -97,6 +116,8 @@ func init() {
 	viper.BindPFlag("disable-color", rootCmd.PersistentFlags().Lookup("disable-color"))
 	viper.BindPFlag("wait", rootCmd.PersistentFlags().Lookup("wait"))
 	viper.BindPFlag("timeout", rootCmd.PersistentFlags().Lookup("timeout"))
+	viper.BindPFlag("insecure", rootCmd.PersistentFlags().Lookup("insecure"))
+	viper.BindPFlag("ca-cert", rootCmd.PersistentFlags().Lookup("ca-cert"))
 
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(auth.LoginCmd)
@@ -119,8 +140,11 @@ func init() {
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 	addGroupsCmd(rootCmd)
-
-	util.PreviewCommand(rootCmd, []*cobra.Command{alert.AlertCmd})
+	// Add commands to be marked as preview in the list below
+	util.PreviewCommand(
+		rootCmd,
+		[]*cobra.Command{alert.AlertCmd, group.GroupsCmd, ldap.LdapCmd, oidc.OIDCCmd},
+	)
 
 }
 
@@ -145,6 +169,8 @@ func setDefaults() {
 	viper.SetDefault("timeout", time.Duration(7*24*time.Hour))
 	viper.SetDefault("lastVersionAvailable", "0.0.0")
 	viper.SetDefault("lastCheckedTime", 0)
+	viper.SetDefault("insecure", false)
+	viper.SetDefault("ca-cert", "")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -152,15 +178,38 @@ func initConfig() {
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
+	} else if cfgDirectory != "" {
+		// Check if the directory exists
+		if stat, err := os.Stat(cfgDirectory); err == nil && stat.IsDir() {
+			configPath := filepath.Join(cfgDirectory, ".yba-cli.yaml")
+			viper.AddConfigPath(cfgDirectory)
+			viper.SetConfigType("yaml")
+			viper.SetConfigName(".yba-cli")
+			viper.SetConfigFile(configPath)
+		} else {
+			viper.SetDefault("output", formatter.TableFormatKey)
+			viper.SetDefault("logLevel", "info")
+			viper.SetDefault("debug", false)
+			logrus.Fatalf("%s",
+				formatter.Colorize(
+					"Provided configuration directory does not exist: "+cfgDirectory, formatter.RedColor,
+				))
+		}
 	} else {
 		// Find home directory.
 		home, err := os.UserHomeDir()
 		cobra.CheckErr(err)
-
+		homeDir, err := os.Stat(home)
+		if err != nil {
+			cobra.CheckErr(err)
+		}
+		homePerms := homeDir.Mode().Perm()
+		os.Mkdir(home+"/.yba-cli", homePerms)
 		// Search config in home directory with name ".yba-cli" (without extension).
-		viper.AddConfigPath(home)
+		viper.AddConfigPath(home + "/.yba-cli")
 		viper.SetConfigType("yaml")
 		viper.SetConfigName(".yba-cli")
+		viper.SetConfigFile(home + "/.yba-cli/.yba-cli.yaml")
 	}
 
 	//Will check every environment variable starting with YBA_

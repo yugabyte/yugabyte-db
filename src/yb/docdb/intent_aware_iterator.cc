@@ -796,7 +796,7 @@ void IntentAwareIterator::FillRegularEntry() {
   DCHECK_EQ(*entry_.key.end(), KeyEntryTypeAsChar::kHybridTime) << entry_.key.ToDebugString();
   entry_.same_transaction = false;
   entry_.value = regular_entry_.value;
-  max_seen_ht_.MakeAtLeast(entry_.write_time);
+  UpdateMaxSeenHt(entry_.write_time, entry_.key);
 }
 
 void IntentAwareIterator::FillIntentEntry() {
@@ -806,7 +806,7 @@ void IntentAwareIterator::FillIntentEntry() {
   entry_.key = resolved_intent_key_prefix_.AsSlice();
   entry_.write_time = GetIntentDocHybridTime(&entry_.same_transaction);
   entry_.value = resolved_intent_value_;
-  max_seen_ht_.MakeAtLeast(resolved_intent_txn_dht_);
+  UpdateMaxSeenHt(resolved_intent_txn_dht_, entry_.key);
 }
 
 void IntentAwareIterator::SeekForwardRegular(Slice slice) {
@@ -1031,7 +1031,7 @@ Result<EncodedDocHybridTime> IntentAwareIterator::FindMatchingIntentRecordDocHyb
   }
 
   if (resolved_intent_key_prefix_.CompareTo(key_without_ht) == 0) {
-    max_seen_ht_.MakeAtLeast(resolved_intent_txn_dht_);
+    UpdateMaxSeenHt(resolved_intent_txn_dht_, key_without_ht);
     return GetIntentDocHybridTime();
   }
   return EncodedDocHybridTime();
@@ -1045,7 +1045,7 @@ Result<EncodedDocHybridTime> IntentAwareIterator::GetMatchingRegularRecordDocHyb
   if (key_without_ht == iter_key_without_ht) {
     EncodedDocHybridTime result;
     RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(iter_.key(), &result));
-    max_seen_ht_.MakeAtLeast(result);
+    UpdateMaxSeenHt(result, key_without_ht);
     return result;
   }
   return EncodedDocHybridTime();
@@ -1364,28 +1364,28 @@ std::string IntentAwareIterator::DebugPosToString() {
   return DebugDumpKeyToStr(key->key);
 }
 
-Result<HybridTime> IntentAwareIterator::RestartReadHt() const {
-  if (max_seen_ht_ <= encoded_read_time_.read) {
-    return HybridTime::kInvalid;
+Result<ReadRestartData> IntentAwareIterator::GetReadRestartData() const {
+  if (max_seen_ht_data_.max_seen_ht <= encoded_read_time_.read) {
+    return ReadRestartData{HybridTime::kInvalid, {}};
   }
-  auto decoded_max_seen_ht = VERIFY_RESULT(max_seen_ht_.Decode());
+  auto decoded_max_seen_ht = VERIFY_RESULT(max_seen_ht_data_.max_seen_ht.Decode());
   VLOG(4) << "Restart read: " << decoded_max_seen_ht.hybrid_time() << ", original: " << read_time_;
-  return decoded_max_seen_ht.hybrid_time();
+  return ReadRestartData{decoded_max_seen_ht.hybrid_time(), max_seen_ht_data_.max_seen_ht_key};
 }
 
-EncodedDocHybridTime IntentAwareIterator::ObtainLastSeenHtCheckpoint() {
-  return max_seen_ht_;
+MaxSeenHtData IntentAwareIterator::ObtainMaxSeenHtCheckpoint() {
+  return max_seen_ht_data_;
 }
 
-void IntentAwareIterator::RollbackLastSeenHt(EncodedDocHybridTime last_seen_ht) {
+void IntentAwareIterator::RollbackMaxSeenHt(MaxSeenHtData checkpoint) {
   if (ANNOTATE_UNPROTECTED_READ(FLAGS_disable_last_seen_ht_rollback)) {
     return;
   }
-  max_seen_ht_ = last_seen_ht;
+  max_seen_ht_data_ = checkpoint;
 }
 
 HybridTime IntentAwareIterator::TEST_MaxSeenHt() const {
-  return CHECK_RESULT(max_seen_ht_.Decode()).hybrid_time();
+  return CHECK_RESULT(max_seen_ht_data_.max_seen_ht.Decode()).hybrid_time();
 }
 
 const EncodedDocHybridTime& IntentAwareIterator::GetIntentDocHybridTime(
@@ -1434,6 +1434,20 @@ void IntentAwareIterator::DebugSeekTriggered() {
   need_fetch_ = true;
 }
 #endif
+
+void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice key) {
+  if (max_seen_ht_data_.max_seen_ht >= seen_ht) {
+    return;
+  }
+  max_seen_ht_data_.max_seen_ht.Assign(seen_ht.AsSlice());
+
+  // seen ht more than read time => potential read restart error.
+  // Pick the first offending key.
+  if (max_seen_ht_data_.max_seen_ht > encoded_read_time_.read
+      && max_seen_ht_data_.max_seen_ht_key.empty()) {
+    max_seen_ht_data_.max_seen_ht_key = SubDocKey::DebugSliceToString(key);
+  }
+}
 
 void AppendStrongWrite(KeyBytes* out) {
   out->AppendRawBytes(StrongWriteSuffix(*out));

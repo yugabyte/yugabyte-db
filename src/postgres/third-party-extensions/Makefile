@@ -12,6 +12,10 @@ DIRS = \
 	wal2json \
 	pgtap \
 
+ifneq ($(findstring YB_ENABLE_YSQL_DOCUMENTDB_EXT, $(CXXFLAGS)),)
+	DIRS += documentdb
+endif
+
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)
 CLEANDIRS = $(DIRS:%=clean-%)

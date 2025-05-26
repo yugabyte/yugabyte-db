@@ -482,7 +482,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
       // worker threads, log a warning message and continue.
       LOG(WARNING) << "Thread pool failed to create thread: " << status << ", num_threads: "
                    << num_threads_ << ", max_threads: " << max_threads_;
-      if (num_threads_ == 0) {
+      if (num_threads_ == 0 || max_queue_size_ == total_queued_tasks_) {
         // If we have no threads, we can't do any work.
         return status;
       }
@@ -670,8 +670,8 @@ Status ThreadPool::CreateThreadUnlocked() {
   // The first few threads are permanent, and do not time out.
   bool permanent = (num_threads_ < min_threads_);
   scoped_refptr<Thread> t;
-  Status s = yb::Thread::Create("thread pool", strings::Substitute("$0 [worker]", name_),
-                                  &ThreadPool::DispatchThread, this, permanent, &t);
+  auto s = Thread::Create(
+      name_, Format("$0 [worker]", name_), &ThreadPool::DispatchThread, this, permanent, &t);
   if (s.ok()) {
     InsertOrDie(&threads_, t.get());
     num_threads_++;

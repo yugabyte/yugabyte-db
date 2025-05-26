@@ -13,6 +13,12 @@ type: indexpage
 showRightNav: true
 ---
 
+{{< page-finder/head text="Encryption in transit" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/tls-encryption/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/" >}}
+{{< /page-finder/head >}}
+
 YugabyteDB Anywhere allows you to protect data in transit by using the following:
 
 - Node-to-Node TLS to encrypt inter-node communication between YB-Master and YB-TServer nodes.
@@ -45,7 +51,7 @@ You enable Node-to-Node and Client-to-Node encryption in transit when you [creat
 You can also enable and disable encryption in transit for an existing universe as follows:
 
 1. Navigate to your universe.
-1. Click **Actions > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
+1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
 1. Enable or disable the **Enable encryption in transit for this Universe** option.
 1. Click **Apply**.
 

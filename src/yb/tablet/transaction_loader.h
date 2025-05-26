@@ -87,6 +87,7 @@ class TransactionLoader {
   }
 
   Status WaitLoaded(const TransactionId& id);
+  Status WaitLoaded(const TransactionIdApplyOpIdMap& txns);
   Status WaitAllLoaded();
 
   std::optional<docdb::ApplyStateWithCommitInfo> GetPendingApply(const TransactionId& id) const

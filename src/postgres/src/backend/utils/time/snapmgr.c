@@ -254,18 +254,18 @@ YBCheckSnapshotsAllowed(bool check_isolation_level)
 	{
 		switch (XactIsoLevel)
 		{
-			/*
-			 * Currently in YSQL, export & import is allowed only in REPEATABLE READ.
-			 */
+				/*
+				 * Currently in YSQL, export & import is allowed only in REPEATABLE READ.
+				 */
 			case XACT_READ_COMMITTED:
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("cannot export/import snapshot in READ COMMITTED Isolation Level")));
+						 errmsg("cannot export/import snapshot in READ COMMITTED Isolation Level")));
 				break;
 			case XACT_SERIALIZABLE:
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("cannot export/import snapshot in SERIALIZABLE Isolation Level")));
+						 errmsg("cannot export/import snapshot in SERIALIZABLE Isolation Level")));
 				break;
 		}
 	}
@@ -291,8 +291,6 @@ YbInitSnapshot(Snapshot snap)
 	snap->suboverflowed = false;
 	snap->takenDuringRecovery = false;
 	snap->snapshot_type = SNAPSHOT_MVCC;
-	snap->yb_cdc_snapshot_read_time.has_value = false;
-	snap->yb_cdc_snapshot_read_time.value = 0;
 }
 
 static void
@@ -300,8 +298,8 @@ YBCOnActiveSnapshotChange()
 {
 	const SnapshotData *snap = ActiveSnapshot ? ActiveSnapshot->as_snap : NULL;
 
-	if (snap && snap->yb_read_time_point_handle.has_value)
-		HandleYBStatus(YBCRestoreReadTimePoint(snap->yb_read_time_point_handle.value));
+	if (snap && snap->yb_read_point_handle.has_value)
+		HandleYBStatus(YBCPgRestoreReadPoint(snap->yb_read_point_handle.value));
 }
 
 /*
@@ -659,10 +657,10 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 					 errdetail("The source transaction is not running anymore.")));
 	}
 	/*
-	 * ProcArrayInstallImportedXmin sets MyProc->xmin and also checks if exporting
-	 * snapshot is alive. In YugabyteDB, we do not need to set xmin and also
-	 * expiry of the exported snapshot has to be checked via an rpc to master.
-	 * So this step is skipped for YugabyteDB.
+	 * YB: ProcArrayInstallImportedXmin sets MyProc->xmin and also checks if
+	 * exporting snapshot is alive. In YugabyteDB, we do not need to set xmin
+	 * and also expiry of the exported snapshot has to be checked via an rpc to
+	 * master. So this step is skipped for YugabyteDB.
 	 */
 	else if (!IsYugaByteEnabled() &&
 			 !ProcArrayInstallImportedXmin(CurrentSnapshot->xmin, sourcevxid))
@@ -689,9 +687,6 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 		FirstXactSnapshot->regd_count++;
 		pairingheap_add(&RegisteredSnapshots, &FirstXactSnapshot->ph_node);
 	}
-
-	if (sourcesnap->yb_cdc_snapshot_read_time.has_value)
-		HandleYBStatus(YBCPgSetTxnSnapshot(sourcesnap->yb_cdc_snapshot_read_time.value));
 
 	FirstSnapshotSet = true;
 }
@@ -1057,7 +1052,7 @@ SnapshotResetXmin(void)
 
 	if (pairingheap_is_empty(&RegisteredSnapshots))
 	{
-		MyProc->xmin = InvalidTransactionId;
+		MyProc->xmin = TransactionXmin = InvalidTransactionId;
 		return;
 	}
 
@@ -1065,7 +1060,7 @@ SnapshotResetXmin(void)
 										pairingheap_first(&RegisteredSnapshots));
 
 	if (TransactionIdPrecedes(MyProc->xmin, minSnapshot->xmin))
-		MyProc->xmin = minSnapshot->xmin;
+		MyProc->xmin = TransactionXmin = minSnapshot->xmin;
 }
 
 /*
@@ -1226,18 +1221,16 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 }
 
 static char *
-YBCExportSnapshot(uint64_t yb_cdc_snapshot_read_time)
+YBCExportSnapshot(const YbOptionalReadPointHandle *read_point)
 {
-	char *snapshot_id = NULL;
+	char	   *snapshot_id = NULL;
 	YbcPgTxnSnapshot snapshot =
-		{.db_id = MyDatabaseId,
-		 .iso_level = XactIsoLevel,
-		 .read_only = XactReadOnly};
-	HandleYBStatus(YBCPgExportSnapshot(&snapshot,
-									   &snapshot_id,
-									   yb_cdc_snapshot_read_time == 0
-									   ? NULL
-									   : &yb_cdc_snapshot_read_time));
+	{.db_id = MyDatabaseId,
+		.iso_level = XactIsoLevel,
+	.read_only = XactReadOnly};
+
+	HandleYBStatus(YBCPgExportSnapshot(&snapshot, &snapshot_id,
+									   read_point->has_value ? &read_point->value : NULL));
 	return snapshot_id;
 }
 
@@ -1246,6 +1239,9 @@ YBCExportSnapshot(uint64_t yb_cdc_snapshot_read_time)
  *		Export the snapshot to a file so that other backends can import it.
  *		Returns the token (the file name) that can be used to import this
  *		snapshot.
+ *
+ * YB Note:
+ * Returns snapshot_id that can be used to import this snapshot.
  */
 char *
 ExportSnapshot(Snapshot snapshot)
@@ -1295,9 +1291,7 @@ ExportSnapshot(Snapshot snapshot)
 				 errmsg("cannot export a snapshot from a subtransaction")));
 
 	if (IsYugaByteEnabled())
-		return YBCExportSnapshot(snapshot->yb_cdc_snapshot_read_time.has_value
-								 ? snapshot->yb_cdc_snapshot_read_time.value
-								 : 0);
+		return YBCExportSnapshot(&snapshot->yb_read_point_handle);
 	/*
 	 * We do however allow previous committed subtransactions to exist.
 	 * Importers of the snapshot must see them as still running, so get their
@@ -1575,15 +1569,15 @@ ImportSnapshot(const char *idstr)
 		 */
 		if (strspn(idstr, "0123456789abcdef-") != strlen(idstr))
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
 
 		YbcPgTxnSnapshot yb_snapshot = {};
+
 		HandleYBStatus(YBCPgImportSnapshot(idstr, &yb_snapshot));
 		src_dbid = yb_snapshot.db_id;
 		src_isolevel = yb_snapshot.iso_level;
 		src_readonly = yb_snapshot.read_only;
-
 		memset(&snapshot, 0, sizeof(snapshot));
 		YbInitSnapshot(&snapshot);
 	}
@@ -1595,8 +1589,8 @@ ImportSnapshot(const char *idstr)
 		 */
 		if (strspn(idstr, "0123456789ABCDEF-") != strlen(idstr))
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
 
 		/* OK, read the file */
 		snprintf(path, MAXPGPATH, SNAPSHOT_EXPORT_DIR "/%s", idstr);
@@ -2153,7 +2147,7 @@ MaintainOldSnapshotTimeMapping(TimestampTz whenTaken, TransactionId xmin)
 		int			bucket = (oldSnapshotControl->head_offset
 							  + ((ts - oldSnapshotControl->head_timestamp)
 								 / USECS_PER_MINUTE))
-		% OLD_SNAPSHOT_TIME_MAP_ENTRIES;
+			% OLD_SNAPSHOT_TIME_MAP_ENTRIES;
 
 		if (TransactionIdPrecedes(oldSnapshotControl->xid_by_minute[bucket], xmin))
 			oldSnapshotControl->xid_by_minute[bucket] = xmin;
@@ -2220,7 +2214,7 @@ MaintainOldSnapshotTimeMapping(TimestampTz whenTaken, TransactionId xmin)
 					/* Extend map to unused entry. */
 					int			new_tail = (oldSnapshotControl->head_offset
 											+ oldSnapshotControl->count_used)
-					% OLD_SNAPSHOT_TIME_MAP_ENTRIES;
+						% OLD_SNAPSHOT_TIME_MAP_ENTRIES;
 
 					oldSnapshotControl->count_used++;
 					oldSnapshotControl->xid_by_minute[new_tail] = xmin;
@@ -2351,7 +2345,7 @@ SerializeSnapshot(Snapshot snapshot, char *start_address)
 	if (serialized_snapshot.subxcnt > 0)
 	{
 		Size		subxipoff = sizeof(SerializedSnapshotData) +
-		snapshot->xcnt * sizeof(TransactionId);
+			snapshot->xcnt * sizeof(TransactionId);
 
 		memcpy((TransactionId *) (start_address + subxipoff),
 			   snapshot->subxip, snapshot->subxcnt * sizeof(TransactionId));
@@ -2398,9 +2392,7 @@ RestoreSnapshot(char *start_address)
 	snapshot->whenTaken = serialized_snapshot.whenTaken;
 	snapshot->lsn = serialized_snapshot.lsn;
 	snapshot->snapXactCompletionCount = 0;
-	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
-	snapshot->yb_cdc_snapshot_read_time.has_value = false;
-	snapshot->yb_cdc_snapshot_read_time.value = 0;
+	snapshot->yb_read_point_handle = YbBuildCurrentReadPointHandle();
 
 	/* Copy XIDs, if present. */
 	if (serialized_snapshot.xcnt > 0)

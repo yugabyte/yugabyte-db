@@ -104,6 +104,7 @@ typedef enum {
   YB_YQL_DATA_TYPE_UINT64 = 103,
   YB_YQL_DATA_TYPE_GIN_NULL = 104,
   YB_YQL_DATA_TYPE_VECTOR = 105,
+  YB_YQL_DATA_TYPE_BSON = 106,
 } YbcPgDataType;
 
 // Datatypes that are internally designated to be unsupported.
@@ -207,6 +208,8 @@ static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
 
 // Postgres object identifier (OID) defined in Postgres' postgres_ext.h
 typedef unsigned int YbcPgOid;
+
+typedef uint64_t YbcReadPointHandle;
 
 const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid);
 
@@ -390,6 +393,7 @@ typedef struct {
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
+  const int32_t*  ysql_output_flush_size;
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
@@ -421,7 +425,7 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
   const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
-  const bool*     ysql_enable_inheritance;
+  const bool*     TEST_enable_object_locking_for_table_locks;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -522,6 +526,8 @@ typedef struct {
   int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
   YbcPgExecEventMetric
       storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+
+  uint64_t rows_removed_by_recheck;
 } YbcPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
@@ -617,7 +623,8 @@ typedef enum {
   // Force non-transactional semantics to avoid overhead of a distributed transaction. This is used
   // in the following cases as of today:
   //   (1) Index backfill
-  //   (2) COPY with ysql_non_txn_copy=true
+  //   (2) COPY with ysql_non_txn_copy=true or COPY to colocated table with
+  //       yb_fast_path_for_colocated_copy=true.
   //   (3) For normal DML writes if yb_disable_transactional_writes is set by the user
   YB_NON_TRANSACTIONAL,
   // Use a distributed transaction for full ACID semantics (common case).
@@ -823,6 +830,11 @@ typedef enum {
   YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME
 } YbcLsnType;
 
+typedef enum {
+  YB_REPLICATION_SLOT_ORDERING_MODE_ROW,
+  YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION
+} YbcOrderingMode;
+
 typedef struct {
   const char* tablet_id;
   const char* table_name;
@@ -941,7 +953,9 @@ typedef struct {
 
 typedef struct {
   uint32_t db_oid;
+  uint32_t relation_oid;
   uint32_t object_oid;
+  uint32_t object_sub_oid;
 } YbcObjectLockId;
 
 typedef enum {

@@ -1,0 +1,150 @@
+name: SQL Tests
+run-name: ${{ github.event.pull_request.title || '' }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+    paths-ignore:
+      - 'docs/**'
+      - '.devcontainer/**'
+      - '*.md'
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths-ignore:
+      - 'docs/**'
+      - '.devcontainer/**'
+      - '*.md'
+
+jobs:
+  ubuntu_build:
+    runs-on: ${{ matrix.os_name }}
+    name: ${{ matrix.os_name }} build for PG ${{ matrix.pg_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        pg_version:
+          - 15
+          - 16
+          - 17
+        os_name:
+          - ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install package dependencies
+        run: |
+          export PG_VERSION=${{ matrix.pg_version }}
+          export CITUS_VERSION=12
+
+          export LC_ALL=en_US.UTF-8
+          export LANGUAGE=en_US
+          export LC_COLLATE=en_US.UTF-8
+          export LC_CTYPE=en_US.UTF-8
+
+          # Import the repository signing key:
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+          wget \
+          curl \
+          sudo \
+          gnupg2 \
+          lsb-release \
+          tzdata \
+          build-essential \
+          pkg-config \
+          cmake \
+          git \
+          locales \
+          gcc \
+          gdb \
+          libipc-run-perl \
+          unzip \
+          apt-transport-https \
+          bison \
+          flex \
+          libreadline-dev \
+          zlib1g-dev \
+          libkrb5-dev \
+          software-properties-common \
+          libtool \
+          libicu-dev \
+          libssl-dev
+
+          export CLEAN_SETUP=1
+          export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
+          mkdir -p /tmp/install_setup
+
+          # Install dependencies
+          cp ./scripts/setup_versions.sh /tmp/install_setup
+
+          cp ./scripts/install_setup_libbson.sh /tmp/install_setup
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
+          cp ./scripts/utils.sh /tmp/install_setup
+          cp ./scripts/install_setup_postgres.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_setup_postgres.sh -d /usr/lib/postgresql/${PG_VERSION} $POSTGRES_INSTALL_ARG -v ${PG_VERSION}
+          cp ./scripts/install_setup_rum_oss.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_rum_oss.sh
+          cp ./scripts/install_setup_citus_core_oss.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_citus_core_oss.sh ${CITUS_VERSION}
+          cp ./scripts/install_citus_indent.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_citus_indent.sh
+          cp ./scripts/install_setup_system_rows.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_system_rows.sh
+          cp ./scripts/install_setup_pg_cron.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_pg_cron.sh
+          cp ./scripts/install_setup_intel_decimal_math_lib.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
+          cp ./scripts/install_setup_pcre2.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_setup_pcre2.sh
+          cp ./scripts/install_setup_pgvector.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_pgvector.sh
+
+          sudo add-apt-repository -y ppa:ubuntugis/ppa 
+          sudo apt-get update
+          sudo apt-get install -qy \
+          libproj-dev \
+          libxml2-dev \
+          libjson-c-dev \
+          libgeos++-dev \
+          libgeos-dev
+
+          cp ./scripts/install_setup_postgis.sh /tmp/install_setup/
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_postgis.sh
+          
+          export PATH=$PATH:/usr/lib/postgresql/$PG_VERSION/bin
+
+      - name: Configure, Build and Install DocumentDB
+        run: |
+          make
+          sudo make install
+
+      - name: Run Tests
+        run: |          
+          export LC_ALL=en_US.UTF-8
+          export LANGUAGE=en_US
+          export LC_COLLATE=en_US.UTF-8
+          export LC_CTYPE=en_US.UTF-8
+          make check
+
+      - name: Citus Indent
+        run: |
+          citus_indent --check || (echo ""; echo "citus_indent failed, refer to CONTRIBUTING.md on how to use citus_indent"; exit 1)
+
+      - name: Validate sanity of files
+        run: |
+          ./scripts/validate_extension_file_state.sh
+
+      - name: Upload Log Files
+        if: always() 
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs_${{ matrix.os_name }}_PG${{ matrix.pg_version }}
+          overwrite: true
+          path: "**/*.log"

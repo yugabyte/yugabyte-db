@@ -354,6 +354,7 @@ CaseTestExpr
 CaseWhen
 Cash
 CastInfo
+CatCInProgress
 CatCList
 CatCTup
 CatCache
@@ -701,6 +702,7 @@ ExprEvalOp
 ExprEvalOpLookup
 ExprEvalRowtypeCache
 ExprEvalStep
+ExprSetupInfo
 ExprState
 ExprStateEvalFunc
 ExtensibleNode
@@ -1316,6 +1318,7 @@ JsonbTypeCategory
 JsonbValue
 JumbleState
 JunkFilter
+KAXCompressReason
 KeyAction
 KeyActions
 KeyArray
@@ -2218,6 +2221,7 @@ ReadLocalXLogPageNoWaitPrivate
 ReadReplicationSlotCmd
 ReassignOwnedStmt
 RecheckForeignScan_function
+RecordCacheArrayEntry
 RecordCacheEntry
 RecordCompareData
 RecordIOData
@@ -2635,6 +2639,7 @@ SupportRequestSelectivity
 SupportRequestSimplify
 SupportRequestWFuncMonotonic
 Syn
+SyncingTablesState
 SyncOps
 SyncRepConfigData
 SyncRepStandbyData
@@ -2689,6 +2694,7 @@ TSQuerySign
 TSReadPointer
 TSTemplateInfo
 TSTernaryValue
+TSTokenTypeItem
 TSTokenTypeStorage
 TSVector
 TSVectorBuildState
@@ -3073,6 +3079,7 @@ _locale_t
 _resultmap
 _stringlist
 acquireLocksOnSubLinks_context
+addFkConstraintSides
 adjust_appendrel_attrs_context
 aff_regex_struct
 allocfunc
@@ -3365,6 +3372,8 @@ json_manifest_perwalrange_callback
 json_ofield_action
 json_scalar_action
 json_struct_action
+keepwal_entry
+keepwal_hash
 keyEntryData
 key_t
 lclContext
@@ -3411,6 +3420,7 @@ mbstr_verifier
 memoize_hash
 memoize_iterator
 metastring
+missing_cache_key
 mix_data_t
 mixedStruct
 mode_t
@@ -3485,6 +3495,9 @@ pg_md5_ctx
 pg_on_exit_callback
 pg_prng_state
 pg_re_flags
+pg_regex_t
+pg_regmatch_t
+pg_regoff_t
 pg_saslprep_rc
 pg_sha1_ctx
 pg_sha224_ctx
@@ -3535,6 +3548,7 @@ plperl_proc_key
 plperl_proc_ptr
 plperl_query_desc
 plperl_query_entry
+plpgsql_CastExprHashEntry
 plpgsql_CastHashEntry
 plpgsql_CastHashKey
 plpgsql_HashEnt
@@ -3579,6 +3593,7 @@ pull_varattnos_context
 pull_varnos_context
 pull_vars_context
 pullup_replace_vars_context
+pushdown_safe_type
 pushdown_safety_info
 qc_hash_func
 qsort_arg_comparator
@@ -3699,6 +3714,7 @@ string
 substitute_actual_parameters_context
 substitute_actual_srf_parameters_context
 substitute_phv_relids_context
+subxids_array_status
 symbol
 tablespaceinfo
 teSection

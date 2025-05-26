@@ -46,6 +46,7 @@ import {
   isRbacEnabled
 } from './redesign/features/rbac/common/RbacUtils';
 import { DrPanel } from './pages/DrPanel';
+import { CreateUniverse } from './redesign/features-v2/universe-form-wizard';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -245,6 +246,7 @@ export default (store) => {
       <Route path="/login" component={Login} />
       <Route path="/jwt_token" component={OIDCJWTToken} />
       <Route path="/register" component={Register} />
+      {/* <Route path="/create-universe" component={CreateUniverse} onEnter={authenticatedSession} onChange={checkIfAuthenticated} /> */}
       <Route
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}

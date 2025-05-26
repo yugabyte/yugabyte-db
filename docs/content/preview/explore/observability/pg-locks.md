@@ -94,7 +94,7 @@ SET session yb_locks_max_transactions = 10;
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 The following examples show how you can use the pg_locks view in YugabyteDB:
 

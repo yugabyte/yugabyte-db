@@ -2627,12 +2627,9 @@ TEST_P(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
        "create"}));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(0, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(1, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(2, {}));
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
@@ -2643,12 +2640,9 @@ TEST_P(
   ASSERT_NO_FATALS(
       InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(0, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(1, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(2, {}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -3132,10 +3126,10 @@ TEST_F_EX(
 }
 
 TEST_F_EX(
-    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingPgTypeAndClassOids),
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingPgTypeAndClassAndRelfilenodeOids),
     YBBackupTestOneTablet) {
   // Attempt to create one instance of each thing that consumes a pg_type or pg_class OID.  Also
-  // create some fillers that will we will drop at the end to make sure we don't just use the same
+  // create some fillers that we will drop at the end to make sure we don't just use the same
   // default OIDs by accident.
 
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE filler_table (a INT, b INT)"));
@@ -3143,6 +3137,15 @@ TEST_F_EX(
 
   // Creating basic tables.
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE simple_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE truncate_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_to_be_rewritten (a INT, b INT)"));
+  // The following alters incure table rewrite, which means a new relfilenode is assigned to the
+  // relation i.e., relfilenode != pg_class.oid in such a relation. Test that relfilenode is
+  // preserved at restore side.
+  ASSERT_NO_FATALS(RunPsqlCommand("TRUNCATE TABLE truncate_table", "TRUNCATE TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+    "ALTER TABLE table_to_be_rewritten ADD PRIMARY KEY (a)",
+    "ALTER TABLE"));
   // Backup ignores temporary tables so no need to test.
 
   // Creating tables with indexes and constraints.
@@ -3220,6 +3223,17 @@ TEST_F_EX(
       "CREATE DOMAIN"));
   // This extension creates a new base type, vector.
   ASSERT_NO_FATALS(RunPsqlCommand("CREATE EXTENSION vector", "CREATE EXTENSION"));
+  // Create partitioned table and index, then perform an alter which rewrites the parent, children
+  // DocDB tables for both base and index relation.
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE parent_table (id INT, created_date DATE) PARTITION BY RANGE (created_date)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE parent_table_2023 PARTITION OF parent_table"
+      " FOR VALUES FROM ('2023-01-01') TO ('2023-12-31')"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE parent_table_2024 PARTITION OF parent_table"
+    " FOR VALUES FROM ('2024-01-01') TO ('2024-12-31')"));
+  ASSERT_NO_FATALS(CreateIndex("CREATE INDEX parent_table_idx ON parent_table (created_date ASC)"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE parent_table ADD PRIMARY KEY (id, created_date)",
+    "ALTER TABLE"));
 
   // Done creating stuff, time to drop the filler objects.
   ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE filler_table", "DROP TABLE"));
@@ -3246,7 +3260,7 @@ TEST_F_EX(
 
   // Assert the pg class OIDs are the same in both databases.
   {
-    auto query = "SELECT oid, relname FROM pg_class ORDER BY oid ASC";
+    auto query = "SELECT oid, relfilenode, relname FROM pg_class ORDER BY oid ASC";
     Result<std::string> query_result{""};
     SetDbName("yugabyte");
     ASSERT_NO_FATALS(query_result = RunPsqlCommand(query));
@@ -3385,6 +3399,29 @@ TEST_F(
          6 | 6 | 4
         (6 rows)
       )#"));
+}
+
+TEST_F(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRenamedUniqueConstraint)) {
+    // Create a table with a unique constraint and rename the constraint.
+    ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_1 (a INT, b INT)"));
+    ASSERT_NO_FATALS(CreateIndex("CREATE UNIQUE INDEX index_1 ON table_1 (a)"));
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "ALTER TABLE table_1 ADD CONSTRAINT unique_1 UNIQUE USING INDEX index_1", "ALTER TABLE"));
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "ALTER TABLE table_1 RENAME CONSTRAINT unique_1 TO unique_2", "ALTER TABLE"));
+    ASSERT_NO_FATALS(RunPsqlCommand("INSERT INTO table_1 (a, b) VALUES (1, 1)", "INSERT 0 1"));
+    // Verify that backup/restore works.
+    const string backup_dir = GetTempDir("backup");
+    ASSERT_OK(RunBackupCommand(
+        {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+    ASSERT_OK(RunBackupCommand(
+        {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+    // Verify that the unique constraint works.
+    SetDbName("yugabyte_new");
+    ASSERT_NO_FATALS(RunPsqlCommand("INSERT INTO table_1 (a, b) VALUES (1, 2)",
+        "duplicate key value violates unique constraint", TuplesOnly::kFalse,
+        CheckErrorString::kTrue));
 }
 
 class YBBackupTestAutoAnalyze : public YBBackupTest {

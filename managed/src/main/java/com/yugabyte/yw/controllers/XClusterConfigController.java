@@ -597,9 +597,6 @@ public class XClusterConfigController extends AuthenticatedController {
                 bootstrapParams.tables.addAll(indexTableIds);
               }
             });
-
-        XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-            softwareUpgradeHelper, sourceUniverse, targetUniverse);
       }
 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
@@ -608,6 +605,13 @@ public class XClusterConfigController extends AuthenticatedController {
           XClusterConfigTaskBase.filterTableInfoListByTableIds(
               sourceTableInfoList, new HashSet<>(CollectionUtils.union(tableIds, tableIdsToAdd)));
       CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
+
+      if (tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)
+          && !tableIdsToAdd.isEmpty()
+          && Objects.nonNull(bootstrapParams)) {
+        XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+            softwareUpgradeHelper, sourceUniverse, targetUniverse);
+      }
 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
           XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
@@ -900,9 +904,6 @@ public class XClusterConfigController extends AuthenticatedController {
         mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
     tableIds.addAll(indexTableIdSet);
 
-    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-        softwareUpgradeHelper, sourceUniverse, targetUniverse);
-
     if (!dryRun) {
       xClusterConfig.addTablesIfNotExist(
           indexTableIdSet, null /* tableIdsNeedBootstrap */, true /* areIndexTables */);
@@ -927,6 +928,13 @@ public class XClusterConfigController extends AuthenticatedController {
     Map<String, String> sourceTableIdTargetTableIdMap =
         XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
             requestedTableInfoList, targetTableInfoList);
+
+    CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
+
+    if (tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)) {
+      XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+          softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    }
 
     xClusterBootstrappingPreChecks(
         requestedTableInfoList,
@@ -1851,8 +1859,10 @@ public class XClusterConfigController extends AuthenticatedController {
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
 
-    XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
-        softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    if (tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)) {
+      XClusterUtil.ensureYsqlMajorUpgradeIsComplete(
+          softwareUpgradeHelper, sourceUniverse, targetUniverse);
+    }
 
     XClusterConfigTaskBase.verifyTablesNotInReplication(
         ybClientService,

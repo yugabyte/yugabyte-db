@@ -26,7 +26,7 @@ struct IndexPath;
 struct IndexInfo;
 
 /*
- * BACKFILL input and output nodes.
+ * YB: BACKFILL input and output nodes.
  * As above, avoiding dependencies on execnodes.h and parsenodes.h.
  */
 struct YbBackfillInfo;
@@ -82,6 +82,10 @@ typedef enum IndexAMProperty
  * opfamily.  This allows ALTER OPERATOR FAMILY DROP, and causes that to
  * happen automatically if the operator or support func is dropped.  This
  * is the right behavior for inessential ("loose") objects.
+ *
+ * We also make dependencies on lefttype/righttype, of the same strength as
+ * the dependency on the operator or support func, unless these dependencies
+ * are redundant with the dependency on the operator or support func.
  */
 typedef struct OpFamilyMember
 {
@@ -304,7 +308,7 @@ typedef struct IndexAmRoutine
 	bool		amusemaintenanceworkmem;
 	/* OR of parallel vacuum flags.  See vacuum.h for flags. */
 	uint8		amparallelvacuumoptions;
-	/* does AM support in-place update of non-key columns? */
+	/* YB: does AM support in-place update of non-key columns? */
 	bool		ybamcanupdatetupleinplace;
 	/* type of data stored in index, or InvalidOid if variable */
 	Oid			amkeytype;
@@ -351,7 +355,8 @@ typedef struct IndexAmRoutine
 	yb_amdelete_function yb_amdelete;
 	yb_amupdate_function yb_amupdate;
 	/*
-	 * Please note the non-obvious distinction between `ambuild` and `yb_ambackfill`.
+	 * YB: Please note the non-obvious distinction between `ambuild` and
+	 * `yb_ambackfill`.
 	 *
 	 * - `ambuild` is the function invoked during the creation of an index in a
 	 *   non-concurrent manner. This means the index is built while holding exclusive

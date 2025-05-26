@@ -260,10 +260,10 @@ func (server *RPCServer) SubmitTask(
 	ctx context.Context,
 	req *pb.SubmitTaskRequest,
 ) (*pb.SubmitTaskResponse, error) {
-	res := &pb.SubmitTaskResponse{}
 	taskID := req.GetTaskId()
 	username := req.GetUser()
 	cmdInput := req.GetCommandInput()
+	res := &pb.SubmitTaskResponse{TaskId: taskID}
 	if cmdInput != nil {
 		// Handle generic shell commands.
 		cmd := cmdInput.GetCommand()
@@ -281,15 +281,125 @@ func (server *RPCServer) SubmitTask(
 		err := util.ConvertType(preflightCheckInput, &preflightCheckParam)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in preflight input conversion - %s", err.Error())
-			return res, status.Errorf(codes.InvalidArgument, err.Error())
+			return res, status.Error(codes.InvalidArgument, err.Error())
 		}
 		preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
 		err = task.GetTaskManager().
 			Submit(ctx, taskID, preflightCheckHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running preflight check - %s", err.Error())
-			return res, status.Errorf(codes.Internal, err.Error())
+			return res, status.Error(codes.Internal, err.Error())
 		}
+		return res, nil
+	}
+	installSoftwareInput := req.GetInstallSoftwareInput()
+	if installSoftwareInput != nil {
+		installSoftwareHandler := task.NewInstallSoftwareHandler(installSoftwareInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, installSoftwareHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running install software - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	serverControlInput := req.GetServerControlInput()
+	if serverControlInput != nil {
+		// Handle server control RPC.
+		serverControlHandler := task.NewServerControlHandler(serverControlInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, serverControlHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running server control - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	configureServiceInput := req.GetConfigureServiceInput()
+	if configureServiceInput != nil {
+		switch configureServiceInput.GetService() {
+		case pb.Service_EARLYOOM:
+			configureHandler := task.NewConfigureServiceHandler(
+				configureServiceInput.GetConfig(),
+				configureServiceInput.GetEnabled(),
+			)
+			err2 := task.GetTaskManager().Submit(ctx, taskID, configureHandler)
+			if err2 != nil {
+				util.FileLogger().
+					Errorf(ctx, "Error in running configure handler - %s", err2.Error())
+				return res, status.Errorf(codes.Internal, err2.Error())
+			}
+			res.TaskId = taskID
+			return res, nil
+		default:
+			return res, status.Errorf(
+				codes.Unimplemented,
+				fmt.Sprintf("Unsupported type: %s", configureServiceInput.GetService()),
+			)
+		}
+	}
+	serverGFlagsInput := req.GetServerGFlagsInput()
+	if serverGFlagsInput != nil {
+		// Handle server gflags RPC.
+		serverGFlagsHandler := task.NewServerGflagsHandler(serverGFlagsInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, serverGFlagsHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running server gflags - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	installYbcInput := req.GetInstallYbcInput()
+	if installYbcInput != nil {
+		installYbcHandler := task.NewInstallYbcHandler(installYbcInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, installYbcHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running install ybc - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	configureServerInput := req.GetConfigureServerInput()
+	if configureServerInput != nil {
+		configureServerHandler := task.NewConfigureServerHandler(configureServerInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, configureServerHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running configure server - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	installOtelCollectorInput := req.GetInstallOtelCollectorInput()
+	if installOtelCollectorInput != nil {
+		installOtelCollectorHandler := task.NewInstallOtelCollectorHandler(
+			installOtelCollectorInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, installOtelCollectorHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running install otel collector - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	setupCGroupInput := req.GetSetupCGroupInput()
+	if setupCGroupInput != nil {
+		SetupCgroupHandler := task.NewSetupCgroupHandler(
+			setupCGroupInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, SetupCgroupHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running setup cGroup - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
 		return res, nil
 	}
 	return res, status.Error(codes.Unimplemented, "Unknown task")

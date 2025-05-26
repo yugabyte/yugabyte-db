@@ -454,8 +454,11 @@ static void build_pertrans_for_aggref(AggStatePerTrans pertrans,
 									  Oid aggdeserialfn, Datum initValue,
 									  bool initValueIsNull, Oid *inputTypes,
 									  int numArguments);
+
+/* YB declarations */
 static void yb_agg_pushdown_supported(AggState *aggstate);
 static void yb_agg_pushdown(AggState *aggstate);
+
 
 /*
  * Select the current grouping set; affects current_set and
@@ -1170,7 +1173,7 @@ finalize_partialaggregate(AggState *aggstate,
 		}
 		else
 		{
-#ifdef NEIL
+#ifdef YB_TODO
 /* NEIL: Need to lookinto fcinfo->args[0]
  *    fcinfo->args[0].value vs fcinfo->arg[0]
  *    fcinfo->args[0].isnull vs fcinfo->argnull[0]
@@ -1184,6 +1187,7 @@ finalize_partialaggregate(AggState *aggstate,
 										   pertrans->transtypeLen);
 			fcinfo->args[0].isnull = pergroupstate->transValueIsNull;
 			fcinfo->isnull = false;
+
 			*resultVal = FunctionCallInvoke(fcinfo);
 			*resultIsNull = fcinfo->isnull;
 		}
@@ -2207,7 +2211,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		 * We can pushdown recheck conditions, so the only time we can't
 		 * pushdown the aggregate is if we have local recheck conditions
 		 */
-		if (btss->recheck_required && btss->recheck_local_quals)
+		if (btss->btss_might_recheck && btss->recheck_local_quals)
 			return;
 
 		/*
@@ -2442,7 +2446,7 @@ ExecAgg(PlanState *pstate)
 	if (!node->agg_done)
 	{
 		/*
-		 * Use default prefetch limit when AGGREGATE is present.
+		 * YB: Use default prefetch limit when AGGREGATE is present.
 		 * Aggregate functions combine multiple rows into one. The final LIMIT can be different from
 		 * the number of rows to be read. As a result, we have to use default prefetch limit.
 		 *
@@ -2459,7 +2463,8 @@ ExecAgg(PlanState *pstate)
 			case AGG_HASHED:
 				if (!node->table_filled)
 					agg_fill_hash_table(node);
-				switch_fallthrough();
+				/* FALLTHROUGH */
+				yb_switch_fallthrough();
 			case AGG_MIXED:
 				result = agg_retrieve_hash_table(node);
 				break;
@@ -3421,8 +3426,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, sizeof(uint32), nread)));
 	if (hashp != NULL)
 		*hashp = hash;
 
@@ -3430,8 +3435,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, sizeof(uint32), nread)));
 
 	tuple = (MinimalTuple) palloc(t_len);
 	tuple->t_len = t_len;
@@ -3442,8 +3447,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != t_len - sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, t_len - sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, t_len - sizeof(uint32), nread)));
 
 	return tuple;
 }

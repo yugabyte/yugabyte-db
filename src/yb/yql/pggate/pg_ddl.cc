@@ -28,12 +28,15 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
                  "Adjusts the timeout for a DDL operation from the YBClient default, if non-zero.");
 
 DECLARE_int32(max_num_tablets_for_table);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
+DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 
 namespace yb::pggate {
 
@@ -53,8 +56,13 @@ CoarseTimePoint DdlDeadline() {
 }
 
 // Make a special case for create database because it is a well-known slow operation in YB.
-CoarseTimePoint CreateDatabaseDeadline() {
+CoarseTimePoint CreateDatabaseDeadline(bool is_clone = false) {
   int32 timeout = FLAGS_TEST_user_ddl_operation_timeout_sec;
+  // Creating the database through clone workflow has a different deadline compared to non-clone
+  // worflow to account for extra time to clone the schema objects.
+  if (is_clone) {
+    timeout = FLAGS_ysql_clone_pg_schema_rpc_timeout_ms / 1000;
+  }
   if (timeout == 0) {
     timeout = FLAGS_yb_client_admin_operation_timeout_sec *
               RegularBuildVsDebugVsSanitizers(1, 2, 2);
@@ -94,7 +102,8 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
 }
 
 Status PgCreateDatabase::Exec() {
-  return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline());
+  bool is_clone = !req_.source_database_name().empty();
+  return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline(is_clone));
 }
 
 PgDropDatabase::PgDropDatabase(
@@ -221,7 +230,7 @@ Status PgCreateTableBase::AddColumnImpl(
   column.set_attr_ybtype(attr_ybtype);
   column.set_is_hash(is_hash);
   column.set_is_range(is_range);
-  column.set_sorting_type(to_underlying(sorting_type));
+  column.set_sorting_type(std::to_underlying(sorting_type));
   column.set_attr_pgoid(pg_type_oid);
   return Status::OK();
 }
@@ -350,12 +359,14 @@ PgCreateIndex::PgCreateIndex(
 //--------------------------------------------------------------------------------------------------
 
 PgDropTable::PgDropTable(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist)
-    : BaseType(pg_session), table_id_(table_id), if_exist_(if_exist) {
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool if_exist,
+    bool use_regular_transaction_block)
+    : BaseType(pg_session), table_id_(table_id), if_exist_(if_exist),
+      use_regular_transaction_block_(use_regular_transaction_block) {
 }
 
 Status PgDropTable::Exec() {
-  Status s = pg_session_->DropTable(table_id_);
+  Status s = pg_session_->DropTable(table_id_, use_regular_transaction_block_);
   pg_session_->InvalidateTableCache(table_id_, InvalidateOnPgClient::kFalse);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     return Status::OK();
@@ -383,14 +394,15 @@ Status PgTruncateTable::Exec() {
 
 PgDropIndex::PgDropIndex(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool if_exist,
-    bool ddl_rollback_enabled)
+    bool ddl_rollback_enabled, bool use_regular_transaction_block)
     : BaseType(pg_session),
-      index_id_(index_id), if_exist_(if_exist), ddl_rollback_enabled_(ddl_rollback_enabled) {
+      index_id_(index_id), if_exist_(if_exist), ddl_rollback_enabled_(ddl_rollback_enabled),
+      use_regular_transaction_block_(use_regular_transaction_block) {
 }
 
 Status PgDropIndex::Exec() {
   client::YBTableName indexed_table_name;
-  auto s = pg_session_->DropIndex(index_id_, &indexed_table_name);
+  auto s = pg_session_->DropIndex(index_id_, use_regular_transaction_block_, &indexed_table_name);
   if (s.ok() || (s.IsNotFound() && if_exist_)) {
     RSTATUS_DCHECK(!indexed_table_name.empty(), Uninitialized, "indexed_table_name uninitialized");
     PgObjectId indexed_table_id(indexed_table_name.table_id());
@@ -523,7 +535,8 @@ Status PgDropDBSequences::Exec() {
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(
     const PgSession::ScopedRefPtr& pg_session, const char* slot_name, const char* plugin_name,
-    PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type)
+    PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
+    YbcOrderingMode yb_ordering_mode)
     : BaseType(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
@@ -556,6 +569,22 @@ PgCreateReplicationSlot::PgCreateReplicationSlot(
         break;
       default:
         req_.set_lsn_type(tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE);
+    }
+  }
+
+  if (yb_allow_replication_slot_ordering_modes) {
+    switch (yb_ordering_mode) {
+      case YB_REPLICATION_SLOT_ORDERING_MODE_ROW:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_ROW);
+        break;
+      case YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_TRANSACTION);
+        break;
+      default:
+        req_.set_ordering_mode(
+            tserver::PGReplicationSlotOrderingMode::ReplicationSlotOrderingModePg_TRANSACTION);
     }
   }
 }

@@ -387,7 +387,7 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   }
   std::string type_name() const override { return "Backends Catalog Version of TS"; }
   std::string description() const override;
-  MonoTime ComputeDeadline() override;
+  MonoTime ComputeDeadline() const override;
 
   bool SendRequest(int attempt) override;
   void HandleResponse(int attempt) override;
@@ -395,6 +395,9 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   TabletId tablet_id() const override { return ""; }
 
   std::string LogPrefix() const;
+
+ protected:
+  bool RetryTaskAfterRPCFailure(const Status& status) override;
 
  private:
   // Use a weak ptr because this doesn't own job and job can be destroyed at any moment.

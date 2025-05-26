@@ -139,7 +139,7 @@ Status CDCSDKTestBase::SetUpWithParams(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = Format("$0:$1", pg_addr, pg_port);
   }
 
-  RETURN_NOT_OK(test_cluster()->StartSync());
+  RETURN_NOT_OK(test_cluster()->Start());
   RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
   RETURN_NOT_OK(WaitForInitDb(test_cluster()));
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
@@ -148,6 +148,8 @@ Status CDCSDKTestBase::SetUpWithParams(
   } else {
     RETURN_NOT_OK(test_cluster_.InitPostgres());
   }
+  auto pg_ts = test_cluster_.mini_cluster_->mini_tablet_server(test_cluster_.pg_ts_idx_);
+  RETURN_NOT_OK(pg_ts->StartPgIfConfigured());
   RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
   cdc_proxy_ = GetCdcProxy();
@@ -262,14 +264,20 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
 
     RETURN_NOT_OK(conn.ExecuteFormat(
         statement, schema_name, table_name, table_oid_string, colocated, num_tablets));
+  } else if (colocated) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0.$1($2 int $3, $4 $5) WITH ($6colocated = $7) ", schema_name,
+        table_name + enum_suffix, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "",
+        kValueColumnName,
+        enum_value ? (schema_name + "." + "coupon_discount_type" + enum_suffix) : "int",
+        table_oid_string, colocated));
   } else {
     RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE TABLE $0.$1($2 int $3, $4 $5) WITH ($6colocated = $7) "
-        "SPLIT INTO $8 TABLETS",
-        schema_name, table_name + enum_suffix, kKeyColumnName,
-        (add_primary_key) ? "PRIMARY KEY" : "", kValueColumnName,
+        "CREATE TABLE $0.$1($2 int $3, $4 $5) SPLIT INTO $6 TABLETS", schema_name,
+        table_name + enum_suffix, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "",
+        kValueColumnName,
         enum_value ? (schema_name + "." + "coupon_discount_type" + enum_suffix) : "int",
-        table_oid_string, colocated, num_tablets));
+        num_tablets));
   }
   return GetTable(cluster, namespace_name, table_name + enum_suffix);
 }

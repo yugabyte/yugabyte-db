@@ -22,9 +22,6 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/casts.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -83,7 +80,7 @@ namespace yb::ash {
 #define YB_ASH_COMPONENT_BITS      4U
 
 #define YB_ASH_MAKE_EVENT(class) \
-    (static_cast<uint32_t>(yb::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
+    (static_cast<uint32_t>(std::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
      YB_ASH_CLASS_POSITION)
 
 // YB ASH Wait Components (4 bits)
@@ -158,6 +155,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
     (kConflictResolution_WaitOnConflictingTxns)
+    (kRemoteBootstrap_FetchData)
+    (kRemoteBootstrap_StartRemoteSession)
+    (kRemoteBootstrap_ReadDataFromFile)
+    (kRemoteBootstrap_RateLimiter)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -189,6 +190,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     // Wait states related to YBClient
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
+    (kYBClient_WaitingOnMaster)
 );
 
 // We also want to track background operations such as, log-append
@@ -203,12 +205,13 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForUncomputedQueryId, 5))
   ((kQueryIdForLogBackgroundSync, 6))
   ((kQueryIdForYSQLBackgroundWorker, 7))
+  ((kQueryIdForRemoteBootstrap, 8))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
   (kCpu)
   (kDiskIO)
-  (kNetwork)
+  (kRPCWait)
   (kWaitOnCondition)
   (kLock)
 );
@@ -253,6 +256,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kIsObjectPartOfXRepl)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
+  (kSetTserverCatalogMessageList)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)
@@ -267,9 +271,10 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kReleaseAdvisoryLock)
   (kAcquireObjectLock)
   (kExportTxnSnapshot)
-  (kSetTxnSnapshot)
+  (kImportTxnSnapshot)
   (kClearExportedTxnSnapshots)
   (kPollVectorIndexReady)
+  (kGetXClusterRole)
 );
 
 struct WaitStatesDescription {
@@ -462,11 +467,18 @@ class WaitStateInfo {
   }
 
   template <class PB>
+  static void CurrentMetadataToPB(PB* pb) {
+    if (const auto& wait_state = CurrentWaitState()) {
+      wait_state->MetadataToPB(pb);
+    }
+  }
+
+  template <class PB>
   void ToPB(PB* pb, bool export_wait_state_names) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = this->code();
-    pb->set_wait_state_code(yb::to_underlying(code));
+    pb->set_wait_state_code(std::to_underlying(code));
     if (export_wait_state_names) {
       pb->set_wait_state_code_as_string(yb::ToString(code));
     }
@@ -486,7 +498,7 @@ class WaitStateInfo {
   }
 
   virtual void VTrace(int level, GStringPiece data) {
-    VTraceTo(nullptr, level, data);
+    VTraceTo(/*trace=*/nullptr, level, data);
   }
 
   virtual std::string DumpTraceToString() {

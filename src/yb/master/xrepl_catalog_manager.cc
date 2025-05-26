@@ -22,6 +22,7 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema_pbutil.h"
@@ -139,9 +140,13 @@ DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
                  "When enabled, table would not be removed from the qualified table list as part "
                  "of the table removal process from CDC stream");
 
+DEFINE_RUNTIME_bool(enable_truncate_cdcsdk_table, false,
+    "When set, enables truncating tables currently part of a CDCSDK Stream");
+
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
+DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_uint32(cdc_wal_retention_time_secs);
@@ -233,7 +238,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
       table = catalog_manager_->tables_->FindTableOrNull(
           xcluster::StripSequencesDataAliasIfPresent(metadata.table_id(0)));
       if (!table) {
-        LOG(ERROR) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
+        LOG(DFATAL) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
         // TODO (#2059): Potentially signals a race condition that table got deleted while stream
         //  was being created.
         // Log error and continue without loading the stream.
@@ -717,7 +722,7 @@ Status CatalogManager::BackfillMetadataForXRepl(
       // is not present without backfilling it to master's disk or tservers.
       // Skip this check for colocated parent tables as they do not have pgschema names.
       if (!IsColocationParentTableId(table_id) &&
-          (backfill_required || table_lock->schema().pgschema_name().empty())) {
+          (backfill_required || table_lock->schema().deprecated_pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
         string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table_id, table_lock.data()));
         VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;
@@ -970,7 +975,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
 
   stream_id = GenerateNewXreplStreamId();
-  auto se_recover_stream_id = ScopeExit([&stream_id, this] { RecoverXreplStreamId(stream_id); });
+  auto se_recover_stream_id = CancelableScopeExit(
+      [&stream_id, this] { RecoverXreplStreamId(stream_id); });
 
   stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
   stream->mutable_metadata()->StartMutation();
@@ -1032,6 +1038,18 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
     metadata->set_cdcsdk_ysql_replication_slot_lsn_type(
         req.cdcsdk_stream_create_options().lsn_type());
+  }
+
+  if (FLAGS_ysql_yb_allow_replication_slot_ordering_modes &&
+      req.has_cdcsdk_ysql_replication_slot_name() && req.has_cdcsdk_stream_create_options()) {
+    RSTATUS_DCHECK(
+        req.cdcsdk_stream_create_options().has_ordering_mode() &&
+            req.cdcsdk_stream_create_options().ordering_mode() !=
+                ReplicationSlotOrderingMode_UNSPECIFIED,
+        InvalidArgument, "Ordering mode not present in CDC stream creation request");
+
+    metadata->set_cdcsdk_ysql_replication_slot_ordering_mode(
+        req.cdcsdk_stream_create_options().ordering_mode());
   }
 
   RETURN_NOT_OK(
@@ -1984,6 +2002,14 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
         "the flag ysql_yb_allow_replication_slot_lsn_types is disabled");
   }
 
+  if (!FLAGS_ysql_yb_allow_replication_slot_ordering_modes &&
+      req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_ordering_mode()) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Creation of CDCSDK stream with a replication slot having ordering mode is disallowed "
+        "because the flag ysql_yb_allow_replication_slot_ordering_modes is disabled");
+  }
+
   // TODO: Validate that the replication slot output plugin name is provided if
   // ysql_yb_enable_replication_slot_consumption is true. This can only be done after we have
   // fully deprecated the yb-admin commands for CDC stream creation.
@@ -2704,7 +2730,9 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
       // itself is not found, we can safely delete the cdc_state entry.
       auto tablet_info_result = GetTabletInfo(entry.tablet_id);
       if (!tablet_info_result.ok()) {
-        keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        LOG_WITH_FUNC(WARNING) << "Did not find tablet info for tablet_id: " << entry.tablet_id
+                               << " , will not delete its cdc_state entry for stream id:"
+                               << entry.stream_id << "in this iteration";
         continue;
       }
 
@@ -2971,6 +2999,8 @@ Status CatalogManager::GetCDCStream(
     auto cdc_stream_info_options = stream_info->mutable_cdc_stream_info_options();
 
     auto replication_slot_lsn_type = ReplicationSlotLsnType::ReplicationSlotLsnType_SEQUENCE;
+    auto replication_slot_ordering_mode =
+        ReplicationSlotOrderingMode::ReplicationSlotOrderingMode_TRANSACTION;
 
     if (FLAGS_ysql_yb_allow_replication_slot_lsn_types &&
         stream_lock->pb.has_cdcsdk_ysql_replication_slot_lsn_type()) {
@@ -2982,7 +3012,19 @@ Status CatalogManager::GetCDCStream(
               << ". Keeping default value of 'SEQUENCE'.";
     }
 
+    if (FLAGS_ysql_yb_allow_replication_slot_ordering_modes &&
+        stream_lock->pb.has_cdcsdk_ysql_replication_slot_ordering_mode()) {
+      replication_slot_ordering_mode = stream_lock->pb.cdcsdk_ysql_replication_slot_ordering_mode();
+    } else {
+      VLOG(2) << "No cdcsdk_ysql_replication_slot_ordering_mode found for stream: " << stream->id()
+              << " and slot " << stream_lock->pb.cdcsdk_ysql_replication_slot_name()
+              << " with flag value: " << FLAGS_ysql_yb_allow_replication_slot_ordering_modes
+              << ". Keeping default value of 'TRANSACTION'.";
+    }
+
     cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(replication_slot_lsn_type);
+    cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_ordering_mode(
+        replication_slot_ordering_mode);
   }
 
   auto replica_identity_map = stream_lock->pb.replica_identity_map();
@@ -3126,6 +3168,14 @@ Status CatalogManager::ListCDCStreams(
         auto cdc_stream_info_options = stream->mutable_cdc_stream_info_options();
         cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_lsn_type(
             ltm->pb.cdcsdk_ysql_replication_slot_lsn_type());
+      }
+    }
+
+    if (FLAGS_ysql_yb_allow_replication_slot_ordering_modes) {
+      if (ltm->pb.has_cdcsdk_ysql_replication_slot_ordering_mode()) {
+        auto cdc_stream_info_options = stream->mutable_cdc_stream_info_options();
+        cdc_stream_info_options->set_cdcsdk_ysql_replication_slot_ordering_mode(
+            ltm->pb.cdcsdk_ysql_replication_slot_ordering_mode());
       }
     }
 
@@ -4704,7 +4754,7 @@ Status CatalogManager::ClearFailedReplicationBootstrap() {
     if (bootstrap_info == nullptr) {
       auto error_msg =
           Format("UniverseReplicationBootstrap not found: $0", replication_id.ToString());
-      LOG(ERROR) << error_msg;
+      LOG(WARNING) << error_msg;
       return STATUS(NotFound, error_msg);
     }
   }
@@ -4942,7 +4992,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
 
   auto s = cdc_state_table_->DeleteEntries(entries_to_delete);
   if (!s.ok()) {
-    LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
+    LOG(WARNING) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
   }
 
@@ -5296,6 +5346,19 @@ void CatalogManager::RemoveUniverseReplicationFromMap(
     LOG(DFATAL) << "Replication group " << replication_group_id
                  << " was already deleted from in-mem map";
   }
+}
+
+Status CatalogManager::CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req) {
+  // Fail rewrites on tables, and nonconcurrent index backfills, that are part of CDC, except for
+  // TRUNCATEs when FLAGS_enable_truncate_cdcsdk_table is enabled.
+  SharedLock lock(mutex_);
+  const auto table_id = req.old_rewrite_table_id();
+  if (table_id.empty() || !IsTablePartOfCDCSDK(table_id) ||
+      (req.is_truncate() && FLAGS_enable_truncate_cdcsdk_table)) {
+    return Status::OK();
+  }
+
+  return STATUS(NotSupported, "Cannot rewrite a table that is a part of CDC.");
 }
 
 }  // namespace master

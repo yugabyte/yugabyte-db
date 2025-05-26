@@ -22,7 +22,7 @@ import {
 import {
   DEFAULT_RUNTIME_GLOBAL_SCOPE,
   fetchRunTimeConfigs,
-  fetchRunTimeConfigsResponse,
+  fetchRunTimeConfigsResponse
 } from '../../../../actions/customers';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
@@ -80,6 +80,9 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchRunTimeConfigsResponse(response.payload))
       );
     },
+    showTaskDrawer: (taskUUID) => {
+      dispatch(showTaskInDrawer(taskUUID));
+    }
   };
 };
 

@@ -362,8 +362,15 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
         }
       }
     } else {
-      LOG(WARNING) << "Could not get YSQL invalidation messages for heartbeat response: "
-                   << ResultToStatus(messages);
+      const auto& s = messages.status();
+      auto msg = Format("Could not get YSQL invalidation messages for heartbeat response: $0", s);
+      if (s.IsNotFound()) {
+        // During upgrade, the table pg_yb_invalidation_messages is created in the finalization
+        // phase. We do not want to flood the log before that.
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << msg;
+      } else {
+        LOG(WARNING) << msg;
+      }
     }
   }
 
@@ -578,7 +585,7 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
       !catalog_manager_->IsDeletedTabletLoadedFromSysCatalog(tablet_id)) {
     // See the comment in deleted_tablets_loaded_from_sys_catalog_ declaration for an
     // explanation of this logic.
-    LOG(ERROR) << Format(
+    LOG(WARNING) << Format(
         "Skipping deletion of orphaned tablet $0, since master has never registered this "
         "tablet.", tablet_id);
     return;
@@ -1142,12 +1149,12 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
     if (report.has_schema_version() &&
         report.schema_version() != table_lock->pb.version()) {
       if (report.schema_version() > table_lock->pb.version()) {
-        LOG(ERROR) << "TS " << ts_desc->permanent_uuid()
-                  << " has reported a schema version greater than the current one "
-                  << " for tablet " << tablet->ToString()
-                  << ". Expected version " << table_lock->pb.version()
-                  << " got " << report.schema_version()
-                  << " (corruption)";
+        LOG(WARNING) << "TS " << ts_desc->permanent_uuid()
+                     << " has reported a schema version greater than the current one "
+                     << " for tablet " << tablet->ToString()
+                     << ". Expected version " << table_lock->pb.version()
+                     << " got " << report.schema_version()
+                     << " (corruption)";
       } else {
         // TODO: For Alter (rolling apply to tablets), this is an expected transitory state.
         LOG(INFO) << "TS " << ts_desc->permanent_uuid()
@@ -1198,12 +1205,12 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
         continue;
       }
       if (id_to_version.second > table_lock->pb.version()) {
-        LOG(ERROR) << "TS " << ts_desc->permanent_uuid()
-                  << " has reported a schema version greater than the current one "
-                  << " for table " << id_to_version.first
-                  << ". Expected version " << table_lock->pb.version()
-                  << " got " << id_to_version.second
-                  << " (corruption)";
+        LOG(WARNING) << "TS " << ts_desc->permanent_uuid()
+                     << " has reported a schema version greater than the current one "
+                     << " for table " << id_to_version.first
+                     << ". Expected version " << table_lock->pb.version()
+                     << " got " << id_to_version.second
+                     << " (corruption)";
       } else {
         LOG(INFO) << "TS " << ts_desc->permanent_uuid()
                   << " does not have the latest schema for table " << id_to_version.first

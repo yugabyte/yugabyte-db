@@ -149,7 +149,8 @@ else
       | while read -r hunk_start_lineno; do
           echo 'error:upstream_include_missing:'\
 'An upstream include in this area is missing'\
-"$upstream_commit_message_suffix:$hunk_start_lineno:$(sed -n "$lineno"p "$1")"
+"$upstream_commit_message_suffix":\
+"$hunk_start_lineno:$(sed -n "$hunk_start_lineno"p "$1")"
         done
 
     # Find YB-side hunks that match "/* YB includes */" or "#include...".
@@ -180,9 +181,9 @@ else
             fi
 
             c_include="#include \"c.h\""
-            yb_c_include="$c_include"$'\t'"/* YB include */"
+            yb_c_include="$c_include"$'\t\t\t\t\t'"/* YB include */"
             pg_include_re="#include \"postgres(_fe)?\\.h\""
-            yb_pg_include_re="$pg_include_re"$'\t'"/\\* YB include \\*/"
+            yb_pg_include_re="$pg_include_re"$'\t\t\t'"+/\\* YB include \\*/"
             if ! "$hit_yb_includes_block"; then
               if [[ "$line" == "$c_include"* ]]; then
                 if [[ "$line" != "$yb_c_include" ]]; then
@@ -256,6 +257,22 @@ else
             prev_line=$line
           done < <(grep -n '' "$1" | sed -n "$line_ranges"p)
         done
+
+    # For kwlist.h, new keywords by YB should have "_YB_" prefix.
+    #
+    # TODO(jason): this does not belong in the "includes" section, but it is
+    # also wasteful to re-run diff_file_with_upstream.py a second time.  Should
+    # refactor this in the future.
+    if [[ "$1" == */kwlist.h ]]; then
+      grep -E '^< ' <<<"$diff_result" \
+        | grep -v ', _YB_' \
+        | sed 's/^< //' \
+        | while read -r line; do
+            grep -nF "$line" "$1" \
+              | sed 's/^/error:yb_keyword_missing_yb_prefix:'\
+'YB-added keywords should have "_YB_" prefix and "_P" suffix:/'
+          done
+    fi
   fi
 fi
 
@@ -275,7 +292,8 @@ if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
         "$1" == src/postgres/src/include/snowball/libstemmer/* ||
         "$1" == src/postgres/src/pl/plperl/ppport.h ]]; then
   grep -nvE '^('$'\t''* {0,3}\S|$)' "$1" \
-    | sed 's/^/error:leading_whitespace:Remove leading whitespace:/'
+    | sed 's/^/error:leading_whitespace:'\
+'Use tabs followed by 0-3 spaces for leading whitespace:/'
 fi
 
 # there are three cases to catch:
@@ -400,8 +418,9 @@ grep -nE '^\w+(\s+\w+)+\(' "$1" \
 # alignment.  '(' is needed for cases such as
 #
 #     void\t\t(*startup_fn) (Node *clause, PredIterInfo info);
-grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
-  | perl -ne 'print unless /^\d+:\s+'\
+if ! [[ "$1" == src/postgres/src/backend/utils/error/elog.c ]]; then
+  grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
+    | perl -ne 'print unless /^\d+:\s+'\
 '(\w{1}(\t\t| {7})'\
 '|\w{2}(\t\t| {6})'\
 '|\w{3}(\t\t| {5})'\
@@ -418,8 +437,9 @@ grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
 '|\w{2}(\t| {2})'\
 '|\w{3}\t))'\
 '[\w(]/' \
-  | sed 's/^/error:bad_variable_declaration_spacing:'\
+    | sed 's/^/error:bad_variable_declaration_spacing:'\
 'Variable declarations should align variable names to the 12 column mark:/'
+fi
 
 # Braces
 grep -nE '(\)|else)\s+{$' "$1" \

@@ -14,5 +14,5 @@ test: yb.depd.onek2
 
 test: yb.port.select
 test: yb.port.select_distinct
-test: yb.port.select_distinct_on
+test: select_distinct_on
 test: yb.port.subselect

@@ -48,14 +48,14 @@ typedef struct QueryDesc
 	EState	   *estate;			/* executor's query-wide state */
 	PlanState  *planstate;		/* tree of per-plan-node state */
 
-	/* This field is set by ExecutorRun */
+	/* This field is set by ExecutePlan */
 	bool		already_executed;	/* true if previously executed */
 
 	/* This is always set NULL by the core system, but plugins can change it */
 	struct Instrumentation *totaltime;	/* total time spent in ExecutorRun */
 
 	/*
-	 * An additional instrumentation field to collect async RPC stats. This
+	 * YB: An additional instrumentation field to collect async RPC stats. This
 	 * needs to be a separate field because its life cycle is distinct from
 	 * that of 'totaltime'.
 	 */

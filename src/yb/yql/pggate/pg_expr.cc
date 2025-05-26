@@ -514,6 +514,7 @@ struct PgColumnRefFactory {
         return ApplyNumeric<double>(direct);
 
       case YB_YQL_DATA_TYPE_VECTOR: [[fallthrough]];
+      case YB_YQL_DATA_TYPE_BSON: [[fallthrough]];
       case YB_YQL_DATA_TYPE_BINARY:
         return Apply<PgBinaryColumnRef<Base>>();
 
@@ -573,7 +574,7 @@ int PgExpr::get_pg_collid() const {
 }
 
 std::string PgExpr::ToString() const {
-  return Format("{ opcode: $0 }", to_underlying(opcode_));
+  return Format("{ opcode: $0 }", std::to_underlying(opcode_));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -688,6 +689,13 @@ void DatumToQLValue(
         int64_t bytes = type_entity->datum_fixed_size;
         type_entity->datum_to_yb(datum, &value, &bytes);
         ql_value->dup_binary_value(Slice(value, bytes));
+      }
+      break;
+      case YB_YQL_DATA_TYPE_BSON: {
+        uint8_t* value;
+        int64_t bytes = type_entity->datum_fixed_size;
+        type_entity->datum_to_yb(datum, &value, &bytes);
+        ql_value->dup_bson_value(Slice(value, bytes));
       }
       break;
 

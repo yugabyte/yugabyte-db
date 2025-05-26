@@ -1598,6 +1598,9 @@ DETAIL:  View columns that refer to system columns are not updatable.
 INSERT INTO rw_view1 (s, c, a) VALUES (null, null, 1.1); -- should fail
 ERROR:  cannot insert into column "s" of view "rw_view1"
 DETAIL:  View columns that are not columns of their base relation are not updatable.
+INSERT INTO rw_view1 (s, c, a) VALUES (default, default, 1.1); -- should fail
+ERROR:  cannot insert into column "s" of view "rw_view1"
+DETAIL:  View columns that are not columns of their base relation are not updatable.
 INSERT INTO rw_view1 (a) VALUES (1.1) RETURNING a, s, c; -- OK
   a  |         s         |         c         
 -----+-------------------+-------------------
@@ -2838,6 +2841,38 @@ DROP VIEW v1;
 DROP TABLE t2;
 DROP TABLE t1;
 --
+-- Test sub-select in nested security barrier views, per bug #17972
+--
+CREATE TABLE t1 (a int);
+CREATE VIEW v1 WITH (security_barrier = true) AS
+  SELECT * FROM t1;
+CREATE RULE v1_upd_rule AS ON UPDATE TO v1 DO INSTEAD
+  UPDATE t1 SET a = NEW.a WHERE a = OLD.a;
+CREATE VIEW v2 WITH (security_barrier = true) AS
+  SELECT * FROM v1 WHERE EXISTS (SELECT 1);
+EXPLAIN (COSTS OFF) UPDATE v2 SET a = 1;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Update on t1
+   InitPlan 1 (returns $0)
+     ->  Result
+   ->  Merge Join
+         Merge Cond: (t1.a = v1.a)
+         ->  Sort
+               Sort Key: t1.a
+               ->  Seq Scan on t1
+         ->  Sort
+               Sort Key: v1.a
+               ->  Subquery Scan on v1
+                     ->  Result
+                           One-Time Filter: $0
+                           ->  Seq Scan on t1 t1_1
+(14 rows)
+
+DROP VIEW v2;
+DROP VIEW v1;
+DROP TABLE t1;
+--
 -- Test CREATE OR REPLACE VIEW turning a non-updatable view into an
 -- auto-updatable view and adding check options in a single step
 --
@@ -3295,6 +3330,25 @@ select * from base_tab_def order by a, c NULLS LAST;
     | View default  | Table default | View default | 
     | View default  |               | View default | 
 (22 rows)
+
+-- Test a DO ALSO INSERT ... SELECT rule
+drop rule base_tab_def_view_ins_rule on base_tab_def_view;
+create rule base_tab_def_view_ins_rule as on insert to base_tab_def_view
+  do also insert into base_tab_def (a, b, e) select new.a, new.b, 'xxx';
+truncate base_tab_def;
+insert into base_tab_def_view values (1, default, default, default, default);
+insert into base_tab_def_view values (2, default, default, default, default),
+                                     (3, default, default, default, default);
+select * from base_tab_def order by a, e nulls first;
+ a |      b       |       c       |      d       |  e  
+---+--------------+---------------+--------------+-----
+ 1 | View default | Table default | View default | 
+ 1 | View default | Table default |              | xxx
+ 2 | View default | Table default | View default | 
+ 2 | View default | Table default |              | xxx
+ 3 | View default | Table default | View default | 
+ 3 | View default | Table default |              | xxx
+(6 rows)
 
 drop view base_tab_def_view;
 drop table base_tab_def;

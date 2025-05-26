@@ -1007,9 +1007,9 @@ ExecInitIncrementalSort(IncrementalSort *node, EState *estate, int eflags)
 	if (incrsortstate->ss.ps.instrument != NULL)
 	{
 		IncrementalSortGroupInfo *fullsortGroupInfo =
-		&incrsortstate->incsort_info.fullsortGroupInfo;
+			&incrsortstate->incsort_info.fullsortGroupInfo;
 		IncrementalSortGroupInfo *prefixsortGroupInfo =
-		&incrsortstate->incsort_info.prefixsortGroupInfo;
+			&incrsortstate->incsort_info.prefixsortGroupInfo;
 
 		fullsortGroupInfo->groupCount = 0;
 		fullsortGroupInfo->maxDiskSpaceUsed = 0;
@@ -1140,7 +1140,6 @@ ExecReScanIncrementalSort(IncrementalSortState *node)
 	node->outerNodeDone = false;
 	node->n_fullsort_remaining = 0;
 	node->bound_Done = 0;
-	node->presorted_keys = NULL;
 
 	node->execution_status = INCSORT_LOADFULLSORT;
 
@@ -1153,15 +1152,9 @@ ExecReScanIncrementalSort(IncrementalSortState *node)
 	 * cause a leak.
 	 */
 	if (node->fullsort_state != NULL)
-	{
 		tuplesort_reset(node->fullsort_state);
-		node->fullsort_state = NULL;
-	}
 	if (node->prefixsort_state != NULL)
-	{
 		tuplesort_reset(node->prefixsort_state);
-		node->prefixsort_state = NULL;
-	}
 
 	/*
 	 * If chgParam of subnode is not null, then the plan will be re-scanned by

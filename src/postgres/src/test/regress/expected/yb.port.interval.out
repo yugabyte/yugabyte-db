@@ -254,7 +254,7 @@ SELECT r1.*, r2.*
 (10 rows)
 
 CREATE INDEX ON INTERVAL_TBL_OF USING btree (f1);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 ERROR:  INDEX on column of type 'INTERVAL' not yet supported
 SET enable_seqscan TO false;
 EXPLAIN (COSTS OFF)

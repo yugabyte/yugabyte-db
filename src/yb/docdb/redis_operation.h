@@ -20,6 +20,7 @@
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/dockv/expiration.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/rocksdb/cache.h"

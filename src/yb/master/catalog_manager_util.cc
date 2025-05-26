@@ -622,5 +622,9 @@ Status ExecutePgsqlStatements(
   return Status::OK();
 }
 
+bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb) {
+  return snapshot_pb.format_version() == kUseRelfilenodeFormatVersion;
+}
+
 } // namespace master
 } // namespace yb

@@ -563,14 +563,14 @@ int GetL0ThresholdSpeedupCompaction(int level0_file_num_compaction_trigger,
 }  // namespace
 
 void ColumnFamilyData::PendingCompactionAdded(CompactionSizeKind compaction_size_kind) {
-  num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_add(1);
+  num_pending_compactions_[std::to_underlying(compaction_size_kind)].fetch_add(1);
 }
 
 void ColumnFamilyData::PendingCompactionRemoved(CompactionSizeKind compaction_size_kind) {
-  if (num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_sub(1) == 0) {
+  if (num_pending_compactions_[std::to_underlying(compaction_size_kind)].fetch_sub(1) == 0) {
     LOG_WITH_FUNC(DFATAL) << ioptions_.info_log->Prefix() << "No pending "
                           << yb::AsString(compaction_size_kind) << " compactions";
-    num_pending_compactions_[yb::to_underlying(compaction_size_kind)].fetch_add(1);
+    num_pending_compactions_[std::to_underlying(compaction_size_kind)].fetch_add(1);
   }
 }
 
@@ -605,7 +605,7 @@ void ColumnFamilyData::RecalculateWriteStallConditions(
     write_controller_token_ = write_controller->GetStopToken();
     RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
         "[%s] Stopping writes because we have %" PRIu64 " bytes to flush, while % " PRIu64
-        "is allowed",
+        " is allowed",
         name_.c_str(), imm()->TotalDataSize(), mutable_cf_options.max_flushing_bytes);
   } else if (imm()->NumNotFlushed() >= mutable_cf_options.max_write_buffer_number) {
     write_controller_token_ = write_controller->GetStopToken();

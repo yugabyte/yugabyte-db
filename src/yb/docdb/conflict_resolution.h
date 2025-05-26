@@ -89,23 +89,24 @@ typedef enum {
 // wait_queue - a pointer to the tablet's wait queue. Required if the Wait-on-Conflict policy is to
 //              be used. If Wait-on-Conflict policy is to be used but wait_queue is nullptr, an
 //              error will be returned.
-Status ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                   const ConflictManagementPolicy conflict_management_policy,
-                                   const LWKeyValueWriteBatchPB& write_batch,
-                                   HybridTime intial_resolution_ht,
-                                   HybridTime read_time,
-                                   int64_t txn_start_us,
-                                   uint64_t req_start_us,
-                                   int64_t request_id,
-                                   const DocDB& doc_db,
-                                   dockv::PartialRangeKeyIntents partial_range_key_intents,
-                                   TransactionStatusManager* status_manager,
-                                   tablet::TabletMetrics* tablet_metrics,
-                                   LockBatch* lock_batch,
-                                   WaitQueue* wait_queue,
-                                   bool is_advisory_lock_request,
-                                   CoarseTimePoint deadline,
-                                   ResolutionCallback callback);
+Status ResolveTransactionConflicts(
+    const DocOperations& doc_ops,
+    const ConflictManagementPolicy conflict_management_policy,
+    const LWKeyValueWriteBatchPB& write_batch,
+    HybridTime intial_resolution_ht,
+    HybridTime read_time,
+    int64_t txn_start_us,
+    uint64_t req_start_us,
+    int64_t request_id,
+    const DocDB& doc_db,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
+    TransactionStatusManager* status_manager,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+    LockBatch* lock_batch,
+    WaitQueue* wait_queue,
+    bool is_advisory_lock_request,
+    CoarseTimePoint deadline,
+    ResolutionCallback callback);
 
 // Resolves conflicts for doc operations.
 // Read all intents that could conflict with provided doc_ops.
@@ -119,20 +120,21 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
 // intial_resolution_ht - current hybrid time. Used to request status of conflicting transactions.
 // db - db that contains tablet data.
 // status_manager - status manager that should be used during this conflict resolution.
-Status ResolveOperationConflicts(const DocOperations& doc_ops,
-                                 const ConflictManagementPolicy conflict_management_policy,
-                                 HybridTime intial_resolution_ht,
-                                 int64_t txn_start_us,
-                                 uint64_t req_start_us,
-                                 int64_t request_id,
-                                 const DocDB& doc_db,
-                                 dockv::PartialRangeKeyIntents partial_range_key_intents,
-                                 TransactionStatusManager* status_manager,
-                                 tablet::TabletMetrics* tablet_metrics,
-                                 LockBatch* lock_batch,
-                                 WaitQueue* wait_queue,
-                                 CoarseTimePoint deadline,
-                                 ResolutionCallback callback);
+Status ResolveOperationConflicts(
+    const DocOperations& doc_ops,
+    const ConflictManagementPolicy conflict_management_policy,
+    HybridTime intial_resolution_ht,
+    int64_t txn_start_us,
+    uint64_t req_start_us,
+    int64_t request_id,
+    const DocDB& doc_db,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
+    TransactionStatusManager* status_manager,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+    LockBatch* lock_batch,
+    WaitQueue* wait_queue,
+    CoarseTimePoint deadline,
+    ResolutionCallback callback);
 
 std::string DebugIntentKeyToString(Slice intent_key);
 

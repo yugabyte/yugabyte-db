@@ -99,15 +99,6 @@ extern PGDLLIMPORT volatile sig_atomic_t IdleInTransactionSessionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t IdleSessionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t ProcSignalBarrierPending;
 extern PGDLLIMPORT volatile sig_atomic_t LogMemoryContextPending;
-extern PGDLLIMPORT volatile sig_atomic_t YbLogCatcacheStatsPending;
-extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
-extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPending;
-extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
-extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
-extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
-extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPending;
-extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
-extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
 extern PGDLLIMPORT volatile sig_atomic_t IdleStatsUpdateTimeoutPending;
 
 extern PGDLLIMPORT volatile sig_atomic_t CheckClientConnectionPending;
@@ -159,7 +150,7 @@ do { \
 	QueryCancelHoldoffCount--; \
 } while(0)
 
-#ifdef FRONTEND
+#ifdef FRONTEND					/* YB */
 #define START_CRIT_SECTION()  (CritSectionCount++)
 
 #define END_CRIT_SECTION() \
@@ -168,8 +159,7 @@ do { \
 	CritSectionCount--; \
 } while(0)
 
-#else							/* !FRONTEND */
-
+#else							/* YB: !FRONTEND */
 #define START_CRIT_SECTION()  \
 do { \
 	if (MyProc) \
@@ -184,7 +174,7 @@ do { \
 	if (MyProc && CritSectionCount == 0) \
 		MyProc->ybEnteredCriticalSection = false; \
 } while(0)
-#endif							/* FRONTEND */
+#endif							/* YB: FRONTEND */
 
 
 /*****************************************************************************
@@ -199,8 +189,6 @@ extern PGDLLIMPORT bool IsPostmasterEnvironment;
 extern PGDLLIMPORT bool IsUnderPostmaster;
 extern PGDLLIMPORT bool IsBackgroundWorker;
 extern PGDLLIMPORT bool IsBinaryUpgrade;
-
-extern bool IsYsqlUpgrade;
 
 extern PGDLLIMPORT bool ExitOnAnyError;
 
@@ -237,16 +225,6 @@ extern PGDLLIMPORT char postgres_exec_path[];
 extern PGDLLIMPORT Oid MyDatabaseId;
 
 extern PGDLLIMPORT Oid MyDatabaseTableSpace;
-
-extern PGDLLIMPORT bool MyDatabaseColocated;
-
-extern PGDLLIMPORT Oid YbDatabaseIdForNewObjectId;
-
-extern PGDLLIMPORT bool MyColocatedDatabaseLegacy;
-
-extern PGDLLIMPORT bool YbTablegroupCatalogExists;
-
-extern PGDLLIMPORT bool YbLoginProfileCatalogsExist;
 
 /*
  * Date/Time Configuration
@@ -386,6 +364,8 @@ typedef enum BackendType
 
 extern PGDLLIMPORT BackendType MyBackendType;
 
+#define AmRegularBackendProcess()	(MyBackendType == B_BACKEND)
+
 extern const char *GetBackendTypeDesc(BackendType backendType);
 
 extern void SetDatabasePath(const char *path);
@@ -397,7 +377,10 @@ extern char *GetUserNameFromId(Oid roleid, bool noerr);
 extern Oid	GetUserId(void);
 extern Oid	GetOuterUserId(void);
 extern Oid	GetSessionUserId(void);
+extern bool GetSessionUserIsSuperuser(void);
 extern Oid	GetAuthenticatedUserId(void);
+extern bool GetAuthenticatedUserIsSuperuser(void);
+extern void SetAuthenticatedUserId(Oid userid, bool is_superuser);
 extern void GetUserIdAndSecContext(Oid *userid, int *sec_context);
 extern void SetUserIdAndSecContext(Oid userid, int sec_context);
 extern bool InLocalUserIdChange(void);
@@ -508,7 +491,7 @@ extern void InitPostgres(const char *in_dbname, Oid dboid,
 						 bool load_session_libraries,
 						 bool override_allow_connections,
 						 char *out_dbname,
-						 uint64_t *session_id);
+						 uint64_t *yb_session_id);
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */
@@ -538,5 +521,17 @@ extern PGDLLIMPORT shmem_request_hook_type shmem_request_hook;
 
 /* in executor/nodeHash.c */
 extern size_t get_hash_memory_limit(void);
+
+/* YB */
+extern PGDLLIMPORT volatile sig_atomic_t YbLogCatcacheStatsPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
+extern PGDLLIMPORT volatile sig_atomic_t LogHeapSnapshotPeakHeap;
+extern bool IsYsqlUpgrade;
+extern PGDLLIMPORT bool MyDatabaseColocated;
+extern PGDLLIMPORT Oid YbDatabaseIdForNewObjectId;
+extern PGDLLIMPORT bool MyColocatedDatabaseLegacy;
+extern PGDLLIMPORT bool YbTablegroupCatalogExists;
+extern PGDLLIMPORT bool YbLoginProfileCatalogsExist;
 
 #endif							/* MISCADMIN_H */

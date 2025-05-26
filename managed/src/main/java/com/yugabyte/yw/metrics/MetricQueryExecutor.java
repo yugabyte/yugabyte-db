@@ -92,11 +92,13 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     return apiHelper.getRequest(queryUrl, headers, queryParam);
   }
 
-  private String getDirectURL(String queryExpr) {
+  private String getDirectURL(List<String> queryExpr) {
     long endUnixTime = Long.parseLong(queryParam.getOrDefault("end", "0"));
     long startUnixTime = Long.parseLong(queryParam.getOrDefault("start", "0"));
+    String stepStr = queryParam.get("step");
+    Long step = stepStr != null ? Long.parseLong(stepStr) : null;
 
-    return metricUrlProvider.getExpressionUrl(queryExpr, startUnixTime, endUnixTime);
+    return metricUrlProvider.getExpressionUrl(queryExpr, startUnixTime, endUnixTime, step);
   }
 
   @Override
@@ -147,6 +149,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       ArrayNode directURLs = responseJson.putArray("directURLs");
       responseJson.put(
           "metricsLinkUseBrowserFqdn", metricUrlProvider.getMetricsLinkUseBrowserFqdn());
+      List<String> queryExpressions = new ArrayList<>();
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
         String queryExpr = e.getValue();
@@ -160,15 +163,14 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         }
         queryParam.put("query", queryExpr);
         try {
-          directURLs.add(getDirectURL(queryExpr));
+          queryExpressions.add(queryExpr);
         } catch (Exception de) {
           log.trace("Error getting direct url", de);
         }
         JsonNode queryResponseJson = getMetrics();
         if (queryResponseJson == null) {
-          responseJson.set("data", Json.toJson(new ArrayList<>()));
-
-          return responseJson;
+          responseJson.put("error", "Metric storage response for " + metric + " is empty");
+          break;
         }
         MetricQueryResponse queryResponse =
             Json.fromJson(queryResponseJson, MetricQueryResponse.class);
@@ -179,6 +181,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           output.addAll(queryResponse.getGraphData(metric, configDefinition, metricSettings));
         }
       }
+      directURLs.add(getDirectURL(queryExpressions));
       if (isRecharts) {
         responseJson.set("data", Json.toJson(rechartsOutput));
       } else {

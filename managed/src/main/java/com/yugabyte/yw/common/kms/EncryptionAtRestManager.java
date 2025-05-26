@@ -611,11 +611,21 @@ public class EncryptionAtRestManager {
     EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
         getServiceInstance(keyProvider.name());
     for (KmsConfig kmsConfig : allKmsConfigs) {
+      String keyRefString = Base64.getEncoder().encodeToString(keyRef);
+      LOG.info(
+          "Verifying KMS config '{}' for key ref '{}'.", kmsConfig.getConfigUUID(), keyRefString);
+      // Verify if the KMS config can decrypt the key ref.
+      // If it can, return the KMS config UUID.
+      // Else, continue to the next KMS config.
       if (keyService.verifyKmsConfigAndKeyRef(
           universeUUID, kmsConfig.getConfigUUID(), keyRef, encryptionContext)) {
         kmsConfigUUID = kmsConfig.getConfigUUID();
         break;
       }
+      LOG.info(
+          "KMS config '{}' failed to decrypt key ref '{}'.",
+          kmsConfig.getConfigUUID(),
+          keyRefString);
     }
     return kmsConfigUUID;
   }

@@ -111,6 +111,7 @@ DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(TEST_enable_sync_points);
+DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 
 namespace yb {
 
@@ -122,8 +123,6 @@ using master::GetNamespaceInfoResponsePB;
 
 using pgwrapper::GetValue;
 using pgwrapper::PGConn;
-using pgwrapper::PGResultPtr;
-using pgwrapper::ToString;
 
 static const client::YBTableName producer_transaction_table_name(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
@@ -2073,7 +2072,8 @@ TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
     }
   }
 
-  ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
+  // Skip checking column counts since consumer has an additional column.
+  ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kFalse, CheckColumnCounts::kFalse));
 }
 
 void PrepareChangeRequest(
@@ -2183,6 +2183,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1));
 
   // 2. Setup replication.
@@ -2663,7 +2664,7 @@ TEST_F(XClusterYsqlTest, TestTableRewriteOperations) {
   ASSERT_OK(SetUpWithParams({1}, {1}, 3, 1));
   constexpr auto kColumnName = "c1";
   const auto errstr =
-      "cannot rewrite a table that is a part of CDC or non-automatic mode XCluster replication";
+      "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.";
   ASSERT_OK(SetupUniverseReplication(producer_tables_));
   for (int i = 0; i <= 1; ++i) {
     auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name))
@@ -2759,7 +2760,7 @@ TEST_F(XClusterYsqlTest, InsertUpdateDeleteTransactionsWithUnevenTabletPartition
     ASSERT_OK(p_conn.ExecuteFormat(
         "DELETE FROM $0 WHERE $1 >= $2 AND $1 <= $3", table_name, kKeyColumnName, start, end));
     ASSERT_OK(p_conn.Execute("COMMIT"));
-    }
+  }
 
   ASSERT_OK(VerifyWrittenRecords(ExpectNoRecords::kTrue));
 }
@@ -3246,6 +3247,97 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, CreateDropTableAndIndexWithPI
 
   ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
   ASSERT_OK(VerifyWrittenRecords());
+}
+
+// Test commands that trigger nonconcurrent backfills.
+// Want to ensure that these are disallowed since when these backfills run on the target, it will
+// produce duplicate rows.
+TEST_F(XClusterYsqlTest, NonconcurrentBackfills) {
+  const auto kNumTablets = 1;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, {kNumTablets}, /* replication_factor */ 1));
+  ASSERT_OK(SetupUniverseReplication({producer_table_}));
+
+  ASSERT_OK(InsertRowsInProducer(0, 10, producer_table_));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  auto p_conn =
+      EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table_->name().namespace_name()));
+  const auto table_name = GetCompleteTableName(producer_table_->name());
+
+  const auto expected_error =
+      "Cannot create nonconcurrent index on a table that is a part of non-automatic mode XCluster "
+      "replication.";
+
+  // Create index nonconcurrently.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "CREATE INDEX NONCONCURRENTLY nonconcurrent_index ON $0($1 ASC)", table_name,
+          kKeyColumnName),
+      expected_error);
+
+  // Create unique index nonconcurrently.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "CREATE UNIQUE INDEX NONCONCURRENTLY ON $0($1)", table_name, kKeyColumnName),
+      expected_error);
+
+  // Test adding a unique constraint, this will also trigger a nonconcurrent backfill.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "ALTER TABLE $0 ADD CONSTRAINT unique_constraint UNIQUE($1);", table_name,
+          kKeyColumnName),
+      expected_error);
+
+  // Partitioned table checks.
+  const auto kPartitionedTableName = "partitioned_table";
+  const auto kPartitionedIndexName = "partitioned_index";
+  const auto kPartition1Name = Format("$0_p1", kPartitionedTableName);
+  const auto kPartition2Name = Format("$0_p2", kPartitionedTableName);
+  const std::string kColumn2Name = "a";
+
+  auto create_partitioned_table = [&](pgwrapper::PGConn& conn) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 ($1 int PRIMARY KEY, $2 int) PARTITION BY RANGE ($1);",
+        kPartitionedTableName, kKeyColumnName, kColumn2Name));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 PARTITION OF $1 FOR VALUES FROM (0) TO (100);", kPartition1Name,
+        kPartitionedTableName));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 PARTITION OF $1 FOR VALUES FROM (100) TO (200);", kPartition2Name,
+        kPartitionedTableName));
+  };
+  ASSERT_NO_FATALS(create_partitioned_table(p_conn));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_NO_FATALS(create_partitioned_table(c_conn));
+
+  auto partition1_name =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", kPartition1Name));
+  auto partition2_name =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "public", kPartition2Name));
+  std::shared_ptr<client::YBTable> partition1_table, partition2_table;
+  ASSERT_OK(producer_client()->OpenTable(partition1_name, &partition1_table));
+  ASSERT_OK(producer_client()->OpenTable(partition2_name, &partition2_table));
+
+  ASSERT_OK(AlterUniverseReplication(
+      kReplicationGroupId, {partition1_table, partition2_table}, true /* add_tables */));
+
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(51, 150) as i;", kPartitionedTableName));
+
+  // Create partitioned index on the parent, this will cause nonconcurrent index creates on the
+  // partitions.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "CREATE INDEX $0 ON $1($2 ASC);", kPartitionedIndexName, kPartitionedTableName,
+          kColumn2Name),
+      expected_error);
+
+  // Also verify that we cannot create a unique index on the partitioned table.
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.ExecuteFormat(
+          "CREATE UNIQUE INDEX ON $0($1, $2);", kPartitionedTableName, kKeyColumnName,
+          kColumn2Name),
+      expected_error);
 }
 
 }  // namespace yb

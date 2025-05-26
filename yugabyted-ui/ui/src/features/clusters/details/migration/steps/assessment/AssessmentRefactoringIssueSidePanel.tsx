@@ -55,12 +55,14 @@ interface MigrationRefactoringIssueSidePanel {
   open: boolean;
   onClose: () => void;
   issue: UnsupportedObjectData | undefined;
+  description?: string
 }
 
 export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSidePanel> = ({
   open,
   onClose,
   issue,
+  description
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -118,6 +120,18 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
                 </Grid>
               )}
 
+              {description && (
+                <Grid item xs={4}>
+                  <Typography variant="subtitle2" className={classes.label}>
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+                      "description")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {description}
+                  </Typography>
+                </Grid>
+              )}
+
               {issue?.docs_link && (
                 <Grid item xs={12}>
                   <Link href={issue?.docs_link} target="_blank">
@@ -130,26 +144,37 @@ export const MigrationRefactoringIssueSidePanel: FC<MigrationRefactoringIssueSid
         </Paper>
       </Box>
 
-      {paginatedObjects?.map(({ object_name, sql_statement }) => (
+      {paginatedObjects?.map(({ object_name, object_type, sql_statement }) => (
         (object_name || sql_statement) && (
           <Box key={object_name} className={classes.borderForNameAndSQL}
             sx={{ mb: 2, p: 2, borderRadius: 2 }}>
-            {object_name && (
-              <Typography>
-                {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+            {(object_name || object_type) && (
+              <Box>
+                {object_name && (
+                  <Typography>
+                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
                       "objectName")}
-                {object_name}
-              </Typography>
+                    {object_name}
+                  </Typography>
+                )}
+                {object_type && (
+                  <Typography>
+                    {t("clusterDetail.voyager.planAndAssess.recommendation.schemaChanges." +
+                      "objectTypeColon")}
+                    {object_type}
+                  </Typography>
+                )}
+              </Box>
             )}
             {sql_statement && (
               <Box sx={{ mt: 2 }}>
                 <YBCodeBlock text={sql_statement} />
               </Box>
             )}
-
           </Box>
         )
       ))}
+
       <Box ml="auto">
         <TablePagination
           component="div"

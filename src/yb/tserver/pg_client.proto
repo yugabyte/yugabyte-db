@@ -49,6 +49,7 @@ service PgClientService {
   rpc FinishTransaction(PgFinishTransactionRequestPB) returns (PgFinishTransactionResponsePB);
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
+  rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
@@ -134,14 +135,17 @@ service PgClientService {
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
 
-  rpc SetTxnSnapshot(PgSetTxnSnapshotRequestPB)
-      returns (PgSetTxnSnapshotResponsePB);
+  rpc ImportTxnSnapshot(PgImportTxnSnapshotRequestPB)
+      returns (PgImportTxnSnapshotResponsePB);
 
   rpc ClearExportedTxnSnapshots(PgClearExportedTxnSnapshotsRequestPB)
       returns (PgClearExportedTxnSnapshotsResponsePB);
 
   rpc GetTserverCatalogMessageLists(PgGetTserverCatalogMessageListsRequestPB)
       returns (PgGetTserverCatalogMessageListsResponsePB);
+
+  rpc SetTserverCatalogMessageList(PgSetTserverCatalogMessageListRequestPB)
+      returns (PgSetTserverCatalogMessageListResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -291,6 +295,13 @@ enum PGReplicationSlotLsnType {
   ReplicationSlotLsnTypePg_HYBRID_TIME = 2;
 }
 
+// proto2 version of the ReplicationSlotOrderingMode enum from yb/common/common.proto
+enum PGReplicationSlotOrderingMode {
+  ReplicationSlotOrderingModePg_UNDEFINED = 0;
+  ReplicationSlotOrderingModePg_ROW = 1;
+  ReplicationSlotOrderingModePg_TRANSACTION = 2;
+}
+
 message PgCreateReplicationSlotRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
@@ -299,6 +310,7 @@ message PgCreateReplicationSlotRequestPB {
   string output_plugin_name = 5;
   AshMetadataPB ash_metadata = 6;
   PGReplicationSlotLsnType lsn_type = 7;
+  PGReplicationSlotOrderingMode ordering_mode = 8;
 }
 
 message PgCreateReplicationSlotResponsePB {
@@ -440,6 +452,11 @@ message PgDropTablegroupResponsePB {
 message PgGetCatalogMasterVersionRequestPB {
 }
 
+message PgGetXClusterRoleRequestPB {
+  uint32 db_oid = 1;
+  AshMetadataPB ash_metadata = 2;
+}
+
 message PgFinishTransactionRequestPB {
   message DdlModePB {
     // This transaction contains changes to the DocDB schema protobufs.
@@ -466,6 +483,11 @@ message PgFinishTransactionResponsePB {
 message PgGetCatalogMasterVersionResponsePB {
   AppStatusPB status = 1;
   uint64 version = 2;
+}
+
+message PgGetXClusterRoleResponsePB {
+  AppStatusPB status = 1;
+  uint32 xcluster_role = 2;  // Really XClusterNamespaceInfoPB.XClusterRole.
 }
 
 message PgGetDatabaseInfoRequestPB {
@@ -523,6 +545,8 @@ message PgGetLockStatusResponsePB {
 
   // Map of transactions keyed by the host node uuid.
   map<string, TransactionList> transactions_by_node = 3;
+
+  repeated ObjectLockInfoPB object_lock_infos = 4;
 }
 
 message PgGetReplicationSlotRequestPB {
@@ -708,6 +732,8 @@ message PgPerformOptionsPB {
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
+
+  bool non_transactional_buffered_write = 26;
 }
 
 message PgPerformRequestPB {
@@ -951,6 +977,18 @@ message PgGetTserverCatalogMessageListsResponsePB {
   // be fulfilled, entries will be empty. This only happens when the requested sequence does not
   // exist in the tserver's message queue.
   repeated TServerDBCatalogMessageListInfo entries = 2;
+}
+
+message PgSetTserverCatalogMessageListRequestPB {
+  uint32 db_oid = 1;
+  bool is_breaking_change = 2;
+  uint64 new_catalog_version = 3;
+  TServerDBCatalogMessageListInfo message_list = 4;
+  AshMetadataPB ash_metadata = 5;
+}
+
+message PgSetTserverCatalogMessageListResponsePB {
+  AppStatusPB status = 1;
 }
 
 message PgWaitForBackendsCatalogVersionRequestPB {
@@ -1210,11 +1248,18 @@ enum ObjectLockMode {
 message PgAcquireObjectLockRequestPB {
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
-  uint64 database_oid = 3;
-  uint64 object_oid = 4;
+
+  message LockOId {
+    uint64 database_oid = 1;
+    uint64 relation_oid = 2;
+    uint64 object_oid = 3;
+    uint64 object_sub_oid = 4;
+  }
+  LockOId lock_oid = 3;
+
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
-  ObjectLockMode lock_type = 5;
-  AshMetadataPB ash_metadata = 6;
+  ObjectLockMode lock_type = 4;
+  AshMetadataPB ash_metadata = 5;
 }
 
 message PgAcquireObjectLockResponsePB {
@@ -1225,7 +1270,6 @@ message PgExportTxnSnapshotRequestPB {
   uint64 session_id = 1;
   PgTxnSnapshotPB snapshot = 2;
   PgPerformOptionsPB options = 3;
-  ReadHybridTimePB explicit_read_time = 5;
   AshMetadataPB ash_metadata = 4;
 }
 
@@ -1234,17 +1278,14 @@ message PgExportTxnSnapshotResponsePB {
   string snapshot_id = 2;
 }
 
-message PgSetTxnSnapshotRequestPB {
+message PgImportTxnSnapshotRequestPB {
   uint64 session_id = 1;
-  oneof source {
-    string snapshot_id = 2;
-    ReadHybridTimePB explicit_read_time = 5;
-  }
+  string snapshot_id = 2;
   PgPerformOptionsPB options = 3;
   AshMetadataPB ash_metadata = 4;
 }
 
-message PgSetTxnSnapshotResponsePB {
+message PgImportTxnSnapshotResponsePB {
   AppStatusPB status = 1;
   PgTxnSnapshotPB snapshot = 2;
 }

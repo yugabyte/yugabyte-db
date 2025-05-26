@@ -13,7 +13,7 @@
  * Memoize nodes are intended to sit above parameterized nodes in the plan
  * tree in order to cache results from them.  The intention here is that a
  * repeat scan with a parameter value that has already been seen by the node
- * can fetch tuples from the cache rather than having to re-scan the outer
+ * can fetch tuples from the cache rather than having to re-scan the inner
  * node all over again.  The query planner may choose to make use of one of
  * these when it thinks rescans for previously seen values are likely enough
  * to warrant adding the additional node.
@@ -158,9 +158,13 @@ static uint32
 MemoizeHash_hash(struct memoize_hash *tb, const MemoizeKey *key)
 {
 	MemoizeState *mstate = (MemoizeState *) tb->private_data;
+	ExprContext *econtext = mstate->ss.ps.ps_ExprContext;
+	MemoryContext oldcontext;
 	TupleTableSlot *pslot = mstate->probeslot;
 	uint32		hashkey = 0;
 	int			numkeys = mstate->nkeys;
+
+	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 	if (mstate->binary_mode)
 	{
@@ -203,6 +207,7 @@ MemoizeHash_hash(struct memoize_hash *tb, const MemoizeKey *key)
 		}
 	}
 
+	MemoryContextSwitchTo(oldcontext);
 	return murmurhash32(hashkey);
 }
 
@@ -226,7 +231,11 @@ MemoizeHash_equal(struct memoize_hash *tb, const MemoizeKey *key1,
 
 	if (mstate->binary_mode)
 	{
+		MemoryContext oldcontext;
 		int			numkeys = mstate->nkeys;
+		bool		match = true;
+
+		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 		slot_getallattrs(tslot);
 		slot_getallattrs(pslot);
@@ -236,7 +245,10 @@ MemoizeHash_equal(struct memoize_hash *tb, const MemoizeKey *key1,
 			FormData_pg_attribute *attr;
 
 			if (tslot->tts_isnull[i] != pslot->tts_isnull[i])
-				return false;
+			{
+				match = false;
+				break;
+			}
 
 			/* both NULL? they're equal */
 			if (tslot->tts_isnull[i])
@@ -246,15 +258,20 @@ MemoizeHash_equal(struct memoize_hash *tb, const MemoizeKey *key1,
 			attr = &tslot->tts_tupleDescriptor->attrs[i];
 			if (!datum_image_eq(tslot->tts_values[i], pslot->tts_values[i],
 								attr->attbyval, attr->attlen))
-				return false;
+			{
+				match = false;
+				break;
+			}
 		}
-		return true;
+
+		MemoryContextSwitchTo(oldcontext);
+		return match;
 	}
 	else
 	{
 		econtext->ecxt_innertuple = tslot;
 		econtext->ecxt_outertuple = pslot;
-		return ExecQualAndReset(mstate->cache_eq_expr, econtext);
+		return ExecQual(mstate->cache_eq_expr, econtext);
 	}
 }
 
@@ -289,11 +306,18 @@ prepare_probe_slot(MemoizeState *mstate, MemoizeKey *key)
 
 	if (key == NULL)
 	{
+		ExprContext *econtext = mstate->ss.ps.ps_ExprContext;
+		MemoryContext oldcontext;
+
+		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
 		/* Set the probeslot's values based on the current parameter values */
 		for (int i = 0; i < numKeys; i++)
 			pslot->tts_values[i] = ExecEvalExpr(mstate->param_exprs[i],
-												mstate->ss.ps.ps_ExprContext,
+												econtext,
 												&pslot->tts_isnull[i]);
+
+		MemoryContextSwitchTo(oldcontext);
 	}
 	else
 	{
@@ -668,8 +692,17 @@ static TupleTableSlot *
 ExecMemoize(PlanState *pstate)
 {
 	MemoizeState *node = castNode(MemoizeState, pstate);
+	ExprContext *econtext = node->ss.ps.ps_ExprContext;
 	PlanState  *outerNode;
 	TupleTableSlot *slot;
+
+	CHECK_FOR_INTERRUPTS();
+
+	/*
+	 * Reset per-tuple memory context to free any expression evaluation
+	 * storage allocated in the previous tuple cycle.
+	 */
+	ResetExprContext(econtext);
 
 	switch (node->mstatus)
 	{

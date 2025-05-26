@@ -195,7 +195,7 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 		else
 		{
 			Oid			primitive_type_oid =
-			YbGetPrimitiveTypeOid(type_id, tp->typtype, tp->typbasetype);
+				YbGetPrimitiveTypeOid(type_id, tp->typtype, tp->typbasetype);
 
 			return YbDataTypeFromOidMod(InvalidAttrNumber, primitive_type_oid);
 		}
@@ -1625,6 +1625,10 @@ static const YbcPgTypeEntity YbTypeEntityTable[] = {
 	(YbcPgDatumFromData) YbBinaryToDatum},
 
 	{VECTOROID, YB_YQL_DATA_TYPE_VECTOR, false, -1, false,
+		(YbcPgDatumToData) YbDatumToBinary,
+	(YbcPgDatumFromData) YbBinaryToDatum},
+
+	{BSONOID, YB_YQL_DATA_TYPE_BSON, true, -1, false,
 		(YbcPgDatumToData) YbDatumToBinary,
 	(YbcPgDatumFromData) YbBinaryToDatum}
 };

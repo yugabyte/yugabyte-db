@@ -441,7 +441,7 @@ public class XClusterConfig extends Model {
         .filter(
             table ->
                 tableIds.contains(table.getTableId()) && table.isReplicationSetupDone() == done)
-        .map(table -> table.getTableId())
+        .map(XClusterTableConfig::getTableId)
         .collect(Collectors.toSet());
   }
 
@@ -467,6 +467,17 @@ public class XClusterConfig extends Model {
     return this.getTables().stream()
         .filter(table -> table.isIndexTable() == includeIndexTables)
         .map(table -> table.getTableId())
+        .collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public Set<String> getNamespaceIds() {
+    if (this.type != ConfigType.Db) {
+      throw new IllegalArgumentException(
+          "getNamespaceIds() is only valid for xCluster config with type Db");
+    }
+    return this.getNamespaces().stream()
+        .map(XClusterNamespaceConfig::getSourceNamespaceId)
         .collect(Collectors.toSet());
   }
 
@@ -622,6 +633,7 @@ public class XClusterConfig extends Model {
       Optional<XClusterTableConfig> tableConfig = maybeGetTableById(tableId);
       if (tableConfig.isPresent()) {
         tableConfig.get().setReplicationSetupDone(replicationSetupDone);
+
       } else {
         String errMsg =
             String.format(
@@ -640,6 +652,33 @@ public class XClusterConfig extends Model {
 
   public void updateReplicationSetupDone(Collection<String> tableIds) {
     updateReplicationSetupDone(tableIds, true /* replicationSetupDone */);
+  }
+
+  @Transactional
+  public void updateReplicationSetupTimeForTables(
+      Collection<String> tableIds, @Nullable Date moment) {
+    ensureTableIdsExist(new HashSet<>(tableIds));
+    this.getTableDetails().stream()
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setReplicationSetupTime(moment));
+    update();
+  }
+
+  @Transactional
+  public void updateReplicationSetupTimeForNamespace(String namespaceId, @Nullable Date moment) {
+    ensureNamespaceIdsExist(Collections.singleton(namespaceId));
+    this.getNamespaceById(namespaceId).setReplicationSetupTime(moment);
+    update();
+  }
+
+  @Transactional
+  public void updateReplicationSetupTimeForNamespaces(
+      Set<String> namespaceIds, @Nullable Date moment) {
+    ensureNamespaceIdsExist(namespaceIds);
+    this.getNamespaces().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setReplicationSetupTime(moment));
+    update();
   }
 
   /**

@@ -16,11 +16,13 @@
  tsp_unused | yugabyte_test | 
 (5 rows)
 
-                                                     List of roles
-                   Role name                   |                         Attributes                         | Member of 
------------------------------------------------+------------------------------------------------------------+-----------
+                                                            List of roles
+                   Role name                   |                         Attributes                         |       Member of 
+-----------------------------------------------+------------------------------------------------------------+------------------------
  User_"_WITH_""_different'_'quotes' and spaces | Cannot login                                               | {}
  postgres                                      | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ regress_priv_user7                            |                                                            | {pg_write_all_data}
+ regress_priv_user8                            |                                                            | {pg_read_all_settings}
  yb_db_admin                                   | No inheritance, Cannot login                               | {}
  yb_extension                                  | Cannot login                                               | {}
  yb_fdw                                        | Cannot login                                               | {}

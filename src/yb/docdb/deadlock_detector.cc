@@ -426,8 +426,7 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
     StatusToPB(
         STATUS_EC_FORMAT(
             Expired, TransactionError(TransactionErrorCode::kDeadlock),
-            err_msg).CloneAndAddErrorCode(
-                PgsqlError(YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED)),
+            err_msg).CloneAndAddErrorCode(PgsqlError(YBPgErrorCode::YB_PG_YB_DEADLOCK)),
         req.mutable_deadlock_reason());
     rpcs_->RegisterAndStart(
         AbortTransaction(
@@ -460,8 +459,7 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
     StatusToPB(
         STATUS_EC_FORMAT(
             Expired, TransactionError(TransactionErrorCode::kDeadlock),
-            err_msg).CloneAndAddErrorCode(
-                PgsqlError(YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED)),
+            err_msg).CloneAndAddErrorCode(PgsqlError(YBPgErrorCode::YB_PG_YB_DEADLOCK)),
         state->mutable_deadlock_reason());
     state->set_pg_session_req_version(pg_session_req_version + 1);
     rpcs_->RegisterAndStart(
@@ -994,7 +992,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           detector->deadlock_size_->Increment(resp.deadlocked_txn_ids_size());
           auto waiter_or_status = FullyDecodeTransactionId(resp.deadlocked_txn_ids(0));
           if (!waiter_or_status.ok()) {
-            LOG(ERROR) << "Failed to decode transaction id in detected deadlock!";
+            LOG(DFATAL) << "Failed to decode transaction id in detected deadlock!";
           } else {
             const auto& waiter = *waiter_or_status;
             auto deadlock_msg = ConstructDeadlockedMessage(waiter, resp);
@@ -1012,7 +1010,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
 
   std::vector<std::shared_ptr<const BlockingData>> GetBlockingDataUnlocked(
       const DetectorId& detector_id, uint32_t probe_num, const TransactionId& waiting_txn_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version)
+      std::optional<PgSessionRequestVersion> pg_session_req_version)
       REQUIRES_SHARED(mutex_) {
     std::vector<std::shared_ptr<const BlockingData>> blocking_datas;
     auto waiter_entries =

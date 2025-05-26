@@ -140,6 +140,7 @@ DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
                     "Whether to skip filter check during vector index search.");
 
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
@@ -171,7 +172,7 @@ class DocKeyColumnPathBuilder {
   }
 
   [[nodiscard]] Slice Build(dockv::SystemColumnIds column_id) {
-    return Build(dockv::KeyEntryType::kSystemColumnId, to_underlying(column_id));
+    return Build(dockv::KeyEntryType::kSystemColumnId, std::to_underlying(column_id));
   }
 
  private:
@@ -833,10 +834,11 @@ class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
       DocVectorIndexSearchResult& search_result, PgsqlResponsePB& response,
-      DocVectorIndex& vector_index, Slice vector_slice, size_t max_results,
-      WriteBuffer& result_buffer)
+      DocVectorIndex& vector_index, Slice vector_slice, size_t num_top_vectors_to_remove,
+      size_t max_results, WriteBuffer& result_buffer)
       : search_result_(search_result), response_(response), vector_index_(vector_index),
-        vector_slice_(vector_slice), max_results_(max_results), result_buffer_(result_buffer) {}
+        vector_slice_(vector_slice), num_top_vectors_to_remove_(num_top_vectors_to_remove),
+        max_results_(max_results), result_buffer_(result_buffer) {}
 
   Slice FetchKey() {
     if (index_ >= search_result_.size()) {
@@ -889,14 +891,15 @@ class VectorIndexKeyProvider {
         return lhs.key == rhs.key;
       });
       search_result_.erase(range.begin(), range.end());
+    }
 
-      if (search_result_.size() > max_results_) {
-        std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
-          return lhs.encoded_distance < rhs.encoded_distance;
-        });
-        search_result_.resize(max_results_);
-        std::ranges::sort(search_result_, cmp_keys);
-      }
+    if (search_result_.size() > max_results_ || num_top_vectors_to_remove_ != 0) {
+      std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
+        return lhs.encoded_distance < rhs.encoded_distance;
+      });
+      search_result_.erase(
+          search_result_.begin(), search_result_.begin() + num_top_vectors_to_remove_);
+      std::ranges::sort(search_result_, cmp_keys);
     }
 
     merge_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
@@ -921,6 +924,8 @@ class VectorIndexKeyProvider {
   PgsqlResponsePB& response_;
   DocVectorIndex& vector_index_;
   Slice vector_slice_;
+  const size_t num_top_vectors_to_remove_;
+  // Please note that max_results_ includes vectors that should be removed.
   const size_t max_results_;
   WriteBuffer& result_buffer_;
   size_t index_ = 0;
@@ -1869,7 +1874,7 @@ Result<bool> PgsqlWriteOperation::ReadRow(
   if (!VERIFY_RESULT(iterator.PgFetchNext(table_row))) {
     return false;
   }
-  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+  data.read_restart_data->MakeAtLeast(VERIFY_RESULT(iterator.GetReadRestartData()));
 
   return true;
 }
@@ -2132,7 +2137,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
     PgsqlReadRequestYbctidProvider key_provider(data_.doc_read_context, request_, response_);
     fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
   } else if (request_.has_sampling_state()) {
-    if (data_.doc_read_context.is_index()) {
+    if (data_.doc_read_context.is_index) {
       return STATUS_FORMAT(
           InvalidArgument, "Sampling of index table ($0) is not supported and not expected",
           request_.table_id());
@@ -2163,14 +2168,14 @@ Result<size_t> PgsqlReadOperation::Execute() {
 
   VTRACE(1, "Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
   if (table_iter_) {
-    *restart_read_ht_ = VERIFY_RESULT(table_iter_->RestartReadHt());
+    *read_restart_data_ = VERIFY_RESULT(table_iter_->GetReadRestartData());
   } else {
-    *restart_read_ht_ = HybridTime::kInvalid;
+    *read_restart_data_ = ReadRestartData();
   }
   if (index_iter_) {
-    restart_read_ht_->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
+    read_restart_data_->MakeAtLeast(VERIFY_RESULT(index_iter_->GetReadRestartData()));
   }
-  if (!restart_read_ht_->is_valid()) {
+  if (!read_restart_data_->is_valid()) {
     RETURN_NOT_OK(delayed_failure_);
   }
 
@@ -2216,6 +2221,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
   // Current number of rows to skip before collecting next one for sample
   double rowstoskip = sampling_state.rowstoskip();
   // Variables for the random numbers generator
+  SCHECK(sampling_state.has_rand_state(), InvalidArgument,
+         "Invalid sampling state, random state is missing");
   YbgPrepareMemoryContext();
   YbgReservoirState rstate = NULL;
   YbgSamplerCreate(
@@ -2713,9 +2720,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
       data_.vector_index, IllegalState, "Search vector when vector index is null: $0", request_);
 
   Slice vector_slice(options.vector().binary_value());
-  // TODO(vector_index) Use correct max_results or use prefetch_size passed from options
-  // when paging is supported.
-  size_t max_results = std::min(options.prefetch_size(), 1000);
+  size_t max_results = options.num_top_vectors_to_remove() + options.prefetch_size();
 
   table_iter_.reset();
   PgsqlVectorFilter filter(&table_iter_);
@@ -2727,6 +2732,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
       vector_slice,
       vector_index::SearchOptions {
         .max_num_results = max_results,
+        .ef = options.hnsw_options().ef_search(),
         .filter = std::ref(filter),
       }
   ));
@@ -2735,7 +2741,8 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   auto dump_stats = FLAGS_vector_index_dump_stats;
   auto read_start_time = MonoTime::NowIf(dump_stats);
   VectorIndexKeyProvider key_provider(
-      result, response_, *data_.vector_index, vector_slice, max_results, *result_buffer_);
+      result, response_, *data_.vector_index, vector_slice, options.num_top_vectors_to_remove(),
+      max_results, *result_buffer_);
   auto res = ExecuteBatchKeys(key_provider);
   LOG_IF(INFO, dump_stats)
       << "VI_STATS: Read rows data time: "
@@ -2769,7 +2776,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 
   // The response size should not exceed the rpc_max_message_size, so use it as a default size
   // limit. Reduce it to the number requested by the client, if it is stricter.
-  auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+  uint64_t response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
+                                 GetAtomicFlag(&FLAGS_max_buffer_size_to_rpc_limit_ratio);
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
@@ -2883,14 +2891,15 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 
 template <class KeyProvider>
 Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
-  VLOG_WITH_FUNC(3) << "Started, request_.size_limit(): " << request_.size_limit()
-                    << " request_.batch_arguments_size(): " << request_.batch_arguments_size()
-                    << " tablet: " << data_.ql_storage.ToString();
   // We limit the response's size.
-  auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+  uint64_t response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
+                                 GetAtomicFlag(&FLAGS_max_buffer_size_to_rpc_limit_ratio);
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
+  VLOG_WITH_FUNC(3) << "Started, response size limit: " << response_size_limit
+                    << " request_.batch_arguments_size(): " << request_.batch_arguments_size()
+                    << " tablet: " << data_.ql_storage.ToString();
 
   const auto& doc_read_context = data_.doc_read_context;
   auto projection = CreateProjection(doc_read_context.schema(), request_);
@@ -2922,7 +2931,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
       // to continue seeking through all the given batch arguments even though one
       // of them wasn't found. If it wasn't found, table_iter_ becomes invalid
       // and we have to make a new iterator.
-      // TODO (dmitry): In case of iterator recreation info from RestartReadHt field will be lost.
+      // TODO (dmitry): In case of iterator recreation info from ReadRestartData field will be lost.
       //                The #17159 issue is created for this problem.
       iter.emplace(&table_iter_);
       RETURN_NOT_OK(iter->InitForYbctid(data_, projection, doc_read_context, Bounds(key_provider)));
@@ -3049,7 +3058,7 @@ dockv::PgWireEncoderEntry GetEncoder(
     YQLRowwiseIteratorIf::UniPtr* table_iter, const dockv::PgTableRow& table_row,
     const PgsqlExpressionPB& expr, bool last) {
   if (expr.expr_case() == PgsqlExpressionPB::kColumnId) {
-    if (expr.column_id() != to_underlying(PgSystemAttrNum::kYBTupleId)) {
+    if (expr.column_id() != std::to_underlying(PgSystemAttrNum::kYBTupleId)) {
       auto index = table_row.projection().ColumnIdxById(ColumnId(expr.column_id()));
       if (index != dockv::ReaderProjection::kNotFoundIndex) {
         return table_row.GetEncoder(index, last);

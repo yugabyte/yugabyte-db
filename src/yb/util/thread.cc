@@ -51,8 +51,7 @@
 #include <set>
 #include <vector>
 
-#include <cds/init.h>
-#include <cds/gc/dhp.h>
+#include <boost/intrusive/list.hpp>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
@@ -62,6 +61,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
 #include "yb/util/format.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/mutex.h"
@@ -69,6 +69,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/types.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/web_callback_registry.h"
 
@@ -128,6 +129,32 @@ using namespace std::placeholders;
 constexpr int kMaxThreadNameInPerf = 15;
 const char Thread::kPaddingChar = 'x';
 
+struct QueueLink {
+  explicit QueueLink(bool remove_) : remove(remove_) {}
+
+  QueueLink* next = nullptr;
+  bool remove;
+};
+
+struct ThreadDescriptor {
+  pthread_t pthread_id;
+  std::string name;
+  std::string category;
+  int64_t thread_id;
+
+  QueueLink add_link{false};
+  QueueLink remove_link{true};
+  boost::intrusive::list_member_hook<> category_link{};
+};
+
+void SetNext(QueueLink* link, QueueLink* next) {
+  link->next = next;
+}
+
+QueueLink* GetNext(QueueLink* link) {
+  return link->next;
+}
+
 namespace {
 
 const std::string kAllGroups = "all";
@@ -163,79 +190,71 @@ class ThreadCategoryTracker {
   void IncrementCategory(const string& category);
   void DecrementCategory(const string& category);
   void RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity);
-  void RegisterGaugeForAllMetricEntities(const string& category);
 
  private:
   uint64 GetCategory(const string& category);
-  string name_;
-  Mutex lock_;
-  map<string, std::unique_ptr<GaugePrototype<uint64>>> gauge_protos_;
-  map<string, uint64_t> metrics_;
-  vector<scoped_refptr<MetricEntity>> metric_entities_;
+  uint64_t& RegisterGaugeForAllMetricEntities(const string& category);
+
+  struct Entry {
+    std::unique_ptr<GaugePrototype<uint64>> gauge_proto;
+    uint64_t metric;
+  };
+
+  std::string name_;
+  std::map<std::string, Entry> entries_;
+  std::vector<scoped_refptr<MetricEntity>> metric_entities_;
 };
 
 uint64 ThreadCategoryTracker::GetCategory(const string& category) {
-  MutexLock l(lock_);
-  return metrics_[category];
+  return entries_[category].metric;
 }
 
 void ThreadCategoryTracker::RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity) {
-  MutexLock l(lock_);
-  for (const auto& [category, gauge_proto] : gauge_protos_) {
-    gauge_proto->InstantiateFunctionGauge(metric_entity,
+  for (const auto& [category, entry] : entries_) {
+    entry.gauge_proto->InstantiateFunctionGauge(metric_entity,
       Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
   }
   metric_entities_.push_back(metric_entity);
 }
 
 void ThreadCategoryTracker::IncrementCategory(const string& category) {
-  MutexLock l(lock_);
-  RegisterGaugeForAllMetricEntities(category);
-  metrics_[category]++;
+  ++RegisterGaugeForAllMetricEntities(category);
 }
 
 void ThreadCategoryTracker::DecrementCategory(const string& category) {
-  MutexLock l(lock_);
-  RegisterGaugeForAllMetricEntities(category);
-  metrics_[category]--;
+  --RegisterGaugeForAllMetricEntities(category);
 }
 
-void ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string& category) {
-  if (gauge_protos_.find(category) == gauge_protos_.end()) {
-    string id = name_ + "_" + category;
-    EscapeMetricNameForPrometheus(&id);
-    const string description = id + " metric in ThreadCategoryTracker";
-    std::unique_ptr<GaugePrototype<uint64>> gauge_proto =
-      std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
-      yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
-
-    for (auto& metric_entity : metric_entities_) {
-      gauge_proto->InstantiateFunctionGauge(metric_entity,
-        Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
-    }
-    gauge_protos_[category] = std::move(gauge_proto);
-    metrics_[category] = static_cast<uint64>(0);
+uint64_t& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string& category) {
+  auto it = entries_.find(category);
+  if (it != entries_.end()) {
+    return it->second.metric;
   }
+  auto id = name_ + "_" + category;
+  EscapeMetricNameForPrometheus(&id);
+  auto description = id + " metric in ThreadCategoryTracker";
+  std::unique_ptr<GaugePrototype<uint64>> gauge_proto =
+    std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
+    yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
+
+  for (auto& metric_entity : metric_entities_) {
+    gauge_proto->InstantiateFunctionGauge(metric_entity,
+        Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+  }
+  return entries_.emplace(
+      category, Entry {.gauge_proto = std::move(gauge_proto), .metric = 0}).first->second.metric;
 }
 
 // A singleton class that tracks all live threads, and groups them together for easy
 // auditing. Used only by Thread.
 class ThreadMgr {
  public:
-  ThreadMgr()
-      : metrics_enabled_(false),
-        threads_started_metric_(0),
-        threads_running_metric_(0) {
-    cds::Initialize();
-    cds::gc::dhp::GarbageCollector::construct();
-    cds::threading::Manager::attachThread();
+  ThreadMgr() {
     started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started");
     running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running");
   }
 
   ~ThreadMgr() {
-    cds::Terminate();
-    MutexLock l(lock_);
     thread_categories_.clear();
   }
 
@@ -245,67 +264,54 @@ class ThreadMgr {
 
   // Registers a thread to the supplied category. The key is a pthread_t,
   // not the system TID, since pthread_t is less prone to being recycled.
-  void AddThread(const pthread_t& pthread_id, const string& name, const string& category,
-      int64_t tid);
+  void AddThread(std::unique_ptr<ThreadDescriptor> descriptor);
 
   // Removes a thread from the supplied category. If the thread has
   // already been removed, this is a no-op.
-  void RemoveThread(const pthread_t& pthread_id, const string& category);
+  void RemoveThread(ThreadDescriptor* descriptor);
 
-  void RenderThreadGroup(const std::string& group, std::ostream& output);
+  void RenderThreadGroup(const std::string& group, std::ostream& output) EXCLUDES(mutex_);
   uint64_t ReadThreadsRunning();
+  uint64_t ReadThreadsStarted();
 
  private:
-  // Container class for any details we want to capture about a thread
-  // TODO: Add start-time.
-  // TODO: Track fragment ID.
-  class ThreadDescriptor {
-   public:
-    ThreadDescriptor() { }
-    ThreadDescriptor(string category, string name, int64_t thread_id)
-        : name_(std::move(name)),
-          category_(std::move(category)),
-          thread_id_(thread_id) {}
-
-    const string& name() const { return name_; }
-    const string& category() const { return category_; }
-    int64_t thread_id() const { return thread_id_; }
-
-   private:
-    string name_;
-    string category_;
-    int64_t thread_id_;
-  };
-
   // A ThreadCategory is a set of threads that are logically related.
   // TODO: unordered_map is incompatible with pthread_t, but would be more
   // efficient here.
-  typedef map<const pthread_t, ThreadDescriptor> ThreadCategory;
+  using ThreadCategory = boost::intrusive::list<
+      ThreadDescriptor,
+      boost::intrusive::member_hook<
+          ThreadDescriptor,
+          boost::intrusive::list_member_hook<>,
+          &ThreadDescriptor::category_link>>;
 
   // All thread categorys, keyed on the category name.
-  typedef map<string, ThreadCategory> ThreadCategoryMap;
+  using ThreadCategoryMap = std::map<string, ThreadCategory>;
+
+  void RenderThreadGroupUnlocked(const std::string& group, std::ostream& output) REQUIRES(mutex_);
+  void ProcessPendingThreads();
 
   // Protects thread_categories_ and metrics_enabled_
-  Mutex lock_;
+  std::mutex mutex_;
 
   // All thread categorys that ever contained a thread, even if empty
-  ThreadCategoryMap thread_categories_;
+  ThreadCategoryMap thread_categories_ GUARDED_BY(mutex_);
+
+  MPSCQueue<QueueLink> pending_threads_;
+  std::atomic<bool> processing_pending_threads_{false};
 
   // True after StartInstrumentation(..) returns
-  bool metrics_enabled_;
+  bool metrics_enabled_ GUARDED_BY(mutex_) = false;
 
   // Counters to track all-time total number of threads, and the
   // current number of running threads.
-  uint64_t threads_started_metric_;
-  uint64_t threads_running_metric_;
+  std::atomic<uint64_t> threads_started_counter_{0};
+  std::atomic<uint64_t> threads_running_counter_{0};
 
   // Tracker to track the number of started threads and the number of running threads for each
   // category.
-  std::unique_ptr<ThreadCategoryTracker> started_category_tracker_;
-  std::unique_ptr<ThreadCategoryTracker> running_category_tracker_;
-
-  // Metric callbacks.
-  uint64_t ReadThreadsStarted();
+  std::unique_ptr<ThreadCategoryTracker> started_category_tracker_ GUARDED_BY(mutex_);
+  std::unique_ptr<ThreadCategoryTracker> running_category_tracker_ GUARDED_BY(mutex_);
 
   // Webpage callback; prints all threads by category
   void ThreadPathHandler(const WebCallbackRegistry::WebRequest& args,
@@ -327,7 +333,7 @@ void ThreadMgr::SetThreadName(const string& name, int64 tid) {
 
 Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metrics,
                                        WebCallbackRegistry* web) {
-  MutexLock l(lock_);
+  std::lock_guard lock(mutex_);
   metrics_enabled_ = true;
   started_category_tracker_->RegisterMetricEntity(metrics);
   running_category_tracker_->RegisterMetricEntity(metrics);
@@ -360,17 +366,27 @@ Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metric
 }
 
 uint64_t ThreadMgr::ReadThreadsStarted() {
-  MutexLock l(lock_);
-  return threads_started_metric_;
+  return threads_started_counter_.load();
 }
 
 uint64_t ThreadMgr::ReadThreadsRunning() {
-  MutexLock l(lock_);
-  return threads_running_metric_;
+  return threads_running_counter_.load();
 }
 
-void ThreadMgr::AddThread(const pthread_t& pthread_id, const string& name,
-    const string& category, int64_t tid) {
+void ThreadMgr::AddThread(std::unique_ptr<ThreadDescriptor> descriptor) {
+  ++threads_running_counter_;
+  ++threads_started_counter_;
+  pending_threads_.Push(&descriptor.release()->add_link);
+  ProcessPendingThreads();
+}
+
+void ThreadMgr::RemoveThread(ThreadDescriptor* descriptor) {
+  --threads_running_counter_;
+  pending_threads_.Push(&descriptor->remove_link);
+  ProcessPendingThreads();
+}
+
+void ThreadMgr::ProcessPendingThreads() {
   // These annotations cause TSAN to ignore the synchronization on lock_
   // without causing the subsequent mutations to be treated as data races
   // in and of themselves (that's what IGNORE_READS_AND_WRITES does).
@@ -383,35 +399,47 @@ void ThreadMgr::AddThread(const pthread_t& pthread_id, const string& name,
   // SuperviseThread() may cause TSAN to establish a "happens before"
   // relationship between thread functors, ignoring potential data races.
   // The annotations prevent this from happening.
-  ANNOTATE_IGNORE_SYNC_BEGIN();
-  ANNOTATE_IGNORE_READS_AND_WRITES_BEGIN();
-  {
-    MutexLock l(lock_);
-    thread_categories_[category][pthread_id] = ThreadDescriptor(category, name, tid);
-    if (metrics_enabled_) {
-      threads_running_metric_++;
-      threads_started_metric_++;
-      started_category_tracker_->IncrementCategory(category);
-      running_category_tracker_->IncrementCategory(category);
-    }
+  bool expected = false;
+  if (!processing_pending_threads_.compare_exchange_strong(expected, true)) {
+    return;
   }
-  ANNOTATE_IGNORE_SYNC_END();
-  ANNOTATE_IGNORE_READS_AND_WRITES_END();
-}
 
-void ThreadMgr::RemoveThread(const pthread_t& pthread_id, const string& category) {
   ANNOTATE_IGNORE_SYNC_BEGIN();
   ANNOTATE_IGNORE_READS_AND_WRITES_BEGIN();
-  {
-    MutexLock l(lock_);
-    auto category_it = thread_categories_.find(category);
-    DCHECK(category_it != thread_categories_.end());
-    category_it->second.erase(pthread_id);
-    if (metrics_enabled_) {
-      threads_running_metric_--;
-      running_category_tracker_->DecrementCategory(category);
+
+  std::lock_guard lock(mutex_);
+  for (;;) {
+    while (auto link = pending_threads_.Pop()) {
+      if (link->remove) {
+        auto* descriptor = MEMBER_PTR_TO_CONTAINER(ThreadDescriptor, remove_link, link);
+        const auto& category_name = descriptor->category;
+        auto& category = thread_categories_[category_name];
+        if (metrics_enabled_) {
+          running_category_tracker_->DecrementCategory(category_name);
+        }
+        category.erase(category.iterator_to(*descriptor));
+        delete descriptor;
+      } else {
+        auto* descriptor = MEMBER_PTR_TO_CONTAINER(ThreadDescriptor, add_link, link);
+        const auto& category_name = descriptor->category;
+        auto& category = thread_categories_[category_name];
+        category.push_back(*descriptor);
+        if (metrics_enabled_) {
+          started_category_tracker_->IncrementCategory(category_name);
+          running_category_tracker_->IncrementCategory(category_name);
+        }
+      }
+    }
+    processing_pending_threads_.store(false);
+    if (pending_threads_.Empty()) {
+      break;
+    }
+    expected = false;
+    if (!processing_pending_threads_.compare_exchange_strong(expected, true)) {
+      break;
     }
   }
+
   ANNOTATE_IGNORE_SYNC_END();
   ANNOTATE_IGNORE_READS_AND_WRITES_END();
 }
@@ -445,13 +473,13 @@ void ThreadMgr::RenderThreadCategoryRows(const ThreadCategory& category, std::st
   thread_ids.reserve(category.size());
   {
     auto* data = threads.data();
-    for (const ThreadCategory::value_type& thread : category) {
-      data->name = &thread.second.name();
-      data->tid = thread.second.thread_id();
+    for (const auto& thread : category) {
+      data->name = &thread.name;
+      data->tid = thread.thread_id;
 #if defined(__linux__)
       data->tid_for_stack = data->tid;
 #else
-      data->tid_for_stack = thread.first;
+      data->tid_for_stack = thread.pthread_id;
 #endif
       Status status = GetThreadStats(data->tid, &data->stats);
       if (!status.ok()) {
@@ -502,7 +530,7 @@ void ThreadMgr::RenderThreadCategoryRows(const ThreadCategory& category, std::st
       } else {
         symbolized = thread.stack_trace.status().message().ToBuffer();
       }
-      active_out = output + to_underlying(group);
+      active_out = output + std::to_underlying(group);
     }
 
     *active_out += Format(
@@ -519,6 +547,11 @@ void ThreadMgr::RenderThreadCategoryRows(const ThreadCategory& category, std::st
 }
 
 void ThreadMgr::RenderThreadGroup(const std::string& group, std::ostream& output) {
+  std::lock_guard lock(mutex_);
+  RenderThreadGroupUnlocked(group, output);
+}
+
+void ThreadMgr::RenderThreadGroupUnlocked(const std::string& group, std::ostream& output) {
   output << "<h2>Thread Group: ";
   EscapeForHtml(group, &output);
   output << "</h2>" << endl;
@@ -553,7 +586,7 @@ void ThreadMgr::RenderThreadGroup(const std::string& group, std::ostream& output
   }
 
   for (auto g : StackTraceGroupList()) {
-    output << groups[to_underlying(g)];
+    output << groups[std::to_underlying(g)];
   }
   output << "</table>";
 }
@@ -562,15 +595,15 @@ void ThreadMgr::ThreadPathHandler(
     const WebCallbackRegistry::WebRequest& req,
     WebCallbackRegistry::WebResponse* resp) {
   auto& output = resp->output;
-  MutexLock l(lock_);
+  std::lock_guard lock(mutex_);
   auto category_name = req.parsed_args.find("group");
   if (category_name != req.parsed_args.end()) {
     string group = EscapeForHtmlToString(category_name->second);
-    RenderThreadGroup(group, output);
+    RenderThreadGroupUnlocked(group, output);
   } else {
     output << "<h2>Thread Groups</h2>";
     if (metrics_enabled_) {
-      output << "<h4>" << threads_running_metric_ << " thread(s) running";
+      output << "<h4>" << threads_running_counter_.load() << " thread(s) running";
     }
     output << "<a href='/threadz?group=" << kAllGroups << "'><h3>All Threads</h3>";
 
@@ -888,9 +921,14 @@ void* Thread::SuperviseThread(void* arg) {
   Release_Store(&t->tid_, system_tid);
 
   thread_manager->SetThreadName(name, t->tid());
-  thread_manager->AddThread(pthread_self(), name, t->category(), t->tid());
-
-  cds::threading::Manager::attachThread();
+  auto descriptor = std::make_unique<ThreadDescriptor>(ThreadDescriptor {
+    .pthread_id = pthread_self(),
+    .name = name,
+    .category = t->category(),
+    .thread_id = t->tid(),
+  });
+  t->descriptor_ = descriptor.get();
+  thread_manager->AddThread(std::move(descriptor));
 
   // FinishThread() is guaranteed to run (even if functor_ throws an
   // exception) because pthread_cleanup_push() creates a scoped object
@@ -908,8 +946,6 @@ void Thread::Join() {
 }
 
 void Thread::FinishThread(void* arg) {
-  cds::threading::Manager::detachThread();
-
   Thread* t = static_cast<Thread*>(arg);
 
   for (Closure& c : t->exit_callbacks_) {
@@ -920,7 +956,7 @@ void Thread::FinishThread(void* arg) {
   // SuperviseThread() or through pthread_exit(). In either case,
   // thread_manager is guaranteed to be live because thread_mgr_ref in
   // SuperviseThread() is still live.
-  thread_manager->RemoveThread(pthread_self(), t->category());
+  thread_manager->RemoveThread(t->descriptor_);
 
   // Signal any Joiner that we're done.
   t->done_.CountDown();
@@ -949,20 +985,16 @@ Status Thread::SendSignal(ThreadIdForStack tid, int signal) {
   return Status::OK();
 }
 
-CDSAttacher::CDSAttacher() {
-  cds::threading::Manager::attachThread();
-}
-
-CDSAttacher::~CDSAttacher() {
-  cds::threading::Manager::detachThread();
-}
-
 void RenderAllThreadStacks(std::ostream& output) {
   thread_manager->RenderThreadGroup(kAllGroups, output);
 }
 
 size_t CountManagedThreads() {
   return thread_manager->ReadThreadsRunning();
+}
+
+size_t CountStartedThreads() {
+  return thread_manager->ReadThreadsStarted();
 }
 
 } // namespace yb

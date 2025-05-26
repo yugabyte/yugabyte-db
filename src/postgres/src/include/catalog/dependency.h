@@ -66,16 +66,16 @@ typedef enum DependencyType
  * storage don't need this: they are protected by the existence of a physical
  * file in the tablespace.)
  *
- * (e) a SHARED_DEPENDENCY_TABLESPACE entry means that the referenced
+ * (e) YB: a SHARED_DEPENDENCY_TABLESPACE entry means that the referenced
  * object is a tablespace mentioned in a relation without Postgres storage
  * (Yugabyte relations and relations with no files).  The referenced object
  * must be a pg_tablespace entry.  (Relations that have storage don't need
  * this: they are protected by the existence of a physical file in the
  * tablespace.)
  *
- * (f) a SHARED_DEPENDENCY_PROFILE entry means that the referenced object is
- * a role that is mentioned in a pg_yb_role_profile row.  The referenced object
- * must be a pg_authid entry.
+ * (f) YB: a SHARED_DEPENDENCY_PROFILE entry means that the referenced object
+ * is a role that is mentioned in a pg_yb_role_profile row.  The referenced
+ * object must be a pg_authid entry.
  *
  * SHARED_DEPENDENCY_INVALID is a value used as a parameter in internal
  * routines, and is not valid in the catalog itself.
@@ -204,10 +204,6 @@ extern void recordDependencyOn(const ObjectAddress *depender,
 							   const ObjectAddress *referenced,
 							   DependencyType behavior);
 
-extern bool tablegroupHasDependents(Oid tablegroupId);
-
-extern bool ybIsTablegroupDependent(Oid relOid, Oid tablegroupId);
-
 extern void recordMultipleDependencies(const ObjectAddress *depender,
 									   const ObjectAddress *referenced,
 									   int nreferenced,
@@ -260,10 +256,9 @@ extern void deleteSharedDependencyRecordsFor(Oid classId, Oid objectId,
 
 extern void recordDependencyOnOwner(Oid classId, Oid objectId, Oid owner);
 
-void		shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId);
-
 extern void changeDependencyOnOwner(Oid classId, Oid objectId,
 									Oid newOwnerId);
+
 extern void recordDependencyOnTablespace(Oid classId, Oid objectId,
 										 Oid tablespace);
 
@@ -288,10 +283,12 @@ extern void shdepDropOwned(List *relids, DropBehavior behavior);
 
 extern void shdepReassignOwned(List *relids, Oid newrole);
 
+/* YB */
+extern bool tablegroupHasDependents(Oid tablegroupId);
+extern bool ybIsTablegroupDependent(Oid relOid, Oid tablegroupId);
+void		shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId);
 extern void ybRecordDependencyOnProfile(Oid classId, Oid objectId, Oid profile);
-
 extern void ybChangeDependencyOnProfile(Oid roleId, Oid newProfileId);
-
 extern void ybDropDependencyOnProfile(Oid roleId);
 
 #endif							/* DEPENDENCY_H */

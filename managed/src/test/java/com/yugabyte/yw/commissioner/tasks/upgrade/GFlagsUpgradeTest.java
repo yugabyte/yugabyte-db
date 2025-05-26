@@ -23,6 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
@@ -93,6 +94,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     try {
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
       setCheckNodesAreSafeToTakeDown(mockClient);
+      when(mockGFlagsAuditHandler.constructGFlagAuditPayload(any()))
+          .thenReturn(new ObjectMapper().createObjectNode());
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

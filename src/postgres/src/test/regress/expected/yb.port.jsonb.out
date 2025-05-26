@@ -3278,7 +3278,7 @@ DROP INDEX jidx;
 DROP INDEX jidx_array;
 -- btree
 CREATE INDEX jidx ON testjsonb USING btree (j);
-NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 ERROR:  INDEX on column of type 'JSONB' not yet supported
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j > '{"p":1}';

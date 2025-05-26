@@ -570,6 +570,7 @@ YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
 	}
 
 	TriggerDesc *trigdesc = resultRelInfo->ri_TrigDesc;
+
 	if (!(trigdesc && (trigdesc->trig_delete_after_row ||
 					   trigdesc->trig_insert_after_row ||
 					   trigdesc->trig_update_after_row)))
@@ -834,6 +835,7 @@ YBCExecuteDelete(Relation rel,
 				 errmsg("missing column ybctid in DELETE request")));
 	}
 
+	TABLETUPLE_YBCTID(planSlot) = ybctid;
 	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 	/* Bind ybctid to identify the current row. */
@@ -1061,6 +1063,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
 				 errmsg("missing column ybctid in UPDATE request")));
 
+	TABLETUPLE_YBCTID(slot) = ybctid;
 	YBCBindTupleId(update_stmt, ybctid);
 
 	/* Assign new values to the updated columns for the current row. */
@@ -1342,7 +1345,7 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	 */
 	slot = MakeSingleTupleTableSlot(inputTupleDesc, &TTSOpsHeapTuple);
 	ExecStoreHeapTuple(tuple, slot, false);
-	ybctid = YBCComputeYBTupleIdFromSlot(rel, slot);
+	ybctid = TABLETUPLE_YBCTID(slot) = YBCComputeYBTupleIdFromSlot(rel, slot);
 	ExecDropSingleTupleTableSlot(slot);
 
 	if (ybctid == 0)
@@ -1544,10 +1547,12 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 int
 YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo)
 {
-	int count = 0;
+	int			count = 0;
+
 	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
 	{
-		Relation index = resultRelInfo->ri_IndexRelationDescs[i];
+		Relation	index = resultRelInfo->ri_IndexRelationDescs[i];
+
 		if (index->rd_index->indisprimary)
 		{
 			continue;

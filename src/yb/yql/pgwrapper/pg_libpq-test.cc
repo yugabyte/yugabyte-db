@@ -165,12 +165,16 @@ class PgLibPqTest : public LibPqTestBase {
 
   void TestSecondaryIndexInsertSelect();
 
+  Status TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces);
+
   void KillPostmasterProcessOnTservers();
 
   Result<string> GetPostmasterPidViaShell(pid_t backend_pid);
   Result<string> GetPostmasterPidViaShell(PGConn* conn);
 
   Result<string> GetSchemaName(const string& relname, PGConn* conn);
+
+  Result<YsqlMetric> GetCatCacheTableMissMetric(const std::string& table_name);
 
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
@@ -943,6 +947,107 @@ class PgLibPqWithSharedMemTest : public PgLibPqTest {
 
 TEST_F_EX(PgLibPqTest, SecondaryIndexInsertSelectWithSharedMem, PgLibPqWithSharedMemTest) {
   TestSecondaryIndexInsertSelect();
+}
+
+Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces) {
+  auto conn = VERIFY_RESULT(Connect());
+  constexpr auto kPgCatalogOid = 11;
+
+  // Secondary index scan on system table.
+  auto query = Format(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM pg_class WHERE relname = 'pg_class' AND relnamespace = $0",
+      kPgCatalogOid);
+  // First run is to warm up the cache.
+  RETURN_NOT_OK(conn.FetchRow<std::string>(query));
+  // Second run is the real test.
+  auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  rapidjson::Document explain_json;
+  explain_json.Parse(explain_str.c_str());
+  auto scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Catalog Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of catalog read requests");
+
+  // Secondary index scan on copartitioned table.
+  RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE vector_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 2 TABLETS"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE INDEX ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO vector_test VALUES (1, '[1, 2, 3]')"));
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM vector_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT 1"));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Limit",
+            IllegalState,
+            "Unexpected scan type");
+  scan_type = std::string(explain_json[0]["Plan"]["Plans"][0]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index.
+  RETURN_NOT_OK(conn.Execute("CREATE DATABASE colodb WITH colocation = true"));
+  conn = VERIFY_RESULT(ConnectToDB("colodb"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE colo_test (id int PRIMARY KEY, value TEXT)"));
+  RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO colo_test VALUES (1, 'hi')"));
+  query = "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM colo_test WHERE value = 'hi'";
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index on different tablespaces.
+  if (is_colocated_with_tablespaces) {
+    RETURN_NOT_OK(conn.Execute("DROP INDEX colo_test_value_idx"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLESPACE spc LOCATION '/dne'"));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value) TABLESPACE spc"));
+    explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+    explain_json.Parse(explain_str.c_str());
+    scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+    SCHECK_EQ(scan_type, "Index Scan",
+              IllegalState,
+              "Unexpected scan type");
+    SCHECK_GT(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+              IllegalState,
+              "Unexpected number of storage read requests");
+  }
+
+  return Status::OK();
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    options->extra_master_flags.push_back(flag);
+    options->extra_tserver_flags.push_back(flag);
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
+          PgLibPqColocatedTablesWithTablespacesTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
 void AssertRows(PGConn *conn, int expected_num_rows) {
@@ -1780,6 +1885,27 @@ Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
       "SELECT nspname FROM pg_class JOIN pg_namespace "
       "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
       relname));
+}
+
+Result<YsqlMetric> PgLibPqTest::GetCatCacheTableMissMetric(const std::string& table_name) {
+  auto hostport = Format("$0:$1", pg_ts->bind_host(), pg_ts->pgsql_http_port());
+  EasyCurl c;
+  faststring buf;
+
+  auto json_metrics_url =
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
+  RETURN_NOT_OK(c.FetchURL(json_metrics_url, &buf));
+  auto json_metrics = ParseJsonMetrics(buf.ToString());
+  auto found_it =
+      std::find_if(json_metrics.begin(), json_metrics.end(), [table_name](YsqlMetric& metric) {
+        return (
+            metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
+            metric.labels["table_name"] == table_name);
+      });
+  if (found_it == json_metrics.end()) {
+    return STATUS(NotFound, "metric for " + table_name + " not found");
+  }
+  return *found_it;
 }
 
 // Ensure if client sends out duplicate create table requests, one create table request can
@@ -2908,7 +3034,11 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
   int num_successes = 0;
   std::array<PGConn, 2> conns = {
     ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
-    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
+    // For this test, we need to have the DDL connection and DML connection connected to
+    // two nodes in order to have heartbeat delay to cause stale cache which shows catalog
+    // version mismatch symptom.
+    ASSERT_RESULT((pg_ts = cluster_->tablet_server(1),
+                   ConnectToDB(kNamespaceName, true /* simple_query_protocol */))),
   };
 
   ASSERT_OK(conns[0].ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -2973,6 +3103,8 @@ class PgLibPqTestEnumType: public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--TEST_do_not_add_enum_sort_order=true");
+    // The EnumType test kills all postmasters on tservers so it must wait until they are spawned.
+    options->wait_for_tservers_to_accept_ysql_connections = true;
   }
 };
 
@@ -3619,7 +3751,7 @@ TEST_P(PgOidCollisionTest, MaterializedViewPgOidCollisionFromTservers) {
 // Conn2: CREATE TABLE danger (k INT, v INT);
 // Conn2: INSERT INTO danger SELECT i, i from generate_series(1, 100) i;
 // This test will fail in DEBUG builds because table ID reuse will trigger certain DCHECK failure.
-TEST_P(PgOidCollisionTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MetaCachePgOidCollisionFromTservers)) {
+TEST_P(PgOidCollisionTest, YB_RELEASE_ONLY_TEST(MetaCachePgOidCollisionFromTservers)) {
   const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
   RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
   const string dbname = "db2";
@@ -4077,20 +4209,13 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   EasyCurl c;
   faststring buf;
 
-  auto prometheus_metrics_url =
-      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
-  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
-  auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
-
-  auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
-  ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
-  auto json_metrics = ParseJsonMetrics(buf.ToString());
+  auto prometheus_metrics = GetPrometheusMetrics();
+  auto json_metrics = GetJsonMetrics();
 
   for (const auto& metrics : {json_metrics, prometheus_metrics}) {
     int64_t expected_total_cache_misses = 0;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
           metric.labels.find("table_name") == metric.labels.end()) {
         expected_total_cache_misses = metric.value;
         break;
@@ -4103,7 +4228,7 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     int64_t total_index_cache_misses = 0;
     std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
           metric.labels.find("table_name") != metric.labels.end()) {
         auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
         ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
@@ -4121,7 +4246,7 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     // table-level cache miss metric.
     int64_t total_table_cache_misses = 0;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheTableMisses") != std::string::npos) {
+      if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos) {
         auto table_name = metric.labels.at("table_name");
         ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
             << "Expected sum of index cache misses for table " << table_name
@@ -4133,6 +4258,113 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     }
     ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
   }
+}
+
+class PgLibPqAmopNegCacheTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+
+  void TestAmopNegCacheMiss(bool preloaded) {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
+
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto runQueryAndGetMetricLambda = [&]() -> Result<int64_t> {
+      // This query currently causes a cache lookup on pg_amop for a row that doesn't exist
+      auto str = VERIFY_RESULT(
+          conn2.FetchAllAsString("EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'"));
+      LOG(INFO) << "output " << str;
+
+      auto value = VERIFY_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_amop"));
+      LOG(INFO) << "metric value for pg_amop misses " << value.value;
+      return value.value;
+    };
+
+    int64_t value1 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+    int64_t value2 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+
+    ASSERT_GT(value2, value1);
+
+    LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='3.14'"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids=3.14"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    LOG(INFO) << "Completed invalid tests";
+
+    ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
+    int64_t value3 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+
+    if (preloaded) {
+      // When preloaded, allowing neg caching already returns a neg cache hit
+      // so we should see no further misses on pg_amop at this point.
+      ASSERT_EQ(value3, value2);
+    } else {
+      // When not preloaded, we need one additional query to create the neg
+      // cache entry, after which we should see no further misses.
+      ASSERT_GT(value3, value2);
+
+      int64_t value4 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+      ASSERT_EQ(value4, value3);
+    }
+  }
+};
+
+class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_catalog_preload_additional_table_list=pg_amop");
+    PgLibPqAmopNegCacheTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNegCacheTest) {
+  TestAmopNegCacheMiss(false);
+}
+
+TEST_F_EX(PgLibPqTest, PgAmopPreloadNegCacheTest, PgLibPqAmopPreloadNegCacheTest) {
+  TestAmopNegCacheMiss(true);
+}
+
+class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_catalog_preload_additional_table_list=pg_inherits");
+    options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, PgInheritsNegCacheTest, PgLibPqPgInheritsNegCacheTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Prepare schema
+  ASSERT_OK(conn.Execute(
+    "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
+    "PARTITION BY RANGE(r);"
+    "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
+    "CREATE UNIQUE INDEX ON foo (v1, r);"
+    "INSERT INTO FOO VALUES (1,1,1,1);"));
+
+  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+  // Run the query on a fresh conn
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto str = conn2.FetchAllAsString(
+      "EXPLAIN (ANALYZE, DIST) INSERT INTO FOO VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
+      "v2=foo.v2+1");
+
+  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+  // Given we are preloaded, we should not have any cache misses (incl neg misses)
+  // for the query above which should cause lookups for ancestors of a table in pg_inherits
+  ASSERT_EQ(end_value.value, start_value.value);
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
@@ -4466,6 +4698,7 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET yb_binary_restore = true"));
   ASSERT_OK(conn.Execute("SET yb_ignore_pg_class_oids = false"));
+  ASSERT_OK(conn.Execute("SET yb_ignore_relfilenode_ids = false"));
 
   uint32_t next_oid = 16384;
 
@@ -4477,20 +4710,30 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
       "SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('$0'::pg_catalog.oid)",
       next_oid++));
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
+
     // Restore table.
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(id int)", table));
 
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
     // Restore first index of the table.
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 on $1(id)", table, table));
 
     ASSERT_RESULT(conn.FetchFormat(
-      "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
-      next_oid++));
+        "SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('$0'::pg_catalog.oid)",
+        next_oid));
+    ASSERT_RESULT(conn.FetchFormat(
+        "SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('$0'::pg_catalog.oid)",
+        next_oid++));
     // Restore second index of the table.
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 on $1(id)", table, table));
   }
@@ -4498,10 +4741,51 @@ TEST_F(PgLibPqTest, TableRewriteOidCollision) {
   // Turn off restore simulation and run regular "ALTER TABLE" operation.
   ASSERT_OK(conn.ExecuteFormat("SET yb_binary_restore = false"));
   ASSERT_OK(conn.ExecuteFormat("SET yb_ignore_pg_class_oids = true"));
+
   // This DDL used to show "Duplicate table" error due to OID collision because the OID
   // 16393 was already used by yugabyte.t2_idx2 and is reused as relfilenode for t3_idx1
   // during table rewrite.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t3 ALTER COLUMN id TYPE TEXT"));
+}
+
+TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+  conn = ASSERT_RESULT(ConnectToDB("db1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t(k int, c1 INT, c2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_c1_idx ON base_t(c1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_c2_idx ON base_t(c2)"));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+    "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
+  LOG(INFO) << "result: " << result;
+  ASSERT_OK(conn.Execute("ALTER TABLE base_t ADD PRIMARY KEY (k)"));
+  result = ASSERT_RESULT(conn.FetchAllAsString(
+    "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
+  LOG(INFO) << "result: " << result;
+  std::string tmpname = std::tmpnam(nullptr);
+  auto hostport = cluster_->ysql_hostport(0);
+  std::string ysql_dump_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump"));
+  std::string ysql_dump_cmd = Format(
+    "$0 --include-yb-metadata --serializable-deferrable --create --schema-only "
+    "--dbname db1 --file $1 -h $2 -p $3",
+    ysql_dump_path, tmpname, hostport.host(), hostport.port());
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("DROP DATABASE db1"));
+  std::string ysqlsh_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysqlsh"));
+  std::string ysqlsh_cmd = Format(
+    "$0 -f $1 -h $2 -p $3", ysqlsh_path, tmpname, hostport.host(), hostport.port());
+  LOG(INFO) << "Executing " << ysqlsh_cmd;
+  ASSERT_EQ(system(ysqlsh_cmd.c_str()), 0);
+  conn = ASSERT_RESULT(ConnectToDB("db1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t_dummy1(k INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE base_t_faulty(k INT, c1 INT, c2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_faulty_c1_idx ON base_t_faulty(c1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX base_t_faulty_c2_idx ON base_t_faulty(c2)"));
+  std::string rm_cmd = Format("rm -f $0", tmpname);
+  LOG(INFO) << "Executing " << rm_cmd;
+  ASSERT_EQ(system(rm_cmd.c_str()), 0);
 }
 
 TEST_F(PgLibPqTest, TablePartitionByCollationTextColumn) {

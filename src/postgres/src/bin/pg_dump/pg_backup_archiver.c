@@ -47,6 +47,10 @@
 #define TEXT_DUMP_HEADER "--\n-- YSQL database dump\n--\n\n"
 #define TEXT_DUMPALL_HEADER "--\n-- YSQL database cluster dump\n--\n\n"
 
+#define TOC_PREFIX_NONE		""
+#define TOC_PREFIX_DATA		"Data for "
+#define TOC_PREFIX_STATS	"Statistics for "
+
 /* state needed to save/restore an archive's output target */
 typedef struct _outputContext
 {
@@ -77,7 +81,7 @@ static ArchiveHandle *_allocAH(const char *FileSpec, const ArchiveFormat fmt,
 							   const int compression, bool dosync, ArchiveMode mode,
 							   SetupWorkerPtrType setupWorkerPtr);
 static void _getObjectDescription(PQExpBuffer buf, TocEntry *te);
-static void _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData);
+static void _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx);
 static char *sanitize_line(const char *str, bool want_hyphen);
 static void _doSetFixedOutputState(ArchiveHandle *AH);
 static void _doSetSessionAuth(ArchiveHandle *AH, const char *user);
@@ -91,10 +95,11 @@ static void processEncodingEntry(ArchiveHandle *AH, TocEntry *te);
 static void processStdStringsEntry(ArchiveHandle *AH, TocEntry *te);
 static void processSearchPathEntry(ArchiveHandle *AH, TocEntry *te);
 static int	_tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH);
-static RestorePass _tocEntryRestorePass(TocEntry *te);
+static RestorePass _tocEntryRestorePass(ArchiveHandle *AH, TocEntry *te);
 static bool _tocEntryIsACL(TocEntry *te);
 static void _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te);
 static void _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te);
+static bool is_load_via_partition_root(TocEntry *te);
 static void buildTocEntryArrays(ArchiveHandle *AH);
 static void _moveBefore(TocEntry *pos, TocEntry *te);
 static int	_discoverArchiveFormat(ArchiveHandle *AH);
@@ -123,7 +128,8 @@ static void ready_list_insert(ParallelReadyList *ready_list, TocEntry *te);
 static void ready_list_remove(ParallelReadyList *ready_list, int i);
 static void ready_list_sort(ParallelReadyList *ready_list);
 static int	TocEntrySizeCompare(const void *p1, const void *p2);
-static void move_to_ready_list(TocEntry *pending_list,
+static void move_to_ready_list(ArchiveHandle *AH,
+							   TocEntry *pending_list,
 							   ParallelReadyList *ready_list,
 							   RestorePass pass);
 static TocEntry *pop_next_work_item(ParallelReadyList *ready_list,
@@ -152,12 +158,12 @@ static void StrictNamesCheck(RestoreOptions *ropt);
  * compatiblity, check for the presence of the GUC before setting it.
  */
 static const char *yb_disable_auto_analyze_cmd =
-		"DO $$\n"
-		"BEGIN\n"
-		"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
-		"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
-		"END IF;\n"
-		"END $$;\n";
+"DO $$\n"
+"BEGIN\n"
+"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
+"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
+"END IF;\n"
+"END $$;\n";
 
 /*
  * Allocate a new DumpOptions block containing all default values.
@@ -184,6 +190,8 @@ InitDumpOptions(DumpOptions *opts)
 	opts->dumpSections = DUMP_UNSECTIONED;
 	opts->dumpSchema = true;
 	opts->dumpData = true;
+	/* YB: Do not dump statistics by default */
+	opts->dumpStatistics = false;
 }
 
 /*
@@ -204,9 +212,10 @@ dumpOptionsFromRestoreOptions(RestoreOptions *ropt)
 	dopt->outputClean = ropt->dropSchema;
 	dopt->dumpData = ropt->dumpData;
 	dopt->dumpSchema = ropt->dumpSchema;
+	dopt->dumpSections = ropt->dumpSections;
+	dopt->dumpStatistics = ropt->dumpStatistics;
 	dopt->if_exists = ropt->if_exists;
 	dopt->column_inserts = ropt->column_inserts;
-	dopt->dumpSections = ropt->dumpSections;
 	dopt->aclsSkip = ropt->aclsSkip;
 	dopt->outputSuperuser = ropt->superuser;
 	dopt->outputCreateDB = ropt->createDB;
@@ -445,8 +454,8 @@ RestoreArchive(Archive *AHX)
 	}
 
 	/*
-	 * Work out if we have an implied data-only restore. This can happen if
-	 * the dump was data only or if the user has used a toc list to exclude
+	 * Work out if we have an implied schema-less restore. This can happen if
+	 * the dump excluded the schema or the user has used a toc list to exclude
 	 * all of the schema data. All we do is look for schema entries - if none
 	 * are found then we unset the dumpSchema flag.
 	 *
@@ -455,20 +464,20 @@ RestoreArchive(Archive *AHX)
 	 */
 	if (ropt->dumpSchema)
 	{
-		int			impliedDataOnly = 1;
+		bool		no_schema_found = true;
 
 		for (te = AH->toc->next; te != AH->toc; te = te->next)
 		{
 			if ((te->reqs & REQ_SCHEMA) != 0)
-			{					/* It's schema, and it's wanted */
-				impliedDataOnly = 0;
+			{
+				no_schema_found = false;
 				break;
 			}
 		}
-		if (impliedDataOnly)
+		if (no_schema_found)
 		{
 			ropt->dumpSchema = false;
-			pg_log_info("implied data-only restore");
+			pg_log_info("implied no-schema restore");
 		}
 	}
 
@@ -706,10 +715,10 @@ RestoreArchive(Archive *AHX)
 
 		for (te = AH->toc->next; te != AH->toc; te = te->next)
 		{
-			if ((te->reqs & (REQ_SCHEMA | REQ_DATA)) == 0)
+			if ((te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_STATS)) == 0)
 				continue;		/* ignore if not to be dumped at all */
 
-			switch (_tocEntryRestorePass(te))
+			switch (_tocEntryRestorePass(AH, te))
 			{
 				case RESTORE_PASS_MAIN:
 					(void) restore_toc_entry(AH, te, false);
@@ -727,8 +736,8 @@ RestoreArchive(Archive *AHX)
 		{
 			for (te = AH->toc->next; te != AH->toc; te = te->next)
 			{
-				if ((te->reqs & (REQ_SCHEMA | REQ_DATA)) != 0 &&
-					_tocEntryRestorePass(te) == RESTORE_PASS_ACL)
+				if ((te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_STATS)) != 0 &&
+					_tocEntryRestorePass(AH, te) == RESTORE_PASS_ACL)
 					(void) restore_toc_entry(AH, te, false);
 			}
 		}
@@ -737,8 +746,8 @@ RestoreArchive(Archive *AHX)
 		{
 			for (te = AH->toc->next; te != AH->toc; te = te->next)
 			{
-				if ((te->reqs & (REQ_SCHEMA | REQ_DATA)) != 0 &&
-					_tocEntryRestorePass(te) == RESTORE_PASS_POST_ACL)
+				if ((te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_STATS)) != 0 &&
+					_tocEntryRestorePass(AH, te) == RESTORE_PASS_POST_ACL)
 					(void) restore_toc_entry(AH, te, false);
 			}
 		}
@@ -820,7 +829,7 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 			pg_log_info("creating %s \"%s\"",
 						te->desc, te->tag);
 
-		_printTocEntry(AH, te, false);
+		_printTocEntry(AH, te, TOC_PREFIX_NONE);
 		defnDumped = true;
 
 		if (strcmp(te->desc, "TABLE") == 0)
@@ -889,7 +898,7 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 			 */
 			if (AH->PrintTocDataPtr != NULL)
 			{
-				_printTocEntry(AH, te, true);
+				_printTocEntry(AH, te, TOC_PREFIX_DATA);
 
 				if (strcmp(te->desc, "BLOBS") == 0 ||
 					strcmp(te->desc, "BLOB COMMENTS") == 0)
@@ -908,6 +917,8 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 				}
 				else
 				{
+					bool		use_truncate;
+
 					_disableTriggersIfNecessary(AH, te);
 
 					/* Select owner and schema as necessary */
@@ -919,13 +930,24 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 
 					/*
 					 * In parallel restore, if we created the table earlier in
-					 * the run then we wrap the COPY in a transaction and
-					 * precede it with a TRUNCATE.  If archiving is not on
-					 * this prevents WAL-logging the COPY.  This obtains a
-					 * speedup similar to that from using single_txn mode in
-					 * non-parallel restores.
+					 * this run (so that we know it is empty) and we are not
+					 * restoring a load-via-partition-root data item then we
+					 * wrap the COPY in a transaction and precede it with a
+					 * TRUNCATE.  If wal_level is set to minimal this prevents
+					 * WAL-logging the COPY.  This obtains a speedup similar
+					 * to that from using single_txn mode in non-parallel
+					 * restores.
+					 *
+					 * We mustn't do this for load-via-partition-root cases
+					 * because some data might get moved across partition
+					 * boundaries, risking deadlock and/or loss of previously
+					 * loaded data.  (We assume that all partitions of a
+					 * partitioned table will be treated the same way.)
 					 */
-					if (is_parallel && te->created)
+					use_truncate = is_parallel && te->created &&
+						!is_load_via_partition_root(te);
+
+					if (use_truncate)
 					{
 						/*
 						 * Parallel restore is always talking directly to a
@@ -963,7 +985,7 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 					AH->outputKind = OUTPUT_SQLCMDS;
 
 					/* close out the transaction started above */
-					if (is_parallel && te->created)
+					if (use_truncate)
 						CommitTransaction(&AH->public);
 
 					_enableTriggersIfNecessary(AH, te);
@@ -974,9 +996,15 @@ restore_toc_entry(ArchiveHandle *AH, TocEntry *te, bool is_parallel)
 		{
 			/* If we haven't already dumped the defn part, do so now */
 			pg_log_info("executing %s %s", te->desc, te->tag);
-			_printTocEntry(AH, te, false);
+			_printTocEntry(AH, te, TOC_PREFIX_NONE);
 		}
 	}
+
+	/*
+	 * If it has a statistics component that we want, then process that
+	 */
+	if ((reqs & REQ_STATS) != 0)
+		_printTocEntry(AH, te, TOC_PREFIX_STATS);
 
 	if (AH->public.n_errors > 0 && status == WORKER_OK)
 		status = WORKER_IGNORED_ERRORS;
@@ -1001,6 +1029,7 @@ NewRestoreOptions(void)
 	opts->dumpSections = DUMP_UNSECTIONED;
 	opts->dumpSchema = true;
 	opts->dumpData = true;
+	opts->dumpStatistics = true;
 
 	return opts;
 }
@@ -1055,6 +1084,43 @@ _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te)
 	 */
 	ahprintf(AH, "ALTER TABLE %s ENABLE TRIGGER ALL;\n\n",
 			 fmtQualifiedId(te->namespace, te->tag));
+}
+
+/*
+ * Detect whether a TABLE DATA TOC item is performing "load via partition
+ * root", that is the target table is an ancestor partition rather than the
+ * table the TOC item is nominally for.
+ *
+ * In newer archive files this can be detected by checking for a special
+ * comment placed in te->defn.  In older files we have to fall back to seeing
+ * if the COPY statement targets the named table or some other one.  This
+ * will not work for data dumped as INSERT commands, so we could give a false
+ * negative in that case; fortunately, that's a rarely-used option.
+ */
+static bool
+is_load_via_partition_root(TocEntry *te)
+{
+	if (te->defn &&
+		strncmp(te->defn, "-- load via partition root ", 27) == 0)
+		return true;
+	if (te->copyStmt && *te->copyStmt)
+	{
+		PQExpBuffer copyStmt = createPQExpBuffer();
+		bool		result;
+
+		/*
+		 * Build the initial part of the COPY as it would appear if the
+		 * nominal target table is the actual target.  If we see anything
+		 * else, it must be a load-via-partition-root case.
+		 */
+		appendPQExpBuffer(copyStmt, "COPY %s ",
+						  fmtQualifiedId(te->namespace, te->tag));
+		result = strncmp(te->copyStmt, copyStmt->data, copyStmt->len) != 0;
+		destroyPQExpBuffer(copyStmt);
+		return result;
+	}
+	/* Assume it's not load-via-partition-root */
+	return false;
 }
 
 /*
@@ -1131,6 +1197,9 @@ ArchiveEntry(Archive *AHX, CatalogId catalogId, DumpId dumpId,
 	newToc->dataDumperArg = opts->dumpArg;
 	newToc->hadDumper = opts->dumpFn ? true : false;
 
+	newToc->defnDumper = opts->defnFn;
+	newToc->defnDumperArg = opts->defnArg;
+
 	newToc->formatData = NULL;
 	newToc->dataLength = 0;
 
@@ -1197,10 +1266,13 @@ PrintTOCSummary(Archive *AHX)
 	curSection = SECTION_PRE_DATA;
 	for (te = AH->toc->next; te != AH->toc; te = te->next)
 	{
+		/* This bit must match ProcessArchiveRestoreOptions' marking logic */
 		if (te->section != SECTION_NONE)
 			curSection = te->section;
+		te->reqs = _tocEntryRequired(te, curSection, AH);
+		/* Now, should we print it? */
 		if (ropt->verbose ||
-			(_tocEntryRequired(te, curSection, AH) & (REQ_SCHEMA | REQ_DATA)) != 0)
+			(te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_STATS)) != 0)
 		{
 			char	   *sanitized_name;
 			char	   *sanitized_schema;
@@ -2469,7 +2541,7 @@ WriteToc(ArchiveHandle *AH)
 	tocCount = 0;
 	for (te = AH->toc->next; te != AH->toc; te = te->next)
 	{
-		if ((te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_SPECIAL)) != 0)
+		if ((te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_STATS | REQ_SPECIAL)) != 0)
 			tocCount++;
 	}
 
@@ -2479,7 +2551,7 @@ WriteToc(ArchiveHandle *AH)
 
 	for (te = AH->toc->next; te != AH->toc; te = te->next)
 	{
-		if ((te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_SPECIAL)) == 0)
+		if ((te->reqs & (REQ_SCHEMA | REQ_DATA | REQ_STATS | REQ_SPECIAL)) == 0)
 			continue;
 
 		WriteInt(AH, te->dumpId);
@@ -2494,7 +2566,45 @@ WriteToc(ArchiveHandle *AH)
 		WriteStr(AH, te->tag);
 		WriteStr(AH, te->desc);
 		WriteInt(AH, te->section);
-		WriteStr(AH, te->defn);
+
+		if (te->defnLen)
+		{
+			/*
+			 * defnLen should only be set for custom format's second call to
+			 * WriteToc(), which rewrites the TOC in place to update data
+			 * offsets.  Instead of calling the defnDumper a second time
+			 * (which could involve re-executing queries), just skip writing
+			 * the entry.  While regenerating the definition should
+			 * theoretically produce the same result as before, it's expensive
+			 * and feels risky.
+			 *
+			 * The custom format only calls WriteToc() a second time if
+			 * fseeko() is usable (see _CloseArchive() in pg_backup_custom.c),
+			 * so we can safely use it without checking.  For other formats,
+			 * we fail because one of our assumptions must no longer hold
+			 * true.
+			 *
+			 * XXX This is a layering violation, but the alternative is an
+			 * awkward and complicated callback infrastructure for this
+			 * special case.  This might be worth revisiting in the future.
+			 */
+			if (AH->format != archCustom)
+				pg_fatal("unexpected TOC entry in WriteToc(): %d %s %s",
+						 te->dumpId, te->desc, te->tag);
+
+			if (fseeko(AH->FH, te->defnLen, SEEK_CUR != 0))
+				pg_fatal("error during file seek: %m");
+		}
+		else if (te->defnDumper)
+		{
+			char	   *defn = te->defnDumper((Archive *) AH, te->defnDumperArg, te);
+
+			te->defnLen = WriteStr(AH, defn);
+			pg_free(defn);
+		}
+		else
+			WriteStr(AH, te->defn);
+
 		WriteStr(AH, te->dropStmt);
 		WriteStr(AH, te->copyStmt);
 		WriteStr(AH, te->namespace);
@@ -2787,8 +2897,9 @@ StrictNamesCheck(RestoreOptions *ropt)
  * Determine whether we want to restore this TOC entry.
  *
  * Returns 0 if entry should be skipped, or some combination of the
- * REQ_SCHEMA and REQ_DATA bits if we want to restore schema and/or data
- * portions of this TOC entry, or REQ_SPECIAL if it's a special entry.
+ * REQ_SCHEMA, REQ_DATA, and REQ_STATS bits if we want to restore schema, data
+ * and/or statistics portions of this TOC entry, or REQ_SPECIAL if it's a
+ * special entry.
  */
 static int
 _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
@@ -2801,6 +2912,14 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 		strcmp(te->desc, "STDSTRINGS") == 0 ||
 		strcmp(te->desc, "SEARCHPATH") == 0)
 		return REQ_SPECIAL;
+
+	if (strcmp(te->desc, "STATISTICS DATA") == 0)
+	{
+		if (!ropt->dumpStatistics)
+			return 0;
+		else
+			res = REQ_STATS;
+	}
 
 	/*
 	 * DATABASE and DATABASE PROPERTIES also have a special rule: they are
@@ -2846,6 +2965,10 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 	if (ropt->no_subscriptions && strcmp(te->desc, "SUBSCRIPTION") == 0)
 		return 0;
 
+	/* If it's statistics and we don't want statistics, maybe ignore it */
+	if (!ropt->dumpStatistics && strcmp(te->desc, "STATISTICS DATA") == 0)
+		return 0;
+
 	/* Ignore it if section is not to be dumped/restored */
 	switch (curSection)
 	{
@@ -2875,6 +2998,7 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 	 */
 	if (strcmp(te->desc, "ACL") == 0 ||
 		strcmp(te->desc, "COMMENT") == 0 ||
+		strcmp(te->desc, "STATISTICS DATA") == 0 ||
 		strcmp(te->desc, "SECURITY LABEL") == 0)
 	{
 		/* Database properties react to createDB, not selectivity options. */
@@ -2892,7 +3016,10 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 			 * TOC entry types only if their parent object is being restored.
 			 * Without selectivity options, we let through everything in the
 			 * archive.  Note there may be such entries with no parent, eg
-			 * non-default ACLs for built-in objects.
+			 * non-default ACLs for built-in objects.  Also, we make
+			 * per-column ACLs additionally depend on the table's ACL if any
+			 * to ensure correct restore order, so those dependencies should
+			 * be ignored in this check.
 			 *
 			 * This code depends on the parent having been marked already,
 			 * which should be the case; if it isn't, perhaps due to
@@ -2903,8 +3030,23 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 			 * But it's hard to tell which of their dependencies is the one to
 			 * consult.
 			 */
-			if (te->nDeps != 1 ||
-				TocIDRequired(AH, te->dependencies[0]) == 0)
+			bool		dumpthis = false;
+
+			for (int i = 0; i < te->nDeps; i++)
+			{
+				TocEntry   *pte = getTocEntryByDumpId(AH, te->dependencies[i]);
+
+				if (!pte)
+					continue;	/* probably shouldn't happen */
+				if (strcmp(pte->desc, "ACL") == 0)
+					continue;	/* ignore dependency on another ACL */
+				if (pte->reqs == 0)
+					continue;	/* this object isn't marked, so ignore it */
+				/* Found a parent to be dumped, so we want to dump this too */
+				dumpthis = true;
+				break;
+			}
+			if (!dumpthis)
 				return 0;
 		}
 	}
@@ -2973,6 +3115,7 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 		}
 	}
 
+
 	/*
 	 * Determine whether the TOC entry contains schema and/or data components,
 	 * and mask off inapplicable REQ bits.  If it had a dataDumper, assume
@@ -3001,8 +3144,12 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 			res = res & ~REQ_DATA;
 	}
 
-	/* If there's no definition command, there's no schema component */
-	if (!te->defn || !te->defn[0])
+	/*
+	 * If there's no definition command, there's no schema component.  Treat
+	 * "load via partition root" comments as not schema.
+	 */
+	if (!te->defn || !te->defn[0] ||
+		strncmp(te->defn, "-- load via partition root ", 27) == 0)
 		res = res & ~REQ_SCHEMA;
 
 	/*
@@ -3032,12 +3179,12 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 				strncmp(te->tag, "LARGE OBJECT ", 13) == 0) ||
 			   (strcmp(te->desc, "SECURITY LABEL") == 0 &&
 				strncmp(te->tag, "LARGE OBJECT ", 13) == 0))))
-			res = res & REQ_SCHEMA;
+			res = res & (REQ_SCHEMA | REQ_STATS);
 	}
 
 	/* Mask it if we don't want schema */
 	if (!ropt->dumpSchema)
-		res = res & REQ_DATA;
+		res = res & (REQ_DATA | REQ_STATS);
 
 	return res;
 }
@@ -3048,7 +3195,7 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
  * See notes with the RestorePass typedef in pg_backup_archiver.h.
  */
 static RestorePass
-_tocEntryRestorePass(TocEntry *te)
+_tocEntryRestorePass(ArchiveHandle *AH, TocEntry *te)
 {
 	/* "ACL LANGUAGE" was a crock emitted only in PG 7.4 */
 	if (strcmp(te->desc, "ACL") == 0 ||
@@ -3067,6 +3214,19 @@ _tocEntryRestorePass(TocEntry *te)
 	 */
 	if (strcmp(te->desc, "COMMENT") == 0 &&
 		strncmp(te->tag, "EVENT TRIGGER ", 14) == 0)
+		return RESTORE_PASS_POST_ACL;
+
+	/*
+	 * If statistics data is dependent on materialized view data, it must be
+	 * deferred to RESTORE_PASS_POST_ACL.  Those entries are already marked as
+	 * SECTION_POST_DATA, and some other stats entries (e.g., index stats)
+	 * will also be marked as SECTION_POST_DATA.  Additionally, our lookahead
+	 * code in fetchAttributeStats() assumes that we dump all statistics data
+	 * entries in TOC order.  To ensure this assumption holds, we move all
+	 * statistics data entries in SECTION_POST_DATA to RESTORE_PASS_POST_ACL.
+	 */
+	if (strcmp(te->desc, "STATISTICS DATA") == 0 &&
+		te->section == SECTION_POST_DATA)
 		return RESTORE_PASS_POST_ACL;
 
 	/* All else can be handled in the main pass. */
@@ -3107,6 +3267,7 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	{
 		ahprintf(AH, "SET yb_binary_restore = true;\n");
 		ahprintf(AH, "SET yb_ignore_pg_class_oids = false;\n");
+		ahprintf(AH, "SET yb_ignore_relfilenode_ids = false;\n");
 		ahprintf(AH, "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n");
 	}
 	ahprintf(AH, "SET statement_timeout = 0;\n");
@@ -3164,17 +3325,18 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 				 "\\set use_roles true\n"
 				 "\\endif\n");
 
-		/* If the --create option is specified, the target database will be created and connected to.
-		 * The current connection is to another database and we don't want to disable auto analyze on
-		 * that.
+		/*
+		 * If the --create option is specified, the target database will be
+		 * created and connected to. The current connection is to another
+		 * database and we don't want to disable auto analyze on that.
 		 *
-		 * TODO: If --create is specified, disable auto analyze after the target database is created
-		 * and we connect to it.
+		 * TODO: If --create is specified, disable auto analyze after the
+		 * target database is created and we connect to it.
 		 */
 		if (!AH->public.ropt->createDB)
 		{
 			ahprintf(AH,
-				"\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
+					 "\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
 			ahprintf(AH, yb_disable_auto_analyze_cmd, "on");
 		}
 	}
@@ -3514,7 +3676,7 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te)
 		strcmp(type, "FOREIGN DATA WRAPPER") == 0 ||
 		strcmp(type, "SERVER") == 0 ||
 		strcmp(type, "PUBLICATION") == 0 ||
-		strcmp(type, "TABLEGROUP") == 0 ||
+		strcmp(type, "TABLEGROUP") == 0 ||	/* YB */
 		strcmp(type, "SUBSCRIPTION") == 0 ||
 		strcmp(type, "USER MAPPING") == 0)
 	{
@@ -3573,7 +3735,7 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te)
  * will remain at default, until the matching ACL TOC entry is restored.
  */
 static void
-_printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
+_printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 {
 	RestoreOptions *ropt = AH->public.ropt;
 
@@ -3586,15 +3748,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 	/* Emit header comment for item */
 	if (!AH->noTocComments)
 	{
-		const char *pfx;
 		char	   *sanitized_name;
 		char	   *sanitized_schema;
 		char	   *sanitized_owner;
-
-		if (isData)
-			pfx = "Data for ";
-		else
-			pfx = "";
 
 		ahprintf(AH, "--\n");
 		if (AH->public.verbose)
@@ -3646,11 +3802,48 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 	 * versions put into CREATE SCHEMA.  Don't mutate the variant for schema
 	 * "public" that is a comment.  We have to do this when --no-owner mode is
 	 * selected.  This is ugly, but I see no other good way ...
+	 *
+	 * Entries with a defnDumper need to call it to generate the definition.
+	 * This is primarily intended to provide a way to save memory for objects
+	 * that would otherwise need a lot of it (e.g., statistics data).
 	 */
 	if (ropt->noOwner &&
 		strcmp(te->desc, "SCHEMA") == 0 && strncmp(te->defn, "--", 2) != 0)
 	{
 		ahprintf(AH, "CREATE SCHEMA %s;\n\n\n", fmtId(te->tag));
+	}
+	else if (te->defnLen && AH->format != archTar)
+	{
+		/*
+		 * If defnLen is set, the defnDumper has already been called for this
+		 * TOC entry.  We don't normally expect a defnDumper to be called for
+		 * a TOC entry a second time in _printTocEntry(), but there's an
+		 * exception.  The tar format first calls WriteToc(), which scans the
+		 * entire TOC, and then it later calls RestoreArchive() to generate
+		 * restore.sql, which scans the TOC again.  There doesn't appear to be
+		 * a good way to prevent a second defnDumper call in this case without
+		 * storing the definition in memory, which defeats the purpose.  This
+		 * second defnDumper invocation should generate the same output as the
+		 * first, but even if it doesn't, the worst-case scenario is that
+		 * restore.sql might have different statistics data than the archive.
+		 *
+		 * In all other cases, encountering a TOC entry a second time in
+		 * _printTocEntry() is unexpected, so we fail because one of our
+		 * assumptions must no longer hold true.
+		 *
+		 * XXX This is a layering violation, but the alternative is an awkward
+		 * and complicated callback infrastructure for this special case. This
+		 * might be worth revisiting in the future.
+		 */
+		pg_fatal("unexpected TOC entry in _printTocEntry(): %d %s %s",
+				 te->dumpId, te->desc, te->tag);
+	}
+	else if (te->defnDumper)
+	{
+		char	   *defn = te->defnDumper((Archive *) AH, te->defnDumperArg, te);
+
+		te->defnLen = ahprintf(AH, "%s\n\n", defn);
+		pg_free(defn);
 	}
 	else
 	{
@@ -3736,7 +3929,7 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			strcmp(te->desc, "SCHEMA") == 0 ||
 			strcmp(te->desc, "EVENT TRIGGER") == 0 ||
 			strcmp(te->desc, "TABLE") == 0 ||
-			strcmp(te->desc, "TABLEGROUP") == 0 ||
+			strcmp(te->desc, "TABLEGROUP") == 0 ||	/* YB */
 			strcmp(te->desc, "TYPE") == 0 ||
 			strcmp(te->desc, "VIEW") == 0 ||
 			strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||
@@ -3757,10 +3950,27 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
 
 			if (AH->public.dopt->include_yb_metadata)
-				ahprintf(AH,
-						 "\\if :use_roles\n"
-						 "    %s\n"
-						 "\\endif\n\n", temp->data);
+			{
+				ahprintf(AH, "\\if :use_roles\n");
+				if (AH->public.dopt->yb_dump_role_checks)
+				{
+					PQExpBuffer role_buf = createPQExpBuffer();
+
+					appendStringLiteralAHX(role_buf, te->owner, AH);
+					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
+							 ") AS role_exists \\gset\n"
+							 "\\if :role_exists\n"
+							 "    %s\n"
+							 "\\else\n"
+							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
+							 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
+					destroyPQExpBuffer(role_buf);
+				}
+				else
+					ahprintf(AH, "    %s\n", temp->data);
+
+				ahprintf(AH, "\\endif\n\n");
+			}
 			else
 				ahprintf(AH, "%s\n\n", temp->data);
 
@@ -4096,7 +4306,7 @@ restore_toc_entries_prefork(ArchiveHandle *AH, TocEntry *pending_list)
 		 * not set skipped_some in this case, since by assumption no main-pass
 		 * items could depend on these.
 		 */
-		if (_tocEntryRestorePass(next_work_item) != RESTORE_PASS_MAIN)
+		if (_tocEntryRestorePass(AH, next_work_item) != RESTORE_PASS_MAIN)
 			do_now = false;
 
 		if (do_now)
@@ -4172,7 +4382,7 @@ restore_toc_entries_parallel(ArchiveHandle *AH, ParallelState *pstate,
 	 * process in the current restore pass.
 	 */
 	AH->restorePass = RESTORE_PASS_MAIN;
-	move_to_ready_list(pending_list, &ready_list, AH->restorePass);
+	move_to_ready_list(AH, pending_list, &ready_list, AH->restorePass);
 
 	/*
 	 * main parent loop
@@ -4190,7 +4400,7 @@ restore_toc_entries_parallel(ArchiveHandle *AH, ParallelState *pstate,
 		if (next_work_item != NULL)
 		{
 			/* If not to be restored, don't waste time launching a worker */
-			if ((next_work_item->reqs & (REQ_SCHEMA | REQ_DATA)) == 0)
+			if ((next_work_item->reqs & (REQ_SCHEMA | REQ_DATA | REQ_STATS)) == 0)
 			{
 				pg_log_info("skipping item %d %s %s",
 							next_work_item->dumpId,
@@ -4221,7 +4431,7 @@ restore_toc_entries_parallel(ArchiveHandle *AH, ParallelState *pstate,
 			/* Advance to next restore pass */
 			AH->restorePass++;
 			/* That probably allows some stuff to be made ready */
-			move_to_ready_list(pending_list, &ready_list, AH->restorePass);
+			move_to_ready_list(AH, pending_list, &ready_list, AH->restorePass);
 			/* Loop around to see if anything's now ready */
 			continue;
 		}
@@ -4455,7 +4665,8 @@ TocEntrySizeCompare(const void *p1, const void *p2)
  * which applies the same logic one-at-a-time.)
  */
 static void
-move_to_ready_list(TocEntry *pending_list,
+move_to_ready_list(ArchiveHandle *AH,
+				   TocEntry *pending_list,
 				   ParallelReadyList *ready_list,
 				   RestorePass pass)
 {
@@ -4468,7 +4679,7 @@ move_to_ready_list(TocEntry *pending_list,
 		next_te = te->pending_next;
 
 		if (te->depCount == 0 &&
-			_tocEntryRestorePass(te) == pass)
+			_tocEntryRestorePass(AH, te) == pass)
 		{
 			/* Remove it from pending_list ... */
 			pending_list_remove(te);
@@ -4862,7 +5073,7 @@ reduce_dependencies(ArchiveHandle *AH, TocEntry *te,
 		 * memberships changed.
 		 */
 		if (otherte->depCount == 0 &&
-			_tocEntryRestorePass(otherte) == AH->restorePass &&
+			_tocEntryRestorePass(AH, otherte) == AH->restorePass &&
 			otherte->pending_prev != NULL &&
 			ready_list != NULL)
 		{

@@ -174,6 +174,9 @@ extern Oid	get_trigger_oid(Oid relid, const char *name, bool missing_ok);
 
 extern ObjectAddress renametrig(RenameStmt *stmt);
 
+extern void EnableDisableTriggerNew2(Relation rel, const char *tgname, Oid tgparent,
+									 char fires_when, bool skip_system, bool recurse,
+									 LOCKMODE lockmode);
 extern void EnableDisableTriggerNew(Relation rel, const char *tgname,
 									char fires_when, bool skip_system, bool recurse,
 									LOCKMODE lockmode);
@@ -212,6 +215,14 @@ extern void ExecBSDeleteTriggers(EState *estate,
 extern void ExecASDeleteTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 TransitionCaptureState *transition_capture);
+extern bool ExecBRDeleteTriggersNew(EState *estate,
+									EPQState *epqstate,
+									ResultRelInfo *relinfo,
+									ItemPointer tupleid,
+									HeapTuple fdw_trigtuple,
+									TupleTableSlot **epqslot,
+									TM_Result *tmresult,
+									TM_FailureData *tmfd);
 extern bool ExecBRDeleteTriggers(EState *estate,
 								 EPQState *epqstate,
 								 ResultRelInfo *relinfo,
@@ -232,6 +243,14 @@ extern void ExecBSUpdateTriggers(EState *estate,
 extern void ExecASUpdateTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 TransitionCaptureState *transition_capture);
+extern bool ExecBRUpdateTriggersNew(EState *estate,
+									EPQState *epqstate,
+									ResultRelInfo *relinfo,
+									ItemPointer tupleid,
+									HeapTuple fdw_trigtuple,
+									TupleTableSlot *newslot,
+									TM_Result *tmresult,
+									TM_FailureData *tmfd);
 extern bool ExecBRUpdateTriggers(EState *estate,
 								 EPQState *epqstate,
 								 ResultRelInfo *relinfo,
@@ -282,9 +301,6 @@ extern bool RI_Initial_Check(Trigger *trigger,
 							 Relation fk_rel, Relation pk_rel);
 extern void RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel,
 									 Relation pk_rel);
-extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
-										  TupleTableSlot *new_slot,
-										  EState *estate, bool is_deferred);
 
 /* result values for RI_FKey_trigger_type: */
 #define RI_TRIGGER_PK	1		/* is a trigger on the PK relation */
@@ -293,7 +309,12 @@ extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 
 extern int	RI_FKey_trigger_type(Oid tgfoid);
 
-/* Return true if the trigger description has non FK trigger. */
+/* YB */
+extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
+										  TupleTableSlot *new_slot,
+										  EState *estate, bool is_deferred);
+
+/* YB: Return true if the trigger description has non FK trigger. */
 extern bool HasNonRITrigger(const TriggerDesc *trigDesc);
 
 #endif							/* TRIGGER_H */

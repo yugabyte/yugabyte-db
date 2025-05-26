@@ -34,13 +34,13 @@ It is, however, not necessary to remove role memberships involving the role. `DR
 
 - Drop a role.
 
-```plpgsql
-yugabyte=# DROP ROLE John;
-```
+  ```plpgsql
+  yugabyte=# DROP ROLE John;
+  ```
 
 ## See also
 
-- [`ALTER ROLE`](../dcl_alter_role)
-- [`CREATE ROLE`](../dcl_create_role)
-- [`GRANT`](../dcl_grant)
-- [`REVOKE`](../dcl_revoke)
+- [ALTER ROLE](../dcl_alter_role)
+- [CREATE ROLE](../dcl_create_role)
+- [GRANT](../dcl_grant)
+- [REVOKE](../dcl_revoke)

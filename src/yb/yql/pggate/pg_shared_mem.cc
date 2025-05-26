@@ -13,7 +13,10 @@
 
 #include "yb/yql/pggate/pg_shared_mem.h"
 
+#include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/logging.h"
+#include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/status.h"
 
@@ -27,6 +30,8 @@ void PgSetupSharedMemoryAddressSegment() {
       << "YB_PG_ADDRESS_NEGOTIATOR_FD is not set, cannot perform shared memory address negotiation";
   int fd = std::atoi(fd_str);
   CHECK_OK(PgSharedMemoryManager().InitializePostmaster(fd));
+
+  MarkChildProcess();
 }
 
 void PgBackendSetupSharedMemory() {

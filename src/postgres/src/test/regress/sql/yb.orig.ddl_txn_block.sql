@@ -84,3 +84,79 @@ BEGIN ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO test7 VALUES (1, 1);
 COMMIT;
 SELECT * FROM test7;
+
+SET allow_system_table_mods = on;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- Truncate system table inside a transaction block.
+TRUNCATE pg_extension;
+ROLLBACK;
+RESET allow_system_table_mods;
+
+SET yb_enable_alter_table_rewrite = off;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- Truncate user table inside a transaction block with table rewrite disabled.
+TRUNCATE test7;
+ROLLBACK;
+RESET yb_enable_alter_table_rewrite;
+
+-- Rollback CREATE, DROP and CREATE TABLE with same name in a transaction block.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test8 (a int primary key, b int);
+INSERT INTO test8 VALUES (1, 1);
+SELECT * FROM test8;
+DROP TABLE test8;
+CREATE TABLE test8 (c int primary key, d int);
+INSERT INTO test8 VALUES (10, 10);
+ROLLBACK;
+SELECT * FROM test8;
+
+-- Same test as above but with COMMIT.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test8 (a int primary key, b int);
+INSERT INTO test8 VALUES (1, 1);
+SELECT * FROM test8;
+DROP TABLE test8;
+CREATE TABLE test8 (c int primary key, d int);
+INSERT INTO test8 VALUES (10, 10);
+COMMIT;
+SELECT * FROM test8;
+
+-- Rollback of DROP TABLE.
+CREATE TABLE test9 (a int primary key, b int);
+INSERT INTO test9 VALUES (1, 1);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test9 VALUES (2, 2);
+SELECT * FROM test9;
+DROP TABLE test9;
+ROLLBACK;
+SELECT * FROM test9;
+
+-- Rollback of CREATE INDEX should work.
+CREATE TABLE test10(id INT PRIMARY KEY, val TEXT);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE INDEX test10_idx ON test10(val);
+\d+ test10;
+ROLLBACK;
+\d+ test10;
+
+-- TODO(#3109): CREATE and DROP database are already being tested in various
+-- other regress tests. This is being tested here since
+-- FLAGS_TEST_yb_ddl_transaction_block_enabled is false for all of them.
+-- Remove this once FLAGS_TEST_yb_ddl_transaction_block_enabled is true by
+-- default.
+create database k1;
+drop database k1;
+
+CREATE SEQUENCE regtest_seq;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+DROP SEQUENCE regtest_seq;
+COMMIT;
+
+CREATE TABLE test11(id INT PRIMARY KEY, val TEXT);
+INSERT INTO test11 VALUES (1, 'text');
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+TRUNCATE test11;
+TRUNCATE test11;
+SELECT * FROM test11;
+ROLLBACK;
+SELECT * FROM test11;

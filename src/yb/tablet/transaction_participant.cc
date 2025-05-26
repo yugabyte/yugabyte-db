@@ -125,6 +125,8 @@ DECLARE_int64(transaction_abort_check_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(clear_deadlocked_txns_info_older_than_heartbeats);
 
+DECLARE_bool(use_bootstrap_intent_ht_filter);
+
 METRIC_DEFINE_simple_counter(
     tablet, transaction_not_found, "Total number of missing transactions during load",
     yb::MetricUnit::kTransactions);
@@ -199,6 +201,13 @@ class TransactionParticipant::Impl
        const std::shared_ptr<MemTracker>& tablets_mem_tracker)
       : RunningTransactionContext(context, applier),
         log_prefix_(context->LogPrefix()),
+        mem_tracker_(MemTracker::CreateTracker(
+            Format("$0-$1", kParentMemTrackerId, participant_context_.tablet_id()),
+            /* metric_name */ "PerTransaction",
+            MemTracker::FindOrCreateTracker(kParentMemTrackerId, tablets_mem_tracker),
+            AddToParent::kTrue,
+            CreateMetrics::kFalse)),
+        recently_applied_(typename RecentlyAppliedTransactions::allocator_type(mem_tracker_)),
         loader_(this, entity),
         poller_(log_prefix_, std::bind(&Impl::Poll, this)),
         wait_queue_poller_(log_prefix_, std::bind(&Impl::PollWaitQueue, this)) {
@@ -213,11 +222,6 @@ class TransactionParticipant::Impl
         METRIC_conflict_resolution_latency.Instantiate(entity);
     metric_conflict_resolution_num_keys_scanned_ =
         METRIC_conflict_resolution_num_keys_scanned.Instantiate(entity);
-    auto parent_mem_tracker = MemTracker::FindOrCreateTracker(
-        kParentMemTrackerId, tablets_mem_tracker);
-    mem_tracker_ = MemTracker::CreateTracker(Format("$0-$1", kParentMemTrackerId,
-        participant_context_.tablet_id()), /* metric_name */ "PerTransaction",
-            parent_mem_tracker, AddToParent::kTrue, CreateMetrics::kFalse);
   }
 
   ~Impl() {
@@ -285,7 +289,9 @@ class TransactionParticipant::Impl
       DumpClear(RemoveReason::kShutdown);
       transactions_.clear();
       TransactionsModifiedUnlocked(&min_running_notifier);
-
+      // Recreate since the original recently_applied_ uses allocator with mem tracker, but we are
+      // about to detroy the tracker.
+      recently_applied_ = RecentlyAppliedTransactions();
       mem_tracker_->UnregisterFromParent();
     }
 
@@ -325,7 +331,7 @@ class TransactionParticipant::Impl
         cleanup_cache_.Erase(metadata.transaction_id) != 0) {
       RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
       auto status = STATUS_EC_FORMAT(
-          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
           "Transaction was recently aborted: $0", metadata.transaction_id);
       return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
@@ -445,10 +451,10 @@ class TransactionParticipant::Impl
         id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (!lock_and_iterator.found()) {
       return lock_and_iterator.did_txn_deadlock()
-          ? lock_and_iterator.deadlock_status
-          : STATUS(TryAgain,
-                   Format("Unknown transaction, could be recently aborted: $0", id), Slice(),
-                   PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+                 ? lock_and_iterator.deadlock_status
+                 : STATUS(
+                       TryAgain, Format("Unknown transaction, could be recently aborted: $0", id),
+                       Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
     }
     RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();
@@ -456,7 +462,8 @@ class TransactionParticipant::Impl
 
   Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+      bool has_write_pairs) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
@@ -469,6 +476,9 @@ class TransactionParticipant::Impl
     }
     auto& transaction = lock_and_iterator.transaction();
     transaction.AddReplicatedBatch(batch_idx, encoded_replicated_batches);
+    if (has_write_pairs) {
+      transaction.MarkHasRetryableRequestsReplicated();
+    }
     return std::make_pair(transaction.metadata().isolation, transaction.last_batch_data());
   }
 
@@ -686,6 +696,7 @@ class TransactionParticipant::Impl
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
+    VLOG_WITH_PREFIX(2) << "Abort transaction: " << id;
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator_result = LockAndFind(
@@ -774,8 +785,8 @@ class TransactionParticipant::Impl
 
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
-      LOG(ERROR) << "Could not decode transaction details, whose apply record OpId was: "
-                 << data.op_id;
+      LOG(DFATAL) << "Could not decode transaction details, whose apply record OpId was: "
+                  << data.op_id << ": " << id.status();
       return id.status();
     }
 
@@ -798,6 +809,10 @@ class TransactionParticipant::Impl
   }
 
   Status Cleanup(TransactionIdApplyOpIdMap&& txns, TransactionStatusManager* status_manager) {
+    DEBUG_ONLY_TEST_SYNC_POINT("TransactionParticipant::Impl::Cleanup");
+    // Execute WaitLoaded outside of this->mutex_, else there's possibility of a deadlock since
+    // the loader needs this->mutex_ in TransactionLoaderContext::LoadTransaction to finish load.
+    RETURN_NOT_OK(loader_.WaitLoaded(txns));
     TransactionIdSet set;
     {
       std::lock_guard lock(mutex_);
@@ -805,8 +820,6 @@ class TransactionParticipant::Impl
 
       if (cdcsdk_checkpoint_op_id != OpId::Max()) {
         for (const auto& [transaction_id, apply_op_id] : txns) {
-          RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
-
           const OpId* apply_record_op_id = &apply_op_id;
           if (!apply_op_id.valid()) {
             // Apply op id is unknown -- may be from before upgrade to version that writes
@@ -1076,8 +1089,11 @@ class TransactionParticipant::Impl
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard lock(mutex_);
     DumpClear(RemoveReason::kSetDB);
+    size_t num_transactions = transactions_.size();
     transactions_.clear();
-    mem_tracker_->Release(mem_tracker_->consumption());
+    // TODO(#26796): this matches the Consume(), but both are inaccurate, since RunningTransaction
+    // has dynamically allocated fields.
+    mem_tracker_->Release(num_transactions * kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
     return Status::OK();
   }
@@ -1108,7 +1124,8 @@ class TransactionParticipant::Impl
   }
 
   void SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht) {
-    if (start_ht == HybridTime::kMax || start_ht == HybridTime::kInvalid) {
+    if (start_ht == HybridTime::kMax || start_ht == HybridTime::kInvalid ||
+        !FLAGS_use_bootstrap_intent_ht_filter) {
       return;
     }
     HybridTime current_ht = min_replay_txn_start_ht_.load(std::memory_order_acquire);
@@ -1122,6 +1139,9 @@ class TransactionParticipant::Impl
     return min_replay_txn_start_ht_.load(std::memory_order_acquire);
   }
 
+  // Returns the minimum start time among all running transactions.
+  // Returns kInvalid if loading of transactions is not completed.
+  // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
@@ -1421,13 +1441,13 @@ class TransactionParticipant::Impl
         YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
             << "Request to unknown transaction " << transaction_id;
         return STATUS_EC_FORMAT(
-            Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
+            Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
             "Transaction $0 expired or aborted by a conflict", transaction_id);
       }
 
       auto& transaction = *it;
       RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
-                             PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+                             PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_CONFLICT));
       txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
@@ -1546,7 +1566,8 @@ class TransactionParticipant::Impl
               boost::multi_index::member <
                   AppliedTransactionState, HybridTime, &AppliedTransactionState::start_ht>
           >
-      >
+      >,
+      MemTrackerAllocator<AppliedTransactionState>
   >;
 
   void LoadFinished(Status load_status) EXCLUDES(status_resolvers_mutex_) override {
@@ -1941,6 +1962,9 @@ class TransactionParticipant::Impl
     if (GetLatestCheckPointUnlocked() != OpId::Max()) {
       txn->SetTxnLoadedWithCDC();
     }
+    if (last_batch_data.hybrid_time) {
+      txn->MarkHasRetryableRequestsReplicated();
+    }
     transactions_.insert(txn);
     mem_tracker_->Consume(kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
@@ -1975,7 +1999,13 @@ class TransactionParticipant::Impl
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
-    AddRecentlyAppliedTransaction(transaction.start_ht(), transaction.GetApplyOpId());
+    if (transaction.HasRetryableRequestsReplicated()) {
+      AddRecentlyAppliedTransaction(transaction.start_ht(), transaction.GetApplyOpId());
+    } else {
+      VLOG_WITH_PREFIX(2)
+          << "Transaction " << transaction.id() << " has no write pairs, not adding to recently "
+          << "applied transactions map";
+    }
     transactions_.erase(it);
     mem_tracker_->Release(kRunningTransactionSize);
     TransactionsModifiedUnlocked(min_running_notifier);
@@ -2287,6 +2317,10 @@ class TransactionParticipant::Impl
 
   void AddRecentlyAppliedTransaction(HybridTime start_ht, const OpId& apply_op_id)
       REQUIRES(mutex_) {
+    if (!FLAGS_use_bootstrap_intent_ht_filter) {
+      return;
+    }
+
     // We only care about the min start_ht, while cleaning out all entries with apply_op_id less
     // than progressively higher boundaries, so entries with apply_op_id lower and higher start_ht
     // than the entry with the lowest start_ht are irrelevant. Likewise, if apply_op_id is higher
@@ -2361,6 +2395,10 @@ class TransactionParticipant::Impl
   }
 
   HybridTime GetMinReplayTxnStartTime(RecentlyAppliedTransactions& recently_applied) {
+    if (!FLAGS_use_bootstrap_intent_ht_filter) {
+      return HybridTime::kInvalid;
+    }
+
     auto min_running_ht = min_running_ht_.load(std::memory_order_acquire);
     auto applied_min_ht = recently_applied.empty()
         ? HybridTime::kMax
@@ -2412,6 +2450,8 @@ class TransactionParticipant::Impl
   };
 
   std::string log_prefix_;
+
+  MemTrackerPtr mem_tracker_ GUARDED_BY(mutex_);
 
   docdb::DocDB db_;
   // Owned externally, should be guaranteed that would not be destroyed before this.
@@ -2516,8 +2556,6 @@ class TransactionParticipant::Impl
 
   std::unique_ptr<docdb::WaitQueue> wait_queue_;
 
-  std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
-
   std::atomic<bool> transactions_loaded_{false};
 
   bool pending_applied_notified_ = false;
@@ -2557,8 +2595,9 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
 Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>>
     TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
-    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
-  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches);
+    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+    bool has_write_pairs) {
+  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches, has_write_pairs);
 }
 
 void TransactionParticipant::BatchReplicated(

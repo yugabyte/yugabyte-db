@@ -140,18 +140,22 @@ static ResourceOwner shared_simple_eval_resowner = NULL;
 	MemoryContextAllocZero(get_eval_mcontext(estate), sz)
 
 /*
- * We use a session-wide hash table for caching cast information.
+ * We use two session-wide hash tables for caching cast information.
  *
- * Once built, the compiled expression trees (cast_expr fields) survive for
- * the life of the session.  At some point it might be worth invalidating
- * those after pg_cast changes, but for the moment we don't bother.
+ * cast_expr_hash entries (of type plpgsql_CastExprHashEntry) hold compiled
+ * expression trees for casts.  These survive for the life of the session and
+ * are shared across all PL/pgSQL functions and DO blocks.  At some point it
+ * might be worth invalidating them after pg_cast changes, but for the moment
+ * we don't bother.
  *
- * The evaluation state trees (cast_exprstate) are managed in the same way as
- * simple expressions (i.e., we assume cast expressions are always simple).
+ * There is a separate hash table shared_cast_hash (with entries of type
+ * plpgsql_CastHashEntry) containing evaluation state trees for these
+ * expressions, which are managed in the same way as simple expressions
+ * (i.e., we assume cast expressions are always simple).
  *
- * As with simple expressions, DO blocks don't use the shared hash table but
- * must have their own.  This isn't ideal, but we don't want to deal with
- * multiple simple_eval_estates within a DO block.
+ * As with simple expressions, DO blocks don't use the shared_cast_hash table
+ * but must have their own evaluation state trees.  This isn't ideal, but we
+ * don't want to deal with multiple simple_eval_estates within a DO block.
  */
 typedef struct					/* lookup key for cast info */
 {
@@ -162,18 +166,24 @@ typedef struct					/* lookup key for cast info */
 	int32		dsttypmod;		/* destination typmod for cast */
 } plpgsql_CastHashKey;
 
-typedef struct					/* cast_hash table entry */
+typedef struct					/* cast_expr_hash table entry */
 {
 	plpgsql_CastHashKey key;	/* hash key --- MUST BE FIRST */
 	Expr	   *cast_expr;		/* cast expression, or NULL if no-op cast */
 	CachedExpression *cast_cexpr;	/* cached expression backing the above */
+} plpgsql_CastExprHashEntry;
+
+typedef struct					/* cast_hash table entry */
+{
+	plpgsql_CastHashKey key;	/* hash key --- MUST BE FIRST */
+	plpgsql_CastExprHashEntry *cast_centry; /* link to matching expr entry */
 	/* ExprState is valid only when cast_lxid matches current LXID */
 	ExprState  *cast_exprstate; /* expression's eval tree */
 	bool		cast_in_use;	/* true while we're executing eval tree */
 	LocalTransactionId cast_lxid;
 } plpgsql_CastHashEntry;
 
-static MemoryContext shared_cast_context = NULL;
+static HTAB *cast_expr_hash = NULL;
 static HTAB *shared_cast_hash = NULL;
 
 /*
@@ -333,6 +343,7 @@ static void exec_eval_cleanup(PLpgSQL_execstate *estate);
 static void exec_prepare_plan(PLpgSQL_execstate *estate,
 							  PLpgSQL_expr *expr, int cursorOptions);
 static void exec_simple_check_plan(PLpgSQL_execstate *estate, PLpgSQL_expr *expr);
+static bool exec_is_simple_query(PLpgSQL_expr *expr);
 static void exec_save_simple_expr(PLpgSQL_expr *expr, CachedPlan *cplan);
 static void exec_check_rw_parameter(PLpgSQL_expr *expr);
 static void exec_check_assignable(PLpgSQL_execstate *estate, int dno);
@@ -1996,10 +2007,10 @@ exec_stmts(PLpgSQL_execstate *estate, List *stmts)
 		int			rc;
 
 		/*
-		 * Flush buffered operations before executing a new statement since it might
-		 * have non-transactional side-effects that won't be reverted in case the
-		 * buffered operations (i.e., from previous statements) lead to an
-		 * exception.
+		 * YB: Flush buffered operations before executing a new statement since
+		 * it might have non-transactional side-effects that won't be reverted
+		 * in case the buffered operations (i.e., from previous statements)
+		 * lead to an exception.
 		 */
 		if (stmt->cmd_type != PLPGSQL_STMT_EXECSQL)
 		{
@@ -2288,8 +2299,8 @@ exec_stmt_call(PLpgSQL_execstate *estate, PLpgSQL_stmt_call *stmt)
 static PLpgSQL_variable *
 make_callstmt_target(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 {
-	List	   *plansources;
-	CachedPlanSource *plansource;
+	CachedPlan *cplan;
+	PlannedStmt *pstmt;
 	CallStmt   *stmt;
 	FuncExpr   *funcexpr;
 	HeapTuple	func_tuple;
@@ -2302,26 +2313,19 @@ make_callstmt_target(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	int			nfields;
 	int			i;
 
-	/*
-	 * YB_TODO(zihong@yugabyte)
-	 * - Need to verify if this needs to be changed as in Pg11.
-	 * - Unlike Pg11, Pg13 doesn't call get_stmt_mcontext() on this call which
-	 *   was backported.
-	 */
 	/* Use eval_mcontext for any cruft accumulated here */
 	oldcontext = MemoryContextSwitchTo(get_eval_mcontext(estate));
 
 	/*
-	 * Get the parsed CallStmt, and look up the called procedure
+	 * Get the parsed CallStmt, and look up the called procedure.  We use
+	 * SPI_plan_get_cached_plan to cover the edge case where expr->plan is
+	 * already stale and needs to be updated.
 	 */
-	plansources = SPI_plan_get_plan_sources(expr->plan);
-	if (list_length(plansources) != 1)
+	cplan = SPI_plan_get_cached_plan(expr->plan);
+	if (cplan == NULL || list_length(cplan->stmt_list) != 1)
 		elog(ERROR, "query for CALL statement is not a CallStmt");
-	plansource = (CachedPlanSource *) linitial(plansources);
-	if (list_length(plansource->query_list) != 1)
-		elog(ERROR, "query for CALL statement is not a CallStmt");
-	stmt = (CallStmt *) linitial_node(Query,
-									  plansource->query_list)->utilityStmt;
+	pstmt = linitial_node(PlannedStmt, cplan->stmt_list);
+	stmt = (CallStmt *) pstmt->utilityStmt;
 	if (stmt == NULL || !IsA(stmt, CallStmt))
 		elog(ERROR, "query for CALL statement is not a CallStmt");
 
@@ -2400,6 +2404,8 @@ make_callstmt_target(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	Assert(nfields == list_length(stmt->outargs));
 
 	row->nfields = nfields;
+
+	ReleaseCachedPlan(cplan, CurrentResourceOwner);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -3231,7 +3237,8 @@ exec_stmt_return(PLpgSQL_execstate *estate, PLpgSQL_stmt_return *stmt)
 				/* fulfill promise if needed, then handle like regular var */
 				plpgsql_fulfill_promise(estate, (PLpgSQL_var *) retvar);
 
-				switch_fallthrough();
+				/* FALL THRU */
+				yb_switch_fallthrough();
 
 			case PLPGSQL_DTYPE_VAR:
 				{
@@ -3377,7 +3384,8 @@ exec_stmt_return_next(PLpgSQL_execstate *estate,
 				/* fulfill promise if needed, then handle like regular var */
 				plpgsql_fulfill_promise(estate, (PLpgSQL_var *) retvar);
 
-				switch_fallthrough();
+				/* FALL THRU */
+				yb_switch_fallthrough();
 
 			case PLPGSQL_DTYPE_VAR:
 				{
@@ -4049,6 +4057,17 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 	estate->paramLI->parserSetupArg = NULL; /* filled during use */
 	estate->paramLI->numParams = estate->ndatums;
 
+	/* Create the session-wide cast-expression hash if we didn't already */
+	if (cast_expr_hash == NULL)
+	{
+		ctl.keysize = sizeof(plpgsql_CastHashKey);
+		ctl.entrysize = sizeof(plpgsql_CastExprHashEntry);
+		cast_expr_hash = hash_create("PLpgSQL cast expressions",
+									 16,	/* start small and extend */
+									 &ctl,
+									 HASH_ELEM | HASH_BLOBS);
+	}
+
 	/* set up for use of appropriate simple-expression EState and cast hash */
 	if (simple_eval_estate)
 	{
@@ -4061,7 +4080,6 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 										16, /* start small and extend */
 										&ctl,
 										HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-		estate->cast_hash_context = CurrentMemoryContext;
 	}
 	else
 	{
@@ -4069,19 +4087,14 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 		/* Create the session-wide cast-info hash table if we didn't already */
 		if (shared_cast_hash == NULL)
 		{
-			shared_cast_context = AllocSetContextCreate(TopMemoryContext,
-														"PLpgSQL cast info",
-														ALLOCSET_DEFAULT_SIZES);
 			ctl.keysize = sizeof(plpgsql_CastHashKey);
 			ctl.entrysize = sizeof(plpgsql_CastHashEntry);
-			ctl.hcxt = shared_cast_context;
 			shared_cast_hash = hash_create("PLpgSQL cast cache",
 										   16,	/* start small and extend */
 										   &ctl,
-										   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+										   HASH_ELEM | HASH_BLOBS);
 		}
 		estate->cast_hash = shared_cast_hash;
-		estate->cast_hash_context = shared_cast_context;
 	}
 	/* likewise for the simple-expression resource owner */
 	if (simple_eval_resowner)
@@ -4253,8 +4266,9 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 			/*
 			 * We could look at the raw_parse_tree, but it seems simpler to
 			 * check the command tag.  Note we should *not* look at the Query
-			 * tree(s), since those are the result of rewriting and could have
-			 * been transmogrified into something else entirely.
+			 * tree(s), since those are the result of rewriting and could be
+			 * stale, or could have been transmogrified into something else
+			 * entirely.
 			 */
 			if (plansource->commandTag == CMDTAG_INSERT ||
 				plansource->commandTag == CMDTAG_UPDATE ||
@@ -4269,9 +4283,10 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	}
 
 	/*
-	 * Flush buffered operations before executing a new statement since it might
-	 * have non-transactional side-effects that won't be reverted in case the
-	 * buffered operations (i.e., from previous statements) lead to an exception.
+	 * YB: Flush buffered operations before executing a new statement since it
+	 * might have non-transactional side-effects that won't be reverted in case
+	 * the buffered operations (i.e., from previous statements) lead to an
+	 * exception.
 	 *
 	 * If we know that the new statement is an INSERT, UPDATE or DELETE, we
 	 * can skip flushing since these statements have only transactional
@@ -5340,7 +5355,8 @@ exec_eval_datum(PLpgSQL_execstate *estate,
 			/* fulfill promise if needed, then handle like regular var */
 			plpgsql_fulfill_promise(estate, (PLpgSQL_var *) datum);
 
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 
 		case PLPGSQL_DTYPE_VAR:
 			{
@@ -6115,12 +6131,18 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 		 * release it, so we don't leak plans intra-transaction.
 		 */
 		if (expr->expr_simple_plan_lxid == curlxid)
-		{
 			ReleaseCachedPlan(expr->expr_simple_plan,
 							  estate->simple_eval_resowner);
-			expr->expr_simple_plan = NULL;
-			expr->expr_simple_plan_lxid = InvalidLocalTransactionId;
-		}
+
+		/*
+		 * Reset to "not simple" to leave sane state (with no dangling
+		 * pointers) in case we fail while replanning.  expr_simple_plansource
+		 * can be left alone however, as that cannot move.
+		 */
+		expr->expr_simple_expr = NULL;
+		expr->expr_rw_param = NULL;
+		expr->expr_simple_plan = NULL;
+		expr->expr_simple_plan_lxid = InvalidLocalTransactionId;
 
 		/* Do the replanning work in the eval_mcontext */
 		oldcontext = MemoryContextSwitchTo(get_eval_mcontext(estate));
@@ -6136,11 +6158,15 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 		Assert(cplan != NULL);
 
 		/*
-		 * This test probably can't fail either, but if it does, cope by
-		 * declaring the plan to be non-simple.  On success, we'll acquire a
-		 * refcount on the new plan, stored in simple_eval_resowner.
+		 * Recheck exec_is_simple_query, which could now report false in
+		 * edge-case scenarios such as a non-SRF having been replaced with a
+		 * SRF.  Also recheck CachedPlanAllowsSimpleValidityCheck, just to be
+		 * sure.  If either test fails, cope by declaring the plan to be
+		 * non-simple.  On success, we'll acquire a refcount on the new plan,
+		 * stored in simple_eval_resowner.
 		 */
-		if (CachedPlanAllowsSimpleValidityCheck(expr->expr_simple_plansource,
+		if (exec_is_simple_query(expr) &&
+			CachedPlanAllowsSimpleValidityCheck(expr->expr_simple_plansource,
 												cplan,
 												estate->simple_eval_resowner))
 		{
@@ -6152,9 +6178,6 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 		{
 			/* Release SPI_plan_get_cached_plan's refcount */
 			ReleaseCachedPlan(cplan, CurrentResourceOwner);
-			/* Mark expression as non-simple, and fail */
-			expr->expr_simple_expr = NULL;
-			expr->expr_rw_param = NULL;
 			return false;
 		}
 
@@ -7811,6 +7834,7 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 {
 	plpgsql_CastHashKey cast_key;
 	plpgsql_CastHashEntry *cast_entry;
+	plpgsql_CastExprHashEntry *expr_entry;
 	bool		found;
 	LocalTransactionId curlxid;
 	MemoryContext oldcontext;
@@ -7824,10 +7848,28 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 													   (void *) &cast_key,
 													   HASH_ENTER, &found);
 	if (!found)					/* initialize if new entry */
-		cast_entry->cast_cexpr = NULL;
+	{
+		/* We need a second lookup to see if a cast_expr_hash entry exists */
+		expr_entry = (plpgsql_CastExprHashEntry *) hash_search(cast_expr_hash,
+															   &cast_key,
+															   HASH_ENTER,
+															   &found);
+		if (!found)				/* initialize if new expr entry */
+			expr_entry->cast_cexpr = NULL;
 
-	if (cast_entry->cast_cexpr == NULL ||
-		!cast_entry->cast_cexpr->is_valid)
+		cast_entry->cast_centry = expr_entry;
+		cast_entry->cast_exprstate = NULL;
+		cast_entry->cast_in_use = false;
+		cast_entry->cast_lxid = InvalidLocalTransactionId;
+	}
+	else
+	{
+		/* Use always-valid link to avoid a second hash lookup */
+		expr_entry = cast_entry->cast_centry;
+	}
+
+	if (expr_entry->cast_cexpr == NULL ||
+		!expr_entry->cast_cexpr->is_valid)
 	{
 		/*
 		 * We've not looked up this coercion before, or we have but the cached
@@ -7840,10 +7882,10 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 		/*
 		 * Drop old cached expression if there is one.
 		 */
-		if (cast_entry->cast_cexpr)
+		if (expr_entry->cast_cexpr)
 		{
-			FreeCachedExpression(cast_entry->cast_cexpr);
-			cast_entry->cast_cexpr = NULL;
+			FreeCachedExpression(expr_entry->cast_cexpr);
+			expr_entry->cast_cexpr = NULL;
 		}
 
 		/*
@@ -7924,9 +7966,11 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 			((RelabelType *) cast_expr)->arg == (Expr *) placeholder)
 			cast_expr = NULL;
 
-		/* Now we can fill in the hashtable entry. */
-		cast_entry->cast_cexpr = cast_cexpr;
-		cast_entry->cast_expr = (Expr *) cast_expr;
+		/* Now we can fill in the expression hashtable entry. */
+		expr_entry->cast_cexpr = cast_cexpr;
+		expr_entry->cast_expr = (Expr *) cast_expr;
+
+		/* Be sure to reset the exprstate hashtable entry, too. */
 		cast_entry->cast_exprstate = NULL;
 		cast_entry->cast_in_use = false;
 		cast_entry->cast_lxid = InvalidLocalTransactionId;
@@ -7935,7 +7979,7 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 	}
 
 	/* Done if we have determined that this is a no-op cast. */
-	if (cast_entry->cast_expr == NULL)
+	if (expr_entry->cast_expr == NULL)
 		return NULL;
 
 	/*
@@ -7954,7 +7998,7 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 	if (cast_entry->cast_lxid != curlxid || cast_entry->cast_in_use)
 	{
 		oldcontext = MemoryContextSwitchTo(estate->simple_eval_estate->es_query_cxt);
-		cast_entry->cast_exprstate = ExecInitExpr(cast_entry->cast_expr, NULL);
+		cast_entry->cast_exprstate = ExecInitExpr(expr_entry->cast_expr, NULL);
 		cast_entry->cast_in_use = false;
 		cast_entry->cast_lxid = curlxid;
 		MemoryContextSwitchTo(oldcontext);
@@ -7979,7 +8023,6 @@ exec_simple_check_plan(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 {
 	List	   *plansources;
 	CachedPlanSource *plansource;
-	Query	   *query;
 	CachedPlan *cplan;
 	MemoryContext oldcontext;
 
@@ -7995,65 +8038,14 @@ exec_simple_check_plan(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	 * called immediately after creating the CachedPlanSource, we need not
 	 * worry about the query being stale.
 	 */
-
-	/*
-	 * We can only test queries that resulted in exactly one CachedPlanSource
-	 */
-	plansources = SPI_plan_get_plan_sources(expr->plan);
-	if (list_length(plansources) != 1)
+	if (!exec_is_simple_query(expr))
 		return;
+
+	/* exec_is_simple_query verified that there's just one CachedPlanSource */
+	plansources = SPI_plan_get_plan_sources(expr->plan);
 	plansource = (CachedPlanSource *) linitial(plansources);
 
 	/*
-	 * 1. There must be one single querytree.
-	 */
-	if (list_length(plansource->query_list) != 1)
-		return;
-	query = (Query *) linitial(plansource->query_list);
-
-	/*
-	 * 2. It must be a plain SELECT query without any input tables
-	 */
-	if (!IsA(query, Query))
-		return;
-	if (query->commandType != CMD_SELECT)
-		return;
-	if (query->rtable != NIL)
-		return;
-
-	/*
-	 * 3. Can't have any subplans, aggregates, qual clauses either.  (These
-	 * tests should generally match what inline_function() checks before
-	 * inlining a SQL function; otherwise, inlining could change our
-	 * conclusion about whether an expression is simple, which we don't want.)
-	 */
-	if (query->hasAggs ||
-		query->hasWindowFuncs ||
-		query->hasTargetSRFs ||
-		query->hasSubLinks ||
-		query->cteList ||
-		query->jointree->fromlist ||
-		query->jointree->quals ||
-		query->groupClause ||
-		query->groupingSets ||
-		query->havingQual ||
-		query->windowClause ||
-		query->distinctClause ||
-		query->sortClause ||
-		query->limitOffset ||
-		query->limitCount ||
-		query->setOperations)
-		return;
-
-	/*
-	 * 4. The query must have a single attribute as result
-	 */
-	if (list_length(query->targetList) != 1)
-		return;
-
-	/*
-	 * OK, we can treat it as a simple plan.
-	 *
 	 * Get the generic plan for the query.  If replanning is needed, do that
 	 * work in the eval_mcontext.  (Note that replanning could throw an error,
 	 * in which case the expr is left marked "not simple", which is fine.)
@@ -8088,6 +8080,81 @@ exec_simple_check_plan(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	 * refcount is held by the wrong resowner, so we can't just repurpose it.)
 	 */
 	ReleaseCachedPlan(cplan, CurrentResourceOwner);
+}
+
+/*
+ * exec_is_simple_query - precheck a query tree to see if it might be simple
+ *
+ * Check the analyzed-and-rewritten form of a query to see if we will be
+ * able to treat it as a simple expression.  It is caller's responsibility
+ * that the CachedPlanSource be up-to-date.
+ */
+static bool
+exec_is_simple_query(PLpgSQL_expr *expr)
+{
+	List	   *plansources;
+	CachedPlanSource *plansource;
+	Query	   *query;
+
+	/*
+	 * We can only test queries that resulted in exactly one CachedPlanSource.
+	 */
+	plansources = SPI_plan_get_plan_sources(expr->plan);
+	if (list_length(plansources) != 1)
+		return false;
+	plansource = (CachedPlanSource *) linitial(plansources);
+
+	/*
+	 * 1. There must be one single querytree.
+	 */
+	if (list_length(plansource->query_list) != 1)
+		return false;
+	query = (Query *) linitial(plansource->query_list);
+
+	/*
+	 * 2. It must be a plain SELECT query without any input tables.
+	 */
+	if (!IsA(query, Query))
+		return false;
+	if (query->commandType != CMD_SELECT)
+		return false;
+	if (query->rtable != NIL)
+		return false;
+
+	/*
+	 * 3. Can't have any subplans, aggregates, qual clauses either.  (These
+	 * tests should generally match what inline_function() checks before
+	 * inlining a SQL function; otherwise, inlining could change our
+	 * conclusion about whether an expression is simple, which we don't want.)
+	 */
+	if (query->hasAggs ||
+		query->hasWindowFuncs ||
+		query->hasTargetSRFs ||
+		query->hasSubLinks ||
+		query->cteList ||
+		query->jointree->fromlist ||
+		query->jointree->quals ||
+		query->groupClause ||
+		query->groupingSets ||
+		query->havingQual ||
+		query->windowClause ||
+		query->distinctClause ||
+		query->sortClause ||
+		query->limitOffset ||
+		query->limitCount ||
+		query->setOperations)
+		return false;
+
+	/*
+	 * 4. The query must have a single attribute as result.
+	 */
+	if (list_length(query->targetList) != 1)
+		return false;
+
+	/*
+	 * OK, we can treat it as a simple plan.
+	 */
+	return true;
 }
 
 /*

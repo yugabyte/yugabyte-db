@@ -21,16 +21,18 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_config.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/is_operation_done_result.h"
-#include "yb/master/xcluster/xcluster_config.h"
 
 #include "yb/rpc/rpc_context.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 
@@ -188,6 +190,12 @@ Status XClusterManager::FillHeartbeatResponse(
   RETURN_NOT_OK(XClusterTargetManager::FillHeartbeatResponse(req, resp));
 
   return xcluster_config_->FillHeartbeatResponse(req, resp);
+}
+
+Status XClusterManager::SetXClusterRole(
+    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+    XClusterNamespaceInfoPB_XClusterRole role) {
+  return xcluster_config_->SetXClusterRole(epoch, namespace_id, role);
 }
 
 Status XClusterManager::PrepareDefaultXClusterConfig(int64_t term, bool recreate) {
@@ -982,6 +990,31 @@ Status XClusterManager::ProcessCreateTableReq(
     const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
     const NamespaceId& namespace_id) const {
   return XClusterTargetManager::ProcessCreateTableReq(req, table_pb, table_id, namespace_id);
+}
+
+Status XClusterManager::ValidateCreateTableRequest(const CreateTableRequestPB& req) {
+  TableId table_id;
+  std::string error_str;
+  if (!req.old_rewrite_table_id().empty()) {
+    table_id = req.old_rewrite_table_id();
+    error_str = "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.";
+  } else if (IsIndex(req) && req.skip_index_backfill()) {
+    table_id = req.indexed_table_id();
+    error_str =
+        "Cannot create nonconcurrent index on a table that is a part of non-automatic mode "
+        "XCluster replication.";
+  } else {
+    return Status::OK();
+  }
+
+  const auto namespace_id =
+      VERIFY_RESULT(catalog_manager_.GetTableById(table_id))->LockForRead()->namespace_id();
+
+  SCHECK(
+      !IsTableReplicated(table_id) || IsNamespaceInAutomaticDDLMode(namespace_id), NotSupported,
+      error_str);
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

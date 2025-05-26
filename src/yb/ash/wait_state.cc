@@ -24,8 +24,7 @@ DEPRECATE_FLAG(bool, ysql_yb_ash_enable_infra, "2024_12");
 
 DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_ash, true,
     "Enable Active Session History for sampling and instrumenting YSQL and YCQL queries, "
-    "and various background activities. This does nothing if "
-    "ysql_yb_enable_ash_infra is disabled.");
+    "and various background activities.");
 
 DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 0,
     "Size (in KiBs) of ASH circular buffer that stores the samples");
@@ -64,7 +63,7 @@ thread_local WaitStateInfoPtr threadlocal_wait_state_;
 std::atomic_bool TEST_entered_wait_state_code_for_sleep{false};
 
 void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
-  if (FLAGS_TEST_yb_ash_wait_code_to_sleep_at != to_underlying(c)) {
+  if (FLAGS_TEST_yb_ash_wait_code_to_sleep_at != std::to_underlying(c)) {
     return;
   }
 
@@ -75,7 +74,7 @@ void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
   }
 
   if (!state) {
-    YB_LOG_EVERY_N_SECS(ERROR, 5) << __func__ << " skipping sleep because WaitStateInfo is null";
+    YB_LOG_EVERY_N_SECS(WARNING, 5) << __func__ << " skipping sleep because WaitStateInfo is null";
     return;
   }
 
@@ -143,6 +142,16 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A read/write rpc is waiting to identify conflicting transactions.";
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
       return "A read/write rpc is waiting for conflicting transactions to complete.";
+    case WaitStateCode::kRemoteBootstrap_FetchData:
+      return "A remote bootstrap client is fetching data from remote bootstrap server.";
+    case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
+      return "A remote bootstrap client is waiting for a remote session to be started on the "
+          "remote bootstrap server.";
+    case WaitStateCode::kRemoteBootstrap_ReadDataFromFile:
+      return "A remote bootstrap server is reading data from file.";
+    case WaitStateCode::kRemoteBootstrap_RateLimiter:
+      return "A remote bootstrap client is slowing down due to rate limiter throttling "
+          "network access to remote bootstrap server.";
     case WaitStateCode::kRaft_WaitingForReplication:
       return "A write rpc is waiting for Raft replication.";
     case WaitStateCode::kRaft_ApplyingEdits:
@@ -190,9 +199,11 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kYCQL_Execute:
       return "YCQL is executing a query.";
     case WaitStateCode::kYBClient_WaitingOnDocDB:
-      return "YB Client is waiting on DocDB to return a response.";
+      return "YB client is waiting on DocDB to return a response.";
     case WaitStateCode::kYBClient_LookingUpTablet:
-      return "YB Client is looking up tablet information from the master.";
+      return "YB client is looking up tablet information from the master.";
+    case WaitStateCode::kYBClient_WaitingOnMaster:
+      return "YB client is waiting on an RPC sent to the master.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -493,7 +504,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kIndexWrite:
     case WaitStateCode::kTableWrite:
     case WaitStateCode::kWaitingOnTServer:
-      return WaitStateType::kNetwork;
+      return WaitStateType::kRPCWait;
 
     case WaitStateCode::kOnCpu_Active:
     case WaitStateCode::kOnCpu_Passive:
@@ -516,26 +527,30 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
-      return WaitStateType::kNetwork;
+      return WaitStateType::kRPCWait;
 
     case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
+    case WaitStateCode::kRemoteBootstrap_ReadDataFromFile:
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
+    case WaitStateCode::kRemoteBootstrap_RateLimiter:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kConflictResolution_ResolveConficts:
-      return WaitStateType::kNetwork;
+      return WaitStateType::kRPCWait;
 
     case WaitStateCode::kLockedBatchEntry_Lock:
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
       return WaitStateType::kLock;
 
     case WaitStateCode::kRaft_WaitingForReplication:
-      return WaitStateType::kNetwork;
+    case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
+    case WaitStateCode::kRemoteBootstrap_FetchData:
+      return WaitStateType::kRPCWait;
 
     case WaitStateCode::kRaft_ApplyingEdits:
       return WaitStateType::kCpu;
@@ -577,7 +592,8 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kYBClient_WaitingOnDocDB:
     case WaitStateCode::kYBClient_LookingUpTablet:
-      return WaitStateType::kNetwork;
+    case WaitStateCode::kYBClient_WaitingOnMaster:
+      return WaitStateType::kRPCWait;
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }

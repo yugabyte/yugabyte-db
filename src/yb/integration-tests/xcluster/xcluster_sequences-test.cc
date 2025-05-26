@@ -72,14 +72,18 @@ class XClusterAutomaticModeTest : public XClusterDDLReplicationTestBase {
     RETURN_NOT_OK(conn.Execute(
         "SET yb_binary_restore = true;"
         "SET yb_ignore_pg_class_oids = false;"
+        "SET yb_ignore_relfilenode_ids = false;"
         "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('100000'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('100000'::pg_catalog.oid);"
         "SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('100001'::pg_catalog.oid);"
         "CREATE SEQUENCE sequence_foo START 177777 CACHE 1 INCREMENT BY 42"));
 
     RETURN_NOT_OK(conn.Execute(
         "SET yb_binary_restore = true;"
         "SET yb_ignore_pg_class_oids = false;"
+        "SET yb_ignore_relfilenode_ids = false;"
         "SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('200000'::pg_catalog.oid);"
+        "SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('200000'::pg_catalog.oid);"
         "SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('200001'::pg_catalog.oid);"
         "CREATE SEQUENCE sequence_bar START 277777 CACHE 1 INCREMENT BY 399"));
 
@@ -425,6 +429,45 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingWith2Databases
   ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, {namespace1, namespace2}));
 
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace2));
+}
+
+TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingAddingNamespace) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  const std::string namespace1{"yugabyte"};
+  const std::string namespace2{"yugabyte2"};
+  ASSERT_OK(SetUpClusters(
+      /*use_different_database_oids=*/false, namespace1, namespace2,
+      /*start_yb_controller_servers=*/true));
+
+  // Start replication with one database.
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace1}));
+  ASSERT_OK(BackupFromProducer({namespace1}));
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
+  ASSERT_OK(RestoreToConsumer({namespace1}));
+  ASSERT_OK(CreateReplicationFromCheckpoint({}, kReplicationGroupId, {namespace1}));
+  ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+
+  // Add a second database to the existing replication, bumping
+  // sequences in the middle of the backup/restore step.
+  ASSERT_OK(SetUpSequences(&producer_cluster_, namespace2));
+  auto source_xcluster_client = client::XClusterClient(*producer_client());
+  auto source_db_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace2));
+  ASSERT_OK(source_xcluster_client.AddNamespaceToOutboundReplicationGroup(
+      kReplicationGroupId, source_db_id));
+  // Wait for checkpointing to finish.
+  ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, source_db_id));
+  ASSERT_OK(BackupFromProducer({namespace2}));
+  ASSERT_OK(BumpSequences(&producer_cluster_, namespace2));
+  ASSERT_OK(RestoreToConsumer({namespace2}));
+  // Note that RestoreToConsumer re-creates the namespace so we can't get the ID before now.
+  auto target_db_id = ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace2));
+  ASSERT_OK(AddNamespaceToXClusterReplication(source_db_id, target_db_id));
+
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace2));
 }
 

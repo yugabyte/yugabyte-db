@@ -697,7 +697,7 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     DumpAutoFlagsJSONAndExit();
   } else if (FLAGS_dump_metrics_json) {
     std::stringstream s;
-    JsonWriter w(&s, JsonWriter::PRETTY_ESCAPE_STR);
+    JsonWriter w(&s, JsonWriter::PRETTY);
     WriteRegistryAsJson(&w);
     std::cout << s.str() << std::endl;
     exit(0);

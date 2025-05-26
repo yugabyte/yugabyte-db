@@ -1,0 +1,7 @@
+RESET ROLE;
+DROP OWNED BY sandeep CASCADE;
+CREATE TABLE foo(id INT);
+GRANT SELECT, INSERT, UPDATE, DELETE ON foo TO sandeep;
+CREATE TABLE aftergrant(id INT);
+REVOKE DELETE ON foo FROM sandeep;
+CREATE TABLE afterrevoke(id INT);

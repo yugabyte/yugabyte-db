@@ -573,7 +573,6 @@ AllocateRelationDesc(Form_pg_class relp)
 
 	/* YB properties will be loaded lazily */
 	relation->yb_table_properties = NULL;
-
 	relation->primary_key_bms = NULL;
 	relation->full_primary_key_bms = NULL;
 
@@ -736,7 +735,7 @@ RelationBuildTupleDesc(Relation relation)
 			elog(ERROR, "invalid attribute number %d for relation \"%s\"",
 				 attp->attnum, RelationGetRelationName(relation));
 
-		memcpy(TupleDescAttr(RelationGetDescr(relation), attp->attnum - 1),
+		memcpy(TupleDescAttr(relation->rd_att, attp->attnum - 1),
 			   attp,
 			   ATTRIBUTE_FIXED_PART_SIZE);
 
@@ -1545,6 +1544,8 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		state->has_partitioned_tables |= (relation->rd_rel->relkind ==
 										  RELKIND_PARTITIONED_TABLE);
 	}
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Inserted %d entries into relcache", num_tuples);
 
 	systable_endscan(scandesc);
 	table_close(pg_class_desc, AccessShareLock);
@@ -2693,6 +2694,9 @@ static YbcStatus
 YbUpdateRelationCacheImpl(YbUpdateRelationCacheState *state,
 						  YbRunWithPrefetcherContext *ctx)
 {
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Updating relcache");
+
 	YBLoadRelations(state);
 
 	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
@@ -3068,6 +3072,10 @@ YbPrefetchRequiredData(bool preload_rel_cache)
 static Relation
 RelationBuildDesc(Oid targetRelId, bool insertIt)
 {
+	instr_time	start;
+
+	if (yb_debug_log_catcache_events)
+		INSTR_TIME_SET_CURRENT(start);
 	int			in_progress_offset;
 	Relation	relation;
 	Oid			relid;
@@ -3327,6 +3335,17 @@ retry:
 		MemoryContextDelete(tmpcxt);
 	}
 #endif
+
+	if (yb_debug_log_catcache_events && insertIt)
+	{
+		instr_time	duration;
+
+		INSTR_TIME_SET_CURRENT(duration);
+		INSTR_TIME_SUBTRACT(duration, start);
+		elog(LOG, "Rebuilding relcache entry for %s (oid %d) took %ld us",
+			 RelationGetRelationName(relation), RelationGetRelid(relation),
+			 INSTR_TIME_GET_MICROSEC(duration));
+	}
 
 	return relation;
 }
@@ -3745,8 +3764,8 @@ LookupOpclassInfo(Oid operatorClassOid,
 	 */
 	indexOK = criticalRelcachesBuilt ||
 		(operatorClassOid != OID_BTREE_OPS_OID &&
-		 operatorClassOid != OID_LSM_OPS_OID &&
 		 operatorClassOid != INT2_BTREE_OPS_OID &&
+		 operatorClassOid != OID_LSM_OPS_OID &&
 		 operatorClassOid != INT2_LSM_OPS_OID);
 
 	/*
@@ -4352,6 +4371,7 @@ RelationReloadIndexInfo(Relation relation)
 		relation->rd_index->indcheckxmin = index->indcheckxmin;
 		relation->rd_index->indisready = index->indisready;
 		relation->rd_index->indislive = index->indislive;
+		relation->rd_index->indisreplident = index->indisreplident;
 
 		/* Copy xmin too, as that is needed to make sense of indcheckxmin */
 		HeapTupleHeaderSetXmin(relation->rd_indextuple->t_data,
@@ -4723,10 +4743,9 @@ RelationClearRelation(Relation relation, bool rebuild)
 		 * have different types of stats.
 		 *
 		 * If we don't want to keep the stats, unlink the stats and relcache
-		 * entry (and do so before entering the "critical section"
-		 * below). This is important because otherwise
-		 * PgStat_TableStatus->relation would get out of sync with
-		 * relation->pgstat_info.
+		 * entry (and do so before entering the "critical section" below).
+		 * This is important because otherwise PgStat_TableStatus->relation
+		 * would get out of sync with relation->pgstat_info.
 		 */
 		keep_pgstats = relation->rd_rel->relkind == newrel->rd_rel->relkind;
 		if (!keep_pgstats)
@@ -5177,10 +5196,10 @@ static void
 AssertPendingSyncConsistency(Relation relation)
 {
 	bool		relcache_verdict =
-	RelationIsPermanent(relation) &&
-	((relation->rd_createSubid != InvalidSubTransactionId &&
-	  RELKIND_HAS_STORAGE(relation->rd_rel->relkind)) ||
-	 relation->rd_firstRelfilenodeSubid != InvalidSubTransactionId);
+		RelationIsPermanent(relation) &&
+		((relation->rd_createSubid != InvalidSubTransactionId &&
+		  RELKIND_HAS_STORAGE(relation->rd_rel->relkind)) ||
+		 relation->rd_firstRelfilenodeSubid != InvalidSubTransactionId);
 
 	Assert(relcache_verdict == RelFileNodeSkippingWAL(relation->rd_node));
 
@@ -5854,32 +5873,18 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 {
 	Oid			newrelfilenode;
 	Relation	pg_class;
+	ItemPointerData otid;
 	HeapTuple	tuple;
 	Form_pg_class classform;
 	MultiXactId minmulti = InvalidMultiXactId;
 	TransactionId freezeXid = InvalidTransactionId;
 	RelFileNode newrnode;
 
-	/*
-	 * YB Note: this code that opens pg_class table was moved here from below.
-	 * Get a writable copy of the pg_class tuple for the given relation.
-	 */
-	pg_class = table_open(RelationRelationId, RowExclusiveLock);
-
 	if (!IsBinaryUpgrade || yb_binary_restore)
 	{
-		if (IsYugaByteEnabled())
-			/*
-			 * In YB, always use pg_class to check for OID collision. During
-			 * table rewrite a relfilenode is used by DocDB to construct a
-			 * table id in the same way as a regular table OID.
-			 */
-			newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
-											   pg_class, persistence);
-		else
-			/* Allocate a new relfilenode */
-			newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
-											   NULL, persistence);
+		/* Allocate a new relfilenode */
+		newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
+										   NULL, persistence);
 	}
 	else if (relation->rd_rel->relkind == RELKIND_INDEX)
 	{
@@ -5907,14 +5912,16 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 				 errmsg("unexpected request for new relfilenode in binary upgrade mode")));
 
 	/*
-	 * YB Note: native PG code setup pg_class here, YB has moved that code up above.
+	 * Get a writable copy of the pg_class tuple for the given relation.
 	 */
+	pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
-	tuple = SearchSysCacheCopy1(RELOID,
-								ObjectIdGetDatum(RelationGetRelid(relation)));
+	tuple = SearchSysCacheLockedCopy1(RELOID,
+									  ObjectIdGetDatum(RelationGetRelid(relation)));
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for relation %u",
 			 RelationGetRelid(relation));
+	otid = tuple->t_self;
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 
 	if (IsYBRelation(relation))
@@ -6074,9 +6081,10 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 		classform->relminmxid = minmulti;
 		classform->relpersistence = persistence;
 
-		CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+		CatalogTupleUpdate(pg_class, &otid, tuple);
 	}
 
+	UnlockTuple(pg_class, &otid, InplaceUpdateTupleLock);
 	heap_freetuple(tuple);
 
 	table_close(pg_class, RowExclusiveLock);
@@ -6587,7 +6595,6 @@ load_critical_index(Oid indexoid, Oid heapoid)
 	 * and if anyone else is exclusive-locking this catalog and index they'll
 	 * be doing it in that order.
 	 */
-
 	LockRelationOid(heapoid, AccessShareLock);
 	LockRelationOid(indexoid, AccessShareLock);
 	if (IsYugaByteEnabled())
@@ -6600,7 +6607,6 @@ load_critical_index(Oid indexoid, Oid heapoid)
 		elog(PANIC, "could not open critical system index %u", indexoid);
 	ird->rd_isnailed = true;
 	ird->rd_refcnt = 1;
-
 	UnlockRelationOid(indexoid, AccessShareLock);
 	UnlockRelationOid(heapoid, AccessShareLock);
 
@@ -7742,16 +7748,20 @@ restart:
 			 */
 			if (attrnum != 0)
 			{
-				indexattrs = bms_add_member(indexattrs, attrnum - attr_offset);
+				indexattrs = bms_add_member(indexattrs,
+											attrnum - attr_offset);
 
 				if (isKey && i < indexDesc->rd_index->indnkeyatts)
-					uindexattrs = bms_add_member(uindexattrs, attrnum - attr_offset);
+					uindexattrs = bms_add_member(uindexattrs,
+												 attrnum - attr_offset);
 
 				if (isPK && i < indexDesc->rd_index->indnkeyatts)
-					pkindexattrs = bms_add_member(pkindexattrs, attrnum - attr_offset);
+					pkindexattrs = bms_add_member(pkindexattrs,
+												  attrnum - attr_offset);
 
 				if (isIDKey && i < indexDesc->rd_index->indnkeyatts)
-					idindexattrs = bms_add_member(idindexattrs, attrnum - attr_offset);
+					idindexattrs = bms_add_member(idindexattrs,
+												  attrnum - attr_offset);
 			}
 		}
 
@@ -8456,7 +8466,7 @@ load_relcache_init_file(bool shared)
 	uint64		ybc_stored_cache_version = 0;
 
 	/*
-	 * Disable shared init file in per database catalog version mode when
+	 * YB: Disable shared init file in per database catalog version mode when
 	 * MyDatabaseId isn't known yet. Different databases have different
 	 * catalog versions of their own. At this point we cannot compose the
 	 * correct init file name for the to-be-resolved MyDatabaseId.
@@ -8847,17 +8857,14 @@ load_relcache_init_file(bool shared)
 	 * values of NUM_CRITICAL_SHARED_RELS/NUM_CRITICAL_SHARED_INDEXES, we put
 	 * an Assert(false) there.
 	 */
-	int			num_critical_shared_indexes = NUM_CRITICAL_SHARED_INDEXES;
-	int			num_critical_local_indexes = NUM_CRITICAL_LOCAL_INDEXES;
-
 	if (shared)
 	{
 		if (nailed_rels != NUM_CRITICAL_SHARED_RELS ||
-			nailed_indexes != num_critical_shared_indexes)
+			nailed_indexes != NUM_CRITICAL_SHARED_INDEXES)
 		{
 			elog(WARNING, "found %d nailed shared rels and %d nailed shared indexes in init file, but expected %d and %d respectively",
 				 nailed_rels, nailed_indexes,
-				 NUM_CRITICAL_SHARED_RELS, num_critical_shared_indexes);
+				 NUM_CRITICAL_SHARED_RELS, NUM_CRITICAL_SHARED_INDEXES);
 			/* Make sure we get developers' attention about this */
 			Assert(false);
 			/* In production builds, recover by bootstrapping the relcache */
@@ -8867,11 +8874,11 @@ load_relcache_init_file(bool shared)
 	else
 	{
 		if (nailed_rels != NUM_CRITICAL_LOCAL_RELS ||
-			nailed_indexes != num_critical_local_indexes)
+			nailed_indexes != NUM_CRITICAL_LOCAL_INDEXES)
 		{
 			elog(WARNING, "found %d nailed rels and %d nailed indexes in init file, but expected %d and %d respectively",
 				 nailed_rels, nailed_indexes,
-				 NUM_CRITICAL_LOCAL_RELS, num_critical_local_indexes);
+				 NUM_CRITICAL_LOCAL_RELS, NUM_CRITICAL_LOCAL_INDEXES);
 			/* We don't need an Assert() in this case */
 			goto read_failed;
 		}
@@ -8889,6 +8896,9 @@ load_relcache_init_file(bool shared)
 		else
 			RelationCacheInsert(rels[relno], false);
 	}
+
+	if (yb_debug_log_catcache_events)
+		elog(LOG, "Loaded %d entries from relcache init file", num_rels);
 
 	pfree(rels);
 	FreeFile(fp);

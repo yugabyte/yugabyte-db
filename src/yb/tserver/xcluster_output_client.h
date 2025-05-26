@@ -38,6 +38,7 @@ struct XClusterOutputClientResponse {
   OpIdPB last_applied_op_id;
   uint32_t processed_record_count;
   std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response;
+  std::set<HybridTime> ddl_queue_commit_times;
 };
 
 class XClusterPoller;
@@ -48,7 +49,7 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
       XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
       const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
       ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
-      rocksdb::RateLimiter* rate_limiter);
+      bool is_ddl_queue_client, rocksdb::RateLimiter* rate_limiter);
   ~XClusterOutputClient();
   void StartShutdown() override;
   void CompleteShutdown() override;
@@ -149,6 +150,7 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
 
   const bool use_local_tserver_;
   const bool is_automatic_mode_;
+  const bool is_ddl_queue_client_ = false;
 
   std::shared_ptr<client::YBTable> table_;
 
@@ -180,13 +182,17 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   // Only non-optional for sequences_data tablets, in which case it is
   // the OID of the DB to write incoming sequence information to.
   std::optional<uint32_t> db_oid_write_sequences_to_{std::nullopt};
+
+  // Capture when we applied records to the ddl queue - this is needed so that we can find the
+  // commit time of DDLs.
+  std::set<HybridTime> ddl_queue_commit_times_ GUARDED_BY(lock_);
 };
 
 std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
     const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
     ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
-    rocksdb::RateLimiter* rate_limiter);
+    bool is_ddl_queue_client, rocksdb::RateLimiter* rate_limiter);
 
 } // namespace tserver
 } // namespace yb

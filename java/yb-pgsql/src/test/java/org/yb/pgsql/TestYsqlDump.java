@@ -62,6 +62,7 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   private static enum IncludeYbMetadata { ON, OFF }
   private static enum NoTableSpaces { ON, OFF }
+  private static enum DumpRoleChecks { ON, OFF }
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -81,7 +82,6 @@ public class TestYsqlDump extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Turn off sequence cache.
     flagMap.put("ysql_sequence_cache_minval", "0");
-    flagMap.put("ysql_enable_inheritance", "true");
     return flagMap;
   }
 
@@ -105,8 +105,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpWithYbMetadata() throws Exception {
-
-    markClusterNeedsRecreation();
     restartCluster();
 
     ysqlDumpTester(
@@ -132,6 +130,33 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
+  public void ysqlDumpWithDumpRoleChecks() throws Exception {
+    restartCluster();
+
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
+        "data/yb_ysql_dump_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF,
+        DumpRoleChecks.ON);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate(String.format("CREATE DATABASE import_db;"));
+    }
+
+    verifyYsqlDump(
+      true /* importDump */,
+      "import_db" /* verifyDbName */,
+      "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
+  }
+
+  @Test
   public void ysqlDumpAllWithYbMetadata() throws Exception {
     // Note that we're using the same describe input as for regular ysql_dump!
     ysqlDumpTester(
@@ -142,6 +167,31 @@ public class TestYsqlDump extends BasePgSQLTest {
         "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
+
+    // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
+    // like CREATE ROLE postgres
+    verifyYsqlDump(
+      false /* importDump*/,
+      "" /* verifyDbName */,
+      "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */
+    );
+  }
+
+  @Test
+  public void ysqlDumpAllWithDumpRoleChecks() throws Exception {
+    // Note that we're using the same describe input as for regular ysql_dump!
+    ysqlDumpTester(
+        "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
+        "data/yb_ysql_dumpall_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.OFF,
+        DumpRoleChecks.ON);
 
     // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
     // like CREATE ROLE postgres
@@ -239,7 +289,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpColocatedTablesWithTablespaces() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithClusterBuilder(cb -> {
       cb.addCommonFlag("ysql_enable_colocated_tables_with_tablespaces", "true");
       cb.addCommonTServerFlag("placement_cloud", "testCloud");
@@ -281,7 +330,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpLegacyColocatedDB() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -327,6 +375,19 @@ public class TestYsqlDump extends BasePgSQLTest {
                       final String outputFileRelativePath,
                       final IncludeYbMetadata includeYbMetadata,
                       final NoTableSpaces noTableSpaces) throws Exception {
+    ysqlDumpTester(
+        binaryName, dumpedDatabaseName, inputFileRelativePath, expectedDumpRelativePath,
+        outputFileRelativePath, includeYbMetadata, noTableSpaces, DumpRoleChecks.OFF);
+  }
+
+  void ysqlDumpTester(final String binaryName,
+                      final String dumpedDatabaseName,
+                      final String inputFileRelativePath,
+                      final String expectedDumpRelativePath,
+                      final String outputFileRelativePath,
+                      final IncludeYbMetadata includeYbMetadata,
+                      final NoTableSpaces noTableSpaces,
+                      final DumpRoleChecks dumpRoleChecks) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
@@ -363,6 +424,10 @@ public class TestYsqlDump extends BasePgSQLTest {
     if (noTableSpaces == NoTableSpaces.ON) {
       args.add("--no-tablespaces");
     }
+    if (dumpRoleChecks == DumpRoleChecks.ON) {
+      args.add("--dump-role-checks");
+    }
+
     if (!dumpedDatabaseName.isEmpty()) {
       Collections.addAll(args, "-d", dumpedDatabaseName);
     }

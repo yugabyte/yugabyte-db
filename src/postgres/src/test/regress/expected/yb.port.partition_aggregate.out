@@ -731,10 +731,10 @@ EXPLAIN (COSTS OFF)
 SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a LEFT JOIN (SELECT * FROM pagg_tab2 WHERE y > 10) b ON a.x = b.y WHERE a.x > 5 or b.y < 20  GROUP BY a.x, b.y ORDER BY 1, 2;
                              QUERY PLAN                             
 --------------------------------------------------------------------
- GroupAggregate
-   Group Key: pagg_tab1.x, pagg_tab2.y
-   ->  Sort
-         Sort Key: pagg_tab1.x, pagg_tab2.y
+ Sort
+   Sort Key: pagg_tab1.x, pagg_tab2.y
+   ->  HashAggregate
+         Group Key: pagg_tab1.x, pagg_tab2.y
          ->  Hash Left Join
                Hash Cond: (pagg_tab1.x = pagg_tab2.y)
                Filter: ((pagg_tab1.x > 5) OR (pagg_tab2.y < 20))
@@ -771,10 +771,10 @@ EXPLAIN (COSTS OFF)
 SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a FULL JOIN (SELECT * FROM pagg_tab2 WHERE y > 10) b ON a.x = b.y WHERE a.x > 5 or b.y < 20  GROUP BY a.x, b.y ORDER BY 1, 2;
                              QUERY PLAN                             
 --------------------------------------------------------------------
- GroupAggregate
-   Group Key: pagg_tab1.x, pagg_tab2.y
-   ->  Sort
-         Sort Key: pagg_tab1.x, pagg_tab2.y
+ Sort
+   Sort Key: pagg_tab1.x, pagg_tab2.y
+   ->  HashAggregate
+         Group Key: pagg_tab1.x, pagg_tab2.y
          ->  Hash Full Join
                Hash Cond: (pagg_tab1.x = pagg_tab2.y)
                Filter: ((pagg_tab1.x > 5) OR (pagg_tab2.y < 20))

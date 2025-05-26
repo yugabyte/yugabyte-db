@@ -730,14 +730,8 @@ StoreQueryTuple(const PGresult *result)
 
 			if (VariableHasHook(pset.vars, varname))
 			{
-				/*
-				 * YB: the following code is commented out since we don't have
-				 * pg_log_warning macro. Porting over pg_log_warning would
-				 * require other commits which can be done later.
-				 *
-				 *	pg_log_warning("attempt to \\gset into specially treated variable \"%s\" ignored",
-				 *				   varname);
-				 */
+				pg_log_warning("attempt to \\gset into specially treated variable \"%s\" ignored",
+							   varname);
 				continue;
 			}
 
@@ -1633,6 +1627,8 @@ ExecQueryAndProcessResults(const char *query,
 
 		if (cancel_pressed)
 		{
+			/* drop this next result, as well as any others not yet read */
+			ClearOrSaveResult(result);
 			ClearOrSaveAllResults();
 			break;
 		}

@@ -20,6 +20,7 @@ import static org.yb.AssertionWrappers.fail;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -82,6 +83,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
+    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
   }
 
@@ -115,8 +117,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionCreateDrop() throws Exception {
-    markClusterNeedsRecreation();
-
     String[] wal_levels = {"minimal", "replica", "logical"};
     for (String wal_level : wal_levels) {
       LOG.info("Testing replicationConnectionCreateDrop with wal_level = {}", wal_level);
@@ -743,6 +743,74 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  @Test
+  public void testReplicationConnectionConsumptionWithCreateIndex() throws Exception {
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    tserverFlags.put("ysql_yb_wait_for_backends_catalog_version_timeout", "10000");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    final String slotName = "test_slot";
+    final String pluginName = YB_OUTPUT_PLUGIN_NAME;
+
+    try (Statement stmt = connection.createStatement()) {
+      // Drop the table if it exists to ensure that we are starting with a clean slate.
+      // This is important as we have seen previous instances where if an earlier tests
+      // fails without dropping the table, it causes a cascading failure for other tests
+      // which use the same table name.
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text, c bool)");
+
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    PGReplicationConnection replConnection = getConnectionBuilder().withTServer(0)
+                                                .replicationConnect()
+                                                .unwrap(PGConnection.class)
+                                                .getReplicationAPI();
+
+    createSlot(replConnection, slotName, pluginName);
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (generate_series(1, 1000), 'lmno', false)");
+      stmt.execute("ALTER TABLE t1 ADD COLUMN txt_col TEXT");
+    }
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    // 1 Relation, 1 + 1000 + 1 (begin, 1000 inserts, commit), 1 Relation.
+    final int totalMessagesBeforeIndexCreation = 1004;
+
+    // We will only consume a few records and then create an index on the table without
+    // consuming the ALTER (RELATION) message. This will test that the index creation
+    // process is not blocked by the catalog version change.
+    result.addAll(receiveMessage(stream, totalMessagesBeforeIndexCreation - 1 /* RELATION */));
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE INDEX idx_t1 ON t1(a)");
+      stmt.execute("INSERT INTO t1 VALUES (1001, 'pqrs', true, 'text_col_val')");
+    }
+
+    // Consume the remaining messages.
+    result.addAll(receiveMessage(stream, 4 /* RELATION + BEGIN + INSERT + COMMIT */));
+
+    // Check for the expected messages count, we are not verifying the values of the
+    // messages here as there are plenty of other tests which do so and this test is
+    // specifically meant to verify the index creation process.
+    // There will be total totalMessagesBeforeIndexCreation + 3 messages in the stream.
+    // 1 Relation, 1 + 1000 + 1 (Begin, 1000 Inserts, Commit),
+    // 1 Relation, 1 + 1 + 1 (Begin, Insert, Commit)
+    assertEquals(totalMessagesBeforeIndexCreation + 3, result.size());
+
+    stream.close();
+  }
+
   // PG converts timestamp according to the local timezone before streaming via logical replication.
   // So we convert the timestamp to local timezone before the string comparison, so that the tests
   // doesn't depend on the machine timezone.
@@ -990,7 +1058,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionMultipleBatchesWithYboutput() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the test is fast.
     tserverFlags.put("cdcsdk_max_consistent_records", "2");
@@ -1002,7 +1069,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionMultipleBatchesWithPgoutput() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the test is fast.
     tserverFlags.put("cdcsdk_max_consistent_records", "2");
@@ -1254,7 +1320,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void consumptionOnSubsetOfColocatedTables() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     // Set the batch size to a smaller value than the default of 500, so that the
     // test is fast.
@@ -1356,7 +1421,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionConsumptionDisabled() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("ysql_yb_enable_replication_slot_consumption", "false");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -1964,7 +2028,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testWalsenderGracefulShutdownWithCDCServiceError() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("TEST_cdc_force_destroy_virtual_wal_failure", "true");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
@@ -3403,7 +3466,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testConsumptionOnSubsetOfTabletsFromMultipleSlots() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3519,7 +3581,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testOutOfBoundHashRangeWithSlot() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3560,7 +3621,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testNonNumericHashRangeWithSlot() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put(
             "allowed_preview_flags_csv", "ysql_yb_enable_consistent_replication_from_hash_range");
@@ -3825,7 +3885,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testWalStatusLost() throws Exception {
-    markClusterNeedsRecreation();
     Map<String, String> tserverFlags = super.getTServerFlags();
     tserverFlags.put("cdc_intent_retention_ms", "0");
     restartClusterWithFlags(Collections.emptyMap(), tserverFlags);

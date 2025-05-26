@@ -1,6 +1,8 @@
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeDBApplication.buildTaskInfo;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
@@ -295,6 +297,31 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
+  public void testCreateDRConfigWhenYsqlMajorUpgradeIsInProgress() {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    settableRuntimeConfigFactory
+        .forUniverse(sourceUniverse)
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
+    settableRuntimeConfigFactory
+        .forUniverse(targetUniverse)
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "false");
+    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR");
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+                    authToken,
+                    Json.toJson(data)));
+
+    assertBadRequest(
+        result,
+        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
+            + " universe is in progress.");
+  }
+
+  @Test
   // Only target universe has db scoped runtime config set as true.
   public void testNonDbScopedCreate() {
     settableRuntimeConfigFactory
@@ -406,6 +433,58 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             Json.toJson(setDatabasesData));
 
     assertOk(result);
+  }
+
+  @Test
+  // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true.
+  public void testSetDatabasesDbScopedSuccessWhenYsqlMajorUpgradeIsInProgress() {
+
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
+    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR");
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+            authToken,
+            Json.toJson(data));
+
+    assertOk(result);
+    List<DrConfig> drConfigs =
+        DrConfig.getBetweenUniverses(
+            sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID());
+    assertEquals(1, drConfigs.size());
+    DrConfig drConfig = drConfigs.get(0);
+    assertNotNull(drConfig);
+    UUID drConfigId = drConfig.getUuid();
+    DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
+    setDatabasesData.dbs = new HashSet<>(Set.of("db1", "db2"));
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+    drConfig.setState(State.Replicating);
+    drConfig.update();
+
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT",
+                    "/api/customers/"
+                        + defaultCustomer.getUuid()
+                        + "/dr_configs/"
+                        + drConfigId
+                        + "/set_dbs",
+                    authToken,
+                    Json.toJson(setDatabasesData)));
+
+    assertBadRequest(
+        result,
+        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
+            + " universe is in progress.");
   }
 
   @Test
@@ -613,6 +692,50 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
+  public void testSwitchoverWhenYsqlMajorUpgradeIsInProgress() throws Exception {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    String sourceNamespace = "sourceNamespace";
+    DrConfig drConfig =
+        DrConfig.create(
+            "test",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            new BootstrapBackupParams(),
+            new PitrParams(),
+            Set.of(sourceNamespace));
+    drConfig.setState(State.Replicating);
+    drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
+    drConfig.update();
+    String targetNamespace = "targetNamespace";
+    setupMockGetUniverseReplicationInfo(drConfig, sourceNamespace, targetNamespace);
+    setupMockGetXClusterOutboundReplicationGroupInfo(drConfig, sourceNamespace);
+    ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
+    // when(mockListTablesResponse.getTableInfoList()).thenReturn(Collections.emptyList());
+    // when(mockYBClient.getTablesList(nullable(String.class), eq(false), nullable(String.class)))
+    //     .thenReturn(mockListTablesResponse);
+
+    DrConfigSwitchoverForm form = new DrConfigSwitchoverForm();
+    form.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
+    form.drReplicaUniverseUuid = targetUniverse.getUniverseUUID();
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    String.format(
+                        "/api/customers/%s/dr_configs/%s/switchover",
+                        defaultCustomer.getUuid(), drConfig.getUuid()),
+                    authToken,
+                    Json.toJson(form)));
+
+    assertBadRequest(
+        result,
+        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
+            + " universe is in progress.");
+  }
+
+  @Test
   public void testDbScopedFailover() throws Exception {
     String sourceNamespace = "sourceNamespace";
     DrConfig drConfig =
@@ -680,6 +803,47 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
+  public void testDbScopedFailoverWhenYsqlMajorUpgradeIsInProgress() throws Exception {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    String sourceNamespace = "sourceNamespace";
+    DrConfig drConfig =
+        DrConfig.create(
+            "test",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            new BootstrapBackupParams(),
+            new PitrParams(),
+            Set.of(sourceNamespace));
+    drConfig.setState(State.Replicating);
+    drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
+    drConfig.update();
+
+    String targetNamespace = "targetNamespace";
+    setupMockGetUniverseReplicationInfo(drConfig, sourceNamespace, targetNamespace);
+
+    DrConfigFailoverForm form = new DrConfigFailoverForm();
+    form.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
+    form.drReplicaUniverseUuid = targetUniverse.getUniverseUUID();
+    form.namespaceIdSafetimeEpochUsMap = Map.of(targetNamespace, 100L);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    String.format(
+                        "/api/customers/%s/dr_configs/%s/failover",
+                        defaultCustomer.getUuid(), drConfig.getUuid()),
+                    authToken,
+                    Json.toJson(form)));
+
+    assertBadRequest(
+        result,
+        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
+            + " universe is in progress.");
+  }
+
+  @Test
   public void testDbScopedRepair() {
     String sourceNamespace = "sourceNamespace";
     DrConfig drConfig =
@@ -716,6 +880,42 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(params.getPitrParams());
     assertEquals(drConfig.getActiveXClusterConfig().getDbIds(), params.getDbs());
     assertTrue(params.isForceBootstrap());
+  }
+
+  @Test
+  public void testDbScopedRepairWhenYsqlMajorUpgradeIsInProgress() {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    String sourceNamespace = "sourceNamespace";
+    DrConfig drConfig =
+        DrConfig.create(
+            "test",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            new BootstrapBackupParams(),
+            new PitrParams(),
+            Set.of(sourceNamespace));
+    drConfig.setState(State.Halted);
+    drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Initialized);
+    drConfig.update();
+
+    DrConfigRestartForm form = new DrConfigRestartForm();
+    form.dbs = Set.of(sourceNamespace);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    String.format(
+                        "/api/customers/%s/dr_configs/%s/restart",
+                        defaultCustomer.getUuid(), drConfig.getUuid()),
+                    authToken,
+                    Json.toJson(form)));
+
+    assertBadRequest(
+        result,
+        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
+            + " universe is in progress.");
   }
 
   @Test
@@ -761,6 +961,43 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(newConfig);
     assertEquals(newConfig.getDbIds(), drConfig.getActiveXClusterConfig().getDbIds());
     assertTrue(newConfig.getTableIds().isEmpty());
+  }
+
+  @Test
+  public void testDbScopedReplicaReplacementWhenYsqlMajorUpgradeIsInProgress() {
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    Universe newReplica = createUniverse("new replication target");
+    DrConfig drConfig =
+        spy(
+            DrConfig.create(
+                "test",
+                sourceUniverse.getUniverseUUID(),
+                targetUniverse.getUniverseUUID(),
+                new BootstrapBackupParams(),
+                new PitrParams(),
+                Set.of("sourceNamespace")));
+    drConfig.setState(State.Replicating);
+    drConfig.update();
+
+    DrConfigReplaceReplicaForm form = new DrConfigReplaceReplicaForm();
+    form.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
+    form.drReplicaUniverseUuid = newReplica.getUniverseUUID();
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    String.format(
+                        "/api/customers/%s/dr_configs/%s/replace_replica",
+                        defaultCustomer.getUuid(), drConfig.getUuid()),
+                    authToken,
+                    Json.toJson(form)));
+
+    assertBadRequest(
+        result,
+        "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
+            + " universe is in progress.");
   }
 
   private void testToggleState(String operation) {

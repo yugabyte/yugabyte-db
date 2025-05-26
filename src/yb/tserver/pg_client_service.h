@@ -16,7 +16,6 @@
 #include <functional>
 #include <future>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -24,15 +23,13 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/master_heartbeat.fwd.h"
-
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/ysql_lease.h"
 
 namespace yb {
 
@@ -73,8 +70,10 @@ class TserverXClusterContextIf;
     (GetReplicationSlot) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
-    (GetTserverCatalogVersionInfo) \
     (GetTserverCatalogMessageLists) \
+    (SetTserverCatalogMessageList) \
+    (GetTserverCatalogVersionInfo) \
+    (GetXClusterRole) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
@@ -82,7 +81,6 @@ class TserverXClusterContextIf;
     (ListClones) \
     (ListLiveTabletServers) \
     (ListReplicationSlots) \
-    (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
     (GetNewObjectId) \
@@ -99,9 +97,8 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
-    (AcquireObjectLock) \
     (ExportTxnSnapshot) \
-    (SetTxnSnapshot) \
+    (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
     /**/
 
@@ -112,8 +109,11 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (AcquireObjectLock) \
+    (OpenTable) \
     (GetTableKeyRanges) \
     /**/
+
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
@@ -137,7 +137,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
-  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
+  YSQLLeaseInfo GetYSQLLeaseInfo() const;
 
   size_t TEST_SessionsCount();
 

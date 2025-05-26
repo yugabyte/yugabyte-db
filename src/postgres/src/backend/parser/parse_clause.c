@@ -3211,13 +3211,11 @@ transformOnConflictArbiter(ParseState *pstate,
 	 */
 	if (!IsYBRelation(pstate->p_target_relation) &&
 		IsCatalogRelation(pstate->p_target_relation))
-	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("ON CONFLICT is not supported with system catalog tables"),
 				 parser_errposition(pstate,
 									exprLocation((Node *) onConflictClause))));
-	}
 
 	/* Same applies to table used by logical decoding as catalog table */
 	if (RelationIsUsedAsCatalogTable(pstate->p_target_relation))
@@ -3251,10 +3249,11 @@ transformOnConflictArbiter(ParseState *pstate,
 		 */
 		if (infer->conname)
 		{
+			Oid			relid = RelationGetRelid(pstate->p_target_relation);
 			RangeTblEntry *rte = pstate->p_target_nsitem->p_rte;
 			Bitmapset  *conattnos;
 
-			conattnos = get_relation_constraint_attnos(pstate->p_target_relation, infer->conname,
+			conattnos = get_relation_constraint_attnos(relid, infer->conname,
 													   false, constraint);
 
 			/* Make sure the rel as a whole is marked for SELECT access */

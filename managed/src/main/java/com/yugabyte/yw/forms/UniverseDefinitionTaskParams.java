@@ -304,6 +304,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
   public boolean installNodeAgent = false;
 
+  @ApiModelProperty(value = "YbaApi Internal. True if a node agent for missing in any of the nodes")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.4.0")
+  public boolean nodeAgentMissing = false;
+
+  @ApiModelProperty(value = "YbaApi Internal. State for additional services")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
+  public AdditionalServicesStateData additionalServicesStateData;
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j

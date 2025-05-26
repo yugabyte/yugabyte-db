@@ -45,6 +45,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "replication/slot.h"
 #include "replication/walsender.h"
 #include "replication/yb_virtual_wal_client.h"
 
@@ -98,9 +99,9 @@ static void stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *tx
 static void stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 									   int nrelations, Relation relations[], ReorderBufferChange *change);
 
-static void yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid);
-
 static void LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin);
+
+static void yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid);
 
 /*
  * Make sure the current settings & environment are capable of doing logical
@@ -159,6 +160,7 @@ StartupDecodingContext(List *output_plugin_options,
 					   TransactionId xmin_horizon,
 					   bool need_full_snapshot,
 					   bool fast_forward,
+					   bool in_create,
 					   XLogReaderRoutine *xl_routine,
 					   LogicalOutputPluginWriterPrepareWrite prepare_write,
 					   LogicalOutputPluginWriterWrite do_write,
@@ -304,8 +306,10 @@ StartupDecodingContext(List *output_plugin_options,
 
 	ctx->fast_forward = fast_forward;
 
+	ctx->in_create = in_create;
+
 	/*
-	 * Mark that we need to invalidate the relcache as part of the startup.
+	 * YB: Mark that we need to invalidate the relcache as part of the startup.
 	 *
 	 * Also, initialize the hash table needed for tracking per table relcache
 	 * invalidations based on DDL events.
@@ -470,7 +474,7 @@ CreateInitDecodingContext(const char *plugin,
 	ReplicationSlotSave();
 
 	ctx = StartupDecodingContext(NIL, restart_lsn, xmin_horizon,
-								 need_full_snapshot, false,
+								 need_full_snapshot, false, true,
 								 xl_routine, prepare_write, do_write,
 								 update_progress);
 
@@ -583,7 +587,7 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 
 	ctx = StartupDecodingContext(output_plugin_options,
 								 start_lsn, InvalidTransactionId, false,
-								 fast_forward, xl_routine, prepare_write,
+								 fast_forward, false, xl_routine, prepare_write,
 								 do_write, update_progress);
 
 	/* call output plugin initialization callback */
@@ -801,6 +805,25 @@ YBParseLsnType(char *lsn_type)
 		return CRS_HYBRID_TIME;
 	else
 		elog(ERROR, "invalid lsn type provided");
+}
+
+void
+YBValidateOrderingMode(char *ordering_mode)
+{
+	if (!(strcmp(ordering_mode, ORDERING_MODE_ROW) == 0
+		  || strcmp(ordering_mode, ORDERING_MODE_TRANSACTION) == 0))
+		elog(ERROR, "ordering mode can only be ROW or TRANSACTION");
+}
+
+YbCRSOrderingMode
+YBParseOrderingMode(char *ordering_mode)
+{
+	if (strcmp(ordering_mode, ORDERING_MODE_ROW) == 0)
+		return YB_CRS_ROW;
+	else if (strcmp(ordering_mode, ORDERING_MODE_TRANSACTION) == 0)
+		return YB_CRS_TRANSACTION;
+	else
+		elog(ERROR, "invalid ordering mode provided");
 }
 
 static void
@@ -1798,6 +1821,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	/* don't overwrite if have a newer restart lsn */
 	if (restart_lsn <= slot->data.restart_lsn)
 	{
+		SpinLockRelease(&slot->mutex);
 	}
 
 	/*
@@ -1808,6 +1832,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	{
 		slot->candidate_restart_valid = current_lsn;
 		slot->candidate_restart_lsn = restart_lsn;
+		SpinLockRelease(&slot->mutex);
 
 		/* our candidate can directly be used */
 		updated_lsn = true;
@@ -1818,7 +1843,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	 * might never end up updating if the receiver acks too slowly. A missed
 	 * value here will just cause some extra effort after reconnecting.
 	 */
-	if (slot->candidate_restart_valid == InvalidXLogRecPtr)
+	else if (slot->candidate_restart_valid == InvalidXLogRecPtr)
 	{
 		slot->candidate_restart_valid = current_lsn;
 		slot->candidate_restart_lsn = restart_lsn;

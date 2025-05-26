@@ -530,8 +530,7 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
 
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
   for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
-    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
-        cluster_->tablet_server(ts_idx), {}, tserver::FlushTabletsRequestPB::FLUSH));
+    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(ts_idx, {}));
   }
 
   std::vector<std::pair<std::string, std::string>> min_max_keys;

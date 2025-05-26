@@ -19,17 +19,10 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressInherit extends BasePgRegressTestPorted {
-
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_enable_inheritance", "true");
-    return flags;
-  }
+public class TestPgRegressInherit extends BasePgRegressTest {
 
   @Test
   public void testPgRegressInherit() throws Exception {
-    runPgRegressTest("yb_pg_inherit_schedule");
+    runPgRegressTest("yb_inherit_schedule");
   }
 }

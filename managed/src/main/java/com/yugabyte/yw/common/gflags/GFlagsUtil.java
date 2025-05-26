@@ -1113,6 +1113,7 @@ public class GFlagsUtil {
    * @param allowOverrideAll - indicates whether we allow user flags to override platform flags
    */
   public static void processUserGFlags(
+      Universe universe,
       NodeDetails node,
       Map<String, String> userGFlags,
       Map<String, String> platformGFlags,
@@ -1137,7 +1138,11 @@ public class GFlagsUtil {
     }
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
-      mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, node.ysqlServerRpcPort);
+      int ysqlPort = node.ysqlServerRpcPort;
+      if (taskParams.enableConnectionPooling) {
+        ysqlPort = node.internalYsqlServerRpcPort;
+      }
+      mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
     }
     if (userGFlags.containsKey(CSQL_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, node.yqlServerRpcPort);
@@ -1877,5 +1882,17 @@ public class GFlagsUtil {
       throw new RuntimeException("Failed to parse CSV", e);
     }
     return DEFAULT_LOG_LINE_PREFIX;
+  }
+
+  public static boolean isYsqlAuthEnabled(Universe universe, NodeDetails node) {
+    Map<String, String> gflags =
+        GFlagsUtil.getGFlagsForNode(
+            node,
+            ServerType.TSERVER,
+            universe.getUniverseDetails().getPrimaryCluster(),
+            universe.getUniverseDetails().clusters);
+    return universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth
+        || (gflags.containsKey(YSQL_ENABLE_AUTH)
+            && gflags.get(YSQL_ENABLE_AUTH).equalsIgnoreCase("true"));
   }
 }

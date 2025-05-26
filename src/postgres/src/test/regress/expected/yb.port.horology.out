@@ -1,11 +1,16 @@
 --
 -- HOROLOGY
 --
-SET DateStyle = 'Postgres, MDY';
-SHOW TimeZone;  -- Many of these tests depend on the prevailing setting
- TimeZone 
-----------
- PST8PDT
+SHOW TimeZone;  -- Many of these tests depend on the prevailing settings
+      TimeZone       
+---------------------
+ America/Los_Angeles
+(1 row)
+
+SHOW DateStyle;
+   DateStyle   
+---------------
+ Postgres, MDY
 (1 row)
 
 --
@@ -373,6 +378,10 @@ SELECT timestamp without time zone 'Jan 1, 4713 BC' + interval '109203489 days' 
  Sun Dec 31 00:00:00 294276
 (1 row)
 
+SELECT timestamp without time zone '2000-01-01' - interval '2483590 days' AS "out of range";
+ERROR:  timestamp out of range
+SELECT timestamp without time zone '294276-12-31 23:59:59' + interval '9223372036854775807 microseconds' AS "out of range";
+ERROR:  timestamp out of range
 SELECT timestamp without time zone '12/31/294276' - timestamp without time zone '12/23/1999' AS "106751991 Days";
   106751991 Days  
 ------------------
@@ -633,6 +642,10 @@ SELECT timestamp with time zone '1999-12-01' + interval '1 month - 1 second' AS 
  Fri Dec 31 23:59:59 1999 PST
 (1 row)
 
+SELECT timestamp with time zone '2000-01-01' - interval '2483590 days' AS "out of range";
+ERROR:  timestamp out of range
+SELECT timestamp with time zone '294276-12-31 23:59:59 UTC' + interval '9223372036854775807 microseconds' AS "out of range";
+ERROR:  timestamp out of range
 SELECT (timestamp with time zone 'today' = (timestamp with time zone 'yesterday' + interval '1 day')) as "True";
  True 
 ------
@@ -761,12 +774,12 @@ SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
  Sat Feb 14 17:32:01 1998 PST
  Sun Feb 15 17:32:01 1998 PST
  Mon Feb 16 17:32:01 1998 PST
- Thu Feb 16 17:32:01 0096 PST BC
- Sun Feb 16 17:32:01 0098 PST
- Fri Feb 16 17:32:01 0598 PST
- Wed Feb 16 17:32:01 1098 PST
- Sun Feb 16 17:32:01 1698 PST
- Fri Feb 16 17:32:01 1798 PST
+ Thu Feb 16 17:32:01 0096 LMT BC
+ Sun Feb 16 17:32:01 0098 LMT
+ Fri Feb 16 17:32:01 0598 LMT
+ Wed Feb 16 17:32:01 1098 LMT
+ Sun Feb 16 17:32:01 1698 LMT
+ Fri Feb 16 17:32:01 1798 LMT
  Wed Feb 16 17:32:01 1898 PST
  Mon Feb 16 17:32:01 1998 PST
  Sun Feb 16 17:32:01 2098 PST
@@ -832,12 +845,12 @@ SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
  Wed Feb 14 17:32:01 1996 PST
  Thu Feb 15 17:32:01 1996 PST
  Fri Feb 16 17:32:01 1996 PST
- Mon Feb 16 17:32:01 0098 PST BC
- Thu Feb 16 17:32:01 0096 PST
- Tue Feb 16 17:32:01 0596 PST
- Sun Feb 16 17:32:01 1096 PST
- Thu Feb 16 17:32:01 1696 PST
- Tue Feb 16 17:32:01 1796 PST
+ Mon Feb 16 17:32:01 0098 LMT BC
+ Thu Feb 16 17:32:01 0096 LMT
+ Tue Feb 16 17:32:01 0596 LMT
+ Sun Feb 16 17:32:01 1096 LMT
+ Thu Feb 16 17:32:01 1696 LMT
+ Tue Feb 16 17:32:01 1796 LMT
  Sun Feb 16 17:32:01 1896 PST
  Fri Feb 16 17:32:01 1996 PST
  Thu Feb 16 17:32:01 2096 PST
@@ -2116,7 +2129,7 @@ SELECT '2020-10-05'::timestamptz > '2202020-10-05'::date as f;
 SELECT '4714-11-24 BC'::date::timestamptz;
            timestamptz           
 ---------------------------------
- Mon Nov 24 00:00:00 4714 PST BC
+ Mon Nov 24 00:00:00 4714 LMT BC
 (1 row)
 
 SET TimeZone = 'UTC-2';
@@ -2698,13 +2711,13 @@ RESET DateStyle;
 SELECT to_timestamp('0097/Feb/16 --> 08:14:30', 'YYYY/Mon/DD --> HH:MI:SS');
          to_timestamp         
 ------------------------------
- Sat Feb 16 08:14:30 0097 PST
+ Sat Feb 16 08:14:30 0097 LMT
 (1 row)
 
 SELECT to_timestamp('97/2/16 8:14:30', 'FMYYYY/FMMM/FMDD FMHH:FMMI:FMSS');
          to_timestamp         
 ------------------------------
- Sat Feb 16 08:14:30 0097 PST
+ Sat Feb 16 08:14:30 0097 LMT
 (1 row)
 
 SELECT to_timestamp('2011$03!18 23_38_15', 'YYYY-MM-DD HH24:MI:SS');
@@ -2741,7 +2754,7 @@ SELECT to_timestamp('My birthday-> Year: 1976, Month: May, Day: 16',
 SELECT to_timestamp('1,582nd VIII 21', 'Y,YYYth FMRM DD');
          to_timestamp         
 ------------------------------
- Sat Aug 21 00:00:00 1582 PST
+ Sat Aug 21 00:00:00 1582 LMT
 (1 row)
 
 SELECT to_timestamp('15 "text between quote marks" 98 54 45',
@@ -2805,7 +2818,7 @@ SELECT to_timestamp('1997 AD 11 16', 'YYYY BC MM DD');
 SELECT to_timestamp('1997 BC 11 16', 'YYYY BC MM DD');
           to_timestamp           
 ---------------------------------
- Tue Nov 16 00:00:00 1997 PST BC
+ Tue Nov 16 00:00:00 1997 LMT BC
 (1 row)
 
 SELECT to_timestamp('1997 A.D. 11 16', 'YYYY B.C. MM DD');
@@ -2817,7 +2830,7 @@ SELECT to_timestamp('1997 A.D. 11 16', 'YYYY B.C. MM DD');
 SELECT to_timestamp('1997 B.C. 11 16', 'YYYY B.C. MM DD');
           to_timestamp           
 ---------------------------------
- Tue Nov 16 00:00:00 1997 PST BC
+ Tue Nov 16 00:00:00 1997 LMT BC
 (1 row)
 
 SELECT to_timestamp('9-1116', 'Y-MMDD');
@@ -3045,6 +3058,17 @@ SELECT i, to_timestamp('2018-11-02 12:34:56.123456', 'YYYY-MM-DD HH24:MI:SS.FF' 
 
 SELECT i, to_timestamp('2018-11-02 12:34:56.123456789', 'YYYY-MM-DD HH24:MI:SS.FF' || i) FROM generate_series(1, 6) i;
 ERROR:  date/time field value out of range: "2018-11-02 12:34:56.123456789"
+SELECT i, to_timestamp('20181102123456123456', 'YYYYMMDDHH24MISSFF' || i) FROM generate_series(1, 6) i;
+ i |            to_timestamp             
+---+-------------------------------------
+ 1 | Fri Nov 02 12:34:56.1 2018 PDT
+ 2 | Fri Nov 02 12:34:56.12 2018 PDT
+ 3 | Fri Nov 02 12:34:56.123 2018 PDT
+ 4 | Fri Nov 02 12:34:56.1235 2018 PDT
+ 5 | Fri Nov 02 12:34:56.12346 2018 PDT
+ 6 | Fri Nov 02 12:34:56.123456 2018 PDT
+(6 rows)
+
 SELECT to_date('1 4 1902', 'Q MM YYYY');  -- Q is ignored
   to_date   
 ------------
@@ -3087,19 +3111,19 @@ SELECT to_date('-44-02-01 BC','YYYY-MM-DD BC');
 SELECT to_timestamp('44-02-01 11:12:13 BC','YYYY-MM-DD HH24:MI:SS BC');
           to_timestamp           
 ---------------------------------
- Fri Feb 01 11:12:13 0044 PST BC
+ Fri Feb 01 11:12:13 0044 LMT BC
 (1 row)
 
 SELECT to_timestamp('-44-02-01 11:12:13','YYYY-MM-DD HH24:MI:SS');
           to_timestamp           
 ---------------------------------
- Fri Feb 01 11:12:13 0044 PST BC
+ Fri Feb 01 11:12:13 0044 LMT BC
 (1 row)
 
 SELECT to_timestamp('-44-02-01 11:12:13 BC','YYYY-MM-DD HH24:MI:SS BC');
          to_timestamp         
 ------------------------------
- Mon Feb 01 11:12:13 0044 PST
+ Mon Feb 01 11:12:13 0044 LMT
 (1 row)
 
 --

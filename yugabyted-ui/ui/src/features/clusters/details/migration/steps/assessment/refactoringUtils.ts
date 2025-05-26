@@ -7,7 +7,7 @@ export const getMappedData = (data: AnalysisIssueDetails[] | undefined) => {
       sqlStatements: string[];
       reasons: string[];
       issueTypes: string[],
-      suggestions: string[], GHs: string[], docs_links: string[]
+      suggestions: string[], GHs: string[], docs_links: string[], minimumVersionsFixedIn: string[]
     }
   > = {};
 
@@ -18,7 +18,8 @@ export const getMappedData = (data: AnalysisIssueDetails[] | undefined) => {
 
     if (!groupMap[filePath]) {
       groupMap[filePath] = {
-        sqlStatements: [], reasons: [], issueTypes: [], suggestions: [], GHs: [], docs_links: [] };
+        sqlStatements: [], reasons: [], issueTypes: [], suggestions: [], GHs: [], docs_links: [],
+        minimumVersionsFixedIn: [] };
     }
 
     groupMap[filePath].sqlStatements.push(issue.sqlStatement || "");
@@ -27,6 +28,8 @@ export const getMappedData = (data: AnalysisIssueDetails[] | undefined) => {
     groupMap[filePath].GHs.push(issue.GH || "");
     groupMap[filePath].docs_links.push(issue.docs_link || "");
     groupMap[filePath].suggestions.push(issue.suggestion || "");
+    groupMap[filePath].minimumVersionsFixedIn.push(issue.minimum_versions_fixed_in?.join(", ")
+      || "");
   });
 
   return Object.entries(groupMap).map(([filePath, values]) => ({

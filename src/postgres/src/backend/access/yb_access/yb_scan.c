@@ -227,7 +227,7 @@ static Oid
 ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
 {
 	return attnum > 0 ? TupleDescAttr(bind_desc, attnum - 1)->atttypid :
-						SystemAttributeDefinition(attnum)->atttypid;
+		SystemAttributeDefinition(attnum)->atttypid;
 }
 
 /*
@@ -337,9 +337,9 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 	bool		is_null[n_attnum_values];
 
 	Oid			tupType =
-	HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
+		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
 	Oid			tupTypmod =
-	HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
+		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
 	YbcPgTypeAttrs type_attrs = {tupTypmod};
 
 	/* Form the lhs tuple. */
@@ -572,16 +572,14 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 
 		if (status && !IsolationIsSerializable())
 		{
-			const uint16_t txn_error = YBCStatusTransactionError(status);
+			const uint32_t err_code = YBCStatusPgsqlError(status);
 
-			if (ybScan->exec_params != NULL && YBCIsTxnConflictError(txn_error))
+			if (ybScan->exec_params != NULL && err_code == ERRCODE_YB_TXN_CONFLICT)
 			{
 				elog(DEBUG2, "Error when trying to lock row. "
-					 "pg_wait_policy=%d docdb_wait_policy=%d "
-					 "txn_errcode=%d message=%s",
+					 "pg_wait_policy=%d docdb_wait_policy=%d message=%s",
 					 ybScan->exec_params->pg_wait_policy,
 					 ybScan->exec_params->docdb_wait_policy,
-					 txn_error,
 					 YBCStatusMessageBegin(status));
 				YBCFreeStatus(status);
 				status = NULL;
@@ -592,11 +590,10 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 									RelationGetRelationName(tsdesc->rs_rd))));
 				else
 					ereport(ERROR,
-							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-							 errmsg("could not serialize access due to concurrent update"),
-							 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+							(errcode(ERRCODE_YB_TXN_CONFLICT),
+							 errmsg("could not serialize access due to concurrent update")));
 			}
-			else if (YBCIsTxnSkipLockingError(txn_error))
+			else if (err_code == ERRCODE_YB_TXN_SKIP_LOCKING)
 			{
 				/* For skip locking, it's correct to simply return no results. */
 				has_data = false;
@@ -744,8 +741,8 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 					ybcUpdateFKCache(ybScan, INDEXTUPLE_YBCTID(tuple));
 				}
 				if (syscols.ybuniqueidxkeysuffix != NULL)
-						tuple->t_ybuniqueidxkeysuffix =
-							PointerGetDatum(syscols.ybuniqueidxkeysuffix);
+					tuple->t_ybuniqueidxkeysuffix =
+						PointerGetDatum(syscols.ybuniqueidxkeysuffix);
 			}
 			break;
 		}
@@ -767,8 +764,7 @@ ybcCalculateIndexRelfileNodeId(Relation rel, Relation index,
 	Assert(index);
 	if (!index->rd_index->indisprimary)
 		return YbGetRelfileNodeId(index);
-	else if (params->index_only_scan ||
-			 YBCIsNonembeddedYbctidsOnlyFetch(params))
+	else if (params->index_only_scan)
 		return YbGetRelfileNodeId(rel);
 	return InvalidOid;
 }
@@ -788,31 +784,34 @@ YbIsScanningEmbeddedIdx(Relation table, Relation index)
 	yb_table_properties_table = YbGetTableProperties(table);
 
 	/*
-	 * - All system tables and indexes are specially colocated to the sys
-	 *   catalog tablet.
-	 * - Some indexes may use copartitioning, which shards the table and index
-	 *   together.
+	 * There are a few cases where embedding happens.
+	 * 1. System table: all system tables and indexes are specially colocated
+	 *    to the sys catalog tablet.
+	 * 2. Copartitioning: some indexes may use copartitioning, which shards the
+	 *    table and index together.
 	 */
 	is_embedded = (IsSystemRelation(table) ||
-				   yb_table_properties_table->is_colocated ||
 				   (index && index->rd_indam->yb_amiscopartitioned));
 
 	/*
-	 * - If ysql_enable_colocated_tables_with_tablespaces, check that the table
-	 *   and index are in the same colocation tablet using tablegroup_oid.
-	 *   - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
-	 *     should not be a pass condition.
-	 * - Else, simply check for colocation of the table because the index
-	 *   should follow the table.
-	 *   - TODO(#25940): index being NULL or pk index should not be a pass
-	 *     condition.
-	 * - TODO(#25940): the gflag could be turned on/off in the lifetime of
-	 *   a cluster, so it shouldn't even be involved in this logic.  Everything
-	 *   should be validated, likely using the tablegroup_oid check, assuming
-	 *   that holds even when indexes are created when the flag is false.
+	 * 3. Colocation: the table and index may be colocated to the same tablet:
+	 *    - If ysql_enable_colocated_tables_with_tablespaces, check that the
+	 *      table and index are in the same colocation tablet using
+	 *      tablegroup_oid.
+	 *      - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
+	 *        should not be a pass condition.
+	 *    - Else, simply check for colocation of the table because the index
+	 *      should follow the table.
+	 *      - TODO(#25940): index being NULL or pk index should not be a pass
+	 *        condition.
+	 *    - TODO(#25940): the gflag could be turned on/off in the lifetime of
+	 *      a cluster, so it shouldn't even be involved in this logic.
+	 *      Everything should be validated, likely using the tablegroup_oid
+	 *      check, assuming that holds even when indexes are created when the
+	 *      flag is false.
 	 */
 	if (*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces)
-		is_embedded &= (yb_table_properties_table->is_colocated &&
+		is_embedded |= (yb_table_properties_table->is_colocated &&
 						((index && index->rd_index->indisprimary) ||
 						 (index &&
 						  (YbGetTableProperties(index)->tablegroup_oid ==
@@ -1243,7 +1242,8 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	/*
 	 * Find the scan keys that are the primary key.
 	 */
-	bool sk_cols_has_ybctid = false;
+	bool		sk_cols_has_ybctid = false;
+
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
@@ -1405,10 +1405,10 @@ YbShouldRecheckEquality(Oid column_typid, Oid value_typid)
 	switch (column_typid)
 	{
 		case INT8OID:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case INT4OID:
 			is_compatible_int_type |= (value_typid == INT4OID);
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case INT2OID:
 			is_compatible_int_type |= (value_typid == INT2OID);
 			break;
@@ -2083,7 +2083,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				/* Should be ensured during planning. */
 				Assert(YbIsSearchNull(key));
 				/* fallthrough  -- treating IS NULL as (DocDB) = (null) */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTEqualStrategyNumber:
 				if (YbIsBasicOpSearch(key) || YbIsSearchNull(key))
 				{
@@ -2106,7 +2106,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 			case BTLessStrategyNumber:
 			case BTLessEqualStrategyNumber:
 				offsets[noffsets++] = i;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 
 			default:
 				break;			/* unreachable */
@@ -2159,7 +2159,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				 * Otherwise this is an IS NULL search. c IS NULL -> c = NULL
 				 * (checked above)
 				 */
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTEqualStrategyNumber:
 				/* Bind the scan keys */
 				if (YbIsBasicOpSearch(key) || YbIsSearchNull(key))
@@ -2192,7 +2192,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 
 			case BTGreaterEqualStrategyNumber:
 				bound_inclusive = true;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTGreaterStrategyNumber:
 				/*
 				 * For prechecks, we skip computation of the range bounds as we
@@ -2249,7 +2249,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 
 			case BTLessEqualStrategyNumber:
 				bound_inclusive = true;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTLessStrategyNumber:
 				/*
 				 * For prechecks, we skip computation of the range bounds as we
@@ -2540,7 +2540,7 @@ YbBindHashKeys(YbScanDesc ybScan)
 
 			case BTGreaterEqualStrategyNumber:
 				bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTGreaterStrategyNumber:
 				if (!YbApplyStartBound(&range, &bound))
 					return false;
@@ -2548,7 +2548,7 @@ YbBindHashKeys(YbScanDesc ybScan)
 
 			case BTLessEqualStrategyNumber:
 				bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTLessStrategyNumber:
 				if (!YbApplyEndBound(&range, &bound))
 					return false;
@@ -2695,14 +2695,18 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 
 	YbAttnumBmsState result = ybcAttnumBmsConstruct();
 
-	if (YBCIsNonembeddedYbctidsOnlyFetch(params))
+	if (params->fetch_ybctids_only)
 	{
-		ybcAttnumBmsAdd(&result, YBIdxBaseTupleIdAttributeNumber);
+		Assert(index);
+		ybcAttnumBmsAdd(&result,
+						index->rd_index->indisprimary ?
+						YBTupleIdAttributeNumber :
+						YBIdxBaseTupleIdAttributeNumber);
 		return result;
 	}
 
 	/* Catalog requests do not have a pg_scan_plan and require ybctid */
-	if (!pg_scan_plan || params->fetch_ybctids_only)
+	if (!pg_scan_plan)
 		ybcAttnumBmsAdd(&result, YBTupleIdAttributeNumber);
 	else
 	{
@@ -2718,14 +2722,18 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 		ybcPullVarattnosIntoAttnumBms(pg_scan_plan->plan.qual, target_relid,
 									  &result);
 
+		if (yb_scan->hash_code_keys != NIL)
+			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
+									   &result);
+
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbAddBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
 										  target_relid,
 										  &result);
-
-		if (yb_scan->hash_code_keys != NIL)
-			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
-									   &result);
+		else if (IsA(pg_scan_plan, IndexOnlyScan))
+			ybcPullVarattnosIntoAttnumBms(((IndexOnlyScan *) pg_scan_plan)->recheckqual,
+										  target_relid,
+										  &result);
 
 		YbAddOrdinaryColumnsNeedingPgRecheck(yb_scan, &result);
 
@@ -2891,8 +2899,9 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 				}
 				else if (IsA(tle->expr, Var))
 				{
-					Var *var = castNode(Var, tle->expr);
-					int attno = var->varattno;
+					Var		   *var = castNode(Var, tle->expr);
+					int			attno = var->varattno;
+
 					/*
 					 * Change column reference in an aggregate to attribute
 					 * number. Given limited number of cases we support, we
@@ -2904,11 +2913,13 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 					 */
 					if (outer_plan)
 					{
-						List *tlist = outer_plan->plan.targetlist;
+						List	   *tlist = outer_plan->plan.targetlist;
+
 						Assert(var->varno == OUTER_VAR);
 						Assert(attno > 0);
 						Assert(attno <= list_length(tlist));
 						TargetEntry *scan_tle = list_nth_node(TargetEntry, tlist, attno - 1);
+
 						Assert(IsA(scan_tle->expr, Var));
 						attno = castNode(Var, scan_tle->expr)->varattno;
 					}
@@ -3260,6 +3271,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 		/* Do a preliminary check to skip rows we can guarantee don't match. */
 		if (ybIsTupMismatch(tup, ybScan))
 		{
+			YBCPgIncrementIndexRecheckCount();
 			heap_freetuple(tup);
 			continue;
 		}
@@ -3630,13 +3642,13 @@ ybcEvalHashSelectivity(List *hashed_rinfos)
 		switch (strategy)
 		{
 			case BTLessStrategyNumber:
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTLessEqualStrategyNumber:
 				greatest_set = true;
 				greatest = val > greatest ? val : greatest;
 				break;
 			case BTGreaterEqualStrategyNumber:
-				switch_fallthrough();
+				yb_switch_fallthrough();
 			case BTGreaterStrategyNumber:
 				lowest_set = true;
 				lowest = val < lowest ? val : lowest;
@@ -3978,9 +3990,8 @@ YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
 	{
 		/*
 		 * In case the user has specified NOWAIT, the intention is to error out
-		 * immediately. If we raise TransactionErrorCode::kConflict, the
-		 * statement might be retried by our retry logic in
-		 * yb_attempt_to_restart_on_error().
+		 * immediately. If we raise ERRCODE_YB_TXN_CONFLICT, the statement might
+		 * be retried by our retry logic in yb_attempt_to_restart_on_error().
 		 */
 
 		if (rel)
@@ -4002,18 +4013,17 @@ YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
 	}
 
 	ereport(ERROR,
-			(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-			 errmsg("could not serialize access due to concurrent update"),
-			 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+			(errcode(ERRCODE_YB_TXN_CONFLICT),
+			 errmsg("could not serialize access due to concurrent update")));
 }
 
 static bool
 YBCIsExplicitRowLockConflictStatus(YbcStatus status)
 {
 	Assert(status);
-	const uint16_t txn_error = YBCStatusTransactionError(status);
+	const uint32_t err_code = YBCStatusPgsqlError(status);
 
-	return YBCIsTxnConflictError(txn_error) || YBCIsTxnAbortedError(txn_error);
+	return err_code == ERRCODE_YB_TXN_CONFLICT || err_code == ERRCODE_YB_TXN_ABORTED;
 }
 
 static void
@@ -4112,13 +4122,13 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 		ErrorData  *edata = CopyErrorData();
 
 		elog(DEBUG2, "Error when trying to lock row. "
-			 "pg_wait_policy=%d docdb_wait_policy=%d txn_errcode=%d message=%s",
+			 "pg_wait_policy=%d docdb_wait_policy=%d message=%s",
 			 lock_params.pg_wait_policy, lock_params.docdb_wait_policy,
-			 edata->yb_txn_errcode, edata->message);
+			 edata->message);
 
-		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+		if (edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT)
 			res = TM_Updated;
-		else if (YBCIsTxnSkipLockingError(edata->yb_txn_errcode))
+		else if (edata->sqlerrcode == ERRCODE_YB_TXN_SKIP_LOCKING)
 			res = TM_WouldBlock;
 		else
 		{

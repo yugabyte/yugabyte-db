@@ -110,7 +110,7 @@ struct TabletSnapshots::ColocatedTableMetadata {
   boost::optional<Schema> schema;
   boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
-  std::string table_id;
+  TableId table_id;
 };
 
 TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}
@@ -513,14 +513,22 @@ Status TabletSnapshots::RestoreCheckpoint(
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(DeleteStorages(CompleteShutdownStorages(op_pauses)));
+    for (const auto& path : CompleteShutdownStorages(op_pauses)) {
+      if (env().FileExists(path)) {
+        RETURN_NOT_OK(env().DeleteRecursively(path));
+      }
+    }
 
     auto s = CopyDirectory(
-        &rocksdb_env(), snapshot_dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
+        &rocksdb_env(), snapshot_dir, db_dir,
+        CopyOption::kUseHardLinks, CopyOption::kCreateIfMissing, CopyOption::kRecursive);
     if (PREDICT_FALSE(!s.ok())) {
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
+
+    RETURN_NOT_OK(MoveChildren(this->env(), db_dir, docdb::IncludeIntents::kFalse));
+
     auto tablet_metadata_file = TabletMetadataFile(db_dir);
     if (env().FileExists(tablet_metadata_file)) {
       RETURN_NOT_OK(env().DeleteFile(tablet_metadata_file));
@@ -619,7 +627,8 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
   auto dest_dir = source_dir + kTempSnapshotDirSuffix;
   RETURN_NOT_OK(CleanupSnapshotDir(dest_dir));
   RETURN_NOT_OK(CopyDirectory(
-      &rocksdb_env(), source_dir, dest_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue));
+      &rocksdb_env(), source_dir, dest_dir,
+      CopyOption::kUseHardLinks, CopyOption::kCreateIfMissing, CopyOption::kRecursive));
 
   {
     rocksdb::Options rocksdb_options;
@@ -697,8 +706,8 @@ Status TabletSnapshots::CreateCheckpoint(
 
 Status TabletSnapshots::DoCreateCheckpoint(
     const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in) {
-  auto temp_intents_dir = docdb::GetStorageDir(dir, kIntentsDirName);
-  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, kIntentsDirName);
+  auto temp_intents_dir = docdb::GetStorageDir(dir, docdb::kIntentsDirName);
+  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, docdb::kIntentsDirName);
 
   if (has_intents_db()) {
     RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));
