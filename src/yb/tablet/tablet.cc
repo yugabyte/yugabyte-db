@@ -542,6 +542,7 @@ Tablet::Tablet(const TabletInitData& data)
       mvcc_(
           MakeTabletLogPrefix(data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
       tablet_options_(data.tablet_options),
+      mutable_tablet_options_(data.mutable_tablet_options),
       pending_op_counter_blocking_rocksdb_shutdown_start_(Format(
           "T $0 Read/write operations blocking start of RocksDB shutdown",
           metadata_->raft_group_id())),
@@ -955,6 +956,19 @@ Status Tablet::OpenKeyValueTablet() {
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
     RETURN_NOT_OK(transaction_participant_->SetDB(
         doc_db(), &key_bounds_, &pending_op_counter_blocking_rocksdb_shutdown_start_));
+  }
+
+  rocksdb::AllowCompactionFailures allow_compaction_failures =
+      rocksdb::AllowCompactionFailures::kFalse;
+  {
+    SharedLock lock(mutable_tablet_options_mutex_);
+    allow_compaction_failures = mutable_tablet_options_.allow_compaction_failures;
+  }
+  for (auto* db : {regular_db_.get(), intents_db_.get()}) {
+    if (!db) {
+      continue;
+    }
+    db->SetAllowCompactionFailures(allow_compaction_failures);
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -4596,6 +4610,21 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 
 Result<TableInfoPtr> Tablet::GetTableInfo(ColocationId colocation_id) const {
   return metadata_->GetTableInfo(colocation_id);
+}
+
+void Tablet::SetAllowCompactionFailures(
+    rocksdb::AllowCompactionFailures allow_compaction_failures) {
+  {
+    std::lock_guard lock(mutable_tablet_options_mutex_);
+    mutable_tablet_options_.allow_compaction_failures = allow_compaction_failures;
+  }
+  auto scoped_op = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  for (auto* db : {regular_db(), intents_db()}) {
+    if (!db) {
+      continue;
+    }
+    db->SetAllowCompactionFailures(allow_compaction_failures);
+  }
 }
 
 // ------------------------------------------------------------------------------------------------

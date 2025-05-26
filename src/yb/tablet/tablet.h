@@ -916,6 +916,8 @@ class Tablet : public AbstractTablet,
   // 'kColocationIdNotSet', returns the TableInfo of the parent/primary table.
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const override;
 
+  void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
+
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
 
@@ -1075,6 +1077,9 @@ class Tablet : public AbstractTablet,
 
   // For the block cache and memory manager shared across tablets
   const TabletOptions tablet_options_;
+
+  mutable std::shared_mutex mutable_tablet_options_mutex_;
+  MutableTabletOptions mutable_tablet_options_ GUARDED_BY (mutable_tablet_options_mutex_);
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destructing the RocksDB in-memory instance and read/write

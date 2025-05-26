@@ -184,6 +184,7 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       .block_based_table_mem_tracker = nullptr,
       .log_anchor_registry = nullptr,
       .tablet_options = tablet_options_,
+      .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = "",
       .local_tablet_filter = nullptr,
       // Initdb is much faster with transactions disabled.

@@ -17,6 +17,8 @@
 
 #include <memory>
 
+#include "yb/util/strongly_typed_bool.h"
+
 namespace rocksdb {
 
 class CompactionContext;
@@ -38,5 +40,7 @@ struct TableBuilderOptions;
 struct TableProperties;
 
 using CompactionContextPtr = std::unique_ptr<CompactionContext>;
+
+YB_STRONGLY_TYPED_BOOL(AllowCompactionFailures);
 
 } // namespace rocksdb
